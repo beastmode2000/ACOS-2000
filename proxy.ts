@@ -31,6 +31,11 @@ export function proxy(request: NextRequest) {
 
   const decoded = atob(value)
   const splitAt = decoded.indexOf(":")
+
+  if (splitAt === -1) {
+    return askForLogin()
+  }
+
   const email = decoded.slice(0, splitAt).trim().toLowerCase()
   const password = decoded.slice(splitAt + 1)
 
