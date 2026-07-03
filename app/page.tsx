@@ -23,9 +23,96 @@ type TemplateRow = {
   recurrence_rule: string | null;
 };
 
-async function getCount(query: Promise<any[]>) {
-  const result = await query;
-  return result[0]?.count ?? 0;
+async function getLocationCount() {
+  const rows = await sql`
+    select count(*)::int as count
+    from locations
+    where property_id = (select id from properties where name = '2000')
+  `;
+
+  return Number(rows[0]?.count ?? 0);
+}
+
+async function getAssetCount() {
+  const rows = await sql`
+    select count(*)::int as count
+    from assets
+    where "userId" = 'atlas'
+      and property_id = (select id from properties where name = '2000')
+  `;
+
+  return Number(rows[0]?.count ?? 0);
+}
+
+async function getVendorCount() {
+  const rows = await sql`
+    select count(*)::int as count
+    from vendors
+    where "userId" = 'atlas'
+      and property_id = (select id from properties where name = '2000')
+  `;
+
+  return Number(rows[0]?.count ?? 0);
+}
+
+async function getProcedureCount() {
+  const rows = await sql`
+    select count(*)::int as count
+    from procedures
+    where "userId" = 'atlas'
+      and property_id = (select id from properties where name = '2000')
+  `;
+
+  return Number(rows[0]?.count ?? 0);
+}
+
+async function getTemplateCount() {
+  const rows = await sql`
+    select count(*)::int as count
+    from work_order_templates
+    where "userId" = 'atlas'
+      and property_id = (select id from properties where name = '2000')
+  `;
+
+  return Number(rows[0]?.count ?? 0);
+}
+
+async function getLocations() {
+  const rows = await sql`
+    select name, sort_order
+    from locations
+    where property_id = (select id from properties where name = '2000')
+    order by sort_order asc
+    limit 12
+  `;
+
+  return rows as unknown as LocationRow[];
+}
+
+async function getAssets() {
+  const rows = await sql`
+    select name, asset_type, criticality
+    from assets
+    where "userId" = 'atlas'
+      and property_id = (select id from properties where name = '2000')
+    order by name asc
+    limit 10
+  `;
+
+  return rows as unknown as AssetRow[];
+}
+
+async function getWorkTemplates() {
+  const rows = await sql`
+    select title, category, recurrence_type, recurrence_rule
+    from work_order_templates
+    where "userId" = 'atlas'
+      and property_id = (select id from properties where name = '2000')
+    order by title asc
+    limit 12
+  `;
+
+  return rows as unknown as TemplateRow[];
 }
 
 export default async function Home() {
@@ -39,58 +126,14 @@ export default async function Home() {
     assets,
     templates,
   ] = await Promise.all([
-    getCount(sql`
-      select count(*)::int as count
-      from locations
-      where property_id = (select id from properties where name = '2000')
-    `),
-    getCount(sql`
-      select count(*)::int as count
-      from assets
-      where "userId" = 'atlas'
-        and property_id = (select id from properties where name = '2000')
-    `),
-    getCount(sql`
-      select count(*)::int as count
-      from vendors
-      where "userId" = 'atlas'
-        and property_id = (select id from properties where name = '2000')
-    `),
-    getCount(sql`
-      select count(*)::int as count
-      from procedures
-      where "userId" = 'atlas'
-        and property_id = (select id from properties where name = '2000')
-    `),
-    getCount(sql`
-      select count(*)::int as count
-      from work_order_templates
-      where "userId" = 'atlas'
-        and property_id = (select id from properties where name = '2000')
-    `),
-    sql`
-      select name, sort_order
-      from locations
-      where property_id = (select id from properties where name = '2000')
-      order by sort_order asc
-      limit 12
-    ` as Promise<LocationRow[]>,
-    sql`
-      select name, asset_type, criticality
-      from assets
-      where "userId" = 'atlas'
-        and property_id = (select id from properties where name = '2000')
-      order by name asc
-      limit 10
-    ` as Promise<AssetRow[]>,
-    sql`
-      select title, category, recurrence_type, recurrence_rule
-      from work_order_templates
-      where "userId" = 'atlas'
-        and property_id = (select id from properties where name = '2000')
-      order by title asc
-      limit 12
-    ` as Promise<TemplateRow[]>,
+    getLocationCount(),
+    getAssetCount(),
+    getVendorCount(),
+    getProcedureCount(),
+    getTemplateCount(),
+    getLocations(),
+    getAssets(),
+    getWorkTemplates(),
   ]);
 
   return (
@@ -123,7 +166,9 @@ export default async function Home() {
                   {item.category || "Work"} · {item.recurrence_type || "scheduled"}
                 </p>
               </div>
-              <span style={styles.tag}>{item.recurrence_rule || "As needed"}</span>
+              <span style={styles.tag}>
+                {item.recurrence_rule || "As needed"}
+              </span>
             </div>
           ))}
         </div>
