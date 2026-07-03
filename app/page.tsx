@@ -1,49 +1,31 @@
+import type { CSSProperties } from "react";
 import { neon } from "@neondatabase/serverless";
 
 export const dynamic = "force-dynamic";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-async function countRows(table: string) {
-  const result = await sql`
-    select count(*)::int as count
-    from ${sql(table)}
-    where "userId" = 'atlas'
-      and property_id = (select id from properties where name = '2000')
-  `;
+type LocationRow = {
+  name: string;
+  sort_order: number;
+};
+
+type AssetRow = {
+  name: string;
+  asset_type: string | null;
+  criticality: string | null;
+};
+
+type TemplateRow = {
+  title: string;
+  category: string | null;
+  recurrence_type: string | null;
+  recurrence_rule: string | null;
+};
+
+async function getCount(query: Promise<any[]>) {
+  const result = await query;
   return result[0]?.count ?? 0;
-}
-
-async function getLocations() {
-  return sql`
-    select name, sort_order
-    from locations
-    where property_id = (select id from properties where name = '2000')
-    order by sort_order asc
-    limit 12
-  `;
-}
-
-async function getAssets() {
-  return sql`
-    select name, asset_type, criticality, notes
-    from assets
-    where "userId" = 'atlas'
-      and property_id = (select id from properties where name = '2000')
-    order by name asc
-    limit 10
-  `;
-}
-
-async function getWorkTemplates() {
-  return sql`
-    select title, category, recurrence_type, recurrence_rule, notes
-    from work_order_templates
-    where "userId" = 'atlas'
-      and property_id = (select id from properties where name = '2000')
-    order by title asc
-    limit 12
-  `;
 }
 
 export default async function Home() {
@@ -57,18 +39,58 @@ export default async function Home() {
     assets,
     templates,
   ] = await Promise.all([
-    sql`
+    getCount(sql`
       select count(*)::int as count
       from locations
       where property_id = (select id from properties where name = '2000')
-    `.then((r) => r[0]?.count ?? 0),
-    countRows("assets"),
-    countRows("vendors"),
-    countRows("procedures"),
-    countRows("work_order_templates"),
-    getLocations(),
-    getAssets(),
-    getWorkTemplates(),
+    `),
+    getCount(sql`
+      select count(*)::int as count
+      from assets
+      where "userId" = 'atlas'
+        and property_id = (select id from properties where name = '2000')
+    `),
+    getCount(sql`
+      select count(*)::int as count
+      from vendors
+      where "userId" = 'atlas'
+        and property_id = (select id from properties where name = '2000')
+    `),
+    getCount(sql`
+      select count(*)::int as count
+      from procedures
+      where "userId" = 'atlas'
+        and property_id = (select id from properties where name = '2000')
+    `),
+    getCount(sql`
+      select count(*)::int as count
+      from work_order_templates
+      where "userId" = 'atlas'
+        and property_id = (select id from properties where name = '2000')
+    `),
+    sql`
+      select name, sort_order
+      from locations
+      where property_id = (select id from properties where name = '2000')
+      order by sort_order asc
+      limit 12
+    ` as Promise<LocationRow[]>,
+    sql`
+      select name, asset_type, criticality
+      from assets
+      where "userId" = 'atlas'
+        and property_id = (select id from properties where name = '2000')
+      order by name asc
+      limit 10
+    ` as Promise<AssetRow[]>,
+    sql`
+      select title, category, recurrence_type, recurrence_rule
+      from work_order_templates
+      where "userId" = 'atlas'
+        and property_id = (select id from properties where name = '2000')
+      order by title asc
+      limit 12
+    ` as Promise<TemplateRow[]>,
   ]);
 
   return (
@@ -93,12 +115,12 @@ export default async function Home() {
       <section style={styles.panel}>
         <h2 style={styles.sectionTitle}>Recurring Work</h2>
         <div style={styles.list}>
-          {templates.map((item: any) => (
+          {templates.map((item) => (
             <div key={item.title} style={styles.row}>
               <div>
                 <strong>{item.title}</strong>
                 <p style={styles.small}>
-                  {item.category} · {item.recurrence_type}
+                  {item.category || "Work"} · {item.recurrence_type || "scheduled"}
                 </p>
               </div>
               <span style={styles.tag}>{item.recurrence_rule || "As needed"}</span>
@@ -111,9 +133,11 @@ export default async function Home() {
         <div style={styles.panel}>
           <h2 style={styles.sectionTitle}>Locations</h2>
           <div style={styles.list}>
-            {locations.map((item: any) => (
+            {locations.map((item) => (
               <div key={item.name} style={styles.row}>
-                <strong>{item.sort_order}. {item.name}</strong>
+                <strong>
+                  {item.sort_order}. {item.name}
+                </strong>
               </div>
             ))}
           </div>
@@ -122,11 +146,13 @@ export default async function Home() {
         <div style={styles.panel}>
           <h2 style={styles.sectionTitle}>Core Assets</h2>
           <div style={styles.list}>
-            {assets.map((item: any) => (
+            {assets.map((item) => (
               <div key={item.name} style={styles.row}>
                 <div>
                   <strong>{item.name}</strong>
-                  <p style={styles.small}>{item.asset_type || "Asset"} · {item.criticality}</p>
+                  <p style={styles.small}>
+                    {item.asset_type || "Asset"} · {item.criticality || "normal"}
+                  </p>
                 </div>
               </div>
             ))}
@@ -146,7 +172,7 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: "100vh",
     background: "#07111f",
