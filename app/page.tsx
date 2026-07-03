@@ -1,2 +1,250 @@
-const sections = ['1 Front Entry','2 Old Garage','3 West Lawn','4 New Garage','5 Back Lawn','6 East Lawn','7 Sport Court','8 Vegetable Garden','9 Dock Walkway','10 Dock','11 Irrigation','12 Paint / Stain Records','13 Vendors','14 Assets','15 Projects','16 Photos','17 Notes'];
-export default function Home(){return <main className="wrap"><section className="hero"><span className="pill">ACOS 2000</span><h1>Estate Operations Command System</h1><p className="sub">A clean starting point for the 2000 operations manual, clickable map, assets, vendors, irrigation zones, paint records, and project updates.</p></section><section className="grid"><div className="card"><h2>Clickable Map</h2><p>Foundation for numbered property sections with photos, notes, and inventory.</p></div><div className="card"><h2>Asset Inventory</h2><p>Track equipment, systems, supplies, service dates, and locations.</p></div><div className="card"><h2>Vendor Directory</h2><p>Store contacts, responsibilities, section coverage, and project history.</p></div><div className="card"><h2>Project Log</h2><p>Record paint work, irrigation updates, repairs, photos, and next actions.</p></div></section><section className="map"><h2>Property Sections</h2><div className="sections">{sections.map(s=><p key={s}>{s}</p>)}</div></section><p className="footer">Version 1 clean build. Ready for GitHub and Vercel deployment.</p></main>}
+import { neon } from "@neondatabase/serverless";
+
+export const dynamic = "force-dynamic";
+
+const sql = neon(process.env.DATABASE_URL!);
+
+async function countRows(table: string) {
+  const result = await sql`
+    select count(*)::int as count
+    from ${sql(table)}
+    where "userId" = 'atlas'
+      and property_id = (select id from properties where name = '2000')
+  `;
+  return result[0]?.count ?? 0;
+}
+
+async function getLocations() {
+  return sql`
+    select name, sort_order
+    from locations
+    where property_id = (select id from properties where name = '2000')
+    order by sort_order asc
+    limit 12
+  `;
+}
+
+async function getAssets() {
+  return sql`
+    select name, asset_type, criticality, notes
+    from assets
+    where "userId" = 'atlas'
+      and property_id = (select id from properties where name = '2000')
+    order by name asc
+    limit 10
+  `;
+}
+
+async function getWorkTemplates() {
+  return sql`
+    select title, category, recurrence_type, recurrence_rule, notes
+    from work_order_templates
+    where "userId" = 'atlas'
+      and property_id = (select id from properties where name = '2000')
+    order by title asc
+    limit 12
+  `;
+}
+
+export default async function Home() {
+  const [
+    locationCount,
+    assetCount,
+    vendorCount,
+    procedureCount,
+    templateCount,
+    locations,
+    assets,
+    templates,
+  ] = await Promise.all([
+    sql`
+      select count(*)::int as count
+      from locations
+      where property_id = (select id from properties where name = '2000')
+    `.then((r) => r[0]?.count ?? 0),
+    countRows("assets"),
+    countRows("vendors"),
+    countRows("procedures"),
+    countRows("work_order_templates"),
+    getLocations(),
+    getAssets(),
+    getWorkTemplates(),
+  ]);
+
+  return (
+    <main style={styles.page}>
+      <section style={styles.hero}>
+        <div style={styles.badge}>ATLAS / 2000</div>
+        <h1 style={styles.title}>Estate Operations Dashboard</h1>
+        <p style={styles.subtitle}>
+          Live operating system for 2000: locations, assets, vendors, procedures,
+          and recurring work.
+        </p>
+      </section>
+
+      <section style={styles.grid}>
+        <Stat label="Locations" value={locationCount} />
+        <Stat label="Assets" value={assetCount} />
+        <Stat label="Vendors" value={vendorCount} />
+        <Stat label="Procedures" value={procedureCount} />
+        <Stat label="Work Templates" value={templateCount} />
+      </section>
+
+      <section style={styles.panel}>
+        <h2 style={styles.sectionTitle}>Recurring Work</h2>
+        <div style={styles.list}>
+          {templates.map((item: any) => (
+            <div key={item.title} style={styles.row}>
+              <div>
+                <strong>{item.title}</strong>
+                <p style={styles.small}>
+                  {item.category} · {item.recurrence_type}
+                </p>
+              </div>
+              <span style={styles.tag}>{item.recurrence_rule || "As needed"}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={styles.twoColumn}>
+        <div style={styles.panel}>
+          <h2 style={styles.sectionTitle}>Locations</h2>
+          <div style={styles.list}>
+            {locations.map((item: any) => (
+              <div key={item.name} style={styles.row}>
+                <strong>{item.sort_order}. {item.name}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={styles.panel}>
+          <h2 style={styles.sectionTitle}>Core Assets</h2>
+          <div style={styles.list}>
+            {assets.map((item: any) => (
+              <div key={item.name} style={styles.row}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <p style={styles.small}>{item.asset_type || "Asset"} · {item.criticality}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={styles.card}>
+      <div style={styles.statValue}>{value}</div>
+      <div style={styles.statLabel}>{label}</div>
+    </div>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: "#07111f",
+    color: "white",
+    padding: "28px",
+    fontFamily:
+      "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+  },
+  hero: {
+    background: "linear-gradient(135deg, #0f2544, #123b32)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "24px",
+    padding: "28px",
+    marginBottom: "22px",
+  },
+  badge: {
+    display: "inline-block",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    background: "rgba(163,230,53,0.16)",
+    color: "#bef264",
+    fontSize: "12px",
+    fontWeight: 800,
+    letterSpacing: "0.08em",
+    marginBottom: "14px",
+  },
+  title: {
+    fontSize: "34px",
+    lineHeight: 1,
+    margin: "0 0 12px",
+  },
+  subtitle: {
+    color: "#cbd5e1",
+    fontSize: "16px",
+    margin: 0,
+    maxWidth: "760px",
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+    gap: "14px",
+    marginBottom: "22px",
+  },
+  card: {
+    background: "#0f172a",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "18px",
+    padding: "18px",
+  },
+  statValue: {
+    fontSize: "34px",
+    fontWeight: 900,
+  },
+  statLabel: {
+    color: "#94a3b8",
+    marginTop: "4px",
+  },
+  panel: {
+    background: "#0f172a",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "22px",
+    padding: "20px",
+    marginBottom: "22px",
+  },
+  twoColumn: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: "18px",
+  },
+  sectionTitle: {
+    fontSize: "22px",
+    margin: "0 0 14px",
+  },
+  list: {
+    display: "grid",
+    gap: "10px",
+  },
+  row: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "12px",
+    alignItems: "center",
+    padding: "13px 14px",
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: "14px",
+  },
+  small: {
+    color: "#94a3b8",
+    margin: "4px 0 0",
+    fontSize: "13px",
+  },
+  tag: {
+    whiteSpace: "nowrap",
+    color: "#bef264",
+    background: "rgba(163,230,53,0.12)",
+    padding: "5px 8px",
+    borderRadius: "999px",
+    fontSize: "12px",
+  },
+};
