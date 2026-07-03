@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 
 const OWNER_EMAIL = "nickt@arcticmgnt.com"
 
-function unauthorized() {
-  return new NextResponse("Authentication required", {
+function askForLogin() {
+  return new NextResponse("Atlas login required", {
     status: 401,
     headers: {
       "WWW-Authenticate": 'Basic realm="Atlas 2000"',
@@ -12,47 +12,35 @@ function unauthorized() {
 }
 
 export function proxy(request: NextRequest) {
-  const setupKey = process.env.ACOS_OWNER_SETUP_KEY
+  const key = process.env.ACOS_OWNER_SETUP_KEY
+  const auth = request.headers.get("authorization")
 
-  if (!setupKey) {
-    return new NextResponse("Atlas owner key is not configured.", {
-      status: 500,
-    })
+  if (!key) {
+    return new NextResponse("Missing owner setup key", { status: 500 })
   }
 
-  const authHeader = request.headers.get("authorization")
-
-  if (!authHeader) {
-    return unauthorized()
+  if (!auth) {
+    return askForLogin()
   }
 
-  const [scheme, encoded] = authHeader.split(" ")
+  const [type, value] = auth.split(" ")
 
-  if (scheme !== "Basic" || !encoded) {
-    return unauthorized()
+  if (type !== "Basic" || !value) {
+    return askForLogin()
   }
 
-  try {
-    const decoded = atob(encoded)
-    const separatorIndex = decoded.indexOf(":")
+  const decoded = atob(value)
+  const splitAt = decoded.indexOf(":")
+  const email = decoded.slice(0, splitAt).trim().toLowerCase()
+  const password = decoded.slice(splitAt + 1)
 
-    if (separatorIndex === -1) {
-      return unauthorized()
-    }
-
-    const username = decoded.slice(0, separatorIndex).trim().toLowerCase()
-    const password = decoded.slice(separatorIndex + 1)
-
-    if (username === OWNER_EMAIL && password === setupKey) {
-      return NextResponse.next()
-    }
-
-    return unauthorized()
-  } catch {
-    return unauthorized()
+  if (email === OWNER_EMAIL && password === key) {
+    return NextResponse.next()
   }
+
+  return askForLogin()
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 }
