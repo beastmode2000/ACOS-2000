@@ -346,6 +346,22 @@ const ATLAS_RECORDS: AtlasRecord[] = [
     confidence: "High",
   },
   {
+    id: "blank-vendor-template",
+    mode: "blankCanvas",
+    type: "vendor",
+    title: "Vendor Record Template",
+    location: "Whole Property",
+    category: "Blank Canvas Vendor",
+    summary:
+      "Reusable vendor template for tracking who services each system and what assets they are connected to.",
+    details: [
+      "Fields should include vendor name, trade/category, contact person, phone, email, emergency availability, related assets, invoices, notes, and last service date.",
+      "Recommended linked records include related assets, service history, invoices, and open follow-ups.",
+    ],
+    tags: ["blank", "template", "vendor", "service", "contact", "invoice"],
+    confidence: "High",
+  },
+  {
     id: "blank-ask-atlas-template",
     mode: "blankCanvas",
     type: "procedure",
@@ -537,6 +553,10 @@ function typeLabel(type: RecordType): string {
   return "Note";
 }
 
+function modeName(mode: AtlasMode): string {
+  return mode === "private2000" ? "Atlas 2000" : "Blank Canvas";
+}
+
 export default function AskAtlasPage() {
   const [mode, setMode] = useState<AtlasMode>("private2000");
   const [question, setQuestion] = useState("");
@@ -567,22 +587,36 @@ export default function AskAtlasPage() {
           "What should the pool equipment template include?",
           "How should Ask Atlas work?",
           "What should the dock template include?",
+          "What should a vendor record track?",
         ];
 
   return (
     <main className="min-h-screen bg-slate-50 px-5 py-6 text-slate-950">
       <div className="mx-auto max-w-6xl">
         <header className="rounded-[2rem] bg-slate-950 p-6 text-white shadow-xl">
-          <p className="text-sm font-bold uppercase tracking-[0.3em] text-slate-300">
-            Atlas Estate OS
-          </p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">
-            Ask Atlas
-          </h1>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">
-            Ask a question about the property and Atlas answers from saved
-            records, with source cards and confidence.
-          </p>
+          <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-[0.3em] text-slate-300">
+                Atlas Estate OS
+              </p>
+
+              <h1 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">
+                Ask Atlas
+              </h1>
+
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">
+                Ask a question about the property and Atlas answers from saved
+                records, with source cards and confidence.
+              </p>
+            </div>
+
+            <a
+              href="/"
+              className="rounded-2xl bg-white px-5 py-3 text-center text-sm font-black text-slate-950 shadow-lg hover:bg-slate-100"
+            >
+              Back to Atlas Home
+            </a>
+          </div>
 
           <div className="mt-6 flex flex-wrap gap-3">
             <button
@@ -651,6 +685,7 @@ export default function AskAtlasPage() {
               <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-950">
                 Answer
               </span>
+
               <span
                 className={`rounded-full px-3 py-1 text-xs font-black ${
                   answer.confidence === "High"
@@ -662,12 +697,19 @@ export default function AskAtlasPage() {
               >
                 Confidence: {answer.confidence}
               </span>
+
+              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black text-white">
+                {modeName(mode)}
+              </span>
             </div>
 
-            <p className="mt-5 text-lg leading-8 text-slate-100">{answer.answer}</p>
+            <p className="mt-5 text-lg leading-8 text-slate-100">
+              {answer.answer}
+            </p>
 
             <div className="mt-6 rounded-3xl bg-white/10 p-5">
               <h2 className="font-black">Next Steps</h2>
+
               <ul className="mt-3 space-y-2">
                 {answer.nextSteps.map((step) => (
                   <li key={step} className="text-sm leading-6 text-slate-300">
@@ -679,6 +721,7 @@ export default function AskAtlasPage() {
 
             <div className="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
               <h2 className="font-black">Safety Rule</h2>
+
               <p className="mt-2 text-sm leading-6 text-slate-300">
                 Ask Atlas should not reveal passwords, passcodes, private family
                 information, or sensitive access codes. Emergency, electrical,
@@ -690,6 +733,7 @@ export default function AskAtlasPage() {
 
           <div className="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="text-xl font-black">Sources Used</h2>
+
             <p className="mt-2 text-sm leading-6 text-slate-600">
               In the finished app, these cards should open the real asset,
               vendor, procedure, map, photo, or service note.
@@ -710,6 +754,7 @@ export default function AskAtlasPage() {
                       <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">
                         {typeLabel(source.type)}
                       </span>
+
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
                         {source.category}
                       </span>
@@ -736,11 +781,20 @@ export default function AskAtlasPage() {
         </section>
 
         <section className="mt-6 rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <h2 className="text-2xl font-black">Saved Records in This Mode</h2>
-          <p className="mt-2 text-sm text-slate-600">
-            Current mode: {mode === "private2000" ? "Atlas 2000" : "Blank Canvas"}.
-            Records shown: {visibleRecords.length}.
-          </p>
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-2xl font-black">Saved Records in This Mode</h2>
+
+              <p className="mt-2 text-sm text-slate-600">
+                Current mode: {modeName(mode)}. Records shown:{" "}
+                {visibleRecords.length}.
+              </p>
+            </div>
+
+            <p className="text-sm font-bold text-slate-500">
+              Ask Atlas v1 — Safe separate page
+            </p>
+          </div>
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {visibleRecords.map((record) => (
@@ -751,7 +805,17 @@ export default function AskAtlasPage() {
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
                   {typeLabel(record.type)}
                 </p>
-                <h3 className="mt-2 font-black text-slate-950">{record.title}</h3>
+
+                <h3 className="mt-2 font-black text-slate-950">
+                  {record.title}
+                </h3>
+
+                {record.location && (
+                  <p className="mt-1 text-xs font-bold text-slate-500">
+                    {record.location}
+                  </p>
+                )}
+
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   {record.summary}
                 </p>
@@ -762,9 +826,4 @@ export default function AskAtlasPage() {
       </div>
     </main>
   );
-}<a
-  href="/ask-atlas"
-  className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg hover:bg-slate-800"
->
-  Open Ask Atlas
-</a>
+}
