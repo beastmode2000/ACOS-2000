@@ -1,4 +1,4 @@
-```tsx id="atlas-page-tsx"
+```tsx id="atlas-page-tsx-fixed"
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
@@ -96,14 +96,14 @@ type CalendarEvent = {
 };
 
 const KEYS = {
-  labels: "atlas_2000_labels_base_v4",
-  locations: "atlas_2000_locations_base_v4",
-  assets: "atlas_2000_assets_base_v4",
-  vendors: "atlas_2000_vendors_base_v4",
-  procedures: "atlas_2000_procedures_base_v4",
-  documents: "atlas_2000_documents_base_v4",
-  media: "atlas_2000_media_base_v4",
-  calendar: "atlas_2000_calendar_base_v4",
+  labels: "atlas_2000_labels_base_v5",
+  locations: "atlas_2000_locations_base_v5",
+  assets: "atlas_2000_assets_base_v5",
+  vendors: "atlas_2000_vendors_base_v5",
+  procedures: "atlas_2000_procedures_base_v5",
+  documents: "atlas_2000_documents_base_v5",
+  media: "atlas_2000_media_base_v5",
+  calendar: "atlas_2000_calendar_base_v5",
 };
 
 const navItems: { id: Screen; label: string; icon: string }[] = [
@@ -304,15 +304,15 @@ const defaultProcedures: ProcedureRecord[] = [
   { id: "dog-cleanup", title: "Trampoline/Dog Area Cleanup", locationId: "trampoline-dog", frequency: "Routine", steps: ["Clean dog area.", "Inspect trampoline area.", "Check turf/grass condition.", "Log issues."] },
 ];
 
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 const defaultCalendar: CalendarEvent[] = [
   { id: "cal-boat", date: todayISO(), title: "Boat cleaned Tuesday", locationId: "dock", assetId: "craft-cobalt-r-7", notes: "Recurring boat cleaning/check." },
   { id: "cal-spa", date: todayISO(), title: "Spa water/filter check", locationId: "hot-tub-sundance", assetId: "hottub", notes: "Check Sundance spa water and filter." },
   { id: "cal-pool", date: todayISO(), title: "Pool chemistry and equipment check", locationId: "pool-equipment", assetId: "pool", notes: "Record readings and inspect equipment." },
 ];
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function clamp(value: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, value));
@@ -414,12 +414,7 @@ export default function Page() {
 
         <nav className="nav">
           {navItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={screen === item.id ? "nav-item active" : "nav-item"}
-              onClick={() => setScreen(item.id)}
-            >
+            <button key={item.id} type="button" className={screen === item.id ? "nav-item active" : "nav-item"} onClick={() => setScreen(item.id)}>
               <span>{item.icon}</span>
               {item.label}
             </button>
@@ -433,113 +428,17 @@ export default function Page() {
       </aside>
 
       <section className="content">
-        {screen === "dashboard" && (
-          <DashboardView
-            locations={locations}
-            assets={assets}
-            vendors={vendors}
-            media={media}
-            calendar={calendar}
-            setScreen={setScreen}
-          />
-        )}
-
-        {screen === "map" && (
-          <MapView
-            labels={labels}
-            setLabels={setLabels}
-            locations={locations}
-            selectedLocationId={selectedLocationId}
-            setSelectedLocationId={setSelectedLocationId}
-            assets={assets}
-            procedures={procedures}
-            media={media}
-            attachMedia={attachMedia}
-          />
-        )}
-
-        {screen === "locations" && (
-          <LocationsView
-            locations={locations}
-            selected={selectedLocation}
-            setSelectedLocationId={setSelectedLocationId}
-            setLocations={setLocations}
-            assets={assets}
-            procedures={procedures}
-            media={media}
-            attachMedia={attachMedia}
-          />
-        )}
-
-        {screen === "assets" && (
-          <AssetsView
-            assets={assets}
-            selected={selectedAsset}
-            setSelectedAssetId={setSelectedAssetId}
-            setAssets={setAssets}
-            locations={locations}
-            vendors={vendors}
-            documents={documents}
-            media={media}
-            attachMedia={attachMedia}
-          />
-        )}
-
-        {screen === "vendors" && (
-          <VendorsView
-            vendors={vendors}
-            selected={selectedVendor}
-            setSelectedVendorId={setSelectedVendorId}
-            setVendors={setVendors}
-            assets={assets}
-            media={media}
-            attachMedia={attachMedia}
-          />
-        )}
-
-        {screen === "calendar" && (
-          <CalendarView calendar={calendar} setCalendar={setCalendar} />
-        )}
-
+        {screen === "dashboard" && <DashboardView locations={locations} assets={assets} vendors={vendors} media={media} calendar={calendar} setScreen={setScreen} />}
+        {screen === "map" && <MapView labels={labels} setLabels={setLabels} locations={locations} selectedLocationId={selectedLocationId} setSelectedLocationId={setSelectedLocationId} assets={assets} procedures={procedures} media={media} attachMedia={attachMedia} />}
+        {screen === "locations" && <LocationsView locations={locations} selected={selectedLocation} setSelectedLocationId={setSelectedLocationId} setLocations={setLocations} assets={assets} procedures={procedures} media={media} attachMedia={attachMedia} />}
+        {screen === "assets" && <AssetsView assets={assets} selected={selectedAsset} setSelectedAssetId={setSelectedAssetId} setAssets={setAssets} locations={locations} vendors={vendors} documents={documents} media={media} attachMedia={attachMedia} />}
+        {screen === "vendors" && <VendorsView vendors={vendors} selected={selectedVendor} setSelectedVendorId={setSelectedVendorId} setVendors={setVendors} assets={assets} media={media} attachMedia={attachMedia} />}
+        {screen === "calendar" && <CalendarView calendar={calendar} setCalendar={setCalendar} />}
         {screen === "weather" && <WeatherView full />}
-
-        {screen === "documents" && (
-          <DocumentsView
-            documents={documents}
-            selected={selectedDocument}
-            setSelectedDocumentId={setSelectedDocumentId}
-            setDocuments={setDocuments}
-            media={media}
-            attachMedia={attachMedia}
-          />
-        )}
-
-        {screen === "procedures" && (
-          <ProceduresView
-            procedures={procedures}
-            selected={selectedProcedure}
-            setSelectedProcedureId={setSelectedProcedureId}
-            setProcedures={setProcedures}
-            locations={locations}
-            assets={assets}
-            media={media}
-            attachMedia={attachMedia}
-          />
-        )}
-
+        {screen === "documents" && <DocumentsView documents={documents} selected={selectedDocument} setSelectedDocumentId={setSelectedDocumentId} setDocuments={setDocuments} media={media} attachMedia={attachMedia} />}
+        {screen === "procedures" && <ProceduresView procedures={procedures} selected={selectedProcedure} setSelectedProcedureId={setSelectedProcedureId} setProcedures={setProcedures} locations={locations} assets={assets} media={media} attachMedia={attachMedia} />}
         {screen === "logs" && <LogsView media={media} setMedia={setMedia} />}
-
-        {screen === "assistant" && (
-          <AssistantView
-            locations={locations}
-            assets={assets}
-            vendors={vendors}
-            procedures={procedures}
-            documents={documents}
-            media={media}
-          />
-        )}
-
+        {screen === "assistant" && <AssistantView locations={locations} assets={assets} vendors={vendors} procedures={procedures} documents={documents} media={media} />}
         {screen === "team" && <TeamView />}
       </section>
 
@@ -700,13 +599,15 @@ function MapView({
 
   function addLabel() {
     const location = locations[0];
+
     const next: MapLabel = {
-      id: `label-${Date.now()}`,
+      id: "label-" + Date.now(),
       name: "New Label",
       x: 50,
       y: 50,
       locationId: location.id,
     };
+
     setLabels((rows) => [...rows, next]);
     setSelectedLocationId(location.id);
     setEditMode(true);
@@ -728,13 +629,7 @@ function MapView({
 
       <div className="two-col map-page">
         <section className="card map-card">
-          <div
-            className={editMode ? "map-wrap editing" : "map-wrap"}
-            ref={mapRef}
-            onPointerMove={moveDrag}
-            onPointerUp={() => setDragging(null)}
-            onPointerLeave={() => setDragging(null)}
-          >
+          <div className={editMode ? "map-wrap editing" : "map-wrap"} ref={mapRef} onPointerMove={moveDrag} onPointerUp={() => setDragging(null)} onPointerLeave={() => setDragging(null)}>
             <img src="/atlas-property-map.png" alt="Atlas 2000 locked property map" draggable={false} />
             {labels.map((label) => (
               <button
@@ -1128,7 +1023,7 @@ function CalendarView({
 
   function addEvent() {
     if (!title.trim()) return;
-    setCalendar((rows) => [...rows, { id: `cal-${Date.now()}`, date: activeDate, title, notes }]);
+    setCalendar((rows) => [...rows, { id: "cal-" + Date.now(), date: activeDate, title, notes }]);
     setTitle("");
     setNotes("");
   }
@@ -1255,12 +1150,12 @@ function AssistantView({
     const q = question.toLowerCase();
     const words = q.split(/\s+/).filter((word) => word.length > 2);
     const pool = [
-      ...locations.map((x) => `Location: ${x.name}. ${x.summary} ${x.notes}`),
-      ...assets.map((x) => `Asset: ${x.name}. ${x.category}. ${x.make ?? ""} ${x.model ?? ""} ${x.serial ?? ""}. ${x.notes}`),
-      ...vendors.map((x) => `Vendor: ${x.name}. ${x.category}. ${x.phone ?? ""} ${x.email ?? ""}. ${x.notes}`),
-      ...procedures.map((x) => `Procedure: ${x.title}. ${x.frequency}. ${x.steps.join(" ")}`),
-      ...documents.map((x) => `Document: ${x.title}. ${x.type}. ${x.notes}`),
-      ...media.map((x) => `Log: ${x.title}. ${x.text ?? ""}`),
+      ...locations.map((x) => "Location: " + x.name + ". " + x.summary + " " + x.notes),
+      ...assets.map((x) => "Asset: " + x.name + ". " + x.category + ". " + (x.make ?? "") + " " + (x.model ?? "") + " " + (x.serial ?? "") + ". " + x.notes),
+      ...vendors.map((x) => "Vendor: " + x.name + ". " + x.category + ". " + (x.phone ?? "") + " " + (x.email ?? "") + ". " + x.notes),
+      ...procedures.map((x) => "Procedure: " + x.title + ". " + x.frequency + ". " + x.steps.join(" ")),
+      ...documents.map((x) => "Document: " + x.title + ". " + x.type + ". " + x.notes),
+      ...media.map((x) => "Log: " + x.title + ". " + (x.text ?? "")),
     ];
     const hits = pool.filter((line) => words.some((word) => line.toLowerCase().includes(word))).slice(0, 10);
     setAnswer(hits.length ? hits.join("\n\n") : "I did not find that in the local Atlas records yet.");
@@ -1327,12 +1222,12 @@ function MiniList({ title, items }: { title: string; items: string[] }) {
 }
 
 function QRTag({ type, id, label }: { type: string; id: string; label: string }) {
-  const data = `https://www.atlas2000.com/?atlas=${type}:${id}`;
-  const src = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(data)}`;
+  const data = "https://www.atlas2000.com/?atlas=" + type + ":" + id;
+  const src = "https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=" + encodeURIComponent(data);
 
   return (
     <div className="qr-box">
-      <img src={src} alt={`QR tag for ${label}`} />
+      <img src={src} alt={"QR tag for " + label} />
       <div>
         <strong>QR Tag</strong>
         <span>{type}:{id}</span>
@@ -1364,7 +1259,7 @@ function MediaTools({
   function addComment() {
     if (!comment.trim()) return;
     attachMedia({
-      id: `comment-${Date.now()}`,
+      id: "comment-" + Date.now(),
       targetType,
       targetId,
       kind: "comment",
@@ -1380,7 +1275,7 @@ function MediaTools({
     for (const file of Array.from(files)) {
       const dataUrl = await fileToDataUrl(file);
       attachMedia({
-        id: `photo-${Date.now()}-${file.name}`,
+        id: "photo-" + Date.now() + "-" + file.name,
         targetType,
         targetId,
         kind: "photo",
@@ -1404,7 +1299,7 @@ function MediaTools({
       const blob = new Blob(chunks.current, { type: "audio/webm" });
       const dataUrl = await blobToDataUrl(blob);
       attachMedia({
-        id: `voice-${Date.now()}`,
+        id: "voice-" + Date.now(),
         targetType,
         targetId,
         kind: "voice",
@@ -1473,7 +1368,7 @@ function makeMonthDays(dateString: string) {
   const year = date.getFullYear();
   const month = date.getMonth();
   const days = new Date(year, month + 1, 0).getDate();
-  return Array.from({ length: days }, (_, index) => `${year}-${String(month + 1).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`);
+  return Array.from({ length: days }, (_, index) => year + "-" + String(month + 1).padStart(2, "0") + "-" + String(index + 1).padStart(2, "0"));
 }
 
 function Styles() {
