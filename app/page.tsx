@@ -11,6 +11,7 @@ type Screen =
   | "calendar"
   | "weather"
   | "documents"
+  | "procedures"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -69,12 +70,23 @@ type DocumentRecord = {
   href: string;
 };
 
+type ProcedureRecord = {
+  id: string;
+  title: string;
+  locationId: string;
+  assetId: string;
+  frequency: string;
+  notes: string;
+  steps: string[];
+};
+
 const STORE_ASSETS = "atlas_2000_assets_safe_v1";
 const STORE_LOCATIONS = "atlas_2000_locations_safe_v1";
 const STORE_VENDORS = "atlas_2000_vendors_safe_v1";
 const STORE_LABELS = "atlas_2000_labels_safe_v1";
 const STORE_CALENDAR = "atlas_2000_calendar_safe_v1";
 const STORE_DOCUMENTS = "atlas_2000_documents_safe_v1";
+const STORE_PROCEDURES = "atlas_2000_procedures_safe_v1";
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -85,6 +97,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
   { id: "documents", label: "Documents" },
+  { id: "procedures", label: "Procedures" },
   { id: "assistant", label: "AI Assistant" }
 ];
 
@@ -273,6 +286,84 @@ const defaultDocuments: DocumentRecord[] = [
   { id: "property-map", title: "Locked Atlas Property Map", type: "Image", linkedTo: "map", notes: "Current fixed map image used at /atlas-property-map.png.", href: "/atlas-property-map.png" }
 ];
 
+const defaultProcedures: ProcedureRecord[] = [
+  {
+    id: "pool-backwash",
+    title: "Pool Sand Filter Backwash",
+    locationId: "pool-equipment",
+    assetId: "pool",
+    frequency: "As needed / pressure rise",
+    notes: "Use pressure-rise rule, not only calendar timing. Log pressure before and after.",
+    steps: [
+      "Record current filter pressure before starting.",
+      "Confirm valves are set safely for backwash.",
+      "Backwash until water runs clear.",
+      "Rinse after backwash.",
+      "Return valves to normal filter operation.",
+      "Record final pressure and any issues."
+    ]
+  },
+  {
+    id: "spa-water-filter-check",
+    title: "Sundance Spa Water and Filter Check",
+    locationId: "hot-tub-sundance",
+    assetId: "hottub",
+    frequency: "Weekly / as needed",
+    notes: "Standalone Sundance Optima spa. Do not treat as part of the indoor pool equipment.",
+    steps: [
+      "Check water level.",
+      "Test water chemistry.",
+      "Inspect and clean filter as needed.",
+      "Check cabinet area for leaks, corrosion, or tripped indicators.",
+      "Log readings and any service needed."
+    ]
+  },
+  {
+    id: "sunstream-lift-box-check",
+    title: "Sunstream Lift Box Inspection",
+    locationId: "dock",
+    assetId: "craft-cobalt-r-7",
+    frequency: "Weekly / after storms",
+    notes: "Multiple Sunstream lift boxes exist. The newer box is for the Cobalt lift.",
+    steps: [
+      "Confirm which lift box you are inspecting.",
+      "Check solar panel condition.",
+      "Inspect enclosure, battery, wiring, and control module visually.",
+      "Test up/down controls only when safe.",
+      "Log issues with notes and photos later."
+    ]
+  },
+  {
+    id: "courtyard-reset",
+    title: "Courtyard Reset",
+    locationId: "courtyard",
+    assetId: "",
+    frequency: "As needed",
+    notes: "Courtyard is separate from trampoline/dog area and the covered walkway itself is not labeled.",
+    steps: [
+      "Clean seating area.",
+      "Straighten chairs around fire pit.",
+      "Check fire pit area.",
+      "Check lights and planters.",
+      "Log broken or missing items."
+    ]
+  },
+  {
+    id: "trampoline-dog-cleanup",
+    title: "Trampoline/Dog Area Cleanup",
+    locationId: "trampoline-dog",
+    assetId: "",
+    frequency: "Routine",
+    notes: "Separate from the courtyard area.",
+    steps: [
+      "Clean dog area.",
+      "Inspect trampoline area.",
+      "Check turf or grass condition.",
+      "Log anything damaged or unsafe."
+    ]
+  }
+];
+
 function loadData<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
@@ -302,6 +393,7 @@ export default function Page() {
   const [labels, setLabels] = useState<MapLabel[]>(defaultLabels);
   const [calendar, setCalendar] = useState<CalendarEvent[]>(defaultCalendar);
   const [documents, setDocuments] = useState<DocumentRecord[]>(defaultDocuments);
+  const [procedures, setProcedures] = useState<ProcedureRecord[]>(defaultProcedures);
   const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
   const [selectedLocationId, setSelectedLocationId] = useState("courtyard");
   const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
@@ -318,6 +410,7 @@ export default function Page() {
     setLabels(loadData(STORE_LABELS, defaultLabels));
     setCalendar(loadData(STORE_CALENDAR, defaultCalendar));
     setDocuments(loadData(STORE_DOCUMENTS, defaultDocuments));
+    setProcedures(loadData(STORE_PROCEDURES, defaultProcedures));
     setLoaded(true);
   }, []);
 
@@ -327,6 +420,7 @@ export default function Page() {
   useEffect(() => { if (loaded) saveData(STORE_LABELS, labels); }, [loaded, labels]);
   useEffect(() => { if (loaded) saveData(STORE_CALENDAR, calendar); }, [loaded, calendar]);
   useEffect(() => { if (loaded) saveData(STORE_DOCUMENTS, documents); }, [loaded, documents]);
+  useEffect(() => { if (loaded) saveData(STORE_PROCEDURES, procedures); }, [loaded, procedures]);
 
   useEffect(() => {
     fetch("https://api.open-meteo.com/v1/forecast?latitude=47.57&longitude=-122.22&current=temperature_2m,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto")
@@ -412,6 +506,29 @@ export default function Page() {
     setDocuments((rows) => rows.filter((row) => row.id !== id));
   }
 
+  function addProcedure() {
+    const newId = "procedure-" + Date.now();
+    const next: ProcedureRecord = {
+      id: newId,
+      title: "New Procedure",
+      locationId: "general",
+      assetId: "",
+      frequency: "As needed",
+      notes: "New procedure added in Atlas.",
+      steps: ["Add first step here."]
+    };
+    setProcedures((rows) => [next, ...rows]);
+    setScreen("procedures");
+  }
+
+  function updateProcedure(id: string, patch: Partial<ProcedureRecord>) {
+    setProcedures((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  }
+
+  function removeProcedure(id: string) {
+    setProcedures((rows) => rows.filter((row) => row.id !== id));
+  }
+
   function resetAllLocalData() {
     setLocations(defaultLocations);
     setAssets(defaultAssets);
@@ -419,6 +536,7 @@ export default function Page() {
     setLabels(defaultLabels);
     setCalendar(defaultCalendar);
     setDocuments(defaultDocuments);
+    setProcedures(defaultProcedures);
     setSelectedAssetId(defaultAssets[0].id);
     setSelectedLocationId("courtyard");
     setSelectedVendorId(defaultVendors[0].id);
@@ -436,6 +554,7 @@ export default function Page() {
     locations.forEach((item) => allLines.push("Location: " + item.name + ". " + item.type + ". " + item.notes));
     vendors.forEach((item) => allLines.push("Vendor: " + item.name + ". " + item.category + ". " + item.notes));
     documents.forEach((item) => allLines.push("Document: " + item.title + ". " + item.type + ". " + item.linkedTo + ". " + item.notes));
+    procedures.forEach((item) => allLines.push("Procedure: " + item.title + ". " + item.frequency + ". " + item.notes + ". " + item.steps.join(" ")));
 
     const words = q.split(" ").filter((word) => word.length > 2);
     const hits = allLines.filter((line) => {
@@ -762,6 +881,50 @@ export default function Page() {
                   {doc.href.trim().length > 0 && (
                     <a href={doc.href} target="_blank" rel="noreferrer" style={styles.openLink}>Open Document</a>
                   )}
+                </div>
+              ))}
+            </section>
+          </div>
+        )}
+
+        {screen === "procedures" && (
+          <div>
+            <Header title="Procedures" subtitle="Step-by-step operating procedures linked to locations and assets." />
+            <section style={styles.card}>
+              <button type="button" onClick={addProcedure} style={styles.primaryButton}>+ Add Procedure</button>
+              {procedures.map((procedure) => (
+                <div key={procedure.id} style={styles.documentRow}>
+                  <div style={styles.documentHeader}>
+                    <strong>{procedure.title}</strong>
+                    <button type="button" onClick={() => removeProcedure(procedure.id)} style={styles.deleteButton}>Delete</button>
+                  </div>
+
+                  <label style={styles.label}>Title</label>
+                  <input value={procedure.title} onChange={(e) => updateProcedure(procedure.id, { title: e.target.value })} style={styles.input} />
+
+                  <label style={styles.label}>Location</label>
+                  <select value={procedure.locationId} onChange={(e) => updateProcedure(procedure.id, { locationId: e.target.value })} style={styles.input}>
+                    {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                  </select>
+
+                  <label style={styles.label}>Asset</label>
+                  <select value={procedure.assetId} onChange={(e) => updateProcedure(procedure.id, { assetId: e.target.value })} style={styles.input}>
+                    <option value="">No asset / location only</option>
+                    {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                  </select>
+
+                  <label style={styles.label}>Frequency</label>
+                  <input value={procedure.frequency} onChange={(e) => updateProcedure(procedure.id, { frequency: e.target.value })} style={styles.input} />
+
+                  <label style={styles.label}>Notes</label>
+                  <textarea value={procedure.notes} onChange={(e) => updateProcedure(procedure.id, { notes: e.target.value })} style={styles.textarea} />
+
+                  <label style={styles.label}>Steps, one per line</label>
+                  <textarea
+                    value={procedure.steps.join("\n")}
+                    onChange={(e) => updateProcedure(procedure.id, { steps: e.target.value.split("\n").filter((step) => step.trim().length > 0) })}
+                    style={styles.textareaLarge}
+                  />
                 </div>
               ))}
             </section>
@@ -1116,4 +1279,3 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5
   }
 };
-
