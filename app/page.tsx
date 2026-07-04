@@ -635,7 +635,7 @@ function MapView({
               <button
                 key={label.id}
                 className={label.locationId === selectedLocationId ? "map-label selected" : "map-label"}
-                style={{ left: `${label.x}%`, top: `${label.y}%` }}
+                style={{ left: String(label.x) + "%", top: String(label.y) + "%" }}
                 onClick={() => setSelectedLocationId(label.locationId)}
                 onPointerDown={(event) => startDrag(event, label.id)}
                 type="button"
