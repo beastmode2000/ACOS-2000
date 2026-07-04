@@ -15,6 +15,7 @@ type Screen =
   | "logs"
   | "photos"
   | "voice"
+  | "backup"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -133,6 +134,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "logs", label: "Logs" },
   { id: "photos", label: "Photos" },
   { id: "voice", label: "Voice Notes" },
+  { id: "backup", label: "Backup" },
   { id: "assistant", label: "AI Assistant" }
 ];
 
@@ -705,6 +707,65 @@ export default function Page() {
     setSelectedVendorId(defaultVendors[0].id);
   }
 
+
+  function downloadAtlasBackup() {
+    const backup = {
+      version: "atlas-local-backup-v1",
+      exportedAt: new Date().toISOString(),
+      locations,
+      assets,
+      vendors,
+      labels,
+      calendar,
+      documents,
+      procedures,
+      logs,
+      photos,
+      voiceNotes
+    };
+
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "atlas-2000-backup-" + todayISO() + ".json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function importAtlasBackupFile(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+
+        if (Array.isArray(parsed.locations)) setLocations(parsed.locations);
+        if (Array.isArray(parsed.assets)) setAssets(parsed.assets);
+        if (Array.isArray(parsed.vendors)) setVendors(parsed.vendors);
+        if (Array.isArray(parsed.labels)) setLabels(parsed.labels);
+        if (Array.isArray(parsed.calendar)) setCalendar(parsed.calendar);
+        if (Array.isArray(parsed.documents)) setDocuments(parsed.documents);
+        if (Array.isArray(parsed.procedures)) setProcedures(parsed.procedures);
+        if (Array.isArray(parsed.logs)) setLogs(parsed.logs);
+        if (Array.isArray(parsed.photos)) setPhotos(parsed.photos);
+        if (Array.isArray(parsed.voiceNotes)) setVoiceNotes(parsed.voiceNotes);
+
+        setScreen("dashboard");
+        alert("Atlas backup imported.");
+      } catch {
+        alert("That file was not a valid Atlas backup.");
+      }
+    };
+
+    reader.readAsText(file);
+  }
+
   function askAtlas() {
     const q = assistantQuestion.toLowerCase();
     if (q.trim().length === 0) {
@@ -1239,6 +1300,38 @@ export default function Page() {
                   <textarea value={voice.notes} onChange={(e) => updateVoice(voice.id, { notes: e.target.value })} style={styles.textarea} />
                 </div>
               ))}
+            </section>
+          </div>
+        )}
+
+
+        {screen === "backup" && (
+          <div>
+            <Header title="Backup" subtitle="Export or restore the Atlas records saved in this browser before we move to database syncing." />
+            <section style={styles.card}>
+              <h2 style={styles.h2}>Local Atlas Backup</h2>
+              <p style={styles.muted}>This exports the current local Atlas records, including assets, locations, vendors, map labels, calendar, documents, procedures, logs, photos, and voice notes.</p>
+
+              <div style={styles.buttonRow}>
+                <button type="button" onClick={downloadAtlasBackup} style={styles.primaryButton}>Download Backup File</button>
+                <label style={styles.secondaryButton}>
+                  Import Backup File
+                  <input type="file" accept="application/json" onChange={(e) => importAtlasBackupFile(e.target.files)} style={styles.hiddenInput} />
+                </label>
+              </div>
+
+              <div style={styles.editorBox}>
+                <h3 style={styles.h3}>Current local record counts</h3>
+                <p style={styles.muted}>Locations: {locations.length}</p>
+                <p style={styles.muted}>Assets: {assets.length}</p>
+                <p style={styles.muted}>Vendors: {vendors.length}</p>
+                <p style={styles.muted}>Documents: {documents.length}</p>
+                <p style={styles.muted}>Procedures: {procedures.length}</p>
+                <p style={styles.muted}>Logs: {logs.length}</p>
+                <p style={styles.muted}>Photos: {photos.length}</p>
+                <p style={styles.muted}>Voice Notes: {voiceNotes.length}</p>
+                <p style={styles.muted}>Map Labels: {labels.length}</p>
+              </div>
             </section>
           </div>
         )}
