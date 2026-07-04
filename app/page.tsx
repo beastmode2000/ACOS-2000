@@ -10,6 +10,7 @@ type Screen =
   | "vendors"
   | "calendar"
   | "weather"
+  | "documents"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -59,11 +60,21 @@ type CalendarEvent = {
   notes: string;
 };
 
+type DocumentRecord = {
+  id: string;
+  title: string;
+  type: string;
+  linkedTo: string;
+  notes: string;
+  href: string;
+};
+
 const STORE_ASSETS = "atlas_2000_assets_safe_v1";
 const STORE_LOCATIONS = "atlas_2000_locations_safe_v1";
 const STORE_VENDORS = "atlas_2000_vendors_safe_v1";
 const STORE_LABELS = "atlas_2000_labels_safe_v1";
 const STORE_CALENDAR = "atlas_2000_calendar_safe_v1";
+const STORE_DOCUMENTS = "atlas_2000_documents_safe_v1";
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -73,6 +84,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "vendors", label: "Vendors" },
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
+  { id: "documents", label: "Documents" },
   { id: "assistant", label: "AI Assistant" }
 ];
 
@@ -250,6 +262,17 @@ const defaultCalendar: CalendarEvent[] = [
   { id: "cal-pool", date: todayISO(), title: "Pool chemistry and equipment check", notes: "Record readings and inspect equipment." }
 ];
 
+const defaultDocuments: DocumentRecord[] = [
+  { id: "systems-layout", title: "2000 Systems Layout Draft v1", type: "Diagram / PDF", linkedTo: "mechanical-room", notes: "Main mechanical/electrical/pool/HVAC systems layout draft.", href: "" },
+  { id: "pool-record", title: "2000 Pool Equipment Record v2 Corrected", type: "PDF / Equipment Record", linkedTo: "pool-equipment", notes: "Indoor pool equipment path, Desert Aire, pump/filter/UV records.", href: "" },
+  { id: "sundance-record", title: "2000 Standalone Sundance Spa Record v1", type: "PDF / Asset Record", linkedTo: "hot-tub-sundance", notes: "Sundance Optima nameplate, electrical, ClearRay, HydroQuip heater, and control details.", href: "" },
+  { id: "penthouse-invoice", title: "Penthouse Drapery Invoice 176396", type: "Invoice", linkedTo: "blinds-lutron", notes: "Dated 06/16/2026. Repair one motorized roller shade; two trips and replacement roller shade drive.", href: "" },
+  { id: "sunstream-notes", title: "Sunstream Lift Box Photo Notes", type: "Photo Set / Notes", linkedTo: "dock", notes: "Multiple Sunstream lift boxes; newer box for Cobalt; white boxes with solar/battery/control wiring.", href: "" },
+  { id: "seadoo-repair", title: "Sea-Doo Repair Invoice / Photos", type: "Invoice / Photos", linkedTo: "craft-seadoo-2024", notes: "After repairs to Luke's Sea-Doo.", href: "" },
+  { id: "boat-fluid-analysis", title: "Boat S.O.S. Fluid Analysis", type: "Report / Photo", linkedTo: "craft-cobalt-r-7", notes: "Older boat fluid analysis report from possible kids boat purchase context.", href: "" },
+  { id: "property-map", title: "Locked Atlas Property Map", type: "Image", linkedTo: "map", notes: "Current fixed map image used at /atlas-property-map.png.", href: "/atlas-property-map.png" }
+];
+
 function loadData<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
@@ -278,6 +301,7 @@ export default function Page() {
   const [vendors, setVendors] = useState<VendorRecord[]>(defaultVendors);
   const [labels, setLabels] = useState<MapLabel[]>(defaultLabels);
   const [calendar, setCalendar] = useState<CalendarEvent[]>(defaultCalendar);
+  const [documents, setDocuments] = useState<DocumentRecord[]>(defaultDocuments);
   const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
   const [selectedLocationId, setSelectedLocationId] = useState("courtyard");
   const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
@@ -293,6 +317,7 @@ export default function Page() {
     setVendors(loadData(STORE_VENDORS, defaultVendors));
     setLabels(loadData(STORE_LABELS, defaultLabels));
     setCalendar(loadData(STORE_CALENDAR, defaultCalendar));
+    setDocuments(loadData(STORE_DOCUMENTS, defaultDocuments));
     setLoaded(true);
   }, []);
 
@@ -301,6 +326,7 @@ export default function Page() {
   useEffect(() => { if (loaded) saveData(STORE_VENDORS, vendors); }, [loaded, vendors]);
   useEffect(() => { if (loaded) saveData(STORE_LABELS, labels); }, [loaded, labels]);
   useEffect(() => { if (loaded) saveData(STORE_CALENDAR, calendar); }, [loaded, calendar]);
+  useEffect(() => { if (loaded) saveData(STORE_DOCUMENTS, documents); }, [loaded, documents]);
 
   useEffect(() => {
     fetch("https://api.open-meteo.com/v1/forecast?latitude=47.57&longitude=-122.22&current=temperature_2m,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto")
@@ -364,12 +390,35 @@ export default function Page() {
     setCalendar((rows) => [next, ...rows]);
   }
 
+  function addDocument() {
+    const newId = "doc-" + Date.now();
+    const next: DocumentRecord = {
+      id: newId,
+      title: "New Document",
+      type: "Document",
+      linkedTo: "general",
+      notes: "New document added in Atlas.",
+      href: ""
+    };
+    setDocuments((rows) => [next, ...rows]);
+    setScreen("documents");
+  }
+
+  function updateDocument(id: string, patch: Partial<DocumentRecord>) {
+    setDocuments((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  }
+
+  function removeDocument(id: string) {
+    setDocuments((rows) => rows.filter((row) => row.id !== id));
+  }
+
   function resetAllLocalData() {
     setLocations(defaultLocations);
     setAssets(defaultAssets);
     setVendors(defaultVendors);
     setLabels(defaultLabels);
     setCalendar(defaultCalendar);
+    setDocuments(defaultDocuments);
     setSelectedAssetId(defaultAssets[0].id);
     setSelectedLocationId("courtyard");
     setSelectedVendorId(defaultVendors[0].id);
@@ -386,6 +435,7 @@ export default function Page() {
     assets.forEach((item) => allLines.push("Asset: " + item.name + ". " + item.category + ". " + item.notes));
     locations.forEach((item) => allLines.push("Location: " + item.name + ". " + item.type + ". " + item.notes));
     vendors.forEach((item) => allLines.push("Vendor: " + item.name + ". " + item.category + ". " + item.notes));
+    documents.forEach((item) => allLines.push("Document: " + item.title + ". " + item.type + ". " + item.linkedTo + ". " + item.notes));
 
     const words = q.split(" ").filter((word) => word.length > 2);
     const hits = allLines.filter((line) => {
@@ -678,6 +728,42 @@ export default function Page() {
             <section style={styles.card}>
               <h2 style={styles.h2}>2000 / Mercer Island Area</h2>
               <p style={styles.weatherText}>{weather}</p>
+            </section>
+          </div>
+        )}
+
+        {screen === "documents" && (
+          <div>
+            <Header title="Documents" subtitle="Manuals, invoices, diagrams, photo records, PDFs, and file links." />
+            <section style={styles.card}>
+              <button type="button" onClick={addDocument} style={styles.primaryButton}>+ Add Document</button>
+              {documents.map((doc) => (
+                <div key={doc.id} style={styles.documentRow}>
+                  <div style={styles.documentHeader}>
+                    <strong>{doc.title}</strong>
+                    <button type="button" onClick={() => removeDocument(doc.id)} style={styles.deleteButton}>Delete</button>
+                  </div>
+
+                  <label style={styles.label}>Title</label>
+                  <input value={doc.title} onChange={(e) => updateDocument(doc.id, { title: e.target.value })} style={styles.input} />
+
+                  <label style={styles.label}>Type</label>
+                  <input value={doc.type} onChange={(e) => updateDocument(doc.id, { type: e.target.value })} style={styles.input} />
+
+                  <label style={styles.label}>Linked To</label>
+                  <input value={doc.linkedTo} onChange={(e) => updateDocument(doc.id, { linkedTo: e.target.value })} style={styles.input} />
+
+                  <label style={styles.label}>File URL or public path</label>
+                  <input value={doc.href} onChange={(e) => updateDocument(doc.id, { href: e.target.value })} placeholder="/filename.pdf or https://..." style={styles.input} />
+
+                  <label style={styles.label}>Notes</label>
+                  <textarea value={doc.notes} onChange={(e) => updateDocument(doc.id, { notes: e.target.value })} style={styles.textarea} />
+
+                  {doc.href.trim().length > 0 && (
+                    <a href={doc.href} target="_blank" rel="noreferrer" style={styles.openLink}>Open Document</a>
+                  )}
+                </div>
+              ))}
             </section>
           </div>
         )}
@@ -985,6 +1071,38 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
     marginBottom: 10
   },
+  documentRow: {
+    border: "1px solid #e4e8f0",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    background: "#ffffff"
+  },
+  documentHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "center",
+    marginBottom: 12
+  },
+  deleteButton: {
+    border: "1px solid #fecdca",
+    background: "#fff5f5",
+    color: "#b42318",
+    borderRadius: 10,
+    padding: "7px 10px",
+    fontWeight: 900,
+    cursor: "pointer"
+  },
+  openLink: {
+    display: "inline-block",
+    background: "#071d3a",
+    color: "#ffffff",
+    borderRadius: 10,
+    padding: "10px 12px",
+    fontWeight: 900,
+    textDecoration: "none"
+  },
   weatherText: {
     fontSize: 34,
     fontWeight: 900
@@ -998,3 +1116,4 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5
   }
 };
+
