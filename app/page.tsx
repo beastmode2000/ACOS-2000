@@ -12,6 +12,7 @@ type Screen =
   | "weather"
   | "documents"
   | "procedures"
+  | "logs"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -80,6 +81,14 @@ type ProcedureRecord = {
   steps: string[];
 };
 
+type LogRecord = {
+  id: string;
+  date: string;
+  title: string;
+  linkedTo: string;
+  notes: string;
+};
+
 const STORE_ASSETS = "atlas_2000_assets_safe_v1";
 const STORE_LOCATIONS = "atlas_2000_locations_safe_v1";
 const STORE_VENDORS = "atlas_2000_vendors_safe_v1";
@@ -87,6 +96,7 @@ const STORE_LABELS = "atlas_2000_labels_safe_v1";
 const STORE_CALENDAR = "atlas_2000_calendar_safe_v1";
 const STORE_DOCUMENTS = "atlas_2000_documents_safe_v1";
 const STORE_PROCEDURES = "atlas_2000_procedures_safe_v1";
+const STORE_LOGS = "atlas_2000_logs_safe_v1";
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -98,6 +108,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "weather", label: "Weather" },
   { id: "documents", label: "Documents" },
   { id: "procedures", label: "Procedures" },
+  { id: "logs", label: "Logs" },
   { id: "assistant", label: "AI Assistant" }
 ];
 
@@ -275,6 +286,11 @@ const defaultCalendar: CalendarEvent[] = [
   { id: "cal-pool", date: todayISO(), title: "Pool chemistry and equipment check", notes: "Record readings and inspect equipment." }
 ];
 
+const defaultLogs: LogRecord[] = [
+  { id: "log-boiler-note", date: todayISO(), title: "Atlas build note", linkedTo: "general", notes: "Use Logs for maintenance notes, field observations, and follow-up items." },
+  { id: "log-pool-note", date: todayISO(), title: "Pool/spa note", linkedTo: "pool-equipment", notes: "Use this area to record water readings, service notes, filter/backwash notes, and unusual conditions." }
+];
+
 const defaultDocuments: DocumentRecord[] = [
   { id: "systems-layout", title: "2000 Systems Layout Draft v1", type: "Diagram / PDF", linkedTo: "mechanical-room", notes: "Main mechanical/electrical/pool/HVAC systems layout draft.", href: "" },
   { id: "pool-record", title: "2000 Pool Equipment Record v2 Corrected", type: "PDF / Equipment Record", linkedTo: "pool-equipment", notes: "Indoor pool equipment path, Desert Aire, pump/filter/UV records.", href: "" },
@@ -394,6 +410,7 @@ export default function Page() {
   const [calendar, setCalendar] = useState<CalendarEvent[]>(defaultCalendar);
   const [documents, setDocuments] = useState<DocumentRecord[]>(defaultDocuments);
   const [procedures, setProcedures] = useState<ProcedureRecord[]>(defaultProcedures);
+  const [logs, setLogs] = useState<LogRecord[]>(defaultLogs);
   const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
   const [selectedLocationId, setSelectedLocationId] = useState("courtyard");
   const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
@@ -411,6 +428,7 @@ export default function Page() {
     setCalendar(loadData(STORE_CALENDAR, defaultCalendar));
     setDocuments(loadData(STORE_DOCUMENTS, defaultDocuments));
     setProcedures(loadData(STORE_PROCEDURES, defaultProcedures));
+    setLogs(loadData(STORE_LOGS, defaultLogs));
     setLoaded(true);
   }, []);
 
@@ -421,6 +439,7 @@ export default function Page() {
   useEffect(() => { if (loaded) saveData(STORE_CALENDAR, calendar); }, [loaded, calendar]);
   useEffect(() => { if (loaded) saveData(STORE_DOCUMENTS, documents); }, [loaded, documents]);
   useEffect(() => { if (loaded) saveData(STORE_PROCEDURES, procedures); }, [loaded, procedures]);
+  useEffect(() => { if (loaded) saveData(STORE_LOGS, logs); }, [loaded, logs]);
 
   useEffect(() => {
     fetch("https://api.open-meteo.com/v1/forecast?latitude=47.57&longitude=-122.22&current=temperature_2m,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto")
@@ -529,6 +548,27 @@ export default function Page() {
     setProcedures((rows) => rows.filter((row) => row.id !== id));
   }
 
+  function addLog() {
+    const newId = "log-" + Date.now();
+    const next: LogRecord = {
+      id: newId,
+      date: todayISO(),
+      title: "New Log",
+      linkedTo: "general",
+      notes: "New log added in Atlas."
+    };
+    setLogs((rows) => [next, ...rows]);
+    setScreen("logs");
+  }
+
+  function updateLog(id: string, patch: Partial<LogRecord>) {
+    setLogs((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  }
+
+  function removeLog(id: string) {
+    setLogs((rows) => rows.filter((row) => row.id !== id));
+  }
+
   function resetAllLocalData() {
     setLocations(defaultLocations);
     setAssets(defaultAssets);
@@ -537,6 +577,7 @@ export default function Page() {
     setCalendar(defaultCalendar);
     setDocuments(defaultDocuments);
     setProcedures(defaultProcedures);
+    setLogs(defaultLogs);
     setSelectedAssetId(defaultAssets[0].id);
     setSelectedLocationId("courtyard");
     setSelectedVendorId(defaultVendors[0].id);
@@ -555,6 +596,7 @@ export default function Page() {
     vendors.forEach((item) => allLines.push("Vendor: " + item.name + ". " + item.category + ". " + item.notes));
     documents.forEach((item) => allLines.push("Document: " + item.title + ". " + item.type + ". " + item.linkedTo + ". " + item.notes));
     procedures.forEach((item) => allLines.push("Procedure: " + item.title + ". " + item.frequency + ". " + item.notes + ". " + item.steps.join(" ")));
+    logs.forEach((item) => allLines.push("Log: " + item.title + ". " + item.date + ". " + item.linkedTo + ". " + item.notes));
 
     const words = q.split(" ").filter((word) => word.length > 2);
     const hits = allLines.filter((line) => {
@@ -931,11 +973,40 @@ export default function Page() {
           </div>
         )}
 
+        {screen === "logs" && (
+          <div>
+            <Header title="Logs" subtitle="Maintenance notes, field observations, follow-up items, and service history." />
+            <section style={styles.card}>
+              <button type="button" onClick={addLog} style={styles.primaryButton}>+ Add Log</button>
+              {logs.map((log) => (
+                <div key={log.id} style={styles.documentRow}>
+                  <div style={styles.documentHeader}>
+                    <strong>{log.title}</strong>
+                    <button type="button" onClick={() => removeLog(log.id)} style={styles.deleteButton}>Delete</button>
+                  </div>
+
+                  <label style={styles.label}>Date</label>
+                  <input value={log.date} onChange={(e) => updateLog(log.id, { date: e.target.value })} style={styles.input} />
+
+                  <label style={styles.label}>Title</label>
+                  <input value={log.title} onChange={(e) => updateLog(log.id, { title: e.target.value })} style={styles.input} />
+
+                  <label style={styles.label}>Linked To</label>
+                  <input value={log.linkedTo} onChange={(e) => updateLog(log.id, { linkedTo: e.target.value })} placeholder="asset, location, vendor, document, or procedure" style={styles.input} />
+
+                  <label style={styles.label}>Notes</label>
+                  <textarea value={log.notes} onChange={(e) => updateLog(log.id, { notes: e.target.value })} style={styles.textareaLarge} />
+                </div>
+              ))}
+            </section>
+          </div>
+        )}
+
         {screen === "assistant" && (
           <div>
             <Header title="AI Assistant" subtitle="Local Atlas search across saved records." />
             <section style={styles.card}>
-              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, locations..." style={styles.textareaLarge} />
+              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, locations, documents, procedures, or logs..." style={styles.textareaLarge} />
               <button type="button" onClick={askAtlas} style={styles.primaryButton}>Ask Atlas</button>
               <pre style={styles.answerBox}>{assistantAnswer}</pre>
             </section>
