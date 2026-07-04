@@ -10,13 +10,6 @@ type Screen =
   | "vendors"
   | "calendar"
   | "weather"
-  | "documents"
-  | "procedures"
-  | "logs"
-  | "photos"
-  | "voice"
-  | "team"
-  | "backup"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -66,61 +59,11 @@ type CalendarEvent = {
   notes: string;
 };
 
-type DocumentRecord = {
-  id: string;
-  title: string;
-  type: string;
-  linkedTo: string;
-  notes: string;
-  href: string;
-};
-
-type ProcedureRecord = {
-  id: string;
-  title: string;
-  locationId: string;
-  assetId: string;
-  frequency: string;
-  notes: string;
-  steps: string[];
-};
-
-type LogRecord = {
-  id: string;
-  date: string;
-  title: string;
-  linkedTo: string;
-  notes: string;
-};
-
-type PhotoRecord = {
-  id: string;
-  date: string;
-  title: string;
-  linkedTo: string;
-  notes: string;
-  dataUrl: string;
-};
-
-type VoiceRecord = {
-  id: string;
-  date: string;
-  title: string;
-  linkedTo: string;
-  notes: string;
-  dataUrl: string;
-};
-
 const STORE_ASSETS = "atlas_2000_assets_safe_v1";
 const STORE_LOCATIONS = "atlas_2000_locations_safe_v1";
 const STORE_VENDORS = "atlas_2000_vendors_safe_v1";
 const STORE_LABELS = "atlas_2000_labels_safe_v1";
 const STORE_CALENDAR = "atlas_2000_calendar_safe_v1";
-const STORE_DOCUMENTS = "atlas_2000_documents_safe_v1";
-const STORE_PROCEDURES = "atlas_2000_procedures_safe_v1";
-const STORE_LOGS = "atlas_2000_logs_safe_v1";
-const STORE_PHOTOS = "atlas_2000_photos_safe_v1";
-const STORE_VOICE = "atlas_2000_voice_safe_v1";
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -130,13 +73,6 @@ const screens: { id: Screen; label: string }[] = [
   { id: "vendors", label: "Vendors" },
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
-  { id: "documents", label: "Documents" },
-  { id: "procedures", label: "Procedures" },
-  { id: "logs", label: "Logs" },
-  { id: "photos", label: "Photos" },
-  { id: "voice", label: "Voice Notes" },
-  { id: "team", label: "Team" },
-  { id: "backup", label: "Backup" },
   { id: "assistant", label: "AI Assistant" }
 ];
 
@@ -314,104 +250,6 @@ const defaultCalendar: CalendarEvent[] = [
   { id: "cal-pool", date: todayISO(), title: "Pool chemistry and equipment check", notes: "Record readings and inspect equipment." }
 ];
 
-const defaultLogs: LogRecord[] = [
-  { id: "log-boiler-note", date: todayISO(), title: "Atlas build note", linkedTo: "general", notes: "Use Logs for maintenance notes, field observations, and follow-up items." },
-  { id: "log-pool-note", date: todayISO(), title: "Pool/spa note", linkedTo: "pool-equipment", notes: "Use this area to record water readings, service notes, filter/backwash notes, and unusual conditions." }
-];
-
-const defaultPhotos: PhotoRecord[] = [];
-
-const defaultVoiceNotes: VoiceRecord[] = [];
-
-const defaultDocuments: DocumentRecord[] = [
-  { id: "systems-layout", title: "2000 Systems Layout Draft v1", type: "Diagram / PDF", linkedTo: "mechanical-room", notes: "Main mechanical/electrical/pool/HVAC systems layout draft.", href: "" },
-  { id: "pool-record", title: "2000 Pool Equipment Record v2 Corrected", type: "PDF / Equipment Record", linkedTo: "pool-equipment", notes: "Indoor pool equipment path, Desert Aire, pump/filter/UV records.", href: "" },
-  { id: "sundance-record", title: "2000 Standalone Sundance Spa Record v1", type: "PDF / Asset Record", linkedTo: "hot-tub-sundance", notes: "Sundance Optima nameplate, electrical, ClearRay, HydroQuip heater, and control details.", href: "" },
-  { id: "penthouse-invoice", title: "Penthouse Drapery Invoice 176396", type: "Invoice", linkedTo: "blinds-lutron", notes: "Dated 06/16/2026. Repair one motorized roller shade; two trips and replacement roller shade drive.", href: "" },
-  { id: "sunstream-notes", title: "Sunstream Lift Box Photo Notes", type: "Photo Set / Notes", linkedTo: "dock", notes: "Multiple Sunstream lift boxes; newer box for Cobalt; white boxes with solar/battery/control wiring.", href: "" },
-  { id: "seadoo-repair", title: "Sea-Doo Repair Invoice / Photos", type: "Invoice / Photos", linkedTo: "craft-seadoo-2024", notes: "After repairs to Luke's Sea-Doo.", href: "" },
-  { id: "boat-fluid-analysis", title: "Boat S.O.S. Fluid Analysis", type: "Report / Photo", linkedTo: "craft-cobalt-r-7", notes: "Older boat fluid analysis report from possible kids boat purchase context.", href: "" },
-  { id: "property-map", title: "Locked Atlas Property Map", type: "Image", linkedTo: "map", notes: "Current fixed map image used at /atlas-property-map.png.", href: "/atlas-property-map.png" }
-];
-
-const defaultProcedures: ProcedureRecord[] = [
-  {
-    id: "pool-backwash",
-    title: "Pool Sand Filter Backwash",
-    locationId: "pool-equipment",
-    assetId: "pool",
-    frequency: "As needed / pressure rise",
-    notes: "Use pressure-rise rule, not only calendar timing. Log pressure before and after.",
-    steps: [
-      "Record current filter pressure before starting.",
-      "Confirm valves are set safely for backwash.",
-      "Backwash until water runs clear.",
-      "Rinse after backwash.",
-      "Return valves to normal filter operation.",
-      "Record final pressure and any issues."
-    ]
-  },
-  {
-    id: "spa-water-filter-check",
-    title: "Sundance Spa Water and Filter Check",
-    locationId: "hot-tub-sundance",
-    assetId: "hottub",
-    frequency: "Weekly / as needed",
-    notes: "Standalone Sundance Optima spa. Do not treat as part of the indoor pool equipment.",
-    steps: [
-      "Check water level.",
-      "Test water chemistry.",
-      "Inspect and clean filter as needed.",
-      "Check cabinet area for leaks, corrosion, or tripped indicators.",
-      "Log readings and any service needed."
-    ]
-  },
-  {
-    id: "sunstream-lift-box-check",
-    title: "Sunstream Lift Box Inspection",
-    locationId: "dock",
-    assetId: "craft-cobalt-r-7",
-    frequency: "Weekly / after storms",
-    notes: "Multiple Sunstream lift boxes exist. The newer box is for the Cobalt lift.",
-    steps: [
-      "Confirm which lift box you are inspecting.",
-      "Check solar panel condition.",
-      "Inspect enclosure, battery, wiring, and control module visually.",
-      "Test up/down controls only when safe.",
-      "Log issues with notes and photos later."
-    ]
-  },
-  {
-    id: "courtyard-reset",
-    title: "Courtyard Reset",
-    locationId: "courtyard",
-    assetId: "",
-    frequency: "As needed",
-    notes: "Courtyard is separate from trampoline/dog area and the covered walkway itself is not labeled.",
-    steps: [
-      "Clean seating area.",
-      "Straighten chairs around fire pit.",
-      "Check fire pit area.",
-      "Check lights and planters.",
-      "Log broken or missing items."
-    ]
-  },
-  {
-    id: "trampoline-dog-cleanup",
-    title: "Trampoline/Dog Area Cleanup",
-    locationId: "trampoline-dog",
-    assetId: "",
-    frequency: "Routine",
-    notes: "Separate from the courtyard area.",
-    steps: [
-      "Clean dog area.",
-      "Inspect trampoline area.",
-      "Check turf or grass condition.",
-      "Log anything damaged or unsafe."
-    ]
-  }
-];
-
 function loadData<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
@@ -428,15 +266,6 @@ function saveData<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 function qrUrl(type: string, id: string) {
   const target = "https://www.atlas2000.com/?atlas=" + type + ":" + id;
   return "https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=" + encodeURIComponent(target);
@@ -449,11 +278,6 @@ export default function Page() {
   const [vendors, setVendors] = useState<VendorRecord[]>(defaultVendors);
   const [labels, setLabels] = useState<MapLabel[]>(defaultLabels);
   const [calendar, setCalendar] = useState<CalendarEvent[]>(defaultCalendar);
-  const [documents, setDocuments] = useState<DocumentRecord[]>(defaultDocuments);
-  const [procedures, setProcedures] = useState<ProcedureRecord[]>(defaultProcedures);
-  const [logs, setLogs] = useState<LogRecord[]>(defaultLogs);
-  const [photos, setPhotos] = useState<PhotoRecord[]>(defaultPhotos);
-  const [voiceNotes, setVoiceNotes] = useState<VoiceRecord[]>(defaultVoiceNotes);
   const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
   const [selectedLocationId, setSelectedLocationId] = useState("courtyard");
   const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
@@ -461,7 +285,6 @@ export default function Page() {
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about an asset, location, vendor, boiler, HVAC unit, pool, spa, vehicle, aircraft, or procedure.");
   const [weather, setWeather] = useState("Loading weather...");
-  const [mapEditMode, setMapEditMode] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -470,11 +293,6 @@ export default function Page() {
     setVendors(loadData(STORE_VENDORS, defaultVendors));
     setLabels(loadData(STORE_LABELS, defaultLabels));
     setCalendar(loadData(STORE_CALENDAR, defaultCalendar));
-    setDocuments(loadData(STORE_DOCUMENTS, defaultDocuments));
-    setProcedures(loadData(STORE_PROCEDURES, defaultProcedures));
-    setLogs(loadData(STORE_LOGS, defaultLogs));
-    setPhotos(loadData(STORE_PHOTOS, defaultPhotos));
-    setVoiceNotes(loadData(STORE_VOICE, defaultVoiceNotes));
     setLoaded(true);
   }, []);
 
@@ -483,11 +301,6 @@ export default function Page() {
   useEffect(() => { if (loaded) saveData(STORE_VENDORS, vendors); }, [loaded, vendors]);
   useEffect(() => { if (loaded) saveData(STORE_LABELS, labels); }, [loaded, labels]);
   useEffect(() => { if (loaded) saveData(STORE_CALENDAR, calendar); }, [loaded, calendar]);
-  useEffect(() => { if (loaded) saveData(STORE_DOCUMENTS, documents); }, [loaded, documents]);
-  useEffect(() => { if (loaded) saveData(STORE_PROCEDURES, procedures); }, [loaded, procedures]);
-  useEffect(() => { if (loaded) saveData(STORE_LOGS, logs); }, [loaded, logs]);
-  useEffect(() => { if (loaded) saveData(STORE_PHOTOS, photos); }, [loaded, photos]);
-  useEffect(() => { if (loaded) saveData(STORE_VOICE, voiceNotes); }, [loaded, voiceNotes]);
 
   useEffect(() => {
     fetch("https://api.open-meteo.com/v1/forecast?latitude=47.57&longitude=-122.22&current=temperature_2m,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto")
@@ -525,28 +338,6 @@ export default function Page() {
     setVendors((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
   }
 
-  function updateLabel(id: string, patch: Partial<MapLabel>) {
-    setLabels((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
-  }
-
-  function addMapLabel() {
-    const newId = "label-" + Date.now();
-    const next: MapLabel = {
-      id: newId,
-      name: "New Label",
-      x: 50,
-      y: 50,
-      locationId: "general"
-    };
-    setLabels((rows) => [next, ...rows]);
-    setSelectedLocationId("general");
-    setMapEditMode(true);
-  }
-
-  function removeMapLabel(id: string) {
-    setLabels((rows) => rows.filter((row) => row.id !== id));
-  }
-
   function addAsset() {
     const newId = "asset-" + Date.now();
     const next: AssetRecord = {
@@ -573,199 +364,15 @@ export default function Page() {
     setCalendar((rows) => [next, ...rows]);
   }
 
-  function addDocument() {
-    const newId = "doc-" + Date.now();
-    const next: DocumentRecord = {
-      id: newId,
-      title: "New Document",
-      type: "Document",
-      linkedTo: "general",
-      notes: "New document added in Atlas.",
-      href: ""
-    };
-    setDocuments((rows) => [next, ...rows]);
-    setScreen("documents");
-  }
-
-  function updateDocument(id: string, patch: Partial<DocumentRecord>) {
-    setDocuments((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
-  }
-
-  function removeDocument(id: string) {
-    setDocuments((rows) => rows.filter((row) => row.id !== id));
-  }
-
-  function addProcedure() {
-    const newId = "procedure-" + Date.now();
-    const next: ProcedureRecord = {
-      id: newId,
-      title: "New Procedure",
-      locationId: "general",
-      assetId: "",
-      frequency: "As needed",
-      notes: "New procedure added in Atlas.",
-      steps: ["Add first step here."]
-    };
-    setProcedures((rows) => [next, ...rows]);
-    setScreen("procedures");
-  }
-
-  function updateProcedure(id: string, patch: Partial<ProcedureRecord>) {
-    setProcedures((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
-  }
-
-  function removeProcedure(id: string) {
-    setProcedures((rows) => rows.filter((row) => row.id !== id));
-  }
-
-  function addLog() {
-    const newId = "log-" + Date.now();
-    const next: LogRecord = {
-      id: newId,
-      date: todayISO(),
-      title: "New Log",
-      linkedTo: "general",
-      notes: "New log added in Atlas."
-    };
-    setLogs((rows) => [next, ...rows]);
-    setScreen("logs");
-  }
-
-  function updateLog(id: string, patch: Partial<LogRecord>) {
-    setLogs((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
-  }
-
-  function removeLog(id: string) {
-    setLogs((rows) => rows.filter((row) => row.id !== id));
-  }
-
-  async function addPhotoFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const nextPhotos: PhotoRecord[] = [];
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      const dataUrl = await fileToDataUrl(file);
-      nextPhotos.push({
-        id: "photo-" + Date.now() + "-" + String(index),
-        date: todayISO(),
-        title: file.name || "Atlas Photo",
-        linkedTo: "general",
-        notes: "New photo uploaded to Atlas.",
-        dataUrl
-      });
-    }
-    setPhotos((rows) => [...nextPhotos, ...rows]);
-    setScreen("photos");
-  }
-
-  function updatePhoto(id: string, patch: Partial<PhotoRecord>) {
-    setPhotos((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
-  }
-
-  function removePhoto(id: string) {
-    setPhotos((rows) => rows.filter((row) => row.id !== id));
-  }
-
-  async function addVoiceFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const nextVoiceNotes: VoiceRecord[] = [];
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      const dataUrl = await fileToDataUrl(file);
-      nextVoiceNotes.push({
-        id: "voice-" + Date.now() + "-" + String(index),
-        date: todayISO(),
-        title: file.name || "Atlas Voice Note",
-        linkedTo: "general",
-        notes: "New voice note uploaded to Atlas.",
-        dataUrl
-      });
-    }
-    setVoiceNotes((rows) => [...nextVoiceNotes, ...rows]);
-    setScreen("voice");
-  }
-
-  function updateVoice(id: string, patch: Partial<VoiceRecord>) {
-    setVoiceNotes((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
-  }
-
-  function removeVoice(id: string) {
-    setVoiceNotes((rows) => rows.filter((row) => row.id !== id));
-  }
-
   function resetAllLocalData() {
     setLocations(defaultLocations);
     setAssets(defaultAssets);
     setVendors(defaultVendors);
     setLabels(defaultLabels);
     setCalendar(defaultCalendar);
-    setDocuments(defaultDocuments);
-    setProcedures(defaultProcedures);
-    setLogs(defaultLogs);
-    setPhotos(defaultPhotos);
-    setVoiceNotes(defaultVoiceNotes);
     setSelectedAssetId(defaultAssets[0].id);
     setSelectedLocationId("courtyard");
     setSelectedVendorId(defaultVendors[0].id);
-  }
-
-
-  function downloadAtlasBackup() {
-    const backup = {
-      version: "atlas-local-backup-v1",
-      exportedAt: new Date().toISOString(),
-      locations,
-      assets,
-      vendors,
-      labels,
-      calendar,
-      documents,
-      procedures,
-      logs,
-      photos,
-      voiceNotes
-    };
-
-    const json = JSON.stringify(backup, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "atlas-2000-backup-" + todayISO() + ".json";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  function importAtlasBackupFile(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-
-        if (Array.isArray(parsed.locations)) setLocations(parsed.locations);
-        if (Array.isArray(parsed.assets)) setAssets(parsed.assets);
-        if (Array.isArray(parsed.vendors)) setVendors(parsed.vendors);
-        if (Array.isArray(parsed.labels)) setLabels(parsed.labels);
-        if (Array.isArray(parsed.calendar)) setCalendar(parsed.calendar);
-        if (Array.isArray(parsed.documents)) setDocuments(parsed.documents);
-        if (Array.isArray(parsed.procedures)) setProcedures(parsed.procedures);
-        if (Array.isArray(parsed.logs)) setLogs(parsed.logs);
-        if (Array.isArray(parsed.photos)) setPhotos(parsed.photos);
-        if (Array.isArray(parsed.voiceNotes)) setVoiceNotes(parsed.voiceNotes);
-
-        setScreen("dashboard");
-        alert("Atlas backup imported.");
-      } catch {
-        alert("That file was not a valid Atlas backup.");
-      }
-    };
-
-    reader.readAsText(file);
   }
 
   function askAtlas() {
@@ -779,11 +386,6 @@ export default function Page() {
     assets.forEach((item) => allLines.push("Asset: " + item.name + ". " + item.category + ". " + item.notes));
     locations.forEach((item) => allLines.push("Location: " + item.name + ". " + item.type + ". " + item.notes));
     vendors.forEach((item) => allLines.push("Vendor: " + item.name + ". " + item.category + ". " + item.notes));
-    documents.forEach((item) => allLines.push("Document: " + item.title + ". " + item.type + ". " + item.linkedTo + ". " + item.notes));
-    procedures.forEach((item) => allLines.push("Procedure: " + item.title + ". " + item.frequency + ". " + item.notes + ". " + item.steps.join(" ")));
-    logs.forEach((item) => allLines.push("Log: " + item.title + ". " + item.date + ". " + item.linkedTo + ". " + item.notes));
-    photos.forEach((item) => allLines.push("Photo: " + item.title + ". " + item.date + ". " + item.linkedTo + ". " + item.notes));
-    voiceNotes.forEach((item) => allLines.push("Voice note: " + item.title + ". " + item.date + ". " + item.linkedTo + ". " + item.notes));
 
     const words = q.split(" ").filter((word) => word.length > 2);
     const hits = allLines.filter((line) => {
@@ -861,14 +463,7 @@ export default function Page() {
 
         {screen === "map" && (
           <div>
-            <Header title="Property Map" subtitle="The map image stays fixed. Labels are editable overlays." />
-            <div style={styles.buttonRow}>
-              <button type="button" onClick={() => setMapEditMode(!mapEditMode)} style={styles.primaryButton}>
-                {mapEditMode ? "Done Editing Map" : "Edit Map Labels"}
-              </button>
-              <button type="button" onClick={addMapLabel} style={styles.secondaryButton}>+ Add Label</button>
-              <button type="button" onClick={() => setLabels(defaultLabels)} style={styles.secondaryButton}>Reset Labels</button>
-            </div>
+            <Header title="Property Map" subtitle="The map image stays fixed. Labels are clickable overlays." />
             <div style={styles.gridTwo}>
               <section style={styles.mapCard}>
                 <img src="/atlas-property-map.png" alt="Atlas property map" style={styles.mapImage} />
@@ -909,36 +504,6 @@ export default function Page() {
                     {asset.name}
                   </button>
                 ))}
-
-                {mapEditMode && (
-                  <div style={styles.editorBox}>
-                    <h3 style={styles.h3}>Edit map labels</h3>
-                    {labels.map((label) => (
-                      <div key={label.id} style={styles.documentRow}>
-                        <label style={styles.label}>Label name</label>
-                        <input value={label.name} onChange={(e) => updateLabel(label.id, { name: e.target.value })} style={styles.input} />
-
-                        <label style={styles.label}>Linked location</label>
-                        <select value={label.locationId} onChange={(e) => updateLabel(label.id, { locationId: e.target.value })} style={styles.input}>
-                          {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-                        </select>
-
-                        <div style={styles.fieldRow}>
-                          <div>
-                            <label style={styles.label}>X percent</label>
-                            <input type="number" value={label.x} onChange={(e) => updateLabel(label.id, { x: Math.max(0, Math.min(100, Number(e.target.value))) })} style={styles.input} />
-                          </div>
-                          <div>
-                            <label style={styles.label}>Y percent</label>
-                            <input type="number" value={label.y} onChange={(e) => updateLabel(label.id, { y: Math.max(0, Math.min(100, Number(e.target.value))) })} style={styles.input} />
-                          </div>
-                        </div>
-
-                        <button type="button" onClick={() => removeMapLabel(label.id)} style={styles.deleteButton}>Delete Label</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </section>
             </div>
           </div>
@@ -1117,267 +682,11 @@ export default function Page() {
           </div>
         )}
 
-        {screen === "documents" && (
-          <div>
-            <Header title="Documents" subtitle="Manuals, invoices, diagrams, photo records, PDFs, and file links." />
-            <section style={styles.card}>
-              <button type="button" onClick={addDocument} style={styles.primaryButton}>+ Add Document</button>
-              {documents.map((doc) => (
-                <div key={doc.id} style={styles.documentRow}>
-                  <div style={styles.documentHeader}>
-                    <strong>{doc.title}</strong>
-                    <button type="button" onClick={() => removeDocument(doc.id)} style={styles.deleteButton}>Delete</button>
-                  </div>
-
-                  <label style={styles.label}>Title</label>
-                  <input value={doc.title} onChange={(e) => updateDocument(doc.id, { title: e.target.value })} style={styles.input} />
-
-                  <label style={styles.label}>Type</label>
-                  <input value={doc.type} onChange={(e) => updateDocument(doc.id, { type: e.target.value })} style={styles.input} />
-
-                  <label style={styles.label}>Linked To</label>
-                  <input value={doc.linkedTo} onChange={(e) => updateDocument(doc.id, { linkedTo: e.target.value })} style={styles.input} />
-
-                  <label style={styles.label}>File URL or public path</label>
-                  <input value={doc.href} onChange={(e) => updateDocument(doc.id, { href: e.target.value })} placeholder="/filename.pdf or https://..." style={styles.input} />
-
-                  <label style={styles.label}>Notes</label>
-                  <textarea value={doc.notes} onChange={(e) => updateDocument(doc.id, { notes: e.target.value })} style={styles.textarea} />
-
-                  {doc.href.trim().length > 0 && (
-                    <a href={doc.href} target="_blank" rel="noreferrer" style={styles.openLink}>Open Document</a>
-                  )}
-                </div>
-              ))}
-            </section>
-          </div>
-        )}
-
-        {screen === "procedures" && (
-          <div>
-            <Header title="Procedures" subtitle="Step-by-step operating procedures linked to locations and assets." />
-            <section style={styles.card}>
-              <button type="button" onClick={addProcedure} style={styles.primaryButton}>+ Add Procedure</button>
-              {procedures.map((procedure) => (
-                <div key={procedure.id} style={styles.documentRow}>
-                  <div style={styles.documentHeader}>
-                    <strong>{procedure.title}</strong>
-                    <button type="button" onClick={() => removeProcedure(procedure.id)} style={styles.deleteButton}>Delete</button>
-                  </div>
-
-                  <label style={styles.label}>Title</label>
-                  <input value={procedure.title} onChange={(e) => updateProcedure(procedure.id, { title: e.target.value })} style={styles.input} />
-
-                  <label style={styles.label}>Location</label>
-                  <select value={procedure.locationId} onChange={(e) => updateProcedure(procedure.id, { locationId: e.target.value })} style={styles.input}>
-                    {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-                  </select>
-
-                  <label style={styles.label}>Asset</label>
-                  <select value={procedure.assetId} onChange={(e) => updateProcedure(procedure.id, { assetId: e.target.value })} style={styles.input}>
-                    <option value="">No asset / location only</option>
-                    {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-                  </select>
-
-                  <label style={styles.label}>Frequency</label>
-                  <input value={procedure.frequency} onChange={(e) => updateProcedure(procedure.id, { frequency: e.target.value })} style={styles.input} />
-
-                  <label style={styles.label}>Notes</label>
-                  <textarea value={procedure.notes} onChange={(e) => updateProcedure(procedure.id, { notes: e.target.value })} style={styles.textarea} />
-
-                  <label style={styles.label}>Steps, one per line</label>
-                  <textarea
-                    value={procedure.steps.join("\n")}
-                    onChange={(e) => updateProcedure(procedure.id, { steps: e.target.value.split("\n").filter((step) => step.trim().length > 0) })}
-                    style={styles.textareaLarge}
-                  />
-                </div>
-              ))}
-            </section>
-          </div>
-        )}
-
-        {screen === "logs" && (
-          <div>
-            <Header title="Logs" subtitle="Maintenance notes, field observations, follow-up items, and service history." />
-            <section style={styles.card}>
-              <button type="button" onClick={addLog} style={styles.primaryButton}>+ Add Log</button>
-              {logs.map((log) => (
-                <div key={log.id} style={styles.documentRow}>
-                  <div style={styles.documentHeader}>
-                    <strong>{log.title}</strong>
-                    <button type="button" onClick={() => removeLog(log.id)} style={styles.deleteButton}>Delete</button>
-                  </div>
-
-                  <label style={styles.label}>Date</label>
-                  <input value={log.date} onChange={(e) => updateLog(log.id, { date: e.target.value })} style={styles.input} />
-
-                  <label style={styles.label}>Title</label>
-                  <input value={log.title} onChange={(e) => updateLog(log.id, { title: e.target.value })} style={styles.input} />
-
-                  <label style={styles.label}>Linked To</label>
-                  <input value={log.linkedTo} onChange={(e) => updateLog(log.id, { linkedTo: e.target.value })} placeholder="asset, location, vendor, document, or procedure" style={styles.input} />
-
-                  <label style={styles.label}>Notes</label>
-                  <textarea value={log.notes} onChange={(e) => updateLog(log.id, { notes: e.target.value })} style={styles.textareaLarge} />
-                </div>
-              ))}
-            </section>
-          </div>
-        )}
-
-        {screen === "photos" && (
-          <div>
-            <Header title="Photos" subtitle="Photo records saved locally in this browser and linked to assets, locations, vendors, documents, procedures, or logs." />
-            <section style={styles.card}>
-              <label style={styles.uploadButton}>
-                + Upload Photos
-                <input type="file" accept="image/*" multiple onChange={(e) => addPhotoFiles(e.target.files)} style={styles.hiddenInput} />
-              </label>
-
-              {photos.length === 0 && (
-                <p style={styles.muted}>No photos uploaded yet. Use Upload Photos to add equipment photos, invoice screenshots, map notes, repair photos, or site condition pictures.</p>
-              )}
-
-              <div style={styles.photoGrid}>
-                {photos.map((photo) => (
-                  <div key={photo.id} style={styles.photoCard}>
-                    <img src={photo.dataUrl} alt={photo.title} style={styles.photoImage} />
-                    <div style={styles.documentHeader}>
-                      <strong>{photo.title}</strong>
-                      <button type="button" onClick={() => removePhoto(photo.id)} style={styles.deleteButton}>Delete</button>
-                    </div>
-
-                    <label style={styles.label}>Date</label>
-                    <input value={photo.date} onChange={(e) => updatePhoto(photo.id, { date: e.target.value })} style={styles.input} />
-
-                    <label style={styles.label}>Title</label>
-                    <input value={photo.title} onChange={(e) => updatePhoto(photo.id, { title: e.target.value })} style={styles.input} />
-
-                    <label style={styles.label}>Linked To</label>
-                    <input value={photo.linkedTo} onChange={(e) => updatePhoto(photo.id, { linkedTo: e.target.value })} placeholder="asset, location, vendor, document, procedure, or log" style={styles.input} />
-
-                    <label style={styles.label}>Notes</label>
-                    <textarea value={photo.notes} onChange={(e) => updatePhoto(photo.id, { notes: e.target.value })} style={styles.textarea} />
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-        )}
-
-
-        {screen === "voice" && (
-          <div>
-            <Header title="Voice Notes" subtitle="Audio notes saved locally in this browser and linked to assets, locations, vendors, documents, procedures, logs, or photos." />
-            <section style={styles.card}>
-              <label style={styles.uploadButton}>
-                + Upload Voice Notes
-                <input type="file" accept="audio/*" multiple onChange={(e) => addVoiceFiles(e.target.files)} style={styles.hiddenInput} />
-              </label>
-
-              {voiceNotes.length === 0 && (
-                <p style={styles.muted}>No voice notes uploaded yet. Record a voice memo on your phone, then upload the audio file here.</p>
-              )}
-
-              {voiceNotes.map((voice) => (
-                <div key={voice.id} style={styles.documentRow}>
-                  <div style={styles.documentHeader}>
-                    <strong>{voice.title}</strong>
-                    <button type="button" onClick={() => removeVoice(voice.id)} style={styles.deleteButton}>Delete</button>
-                  </div>
-
-                  <audio controls src={voice.dataUrl} style={styles.audioPlayer} />
-
-                  <label style={styles.label}>Date</label>
-                  <input value={voice.date} onChange={(e) => updateVoice(voice.id, { date: e.target.value })} style={styles.input} />
-
-                  <label style={styles.label}>Title</label>
-                  <input value={voice.title} onChange={(e) => updateVoice(voice.id, { title: e.target.value })} style={styles.input} />
-
-                  <label style={styles.label}>Linked To</label>
-                  <input value={voice.linkedTo} onChange={(e) => updateVoice(voice.id, { linkedTo: e.target.value })} placeholder="asset, location, vendor, document, procedure, log, or photo" style={styles.input} />
-
-                  <label style={styles.label}>Notes / Transcript</label>
-                  <textarea value={voice.notes} onChange={(e) => updateVoice(voice.id, { notes: e.target.value })} style={styles.textarea} />
-                </div>
-              ))}
-            </section>
-          </div>
-        )}
-
-
-
-        {screen === "team" && (
-          <div>
-            <Header title="Team" subtitle="Team access plan and role notes. Login stays off for now." />
-            <div style={styles.gridTwo}>
-              <section style={styles.card}>
-                <h2 style={styles.h2}>Access Roles</h2>
-                <div style={styles.documentRow}>
-                  <strong>Owner / Admin</strong>
-                  <p style={styles.muted}>Full Atlas access when login and database syncing are added later.</p>
-                </div>
-                <div style={styles.documentRow}>
-                  <strong>Estate Manager</strong>
-                  <p style={styles.muted}>Daily operating access for assets, vendors, documents, procedures, logs, photos, voice notes, calendar, and backups.</p>
-                </div>
-                <div style={styles.documentRow}>
-                  <strong>Maintenance / Grounds</strong>
-                  <p style={styles.muted}>Future limited access for assigned locations, procedures, tasks, and field notes.</p>
-                </div>
-                <div style={styles.documentRow}>
-                  <strong>Vendors</strong>
-                  <p style={styles.muted}>Future temporary access by QR tag, asset, location, or assigned work order.</p>
-                </div>
-              </section>
-
-              <section style={styles.card}>
-                <h2 style={styles.h2}>Security Notes</h2>
-                <p style={styles.muted}>No login screen is active right now. Atlas is being built as a private operating manual first.</p>
-                <p style={styles.muted}>Do not store raw passwords, gate codes, access codes, PINs, private emails, or owner credentials in normal Atlas records.</p>
-                <p style={styles.muted}>When database syncing is added, this page becomes the place for roles, permissions, and user access rules.</p>
-              </section>
-            </div>
-          </div>
-        )}
-
-        {screen === "backup" && (
-          <div>
-            <Header title="Backup" subtitle="Export or restore the Atlas records saved in this browser before we move to database syncing." />
-            <section style={styles.card}>
-              <h2 style={styles.h2}>Local Atlas Backup</h2>
-              <p style={styles.muted}>This exports the current local Atlas records, including assets, locations, vendors, map labels, calendar, documents, procedures, logs, photos, and voice notes.</p>
-
-              <div style={styles.buttonRow}>
-                <button type="button" onClick={downloadAtlasBackup} style={styles.primaryButton}>Download Backup File</button>
-                <label style={styles.secondaryButton}>
-                  Import Backup File
-                  <input type="file" accept="application/json" onChange={(e) => importAtlasBackupFile(e.target.files)} style={styles.hiddenInput} />
-                </label>
-              </div>
-
-              <div style={styles.editorBox}>
-                <h3 style={styles.h3}>Current local record counts</h3>
-                <p style={styles.muted}>Locations: {locations.length}</p>
-                <p style={styles.muted}>Assets: {assets.length}</p>
-                <p style={styles.muted}>Vendors: {vendors.length}</p>
-                <p style={styles.muted}>Documents: {documents.length}</p>
-                <p style={styles.muted}>Procedures: {procedures.length}</p>
-                <p style={styles.muted}>Logs: {logs.length}</p>
-                <p style={styles.muted}>Photos: {photos.length}</p>
-                <p style={styles.muted}>Voice Notes: {voiceNotes.length}</p>
-                <p style={styles.muted}>Map Labels: {labels.length}</p>
-              </div>
-            </section>
-          </div>
-        )}
-
         {screen === "assistant" && (
           <div>
             <Header title="AI Assistant" subtitle="Local Atlas search across saved records." />
             <section style={styles.card}>
-              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, locations, documents, procedures, logs, photos, or voice notes..." style={styles.textareaLarge} />
+              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, locations..." style={styles.textareaLarge} />
               <button type="button" onClick={askAtlas} style={styles.primaryButton}>Ask Atlas</button>
               <pre style={styles.answerBox}>{assistantAnswer}</pre>
             </section>
@@ -1675,108 +984,6 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: "150px 1fr 1fr",
     gap: 10,
     marginBottom: 10
-  },
-  documentRow: {
-    border: "1px solid #e4e8f0",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-    background: "#ffffff"
-  },
-  documentHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    alignItems: "center",
-    marginBottom: 12
-  },
-  deleteButton: {
-    border: "1px solid #fecdca",
-    background: "#fff5f5",
-    color: "#b42318",
-    borderRadius: 10,
-    padding: "7px 10px",
-    fontWeight: 900,
-    cursor: "pointer"
-  },
-  openLink: {
-    display: "inline-block",
-    background: "#071d3a",
-    color: "#ffffff",
-    borderRadius: 10,
-    padding: "10px 12px",
-    fontWeight: 900,
-    textDecoration: "none"
-  },
-
-  uploadButton: {
-    display: "inline-block",
-    border: 0,
-    background: "#071d3a",
-    color: "#ffffff",
-    borderRadius: 12,
-    padding: "11px 14px",
-    fontWeight: 900,
-    cursor: "pointer",
-    marginTop: 10,
-    marginBottom: 12
-  },
-  hiddenInput: {
-    display: "none"
-  },
-  photoGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-    gap: 14,
-    marginTop: 12
-  },
-  photoCard: {
-    border: "1px solid #e4e8f0",
-    borderRadius: 14,
-    padding: 14,
-    background: "#ffffff"
-  },
-  photoImage: {
-    width: "100%",
-    maxHeight: 280,
-    objectFit: "cover",
-    borderRadius: 12,
-    border: "1px solid #e4e8f0",
-    marginBottom: 12,
-    background: "#f8fafc"
-  },
-  audioPlayer: {
-    width: "100%",
-    marginBottom: 14
-  },
-  buttonRow: {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-    marginBottom: 14
-  },
-  secondaryButton: {
-    border: "1px solid #d0d5dd",
-    background: "#ffffff",
-    color: "#10213d",
-    borderRadius: 12,
-    padding: "11px 14px",
-    fontWeight: 900,
-    cursor: "pointer",
-    marginTop: 10,
-    marginBottom: 12
-  },
-  editorBox: {
-    border: "1px solid #e4e8f0",
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 16,
-    background: "#f8fafc"
-  },
-  fieldRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 10
   },
   weatherText: {
     fontSize: 34,
