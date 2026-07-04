@@ -1,4 +1,3 @@
-```tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -999,5 +998,3 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5
   }
 };
-```
-
