@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Screen =
   | "dashboard"
@@ -462,6 +462,8 @@ export default function Page() {
   const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about an asset, location, vendor, boiler, HVAC unit, pool, spa, vehicle, aircraft, or procedure.");
   const [weather, setWeather] = useState("Loading weather...");
   const [mapEditMode, setMapEditMode] = useState(false);
+  const [draggingLabelId, setDraggingLabelId] = useState<string | null>(null);
+  const mapAreaRef = useRef<HTMLDivElement | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -545,6 +547,44 @@ export default function Page() {
 
   function removeMapLabel(id: string) {
     setLabels((rows) => rows.filter((row) => row.id !== id));
+  }
+
+  function clampMapPercent(value: number) {
+    return Math.max(0, Math.min(100, Number(value.toFixed(2))));
+  }
+
+  function moveMapLabel(clientX: number, clientY: number, labelId: string) {
+    if (!mapAreaRef.current) return;
+
+    const rect = mapAreaRef.current.getBoundingClientRect();
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
+
+    updateLabel(labelId, {
+      x: clampMapPercent(x),
+      y: clampMapPercent(y)
+    });
+  }
+
+  function startLabelDrag(event: React.PointerEvent<HTMLButtonElement>, label: MapLabel) {
+    setSelectedLocationId(label.locationId);
+
+    if (!mapEditMode) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingLabelId(label.id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    moveMapLabel(event.clientX, event.clientY, label.id);
+  }
+
+  function dragMapLabel(event: React.PointerEvent<HTMLDivElement>) {
+    if (!mapEditMode || !draggingLabelId) return;
+    moveMapLabel(event.clientX, event.clientY, draggingLabelId);
+  }
+
+  function stopLabelDrag() {
+    setDraggingLabelId(null);
   }
 
   function addAsset() {
@@ -869,26 +909,35 @@ export default function Page() {
               <button type="button" onClick={addMapLabel} style={styles.secondaryButton}>+ Add Label</button>
               <button type="button" onClick={() => setLabels(defaultLabels)} style={styles.secondaryButton}>Reset Labels</button>
             </div>
+            {mapEditMode && <p style={styles.muted}>Edit mode is on. Click and drag any map label to move it, then click Done Editing Map.</p>}
             <div style={styles.gridTwo}>
-              <section style={styles.mapCard}>
+              <div
+                ref={mapAreaRef}
+                style={styles.mapCard}
+                onPointerMove={dragMapLabel}
+                onPointerUp={stopLabelDrag}
+                onPointerLeave={stopLabelDrag}
+              >
                 <img src="/atlas-property-map.png" alt="Atlas property map" style={styles.mapImage} />
                 {labels.map((label) => (
                   <button
                     key={label.id}
                     type="button"
                     onClick={() => setSelectedLocationId(label.locationId)}
+                    onPointerDown={(event) => startLabelDrag(event, label)}
                     style={{
                       ...styles.mapLabel,
                       left: String(label.x) + "%",
                       top: String(label.y) + "%",
                       background: label.locationId === selectedLocationId ? "#caa24a" : "#071d3a",
-                      color: label.locationId === selectedLocationId ? "#071d3a" : "#ffffff"
+                      color: label.locationId === selectedLocationId ? "#071d3a" : "#ffffff",
+                      cursor: mapEditMode ? "grab" : "pointer"
                     }}
                   >
                     {label.name}
                   </button>
                 ))}
-              </section>
+              </div>
 
               <section style={styles.card}>
                 <h2 style={styles.h2}>{selectedLocation.name}</h2>
