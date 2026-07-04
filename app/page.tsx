@@ -457,6 +457,7 @@ export default function Page() {
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about an asset, location, vendor, boiler, HVAC unit, pool, spa, vehicle, aircraft, or procedure.");
   const [weather, setWeather] = useState("Loading weather...");
+  const [mapEditMode, setMapEditMode] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -518,6 +519,28 @@ export default function Page() {
 
   function updateVendor(id: string, patch: Partial<VendorRecord>) {
     setVendors((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  }
+
+  function updateLabel(id: string, patch: Partial<MapLabel>) {
+    setLabels((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  }
+
+  function addMapLabel() {
+    const newId = "label-" + Date.now();
+    const next: MapLabel = {
+      id: newId,
+      name: "New Label",
+      x: 50,
+      y: 50,
+      locationId: "general"
+    };
+    setLabels((rows) => [next, ...rows]);
+    setSelectedLocationId("general");
+    setMapEditMode(true);
+  }
+
+  function removeMapLabel(id: string) {
+    setLabels((rows) => rows.filter((row) => row.id !== id));
   }
 
   function addAsset() {
@@ -775,7 +798,14 @@ export default function Page() {
 
         {screen === "map" && (
           <div>
-            <Header title="Property Map" subtitle="The map image stays fixed. Labels are clickable overlays." />
+            <Header title="Property Map" subtitle="The map image stays fixed. Labels are editable overlays." />
+            <div style={styles.buttonRow}>
+              <button type="button" onClick={() => setMapEditMode(!mapEditMode)} style={styles.primaryButton}>
+                {mapEditMode ? "Done Editing Map" : "Edit Map Labels"}
+              </button>
+              <button type="button" onClick={addMapLabel} style={styles.secondaryButton}>+ Add Label</button>
+              <button type="button" onClick={() => setLabels(defaultLabels)} style={styles.secondaryButton}>Reset Labels</button>
+            </div>
             <div style={styles.gridTwo}>
               <section style={styles.mapCard}>
                 <img src="/atlas-property-map.png" alt="Atlas property map" style={styles.mapImage} />
@@ -816,6 +846,36 @@ export default function Page() {
                     {asset.name}
                   </button>
                 ))}
+
+                {mapEditMode && (
+                  <div style={styles.editorBox}>
+                    <h3 style={styles.h3}>Edit map labels</h3>
+                    {labels.map((label) => (
+                      <div key={label.id} style={styles.documentRow}>
+                        <label style={styles.label}>Label name</label>
+                        <input value={label.name} onChange={(e) => updateLabel(label.id, { name: e.target.value })} style={styles.input} />
+
+                        <label style={styles.label}>Linked location</label>
+                        <select value={label.locationId} onChange={(e) => updateLabel(label.id, { locationId: e.target.value })} style={styles.input}>
+                          {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                        </select>
+
+                        <div style={styles.fieldRow}>
+                          <div>
+                            <label style={styles.label}>X percent</label>
+                            <input type="number" value={label.x} onChange={(e) => updateLabel(label.id, { x: Math.max(0, Math.min(100, Number(e.target.value))) })} style={styles.input} />
+                          </div>
+                          <div>
+                            <label style={styles.label}>Y percent</label>
+                            <input type="number" value={label.y} onChange={(e) => updateLabel(label.id, { y: Math.max(0, Math.min(100, Number(e.target.value))) })} style={styles.input} />
+                          </div>
+                        </div>
+
+                        <button type="button" onClick={() => removeMapLabel(label.id)} style={styles.deleteButton}>Delete Label</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             </div>
           </div>
@@ -1558,6 +1618,35 @@ const styles: Record<string, React.CSSProperties> = {
   audioPlayer: {
     width: "100%",
     marginBottom: 14
+  },
+  buttonRow: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    marginBottom: 14
+  },
+  secondaryButton: {
+    border: "1px solid #d0d5dd",
+    background: "#ffffff",
+    color: "#10213d",
+    borderRadius: 12,
+    padding: "11px 14px",
+    fontWeight: 900,
+    cursor: "pointer",
+    marginTop: 10,
+    marginBottom: 12
+  },
+  editorBox: {
+    border: "1px solid #e4e8f0",
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 16,
+    background: "#f8fafc"
+  },
+  fieldRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10
   },
   weatherText: {
     fontSize: 34,
