@@ -13,6 +13,7 @@ type Screen =
   | "documents"
   | "procedures"
   | "logs"
+  | "photos"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -89,6 +90,15 @@ type LogRecord = {
   notes: string;
 };
 
+type PhotoRecord = {
+  id: string;
+  date: string;
+  title: string;
+  linkedTo: string;
+  notes: string;
+  dataUrl: string;
+};
+
 const STORE_ASSETS = "atlas_2000_assets_safe_v1";
 const STORE_LOCATIONS = "atlas_2000_locations_safe_v1";
 const STORE_VENDORS = "atlas_2000_vendors_safe_v1";
@@ -97,6 +107,7 @@ const STORE_CALENDAR = "atlas_2000_calendar_safe_v1";
 const STORE_DOCUMENTS = "atlas_2000_documents_safe_v1";
 const STORE_PROCEDURES = "atlas_2000_procedures_safe_v1";
 const STORE_LOGS = "atlas_2000_logs_safe_v1";
+const STORE_PHOTOS = "atlas_2000_photos_safe_v1";
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -109,6 +120,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "documents", label: "Documents" },
   { id: "procedures", label: "Procedures" },
   { id: "logs", label: "Logs" },
+  { id: "photos", label: "Photos" },
   { id: "assistant", label: "AI Assistant" }
 ];
 
@@ -291,6 +303,8 @@ const defaultLogs: LogRecord[] = [
   { id: "log-pool-note", date: todayISO(), title: "Pool/spa note", linkedTo: "pool-equipment", notes: "Use this area to record water readings, service notes, filter/backwash notes, and unusual conditions." }
 ];
 
+const defaultPhotos: PhotoRecord[] = [];
+
 const defaultDocuments: DocumentRecord[] = [
   { id: "systems-layout", title: "2000 Systems Layout Draft v1", type: "Diagram / PDF", linkedTo: "mechanical-room", notes: "Main mechanical/electrical/pool/HVAC systems layout draft.", href: "" },
   { id: "pool-record", title: "2000 Pool Equipment Record v2 Corrected", type: "PDF / Equipment Record", linkedTo: "pool-equipment", notes: "Indoor pool equipment path, Desert Aire, pump/filter/UV records.", href: "" },
@@ -396,6 +410,15 @@ function saveData<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 function qrUrl(type: string, id: string) {
   const target = "https://www.atlas2000.com/?atlas=" + type + ":" + id;
   return "https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=" + encodeURIComponent(target);
@@ -411,6 +434,7 @@ export default function Page() {
   const [documents, setDocuments] = useState<DocumentRecord[]>(defaultDocuments);
   const [procedures, setProcedures] = useState<ProcedureRecord[]>(defaultProcedures);
   const [logs, setLogs] = useState<LogRecord[]>(defaultLogs);
+  const [photos, setPhotos] = useState<PhotoRecord[]>(defaultPhotos);
   const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
   const [selectedLocationId, setSelectedLocationId] = useState("courtyard");
   const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
@@ -429,6 +453,7 @@ export default function Page() {
     setDocuments(loadData(STORE_DOCUMENTS, defaultDocuments));
     setProcedures(loadData(STORE_PROCEDURES, defaultProcedures));
     setLogs(loadData(STORE_LOGS, defaultLogs));
+    setPhotos(loadData(STORE_PHOTOS, defaultPhotos));
     setLoaded(true);
   }, []);
 
@@ -440,6 +465,7 @@ export default function Page() {
   useEffect(() => { if (loaded) saveData(STORE_DOCUMENTS, documents); }, [loaded, documents]);
   useEffect(() => { if (loaded) saveData(STORE_PROCEDURES, procedures); }, [loaded, procedures]);
   useEffect(() => { if (loaded) saveData(STORE_LOGS, logs); }, [loaded, logs]);
+  useEffect(() => { if (loaded) saveData(STORE_PHOTOS, photos); }, [loaded, photos]);
 
   useEffect(() => {
     fetch("https://api.open-meteo.com/v1/forecast?latitude=47.57&longitude=-122.22&current=temperature_2m,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto")
@@ -569,6 +595,33 @@ export default function Page() {
     setLogs((rows) => rows.filter((row) => row.id !== id));
   }
 
+  async function addPhotoFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const nextPhotos: PhotoRecord[] = [];
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const dataUrl = await fileToDataUrl(file);
+      nextPhotos.push({
+        id: "photo-" + Date.now() + "-" + String(index),
+        date: todayISO(),
+        title: file.name || "Atlas Photo",
+        linkedTo: "general",
+        notes: "New photo uploaded to Atlas.",
+        dataUrl
+      });
+    }
+    setPhotos((rows) => [...nextPhotos, ...rows]);
+    setScreen("photos");
+  }
+
+  function updatePhoto(id: string, patch: Partial<PhotoRecord>) {
+    setPhotos((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  }
+
+  function removePhoto(id: string) {
+    setPhotos((rows) => rows.filter((row) => row.id !== id));
+  }
+
   function resetAllLocalData() {
     setLocations(defaultLocations);
     setAssets(defaultAssets);
@@ -578,6 +631,7 @@ export default function Page() {
     setDocuments(defaultDocuments);
     setProcedures(defaultProcedures);
     setLogs(defaultLogs);
+    setPhotos(defaultPhotos);
     setSelectedAssetId(defaultAssets[0].id);
     setSelectedLocationId("courtyard");
     setSelectedVendorId(defaultVendors[0].id);
@@ -597,6 +651,7 @@ export default function Page() {
     documents.forEach((item) => allLines.push("Document: " + item.title + ". " + item.type + ". " + item.linkedTo + ". " + item.notes));
     procedures.forEach((item) => allLines.push("Procedure: " + item.title + ". " + item.frequency + ". " + item.notes + ". " + item.steps.join(" ")));
     logs.forEach((item) => allLines.push("Log: " + item.title + ". " + item.date + ". " + item.linkedTo + ". " + item.notes));
+    photos.forEach((item) => allLines.push("Photo: " + item.title + ". " + item.date + ". " + item.linkedTo + ". " + item.notes));
 
     const words = q.split(" ").filter((word) => word.length > 2);
     const hits = allLines.filter((line) => {
@@ -1002,11 +1057,52 @@ export default function Page() {
           </div>
         )}
 
+        {screen === "photos" && (
+          <div>
+            <Header title="Photos" subtitle="Photo records saved locally in this browser and linked to assets, locations, vendors, documents, procedures, or logs." />
+            <section style={styles.card}>
+              <label style={styles.uploadButton}>
+                + Upload Photos
+                <input type="file" accept="image/*" multiple onChange={(e) => addPhotoFiles(e.target.files)} style={styles.hiddenInput} />
+              </label>
+
+              {photos.length === 0 && (
+                <p style={styles.muted}>No photos uploaded yet. Use Upload Photos to add equipment photos, invoice screenshots, map notes, repair photos, or site condition pictures.</p>
+              )}
+
+              <div style={styles.photoGrid}>
+                {photos.map((photo) => (
+                  <div key={photo.id} style={styles.photoCard}>
+                    <img src={photo.dataUrl} alt={photo.title} style={styles.photoImage} />
+                    <div style={styles.documentHeader}>
+                      <strong>{photo.title}</strong>
+                      <button type="button" onClick={() => removePhoto(photo.id)} style={styles.deleteButton}>Delete</button>
+                    </div>
+
+                    <label style={styles.label}>Date</label>
+                    <input value={photo.date} onChange={(e) => updatePhoto(photo.id, { date: e.target.value })} style={styles.input} />
+
+                    <label style={styles.label}>Title</label>
+                    <input value={photo.title} onChange={(e) => updatePhoto(photo.id, { title: e.target.value })} style={styles.input} />
+
+                    <label style={styles.label}>Linked To</label>
+                    <input value={photo.linkedTo} onChange={(e) => updatePhoto(photo.id, { linkedTo: e.target.value })} placeholder="asset, location, vendor, document, procedure, or log" style={styles.input} />
+
+                    <label style={styles.label}>Notes</label>
+                    <textarea value={photo.notes} onChange={(e) => updatePhoto(photo.id, { notes: e.target.value })} style={styles.textarea} />
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+
+
         {screen === "assistant" && (
           <div>
             <Header title="AI Assistant" subtitle="Local Atlas search across saved records." />
             <section style={styles.card}>
-              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, locations, documents, procedures, or logs..." style={styles.textareaLarge} />
+              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, locations, documents, procedures, logs, or photos..." style={styles.textareaLarge} />
               <button type="button" onClick={askAtlas} style={styles.primaryButton}>Ask Atlas</button>
               <pre style={styles.answerBox}>{assistantAnswer}</pre>
             </section>
@@ -1336,6 +1432,43 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "10px 12px",
     fontWeight: 900,
     textDecoration: "none"
+  },
+
+  uploadButton: {
+    display: "inline-block",
+    border: 0,
+    background: "#071d3a",
+    color: "#ffffff",
+    borderRadius: 12,
+    padding: "11px 14px",
+    fontWeight: 900,
+    cursor: "pointer",
+    marginTop: 10,
+    marginBottom: 12
+  },
+  hiddenInput: {
+    display: "none"
+  },
+  photoGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: 14,
+    marginTop: 12
+  },
+  photoCard: {
+    border: "1px solid #e4e8f0",
+    borderRadius: 14,
+    padding: 14,
+    background: "#ffffff"
+  },
+  photoImage: {
+    width: "100%",
+    maxHeight: 280,
+    objectFit: "cover",
+    borderRadius: 12,
+    border: "1px solid #e4e8f0",
+    marginBottom: 12,
+    background: "#f8fafc"
   },
   weatherText: {
     fontSize: 34,
