@@ -15,6 +15,7 @@ type Screen =
   | "logs"
   | "photos"
   | "voice"
+  | "team"
   | "backup"
   | "assistant";
 
@@ -134,6 +135,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "logs", label: "Logs" },
   { id: "photos", label: "Photos" },
   { id: "voice", label: "Voice Notes" },
+  { id: "team", label: "Team" },
   { id: "backup", label: "Backup" },
   { id: "assistant", label: "AI Assistant" }
 ];
@@ -1304,6 +1306,41 @@ export default function Page() {
           </div>
         )}
 
+
+
+        {screen === "team" && (
+          <div>
+            <Header title="Team" subtitle="Team access plan and role notes. Login stays off for now." />
+            <div style={styles.gridTwo}>
+              <section style={styles.card}>
+                <h2 style={styles.h2}>Access Roles</h2>
+                <div style={styles.documentRow}>
+                  <strong>Owner / Admin</strong>
+                  <p style={styles.muted}>Full Atlas access when login and database syncing are added later.</p>
+                </div>
+                <div style={styles.documentRow}>
+                  <strong>Estate Manager</strong>
+                  <p style={styles.muted}>Daily operating access for assets, vendors, documents, procedures, logs, photos, voice notes, calendar, and backups.</p>
+                </div>
+                <div style={styles.documentRow}>
+                  <strong>Maintenance / Grounds</strong>
+                  <p style={styles.muted}>Future limited access for assigned locations, procedures, tasks, and field notes.</p>
+                </div>
+                <div style={styles.documentRow}>
+                  <strong>Vendors</strong>
+                  <p style={styles.muted}>Future temporary access by QR tag, asset, location, or assigned work order.</p>
+                </div>
+              </section>
+
+              <section style={styles.card}>
+                <h2 style={styles.h2}>Security Notes</h2>
+                <p style={styles.muted}>No login screen is active right now. Atlas is being built as a private operating manual first.</p>
+                <p style={styles.muted}>Do not store raw passwords, gate codes, access codes, PINs, private emails, or owner credentials in normal Atlas records.</p>
+                <p style={styles.muted}>When database syncing is added, this page becomes the place for roles, permissions, and user access rules.</p>
+              </section>
+            </div>
+          </div>
+        )}
 
         {screen === "backup" && (
           <div>
