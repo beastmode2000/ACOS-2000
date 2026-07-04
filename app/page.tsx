@@ -14,6 +14,7 @@ type Screen =
   | "procedures"
   | "logs"
   | "photos"
+  | "voice"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -99,6 +100,15 @@ type PhotoRecord = {
   dataUrl: string;
 };
 
+type VoiceRecord = {
+  id: string;
+  date: string;
+  title: string;
+  linkedTo: string;
+  notes: string;
+  dataUrl: string;
+};
+
 const STORE_ASSETS = "atlas_2000_assets_safe_v1";
 const STORE_LOCATIONS = "atlas_2000_locations_safe_v1";
 const STORE_VENDORS = "atlas_2000_vendors_safe_v1";
@@ -108,6 +118,7 @@ const STORE_DOCUMENTS = "atlas_2000_documents_safe_v1";
 const STORE_PROCEDURES = "atlas_2000_procedures_safe_v1";
 const STORE_LOGS = "atlas_2000_logs_safe_v1";
 const STORE_PHOTOS = "atlas_2000_photos_safe_v1";
+const STORE_VOICE = "atlas_2000_voice_safe_v1";
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -121,6 +132,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "procedures", label: "Procedures" },
   { id: "logs", label: "Logs" },
   { id: "photos", label: "Photos" },
+  { id: "voice", label: "Voice Notes" },
   { id: "assistant", label: "AI Assistant" }
 ];
 
@@ -305,6 +317,8 @@ const defaultLogs: LogRecord[] = [
 
 const defaultPhotos: PhotoRecord[] = [];
 
+const defaultVoiceNotes: VoiceRecord[] = [];
+
 const defaultDocuments: DocumentRecord[] = [
   { id: "systems-layout", title: "2000 Systems Layout Draft v1", type: "Diagram / PDF", linkedTo: "mechanical-room", notes: "Main mechanical/electrical/pool/HVAC systems layout draft.", href: "" },
   { id: "pool-record", title: "2000 Pool Equipment Record v2 Corrected", type: "PDF / Equipment Record", linkedTo: "pool-equipment", notes: "Indoor pool equipment path, Desert Aire, pump/filter/UV records.", href: "" },
@@ -435,6 +449,7 @@ export default function Page() {
   const [procedures, setProcedures] = useState<ProcedureRecord[]>(defaultProcedures);
   const [logs, setLogs] = useState<LogRecord[]>(defaultLogs);
   const [photos, setPhotos] = useState<PhotoRecord[]>(defaultPhotos);
+  const [voiceNotes, setVoiceNotes] = useState<VoiceRecord[]>(defaultVoiceNotes);
   const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
   const [selectedLocationId, setSelectedLocationId] = useState("courtyard");
   const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
@@ -454,6 +469,7 @@ export default function Page() {
     setProcedures(loadData(STORE_PROCEDURES, defaultProcedures));
     setLogs(loadData(STORE_LOGS, defaultLogs));
     setPhotos(loadData(STORE_PHOTOS, defaultPhotos));
+    setVoiceNotes(loadData(STORE_VOICE, defaultVoiceNotes));
     setLoaded(true);
   }, []);
 
@@ -466,6 +482,7 @@ export default function Page() {
   useEffect(() => { if (loaded) saveData(STORE_PROCEDURES, procedures); }, [loaded, procedures]);
   useEffect(() => { if (loaded) saveData(STORE_LOGS, logs); }, [loaded, logs]);
   useEffect(() => { if (loaded) saveData(STORE_PHOTOS, photos); }, [loaded, photos]);
+  useEffect(() => { if (loaded) saveData(STORE_VOICE, voiceNotes); }, [loaded, voiceNotes]);
 
   useEffect(() => {
     fetch("https://api.open-meteo.com/v1/forecast?latitude=47.57&longitude=-122.22&current=temperature_2m,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto")
@@ -622,6 +639,33 @@ export default function Page() {
     setPhotos((rows) => rows.filter((row) => row.id !== id));
   }
 
+  async function addVoiceFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const nextVoiceNotes: VoiceRecord[] = [];
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const dataUrl = await fileToDataUrl(file);
+      nextVoiceNotes.push({
+        id: "voice-" + Date.now() + "-" + String(index),
+        date: todayISO(),
+        title: file.name || "Atlas Voice Note",
+        linkedTo: "general",
+        notes: "New voice note uploaded to Atlas.",
+        dataUrl
+      });
+    }
+    setVoiceNotes((rows) => [...nextVoiceNotes, ...rows]);
+    setScreen("voice");
+  }
+
+  function updateVoice(id: string, patch: Partial<VoiceRecord>) {
+    setVoiceNotes((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  }
+
+  function removeVoice(id: string) {
+    setVoiceNotes((rows) => rows.filter((row) => row.id !== id));
+  }
+
   function resetAllLocalData() {
     setLocations(defaultLocations);
     setAssets(defaultAssets);
@@ -632,6 +676,7 @@ export default function Page() {
     setProcedures(defaultProcedures);
     setLogs(defaultLogs);
     setPhotos(defaultPhotos);
+    setVoiceNotes(defaultVoiceNotes);
     setSelectedAssetId(defaultAssets[0].id);
     setSelectedLocationId("courtyard");
     setSelectedVendorId(defaultVendors[0].id);
@@ -652,6 +697,7 @@ export default function Page() {
     procedures.forEach((item) => allLines.push("Procedure: " + item.title + ". " + item.frequency + ". " + item.notes + ". " + item.steps.join(" ")));
     logs.forEach((item) => allLines.push("Log: " + item.title + ". " + item.date + ". " + item.linkedTo + ". " + item.notes));
     photos.forEach((item) => allLines.push("Photo: " + item.title + ". " + item.date + ". " + item.linkedTo + ". " + item.notes));
+    voiceNotes.forEach((item) => allLines.push("Voice note: " + item.title + ". " + item.date + ". " + item.linkedTo + ". " + item.notes));
 
     const words = q.split(" ").filter((word) => word.length > 2);
     const hits = allLines.filter((line) => {
@@ -1098,11 +1144,50 @@ export default function Page() {
         )}
 
 
+        {screen === "voice" && (
+          <div>
+            <Header title="Voice Notes" subtitle="Audio notes saved locally in this browser and linked to assets, locations, vendors, documents, procedures, logs, or photos." />
+            <section style={styles.card}>
+              <label style={styles.uploadButton}>
+                + Upload Voice Notes
+                <input type="file" accept="audio/*" multiple onChange={(e) => addVoiceFiles(e.target.files)} style={styles.hiddenInput} />
+              </label>
+
+              {voiceNotes.length === 0 && (
+                <p style={styles.muted}>No voice notes uploaded yet. Record a voice memo on your phone, then upload the audio file here.</p>
+              )}
+
+              {voiceNotes.map((voice) => (
+                <div key={voice.id} style={styles.documentRow}>
+                  <div style={styles.documentHeader}>
+                    <strong>{voice.title}</strong>
+                    <button type="button" onClick={() => removeVoice(voice.id)} style={styles.deleteButton}>Delete</button>
+                  </div>
+
+                  <audio controls src={voice.dataUrl} style={styles.audioPlayer} />
+
+                  <label style={styles.label}>Date</label>
+                  <input value={voice.date} onChange={(e) => updateVoice(voice.id, { date: e.target.value })} style={styles.input} />
+
+                  <label style={styles.label}>Title</label>
+                  <input value={voice.title} onChange={(e) => updateVoice(voice.id, { title: e.target.value })} style={styles.input} />
+
+                  <label style={styles.label}>Linked To</label>
+                  <input value={voice.linkedTo} onChange={(e) => updateVoice(voice.id, { linkedTo: e.target.value })} placeholder="asset, location, vendor, document, procedure, log, or photo" style={styles.input} />
+
+                  <label style={styles.label}>Notes / Transcript</label>
+                  <textarea value={voice.notes} onChange={(e) => updateVoice(voice.id, { notes: e.target.value })} style={styles.textarea} />
+                </div>
+              ))}
+            </section>
+          </div>
+        )}
+
         {screen === "assistant" && (
           <div>
             <Header title="AI Assistant" subtitle="Local Atlas search across saved records." />
             <section style={styles.card}>
-              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, locations, documents, procedures, logs, or photos..." style={styles.textareaLarge} />
+              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, locations, documents, procedures, logs, photos, or voice notes..." style={styles.textareaLarge} />
               <button type="button" onClick={askAtlas} style={styles.primaryButton}>Ask Atlas</button>
               <pre style={styles.answerBox}>{assistantAnswer}</pre>
             </section>
@@ -1469,6 +1554,10 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #e4e8f0",
     marginBottom: 12,
     background: "#f8fafc"
+  },
+  audioPlayer: {
+    width: "100%",
+    marginBottom: 14
   },
   weatherText: {
     fontSize: 34,
