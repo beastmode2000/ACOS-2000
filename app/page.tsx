@@ -2971,6 +2971,12 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 900,
     fontSize: 26
   },
+  logoImage: {
+  width: 62,
+  height: 62,
+  objectFit: "contain",
+  borderRadius: 12
+},
   brandTitle: {
     fontWeight: 900,
     letterSpacing: 3,
