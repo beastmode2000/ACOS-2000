@@ -1,54 +1,156 @@
-*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#0f172a;color:#e5e7eb}.wrap{max-width:1100px;margin:0 auto;padding:32px}.hero{background:linear-gradient(135deg,#172554,#064e3b);border:1px solid #334155;border-radius:24px;padding:32px;box-shadow:0 20px 50px rgba(0,0,0,.35)}h1{font-size:44px;margin:0 0 8px}.sub{font-size:18px;color:#cbd5e1;margin:0 0 24px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:24px}.card{background:#111827;border:1px solid #334155;border-radius:18px;padding:20px}.card h2{font-size:18px;margin:0 0 8px}.card p{color:#cbd5e1;line-height:1.45}.pill{display:inline-block;background:#dcfce7;color:#14532d;border-radius:999px;padding:7px 12px;font-weight:700;font-size:13px}.map{margin-top:24px;background:#020617;border:1px dashed #64748b;border-radius:18px;padding:22px}.sections{columns:2;color:#cbd5e1}.footer{margin-top:24px;color:#94a3b8;font-size:14px}@media(max-width:650px){h1{font-size:34px}.sections{columns:1}.wrap{padding:18px}}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base page setup */
+:root {
+  color-scheme: light;
+}
+
+html {
+  width: 100%;
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  background: #0f172a;
+  color: #0f172a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+img {
+  display: block;
+}
+
+/* Phone-only Atlas fix.
+   This does not affect desktop unless the screen is 768px wide or smaller. */
 @media screen and (max-width: 768px) {
   html,
   body {
     width: 100%;
+    max-width: 100%;
     overflow-x: hidden;
+  }
+
+  body {
+    background: #0f172a;
   }
 
   main {
     width: 100%;
+    max-width: 100%;
     overflow-x: hidden;
   }
 
   main > div {
-    flex-direction: column !important;
     width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
   aside {
+    position: relative !important;
     width: 100% !important;
-    min-width: 0 !important;
     max-width: 100% !important;
+    min-width: 0 !important;
     height: auto !important;
-    min-height: auto !important;
+    min-height: 0 !important;
+    padding: 14px !important;
   }
 
   aside nav {
     display: grid !important;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
   }
 
-  aside button {
+  aside button,
+  aside a {
     width: 100% !important;
+    min-width: 0 !important;
     font-size: 12px !important;
   }
 
-  section {
+  section,
+  article {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
   }
 
-  img[src*="atlas-property-map"] {
-    width: 100% !important;
-    height: auto !important;
-    display: block !important;
+  main section {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
   }
 
-  h1,
-  h2 {
+  .grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  img[src*="atlas-property-map"],
+  img[src*="property-map"],
+  img[src*="map"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .relative:has(img[src*="atlas-property-map"]),
+  .relative:has(img[src*="property-map"]),
+  .relative:has(img[src*="map"]) {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .absolute button,
+  button.absolute,
+  [style*="top"],
+  [style*="left"] {
+    font-size: 9px !important;
     line-height: 1.1 !important;
+    padding: 4px 6px !important;
+    white-space: nowrap !important;
+  }
+
+  h1 {
+    font-size: 30px !important;
+    line-height: 1.1 !important;
+  }
+
+  h2 {
+    font-size: 24px !important;
+    line-height: 1.15 !important;
+  }
+
+  h3 {
+    font-size: 19px !important;
+    line-height: 1.2 !important;
   }
 }
