@@ -819,7 +819,6 @@ setAssistantAnswer(hits.join("\n\n"));
 
 return ( <main style={styles.shell}> <aside style={styles.sidebar}> <div style={styles.brandBox}> <div style={styles.logoCircle}>A</div> <div> <div style={styles.brandTitle}>ATLAS</div> <div style={styles.brandSubtitle}>2000 Estate Operations</div> </div> </div>
 
-```
     <nav style={styles.nav}>
       {screens.map((item) => (
         <button
