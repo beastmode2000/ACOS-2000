@@ -1,3 +1,4 @@
+```tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -106,13 +107,14 @@ type CalendarItem = {
 
 type SearchResult = {
   id: string;
-  type: "Location" | "Asset" | "Vendor" | "Service" | "Document" | "Procedure";
+  type: "Location" | "Asset" | "Vendor" | "Service" | "Document" | "Procedure" | "Calendar";
   title: string;
   subtitle: string;
   detail: string;
   screen: Screen;
   assetId?: string;
   vendorId?: string;
+  calendarId?: string;
 };
 
 const colors = {
@@ -341,7 +343,7 @@ const navItems: { id: Screen; label: string; description: string }[] = [
   { id: "assets", label: "Assets", description: "Add / edit / docs" },
   { id: "history", label: "Service History", description: "Work notes" },
   { id: "vendors", label: "Vendors", description: "Add / edit / docs" },
-  { id: "calendar", label: "Calendar", description: "Scheduled work" },
+  { id: "calendar", label: "Calendar", description: "Add / edit / schedule" },
   { id: "weather", label: "Weather", description: "Property watch" },
   { id: "documents", label: "Photos / Docs", description: "Records" },
   { id: "procedures", label: "Procedures", description: "How-to records" },
@@ -363,6 +365,10 @@ function sortVendors(list: VendorRecord[]) {
 
 function sortAssets(list: AssetRecord[]) {
   return [...list].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function sortCalendar(list: CalendarItem[]) {
+  return [...list].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function blankVendor(): VendorRecord {
@@ -392,6 +398,16 @@ function blankAsset(): AssetRecord {
     notes: "",
     vendorIds: [],
     documents: [],
+  };
+}
+
+function blankCalendarItem(): CalendarItem {
+  return {
+    id: "",
+    date: new Date().toISOString().slice(0, 10),
+    title: "",
+    area: "General",
+    status: "Scheduled",
   };
 }
 
@@ -520,13 +536,16 @@ export default function AtlasPage() {
   const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>(serviceSeed);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>(calendarSeed);
+  const [selectedCalendarId, setSelectedCalendarId] = useState(calendarSeed[0]?.id ?? "");
+  const [calendarForm, setCalendarForm] = useState<CalendarItem>(calendarSeed[0] ?? blankCalendarItem());
+  const [calendarMode, setCalendarMode] = useState<"edit" | "new">("edit");
   const [vendorRecords, setVendorRecords] = useState<VendorRecord[]>(vendorSeed);
   const [selectedVendorId, setSelectedVendorId] = useState(vendorSeed[0]?.id ?? "");
   const [vendorForm, setVendorForm] = useState<VendorRecord>(vendorSeed[0] ?? blankVendor());
   const [vendorMode, setVendorMode] = useState<"edit" | "new">("edit");
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(
-    "Ask Atlas about boilers, pool equipment, Sunstream lifts, Lutron blinds, the Sundance spa, vendors, procedures, documents, locations, or service history."
+    "Ask Atlas about boilers, pool equipment, Sunstream lifts, Lutron blinds, the Sundance spa, vendors, procedures, documents, locations, calendar work, or service history."
   );
   const [ready, setReady] = useState(false);
   const [newService, setNewService] = useState({
@@ -551,14 +570,17 @@ export default function AtlasPage() {
     try {
       const savedAssets = window.localStorage.getItem("atlas-asset-records-v1");
       const savedService =
+        window.localStorage.getItem("atlas-service-records-v7") ||
         window.localStorage.getItem("atlas-service-records-v6") ||
         window.localStorage.getItem("atlas-service-records-v5") ||
         window.localStorage.getItem("atlas-service-records-v4");
       const savedPhotos =
+        window.localStorage.getItem("atlas-photo-records-v7") ||
         window.localStorage.getItem("atlas-photo-records-v6") ||
         window.localStorage.getItem("atlas-photo-records-v5") ||
         window.localStorage.getItem("atlas-photo-records-v4");
       const savedCalendar =
+        window.localStorage.getItem("atlas-calendar-v7") ||
         window.localStorage.getItem("atlas-calendar-v6") ||
         window.localStorage.getItem("atlas-calendar-v5") ||
         window.localStorage.getItem("atlas-calendar-v4");
@@ -574,7 +596,12 @@ export default function AtlasPage() {
 
       if (savedService) setServiceRecords(JSON.parse(savedService) as ServiceRecord[]);
       if (savedPhotos) setPhotos(JSON.parse(savedPhotos) as PhotoRecord[]);
-      if (savedCalendar) setCalendarItems(JSON.parse(savedCalendar) as CalendarItem[]);
+
+      if (savedCalendar) {
+        const parsedCalendar = sortCalendar(JSON.parse(savedCalendar) as CalendarItem[]);
+        setCalendarItems(parsedCalendar);
+        setSelectedCalendarId(parsedCalendar[0]?.id ?? "");
+      }
 
       if (savedVendors) {
         const parsedVendors = sortVendors(JSON.parse(savedVendors) as VendorRecord[]);
@@ -616,23 +643,33 @@ export default function AtlasPage() {
   }, [selectedVendorId, vendorRecords, vendorMode]);
 
   useEffect(() => {
+    const selected = calendarItems.find((item) => item.id === selectedCalendarId);
+
+    if (calendarMode === "new") return;
+
+    if (selected) {
+      setCalendarForm(selected);
+    }
+  }, [selectedCalendarId, calendarItems, calendarMode]);
+
+  useEffect(() => {
     if (!ready) return;
     window.localStorage.setItem("atlas-asset-records-v1", JSON.stringify(sortAssets(assetRecords)));
   }, [ready, assetRecords]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-service-records-v6", JSON.stringify(serviceRecords));
+    window.localStorage.setItem("atlas-service-records-v7", JSON.stringify(serviceRecords));
   }, [ready, serviceRecords]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-photo-records-v6", JSON.stringify(photos));
+    window.localStorage.setItem("atlas-photo-records-v7", JSON.stringify(photos));
   }, [ready, photos]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-calendar-v6", JSON.stringify(calendarItems));
+    window.localStorage.setItem("atlas-calendar-v7", JSON.stringify(sortCalendar(calendarItems)));
   }, [ready, calendarItems]);
 
   useEffect(() => {
@@ -705,6 +742,19 @@ export default function AtlasPage() {
     );
   }, [q, serviceRecords, assetRecords, vendorRecords]);
 
+  const filteredCalendar = useMemo(() => {
+    const sorted = sortCalendar(calendarItems);
+
+    if (!q) return sorted;
+
+    return sorted.filter((item) =>
+      [item.title, item.area, item.status, item.date, formatDate(item.date)]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [q, calendarItems]);
+
   const filteredDocuments = useMemo(() => {
     if (!q) return documents;
     return documents.filter((document) =>
@@ -764,6 +814,15 @@ export default function AtlasPage() {
         screen: "history" as const,
         assetId: record.assetId,
       })),
+      ...filteredCalendar.map((item) => ({
+        id: `calendar-${item.id}`,
+        type: "Calendar" as const,
+        title: item.title,
+        subtitle: `${formatDate(item.date)} · ${item.area}`,
+        detail: item.status,
+        screen: "calendar" as const,
+        calendarId: item.id,
+      })),
       ...filteredDocuments.map((document) => ({
         id: `document-${document.id}`,
         type: "Document" as const,
@@ -784,12 +843,13 @@ export default function AtlasPage() {
     ];
 
     return results.slice(0, 12);
-  }, [q, filteredLocations, filteredAssets, filteredVendors, filteredServices, filteredDocuments, filteredProcedures]);
+  }, [q, filteredLocations, filteredAssets, filteredVendors, filteredServices, filteredCalendar, filteredDocuments, filteredProcedures]);
 
   const openServiceCount = serviceRecords.filter((record) => record.status === "Open" || record.status === "Monitor").length;
   const monitorAssetCount = assetRecords.filter((asset) => asset.status === "Monitor" || asset.status === "Offline").length;
   const vendorDocumentCount = vendorRecords.reduce((total, vendor) => total + (vendor.documents?.length ?? 0), 0);
   const assetDocumentCount = assetRecords.reduce((total, asset) => total + (asset.documents?.length ?? 0), 0);
+  const upcomingCalendarCount = calendarItems.filter((item) => item.status === "Scheduled" || item.status === "Monitor" || item.status === "Open").length;
 
   function addServiceRecord() {
     if (!newService.title.trim()) return;
@@ -853,6 +913,10 @@ export default function AtlasPage() {
     if (result.vendorId) {
       setSelectedVendorId(result.vendorId);
       setVendorMode("edit");
+    }
+    if (result.calendarId) {
+      setSelectedCalendarId(result.calendarId);
+      setCalendarMode("edit");
     }
     setScreen(result.screen);
   }
@@ -1084,11 +1148,87 @@ export default function AtlasPage() {
     }));
   }
 
+  function startNewCalendarItem() {
+    setCalendarMode("new");
+    setSelectedCalendarId("");
+    setCalendarForm(blankCalendarItem());
+  }
+
+  function saveCalendarItem() {
+    const title = calendarForm.title.trim();
+
+    if (!title) return;
+
+    const existingId = calendarMode === "edit" ? calendarForm.id : "";
+    let id = existingId || slugify(title);
+
+    if (calendarMode === "new" && calendarItems.some((item) => item.id === id)) {
+      id = `${id}-${Date.now()}`;
+    }
+
+    const cleanItem: CalendarItem = {
+      id,
+      title,
+      date: calendarForm.date || new Date().toISOString().slice(0, 10),
+      area: calendarForm.area.trim() || "General",
+      status: calendarForm.status || "Scheduled",
+    };
+
+    setCalendarItems((current) => {
+      const exists = current.some((item) => item.id === id);
+      const next = exists
+        ? current.map((item) => (item.id === id ? cleanItem : item))
+        : [...current, cleanItem];
+
+      return sortCalendar(next);
+    });
+
+    setCalendarMode("edit");
+    setSelectedCalendarId(id);
+  }
+
+  function deleteCalendarItem() {
+    if (!calendarForm.id) return;
+
+    const confirmed = window.confirm(`Delete scheduled item: ${calendarForm.title}?`);
+
+    if (!confirmed) return;
+
+    const remainingItems = sortCalendar(calendarItems.filter((item) => item.id !== calendarForm.id));
+    setCalendarItems(remainingItems);
+    const nextItem = remainingItems[0];
+    setSelectedCalendarId(nextItem?.id ?? "");
+    setCalendarForm(nextItem ?? blankCalendarItem());
+    setCalendarMode(nextItem ? "edit" : "new");
+  }
+
+  function markCalendarCompleted(itemId: string) {
+    setCalendarItems((current) =>
+      sortCalendar(
+        current.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                status: "Completed",
+              }
+            : item
+        )
+      )
+    );
+  }
+
   function askAtlas(question: string) {
     const text = question.trim().toLowerCase();
 
     if (!text) {
       setAssistantAnswer("Type a question first, then Ask Atlas.");
+      return;
+    }
+
+    if (text.includes("calendar") || text.includes("schedule") || text.includes("scheduled")) {
+      setAssistantAnswer(
+        `Atlas has ${calendarItems.length} calendar items. Calendar work can now be added, edited, deleted, marked completed, and searched. Upcoming/open items: ${upcomingCalendarCount}.`
+      );
       return;
     }
 
@@ -1152,13 +1292,14 @@ export default function AtlasPage() {
       ...assetRecords.map((asset) => ({ type: "Asset", title: asset.name, detail: `${asset.category} — ${getLocationName(asset.locationId)}. ${asset.notes}` })),
       ...vendorRecords.map((vendor) => ({ type: "Vendor", title: vendor.name, detail: `${vendor.category}. ${vendor.notes}` })),
       ...serviceRecords.map((record) => ({ type: "Service", title: record.title, detail: `${formatDate(record.date)} — ${assetName(record.assetId)} — ${vendorName(record.vendorId)}. ${record.notes}` })),
+      ...calendarItems.map((item) => ({ type: "Calendar", title: item.title, detail: `${formatDate(item.date)} — ${item.area} — ${item.status}` })),
       ...documents.map((document) => ({ type: "Document", title: document.title, detail: `${document.area} — ${document.type}. ${document.notes}` })),
       ...procedures.map((procedure) => ({ type: "Procedure", title: procedure.title, detail: `${procedure.area}. ${procedure.steps.join(" ")}` })),
       ...locations.map((location) => ({ type: "Location", title: location.name, detail: `${location.zone} — ${location.type}. ${location.notes}` })),
     ].filter((item) => [item.type, item.title, item.detail].join(" ").toLowerCase().includes(text));
 
     if (!matches.length) {
-      setAssistantAnswer("I did not find that in the local Atlas records yet. Add a service note, photo, document, vendor, or asset record, then Ask Atlas will be able to surface it here.");
+      setAssistantAnswer("I did not find that in the local Atlas records yet. Add a calendar item, service note, photo, document, vendor, or asset record, then Ask Atlas will be able to surface it here.");
       return;
     }
 
@@ -1207,40 +1348,40 @@ export default function AtlasPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 16 }}>
           <StatCard label="Locations" value={locations.length} detail="2000 baseline areas" />
           <StatCard label="Assets" value={assetRecords.length} detail="Editable equipment" />
-          <StatCard label="Asset Docs" value={assetDocumentCount} detail="Attached files" />
           <StatCard label="Vendors" value={vendorRecords.length} detail="Editable directory" />
-          <StatCard label="Vendor Docs" value={vendorDocumentCount} detail="Uploaded files" />
+          <StatCard label="Scheduled" value={upcomingCalendarCount} detail="Calendar work" />
+          <StatCard label="Docs" value={assetDocumentCount + vendorDocumentCount} detail="Uploaded files" />
           <StatCard label="Open / Monitor" value={openServiceCount + monitorAssetCount} detail="Needs attention" />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
-          <SectionShell eyebrow="Asset System" title="Atlas / 2000 Estate Operations">
+          <SectionShell eyebrow="Calendar System" title="Atlas / 2000 Estate Operations">
             <div style={heroCardStyle}>
               <div style={heroOrbStyle} />
               <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
                 <img src="/atlas-logo.png" alt="Atlas logo" style={heroLogoStyle} />
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Assets are now editable.</h2>
+                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Calendar is now editable.</h2>
                   <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.5 }}>
-                    Assets can now be added, edited, deleted, assigned vendors, given photos, and given attached documents.
+                    Scheduled work can now be added, edited, deleted, searched, and marked complete.
                   </p>
                 </div>
               </div>
             </div>
           </SectionShell>
 
-          <SectionShell eyebrow="Watch List" title="Needs Attention">
+          <SectionShell eyebrow="Upcoming Work" title="Calendar Watch">
             <div style={{ display: "grid", gap: 10 }}>
-              {assetRecords
-                .filter((asset) => asset.status === "Monitor" || asset.status === "Offline")
+              {sortCalendar(calendarItems)
+                .filter((item) => item.status !== "Completed")
                 .slice(0, 8)
-                .map((asset) => (
-                  <button key={asset.id} type="button" onClick={() => { setSelectedAssetId(asset.id); setAssetMode("edit"); setScreen("assets"); }} style={smallRecordButtonStyle}>
+                .map((item) => (
+                  <button key={item.id} type="button" onClick={() => { setSelectedCalendarId(item.id); setCalendarMode("edit"); setScreen("calendar"); }} style={smallRecordButtonStyle}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                      <strong style={{ color: colors.navy }}>{asset.name}</strong>
-                      <span style={badgeStyle(asset.status)}>{asset.status}</span>
+                      <strong style={{ color: colors.navy }}>{item.title}</strong>
+                      <span style={badgeStyle(item.status)}>{item.status}</span>
                     </div>
-                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{getLocationName(asset.locationId)} · {asset.category}</div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{formatDate(item.date)} · {item.area}</div>
                   </button>
                 ))}
             </div>
@@ -1785,20 +1926,117 @@ export default function AtlasPage() {
 
   function renderCalendar() {
     return (
-      <SectionShell eyebrow="Calendar" title="Scheduled Atlas Work">
-        <div style={{ display: "grid", gap: 12 }}>
-          {calendarItems.slice().sort((a, b) => a.date.localeCompare(b.date)).map((item) => (
-            <div key={item.id} style={serviceRowStyle}>
-              <div style={{ color: colors.navy, fontWeight: 950 }}>{formatDate(item.date)}</div>
-              <div>
-                <div style={{ color: colors.navy, fontWeight: 950 }}>{item.title}</div>
-                <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{item.area}</div>
-              </div>
-              <span style={badgeStyle(item.status)}>{item.status}</span>
+      <div style={{ display: "grid", gridTemplateColumns: "0.95fr 1.05fr", gap: 18, alignItems: "start" }}>
+        <SectionShell
+          eyebrow="Calendar"
+          title="Scheduled Atlas Work"
+          right={
+            <button type="button" onClick={startNewCalendarItem} style={primaryButtonStyle}>
+              Add Calendar Item
+            </button>
+          }
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {filteredCalendar.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setSelectedCalendarId(item.id);
+                  setCalendarMode("edit");
+                }}
+                style={{
+                  ...smallRecordButtonStyle,
+                  border: selectedCalendarId === item.id && calendarMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
+                  background: selectedCalendarId === item.id && calendarMode === "edit" ? "#FFF9EA" : "#FBFCFE",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <strong style={{ color: colors.navy }}>{item.title}</strong>
+                  <span style={badgeStyle(item.status)}>{item.status}</span>
+                </div>
+                <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>
+                  {formatDate(item.date)} · {item.area}
+                </div>
+              </button>
+            ))}
+          </div>
+        </SectionShell>
+
+        <SectionShell
+          eyebrow={calendarMode === "new" ? "New Scheduled Work" : "Edit Scheduled Work"}
+          title={calendarForm.title || "Calendar Details"}
+          right={
+            calendarMode === "edit" && calendarForm.id ? (
+              <button type="button" onClick={deleteCalendarItem} style={deleteButtonStyle}>
+                Delete Item
+              </button>
+            ) : null
+          }
+        >
+          <div style={{ display: "grid", gap: 14 }}>
+            <label style={labelStyle}>
+              Work Title
+              <input
+                value={calendarForm.title}
+                onChange={(event) => setCalendarForm((current) => ({ ...current, title: event.target.value }))}
+                placeholder="Example: Backwash pool filter"
+                style={inputStyle}
+              />
+            </label>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={labelStyle}>
+                Date
+                <input
+                  type="date"
+                  value={calendarForm.date}
+                  onChange={(event) => setCalendarForm((current) => ({ ...current, date: event.target.value }))}
+                  style={inputStyle}
+                />
+              </label>
+
+              <label style={labelStyle}>
+                Status
+                <select
+                  value={calendarForm.status}
+                  onChange={(event) => setCalendarForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))}
+                  style={inputStyle}
+                >
+                  <option value="Open">Open</option>
+                  <option value="Scheduled">Scheduled</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Monitor">Monitor</option>
+                </select>
+              </label>
             </div>
-          ))}
-        </div>
-      </SectionShell>
+
+            <label style={labelStyle}>
+              Area / Location
+              <input
+                value={calendarForm.area}
+                onChange={(event) => setCalendarForm((current) => ({ ...current, area: event.target.value }))}
+                placeholder="Example: Pool Equipment Room"
+                style={inputStyle}
+              />
+            </label>
+
+            <button type="button" onClick={saveCalendarItem} style={widePrimaryButtonStyle}>
+              Save Calendar Item
+            </button>
+
+            {calendarMode === "edit" && calendarForm.id && calendarForm.status !== "Completed" ? (
+              <button type="button" onClick={() => markCalendarCompleted(calendarForm.id)} style={goldButtonStyle}>
+                Mark Completed
+              </button>
+            ) : null}
+
+            <div style={emptyStateStyle}>
+              Calendar items save in this browser for now. Next database pass will move this to shared storage and later Outlook / Apple calendar sync.
+            </div>
+          </div>
+        </SectionShell>
+      </div>
     );
   }
 
@@ -1905,6 +2143,7 @@ export default function AtlasPage() {
 
   function renderAssistant() {
     const quickQuestions = [
+      "Show my calendar",
       "Show my assets",
       "Show my vendors",
       "What boiler do we have?",
@@ -1919,7 +2158,7 @@ export default function AtlasPage() {
       <SectionShell eyebrow="Ask Atlas" title="Search the Local Atlas Records" right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}>
         <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 18, alignItems: "start" }}>
           <div style={{ display: "grid", gap: 12 }}>
-            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
+            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about calendar work, assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
             <button type="button" onClick={() => askAtlas(assistantQuestion)} style={widePrimaryButtonStyle}>Ask Atlas</button>
 
             <div style={{ display: "grid", gap: 8 }}>
@@ -1967,10 +2206,10 @@ export default function AtlasPage() {
         </nav>
 
         <div style={sidebarStatusStyle}>
-          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>ASSET SYSTEM</div>
-          <div style={{ fontWeight: 900, marginTop: 6 }}>Add / edit / upload active</div>
+          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>CALENDAR SYSTEM</div>
+          <div style={{ fontWeight: 900, marginTop: 6 }}>Add / edit / complete active</div>
           <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>
-            Asset records save edits, vendors, photos, and documents in this browser.
+            Calendar work saves in this browser and is searchable through Atlas.
           </div>
         </div>
       </aside>
@@ -1983,7 +2222,7 @@ export default function AtlasPage() {
               <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.3, textTransform: "uppercase" }}>{activeNav?.label ?? "Dashboard"}</div>
               <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: 31, letterSpacing: -0.9, lineHeight: 1.05 }}>Atlas / 2000</h1>
               <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>
-                Private estate systems, service history, vendors, procedures, documents, photos, and Ask Atlas.
+                Private estate systems, service history, vendors, procedures, calendar, documents, photos, and Ask Atlas.
               </div>
             </div>
           </div>
@@ -1999,11 +2238,12 @@ export default function AtlasPage() {
 
         {query ? (
           <div style={{ display: "grid", gap: 18, marginBottom: 18 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12 }}>
               <SearchCount label="locations" value={filteredLocations.length} />
               <SearchCount label="assets" value={filteredAssets.length} />
               <SearchCount label="vendors" value={filteredVendors.length} />
               <SearchCount label="service" value={filteredServices.length} />
+              <SearchCount label="calendar" value={filteredCalendar.length} />
               <SearchCount label="docs" value={filteredDocuments.length} />
             </div>
             {renderGlobalSearchResults()}
@@ -2163,6 +2403,16 @@ const widePrimaryButtonStyle: React.CSSProperties = {
   border: "none",
   background: colors.navy,
   color: "white",
+  borderRadius: 14,
+  padding: "13px 14px",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const goldButtonStyle: React.CSSProperties = {
+  border: "none",
+  background: colors.gold,
+  color: colors.navy,
   borderRadius: 14,
   padding: "13px 14px",
   fontWeight: 950,
