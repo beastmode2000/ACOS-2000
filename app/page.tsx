@@ -342,7 +342,7 @@ const navItems: { id: Screen; label: string; description: string }[] = [
   { id: "assets", label: "Assets", description: "Add / edit / docs" },
   { id: "history", label: "Service History", description: "Work notes" },
   { id: "vendors", label: "Vendors", description: "Add / edit / docs" },
-  { id: "calendar", label: "Calendar", description: "Add / edit / schedule" },
+  { id: "calendar", label: "Calendar", description: "Full month calendar" },
   { id: "weather", label: "Weather", description: "Property watch" },
   { id: "documents", label: "Photos / Docs", description: "Records" },
   { id: "procedures", label: "Procedures", description: "How-to records" },
@@ -368,6 +368,45 @@ function sortAssets(list: AssetRecord[]) {
 
 function sortCalendar(list: CalendarItem[]) {
   return [...list].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function dateKeyFromDate(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateFromKey(key: string) {
+  return new Date(`${key}T12:00:00`);
+}
+
+function monthYearLabel(date: Date) {
+  return date.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function addMonthsToDate(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1, 12, 0, 0);
+}
+
+function addYearsToDate(date: Date, years: number) {
+  return new Date(date.getFullYear() + years, date.getMonth(), 1, 12, 0, 0);
+}
+
+function getCalendarMonthDays(cursor: Date) {
+  const firstOfMonth = new Date(cursor.getFullYear(), cursor.getMonth(), 1, 12, 0, 0);
+  const firstGridDay = new Date(firstOfMonth);
+  firstGridDay.setDate(firstOfMonth.getDate() - firstOfMonth.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(firstGridDay);
+    day.setDate(firstGridDay.getDate() + index);
+    day.setHours(12, 0, 0, 0);
+    return day;
+  });
 }
 
 function blankVendor(): VendorRecord {
@@ -400,10 +439,10 @@ function blankAsset(): AssetRecord {
   };
 }
 
-function blankCalendarItem(): CalendarItem {
+function blankCalendarItem(date?: string): CalendarItem {
   return {
     id: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: date || dateKeyFromDate(new Date()),
     title: "",
     area: "General",
     status: "Scheduled",
@@ -438,6 +477,27 @@ function badgeStyle(status: Status | ServiceStatus): React.CSSProperties {
     color: color.color,
     border: `1px solid ${color.border}`,
     whiteSpace: "nowrap",
+  };
+}
+
+function miniCalendarBadgeStyle(status: ServiceStatus): React.CSSProperties {
+  const color = badgeColors[status];
+
+  return {
+    display: "block",
+    width: "100%",
+    border: `1px solid ${color.border}`,
+    background: color.background,
+    color: color.color,
+    borderRadius: 9,
+    padding: "4px 6px",
+    fontSize: 11,
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    textAlign: "left",
+    cursor: "pointer",
   };
 }
 
@@ -526,6 +586,8 @@ function SectionShell({
 }
 
 export default function AtlasPage() {
+  const todayKey = dateKeyFromDate(new Date());
+
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
   const [assetRecords, setAssetRecords] = useState<AssetRecord[]>(assetSeed);
@@ -536,7 +598,9 @@ export default function AtlasPage() {
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>(calendarSeed);
   const [selectedCalendarId, setSelectedCalendarId] = useState(calendarSeed[0]?.id ?? "");
-  const [calendarForm, setCalendarForm] = useState<CalendarItem>(calendarSeed[0] ?? blankCalendarItem());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayKey);
+  const [calendarCursor, setCalendarCursor] = useState(() => new Date());
+  const [calendarForm, setCalendarForm] = useState<CalendarItem>(calendarSeed[0] ?? blankCalendarItem(todayKey));
   const [calendarMode, setCalendarMode] = useState<"edit" | "new">("edit");
   const [vendorRecords, setVendorRecords] = useState<VendorRecord[]>(vendorSeed);
   const [selectedVendorId, setSelectedVendorId] = useState(vendorSeed[0]?.id ?? "");
@@ -569,16 +633,19 @@ export default function AtlasPage() {
     try {
       const savedAssets = window.localStorage.getItem("atlas-asset-records-v1");
       const savedService =
+        window.localStorage.getItem("atlas-service-records-v8") ||
         window.localStorage.getItem("atlas-service-records-v7") ||
         window.localStorage.getItem("atlas-service-records-v6") ||
         window.localStorage.getItem("atlas-service-records-v5") ||
         window.localStorage.getItem("atlas-service-records-v4");
       const savedPhotos =
+        window.localStorage.getItem("atlas-photo-records-v8") ||
         window.localStorage.getItem("atlas-photo-records-v7") ||
         window.localStorage.getItem("atlas-photo-records-v6") ||
         window.localStorage.getItem("atlas-photo-records-v5") ||
         window.localStorage.getItem("atlas-photo-records-v4");
       const savedCalendar =
+        window.localStorage.getItem("atlas-calendar-v8") ||
         window.localStorage.getItem("atlas-calendar-v7") ||
         window.localStorage.getItem("atlas-calendar-v6") ||
         window.localStorage.getItem("atlas-calendar-v5") ||
@@ -648,6 +715,8 @@ export default function AtlasPage() {
 
     if (selected) {
       setCalendarForm(selected);
+      setSelectedCalendarDate(selected.date);
+      setCalendarCursor(dateFromKey(selected.date));
     }
   }, [selectedCalendarId, calendarItems, calendarMode]);
 
@@ -658,17 +727,17 @@ export default function AtlasPage() {
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-service-records-v7", JSON.stringify(serviceRecords));
+    window.localStorage.setItem("atlas-service-records-v8", JSON.stringify(serviceRecords));
   }, [ready, serviceRecords]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-photo-records-v7", JSON.stringify(photos));
+    window.localStorage.setItem("atlas-photo-records-v8", JSON.stringify(photos));
   }, [ready, photos]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-calendar-v7", JSON.stringify(sortCalendar(calendarItems)));
+    window.localStorage.setItem("atlas-calendar-v8", JSON.stringify(sortCalendar(calendarItems)));
   }, [ready, calendarItems]);
 
   useEffect(() => {
@@ -1147,10 +1216,29 @@ export default function AtlasPage() {
     }));
   }
 
-  function startNewCalendarItem() {
+  function selectCalendarDate(dateKey: string) {
+    setSelectedCalendarDate(dateKey);
+    setCalendarCursor(dateFromKey(dateKey));
     setCalendarMode("new");
     setSelectedCalendarId("");
-    setCalendarForm(blankCalendarItem());
+    setCalendarForm(blankCalendarItem(dateKey));
+  }
+
+  function openCalendarItem(item: CalendarItem) {
+    setSelectedCalendarId(item.id);
+    setSelectedCalendarDate(item.date);
+    setCalendarCursor(dateFromKey(item.date));
+    setCalendarMode("edit");
+    setCalendarForm(item);
+  }
+
+  function startNewCalendarItem(date?: string) {
+    const itemDate = date || selectedCalendarDate || todayKey;
+    setCalendarMode("new");
+    setSelectedCalendarId("");
+    setSelectedCalendarDate(itemDate);
+    setCalendarCursor(dateFromKey(itemDate));
+    setCalendarForm(blankCalendarItem(itemDate));
   }
 
   function saveCalendarItem() {
@@ -1168,7 +1256,7 @@ export default function AtlasPage() {
     const cleanItem: CalendarItem = {
       id,
       title,
-      date: calendarForm.date || new Date().toISOString().slice(0, 10),
+      date: calendarForm.date || selectedCalendarDate || todayKey,
       area: calendarForm.area.trim() || "General",
       status: calendarForm.status || "Scheduled",
     };
@@ -1184,6 +1272,8 @@ export default function AtlasPage() {
 
     setCalendarMode("edit");
     setSelectedCalendarId(id);
+    setSelectedCalendarDate(cleanItem.date);
+    setCalendarCursor(dateFromKey(cleanItem.date));
   }
 
   function deleteCalendarItem() {
@@ -1195,9 +1285,9 @@ export default function AtlasPage() {
 
     const remainingItems = sortCalendar(calendarItems.filter((item) => item.id !== calendarForm.id));
     setCalendarItems(remainingItems);
-    const nextItem = remainingItems[0];
+    const nextItem = remainingItems.find((item) => item.date === selectedCalendarDate) ?? remainingItems[0];
     setSelectedCalendarId(nextItem?.id ?? "");
-    setCalendarForm(nextItem ?? blankCalendarItem());
+    setCalendarForm(nextItem ?? blankCalendarItem(selectedCalendarDate));
     setCalendarMode(nextItem ? "edit" : "new");
   }
 
@@ -1226,7 +1316,7 @@ export default function AtlasPage() {
 
     if (text.includes("calendar") || text.includes("schedule") || text.includes("scheduled")) {
       setAssistantAnswer(
-        `Atlas has ${calendarItems.length} calendar items. Calendar work can now be added, edited, deleted, marked completed, and searched. Upcoming/open items: ${upcomingCalendarCount}.`
+        `Atlas has ${calendarItems.length} calendar items. The Calendar now has a full month grid, month/year navigation, day selection, add/edit/delete, mark completed, and search. Upcoming/open items: ${upcomingCalendarCount}.`
       );
       return;
     }
@@ -1354,15 +1444,15 @@ export default function AtlasPage() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
-          <SectionShell eyebrow="Calendar System" title="Atlas / 2000 Estate Operations">
+          <SectionShell eyebrow="Full Calendar" title="Atlas / 2000 Estate Operations">
             <div style={heroCardStyle}>
               <div style={heroOrbStyle} />
               <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
                 <img src="/atlas-logo.png" alt="Atlas logo" style={heroLogoStyle} />
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Calendar is now editable.</h2>
+                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Full month calendar is live.</h2>
                   <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.5 }}>
-                    Scheduled work can now be added, edited, deleted, searched, and marked complete.
+                    You can move through days, months, and years, click any date, add work, edit work, delete work, and mark work complete.
                   </p>
                 </div>
               </div>
@@ -1375,7 +1465,7 @@ export default function AtlasPage() {
                 .filter((item) => item.status !== "Completed")
                 .slice(0, 8)
                 .map((item) => (
-                  <button key={item.id} type="button" onClick={() => { setSelectedCalendarId(item.id); setCalendarMode("edit"); setScreen("calendar"); }} style={smallRecordButtonStyle}>
+                  <button key={item.id} type="button" onClick={() => { openCalendarItem(item); setScreen("calendar"); }} style={smallRecordButtonStyle}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                       <strong style={{ color: colors.navy }}>{item.title}</strong>
                       <span style={badgeStyle(item.status)}>{item.status}</span>
@@ -1924,73 +2014,220 @@ export default function AtlasPage() {
   }
 
   function renderCalendar() {
+    const monthDays = getCalendarMonthDays(calendarCursor);
+    const selectedDateItems = sortCalendar(calendarItems.filter((item) => item.date === selectedCalendarDate));
+    const monthName = monthYearLabel(calendarCursor);
+    const selectedDateLabel = formatDate(selectedCalendarDate);
+
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "0.95fr 1.05fr", gap: 18, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr", gap: 18, alignItems: "start" }}>
         <SectionShell
-          eyebrow="Calendar"
-          title="Scheduled Atlas Work"
+          eyebrow="Full Calendar"
+          title={monthName}
           right={
-            <button type="button" onClick={startNewCalendarItem} style={primaryButtonStyle}>
-              Add Calendar Item
+            <button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>
+              Add Item
             </button>
           }
         >
-          <div style={{ display: "grid", gap: 10 }}>
-            {filteredCalendar.map((item) => (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={calendarToolbarStyle}>
+              <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, -1))} style={calendarNavButtonStyle}>
+                ‹ Year
+              </button>
+              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, -1))} style={calendarNavButtonStyle}>
+                ‹ Month
+              </button>
               <button
-                key={item.id}
                 type="button"
                 onClick={() => {
-                  setSelectedCalendarId(item.id);
-                  setCalendarMode("edit");
+                  const now = new Date();
+                  const key = dateKeyFromDate(now);
+                  setCalendarCursor(now);
+                  setSelectedCalendarDate(key);
+                  setCalendarMode("new");
+                  setCalendarForm(blankCalendarItem(key));
+                  setSelectedCalendarId("");
                 }}
-                style={{
-                  ...smallRecordButtonStyle,
-                  border: selectedCalendarId === item.id && calendarMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
-                  background: selectedCalendarId === item.id && calendarMode === "edit" ? "#FFF9EA" : "#FBFCFE",
-                }}
+                style={goldButtonStyle}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                  <strong style={{ color: colors.navy }}>{item.title}</strong>
-                  <span style={badgeStyle(item.status)}>{item.status}</span>
-                </div>
-                <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>
-                  {formatDate(item.date)} · {item.area}
-                </div>
+                Today
               </button>
-            ))}
+              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, 1))} style={calendarNavButtonStyle}>
+                Month ›
+              </button>
+              <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, 1))} style={calendarNavButtonStyle}>
+                Year ›
+              </button>
+
+              <select
+                value={calendarCursor.getMonth()}
+                onChange={(event) => {
+                  const nextMonth = Number(event.target.value);
+                  setCalendarCursor(new Date(calendarCursor.getFullYear(), nextMonth, 1, 12));
+                }}
+                style={{ ...inputStyle, padding: "9px 10px" }}
+              >
+                {Array.from({ length: 12 }, (_, monthIndex) => (
+                  <option key={monthIndex} value={monthIndex}>
+                    {new Date(2026, monthIndex, 1).toLocaleDateString(undefined, { month: "long" })}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="number"
+                value={calendarCursor.getFullYear()}
+                onChange={(event) => {
+                  const year = Number(event.target.value);
+                  if (Number.isFinite(year) && year > 1900 && year < 2300) {
+                    setCalendarCursor(new Date(year, calendarCursor.getMonth(), 1, 12));
+                  }
+                }}
+                style={{ ...inputStyle, padding: "9px 10px" }}
+              />
+            </div>
+
+            <div style={calendarWeekHeaderStyle}>
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                <div key={day} style={{ color: colors.muted, fontWeight: 950, fontSize: 12, textAlign: "center" }}>
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            <div style={calendarMonthGridStyle}>
+              {monthDays.map((day) => {
+                const dayKey = dateKeyFromDate(day);
+                const isCurrentMonth = day.getMonth() === calendarCursor.getMonth();
+                const isSelected = dayKey === selectedCalendarDate;
+                const isToday = dayKey === todayKey;
+                const itemsForDay = sortCalendar(calendarItems.filter((item) => item.date === dayKey));
+
+                return (
+                  <div
+                    key={dayKey}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => selectCalendarDate(dayKey)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") selectCalendarDate(dayKey);
+                    }}
+                    style={{
+                      ...calendarDayCellStyle,
+                      opacity: isCurrentMonth ? 1 : 0.42,
+                      border: isSelected ? `2px solid ${colors.gold}` : isToday ? `2px solid ${colors.navy}` : `1px solid ${colors.line}`,
+                      background: isSelected ? "#FFF9EA" : isToday ? "#F3F7FF" : "#FBFCFE",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <div style={{ color: isToday ? colors.navy : colors.muted, fontWeight: 950 }}>
+                        {day.getDate()}
+                      </div>
+                      {itemsForDay.length ? (
+                        <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>
+                          {itemsForDay.length}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 5, marginTop: 8 }}>
+                      {itemsForDay.slice(0, 3).map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openCalendarItem(item);
+                          }}
+                          style={miniCalendarBadgeStyle(item.status)}
+                          title={`${item.title} — ${item.area}`}
+                        >
+                          {item.title}
+                        </button>
+                      ))}
+                      {itemsForDay.length > 3 ? (
+                        <div style={{ color: colors.muted, fontSize: 11, fontWeight: 900 }}>
+                          +{itemsForDay.length - 3} more
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </SectionShell>
 
-        <SectionShell
-          eyebrow={calendarMode === "new" ? "New Scheduled Work" : "Edit Scheduled Work"}
-          title={calendarForm.title || "Calendar Details"}
-          right={
-            calendarMode === "edit" && calendarForm.id ? (
-              <button type="button" onClick={deleteCalendarItem} style={deleteButtonStyle}>
-                Delete Item
+        <div style={{ display: "grid", gap: 18 }}>
+          <SectionShell
+            eyebrow="Selected Day"
+            title={selectedDateLabel}
+            right={
+              <button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>
+                Add
               </button>
-            ) : null
-          }
-        >
-          <div style={{ display: "grid", gap: 14 }}>
-            <label style={labelStyle}>
-              Work Title
-              <input
-                value={calendarForm.title}
-                onChange={(event) => setCalendarForm((current) => ({ ...current, title: event.target.value }))}
-                placeholder="Example: Backwash pool filter"
-                style={inputStyle}
-              />
-            </label>
+            }
+          >
+            <div style={{ display: "grid", gap: 10 }}>
+              {selectedDateItems.length ? (
+                selectedDateItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => openCalendarItem(item)}
+                    style={{
+                      ...smallRecordButtonStyle,
+                      border: selectedCalendarId === item.id && calendarMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
+                      background: selectedCalendarId === item.id && calendarMode === "edit" ? "#FFF9EA" : "#FBFCFE",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                      <strong style={{ color: colors.navy }}>{item.title}</strong>
+                      <span style={badgeStyle(item.status)}>{item.status}</span>
+                    </div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{item.area}</div>
+                  </button>
+                ))
+              ) : (
+                <div style={emptyStateStyle}>No work scheduled for this day.</div>
+              )}
+            </div>
+          </SectionShell>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <SectionShell
+            eyebrow={calendarMode === "new" ? "New Scheduled Work" : "Edit Scheduled Work"}
+            title={calendarForm.title || "Calendar Details"}
+            right={
+              calendarMode === "edit" && calendarForm.id ? (
+                <button type="button" onClick={deleteCalendarItem} style={deleteButtonStyle}>
+                  Delete
+                </button>
+              ) : null
+            }
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <label style={labelStyle}>
+                Work Title
+                <input
+                  value={calendarForm.title}
+                  onChange={(event) => setCalendarForm((current) => ({ ...current, title: event.target.value }))}
+                  placeholder="Example: Backwash pool filter"
+                  style={inputStyle}
+                />
+              </label>
+
               <label style={labelStyle}>
                 Date
                 <input
                   type="date"
                   value={calendarForm.date}
-                  onChange={(event) => setCalendarForm((current) => ({ ...current, date: event.target.value }))}
+                  onChange={(event) => {
+                    const nextDate = event.target.value;
+                    setCalendarForm((current) => ({ ...current, date: nextDate }));
+                    setSelectedCalendarDate(nextDate);
+                    setCalendarCursor(dateFromKey(nextDate));
+                  }}
                   style={inputStyle}
                 />
               </label>
@@ -2008,33 +2245,33 @@ export default function AtlasPage() {
                   <option value="Monitor">Monitor</option>
                 </select>
               </label>
-            </div>
 
-            <label style={labelStyle}>
-              Area / Location
-              <input
-                value={calendarForm.area}
-                onChange={(event) => setCalendarForm((current) => ({ ...current, area: event.target.value }))}
-                placeholder="Example: Pool Equipment Room"
-                style={inputStyle}
-              />
-            </label>
+              <label style={labelStyle}>
+                Area / Location
+                <input
+                  value={calendarForm.area}
+                  onChange={(event) => setCalendarForm((current) => ({ ...current, area: event.target.value }))}
+                  placeholder="Example: Pool Equipment Room"
+                  style={inputStyle}
+                />
+              </label>
 
-            <button type="button" onClick={saveCalendarItem} style={widePrimaryButtonStyle}>
-              Save Calendar Item
-            </button>
-
-            {calendarMode === "edit" && calendarForm.id && calendarForm.status !== "Completed" ? (
-              <button type="button" onClick={() => markCalendarCompleted(calendarForm.id)} style={goldButtonStyle}>
-                Mark Completed
+              <button type="button" onClick={saveCalendarItem} style={widePrimaryButtonStyle}>
+                Save Calendar Item
               </button>
-            ) : null}
 
-            <div style={emptyStateStyle}>
-              Calendar items save in this browser for now. Next database pass will move this to shared storage and later Outlook / Apple calendar sync.
+              {calendarMode === "edit" && calendarForm.id && calendarForm.status !== "Completed" ? (
+                <button type="button" onClick={() => markCalendarCompleted(calendarForm.id)} style={goldButtonStyle}>
+                  Mark Completed
+                </button>
+              ) : null}
+
+              <div style={emptyStateStyle}>
+                Full calendar saves in this browser for now. You can move by month/year, click any day, add work, edit work, delete work, and mark work complete.
+              </div>
             </div>
-          </div>
-        </SectionShell>
+          </SectionShell>
+        </div>
       </div>
     );
   }
@@ -2205,10 +2442,10 @@ export default function AtlasPage() {
         </nav>
 
         <div style={sidebarStatusStyle}>
-          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>CALENDAR SYSTEM</div>
-          <div style={{ fontWeight: 900, marginTop: 6 }}>Add / edit / complete active</div>
+          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>FULL CALENDAR</div>
+          <div style={{ fontWeight: 900, marginTop: 6 }}>Month / year navigation active</div>
           <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>
-            Calendar work saves in this browser and is searchable through Atlas.
+            Click a date, add work, edit work, delete work, or mark it complete.
           </div>
         </div>
       </aside>
@@ -2414,6 +2651,16 @@ const goldButtonStyle: React.CSSProperties = {
   color: colors.navy,
   borderRadius: 14,
   padding: "13px 14px",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const calendarNavButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "white",
+  color: colors.navy,
+  borderRadius: 12,
+  padding: "9px 11px",
   fontWeight: 950,
   cursor: "pointer",
 };
@@ -2636,4 +2883,33 @@ const vendorCheckStyle: React.CSSProperties = {
   padding: 9,
   background: "white",
   cursor: "pointer",
+};
+
+const calendarToolbarStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto auto auto auto auto 1fr 120px",
+  gap: 8,
+  alignItems: "center",
+};
+
+const calendarWeekHeaderStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+  gap: 8,
+};
+
+const calendarMonthGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+  gap: 8,
+};
+
+const calendarDayCellStyle: React.CSSProperties = {
+  minHeight: 132,
+  borderRadius: 16,
+  padding: 10,
+  background: "#FBFCFE",
+  cursor: "pointer",
+  outline: "none",
+  overflow: "hidden",
 };
