@@ -10,7 +10,8 @@ type Screen =
   | "vendors"
   | "calendar"
   | "weather"
-  | "assistant";
+  | "assistant"
+  | "blank";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
 
@@ -73,7 +74,8 @@ const screens: { id: Screen; label: string }[] = [
   { id: "vendors", label: "Vendors" },
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
-  { id: "assistant", label: "AI Assistant" }
+  { id: "assistant", label: "AI Assistant" },
+  { id: "blank", label: "Blank Canvas" }
 ];
 
 function todayISO() {
@@ -692,6 +694,8 @@ export default function Page() {
             </section>
           </div>
         )}
+
+        {screen === "blank" && <BlankCanvasPanel />}
       </section>
     </main>
   );
@@ -720,6 +724,145 @@ function QuickRecord({ label, onClick }: { label: string; onClick: () => void })
     <button type="button" onClick={onClick} style={styles.listButton}>
       {label}
     </button>
+  );
+}
+
+function BlankCanvasPanel() {
+  const templateSections = [
+    {
+      title: "Main House",
+      note: "Generic main residence record for rooms, systems, appliances, procedures, and owner-facing notes."
+    },
+    {
+      title: "Guest House / ADU",
+      note: "Reusable guest house or ADU location structure with assets, vendors, and service history."
+    },
+    {
+      title: "Garage",
+      note: "Garage doors, vehicles, tools, chargers, storage, equipment, and service records."
+    },
+    {
+      title: "Mechanical Room",
+      note: "Boilers, water heaters, pumps, HVAC equipment, valves, shutoffs, photos, and reset procedures."
+    },
+    {
+      title: "Pool / Spa",
+      note: "Pool equipment, spa equipment, chemical checks, backwash procedure, seasonal opening/closing, and vendors."
+    },
+    {
+      title: "Dock / Waterfront",
+      note: "Boat lifts, watercraft, dock utilities, lift boxes, seasonal procedures, and waterfront safety notes."
+    },
+    {
+      title: "Grounds",
+      note: "Lawns, irrigation, gardens, sport court, exterior lighting, fences, and recurring grounds tasks."
+    },
+    {
+      title: "Emergency",
+      note: "Main water shutoff, gas shutoff, electrical panels, generator, leak response, alarm response, and emergency vendors."
+    }
+  ];
+
+  const productRules = [
+    "No 2000-specific address, family, owner, password, access-code, or private invoice information.",
+    "Use sample/demo data only.",
+    "Keep the same Atlas structure: locations, assets, vendors, calendar, map, weather, and AI Assistant.",
+    "Turn real 2000 lessons into reusable templates for future estates.",
+    "Build this as the sellable Atlas Estate OS starting point."
+  ];
+
+  const setupPackages = [
+    {
+      name: "Starter Template",
+      price: "$2,500–$7,500",
+      note: "Blank Atlas setup with basic locations, asset categories, vendors, and procedure templates."
+    },
+    {
+      name: "Private Estate Setup",
+      price: "$7,500–$25,000",
+      note: "Walkthrough, asset inventory, vendor directory, maps, procedures, photos, and emergency records."
+    },
+    {
+      name: "White-Glove Buildout",
+      price: "$25,000–$50,000+",
+      note: "Full private estate operating system with ongoing updates, service history, and support."
+    }
+  ];
+
+  return (
+    <div>
+      <Header
+        title="Blank Canvas"
+        subtitle="Sellable Atlas Estate OS template with no private 2000 property information."
+      />
+
+      <div style={styles.statGrid}>
+        <Stat label="Version" value="v1" />
+        <Stat label="Private Data" value="None" />
+        <Stat label="Use" value="Demo" />
+        <Stat label="Goal" value="Sellable" />
+      </div>
+
+      <div style={styles.gridTwo}>
+        <section style={styles.card}>
+          <h2 style={styles.h2}>Blank Canvas Purpose</h2>
+          <p style={styles.muted}>
+            This section is the clean reusable version of Atlas. It keeps the
+            same structure as the 2000 system, but removes all private property
+            details. This is the version that can eventually become the demo,
+            sales template, and starting point for new customers.
+          </p>
+
+          <h3 style={styles.h3}>Rules</h3>
+          {productRules.map((rule) => (
+            <div key={rule} style={styles.listButton}>
+              {rule}
+            </div>
+          ))}
+        </section>
+
+        <section style={styles.card}>
+          <h2 style={styles.h2}>Sales Positioning</h2>
+          <p style={styles.kicker}>Atlas Private Estate OS</p>
+          <p style={styles.muted}>
+            For homes too complex to manage from memory. Atlas turns a private
+            property into a searchable operating system for owners, estate
+            managers, maintenance staff, vendors, and future employees.
+          </p>
+
+          <h3 style={styles.h3}>Core Promise</h3>
+          <div style={styles.answerBox}>
+            Assets + Locations + Vendors + Procedures + Maps + Calendar +
+            Service History + Ask Atlas
+          </div>
+        </section>
+      </div>
+
+      <div style={{ ...styles.card, marginTop: 18 }}>
+        <h2 style={styles.h2}>Reusable Estate Sections</h2>
+        <div style={styles.gridTwo}>
+          {templateSections.map((item) => (
+            <div key={item.title} style={styles.listButton}>
+              <strong>{item.title}</strong>
+              <span style={styles.smallMuted}>{item.note}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ ...styles.card, marginTop: 18 }}>
+        <h2 style={styles.h2}>Future Pricing Packages</h2>
+        <div style={styles.gridTwo}>
+          {setupPackages.map((item) => (
+            <div key={item.name} style={styles.listButton}>
+              <strong>{item.name}</strong>
+              <span style={styles.smallMuted}>{item.price}</span>
+              <span style={styles.smallMuted}>{item.note}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
