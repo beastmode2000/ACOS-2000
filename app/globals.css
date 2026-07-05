@@ -18,8 +18,8 @@ html {
 }
 
 body {
-  background: #f1f7ff;
-  color: #0f172a;
+  background: #f5f7fb;
+  color: #10213d;
 }
 
 * {
@@ -34,22 +34,14 @@ select {
   font: inherit;
 }
 
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
-}
-
-img {
-  display: block;
-  max-width: 100%;
-}
-
 /* 
   ATLAS PHONE FIX
-  This uses BOTH max-width and max-device-width because some phones
-  were still loading the desktop-width layout.
+  This targets the actual current page.tsx structure:
+  main = grid shell
+  main > aside = blue sidebar
+  main > section = content area
 */
-@media screen and (max-width: 900px), screen and (max-device-width: 900px) {
+@media screen and (max-width: 800px), screen and (max-device-width: 800px) {
   html,
   body {
     width: 100% !important;
@@ -58,42 +50,34 @@ img {
   }
 
   body {
-    background: #f1f7ff !important;
+    background: #f5f7fb !important;
   }
 
   main {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
+    display: block !important;
+    grid-template-columns: none !important;
     overflow-x: hidden !important;
   }
 
-  main > div {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    display: block !important;
-    overflow-x: hidden !important;
-  }
-
-  aside {
-    position: relative !important;
-    display: block !important;
+  main > aside {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
     height: auto !important;
     min-height: 0 !important;
-    padding: 12px !important;
+    display: block !important;
+    padding: 14px !important;
     overflow: hidden !important;
   }
 
-  aside > div {
-    width: 100% !important;
+  main > aside > div {
     max-width: 100% !important;
   }
 
-  aside nav {
+  main > aside nav {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 8px !important;
@@ -101,113 +85,133 @@ img {
     max-width: 100% !important;
   }
 
-  aside button,
-  aside a {
+  main > aside button {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
     padding: 10px 8px !important;
     font-size: 12px !important;
-    line-height: 1.1 !important;
+    line-height: 1.15 !important;
   }
 
-  section,
-  article,
-  header,
-  footer {
+  main > section {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 14px !important;
+    overflow-x: hidden !important;
+  }
+
+  main > section > div {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
     overflow-x: hidden !important;
   }
 
-  main section,
-  main article,
-  main header {
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-  }
-
-  .grid,
-  [class*="grid-cols"],
-  [class*="lg:grid-cols"],
-  [class*="xl:grid-cols"],
-  [class*="md:grid-cols"],
-  [class*="sm:grid-cols"] {
-    grid-template-columns: 1fr !important;
-  }
-
-  [class*="max-w-"],
-  [class*="w-"],
-  [class*="min-w-"] {
+  header {
+    width: 100% !important;
     max-width: 100% !important;
   }
 
-  [class*="w-80"],
-  [class*="w-72"],
-  [class*="w-64"],
-  [class*="w-60"],
-  [class*="w-56"],
-  [class*="w-52"],
-  [class*="w-48"] {
-    width: 100% !important;
+  section {
+    max-width: 100% !important;
+    min-width: 0 !important;
   }
 
-  [class*="rounded-[2rem]"] {
-    border-radius: 22px !important;
+  div {
+    max-width: 100%;
   }
 
-  h1 {
-    font-size: 30px !important;
-    line-height: 1.08 !important;
+  [style*="display: grid"],
+  [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
   }
 
-  h2 {
-    font-size: 24px !important;
-    line-height: 1.12 !important;
+  [style*="minmax(360px"] {
+    grid-template-columns: 1fr !important;
   }
 
-  h3 {
-    font-size: 19px !important;
-    line-height: 1.18 !important;
-  }
-
-  p,
-  li {
-    font-size: 14px !important;
+  [style*="repeat(4"] {
+    grid-template-columns: 1fr 1fr !important;
   }
 
   img {
-    width: auto;
     max-width: 100% !important;
     height: auto !important;
   }
 
-  img[src*="atlas-property-map"],
-  img[src*="property-map"],
-  img[src*="map"] {
+  img[src*="atlas-property-map"] {
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
     display: block !important;
   }
 
-  .relative:has(img[src*="atlas-property-map"]),
-  .relative:has(img[src*="property-map"]),
-  .relative:has(img[src*="map"]) {
+  [style*="position: relative"] {
     width: 100% !important;
     max-width: 100% !important;
-    overflow: hidden !important;
   }
 
-  .absolute button,
-  button.absolute,
-  [style*="top"],
-  [style*="left"] {
-    max-width: 120px !important;
-    font-size: 9px !important;
+  button[style*="position: absolute"] {
+    font-size: 8px !important;
     line-height: 1.05 !important;
-    padding: 4px 6px !important;
+    padding: 3px 5px !important;
+    max-width: 92px !important;
     white-space: normal !important;
+    text-align: center !important;
+  }
+
+  input,
+  textarea,
+  select {
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: 16px !important;
+  }
+
+  h1 {
+    font-size: 28px !important;
+    line-height: 1.08 !important;
+  }
+
+  h2 {
+    font-size: 22px !important;
+    line-height: 1.12 !important;
+  }
+
+  h3 {
+    font-size: 18px !important;
+    line-height: 1.18 !important;
+  }
+
+  p,
+  li,
+  span {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media screen and (max-width: 430px), screen and (max-device-width: 430px) {
+  main > aside nav {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  main > aside {
+    padding: 12px !important;
+  }
+
+  main > section {
+    padding: 12px !important;
+  }
+
+  [style*="repeat(4"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  button[style*="position: absolute"] {
+    font-size: 7px !important;
+    padding: 3px 4px !important;
+    max-width: 80px !important;
   }
 }
