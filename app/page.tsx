@@ -1334,7 +1334,6 @@ style={location.id === selectedLocationId ? { ...styles.listButton, ...styles.se
     </section>
   </div>
 </div>
-```
 
 );
 }
