@@ -597,11 +597,9 @@ function deleteDocumentRecord(id: string) {
 const ok = typeof window === "undefined" ? true : window.confirm("Delete this photo, note, or document?");
 if (!ok) return;
 
-```
 const remaining = documents.filter((row) => row.id !== id);
 setDocuments(remaining);
 setSelectedDocumentId(remaining[0]?.id || "");
-```
 
 }
 
@@ -611,7 +609,6 @@ if (typeof window !== "undefined") window.alert("Keep at least one service recor
 return;
 }
 
-```
 const ok = typeof window === "undefined" ? true : window.confirm("Delete this service note / work order?");
 if (!ok) return;
 
@@ -620,7 +617,6 @@ setServiceHistory(remaining);
 setDocuments((rows) => rows.map((row) => row.serviceId === id ? { ...row, serviceId: "" } : row));
 setCalendar((rows) => rows.map((row) => row.serviceId === id ? { ...row, serviceId: "" } : row));
 setSelectedServiceId(remaining[0]?.id || "");
-```
 
 }
 
@@ -630,7 +626,6 @@ if (typeof window !== "undefined") window.alert("Keep at least one asset.");
 return;
 }
 
-```
 const target = assets.find((row) => row.id === id);
 const ok = typeof window === "undefined" ? true : window.confirm("Delete this asset? Service notes, documents, and calendar items will stay, but they will no longer be linked to this asset.");
 if (!ok) return;
@@ -644,7 +639,6 @@ setSelectedAssetId(remaining[0]?.id || "");
 if (target?.vendorIds?.length) {
   setSelectedVendorId(target.vendorIds[0]);
 }
-```
 
 }
 
@@ -654,7 +648,6 @@ if (typeof window !== "undefined") window.alert("Keep at least one vendor.");
 return;
 }
 
-```
 const ok = typeof window === "undefined" ? true : window.confirm("Delete this vendor? Linked assets will stay, but this vendor will be removed from them.");
 if (!ok) return;
 
@@ -667,7 +660,6 @@ setServiceHistory((rows) => rows.map((row) => row.vendorId === id ? { ...row, ve
 setDocuments((rows) => rows.map((row) => row.vendorId === id ? { ...row, vendorId: "" } : row));
 setCalendar((rows) => rows.map((row) => row.vendorId === id ? { ...row, vendorId: "" } : row));
 setSelectedVendorId(replacementVendorId);
-```
 
 }
 
@@ -741,7 +733,6 @@ vendors.find((row) => assetForRecord.vendorIds.includes(row.id)) ||
 selectedVendor ||
 vendors[0];
 
-```
 const newId = "svc-" + Date.now();
 const next: ServiceHistoryRecord = {
   id: newId,
@@ -767,7 +758,6 @@ function addServiceRecordForVendor(vendorId?: string) {
 const vendorForRecord = vendors.find((row) => row.id === vendorId) || selectedVendor || vendors[0];
 const linkedAsset = assets.find((row) => row.vendorIds.includes(vendorForRecord.id)) || selectedAsset || assets[0];
 
-```
 const newId = "svc-" + Date.now();
 const next: ServiceHistoryRecord = {
   id: newId,
@@ -785,7 +775,6 @@ setSelectedServiceId(newId);
 setSelectedAssetId(linkedAsset.id);
 setSelectedVendorId(vendorForRecord.id);
 setScreen("history");
-```
 
 }
 
@@ -794,7 +783,6 @@ const assetForDoc = assets.find((row) => row.id === patch?.assetId) || selectedA
 const serviceForDoc = serviceHistory.find((row) => row.id === patch?.serviceId);
 const vendorForDoc = vendors.find((row) => row.id === patch?.vendorId) || selectedVendor || vendors[0];
 
-```
 const newId = "doc-" + Date.now();
 const next: DocumentRecord = {
   id: newId,
@@ -820,7 +808,6 @@ if (next.locationId) setSelectedLocationId(next.locationId);
 if (next.serviceId) setSelectedServiceId(next.serviceId);
 setDocumentSearch("");
 setScreen("documents");
-```
 
 }
 
@@ -892,7 +879,6 @@ setDocumentSearch("");
 function askAtlas() {
 const q = assistantQuestion.toLowerCase();
 
-```
 if (q.trim().length === 0) {
   setAssistantAnswer("Type a question first.");
   return;
@@ -919,13 +905,11 @@ if (hits.length === 0) {
 }
 
 setAssistantAnswer(hits.join("\n\n"));
-```
 
 }
 
 return ( <main style={styles.shell}> <aside style={styles.sidebar}> <div style={styles.brandBox}> <div style={styles.logoCircle}>A</div> <div> <div style={styles.brandTitle}>ATLAS</div> <div style={styles.brandSubtitle}>2000 Estate Operations</div> </div> </div>
 
-```
     <nav style={styles.nav}>
       {screens.map((item) => (
         <button
