@@ -1653,7 +1653,7 @@ return ( <div> <Header title="Service History" subtitle="Pick the asset, then ty
     </section>
   </div>
 </div>
-```
+
 
 );
 }
@@ -1804,7 +1804,7 @@ return ( <div> <Header title="Vendors" subtitle="Add vendors, edit contacts, lin
     </section>
   </div>
 </div>
-```
+
 
 );
 }
@@ -1860,7 +1860,7 @@ if (!selectedDocument) return;
 const file = fileList?.[0];
 if (!file) return;
 
-```
+
 if (!file.type.startsWith("image/")) {
   if (typeof window !== "undefined") window.alert("Choose a photo/image file.");
   return;
@@ -1876,13 +1876,11 @@ reader.onload = () => {
   });
 };
 reader.readAsDataURL(file);
-```
 
 }
 
 return ( <div> <Header title="Documents / Photos" subtitle="Upload visible photos, track invoices, manuals, warranties, notes, links, and delete bad records." />
 
-```
   <div style={styles.statGrid}>
     <Stat label="Total Docs" value={documents.length} />
     <Stat label="Photos" value={photoCount} />
@@ -2038,7 +2036,6 @@ return ( <div> <Header title="Documents / Photos" subtitle="Upload visible photo
     </section>
   </div>
 </div>
-```
 
 );
 }
@@ -2125,11 +2122,9 @@ source: "Atlas",
 externalLink: ""
 };
 
-```
 setCalendar([next, ...calendar]);
 setSelectedEventId(newId);
 setSelectedDate(date);
-```
 
 }
 
@@ -2137,11 +2132,9 @@ function deleteCalendarEvent(id: string) {
 const ok = typeof window === "undefined" ? true : window.confirm("Delete this calendar item?");
 if (!ok) return;
 
-```
 const remaining = calendar.filter((row) => row.id !== id);
 setCalendar(remaining);
 setSelectedEventId(remaining.find((row) => row.date === selectedDate)?.id || remaining[0]?.id || "");
-```
 
 }
 
@@ -2154,7 +2147,6 @@ setSelectedEventId(calendar.find((row) => row.date === iso)?.id || "");
 
 return ( <div> <Header title="Full Month Calendar" subtitle="Schedule work, edit/delete calendar items, and attach them to assets, vendors, and service notes. Outlook, Apple, Google, or other calendar links can be tracked here now and synced later with account connections." />
 
-```
   <div style={styles.statGrid}>
     <Stat label="Calendar Items" value={calendar.length} />
     <Stat label="Selected Date" value={selectedDate} />
@@ -2359,8 +2351,6 @@ return ( <div> <Header title="Full Month Calendar" subtitle="Schedule work, edit
     )}
   </section>
 </div>
-```
-
 );
 }
 
@@ -2418,7 +2408,6 @@ return ( <div> <Header title="Blank Canvas" subtitle="Sellable Atlas Estate OS t
     </div>
   </div>
 </div>
-```
 
 );
 }
@@ -2517,7 +2506,6 @@ notes: "Linked areas: Dock, Cobalt, Sea-Doo, Sunstream lift boxes."
 
 return ( <div> <Header title="Procedures" subtitle="Step-by-step operating procedures for recurring work, emergency response, and estate systems." />
 
-```
   <div style={styles.statGrid}>
     <Stat label="Procedures" value={procedures.length} />
     <Stat label="High Priority" value={procedures.filter((item) => item.priority === "High").length} />
@@ -2542,7 +2530,6 @@ return ( <div> <Header title="Procedures" subtitle="Step-by-step operating proce
     ))}
   </div>
 </div>
-```
 
 );
 }
