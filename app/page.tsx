@@ -234,7 +234,7 @@ const vendorSeed: VendorRecord[] = [
   { id: "ultrapure", name: "UltraPure / Paramount UV2", category: "Pool UV / Ozone", notes: "UV-ozone equipment in the pool water treatment chain.", documents: [] },
   { id: "unrivaled", name: "Unrivaled", category: "Pest Control", notes: "Current pest-control vendor. Terminix was canceled.", documents: [] },
   { id: "viessmann", name: "Viessmann", category: "Boilers / DHW", notes: "Vitodens 200 boilers and Vitocell 300-V domestic hot water tanks.", documents: [] },
-].sort((a, b) => a.name.localeCompare(b.name));
+];
 
 const assetSeed: AssetRecord[] = [
   { id: "boiler-1", name: "Boiler B-1", locationId: "mechanical-room", category: "Hydronic Heating", status: "Online", make: "Viessmann", model: "Vitodens 200", serial: "758960502925", notes: "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Nameplate details previously visible: year built 2018, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.", vendorIds: ["viessmann"], documents: [] },
