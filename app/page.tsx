@@ -445,20 +445,29 @@ export default function Page() {
     setScreen("assets");
   }
 
-  function addServiceRecord() {
+  function addServiceRecordForAsset(assetId?: string) {
+    const assetForRecord = assets.find((asset) => asset.id === assetId) || selectedAsset || assets[0];
+    const vendorForRecord =
+      vendors.find((vendor) => assetForRecord.vendorIds.includes(vendor.id)) ||
+      selectedVendor ||
+      vendors[0];
+
     const newId = "svc-" + Date.now();
     const next: ServiceHistoryRecord = {
       id: newId,
       date: todayISO(),
-      assetId: selectedAsset?.id || defaultAssets[0].id,
-      vendorId: selectedVendor?.id || defaultVendors[0].id,
-      title: "New service record",
+      assetId: assetForRecord.id,
+      vendorId: vendorForRecord.id,
+      title: "Service note for " + assetForRecord.name,
       status: "Open",
       cost: "",
-      notes: "Edit this service history item."
+      notes: ""
     };
+
     setServiceHistory((rows) => [next, ...rows]);
     setSelectedServiceId(newId);
+    setSelectedAssetId(assetForRecord.id);
+    setSelectedVendorId(vendorForRecord.id);
     setScreen("history");
   }
 
@@ -537,7 +546,7 @@ export default function Page() {
         </nav>
 
         <button type="button" onClick={addAsset} style={styles.goldButton}>+ New Asset</button>
-        <button type="button" onClick={addServiceRecord} style={styles.goldButton}>+ Service Record</button>
+        <button type="button" onClick={() => addServiceRecordForAsset(selectedAsset.id)} style={styles.goldButton}>+ Service Record</button>
         <button type="button" onClick={resetAllLocalData} style={styles.resetButton}>Reset Local Data</button>
       </aside>
 
@@ -678,6 +687,14 @@ export default function Page() {
                 <h2 style={styles.h2}>{selectedAsset.name}</h2>
                 <p style={styles.kicker}>{selectedAsset.category}</p>
 
+                <button
+                  type="button"
+                  onClick={() => addServiceRecordForAsset(selectedAsset.id)}
+                  style={styles.primaryButton}
+                >
+                  + Add Service Note for This Asset
+                </button>
+
                 <div style={styles.qrRow}>
                   <img src={qrUrl("asset", selectedAsset.id)} alt="Asset QR code" style={styles.qrImage} />
                   <div>
@@ -722,6 +739,14 @@ export default function Page() {
                 ))}
 
                 <h3 style={styles.h3}>Service History</h3>
+                <button
+                  type="button"
+                  onClick={() => addServiceRecordForAsset(selectedAsset.id)}
+                  style={styles.listButton}
+                >
+                  + Add new service comment for {selectedAsset.name}
+                </button>
+
                 {serviceHistory.filter((record) => record.assetId === selectedAsset.id).map((record) => (
                   <button
                     key={record.id}
@@ -746,7 +771,7 @@ export default function Page() {
             vendors={vendors}
             setSelectedServiceId={setSelectedServiceId}
             updateServiceRecord={updateServiceRecord}
-            addServiceRecord={addServiceRecord}
+            addServiceRecordForAsset={addServiceRecordForAsset}
             setSelectedAssetId={setSelectedAssetId}
             setSelectedVendorId={setSelectedVendorId}
             setScreen={setScreen}
@@ -883,7 +908,7 @@ function ServiceHistoryPanel({
   vendors,
   setSelectedServiceId,
   updateServiceRecord,
-  addServiceRecord,
+  addServiceRecordForAsset,
   setSelectedAssetId,
   setSelectedVendorId,
   setScreen
@@ -894,7 +919,7 @@ function ServiceHistoryPanel({
   vendors: VendorRecord[];
   setSelectedServiceId: (id: string) => void;
   updateServiceRecord: (id: string, patch: Partial<ServiceHistoryRecord>) => void;
-  addServiceRecord: () => void;
+  addServiceRecordForAsset: (assetId?: string) => void;
   setSelectedAssetId: (id: string) => void;
   setSelectedVendorId: (id: string) => void;
   setScreen: (screen: Screen) => void;
@@ -908,7 +933,7 @@ function ServiceHistoryPanel({
     <div>
       <Header
         title="Service History"
-        subtitle="Work orders, repairs, maintenance, invoices, vendor visits, notes, and asset history."
+        subtitle="Pick the asset, then type or paste service notes, work orders, vendor updates, invoices, or repair comments."
       />
 
       <div style={styles.statGrid}>
@@ -920,8 +945,26 @@ function ServiceHistoryPanel({
 
       <div style={styles.gridTwo}>
         <section style={styles.card}>
-          <button type="button" onClick={addServiceRecord} style={styles.primaryButton}>+ Add Service Record</button>
+          <h2 style={styles.h2}>Add Service Record</h2>
+          <p style={styles.muted}>
+            Click an asset below to start a new service note already attached to that asset.
+          </p>
 
+          <div style={styles.scrollListSmall}>
+            {assets.map((asset) => (
+              <button
+                key={asset.id}
+                type="button"
+                onClick={() => addServiceRecordForAsset(asset.id)}
+                style={styles.listButton}
+              >
+                + {asset.name}
+                <span style={styles.smallMuted}>{asset.category}</span>
+              </button>
+            ))}
+          </div>
+
+          <h3 style={styles.h3}>Existing Service Records</h3>
           <div style={styles.scrollList}>
             {serviceHistory.map((record) => {
               const asset = assets.find((item) => item.id === record.assetId);
@@ -944,26 +987,26 @@ function ServiceHistoryPanel({
         </section>
 
         <section style={styles.card}>
-          <h2 style={styles.h2}>{selectedService.title}</h2>
-          <p style={styles.kicker}>{selectedService.status}</p>
+          <h2 style={styles.h2}>Service Comment / Work Order</h2>
+          <p style={styles.kicker}>{linkedAsset?.name || "Choose asset"} · {selectedService.status}</p>
 
-          <label style={styles.label}>Date</label>
-          <input value={selectedService.date} onChange={(e) => updateServiceRecord(selectedService.id, { date: e.target.value })} style={styles.input} />
-
-          <label style={styles.label}>Title / Work Performed</label>
-          <input value={selectedService.title} onChange={(e) => updateServiceRecord(selectedService.id, { title: e.target.value })} style={styles.input} />
-
-          <label style={styles.label}>Asset</label>
+          <label style={styles.label}>1. Asset this service belongs to</label>
           <select value={selectedService.assetId} onChange={(e) => updateServiceRecord(selectedService.id, { assetId: e.target.value })} style={styles.input}>
             {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
           </select>
 
-          <label style={styles.label}>Vendor</label>
+          <label style={styles.label}>2. Date</label>
+          <input value={selectedService.date} onChange={(e) => updateServiceRecord(selectedService.id, { date: e.target.value })} style={styles.input} />
+
+          <label style={styles.label}>3. Title / short description</label>
+          <input value={selectedService.title} onChange={(e) => updateServiceRecord(selectedService.id, { title: e.target.value })} style={styles.input} />
+
+          <label style={styles.label}>4. Vendor</label>
           <select value={selectedService.vendorId} onChange={(e) => updateServiceRecord(selectedService.id, { vendorId: e.target.value })} style={styles.input}>
             {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
           </select>
 
-          <label style={styles.label}>Status</label>
+          <label style={styles.label}>5. Status</label>
           <select value={selectedService.status} onChange={(e) => updateServiceRecord(selectedService.id, { status: e.target.value as ServiceStatus })} style={styles.input}>
             <option value="Open">Open</option>
             <option value="Scheduled">Scheduled</option>
@@ -971,11 +1014,16 @@ function ServiceHistoryPanel({
             <option value="Monitor">Monitor</option>
           </select>
 
-          <label style={styles.label}>Cost</label>
+          <label style={styles.label}>6. Cost</label>
           <input value={selectedService.cost || ""} onChange={(e) => updateServiceRecord(selectedService.id, { cost: e.target.value })} placeholder="$0.00" style={styles.input} />
 
-          <label style={styles.label}>Notes</label>
-          <textarea value={selectedService.notes} onChange={(e) => updateServiceRecord(selectedService.id, { notes: e.target.value })} style={styles.textareaLarge} />
+          <label style={styles.label}>7. Comments / paste notes here</label>
+          <textarea
+            value={selectedService.notes}
+            onChange={(e) => updateServiceRecord(selectedService.id, { notes: e.target.value })}
+            placeholder="Paste invoice notes, vendor text, work performed, parts used, photos to attach later, next steps, or anything important..."
+            style={styles.textareaHuge}
+          />
 
           <div style={styles.gridTwo}>
             <button
@@ -988,7 +1036,7 @@ function ServiceHistoryPanel({
               }}
               style={styles.listButton}
             >
-              <strong>Linked Asset</strong>
+              <strong>Open Linked Asset</strong>
               <span style={styles.smallMuted}>{linkedAsset?.name || "No linked asset"}</span>
             </button>
 
@@ -1002,7 +1050,7 @@ function ServiceHistoryPanel({
               }}
               style={styles.listButton}
             >
-              <strong>Linked Vendor</strong>
+              <strong>Open Linked Vendor</strong>
               <span style={styles.smallMuted}>{linkedVendor?.name || "No linked vendor"}</span>
             </button>
           </div>
@@ -1435,6 +1483,12 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "auto",
     paddingRight: 4
   },
+  scrollListSmall: {
+    maxHeight: 280,
+    overflow: "auto",
+    paddingRight: 4,
+    marginBottom: 16
+  },
   input: {
     width: "100%",
     border: "1px solid #d0d5dd",
@@ -1457,6 +1511,15 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     padding: 12,
     marginBottom: 10
+  },
+  textareaHuge: {
+    width: "100%",
+    minHeight: 260,
+    border: "1px solid #d0d5dd",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    lineHeight: 1.5
   },
   label: {
     display: "block",
@@ -1508,3 +1571,4 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5
   }
 };
+```
