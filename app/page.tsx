@@ -1,3 +1,12 @@
+Replace only:
+
+```text
+app/page.tsx
+```
+
+Click the **copy/double-square button** on this code box, then paste it into GitHub.
+
+```tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -7,6 +16,7 @@ type Screen =
   | "map"
   | "locations"
   | "assets"
+  | "history"
   | "vendors"
   | "calendar"
   | "weather"
@@ -15,6 +25,7 @@ type Screen =
   | "procedures";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
+type ServiceStatus = "Open" | "Scheduled" | "Completed" | "Monitor";
 
 type LocationRecord = {
   id: string;
@@ -61,17 +72,30 @@ type CalendarEvent = {
   notes: string;
 };
 
+type ServiceHistoryRecord = {
+  id: string;
+  date: string;
+  assetId: string;
+  vendorId: string;
+  title: string;
+  status: ServiceStatus;
+  cost?: string;
+  notes: string;
+};
+
 const STORE_ASSETS = "atlas_2000_assets_safe_v1";
 const STORE_LOCATIONS = "atlas_2000_locations_safe_v1";
 const STORE_VENDORS = "atlas_2000_vendors_safe_v1";
 const STORE_LABELS = "atlas_2000_labels_safe_v1";
 const STORE_CALENDAR = "atlas_2000_calendar_safe_v1";
+const STORE_SERVICE_HISTORY = "atlas_2000_service_history_safe_v1";
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "map", label: "Map" },
   { id: "locations", label: "Locations" },
   { id: "assets", label: "Assets" },
+  { id: "history", label: "Service History" },
   { id: "vendors", label: "Vendors" },
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
@@ -254,6 +278,69 @@ const defaultCalendar: CalendarEvent[] = [
   { id: "cal-pool", date: todayISO(), title: "Pool chemistry and equipment check", notes: "Record readings and inspect equipment." }
 ];
 
+const defaultServiceHistory: ServiceHistoryRecord[] = [
+  {
+    id: "svc-penthouse-176396",
+    date: "2026-06-16",
+    assetId: "blinds-lutron",
+    vendorId: "penthouse-drapery",
+    title: "Motorized roller shade repair / invoice 176396",
+    status: "Completed",
+    cost: "",
+    notes: "Penthouse Drapery invoice 176396 dated 06/16/2026. Link this service history to Blinds Lutron."
+  },
+  {
+    id: "svc-boiler-b2-new",
+    date: "2026-07-02",
+    assetId: "boiler-b-2-new",
+    vendorId: "psf-mechanical",
+    title: "Boiler B-2 New record created from nameplate details",
+    status: "Monitor",
+    cost: "",
+    notes: "Viessmann Vitodens 200. Serial 758960507593. Year built 2025. Track future PSF Mechanical work here."
+  },
+  {
+    id: "svc-pool-backwash",
+    date: todayISO(),
+    assetId: "pool",
+    vendorId: "aqua-quip",
+    title: "Pool backwash / chemistry check",
+    status: "Open",
+    cost: "",
+    notes: "Use Procedures screen for backwash steps. Record pressure before/after and any abnormal flow."
+  },
+  {
+    id: "svc-hot-tub-check",
+    date: todayISO(),
+    assetId: "hottub",
+    vendorId: "krisco-pool-spas",
+    title: "Sundance hot tub water and filter check",
+    status: "Scheduled",
+    cost: "",
+    notes: "Check water level, temperature, filter condition, visible leaks, and any display alerts."
+  },
+  {
+    id: "svc-seadoo-service",
+    date: todayISO(),
+    assetId: "craft-seadoo-2024",
+    vendorId: "seadoo-service",
+    title: "Sea-Doo service / repair tracking",
+    status: "Monitor",
+    cost: "",
+    notes: "Use this record to track Sea-Doo service, crash-related repair notes, photos, parts, and vendor updates."
+  },
+  {
+    id: "svc-dock-lift-check",
+    date: todayISO(),
+    assetId: "craft-cobalt-r-7",
+    vendorId: "sunstream",
+    title: "Dock lift box visual check",
+    status: "Open",
+    cost: "",
+    notes: "Check Sunstream lift boxes, solar panels, batteries, controls, and Cobalt lift area."
+  }
+];
+
 function loadData<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
@@ -282,12 +369,14 @@ export default function Page() {
   const [vendors, setVendors] = useState<VendorRecord[]>(defaultVendors);
   const [labels, setLabels] = useState<MapLabel[]>(defaultLabels);
   const [calendar, setCalendar] = useState<CalendarEvent[]>(defaultCalendar);
+  const [serviceHistory, setServiceHistory] = useState<ServiceHistoryRecord[]>(defaultServiceHistory);
   const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
   const [selectedLocationId, setSelectedLocationId] = useState("courtyard");
   const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
+  const [selectedServiceId, setSelectedServiceId] = useState(defaultServiceHistory[0].id);
   const [assetSearch, setAssetSearch] = useState("");
   const [assistantQuestion, setAssistantQuestion] = useState("");
-  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about an asset, location, vendor, boiler, HVAC unit, pool, spa, vehicle, aircraft, or procedure.");
+  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about an asset, location, vendor, boiler, HVAC unit, pool, spa, vehicle, aircraft, procedure, or service history.");
   const [weather, setWeather] = useState("Loading weather...");
   const [loaded, setLoaded] = useState(false);
 
@@ -297,6 +386,7 @@ export default function Page() {
     setVendors(loadData(STORE_VENDORS, defaultVendors));
     setLabels(loadData(STORE_LABELS, defaultLabels));
     setCalendar(loadData(STORE_CALENDAR, defaultCalendar));
+    setServiceHistory(loadData(STORE_SERVICE_HISTORY, defaultServiceHistory));
     setLoaded(true);
   }, []);
 
@@ -305,6 +395,7 @@ export default function Page() {
   useEffect(() => { if (loaded) saveData(STORE_VENDORS, vendors); }, [loaded, vendors]);
   useEffect(() => { if (loaded) saveData(STORE_LABELS, labels); }, [loaded, labels]);
   useEffect(() => { if (loaded) saveData(STORE_CALENDAR, calendar); }, [loaded, calendar]);
+  useEffect(() => { if (loaded) saveData(STORE_SERVICE_HISTORY, serviceHistory); }, [loaded, serviceHistory]);
 
   useEffect(() => {
     fetch("https://api.open-meteo.com/v1/forecast?latitude=47.57&longitude=-122.22&current=temperature_2m,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto")
@@ -321,6 +412,7 @@ export default function Page() {
   const selectedAsset = assets.find((item) => item.id === selectedAssetId) || assets[0];
   const selectedLocation = locations.find((item) => item.id === selectedLocationId) || locations[0];
   const selectedVendor = vendors.find((item) => item.id === selectedVendorId) || vendors[0];
+  const selectedService = serviceHistory.find((item) => item.id === selectedServiceId) || serviceHistory[0] || defaultServiceHistory[0];
 
   const filteredAssets = useMemo(() => {
     const q = assetSearch.toLowerCase();
@@ -342,6 +434,10 @@ export default function Page() {
     setVendors((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
   }
 
+  function updateServiceRecord(id: string, patch: Partial<ServiceHistoryRecord>) {
+    setServiceHistory((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  }
+
   function addAsset() {
     const newId = "asset-" + Date.now();
     const next: AssetRecord = {
@@ -356,6 +452,23 @@ export default function Page() {
     setAssets((rows) => [next, ...rows]);
     setSelectedAssetId(newId);
     setScreen("assets");
+  }
+
+  function addServiceRecord() {
+    const newId = "svc-" + Date.now();
+    const next: ServiceHistoryRecord = {
+      id: newId,
+      date: todayISO(),
+      assetId: selectedAsset?.id || defaultAssets[0].id,
+      vendorId: selectedVendor?.id || defaultVendors[0].id,
+      title: "New service record",
+      status: "Open",
+      cost: "",
+      notes: "Edit this service history item."
+    };
+    setServiceHistory((rows) => [next, ...rows]);
+    setSelectedServiceId(newId);
+    setScreen("history");
   }
 
   function addCalendarEvent() {
@@ -374,9 +487,11 @@ export default function Page() {
     setVendors(defaultVendors);
     setLabels(defaultLabels);
     setCalendar(defaultCalendar);
+    setServiceHistory(defaultServiceHistory);
     setSelectedAssetId(defaultAssets[0].id);
     setSelectedLocationId("courtyard");
     setSelectedVendorId(defaultVendors[0].id);
+    setSelectedServiceId(defaultServiceHistory[0].id);
   }
 
   function askAtlas() {
@@ -390,12 +505,13 @@ export default function Page() {
     assets.forEach((item) => allLines.push("Asset: " + item.name + ". " + item.category + ". " + item.notes));
     locations.forEach((item) => allLines.push("Location: " + item.name + ". " + item.type + ". " + item.notes));
     vendors.forEach((item) => allLines.push("Vendor: " + item.name + ". " + item.category + ". " + item.notes));
+    serviceHistory.forEach((item) => allLines.push("Service History: " + item.title + ". " + item.date + ". " + item.status + ". " + item.notes));
 
     const words = q.split(" ").filter((word) => word.length > 2);
     const hits = allLines.filter((line) => {
       const low = line.toLowerCase();
       return words.some((word) => low.includes(word));
-    }).slice(0, 10);
+    }).slice(0, 12);
 
     if (hits.length === 0) {
       setAssistantAnswer("I did not find that in the local Atlas records yet.");
@@ -430,6 +546,7 @@ export default function Page() {
         </nav>
 
         <button type="button" onClick={addAsset} style={styles.goldButton}>+ New Asset</button>
+        <button type="button" onClick={addServiceRecord} style={styles.goldButton}>+ Service Record</button>
         <button type="button" onClick={resetAllLocalData} style={styles.resetButton}>Reset Local Data</button>
       </aside>
 
@@ -441,13 +558,13 @@ export default function Page() {
               <Stat label="Locations" value={locations.length} />
               <Stat label="Assets" value={assets.length} />
               <Stat label="Vendors" value={vendors.length} />
-              <Stat label="Weather" value={weather} />
+              <Stat label="Service Records" value={serviceHistory.length} />
             </div>
 
             <div style={styles.gridTwo}>
               <section style={styles.card}>
                 <h2 style={styles.h2}>Property Map</h2>
-                <p style={styles.muted}>Locked original map image with editable overlay labels.</p>
+                <p style={styles.muted}>Locked original map image with clickable overlay labels.</p>
                 <button type="button" onClick={() => setScreen("map")} style={styles.primaryButton}>Open Map</button>
                 <div style={styles.mapPreview}>
                   <img src="/atlas-property-map.png" alt="Atlas property map" style={styles.mapImage} />
@@ -460,6 +577,7 @@ export default function Page() {
                 <QuickRecord label="Pool Dehumidifier" onClick={() => { setSelectedAssetId("pool-dehumidifier"); setScreen("assets"); }} />
                 <QuickRecord label="Hottub Sundance" onClick={() => { setSelectedAssetId("hottub"); setScreen("assets"); }} />
                 <QuickRecord label="Craft-SeaDoo 2024" onClick={() => { setSelectedAssetId("craft-seadoo-2024"); setScreen("assets"); }} />
+                <QuickRecord label="Open Service History" onClick={() => setScreen("history")} />
               </section>
             </div>
           </div>
@@ -546,7 +664,7 @@ export default function Page() {
 
         {screen === "assets" && (
           <div>
-            <Header title="Assets" subtitle="Equipment, systems, vehicles, aircraft, appliances, and linked vendors." />
+            <Header title="Assets" subtitle="Equipment, systems, vehicles, aircraft, appliances, linked vendors, and service history." />
             <div style={styles.gridTwo}>
               <section style={styles.card}>
                 <input value={assetSearch} onChange={(e) => setAssetSearch(e.target.value)} placeholder="Search assets..." style={styles.input} />
@@ -611,14 +729,42 @@ export default function Page() {
                     {vendor.name}
                   </button>
                 ))}
+
+                <h3 style={styles.h3}>Service History</h3>
+                {serviceHistory.filter((record) => record.assetId === selectedAsset.id).map((record) => (
+                  <button
+                    key={record.id}
+                    type="button"
+                    onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }}
+                    style={styles.listButton}
+                  >
+                    <strong>{record.title}</strong>
+                    <span style={styles.smallMuted}>{record.date} · {record.status}</span>
+                  </button>
+                ))}
               </section>
             </div>
           </div>
         )}
 
+        {screen === "history" && (
+          <ServiceHistoryPanel
+            serviceHistory={serviceHistory}
+            selectedService={selectedService}
+            assets={assets}
+            vendors={vendors}
+            setSelectedServiceId={setSelectedServiceId}
+            updateServiceRecord={updateServiceRecord}
+            addServiceRecord={addServiceRecord}
+            setSelectedAssetId={setSelectedAssetId}
+            setSelectedVendorId={setSelectedVendorId}
+            setScreen={setScreen}
+          />
+        )}
+
         {screen === "vendors" && (
           <div>
-            <Header title="Vendors" subtitle="Vendor directory linked to asset records." />
+            <Header title="Vendors" subtitle="Vendor directory linked to asset records and service history." />
             <div style={styles.gridTwo}>
               <section style={styles.card}>
                 {vendors.map((vendor) => (
@@ -655,6 +801,14 @@ export default function Page() {
                     {asset.name}
                   </button>
                 ))}
+
+                <h3 style={styles.h3}>Service History</h3>
+                {serviceHistory.filter((record) => record.vendorId === selectedVendor.id).map((record) => (
+                  <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={styles.listButton}>
+                    {record.title}
+                    <span style={styles.smallMuted}>{record.date} · {record.status}</span>
+                  </button>
+                ))}
               </section>
             </div>
           </div>
@@ -688,9 +842,9 @@ export default function Page() {
 
         {screen === "assistant" && (
           <div>
-            <Header title="AI Assistant" subtitle="Local Atlas search across saved records." />
+            <Header title="AI Assistant" subtitle="Local Atlas search across saved records, including service history." />
             <section style={styles.card}>
-              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, locations..." style={styles.textareaLarge} />
+              <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, service history, locations..." style={styles.textareaLarge} />
               <button type="button" onClick={askAtlas} style={styles.primaryButton}>Ask Atlas</button>
               <pre style={styles.answerBox}>{assistantAnswer}</pre>
             </section>
@@ -714,7 +868,7 @@ function Header({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+function Stat({ label, value }: { label: string | number; value: string | number }) {
   return (
     <div style={styles.stat}>
       <span style={styles.smallMuted}>{label}</span>
@@ -731,74 +885,171 @@ function QuickRecord({ label, onClick }: { label: string; onClick: () => void })
   );
 }
 
+function ServiceHistoryPanel({
+  serviceHistory,
+  selectedService,
+  assets,
+  vendors,
+  setSelectedServiceId,
+  updateServiceRecord,
+  addServiceRecord,
+  setSelectedAssetId,
+  setSelectedVendorId,
+  setScreen
+}: {
+  serviceHistory: ServiceHistoryRecord[];
+  selectedService: ServiceHistoryRecord;
+  assets: AssetRecord[];
+  vendors: VendorRecord[];
+  setSelectedServiceId: (id: string) => void;
+  updateServiceRecord: (id: string, patch: Partial<ServiceHistoryRecord>) => void;
+  addServiceRecord: () => void;
+  setSelectedAssetId: (id: string) => void;
+  setSelectedVendorId: (id: string) => void;
+  setScreen: (screen: Screen) => void;
+}) {
+  const linkedAsset = assets.find((asset) => asset.id === selectedService.assetId);
+  const linkedVendor = vendors.find((vendor) => vendor.id === selectedService.vendorId);
+  const activeCount = serviceHistory.filter((record) => record.status !== "Completed").length;
+  const completedCount = serviceHistory.filter((record) => record.status === "Completed").length;
+
+  return (
+    <div>
+      <Header
+        title="Service History"
+        subtitle="Work orders, repairs, maintenance, invoices, vendor visits, notes, and asset history."
+      />
+
+      <div style={styles.statGrid}>
+        <Stat label="Total Records" value={serviceHistory.length} />
+        <Stat label="Active" value={activeCount} />
+        <Stat label="Completed" value={completedCount} />
+        <Stat label="Current" value={selectedService.status} />
+      </div>
+
+      <div style={styles.gridTwo}>
+        <section style={styles.card}>
+          <button type="button" onClick={addServiceRecord} style={styles.primaryButton}>+ Add Service Record</button>
+
+          <div style={styles.scrollList}>
+            {serviceHistory.map((record) => {
+              const asset = assets.find((item) => item.id === record.assetId);
+              const vendor = vendors.find((item) => item.id === record.vendorId);
+
+              return (
+                <button
+                  key={record.id}
+                  type="button"
+                  onClick={() => setSelectedServiceId(record.id)}
+                  style={record.id === selectedService.id ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}
+                >
+                  <strong>{record.title}</strong>
+                  <span style={styles.smallMuted}>{record.date} · {record.status}</span>
+                  <span style={styles.smallMuted}>{asset?.name || "Unknown asset"} · {vendor?.name || "Unknown vendor"}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <h2 style={styles.h2}>{selectedService.title}</h2>
+          <p style={styles.kicker}>{selectedService.status}</p>
+
+          <label style={styles.label}>Date</label>
+          <input value={selectedService.date} onChange={(e) => updateServiceRecord(selectedService.id, { date: e.target.value })} style={styles.input} />
+
+          <label style={styles.label}>Title / Work Performed</label>
+          <input value={selectedService.title} onChange={(e) => updateServiceRecord(selectedService.id, { title: e.target.value })} style={styles.input} />
+
+          <label style={styles.label}>Asset</label>
+          <select value={selectedService.assetId} onChange={(e) => updateServiceRecord(selectedService.id, { assetId: e.target.value })} style={styles.input}>
+            {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+          </select>
+
+          <label style={styles.label}>Vendor</label>
+          <select value={selectedService.vendorId} onChange={(e) => updateServiceRecord(selectedService.id, { vendorId: e.target.value })} style={styles.input}>
+            {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+          </select>
+
+          <label style={styles.label}>Status</label>
+          <select value={selectedService.status} onChange={(e) => updateServiceRecord(selectedService.id, { status: e.target.value as ServiceStatus })} style={styles.input}>
+            <option value="Open">Open</option>
+            <option value="Scheduled">Scheduled</option>
+            <option value="Completed">Completed</option>
+            <option value="Monitor">Monitor</option>
+          </select>
+
+          <label style={styles.label}>Cost</label>
+          <input value={selectedService.cost || ""} onChange={(e) => updateServiceRecord(selectedService.id, { cost: e.target.value })} placeholder="$0.00" style={styles.input} />
+
+          <label style={styles.label}>Notes</label>
+          <textarea value={selectedService.notes} onChange={(e) => updateServiceRecord(selectedService.id, { notes: e.target.value })} style={styles.textareaLarge} />
+
+          <div style={styles.gridTwo}>
+            <button
+              type="button"
+              onClick={() => {
+                if (linkedAsset) {
+                  setSelectedAssetId(linkedAsset.id);
+                  setScreen("assets");
+                }
+              }}
+              style={styles.listButton}
+            >
+              <strong>Linked Asset</strong>
+              <span style={styles.smallMuted}>{linkedAsset?.name || "No linked asset"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (linkedVendor) {
+                  setSelectedVendorId(linkedVendor.id);
+                  setScreen("vendors");
+                }
+              }}
+              style={styles.listButton}
+            >
+              <strong>Linked Vendor</strong>
+              <span style={styles.smallMuted}>{linkedVendor?.name || "No linked vendor"}</span>
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function BlankCanvasPanel() {
   const templateSections = [
-    {
-      title: "Main House",
-      note: "Generic main residence record for rooms, systems, appliances, procedures, and owner-facing notes."
-    },
-    {
-      title: "Guest House / ADU",
-      note: "Reusable guest house or ADU location structure with assets, vendors, and service history."
-    },
-    {
-      title: "Garage",
-      note: "Garage doors, vehicles, tools, chargers, storage, equipment, and service records."
-    },
-    {
-      title: "Mechanical Room",
-      note: "Boilers, water heaters, pumps, HVAC equipment, valves, shutoffs, photos, and reset procedures."
-    },
-    {
-      title: "Pool / Spa",
-      note: "Pool equipment, spa equipment, chemical checks, backwash procedure, seasonal opening/closing, and vendors."
-    },
-    {
-      title: "Dock / Waterfront",
-      note: "Boat lifts, watercraft, dock utilities, lift boxes, seasonal procedures, and waterfront safety notes."
-    },
-    {
-      title: "Grounds",
-      note: "Lawns, irrigation, gardens, sport court, exterior lighting, fences, and recurring grounds tasks."
-    },
-    {
-      title: "Emergency",
-      note: "Main water shutoff, gas shutoff, electrical panels, generator, leak response, alarm response, and emergency vendors."
-    }
+    { title: "Main House", note: "Generic main residence record for rooms, systems, appliances, procedures, and owner-facing notes." },
+    { title: "Guest House / ADU", note: "Reusable guest house or ADU location structure with assets, vendors, and service history." },
+    { title: "Garage", note: "Garage doors, vehicles, tools, chargers, storage, equipment, and service records." },
+    { title: "Mechanical Room", note: "Boilers, water heaters, pumps, HVAC equipment, valves, shutoffs, photos, and reset procedures." },
+    { title: "Pool / Spa", note: "Pool equipment, spa equipment, chemical checks, backwash procedure, seasonal opening/closing, and vendors." },
+    { title: "Dock / Waterfront", note: "Boat lifts, watercraft, dock utilities, lift boxes, seasonal procedures, and waterfront safety notes." },
+    { title: "Grounds", note: "Lawns, irrigation, gardens, sport court, exterior lighting, fences, and recurring grounds tasks." },
+    { title: "Emergency", note: "Main water shutoff, gas shutoff, electrical panels, generator, leak response, alarm response, and emergency vendors." }
   ];
 
   const productRules = [
     "No 2000-specific address, family, owner, password, access-code, or private invoice information.",
     "Use sample/demo data only.",
-    "Keep the same Atlas structure: locations, assets, vendors, calendar, map, weather, and AI Assistant.",
+    "Keep the same Atlas structure: locations, assets, vendors, calendar, map, weather, AI Assistant, procedures, and service history.",
     "Turn real 2000 lessons into reusable templates for future estates.",
     "Build this as the sellable Atlas Estate OS starting point."
   ];
 
   const setupPackages = [
-    {
-      name: "Starter Template",
-      price: "$2,500–$7,500",
-      note: "Blank Atlas setup with basic locations, asset categories, vendors, and procedure templates."
-    },
-    {
-      name: "Private Estate Setup",
-      price: "$7,500–$25,000",
-      note: "Walkthrough, asset inventory, vendor directory, maps, procedures, photos, and emergency records."
-    },
-    {
-      name: "White-Glove Buildout",
-      price: "$25,000–$50,000+",
-      note: "Full private estate operating system with ongoing updates, service history, and support."
-    }
+    { name: "Starter Template", price: "$2,500–$7,500", note: "Blank Atlas setup with basic locations, asset categories, vendors, and procedure templates." },
+    { name: "Private Estate Setup", price: "$7,500–$25,000", note: "Walkthrough, asset inventory, vendor directory, maps, procedures, photos, and emergency records." },
+    { name: "White-Glove Buildout", price: "$25,000–$50,000+", note: "Full private estate operating system with ongoing updates, service history, and support." }
   ];
 
   return (
     <div>
-      <Header
-        title="Blank Canvas"
-        subtitle="Sellable Atlas Estate OS template with no private 2000 property information."
-      />
+      <Header title="Blank Canvas" subtitle="Sellable Atlas Estate OS template with no private 2000 property information." />
 
       <div style={styles.statGrid}>
         <Stat label="Version" value="v1" />
@@ -811,10 +1062,7 @@ function BlankCanvasPanel() {
         <section style={styles.card}>
           <h2 style={styles.h2}>Blank Canvas Purpose</h2>
           <p style={styles.muted}>
-            This section is the clean reusable version of Atlas. It keeps the
-            same structure as the 2000 system, but removes all private property
-            details. This is the version that can eventually become the demo,
-            sales template, and starting point for new customers.
+            This section is the clean reusable version of Atlas. It keeps the same structure as the 2000 system, but removes all private property details.
           </p>
 
           <h3 style={styles.h3}>Rules</h3>
@@ -829,15 +1077,12 @@ function BlankCanvasPanel() {
           <h2 style={styles.h2}>Sales Positioning</h2>
           <p style={styles.kicker}>Atlas Private Estate OS</p>
           <p style={styles.muted}>
-            For homes too complex to manage from memory. Atlas turns a private
-            property into a searchable operating system for owners, estate
-            managers, maintenance staff, vendors, and future employees.
+            For homes too complex to manage from memory. Atlas turns a private property into a searchable operating system for owners, estate managers, staff, vendors, and future employees.
           </p>
 
           <h3 style={styles.h3}>Core Promise</h3>
           <div style={styles.answerBox}>
-            Assets + Locations + Vendors + Procedures + Maps + Calendar +
-            Service History + Ask Atlas
+            Assets + Locations + Vendors + Procedures + Maps + Calendar + Service History + Ask Atlas
           </div>
         </section>
       </div>
@@ -888,7 +1133,7 @@ function ProceduresPanel() {
         "Turn the pump back on and confirm normal pressure and flow.",
         "Record the date, pressure before/after, and any issues."
       ],
-      notes: "Use this as the starter procedure. Confirm the exact valve positions against the actual pool equipment labels before relying on it as final."
+      notes: "Confirm exact valve positions against the actual pool equipment labels before relying on this as final."
     },
     {
       title: "Spa / Hot Tub Check",
@@ -964,10 +1209,7 @@ function ProceduresPanel() {
 
   return (
     <div>
-      <Header
-        title="Procedures"
-        subtitle="Step-by-step operating procedures for recurring work, emergency response, and estate systems."
-      />
+      <Header title="Procedures" subtitle="Step-by-step operating procedures for recurring work, emergency response, and estate systems." />
 
       <div style={styles.statGrid}>
         <Stat label="Procedures" value={procedures.length} />
@@ -1275,3 +1517,4 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5
   }
 };
+```
