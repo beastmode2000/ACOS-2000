@@ -1,12 +1,3 @@
-Replace only:
-
-```text
-app/page.tsx
-```
-
-Click the **copy/double-square button** on this code box, then paste it into GitHub.
-
-```tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
