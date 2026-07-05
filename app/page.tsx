@@ -92,6 +92,16 @@ type CalendarItem = {
   status: ServiceStatus;
 };
 
+type SearchResult = {
+  id: string;
+  type: "Location" | "Asset" | "Vendor" | "Service" | "Document" | "Procedure";
+  title: string;
+  subtitle: string;
+  detail: string;
+  screen: Screen;
+  assetId?: string;
+};
+
 const colors = {
   navy: "#0B1E33",
   navy2: "#102A44",
@@ -1777,9 +1787,9 @@ export default function AtlasPage() {
 
   useEffect(() => {
     try {
-      const savedService = window.localStorage.getItem("atlas-service-records-v3");
-      const savedPhotos = window.localStorage.getItem("atlas-photo-records-v3");
-      const savedCalendar = window.localStorage.getItem("atlas-calendar-v3");
+      const savedService = window.localStorage.getItem("atlas-service-records-v4");
+      const savedPhotos = window.localStorage.getItem("atlas-photo-records-v4");
+      const savedCalendar = window.localStorage.getItem("atlas-calendar-v4");
 
       if (savedService) setServiceRecords(JSON.parse(savedService) as ServiceRecord[]);
       if (savedPhotos) setPhotos(JSON.parse(savedPhotos) as PhotoRecord[]);
@@ -1793,17 +1803,17 @@ export default function AtlasPage() {
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-service-records-v3", JSON.stringify(serviceRecords));
+    window.localStorage.setItem("atlas-service-records-v4", JSON.stringify(serviceRecords));
   }, [ready, serviceRecords]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-photo-records-v3", JSON.stringify(photos));
+    window.localStorage.setItem("atlas-photo-records-v4", JSON.stringify(photos));
   }, [ready, photos]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-calendar-v3", JSON.stringify(calendarItems));
+    window.localStorage.setItem("atlas-calendar-v4", JSON.stringify(calendarItems));
   }, [ready, calendarItems]);
 
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? assets[0];
@@ -1898,6 +1908,74 @@ export default function AtlasPage() {
     );
   }, [q]);
 
+  const searchResults = useMemo<SearchResult[]>(() => {
+    if (!q) return [];
+
+    const results: SearchResult[] = [
+      ...filteredLocations.map((location) => ({
+        id: `location-${location.id}`,
+        type: "Location" as const,
+        title: location.name,
+        subtitle: `${location.zone} · ${location.type}`,
+        detail: location.notes,
+        screen: "locations" as const,
+      })),
+      ...filteredAssets.map((asset) => ({
+        id: `asset-${asset.id}`,
+        type: "Asset" as const,
+        title: asset.name,
+        subtitle: `${getLocationName(asset.locationId)} · ${asset.category}`,
+        detail: asset.notes,
+        screen: "assets" as const,
+        assetId: asset.id,
+      })),
+      ...filteredVendors.map((vendor) => ({
+        id: `vendor-${vendor.id}`,
+        type: "Vendor" as const,
+        title: vendor.name,
+        subtitle: vendor.category,
+        detail: vendor.notes,
+        screen: "vendors" as const,
+      })),
+      ...filteredServices.map((record) => ({
+        id: `service-${record.id}`,
+        type: "Service" as const,
+        title: record.title,
+        subtitle: `${formatDate(record.date)} · ${getAssetName(record.assetId)} · ${getVendorName(record.vendorId)}`,
+        detail: record.notes,
+        screen: "history" as const,
+        assetId: record.assetId,
+      })),
+      ...filteredDocuments.map((document) => ({
+        id: `document-${document.id}`,
+        type: "Document" as const,
+        title: document.title,
+        subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${getAssetName(document.linkedAssetId)}` : ""}`,
+        detail: document.notes,
+        screen: "documents" as const,
+        assetId: document.linkedAssetId,
+      })),
+      ...filteredProcedures.map((procedure) => ({
+        id: `procedure-${procedure.id}`,
+        type: "Procedure" as const,
+        title: procedure.title,
+        subtitle: `${procedure.area} · ${procedure.priority}`,
+        detail: procedure.steps.join(" "),
+        screen: "procedures" as const,
+      })),
+    ];
+
+    return results.slice(0, 12);
+  }, [
+    q,
+    filteredLocations,
+    filteredAssets,
+    filteredVendors,
+    filteredServices,
+    filteredDocuments,
+    filteredProcedures,
+  ]);
+
   const openServiceCount = serviceRecords.filter(
     (record) => record.status === "Open" || record.status === "Monitor"
   ).length;
@@ -1958,6 +2036,14 @@ export default function AtlasPage() {
     });
 
     event.target.value = "";
+  }
+
+  function openSearchResult(result: SearchResult) {
+    if (result.assetId) {
+      setSelectedAssetId(result.assetId);
+    }
+
+    setScreen(result.screen);
   }
 
   function askAtlas(question: string) {
@@ -2064,6 +2150,108 @@ export default function AtlasPage() {
         .slice(0, 5)
         .map((item) => `${item.type}: ${item.title}\n${item.detail}`)
         .join("\n\n")
+    );
+  }
+
+  function renderGlobalSearchResults() {
+    if (!q) return null;
+
+    return (
+      <SectionShell
+        eyebrow="Global Search"
+        title={`Results for "${query.trim()}"`}
+        right={
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            style={{
+              border: "none",
+              background: colors.navy,
+              color: "white",
+              borderRadius: 12,
+              padding: "9px 12px",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            Clear Search
+          </button>
+        }
+      >
+        {searchResults.length ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+            {searchResults.map((result) => (
+              <button
+                key={result.id}
+                type="button"
+                onClick={() => openSearchResult(result)}
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  background: "#FBFCFE",
+                  borderRadius: 16,
+                  padding: 14,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>
+                      {result.type}
+                    </div>
+                    <div style={{ color: colors.navy, fontWeight: 950, fontSize: 16, marginTop: 4 }}>
+                      {result.title}
+                    </div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
+                      {result.subtitle}
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      background: "white",
+                      color: colors.navy,
+                      borderRadius: 999,
+                      padding: "5px 9px",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Open
+                  </span>
+                </div>
+                <p
+                  style={{
+                    color: colors.text,
+                    fontSize: 13,
+                    lineHeight: 1.45,
+                    margin: "10px 0 0",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {result.detail}
+                </p>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div
+            style={{
+              border: `1px solid ${colors.line}`,
+              background: "#FBFCFE",
+              borderRadius: 16,
+              padding: 16,
+              color: colors.muted,
+            }}
+          >
+            No matching Atlas records found yet.
+          </div>
+        )}
+      </SectionShell>
     );
   }
 
@@ -3039,27 +3227,30 @@ export default function AtlasPage() {
         </header>
 
         {query ? (
-          <div style={{ marginBottom: 18, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
-            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
-              <strong style={{ color: colors.navy }}>{filteredLocations.length}</strong>
-              <span style={{ color: colors.muted }}> locations</span>
+          <div style={{ display: "grid", gap: 18, marginBottom: 18 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
+              <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
+                <strong style={{ color: colors.navy }}>{filteredLocations.length}</strong>
+                <span style={{ color: colors.muted }}> locations</span>
+              </div>
+              <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
+                <strong style={{ color: colors.navy }}>{filteredAssets.length}</strong>
+                <span style={{ color: colors.muted }}> assets</span>
+              </div>
+              <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
+                <strong style={{ color: colors.navy }}>{filteredVendors.length}</strong>
+                <span style={{ color: colors.muted }}> vendors</span>
+              </div>
+              <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
+                <strong style={{ color: colors.navy }}>{filteredServices.length}</strong>
+                <span style={{ color: colors.muted }}> service</span>
+              </div>
+              <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
+                <strong style={{ color: colors.navy }}>{filteredDocuments.length}</strong>
+                <span style={{ color: colors.muted }}> docs</span>
+              </div>
             </div>
-            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
-              <strong style={{ color: colors.navy }}>{filteredAssets.length}</strong>
-              <span style={{ color: colors.muted }}> assets</span>
-            </div>
-            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
-              <strong style={{ color: colors.navy }}>{filteredVendors.length}</strong>
-              <span style={{ color: colors.muted }}> vendors</span>
-            </div>
-            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
-              <strong style={{ color: colors.navy }}>{filteredServices.length}</strong>
-              <span style={{ color: colors.muted }}> service</span>
-            </div>
-            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
-              <strong style={{ color: colors.navy }}>{filteredDocuments.length}</strong>
-              <span style={{ color: colors.muted }}> docs</span>
-            </div>
+            {renderGlobalSearchResults()}
           </div>
         ) : null}
 
