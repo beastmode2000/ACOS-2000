@@ -630,7 +630,6 @@ vendors.find((vendor) => assetForRecord.vendorIds.includes(vendor.id)) ||
 selectedVendor ||
 vendors[0];
 
-```
 const newId = "svc-" + Date.now();
 const next: ServiceHistoryRecord = {
   id: newId,
