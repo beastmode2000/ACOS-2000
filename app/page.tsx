@@ -1206,7 +1206,6 @@ return ( <div> <Header title="Atlas Dashboard" subtitle="Private 2000 estate ope
     </section>
   </div>
 </div>
-```
 
 );
 }
