@@ -283,7 +283,7 @@ const assetSeed: AssetRecord[] = [
   { id: "g280-n280cc", name: "Gulfstream G280 N280CC", locationId: "gulfstream-g280-n280cc", category: "Aircraft", status: "Monitor", notes: "Standardized aircraft name from uploaded aircraft photo. Use N280CC, not N28CC.", vendorIds: [], documents: [] },
   { id: "g280-n755pa", name: "Gulfstream G280 N755PA", locationId: "gulfstream-g280-n755pa", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [], documents: [] },
   { id: "pc12-n126al", name: "Pilatus PC12 N126AL", locationId: "pilatus-pc12-n126al", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [], documents: [] },
-].sort((a, b) => a.name.localeCompare(b.name));
+];
 
 const serviceSeed: ServiceRecord[] = [
   { id: "service-penthouse-176396", assetId: "blinds-lutron", vendorId: "penthousedrapery", date: "2026-06-16", title: "Motorized roller shade repair — Invoice #176396", status: "Completed", notes: "Penthouse Drapery invoice #176396 dated 06/16/2026. Link this service record to Blinds Lutron." },
@@ -550,19 +550,32 @@ export default function AtlasPage() {
   useEffect(() => {
     try {
       const savedAssets = window.localStorage.getItem("atlas-asset-records-v1");
-      const savedService = window.localStorage.getItem("atlas-service-records-v6");
-      const savedPhotos = window.localStorage.getItem("atlas-photo-records-v6");
-      const savedCalendar = window.localStorage.getItem("atlas-calendar-v6");
-      const savedVendors = window.localStorage.getItem("atlas-vendor-records-v2");
+      const savedService =
+        window.localStorage.getItem("atlas-service-records-v6") ||
+        window.localStorage.getItem("atlas-service-records-v5") ||
+        window.localStorage.getItem("atlas-service-records-v4");
+      const savedPhotos =
+        window.localStorage.getItem("atlas-photo-records-v6") ||
+        window.localStorage.getItem("atlas-photo-records-v5") ||
+        window.localStorage.getItem("atlas-photo-records-v4");
+      const savedCalendar =
+        window.localStorage.getItem("atlas-calendar-v6") ||
+        window.localStorage.getItem("atlas-calendar-v5") ||
+        window.localStorage.getItem("atlas-calendar-v4");
+      const savedVendors =
+        window.localStorage.getItem("atlas-vendor-records-v2") ||
+        window.localStorage.getItem("atlas-vendor-records-v1");
 
       if (savedAssets) {
         const parsedAssets = sortAssets(JSON.parse(savedAssets) as AssetRecord[]);
         setAssetRecords(parsedAssets);
         setSelectedAssetId(parsedAssets[0]?.id ?? "");
       }
+
       if (savedService) setServiceRecords(JSON.parse(savedService) as ServiceRecord[]);
       if (savedPhotos) setPhotos(JSON.parse(savedPhotos) as PhotoRecord[]);
       if (savedCalendar) setCalendarItems(JSON.parse(savedCalendar) as CalendarItem[]);
+
       if (savedVendors) {
         const parsedVendors = sortVendors(JSON.parse(savedVendors) as VendorRecord[]);
         setVendorRecords(parsedVendors);
@@ -771,7 +784,7 @@ export default function AtlasPage() {
     ];
 
     return results.slice(0, 12);
-  }, [q, filteredLocations, filteredAssets, filteredVendors, filteredServices, filteredDocuments, filteredProcedures, assetRecords, vendorRecords]);
+  }, [q, filteredLocations, filteredAssets, filteredVendors, filteredServices, filteredDocuments, filteredProcedures]);
 
   const openServiceCount = serviceRecords.filter((record) => record.status === "Open" || record.status === "Monitor").length;
   const monitorAssetCount = assetRecords.filter((asset) => asset.status === "Monitor" || asset.status === "Offline").length;
@@ -888,22 +901,25 @@ export default function AtlasPage() {
 
     setAssetMode("edit");
     setSelectedAssetId(id);
+    setNewService((current) => ({ ...current, assetId: id }));
   }
 
   function deleteAsset() {
     if (!assetForm.id) return;
 
-    const confirmed = window.confirm(`Delete ${assetForm.name}? This removes the asset card and attached asset documents from this browser.`);
+    const confirmed = window.confirm(`Delete ${assetForm.name}? This removes the asset, asset photos, asset documents, and service notes from this browser.`);
 
     if (!confirmed) return;
 
     const remainingAssets = sortAssets(assetRecords.filter((asset) => asset.id !== assetForm.id));
     setAssetRecords(remainingAssets);
     setPhotos((current) => current.filter((photo) => photo.assetId !== assetForm.id));
+    setServiceRecords((current) => current.filter((record) => record.assetId !== assetForm.id));
     const nextAsset = remainingAssets[0];
     setSelectedAssetId(nextAsset?.id ?? "");
     setAssetForm(nextAsset ?? blankAsset());
     setAssetMode(nextAsset ? "edit" : "new");
+    setNewService((current) => ({ ...current, assetId: nextAsset?.id ?? "" }));
   }
 
   function handleAssetDocumentUpload(event: React.ChangeEvent<HTMLInputElement>) {
