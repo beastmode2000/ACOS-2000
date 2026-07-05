@@ -2,22 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base page setup */
 :root {
   color-scheme: light;
 }
 
-html {
-  width: 100%;
-  min-height: 100%;
-  scroll-behavior: smooth;
-}
-
+html,
 body {
   width: 100%;
   min-height: 100%;
   margin: 0;
-  background: #0f172a;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #f1f7ff;
   color: #0f172a;
 }
 
@@ -40,75 +41,144 @@ a {
 
 img {
   display: block;
+  max-width: 100%;
 }
 
-/* Phone-only Atlas fix.
-   This does not affect desktop unless the screen is 768px wide or smaller. */
-@media screen and (max-width: 768px) {
+/* 
+  ATLAS PHONE FIX
+  This uses BOTH max-width and max-device-width because some phones
+  were still loading the desktop-width layout.
+*/
+@media screen and (max-width: 900px), screen and (max-device-width: 900px) {
   html,
   body {
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
   }
 
   body {
-    background: #0f172a;
+    background: #f1f7ff !important;
   }
 
   main {
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
   }
 
   main > div {
     width: 100% !important;
     max-width: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
+    min-width: 0 !important;
+    display: block !important;
+    overflow-x: hidden !important;
   }
 
   aside {
     position: relative !important;
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
     height: auto !important;
     min-height: 0 !important;
-    padding: 14px !important;
+    padding: 12px !important;
+    overflow: hidden !important;
+  }
+
+  aside > div {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   aside nav {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   aside button,
   aside a {
     width: 100% !important;
+    max-width: 100% !important;
     min-width: 0 !important;
+    padding: 10px 8px !important;
     font-size: 12px !important;
+    line-height: 1.1 !important;
   }
 
   section,
-  article {
+  article,
+  header,
+  footer {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
+    overflow-x: hidden !important;
   }
 
-  main section {
+  main section,
+  main article,
+  main header {
     padding-left: 10px !important;
     padding-right: 10px !important;
   }
 
-  .grid {
+  .grid,
+  [class*="grid-cols"],
+  [class*="lg:grid-cols"],
+  [class*="xl:grid-cols"],
+  [class*="md:grid-cols"],
+  [class*="sm:grid-cols"] {
     grid-template-columns: 1fr !important;
   }
 
+  [class*="max-w-"],
+  [class*="w-"],
+  [class*="min-w-"] {
+    max-width: 100% !important;
+  }
+
+  [class*="w-80"],
+  [class*="w-72"],
+  [class*="w-64"],
+  [class*="w-60"],
+  [class*="w-56"],
+  [class*="w-52"],
+  [class*="w-48"] {
+    width: 100% !important;
+  }
+
+  [class*="rounded-[2rem]"] {
+    border-radius: 22px !important;
+  }
+
+  h1 {
+    font-size: 30px !important;
+    line-height: 1.08 !important;
+  }
+
+  h2 {
+    font-size: 24px !important;
+    line-height: 1.12 !important;
+  }
+
+  h3 {
+    font-size: 19px !important;
+    line-height: 1.18 !important;
+  }
+
+  p,
+  li {
+    font-size: 14px !important;
+  }
+
   img {
+    width: auto;
     max-width: 100% !important;
     height: auto !important;
   }
@@ -119,6 +189,7 @@ img {
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
+    display: block !important;
   }
 
   .relative:has(img[src*="atlas-property-map"]),
@@ -133,24 +204,10 @@ img {
   button.absolute,
   [style*="top"],
   [style*="left"] {
+    max-width: 120px !important;
     font-size: 9px !important;
-    line-height: 1.1 !important;
+    line-height: 1.05 !important;
     padding: 4px 6px !important;
-    white-space: nowrap !important;
-  }
-
-  h1 {
-    font-size: 30px !important;
-    line-height: 1.1 !important;
-  }
-
-  h2 {
-    font-size: 24px !important;
-    line-height: 1.15 !important;
-  }
-
-  h3 {
-    font-size: 19px !important;
-    line-height: 1.2 !important;
+    white-space: normal !important;
   }
 }
