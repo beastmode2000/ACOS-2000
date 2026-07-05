@@ -1799,7 +1799,6 @@ return ( <div> <Header title="Blank Canvas" subtitle="Sellable Atlas Estate OS t
     </div>
   </div>
 </div>
-```
 
 );
 }
