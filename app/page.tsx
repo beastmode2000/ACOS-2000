@@ -1,3 +1,12 @@
+Replace only:
+
+```txt
+app/page.tsx
+```
+
+Delete everything in that file, then paste this whole code.
+
+```tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -17,12 +26,22 @@ type Screen =
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
 type ServiceStatus = "Open" | "Scheduled" | "Completed" | "Monitor";
+type Priority = "High" | "Normal" | "Seasonal";
 
 type LocationRecord = {
   id: string;
   name: string;
   type: string;
   zone: string;
+  notes: string;
+};
+
+type VendorRecord = {
+  id: string;
+  name: string;
+  category: string;
+  phone?: string;
+  email?: string;
   notes: string;
 };
 
@@ -39,15 +58,6 @@ type AssetRecord = {
   vendorIds: string[];
 };
 
-type VendorRecord = {
-  id: string;
-  name: string;
-  category: string;
-  phone?: string;
-  email?: string;
-  notes: string;
-};
-
 type ServiceRecord = {
   id: string;
   assetId: string;
@@ -62,8 +72,17 @@ type ProcedureRecord = {
   id: string;
   title: string;
   area: string;
-  priority: "High" | "Normal" | "Seasonal";
+  priority: Priority;
   steps: string[];
+};
+
+type DocumentRecord = {
+  id: string;
+  title: string;
+  area: string;
+  type: string;
+  linkedAssetId?: string;
+  notes: string;
 };
 
 type PhotoRecord = {
@@ -103,41 +122,13 @@ const badgeColors: Record<
   Status | ServiceStatus,
   { background: string; color: string; border: string }
 > = {
-  Online: {
-    background: "#EAF7F1",
-    color: "#087443",
-    border: "#BDE7D2",
-  },
-  Offline: {
-    background: "#FEECEC",
-    color: "#B42318",
-    border: "#FACACA",
-  },
-  Seasonal: {
-    background: "#FFF4E5",
-    color: "#B54708",
-    border: "#FFD8A8",
-  },
-  Monitor: {
-    background: "#EDF3FF",
-    color: "#175CD3",
-    border: "#C8D9FF",
-  },
-  Open: {
-    background: "#FFF4E5",
-    color: "#B54708",
-    border: "#FFD8A8",
-  },
-  Scheduled: {
-    background: "#EDF3FF",
-    color: "#175CD3",
-    border: "#C8D9FF",
-  },
-  Completed: {
-    background: "#EAF7F1",
-    color: "#087443",
-    border: "#BDE7D2",
-  },
+  Online: { background: "#EAF7F1", color: "#087443", border: "#BDE7D2" },
+  Offline: { background: "#FEECEC", color: "#B42318", border: "#FACACA" },
+  Seasonal: { background: "#FFF4E5", color: "#B54708", border: "#FFD8A8" },
+  Monitor: { background: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
+  Open: { background: "#FFF4E5", color: "#B54708", border: "#FFD8A8" },
+  Scheduled: { background: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
+  Completed: { background: "#EAF7F1", color: "#087443", border: "#BDE7D2" },
 };
 
 const locations: LocationRecord[] = [
@@ -145,15 +136,22 @@ const locations: LocationRecord[] = [
     id: "general",
     name: "General",
     type: "Property",
-    zone: "Whole Estate",
-    notes: "Default location for whole-property systems and records.",
+    zone: "2000",
+    notes: "Whole-estate default location for records that are not tied to one room.",
+  },
+  {
+    id: "main-house",
+    name: "Main House",
+    type: "Building",
+    zone: "2000",
+    notes: "Primary house and main interior systems.",
   },
   {
     id: "mechanical-room",
     name: "Mechanical Room",
     type: "Systems",
     zone: "Main House",
-    notes: "Boilers, domestic hot water tanks, hydronic controls, HVAC zoning, and major mechanical equipment.",
+    notes: "Boilers, DHW tanks, hydronic controls, HVAC zoning, and major mechanical equipment.",
   },
   {
     id: "kitchen",
@@ -163,6 +161,111 @@ const locations: LocationRecord[] = [
     notes: "Kitchen appliances, range, dishwashers, freezer, and service records.",
   },
   {
+    id: "pantry",
+    name: "Pantry",
+    type: "Interior",
+    zone: "Main House",
+    notes: "Pantry storage and freezer records.",
+  },
+  {
+    id: "wine-room",
+    name: "Wine Room",
+    type: "Interior",
+    zone: "Main House",
+    notes: "Wine storage and freezer records.",
+  },
+  {
+    id: "upstairs-laundry",
+    name: "Upstairs Laundry Closet",
+    type: "Laundry",
+    zone: "Main House",
+    notes: "Upstairs laundry equipment location.",
+  },
+  {
+    id: "pool-changing-room",
+    name: "Pool Changing Room",
+    type: "Laundry / Pool",
+    zone: "Pool Area",
+    notes: "Pool changing room and dryer record location.",
+  },
+  {
+    id: "fitness-room",
+    name: "Fitness Room",
+    type: "Interior",
+    zone: "Main House",
+    notes: "Fitness room appliances and systems.",
+  },
+  {
+    id: "house-office",
+    name: "House Managers Office",
+    type: "Office",
+    zone: "Main House",
+    notes: "House manager office appliances and operational records.",
+  },
+  {
+    id: "elyses-room",
+    name: "Elyse's Room",
+    type: "Bedroom",
+    zone: "Main House",
+    notes: "Room-level records including blinds / shade assets.",
+  },
+  {
+    id: "elliot-room",
+    name: "Elliot's Room",
+    type: "Bedroom",
+    zone: "Main House",
+    notes: "Room-level HVAC and comfort records. Mini-split options were discussed for allergies and independent control.",
+  },
+  {
+    id: "play-room",
+    name: "Play Room",
+    type: "Thermostat Zone",
+    zone: "Main House",
+    notes: "Honeywell thermostat zone shown in energy report references.",
+  },
+  {
+    id: "exercise-room",
+    name: "Exercise Room",
+    type: "Thermostat Zone",
+    zone: "Main House",
+    notes: "Honeywell thermostat zone shown in energy report references.",
+  },
+  {
+    id: "gym-nanny",
+    name: "Gym / Nanny",
+    type: "Thermostat Zone",
+    zone: "Main House",
+    notes: "Honeywell thermostat zone shown in energy report references.",
+  },
+  {
+    id: "master-bath-floor",
+    name: "Master Bath Floor",
+    type: "Thermostat Zone",
+    zone: "Main House",
+    notes: "Honeywell thermostat zone shown as MasBathFloor in energy report references.",
+  },
+  {
+    id: "indoor-pool",
+    name: "Indoor Pool",
+    type: "Pool",
+    zone: "Addition",
+    notes: "Indoor pool area, construction records, pool HVAC, dehumidification, and pool systems.",
+  },
+  {
+    id: "pool-equipment",
+    name: "Pool Equipment Room",
+    type: "Pool Systems",
+    zone: "Addition",
+    notes: "Pool filtration, pumps, chemical feed, UV / ozone, heat exchanger loop, and service records.",
+  },
+  {
+    id: "standalone-spa",
+    name: "Standalone Spa",
+    type: "Spa",
+    zone: "Outdoor",
+    notes: "Sundance Optima spa, heater, ClearRay UV-C, and spa controls.",
+  },
+  {
     id: "dock",
     name: "Dock",
     type: "Waterfront",
@@ -170,53 +273,123 @@ const locations: LocationRecord[] = [
     notes: "Boat lifts, SeaDoo lift, dock power, lift control boxes, and waterfront equipment.",
   },
   {
-    id: "indoor-pool",
-    name: "Indoor Pool",
-    type: "Pool",
-    zone: "Addition",
-    notes: "Indoor pool area, pool construction records, dehumidification, pool systems, and service history.",
+    id: "cobalt-lift",
+    name: "Cobalt Lift",
+    type: "Dock Lift",
+    zone: "Dock",
+    notes: "Cobalt boat lift and newer Sunstream lift control / battery / solar box.",
   },
   {
-    id: "pool-equipment",
-    name: "Pool Equipment Room",
-    type: "Pool Systems",
-    zone: "Addition",
-    notes: "Pool filtration, pumps, chemical feed, water treatment, and PSF Mechanical records.",
+    id: "seadoo-lift",
+    name: "SeaDoo Lift",
+    type: "PWC Lift",
+    zone: "Dock",
+    notes: "SeaDoo lift and its separate older / smaller Sunstream box record.",
   },
   {
-    id: "spa-area",
-    name: "Standalone Spa",
+    id: "dock-lift",
+    name: "Dock Lift Box",
+    type: "Lift Controls",
+    zone: "Dock",
+    notes: "Additional dock lift control box. Keep separate from Cobalt and SeaDoo lift boxes.",
+  },
+  {
+    id: "water-trampoline",
+    name: "Water Trampoline",
+    type: "Waterfront",
+    zone: "Lake",
+    notes: "Water trampoline added to the property map and seasonal waterfront records.",
+  },
+  {
+    id: "lakefront",
+    name: "Lakefront",
     type: "Exterior",
-    zone: "Outdoor",
-    notes: "Sundance Optima spa, heater, UV-C equipment, and spa control system records.",
-  },
-  {
-    id: "house-office",
-    name: "House Managers Office",
-    type: "Interior",
-    zone: "Main House",
-    notes: "Office appliances and operational records.",
-  },
-  {
-    id: "wine-room",
-    name: "Wine Room",
-    type: "Interior",
-    zone: "Main House",
-    notes: "Wine storage, freezer equipment, and room systems.",
+    zone: "Lake",
+    notes: "Lakefront, shoreline, waterfront access, and weather watch area.",
   },
   {
     id: "garage",
     name: "Garage",
     type: "Garage",
     zone: "Exterior",
-    notes: "Garage door openers, vehicles, tools, and service access.",
+    notes: "Garage door openers, access, vehicles, tools, and service equipment.",
+  },
+  {
+    id: "old-garage",
+    name: "Old Garage",
+    type: "Garage",
+    zone: "Exterior",
+    notes: "Old garage reference point used for ADU map placement.",
   },
   {
     id: "adu",
     name: "ADU",
     type: "Building",
     zone: "Left of Old Garage",
-    notes: "Accessory dwelling unit location added to the property map plan.",
+    notes: "Accessory dwelling unit added to the property map left of the old garage.",
+  },
+  {
+    id: "driveway",
+    name: "Driveway",
+    type: "Exterior",
+    zone: "Entry",
+    notes: "Driveway, approach, access, and vendor arrival area.",
+  },
+  {
+    id: "gate",
+    name: "Gate",
+    type: "Access",
+    zone: "Entry",
+    notes: "Gate and access-control related records. Credential details should stay redacted / admin-only.",
+  },
+  {
+    id: "exterior",
+    name: "Exterior",
+    type: "Exterior",
+    zone: "2000",
+    notes: "Exterior envelope, paint/stain, siding, exterior checks, and general outside service.",
+  },
+  {
+    id: "roof-gutters",
+    name: "Roof / Gutters",
+    type: "Exterior",
+    zone: "2000",
+    notes: "Roof, gutters, downspouts, drainage, and sheet metal records.",
+  },
+  {
+    id: "irrigation",
+    name: "Irrigation",
+    type: "Landscape Systems",
+    zone: "Grounds",
+    notes: "Irrigation controls, sprinkler service, leak checks, and landscaping system records.",
+  },
+  {
+    id: "lower-generator-area",
+    name: "Lower Generator Area",
+    type: "Generator",
+    zone: "Outdoor",
+    notes: "Lower outdoor generator and service access location.",
+  },
+  {
+    id: "basement",
+    name: "Basement",
+    type: "Interior",
+    zone: "Main House",
+    notes: "Basement layout and walk-through map records.",
+  },
+  {
+    id: "basement-stairs-trampoline",
+    name: "Basement Stairs from Trampoline Area",
+    type: "Map Reference",
+    zone: "Basement",
+    notes: "Basement map starting point from the trampoline-side stairs.",
+  },
+  {
+    id: "addition-first-floor",
+    name: "Addition First Floor",
+    type: "Construction",
+    zone: "Addition",
+    notes: "First floor of addition. Indoor pool construction photo is linked here.",
   },
   {
     id: "hangar",
@@ -224,6 +397,34 @@ const locations: LocationRecord[] = [
     type: "Aircraft",
     zone: "Offsite",
     notes: "Aircraft records and hangar sub-location references.",
+  },
+  {
+    id: "gulfstream-g600-n23pa",
+    name: "Gulfstream G600 N23PA",
+    type: "Aircraft",
+    zone: "Hangar",
+    notes: "Hangar sub-location / aircraft record.",
+  },
+  {
+    id: "gulfstream-g280-n280cc",
+    name: "Gulfstream G280 N280CC",
+    type: "Aircraft",
+    zone: "Hangar",
+    notes: "Standardized aircraft name. Photo reference showed tail number N280CC.",
+  },
+  {
+    id: "gulfstream-g280-n755pa",
+    name: "Gulfstream G280 N755PA",
+    type: "Aircraft",
+    zone: "Hangar",
+    notes: "Hangar sub-location / aircraft record.",
+  },
+  {
+    id: "pilatus-pc12-n126al",
+    name: "Pilatus PC12 N126AL",
+    type: "Aircraft",
+    zone: "Hangar",
+    notes: "Hangar sub-location / aircraft record.",
   },
 ];
 
@@ -234,8 +435,7 @@ const vendors: VendorRecord[] = [
     category: "Blinds / Drapery",
     phone: "+1 206-292-8336",
     email: "accounting@penthousedrapery.com",
-    notes:
-      "Drapery and motorized roller shade service. Invoice #176396 dated 06/16/2026 should be linked to Blinds Lutron.",
+    notes: "4033 16th Ave SW Suite A, Seattle, WA 98106. Invoice #176396 dated 06/16/2026 linked to Blinds Lutron.",
   },
   {
     id: "psf",
@@ -246,21 +446,32 @@ const vendors: VendorRecord[] = [
   {
     id: "viessmann",
     name: "Viessmann",
-    category: "Boilers",
-    notes: "Vitodens 200 boiler equipment and Vitocell 300-V domestic hot water tanks.",
+    category: "Boilers / DHW",
+    notes: "Vitodens 200 boilers and Vitocell 300-V domestic hot water tanks.",
+  },
+  {
+    id: "mcdonnellmiller",
+    name: "McDonnell & Miller",
+    category: "Boiler Safety",
+    notes: "GuardDog low-water cut-off model 751P-MT-120.",
   },
   {
     id: "sunstream",
     name: "Sunstream Boat Lifts",
     category: "Dock / Boat Lifts",
-    notes:
-      "Multiple Sunstream lift boxes on dock. Newer lift box is for the Cobalt boat lift.",
+    notes: "Dock lift boxes and controls. Cobalt box is the larger / newer box from last summer.",
   },
   {
     id: "sundance",
     name: "Sundance Spas",
     category: "Spa",
     notes: "Sundance 880-series Optima spa equipment reference.",
+  },
+  {
+    id: "hydroquip",
+    name: "HydroQuip / Therm Products",
+    category: "Spa Heater",
+    notes: "Water Pro Series Smart Heater Plus with Titanium Inside.",
   },
   {
     id: "carrier",
@@ -272,121 +483,169 @@ const vendors: VendorRecord[] = [
     id: "honeywell",
     name: "Honeywell",
     category: "HVAC Controls",
-    notes: "HZ432 zone control equipment reference.",
+    notes: "HZ432 zoning controls and thermostat zone references.",
   },
   {
     id: "desertaire",
     name: "Desert Aire",
     category: "Pool Dehumidification",
-    notes: "Indoor pool dehumidification equipment reference.",
+    notes: "Indoor pool DHU-1 dehumidification equipment, control/display, SR501 relay, and hydronic heat coil.",
+  },
+  {
+    id: "pentair",
+    name: "Pentair",
+    category: "Pool Pump",
+    notes: "Pentair 3.0 HP pool pump reference in the pool equipment chain.",
+  },
+  {
+    id: "triton",
+    name: "Triton II",
+    category: "Pool Filter",
+    notes: "Triton II sand filter reference in the pool equipment chain.",
+  },
+  {
+    id: "ultrapure",
+    name: "UltraPure / Paramount UV2",
+    category: "Pool UV / Ozone",
+    notes: "UV-ozone equipment in the pool water treatment chain.",
+  },
+  {
+    id: "taylor",
+    name: "Taylor Technologies",
+    category: "Pool Testing",
+    notes: "K-2006 / K-2006C pool test kit reference.",
   },
   {
     id: "allproblinds",
     name: "A All Pro Blinds",
     category: "Blinds",
-    notes: "Vendor record captured from existing estate vendor records.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "aaafire",
     name: "AAA Fire",
     category: "Fire / Safety",
-    notes: "Fire and safety vendor record.",
+    notes: "MaintainX vendor record. No contacts shown.",
   },
   {
     id: "advancedirrigation",
     name: "Advanced Irrigation",
     category: "Irrigation",
-    notes: "Irrigation vendor record.",
+    notes: "MaintainX vendor record. No contacts shown.",
+  },
+  {
+    id: "amazon",
+    name: "Amazon",
+    category: "Supplies",
+    notes: "MaintainX vendor record. No contacts shown.",
   },
   {
     id: "americanleak",
     name: "American Leak Detection",
     category: "Leak Detection",
-    notes: "Leak detection vendor record.",
+    notes: "MaintainX vendor record showed 2 contacts.",
+  },
+  {
+    id: "andersen",
+    name: "Andersen Installation inc.",
+    category: "Windows / Installation",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "applianceservice",
     name: "Appliance Service Station",
     category: "Appliances",
-    notes: "Appliance service vendor record.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "aquadive",
     name: "Aqua Dive",
     category: "Pool / Dive",
-    notes: "Pool and dive vendor record.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "aquaquip",
     name: "Aqua Quip",
     category: "Pool / Spa",
-    notes: "Pool and spa vendor record.",
+    notes: "MaintainX vendor record. No contacts shown.",
+  },
+  {
+    id: "autonationford",
+    name: "AutoNation Ford Bellevue",
+    category: "Vehicles",
+    notes: "MaintainX vendor record. No contacts shown.",
   },
   {
     id: "bestplumbing",
     name: "Best Plumbing",
     category: "Plumbing",
-    notes: "Plumbing vendor record.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "bosch",
     name: "Bosch",
     category: "Appliances",
-    notes: "Appliance manufacturer/vendor reference.",
+    notes: "MaintainX vendor record. No contacts shown.",
   },
   {
     id: "cascade",
     name: "Cascade Spray",
     category: "Landscape / Irrigation",
-    notes: "Landscape and spray vendor record.",
+    notes: "MaintainX vendor record. No contacts shown.",
   },
   {
     id: "gutter",
     name: "Consolidated Gutter and Sheet Metal",
     category: "Gutters / Sheet Metal",
-    notes: "Gutter and sheet metal vendor record.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "dsquare",
     name: "D Square Energy",
     category: "Energy / Electrical",
-    notes: "Energy systems vendor record.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "daburns",
     name: "D.A. Burns",
     category: "Cleaning / Floors",
-    notes: "Floor and cleaning vendor record.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "electromatic",
     name: "Electromatic Refrigeration",
     category: "Refrigeration",
-    notes: "Refrigeration vendor record.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "elliottpaint",
     name: "Elliott Paint Company",
     category: "Paint",
-    notes: "Paint vendor record.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "greaterseattlefloors",
     name: "Greater Seattle Floors",
     category: "Floors",
-    notes: "Flooring vendor record.",
+    notes: "MaintainX vendor record. No contacts shown.",
   },
   {
     id: "hightechliving",
     name: "High Tech Living",
     category: "Smart Home",
-    notes: "Smart-home / technology vendor record.",
+    notes: "MaintainX vendor record showed 1 contact.",
   },
   {
     id: "homedepot",
     name: "Home Depot",
     category: "Materials",
-    notes: "Materials and supplies vendor record.",
+    notes: "MaintainX vendor record. No contacts shown.",
+  },
+  {
+    id: "i90motorsports",
+    name: "I90 Motorsports",
+    category: "Motorsports",
+    notes: "MaintainX vendor record captured from vendor screenshots.",
   },
 ];
 
@@ -400,8 +659,7 @@ const assets: AssetRecord[] = [
     make: "Viessmann",
     model: "Vitodens 200",
     serial: "758960502925",
-    notes:
-      "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Earlier nameplate showed year built 2018, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.",
+    notes: "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Nameplate details previously visible: year built 2018, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.",
     vendorIds: ["viessmann"],
   },
   {
@@ -413,8 +671,18 @@ const assets: AssetRecord[] = [
     make: "Viessmann",
     model: "Vitodens 200",
     serial: "758960507593",
-    notes:
-      "White wall-mounted Viessmann Vitodens 200. Latest clear nameplate: serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.",
+    notes: "White wall-mounted Viessmann Vitodens 200. Latest clear nameplate: serial 758960507593, year built 2025, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.",
+    vendorIds: ["viessmann"],
+  },
+  {
+    id: "boiler-2-new",
+    name: "Boiler B-2 New",
+    locationId: "mechanical-room",
+    category: "Hydronic Heating",
+    status: "Monitor",
+    make: "Viessmann",
+    model: "Vitodens 200",
+    notes: "MaintainX asset list showed Boiler B-2 New in the Mechanical Room. Keep this record de-duplicated against Boiler B-2 when the final asset database is cleaned.",
     vendorIds: ["viessmann"],
   },
   {
@@ -425,8 +693,7 @@ const assets: AssetRecord[] = [
     status: "Online",
     make: "Viessmann",
     model: "Vitocell 300-V EVIA 300",
-    notes:
-      "Twin gray indirect-fired domestic hot water storage tanks. 79 USG / 300 L. Stainless steel tank / heat exchanger AISI 444 / 316 Ti.",
+    notes: "Twin gray indirect-fired domestic hot water storage tanks. Tank model EVIA 300. 79 USG / 300 L. Stainless steel tank / heat exchanger AISI 444 / 316 Ti. Heat exchanger coil storage capacity 2.9 USG / 11 L. Max heat exchanger water temperature 248°F / 120°C. Max heat exchanger water pressure 195 psig / 1300 kPa. Max tank working pressure 150 psig.",
     vendorIds: ["viessmann"],
   },
   {
@@ -437,77 +704,171 @@ const assets: AssetRecord[] = [
     status: "Online",
     make: "McDonnell & Miller",
     model: "751P-MT-120",
-    notes:
-      "Manual-reset low-water cut-off device. Green/red LED meanings, test/reset behavior, and CSD-1 compliance note should stay with boiler safety records.",
-    vendorIds: ["viessmann"],
+    notes: "Manual-reset low-water cut-off device. Include green/red LED meanings, test/reset behavior, and CSD-1 compliance notes with boiler safety records. Do not bypass safety controls.",
+    vendorIds: ["mcdonnellmiller", "viessmann"],
   },
   {
-    id: "carrier-hvac",
+    id: "carrier-hvac-hz432",
     name: "Carrier Forced-Air HVAC + Honeywell HZ432 Zones",
     locationId: "mechanical-room",
     category: "HVAC",
     status: "Online",
     make: "Carrier / Honeywell",
-    model: "HZ432 zone controls",
-    notes:
-      "Forced-air Carrier HVAC with Honeywell HZ432 zoning controls.",
+    model: "HZ432",
+    notes: "Forced-air Carrier HVAC with Honeywell HZ432 zoning controls. Thermostat zone references include Play Room, Kitchen, Exercise Room, Gym / Nanny, and Master Bath Floor.",
     vendorIds: ["carrier", "honeywell"],
   },
   {
-    id: "desertaire",
-    name: "Desert Aire Pool Dehumidification",
+    id: "mini-split-elliot-option",
+    name: "Elliot Room Mini-Split Option",
+    locationId: "elliot-room",
+    category: "HVAC Planning",
+    status: "Monitor",
+    notes: "Two options were discussed: $16k dedicated mini split with its own outdoor unit for full room control; $10k mini split tied to existing outdoor unit, but all kids rooms need matching mode behavior. The $6k difference may be worth it for Elliot's allergies and to avoid system lockout when rooms call for different modes.",
+    vendorIds: ["carrier"],
+  },
+  {
+    id: "desertaire-dhu1",
+    name: "Desert Aire DHU-1 Pool Dehumidification",
     locationId: "indoor-pool",
     category: "Pool HVAC",
     status: "Monitor",
     make: "Desert Aire",
-    notes:
-      "Indoor pool dehumidification system tied to pool environment and mechanical records.",
+    model: "DHU-1",
+    notes: "Indoor pool dehumidification system. Pool HVAC / dehumidification includes Desert Aire DHU-1, Desert Aire control/display, SR501 relay, and hydronic heat coil.",
     vendorIds: ["desertaire"],
   },
   {
-    id: "pool-water-treatment",
-    name: "Pool Water Treatment / Filtration",
+    id: "pool-pump-pentair",
+    name: "Pentair 3.0 HP Pool Pump",
     locationId: "pool-equipment",
     category: "Pool Equipment",
     status: "Online",
-    make: "PSF Mechanical record",
-    notes:
-      "Pool filtration, water treatment, and service history should be tracked here.",
-    vendorIds: ["psf", "aquaquip", "aquadive"],
+    make: "Pentair",
+    model: "3.0 HP",
+    notes: "Pool water treatment chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool.",
+    vendorIds: ["psf", "pentair"],
+  },
+  {
+    id: "pool-filter-triton",
+    name: "Triton II Sand Filter",
+    locationId: "pool-equipment",
+    category: "Pool Filtration",
+    status: "Online",
+    make: "Triton II",
+    notes: "Sand filter in pool water treatment chain. Keep pressure readings and backwash history in service notes.",
+    vendorIds: ["psf", "triton"],
+  },
+  {
+    id: "pool-uv-ozone",
+    name: "UltraPure / Paramount UV2 UV-Ozone",
+    locationId: "pool-equipment",
+    category: "Pool Water Treatment",
+    status: "Online",
+    make: "UltraPure / Paramount",
+    model: "UV2",
+    notes: "UV-ozone equipment in pool treatment chain before return to pool.",
+    vendorIds: ["psf", "ultrapure"],
+  },
+  {
+    id: "pool-hx-p8",
+    name: "Pool Heat Transfer HX-1 / P-8",
+    locationId: "pool-equipment",
+    category: "Pool Heat Transfer",
+    status: "Online",
+    notes: "Heat transfer uses HX-1 / P-8 into the isolated pool loop.",
+    vendorIds: ["psf"],
+  },
+  {
+    id: "pool-loop-p9",
+    name: "Pool Water Loop P-9",
+    locationId: "pool-equipment",
+    category: "Pool Circulation",
+    status: "Online",
+    notes: "P-9 circulates the pool water loop.",
+    vendorIds: ["psf"],
+  },
+  {
+    id: "taylor-test-kit",
+    name: "Taylor Technologies K-2006 / K-2006C Test Kit",
+    locationId: "pool-equipment",
+    category: "Pool Testing",
+    status: "Online",
+    make: "Taylor Technologies",
+    model: "K-2006 / K-2006C",
+    notes: "Pool test kit reference for chemical testing procedure.",
+    vendorIds: ["taylor", "psf"],
   },
   {
     id: "sundance-optima",
     name: "Sundance 880 Optima Spa",
-    locationId: "spa-area",
+    locationId: "standalone-spa",
     category: "Spa",
     status: "Monitor",
     make: "Sundance",
     model: "OPTIMA",
     serial: "00P3LCD-100528521-0315",
-    notes:
-      "Sundance 880-series Optima spa. Date 03/21/15. Electrical rating label: 240 V, 26/40/48 A, breaker size 40/50/60 A, 60 Hz, single phase, 3 wires. Includes spa control system, HydroQuip heater, ClearRay UV-C equipment, and corrosion note at some screws/lower compartment.",
+    notes: "Sundance 880-series Optima spa. Date 03/21/15. Electrical rating label: 240 V, current 26/40/48 A, breaker size 40/50/60 A, frequency 60 Hz, single phase, 3 wires. ETL / Intertek listed. Some rust/corrosion visible at cabinet/nameplate screws and lower compartment/floor.",
     vendorIds: ["sundance", "aquaquip"],
+  },
+  {
+    id: "spa-control-system",
+    name: "Spa Control System",
+    locationId: "standalone-spa",
+    category: "Spa Controls",
+    status: "Monitor",
+    model: "LCD controller part #6600-328 Rev E",
+    notes: "Gray spa control system enclosure and LCD controller part #6600-328 Rev E. Include high-limit tripped and heater-on indicator observations in service notes.",
+    vendorIds: ["sundance"],
+  },
+  {
+    id: "spa-heater-hydroquip",
+    name: "HydroQuip Water Pro Smart Heater Plus",
+    locationId: "standalone-spa",
+    category: "Spa Heater",
+    status: "Monitor",
+    make: "Therm Products / HydroQuip",
+    notes: "Water Pro Series Smart Heater Plus with Titanium Inside label.",
+    vendorIds: ["hydroquip", "sundance"],
+  },
+  {
+    id: "clearray-uv",
+    name: "ClearRay UV-C Water Purification",
+    locationId: "standalone-spa",
+    category: "Spa UV",
+    status: "Monitor",
+    make: "ClearRay",
+    notes: "ClearRay UV-C water purification / ballast equipment labeled QC tested 230V passed.",
+    vendorIds: ["sundance"],
   },
   {
     id: "sunstream-cobalt",
     name: "Sunstream Lift Box — Cobalt",
-    locationId: "dock",
+    locationId: "cobalt-lift",
     category: "Dock / Boat Lift",
     status: "Online",
     make: "Sunstream",
-    notes:
-      "Newer Sunstream lift control/battery/solar box is for the Cobalt boat lift. White enclosure with lid-mounted solar panel and internal battery/control wiring.",
+    notes: "Larger / newer Sunstream lift control, battery, and solar box from last summer. This box belongs to the Cobalt boat lift.",
     vendorIds: ["sunstream"],
   },
   {
     id: "sunstream-seadoo",
     name: "Sunstream Lift Box — SeaDoo",
-    locationId: "dock",
+    locationId: "seadoo-lift",
     category: "Dock / PWC Lift",
     status: "Monitor",
     make: "Sunstream",
-    notes:
-      "SeaDoo lift box / dock control record. Keep separate from the Cobalt lift box because the lift boxes are not all the same.",
+    notes: "SeaDoo lift box. Smaller / older Sunstream box. Keep separate from Cobalt box.",
+    vendorIds: ["sunstream"],
+  },
+  {
+    id: "sunstream-dock",
+    name: "Sunstream Lift Box — Dock",
+    locationId: "dock-lift",
+    category: "Dock Lift Controls",
+    status: "Monitor",
+    make: "Sunstream",
+    notes: "Additional dock lift box. Smaller / older box. Keep its photos and service records separate.",
     vendorIds: ["sunstream"],
   },
   {
@@ -516,8 +877,8 @@ const assets: AssetRecord[] = [
     locationId: "dock",
     category: "Watercraft",
     status: "Seasonal",
-    notes: "Cobalt R-7 watercraft record connected to dock and lift records.",
-    vendorIds: ["sunstream"],
+    notes: "Cobalt R-7 watercraft record connected to dock and newer Sunstream Cobalt lift box.",
+    vendorIds: ["sunstream", "i90motorsports"],
   },
   {
     id: "craft-seadoo",
@@ -525,8 +886,17 @@ const assets: AssetRecord[] = [
     locationId: "dock",
     category: "Watercraft",
     status: "Seasonal",
-    notes: "2024 SeaDoo record connected to dock and lift records.",
-    vendorIds: ["sunstream"],
+    notes: "2024 SeaDoo record connected to dock and SeaDoo lift records. Sea-Doo repair records should link here.",
+    vendorIds: ["i90motorsports", "sunstream"],
+  },
+  {
+    id: "water-trampoline",
+    name: "Water Trampoline",
+    locationId: "water-trampoline",
+    category: "Waterfront",
+    status: "Seasonal",
+    notes: "Water trampoline added to the map and seasonal waterfront check list.",
+    vendorIds: [],
   },
   {
     id: "blinds-lutron",
@@ -535,19 +905,36 @@ const assets: AssetRecord[] = [
     category: "Motorized Shades",
     status: "Monitor",
     make: "Lutron",
-    notes:
-      "Motorized roller shade asset. Penthouse Drapery invoice #176396 / motorized roller shade repair should be linked here.",
+    notes: "Motorized roller shade asset. Penthouse Drapery invoice #176396 / motorized roller shade repair belongs here.",
     vendorIds: ["penthousedrapery", "allproblinds"],
   },
   {
     id: "blinds-hunter",
     name: "Blinds Hunter Douglas",
-    locationId: "general",
+    locationId: "elyses-room",
     category: "Blinds",
     status: "Online",
     make: "Hunter Douglas",
-    notes: "Blinds asset record. Earlier asset screenshot showed Elyse's Room.",
+    notes: "MaintainX asset record showed Blinds Hunter Douglas — Elyse's Room.",
     vendorIds: ["allproblinds"],
+  },
+  {
+    id: "dishwasher-dw1",
+    name: "Dishwasher DW-1",
+    locationId: "fitness-room",
+    category: "Appliance",
+    status: "Online",
+    notes: "MaintainX asset record showed Dishwasher DW-1 — Fitness Room.",
+    vendorIds: ["bosch", "applianceservice"],
+  },
+  {
+    id: "dishwasher-dw2",
+    name: "Dishwasher DW-2",
+    locationId: "house-office",
+    category: "Appliance",
+    status: "Online",
+    notes: "MaintainX asset record showed Dishwasher DW-2 — House Managers Office.",
+    vendorIds: ["bosch", "applianceservice"],
   },
   {
     id: "dishwasher-dw3",
@@ -555,7 +942,7 @@ const assets: AssetRecord[] = [
     locationId: "kitchen",
     category: "Appliance",
     status: "Online",
-    notes: "Kitchen right dishwasher.",
+    notes: "MaintainX asset record showed Dishwasher DW-3 (Right) — Kitchen.",
     vendorIds: ["bosch", "applianceservice"],
   },
   {
@@ -564,17 +951,89 @@ const assets: AssetRecord[] = [
     locationId: "kitchen",
     category: "Appliance",
     status: "Online",
-    notes: "Kitchen left dishwasher.",
+    notes: "MaintainX asset record showed Dishwasher DW-4 (Left) — Kitchen.",
     vendorIds: ["bosch", "applianceservice"],
   },
   {
-    id: "freezer-wine",
+    id: "dryer-dr1",
+    name: "Dryer DR-1",
+    locationId: "upstairs-laundry",
+    category: "Appliance",
+    status: "Online",
+    notes: "MaintainX asset record showed Dryer DR-1 — Upstairs Laundry Closet.",
+    vendorIds: ["applianceservice"],
+  },
+  {
+    id: "dryer-dr2",
+    name: "Dryer DR-2",
+    locationId: "pool-changing-room",
+    category: "Appliance",
+    status: "Online",
+    notes: "MaintainX asset record showed Dryer DR-2 — Pool Changing Room.",
+    vendorIds: ["applianceservice"],
+  },
+  {
+    id: "dryer-dr3",
+    name: "Dryer DR-3",
+    locationId: "house-office",
+    category: "Appliance",
+    status: "Online",
+    notes: "MaintainX asset record showed Dryer DR-3 — House Managers Office.",
+    vendorIds: ["applianceservice"],
+  },
+  {
+    id: "freezer-fr1",
+    name: "Freezer FR-1",
+    locationId: "pantry",
+    category: "Appliance",
+    status: "Online",
+    notes: "MaintainX asset record showed Freezer FR-1 — Pantry.",
+    vendorIds: ["electromatic", "applianceservice"],
+  },
+  {
+    id: "freezer-fr2",
+    name: "Freezer FR-2",
+    locationId: "indoor-pool",
+    category: "Appliance",
+    status: "Online",
+    notes: "MaintainX asset record showed Freezer FR-2 — Pool.",
+    vendorIds: ["electromatic", "applianceservice"],
+  },
+  {
+    id: "freezer-fr3",
+    name: "Freezer FR-3",
+    locationId: "indoor-pool",
+    category: "Appliance",
+    status: "Online",
+    notes: "MaintainX asset record showed Freezer FR-3 — Pool.",
+    vendorIds: ["electromatic", "applianceservice"],
+  },
+  {
+    id: "freezer-fr4",
+    name: "Freezer FR-4",
+    locationId: "kitchen",
+    category: "Appliance",
+    status: "Online",
+    notes: "MaintainX asset record showed Freezer FR-4 — Kitchen.",
+    vendorIds: ["electromatic", "applianceservice"],
+  },
+  {
+    id: "freezer-fr5",
     name: "Freezer FR-5",
     locationId: "wine-room",
     category: "Appliance",
     status: "Online",
-    notes: "Wine room freezer asset.",
+    notes: "MaintainX asset record showed Freezer FR-5 — Wine Room.",
     vendorIds: ["electromatic", "applianceservice"],
+  },
+  {
+    id: "wolf-range",
+    name: "Wolfe Range / Range-Wolf",
+    locationId: "kitchen",
+    category: "Cooking",
+    status: "Online",
+    notes: "MaintainX showed a separate asset named wolfe range with status On and last updated 02/11/2026. Possible duplicate against Range-Wolf; keep for de-duplication.",
+    vendorIds: ["applianceservice"],
   },
   {
     id: "flologic",
@@ -582,7 +1041,7 @@ const assets: AssetRecord[] = [
     locationId: "general",
     category: "Water Protection",
     status: "Online",
-    notes: "Whole-property water monitoring / shutoff asset.",
+    notes: "Whole-property water monitoring / shutoff asset. Link plumbing, leak detection, and emergency water shutoff notes here.",
     vendorIds: ["bestplumbing", "americanleak"],
   },
   {
@@ -591,17 +1050,53 @@ const assets: AssetRecord[] = [
     locationId: "garage",
     category: "Garage",
     status: "Online",
-    notes: "Garage door opener system record.",
+    notes: "MaintainX asset record showed Garage Door Openers — General.",
     vendorIds: [],
   },
   {
     id: "generator-lower",
     name: "Generator Lower",
-    locationId: "general",
+    locationId: "lower-generator-area",
     category: "Generator",
     status: "Monitor",
-    notes: "Outdoor lower generator record.",
+    notes: "MaintainX asset record showed Generator (Lower) — Outdoor Generator.",
     vendorIds: ["dsquare"],
+  },
+  {
+    id: "g600-n23pa",
+    name: "Gulfstream G600 N23PA",
+    locationId: "gulfstream-g600-n23pa",
+    category: "Aircraft",
+    status: "Monitor",
+    notes: "Hangar sub-location / aircraft record.",
+    vendorIds: [],
+  },
+  {
+    id: "g280-n280cc",
+    name: "Gulfstream G280 N280CC",
+    locationId: "gulfstream-g280-n280cc",
+    category: "Aircraft",
+    status: "Monitor",
+    notes: "Standardized aircraft name from uploaded aircraft photo. Use N280CC, not N28CC.",
+    vendorIds: [],
+  },
+  {
+    id: "g280-n755pa",
+    name: "Gulfstream G280 N755PA",
+    locationId: "gulfstream-g280-n755pa",
+    category: "Aircraft",
+    status: "Monitor",
+    notes: "Hangar sub-location / aircraft record.",
+    vendorIds: [],
+  },
+  {
+    id: "pc12-n126al",
+    name: "Pilatus PC12 N126AL",
+    locationId: "pilatus-pc12-n126al",
+    category: "Aircraft",
+    status: "Monitor",
+    notes: "Hangar sub-location / aircraft record.",
+    vendorIds: [],
   },
 ];
 
@@ -613,28 +1108,61 @@ const serviceSeed: ServiceRecord[] = [
     date: "2026-06-16",
     title: "Motorized roller shade repair — Invoice #176396",
     status: "Completed",
-    notes:
-      "Penthouse Drapery invoice #176396 dated 06/16/2026. Link this service record to Blinds Lutron.",
+    notes: "Penthouse Drapery invoice #176396 dated 06/16/2026. Link this service record to Blinds Lutron.",
   },
   {
     id: "service-boiler-nameplate",
     assetId: "boiler-2",
     vendorId: "viessmann",
     date: "2026-07-02",
-    title: "Clear boiler nameplate captured",
+    title: "Clear Boiler B-2 nameplate captured",
     status: "Completed",
-    notes:
-      "Confirmed Viessmann boiler nameplate details: serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief capacity 255.9 lb/hr, CRN R1497.5C.",
+    notes: "Confirmed Viessmann boiler nameplate details: serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief capacity 255.9 lb/hr, CRN R1497.5C.",
+  },
+  {
+    id: "service-boiler-heat-exchanger",
+    assetId: "boiler-2",
+    vendorId: "viessmann",
+    date: "2026-07-02",
+    title: "Boiler 2 recalled heat exchanger / igniter issue",
+    status: "Monitor",
+    notes: "Recalled heat exchanger was replaced on a Vitodens 200W / Boiler 2. After new parts were installed, the igniter would not turn on. Keep this as a monitor record until resolved.",
+  },
+  {
+    id: "service-dhw-tanks",
+    assetId: "vitocell-tanks",
+    vendorId: "viessmann",
+    date: "2026-07-02",
+    title: "Twin Vitocell 300-V DHW tanks documented",
+    status: "Completed",
+    notes: "Recorded twin gray Viessmann Vitocell 300-V EVIA 300 tanks and capacity / pressure / temperature details.",
+  },
+  {
+    id: "service-pool-chain",
+    assetId: "pool-pump-pentair",
+    vendorId: "psf",
+    date: "2026-07-02",
+    title: "Pool equipment chain recorded",
+    status: "Completed",
+    notes: "Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool. Heat transfer uses HX-1 / P-8 into isolated pool loop; P-9 circulates pool water loop.",
+  },
+  {
+    id: "service-desertaire",
+    assetId: "desertaire-dhu1",
+    vendorId: "desertaire",
+    date: "2026-07-02",
+    title: "Desert Aire pool HVAC record added",
+    status: "Monitor",
+    notes: "Desert Aire DHU-1, control/display, SR501 relay, and hydronic heat coil added to pool HVAC records.",
   },
   {
     id: "service-spa-record",
     assetId: "sundance-optima",
     vendorId: "sundance",
     date: "2026-07-02",
-    title: "Spa equipment record created",
+    title: "Sundance Optima spa equipment record created",
     status: "Completed",
-    notes:
-      "Recorded Sundance 880-series Optima spa model, serial, electrical rating, HydroQuip heater, ClearRay UV-C system, and visible corrosion notes.",
+    notes: "Recorded Sundance 880-series Optima model, serial 00P3LCD-100528521-0315, electrical rating, HydroQuip heater, ClearRay UV-C equipment, and visible corrosion notes.",
   },
   {
     id: "service-sunstream-lifts",
@@ -643,18 +1171,139 @@ const serviceSeed: ServiceRecord[] = [
     date: "2026-07-02",
     title: "Dock lift control boxes documented",
     status: "Completed",
-    notes:
-      "Confirmed multiple Sunstream lift boxes on dock. Newer Sunstream lift box belongs to the Cobalt boat lift.",
+    notes: "Confirmed multiple Sunstream lift boxes on dock. Larger/newer Sunstream lift box belongs to the Cobalt boat lift. Smaller/older boxes belong to SeaDoo and dock lift records.",
   },
   {
-    id: "service-pool-equipment",
-    assetId: "pool-water-treatment",
-    vendorId: "psf",
+    id: "service-indoor-pool-construction",
+    assetId: "desertaire-dhu1",
     date: "2026-07-02",
-    title: "Pool equipment record drafted",
-    status: "Monitor",
-    notes:
-      "Pool filtration and water-treatment records should be expanded with photos, procedures, and backwash steps.",
+    title: "Indoor pool construction photo added",
+    status: "Completed",
+    notes: "Photo label: Indoor pool construction — first floor of addition. Shows concrete pool shell/trench area, wet concrete / finished surface work, temporary construction lighting, hoses, and worker present.",
+  },
+  {
+    id: "service-hangar-n280cc",
+    assetId: "g280-n280cc",
+    date: "2026-07-01",
+    title: "Aircraft tail number standardized",
+    status: "Completed",
+    notes: "Uploaded aircraft photo clearly showed Gulfstream tail number N280CC. Standardize as Gulfstream G280 N280CC.",
+  },
+  {
+    id: "service-credentials-redacted",
+    assetId: "flologic",
+    date: "2026-07-02",
+    title: "Credential inventory redacted",
+    status: "Completed",
+    notes: "A printed Log in and Passwords sheet was uploaded. Do not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes. Keep only redacted / admin-only credential categories.",
+  },
+  {
+    id: "service-branding",
+    assetId: "flologic",
+    date: "2026-07-05",
+    title: "Official Atlas logo selected",
+    status: "Completed",
+    notes: "Official logo is the clean navy-and-gold Atlas mark with stylized A, gold globe arcs, gold compass/star, and ATLAS wordmark.",
+  },
+];
+
+const documents: DocumentRecord[] = [
+  {
+    id: "doc-systems-layout",
+    title: "2000 Systems Layout Draft v1",
+    area: "Mechanical / Pool / HVAC",
+    type: "PDF",
+    notes: "Filename: 2000_systems_layout_draft_v1.pdf. Draft layout of main mechanical, electrical, pool, HVAC, Viessmann hydronic boiler/cascade/DHW, Carrier + Honeywell HZ432 zones, Desert Aire pool dehumidification, and pool water treatment systems.",
+  },
+  {
+    id: "doc-pool-equipment",
+    title: "2000 Pool Equipment Record v1",
+    area: "Pool Equipment Room",
+    type: "PDF",
+    linkedAssetId: "pool-pump-pentair",
+    notes: "Pool chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool. Includes Desert Aire DHU-1 and HX-1 / P-8 / P-9 notes.",
+  },
+  {
+    id: "doc-property-map",
+    title: "Locked Original Property Map",
+    area: "Property Map",
+    type: "Image",
+    notes: "Original map should stay locked. Use editable overlay labels for boat, SeaDoo, water trampoline, ADU, and other pins.",
+  },
+  {
+    id: "doc-pool-construction",
+    title: "Indoor pool construction — first floor of addition",
+    area: "Addition First Floor",
+    type: "Photo",
+    notes: "Construction photo showing indoor pool shell/trench area, concrete work, lighting, hoses, and worker present.",
+  },
+  {
+    id: "doc-penthouse-invoice",
+    title: "Penthouse Drapery Invoice #176396",
+    area: "Blinds Lutron",
+    type: "Invoice",
+    linkedAssetId: "blinds-lutron",
+    notes: "Invoice #176396 dated 06/16/2026 for motorized roller shade repair. Vendor: Penthouse Drapery.",
+  },
+  {
+    id: "doc-sunstream-photos",
+    title: "Sunstream lift box photo set",
+    area: "Dock",
+    type: "Photos",
+    notes: "Photos show white Sunstream lift boxes with lid-mounted solar panels, dock-mounted enclosures, internal battery/control wiring, and Sunstream control module with up/down controls.",
+  },
+  {
+    id: "doc-spa-nameplate",
+    title: "Sundance Optima spa nameplate and control photos",
+    area: "Standalone Spa",
+    type: "Photos",
+    linkedAssetId: "sundance-optima",
+    notes: "Includes nameplate, electrical rating, gray spa control system enclosure, HydroQuip heater, ClearRay UV-C equipment, and corrosion notes.",
+  },
+  {
+    id: "doc-boiler-nameplates",
+    title: "Viessmann boiler nameplate photos",
+    area: "Mechanical Room",
+    type: "Photos",
+    linkedAssetId: "boiler-2",
+    notes: "Photos confirm Boiler 1 and Boiler 2 details, including serial 758960507593 and 2025 nameplate for Boiler B-2.",
+  },
+  {
+    id: "doc-maintainx-assets",
+    title: "MaintainX asset screenshots",
+    area: "Assets",
+    type: "Screenshots",
+    notes: "Asset records include blinds, boilers, craft, dishwashers, dryers, FloLogic, freezers, garage door openers, generator, and hangar aircraft records.",
+  },
+  {
+    id: "doc-maintainx-vendors",
+    title: "MaintainX vendor screenshots",
+    area: "Vendors",
+    type: "Screenshots",
+    notes: "Vendor import source for de-duplicated Atlas vendor directory.",
+  },
+  {
+    id: "doc-credentials-redacted",
+    title: "Redacted / admin-only credential inventory",
+    area: "Admin",
+    type: "Secure Note",
+    notes: "Do not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes. Track only redacted categories: access codes, Xfinity, Apple, YoLink, work Amazon, work login, and other systems to secure.",
+  },
+  {
+    id: "doc-boat-sos",
+    title: "Boat S.O.S. fluid analysis",
+    area: "Dock / Cobalt",
+    type: "Service Record",
+    linkedAssetId: "craft-cobalt",
+    notes: "Placeholder document record for Boat S.O.S. fluid analysis records to attach to Cobalt / dock service history.",
+  },
+  {
+    id: "doc-seadoo-repair",
+    title: "Sea-Doo repair records",
+    area: "Dock / SeaDoo",
+    type: "Service Record",
+    linkedAssetId: "craft-seadoo",
+    notes: "Placeholder document record for Sea-Doo repair records to attach to the 2024 SeaDoo asset.",
   },
 ];
 
@@ -668,12 +1317,51 @@ const procedures: ProcedureRecord[] = [
       "Confirm pump and valve positions before changing anything.",
       "Turn pump off before moving the multiport/backwash valve.",
       "Move valve to backwash position.",
-      "Run pump until sight glass / discharge water clears.",
+      "Run pump until discharge / sight glass water clears.",
       "Turn pump off before moving valve again.",
       "Move valve to rinse and run briefly.",
       "Return valve to filter position.",
       "Restart system and verify pressure, flow, and leaks.",
-      "Log date, pressure, and any unusual observations in Atlas.",
+      "Log date, pressure, and anything unusual in Atlas.",
+    ],
+  },
+  {
+    id: "pool-equipment-check",
+    title: "Pool Equipment Room Check",
+    area: "Pool Equipment Room",
+    priority: "Normal",
+    steps: [
+      "Check Pentair pump operation.",
+      "Check Triton II filter pressure.",
+      "Check UV / ozone equipment status.",
+      "Check HX-1 / P-8 and P-9 circulation notes.",
+      "Photo any leaks, unusual sound, or abnormal pressure.",
+      "Save a service note if anything changes.",
+    ],
+  },
+  {
+    id: "pool-chem-test",
+    title: "Pool Chemical Test",
+    area: "Pool Equipment Room",
+    priority: "Normal",
+    steps: [
+      "Use Taylor Technologies K-2006 / K-2006C kit.",
+      "Record chlorine, pH, alkalinity, calcium hardness, and other readings as needed.",
+      "Attach photo of results when useful.",
+      "Create follow-up service note for any reading outside target range.",
+    ],
+  },
+  {
+    id: "desertaire-watch",
+    title: "Desert Aire Pool HVAC Watch",
+    area: "Indoor Pool",
+    priority: "Normal",
+    steps: [
+      "Check indoor pool temperature and humidity feel.",
+      "Check Desert Aire display / control status.",
+      "Inspect for condensation or unusual sound.",
+      "Check hydronic heat coil area visually.",
+      "Log any fault, alarm, or comfort issue.",
     ],
   },
   {
@@ -682,11 +1370,36 @@ const procedures: ProcedureRecord[] = [
     area: "Mechanical Room",
     priority: "High",
     steps: [
-      "Identify which boiler is being checked before touching controls.",
-      "Review GuardDog low-water cut-off indicator lights.",
+      "Identify the boiler before touching controls.",
+      "Review GuardDog indicator lights.",
       "Do not bypass safety controls.",
       "Use manual reset only when the cause is understood.",
       "Record boiler number, indicator status, and action taken.",
+    ],
+  },
+  {
+    id: "boiler-room-walk",
+    title: "Mechanical Room Walkthrough",
+    area: "Mechanical Room",
+    priority: "Normal",
+    steps: [
+      "Check Boiler B-1 and Boiler B-2 status.",
+      "Check DHW tanks and visible piping.",
+      "Look for leaks, corrosion, error codes, or unusual noise.",
+      "Check Honeywell HZ432 zone panel status.",
+      "Record photos of any changed condition.",
+    ],
+  },
+  {
+    id: "dhw-tank-check",
+    title: "DHW Tank Check",
+    area: "Mechanical Room",
+    priority: "Normal",
+    steps: [
+      "Check both Vitocell 300-V tanks.",
+      "Look for leaks, corrosion, relief discharge, or abnormal temperature.",
+      "Confirm labels and valves remain visible.",
+      "Log any service needed.",
     ],
   },
   {
@@ -715,15 +1428,123 @@ const procedures: ProcedureRecord[] = [
     ],
   },
   {
-    id: "weekly-walk",
-    title: "Weekly Property Walk",
-    area: "Whole Estate",
+    id: "cobalt-seasonal",
+    title: "Cobalt Seasonal Check",
+    area: "Dock",
+    priority: "Seasonal",
+    steps: [
+      "Confirm Cobalt lift box condition.",
+      "Inspect Cobalt R-7 before use.",
+      "Attach Boat S.O.S. fluid analysis records when available.",
+      "Log any lift, battery, or watercraft issue.",
+    ],
+  },
+  {
+    id: "seadoo-seasonal",
+    title: "SeaDoo Seasonal Check",
+    area: "Dock",
+    priority: "Seasonal",
+    steps: [
+      "Inspect SeaDoo lift and SeaDoo box separately from Cobalt lift.",
+      "Check SeaDoo condition before use.",
+      "Attach Sea-Doo repair records to the SeaDoo asset.",
+      "Log battery, lift, or service concerns.",
+    ],
+  },
+  {
+    id: "water-trampoline-seasonal",
+    title: "Water Trampoline Seasonal Check",
+    area: "Lakefront",
+    priority: "Seasonal",
+    steps: [
+      "Check anchor lines and position.",
+      "Inspect for tears, low inflation, or unsafe condition.",
+      "Confirm weather and lake conditions before use.",
+      "Log setup or removal date.",
+    ],
+  },
+  {
+    id: "flologic-response",
+    title: "FloLogic / Leak Response",
+    area: "General",
+    priority: "High",
+    steps: [
+      "Identify alert or shutoff condition.",
+      "Check obvious fixtures and mechanical areas.",
+      "Check basement, pool equipment, garage, and exterior bibs.",
+      "Call plumbing or leak detection vendor if source is not obvious.",
+      "Log cause, vendor, and resolution.",
+    ],
+  },
+  {
+    id: "generator-check",
+    title: "Lower Generator Check",
+    area: "Lower Generator Area",
     priority: "Normal",
     steps: [
-      "Walk main house exterior, dock, garage, pool, spa, and mechanical areas.",
-      "Create a service note for anything leaking, loose, noisy, damaged, or offline.",
+      "Inspect generator exterior and area around unit.",
+      "Check for visible alarms, leaks, damage, or blocked airflow.",
+      "Record date and any service need.",
+    ],
+  },
+  {
+    id: "garage-opener-check",
+    title: "Garage Door Opener Check",
+    area: "Garage",
+    priority: "Normal",
+    steps: [
+      "Test opener operation.",
+      "Listen for strain or unusual noise.",
+      "Check safety sensors and tracks visually.",
+      "Log any issue before failure.",
+    ],
+  },
+  {
+    id: "irrigation-check",
+    title: "Irrigation Check",
+    area: "Irrigation",
+    priority: "Seasonal",
+    steps: [
+      "Run zone checks when appropriate.",
+      "Look for broken heads, overspray, low pressure, or leaks.",
+      "Link issues to Advanced Irrigation or Cascade Spray as needed.",
+    ],
+  },
+  {
+    id: "storm-prep",
+    title: "Storm / Heavy Rain Prep",
+    area: "Exterior",
+    priority: "High",
+    steps: [
+      "Check dock and waterfront items.",
+      "Check gutters and drainage.",
+      "Check basement and lower areas.",
+      "Check generator and exterior power-sensitive equipment.",
+      "Log anything that needs follow-up.",
+    ],
+  },
+  {
+    id: "vendor-visit-intake",
+    title: "Vendor Visit Intake",
+    area: "General",
+    priority: "Normal",
+    steps: [
+      "Select correct asset before saving notes.",
+      "Record vendor, date, work performed, cost if known, status, and next step.",
+      "Attach photos, invoices, or documents.",
+      "Do not create duplicate vendor records.",
+    ],
+  },
+  {
+    id: "photo-document-process",
+    title: "Photo / Document Upload Process",
+    area: "General",
+    priority: "Normal",
+    steps: [
       "Attach photos to the correct asset or location.",
-      "Update open items before leaving the property.",
+      "Give document records clear titles.",
+      "Keep raw passwords and access codes out of normal notes.",
+      "Use redacted / admin-only credential inventory for sensitive systems.",
     ],
   },
 ];
@@ -757,18 +1578,32 @@ const calendarSeed: CalendarItem[] = [
     area: "Mechanical Room",
     status: "Monitor",
   },
+  {
+    id: "cal-irrigation",
+    date: "2026-07-17",
+    title: "Irrigation / sprinkler walk",
+    area: "Irrigation",
+    status: "Scheduled",
+  },
+  {
+    id: "cal-generator",
+    date: "2026-07-20",
+    title: "Lower generator visual check",
+    area: "Lower Generator Area",
+    status: "Scheduled",
+  },
 ];
 
 const navItems: { id: Screen; label: string; description: string }[] = [
   { id: "dashboard", label: "Dashboard", description: "Control center" },
   { id: "map", label: "Map", description: "Property layout" },
-  { id: "locations", label: "Locations", description: "Estate areas" },
+  { id: "locations", label: "Locations", description: "42 areas" },
   { id: "assets", label: "Assets", description: "Equipment records" },
   { id: "history", label: "Service History", description: "Work notes" },
   { id: "vendors", label: "Vendors", description: "Contacts" },
   { id: "calendar", label: "Calendar", description: "Scheduled work" },
   { id: "weather", label: "Weather", description: "Property watch" },
-  { id: "documents", label: "Photos / Docs", description: "Uploads" },
+  { id: "documents", label: "Photos / Docs", description: "Records" },
   { id: "procedures", label: "Procedures", description: "How-to records" },
   { id: "assistant", label: "Ask Atlas", description: "Search records" },
 ];
@@ -809,13 +1644,32 @@ function badgeStyle(status: Status | ServiceStatus): React.CSSProperties {
     borderRadius: 999,
     padding: "5px 10px",
     fontSize: 12,
-    fontWeight: 800,
+    fontWeight: 850,
     background: color.background,
     color: color.color,
     border: `1px solid ${color.border}`,
     whiteSpace: "nowrap",
   };
 }
+
+function priorityBadge(priority: Priority): React.CSSProperties {
+  if (priority === "High") return badgeStyle("Open");
+  if (priority === "Seasonal") return badgeStyle("Seasonal");
+  return badgeStyle("Completed");
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  border: `1px solid ${colors.line}`,
+  background: "#FBFCFE",
+  color: colors.navy,
+  borderRadius: 13,
+  padding: "11px 12px",
+  fontSize: 14,
+  fontWeight: 750,
+  outline: "none",
+  boxSizing: "border-box",
+};
 
 function StatCard({
   label,
@@ -836,9 +1690,7 @@ function StatCard({
         boxShadow: "0 12px 30px rgba(11, 30, 51, 0.06)",
       }}
     >
-      <div style={{ color: colors.muted, fontSize: 13, fontWeight: 800 }}>
-        {label}
-      </div>
+      <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{label}</div>
       <div
         style={{
           color: colors.navy,
@@ -850,9 +1702,7 @@ function StatCard({
       >
         {value}
       </div>
-      <div style={{ color: colors.muted, fontSize: 13, marginTop: 7 }}>
-        {detail}
-      </div>
+      <div style={{ color: colors.muted, fontSize: 13, marginTop: 7 }}>{detail}</div>
     </div>
   );
 }
@@ -902,14 +1752,7 @@ function SectionShell({
               {eyebrow}
             </div>
           ) : null}
-          <h2
-            style={{
-              margin: 0,
-              color: colors.navy,
-              fontSize: 23,
-              lineHeight: 1.15,
-            }}
-          >
+          <h2 style={{ margin: 0, color: colors.navy, fontSize: 23, lineHeight: 1.15 }}>
             {title}
           </h2>
         </div>
@@ -924,14 +1767,12 @@ export default function AtlasPage() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("boiler-2");
-  const [serviceRecords, setServiceRecords] =
-    useState<ServiceRecord[]>(serviceSeed);
+  const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>(serviceSeed);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
-  const [calendarItems, setCalendarItems] =
-    useState<CalendarItem[]>(calendarSeed);
+  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>(calendarSeed);
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(
-    "Ask Atlas about boilers, pool equipment, Sunstream lifts, Lutron blinds, the Sundance spa, vendors, procedures, or service history."
+    "Ask Atlas about boilers, pool equipment, Sunstream lifts, Lutron blinds, the Sundance spa, vendors, procedures, documents, locations, or service history."
   );
   const [ready, setReady] = useState(false);
   const [newService, setNewService] = useState({
@@ -945,23 +1786,15 @@ export default function AtlasPage() {
 
   useEffect(() => {
     try {
-      const savedService = window.localStorage.getItem("atlas-service-records-v2");
-      const savedPhotos = window.localStorage.getItem("atlas-photo-records-v2");
-      const savedCalendar = window.localStorage.getItem("atlas-calendar-v2");
+      const savedService = window.localStorage.getItem("atlas-service-records-v3");
+      const savedPhotos = window.localStorage.getItem("atlas-photo-records-v3");
+      const savedCalendar = window.localStorage.getItem("atlas-calendar-v3");
 
-      if (savedService) {
-        setServiceRecords(JSON.parse(savedService) as ServiceRecord[]);
-      }
-
-      if (savedPhotos) {
-        setPhotos(JSON.parse(savedPhotos) as PhotoRecord[]);
-      }
-
-      if (savedCalendar) {
-        setCalendarItems(JSON.parse(savedCalendar) as CalendarItem[]);
-      }
+      if (savedService) setServiceRecords(JSON.parse(savedService) as ServiceRecord[]);
+      if (savedPhotos) setPhotos(JSON.parse(savedPhotos) as PhotoRecord[]);
+      if (savedCalendar) setCalendarItems(JSON.parse(savedCalendar) as CalendarItem[]);
     } catch {
-      // Keep seeded Atlas records if local data cannot be read.
+      // Keep seeded records if local storage cannot be read.
     } finally {
       setReady(true);
     }
@@ -969,47 +1802,40 @@ export default function AtlasPage() {
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem(
-      "atlas-service-records-v2",
-      JSON.stringify(serviceRecords)
-    );
+    window.localStorage.setItem("atlas-service-records-v3", JSON.stringify(serviceRecords));
   }, [ready, serviceRecords]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-photo-records-v2", JSON.stringify(photos));
+    window.localStorage.setItem("atlas-photo-records-v3", JSON.stringify(photos));
   }, [ready, photos]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-calendar-v2", JSON.stringify(calendarItems));
+    window.localStorage.setItem("atlas-calendar-v3", JSON.stringify(calendarItems));
   }, [ready, calendarItems]);
 
-  const selectedAsset =
-    assets.find((asset) => asset.id === selectedAssetId) ?? assets[0];
+  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? assets[0];
 
   const selectedAssetServices = serviceRecords
     .filter((record) => record.assetId === selectedAsset.id)
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const selectedAssetPhotos = photos.filter(
-    (photo) => photo.assetId === selectedAsset.id
-  );
+  const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
 
-  const openServiceCount = serviceRecords.filter(
-    (record) => record.status === "Open" || record.status === "Monitor"
-  ).length;
+  const q = query.trim().toLowerCase();
 
-  const monitorAssetCount = assets.filter(
-    (asset) => asset.status === "Monitor" || asset.status === "Offline"
-  ).length;
+  const filteredLocations = useMemo(() => {
+    if (!q) return locations;
+    return locations.filter((location) =>
+      [location.name, location.type, location.zone, location.notes].join(" ").toLowerCase().includes(q)
+    );
+  }, [q]);
 
   const filteredAssets = useMemo(() => {
-    const q = query.trim().toLowerCase();
     if (!q) return assets;
-
-    return assets.filter((asset) => {
-      const searchText = [
+    return assets.filter((asset) =>
+      [
         asset.name,
         asset.category,
         asset.status,
@@ -1022,16 +1848,13 @@ export default function AtlasPage() {
       ]
         .filter(Boolean)
         .join(" ")
-        .toLowerCase();
-
-      return searchText.includes(q);
-    });
-  }, [query]);
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [q]);
 
   const filteredVendors = useMemo(() => {
-    const q = query.trim().toLowerCase();
     if (!q) return vendors;
-
     return vendors.filter((vendor) =>
       [vendor.name, vendor.category, vendor.phone, vendor.email, vendor.notes]
         .filter(Boolean)
@@ -1039,12 +1862,10 @@ export default function AtlasPage() {
         .toLowerCase()
         .includes(q)
     );
-  }, [query]);
+  }, [q]);
 
   const filteredServices = useMemo(() => {
-    const q = query.trim().toLowerCase();
     if (!q) return serviceRecords;
-
     return serviceRecords.filter((record) =>
       [
         record.title,
@@ -1058,7 +1879,41 @@ export default function AtlasPage() {
         .toLowerCase()
         .includes(q)
     );
-  }, [query, serviceRecords]);
+  }, [q, serviceRecords]);
+
+  const filteredDocuments = useMemo(() => {
+    if (!q) return documents;
+    return documents.filter((document) =>
+      [
+        document.title,
+        document.area,
+        document.type,
+        document.notes,
+        document.linkedAssetId ? getAssetName(document.linkedAssetId) : "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [q]);
+
+  const filteredProcedures = useMemo(() => {
+    if (!q) return procedures;
+    return procedures.filter((procedure) =>
+      [procedure.title, procedure.area, procedure.priority, procedure.steps.join(" ")]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [q]);
+
+  const openServiceCount = serviceRecords.filter(
+    (record) => record.status === "Open" || record.status === "Monitor"
+  ).length;
+
+  const monitorAssetCount = assets.filter(
+    (asset) => asset.status === "Monitor" || asset.status === "Offline"
+  ).length;
 
   function addServiceRecord() {
     if (!newService.title.trim()) return;
@@ -1115,49 +1970,63 @@ export default function AtlasPage() {
   }
 
   function askAtlas(question: string) {
-    const q = question.trim().toLowerCase();
+    const text = question.trim().toLowerCase();
 
-    if (!q) {
+    if (!text) {
       setAssistantAnswer("Type a question first, then Ask Atlas.");
       return;
     }
 
-    if (q.includes("boiler")) {
+    if (text.includes("boiler") || text.includes("viessmann") || text.includes("vitodens")) {
       setAssistantAnswer(
-        "Atlas found the boiler records in the Mechanical Room. Boiler B-1 is a Viessmann Vitodens 200 with earlier 2018 nameplate details. Boiler B-2 is a Viessmann Vitodens 200 with serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief capacity 255.9 lb/hr, and CRN R1497.5C. The boiler safety record also includes a McDonnell & Miller GuardDog 751P-MT-120 low-water cut-off."
+        "Atlas found the boiler records in the Mechanical Room.\n\nBoiler B-1: Viessmann Vitodens 200, earlier nameplate showed serial 758960502925, year built 2018, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief capacity 255.9 lb/hr, CRN R1497.5C.\n\nBoiler B-2: Viessmann Vitodens 200, clear nameplate shows serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief capacity 255.9 lb/hr, CRN R1497.5C.\n\nSafety: McDonnell & Miller GuardDog 751P-MT-120 low-water cut-off.\n\nOpen monitor note: recalled heat exchanger was replaced on Boiler 2, then the igniter would not turn on."
       );
       return;
     }
 
-    if (q.includes("blind") || q.includes("shade") || q.includes("lutron")) {
+    if (text.includes("pool") || text.includes("backwash") || text.includes("pentair") || text.includes("triton")) {
       setAssistantAnswer(
-        "Atlas found the blinds records. Blinds Lutron is the motorized roller shade asset. Penthouse Drapery invoice #176396 dated 06/16/2026 is linked to Blinds Lutron for motorized roller shade repair. Blinds Hunter Douglas is also tracked as a separate blinds asset."
+        "Atlas found the pool records.\n\nPool water chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool.\n\nPool heat transfer: HX-1 / P-8 feeds the isolated pool loop. P-9 circulates the pool water loop.\n\nPool HVAC: Desert Aire DHU-1 with control/display, SR501 relay, and hydronic heat coil.\n\nThe pool backwash procedure and chemical test procedure are saved under Procedures."
       );
       return;
     }
 
-    if (q.includes("spa") || q.includes("hot tub") || q.includes("sundance")) {
+    if (text.includes("spa") || text.includes("hot tub") || text.includes("sundance")) {
       setAssistantAnswer(
-        "Atlas found the standalone spa record. It is a Sundance 880-series Optima, serial 00P3LCD-100528521-0315, date 03/21/15. The record includes 240 V electrical rating, HydroQuip heater, ClearRay UV-C equipment, control system details, and corrosion notes."
+        "Atlas found the standalone spa record.\n\nIt is a Sundance 880-series Optima, model OPTIMA, serial 00P3LCD-100528521-0315, date 03/21/15.\n\nElectrical label: 240 V, current 26/40/48 A, breaker size 40/50/60 A, 60 Hz, single phase, 3 wires.\n\nRelated records include the spa control system, HydroQuip Water Pro Smart Heater Plus, ClearRay UV-C water purification, and visible corrosion notes."
       );
       return;
     }
 
-    if (q.includes("sunstream") || q.includes("lift") || q.includes("cobalt") || q.includes("seadoo")) {
+    if (text.includes("sunstream") || text.includes("lift") || text.includes("cobalt") || text.includes("seadoo")) {
       setAssistantAnswer(
-        "Atlas found the dock lift records. There are multiple Sunstream lift boxes on the dock, and they should stay separated by craft. The newer Sunstream lift box belongs to the Cobalt boat lift. The SeaDoo lift has its own dock / PWC lift record."
+        "Atlas found the dock lift records.\n\nThere are multiple Sunstream lift boxes on the dock and they should stay separate.\n\nCobalt: larger / newer Sunstream lift box from last summer.\nSeaDoo: smaller / older Sunstream box.\nDock lift: additional smaller / older lift box.\n\nCraft records: Cobalt R-7 and SeaDoo 2024 are both seasonal watercraft records."
       );
       return;
     }
 
-    if (q.includes("pool") || q.includes("backwash") || q.includes("desert aire")) {
+    if (text.includes("blind") || text.includes("shade") || text.includes("lutron") || text.includes("penthousedrapery")) {
       setAssistantAnswer(
-        "Atlas found pool records. The indoor pool has a Desert Aire dehumidification record. Pool filtration and water treatment are tracked under Pool Water Treatment / Filtration in the Pool Equipment Room with PSF Mechanical tied to the record. The pool backwash procedure is saved under Procedures."
+        "Atlas found the blinds records.\n\nBlinds Lutron is the motorized roller shade asset. Penthouse Drapery invoice #176396 dated 06/16/2026 is linked to Blinds Lutron for motorized roller shade repair.\n\nBlinds Hunter Douglas is a separate asset shown in Elyse's Room."
       );
       return;
     }
 
-    const combinedMatches = [
+    if (text.includes("hangar") || text.includes("gulfstream") || text.includes("pilatus") || text.includes("n280cc")) {
+      setAssistantAnswer(
+        "Atlas found the Hangar records.\n\nHangar sub-locations include Gulfstream G600 N23PA, Gulfstream G280 N280CC, Gulfstream G280 N755PA, and Pilatus PC12 N126AL.\n\nThe uploaded aircraft photo clearly showed N280CC, so Atlas standardizes that aircraft as Gulfstream G280 N280CC."
+      );
+      return;
+    }
+
+    if (text.includes("password") || text.includes("credential") || text.includes("login") || text.includes("code")) {
+      setAssistantAnswer(
+        "Atlas has a redacted credential inventory rule.\n\nDo not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes. Use only redacted / admin-only categories such as access codes, Xfinity, Apple, YoLink, work Amazon, work login, and systems to secure."
+      );
+      return;
+    }
+
+    const matches = [
       ...assets.map((asset) => ({
         type: "Asset",
         title: asset.name,
@@ -1173,16 +2042,26 @@ export default function AtlasPage() {
         title: record.title,
         detail: `${formatDate(record.date)} — ${getAssetName(record.assetId)} — ${getVendorName(record.vendorId)}. ${record.notes}`,
       })),
+      ...documents.map((document) => ({
+        type: "Document",
+        title: document.title,
+        detail: `${document.area} — ${document.type}. ${document.notes}`,
+      })),
       ...procedures.map((procedure) => ({
         type: "Procedure",
         title: procedure.title,
         detail: `${procedure.area}. ${procedure.steps.join(" ")}`,
       })),
+      ...locations.map((location) => ({
+        type: "Location",
+        title: location.name,
+        detail: `${location.zone} — ${location.type}. ${location.notes}`,
+      })),
     ].filter((item) =>
-      [item.type, item.title, item.detail].join(" ").toLowerCase().includes(q)
+      [item.type, item.title, item.detail].join(" ").toLowerCase().includes(text)
     );
 
-    if (!combinedMatches.length) {
+    if (!matches.length) {
       setAssistantAnswer(
         "I did not find that in the local Atlas records yet. Add a service note, photo, document, vendor, or asset record, then Ask Atlas will be able to surface it here."
       );
@@ -1190,8 +2069,8 @@ export default function AtlasPage() {
     }
 
     setAssistantAnswer(
-      combinedMatches
-        .slice(0, 4)
+      matches
+        .slice(0, 5)
         .map((item) => `${item.type}: ${item.title}\n${item.detail}`)
         .join("\n\n")
     );
@@ -1200,44 +2079,15 @@ export default function AtlasPage() {
   function renderDashboard() {
     return (
       <div style={{ display: "grid", gap: 18 }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: 16,
-          }}
-        >
-          <StatCard label="Assets" value={assets.length} detail="Core estate systems" />
-          <StatCard
-            label="Monitor"
-            value={monitorAssetCount}
-            detail="Assets needing attention"
-          />
-          <StatCard
-            label="Vendors"
-            value={vendors.length}
-            detail="Service partners"
-          />
-          <StatCard
-            label="Open Items"
-            value={openServiceCount}
-            detail="Open / monitor service records"
-          />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16 }}>
+          <StatCard label="Locations" value={locations.length} detail="Full 2000 baseline areas" />
+          <StatCard label="Assets" value={assets.length} detail="Equipment and systems" />
+          <StatCard label="Vendors" value={vendors.length} detail="De-duplicated directory" />
+          <StatCard label="Open / Monitor" value={openServiceCount + monitorAssetCount} detail="Items needing attention" />
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.25fr 0.75fr",
-            gap: 18,
-            alignItems: "start",
-          }}
-        >
-          <SectionShell
-            eyebrow="Official Atlas"
-            title="2000 Estate Operations Control Center"
-            right={<span style={badgeStyle("Online")}>Live</span>}
-          >
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
+          <SectionShell eyebrow="Master Data Import" title="Atlas / 2000 Estate Operations">
             <div
               style={{
                 background: `linear-gradient(135deg, ${colors.navy}, ${colors.navy3})`,
@@ -1264,31 +2114,22 @@ export default function AtlasPage() {
                   src="/atlas-logo.png"
                   alt="Atlas logo"
                   style={{
-                    width: 82,
-                    height: 82,
+                    width: 86,
+                    height: 86,
                     objectFit: "contain",
                     background: "white",
                     borderRadius: 20,
                     padding: 8,
-                    border: "1px solid rgba(255,255,255,0.25)",
                   }}
                 />
                 <div>
                   <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>
-                    Atlas is now branded and ready to build.
+                    Official Atlas logo + expanded records are active.
                   </h2>
-                  <p
-                    style={{
-                      margin: "8px 0 0",
-                      color: "rgba(255,255,255,0.78)",
-                      lineHeight: 1.5,
-                      maxWidth: 680,
-                    }}
-                  >
-                    The official navy-and-gold Atlas logo is now part of the app
-                    shell, the header, and the record system. This dashboard is
-                    set up for assets, vendors, service history, procedures,
-                    documents, photos, calendar items, weather watch, and Ask Atlas.
+                  <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.5 }}>
+                    This pass adds the larger 2000 data set: locations, assets, vendors, service history,
+                    procedures, documents, dock lift records, pool equipment chain, boilers, spa, HVAC,
+                    appliances, Hangar aircraft, map notes, and Ask Atlas answers.
                   </p>
                 </div>
               </div>
@@ -1299,7 +2140,7 @@ export default function AtlasPage() {
             <div style={{ display: "grid", gap: 10 }}>
               {assets
                 .filter((asset) => asset.status === "Monitor" || asset.status === "Offline")
-                .slice(0, 5)
+                .slice(0, 8)
                 .map((asset) => (
                   <button
                     key={asset.id}
@@ -1317,14 +2158,7 @@ export default function AtlasPage() {
                       cursor: "pointer",
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        alignItems: "center",
-                      }}
-                    >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                       <strong style={{ color: colors.navy }}>{asset.name}</strong>
                       <span style={badgeStyle(asset.status)}>{asset.status}</span>
                     </div>
@@ -1342,7 +2176,7 @@ export default function AtlasPage() {
             {serviceRecords
               .slice()
               .sort((a, b) => b.date.localeCompare(a.date))
-              .slice(0, 5)
+              .slice(0, 7)
               .map((record) => (
                 <div
                   key={record.id}
@@ -1357,13 +2191,9 @@ export default function AtlasPage() {
                     background: "#FBFCFE",
                   }}
                 >
-                  <div style={{ color: colors.muted, fontWeight: 800 }}>
-                    {formatDate(record.date)}
-                  </div>
+                  <div style={{ color: colors.muted, fontWeight: 850 }}>{formatDate(record.date)}</div>
                   <div>
-                    <div style={{ color: colors.navy, fontWeight: 900 }}>
-                      {record.title}
-                    </div>
+                    <div style={{ color: colors.navy, fontWeight: 900 }}>{record.title}</div>
                     <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
                       {getAssetName(record.assetId)} · {getVendorName(record.vendorId)}
                     </div>
@@ -1379,46 +2209,40 @@ export default function AtlasPage() {
 
   function renderMap() {
     const pins = [
-      { label: "Main House", top: "38%", left: "48%", target: "general" },
-      { label: "Mechanical", top: "47%", left: "51%", target: "mechanical-room" },
-      { label: "Indoor Pool", top: "55%", left: "56%", target: "indoor-pool" },
-      { label: "Dock", top: "77%", left: "57%", target: "dock" },
-      { label: "ADU", top: "42%", left: "29%", target: "adu" },
-      { label: "Garage", top: "34%", left: "34%", target: "garage" },
+      { label: "Main House", top: "38%", left: "48%", search: "Main House" },
+      { label: "Mechanical", top: "47%", left: "51%", search: "Mechanical" },
+      { label: "Indoor Pool", top: "55%", left: "56%", search: "Indoor Pool" },
+      { label: "Dock", top: "77%", left: "57%", search: "Dock" },
+      { label: "Cobalt", top: "72%", left: "62%", search: "Cobalt" },
+      { label: "SeaDoo", top: "80%", left: "63%", search: "SeaDoo" },
+      { label: "Water Trampoline", top: "84%", left: "48%", search: "Water Trampoline" },
+      { label: "ADU", top: "42%", left: "29%", search: "ADU" },
+      { label: "Garage", top: "34%", left: "34%", search: "Garage" },
     ];
 
     return (
-      <SectionShell
-        eyebrow="Property Map"
-        title="Clickable Atlas Map"
-        right={<span style={badgeStyle("Online")}>Map Ready</span>}
-      >
+      <SectionShell eyebrow="Property Map" title="Locked Map with Editable Atlas Overlay" right={<span style={badgeStyle("Online")}>Map Ready</span>}>
         <div
           style={{
             position: "relative",
             borderRadius: 24,
             overflow: "hidden",
             border: `1px solid ${colors.line}`,
-            minHeight: 520,
+            minHeight: 560,
             background: "#E9EEF5",
           }}
         >
           <img
             src="/atlas-property-map.png"
             alt="Atlas property map"
-            style={{
-              width: "100%",
-              height: 560,
-              objectFit: "cover",
-              display: "block",
-            }}
+            style={{ width: "100%", height: 590, objectFit: "cover", display: "block" }}
           />
           {pins.map((pin) => (
             <button
               key={pin.label}
               type="button"
               onClick={() => {
-                setQuery(pin.label);
+                setQuery(pin.search);
                 setScreen("locations");
               }}
               style={{
@@ -1446,15 +2270,9 @@ export default function AtlasPage() {
 
   function renderLocations() {
     return (
-      <SectionShell eyebrow="Locations" title="Estate Areas">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: 14,
-          }}
-        >
-          {locations.map((location) => (
+      <SectionShell eyebrow="Locations" title="2000 Location Baseline">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
+          {filteredLocations.map((location) => (
             <div
               key={location.id}
               style={{
@@ -1464,18 +2282,10 @@ export default function AtlasPage() {
                 background: "#FBFCFE",
               }}
             >
-              <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>
-                {location.zone}
-              </div>
-              <h3 style={{ margin: "6px 0", color: colors.navy }}>
-                {location.name}
-              </h3>
-              <div style={{ color: colors.muted, fontSize: 13, fontWeight: 800 }}>
-                {location.type}
-              </div>
-              <p style={{ color: colors.text, fontSize: 14, lineHeight: 1.45 }}>
-                {location.notes}
-              </p>
+              <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{location.zone}</div>
+              <h3 style={{ margin: "6px 0", color: colors.navy }}>{location.name}</h3>
+              <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{location.type}</div>
+              <p style={{ color: colors.text, fontSize: 14, lineHeight: 1.45 }}>{location.notes}</p>
               <button
                 type="button"
                 onClick={() => {
@@ -1492,7 +2302,7 @@ export default function AtlasPage() {
                   cursor: "pointer",
                 }}
               >
-                View Assets
+                View Related Records
               </button>
             </div>
           ))}
@@ -1503,14 +2313,7 @@ export default function AtlasPage() {
 
   function renderAssets() {
     return (
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "0.9fr 1.1fr",
-          gap: 18,
-          alignItems: "start",
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "0.88fr 1.12fr", gap: 18, alignItems: "start" }}>
         <SectionShell eyebrow="Assets" title="Equipment Records">
           <div style={{ display: "grid", gap: 10 }}>
             {filteredAssets.map((asset) => (
@@ -1519,26 +2322,15 @@ export default function AtlasPage() {
                 type="button"
                 onClick={() => setSelectedAssetId(asset.id)}
                 style={{
-                  border:
-                    selectedAsset.id === asset.id
-                      ? `2px solid ${colors.gold}`
-                      : `1px solid ${colors.line}`,
-                  background:
-                    selectedAsset.id === asset.id ? "#FFF9EA" : "#FBFCFE",
+                  border: selectedAsset.id === asset.id ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
+                  background: selectedAsset.id === asset.id ? "#FFF9EA" : "#FBFCFE",
                   borderRadius: 16,
                   padding: 14,
                   textAlign: "left",
                   cursor: "pointer",
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    alignItems: "center",
-                  }}
-                >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                   <strong style={{ color: colors.navy }}>{asset.name}</strong>
                   <span style={badgeStyle(asset.status)}>{asset.status}</span>
                 </div>
@@ -1556,89 +2348,35 @@ export default function AtlasPage() {
           right={<span style={badgeStyle(selectedAsset.status)}>{selectedAsset.status}</span>}
         >
           <div style={{ display: "grid", gap: 14 }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 12,
-              }}
-            >
-              <div style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: 13 }}>
-                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>
-                  Make
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+              {[
+                ["Make", selectedAsset.make ?? "Not set"],
+                ["Model", selectedAsset.model ?? "Not set"],
+                ["Serial", selectedAsset.serial ?? "Not set"],
+                [
+                  "Vendors",
+                  selectedAsset.vendorIds.length ? selectedAsset.vendorIds.map(getVendorName).join(", ") : "Not set",
+                ],
+              ].map(([label, value]) => (
+                <div key={label} style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: 13 }}>
+                  <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>{label}</div>
+                  <div style={{ color: colors.navy, fontWeight: 900 }}>{value}</div>
                 </div>
-                <div style={{ color: colors.navy, fontWeight: 900 }}>
-                  {selectedAsset.make ?? "Not set"}
-                </div>
-              </div>
-              <div style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: 13 }}>
-                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>
-                  Model
-                </div>
-                <div style={{ color: colors.navy, fontWeight: 900 }}>
-                  {selectedAsset.model ?? "Not set"}
-                </div>
-              </div>
-              <div style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: 13 }}>
-                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>
-                  Serial
-                </div>
-                <div style={{ color: colors.navy, fontWeight: 900 }}>
-                  {selectedAsset.serial ?? "Not set"}
-                </div>
-              </div>
-              <div style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: 13 }}>
-                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>
-                  Vendors
-                </div>
-                <div style={{ color: colors.navy, fontWeight: 900 }}>
-                  {selectedAsset.vendorIds.length
-                    ? selectedAsset.vendorIds.map(getVendorName).join(", ")
-                    : "Not set"}
-                </div>
-              </div>
+              ))}
             </div>
 
-            <div
-              style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 16,
-                padding: 15,
-                background: "#FBFCFE",
-              }}
-            >
-              <div style={{ color: colors.muted, fontSize: 12, fontWeight: 950 }}>
-                NOTES
-              </div>
-              <p style={{ color: colors.text, lineHeight: 1.55, marginBottom: 0 }}>
-                {selectedAsset.notes}
-              </p>
+            <div style={{ border: `1px solid ${colors.line}`, borderRadius: 16, padding: 15, background: "#FBFCFE" }}>
+              <div style={{ color: colors.muted, fontSize: 12, fontWeight: 950 }}>NOTES</div>
+              <p style={{ color: colors.text, lineHeight: 1.55, marginBottom: 0 }}>{selectedAsset.notes}</p>
             </div>
 
-            <div
-              style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 16,
-                padding: 15,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  alignItems: "center",
-                  marginBottom: 10,
-                }}
-              >
+            <div style={{ border: `1px solid ${colors.line}`, borderRadius: 16, padding: 15 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
                 <strong style={{ color: colors.navy }}>Recent Service</strong>
                 <button
                   type="button"
                   onClick={() => {
-                    setNewService((current) => ({
-                      ...current,
-                      assetId: selectedAsset.id,
-                    }));
+                    setNewService((current) => ({ ...current, assetId: selectedAsset.id }));
                     setScreen("history");
                   }}
                   style={{
@@ -1657,23 +2395,9 @@ export default function AtlasPage() {
 
               {selectedAssetServices.length ? (
                 <div style={{ display: "grid", gap: 9 }}>
-                  {selectedAssetServices.slice(0, 4).map((record) => (
-                    <div
-                      key={record.id}
-                      style={{
-                        border: `1px solid ${colors.line}`,
-                        borderRadius: 13,
-                        padding: 12,
-                        background: "#FBFCFE",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                        }}
-                      >
+                  {selectedAssetServices.slice(0, 5).map((record) => (
+                    <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, padding: 12, background: "#FBFCFE" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                         <strong style={{ color: colors.navy }}>{record.title}</strong>
                         <span style={badgeStyle(record.status)}>{record.status}</span>
                       </div>
@@ -1695,26 +2419,14 @@ export default function AtlasPage() {
 
   function renderHistory() {
     return (
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "0.82fr 1.18fr",
-          gap: 18,
-          alignItems: "start",
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "0.82fr 1.18fr", gap: 18, alignItems: "start" }}>
         <SectionShell eyebrow="Add Record" title="New Service Note">
           <div style={{ display: "grid", gap: 12 }}>
             <label style={{ display: "grid", gap: 6, color: colors.navy, fontWeight: 900 }}>
               Asset
               <select
                 value={newService.assetId}
-                onChange={(event) =>
-                  setNewService((current) => ({
-                    ...current,
-                    assetId: event.target.value,
-                  }))
-                }
+                onChange={(event) => setNewService((current) => ({ ...current, assetId: event.target.value }))}
                 style={inputStyle}
               >
                 {assets.map((asset) => (
@@ -1729,12 +2441,7 @@ export default function AtlasPage() {
               Vendor
               <select
                 value={newService.vendorId}
-                onChange={(event) =>
-                  setNewService((current) => ({
-                    ...current,
-                    vendorId: event.target.value,
-                  }))
-                }
+                onChange={(event) => setNewService((current) => ({ ...current, vendorId: event.target.value }))}
                 style={inputStyle}
               >
                 <option value="">Internal / Not set</option>
@@ -1750,12 +2457,7 @@ export default function AtlasPage() {
               Title
               <input
                 value={newService.title}
-                onChange={(event) =>
-                  setNewService((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
+                onChange={(event) => setNewService((current) => ({ ...current, title: event.target.value }))}
                 placeholder="Example: Checked boiler low-water cut-off"
                 style={inputStyle}
               />
@@ -1767,12 +2469,7 @@ export default function AtlasPage() {
                 <input
                   type="date"
                   value={newService.date}
-                  onChange={(event) =>
-                    setNewService((current) => ({
-                      ...current,
-                      date: event.target.value,
-                    }))
-                  }
+                  onChange={(event) => setNewService((current) => ({ ...current, date: event.target.value }))}
                   style={inputStyle}
                 />
               </label>
@@ -1782,10 +2479,7 @@ export default function AtlasPage() {
                 <select
                   value={newService.status}
                   onChange={(event) =>
-                    setNewService((current) => ({
-                      ...current,
-                      status: event.target.value as ServiceStatus,
-                    }))
+                    setNewService((current) => ({ ...current, status: event.target.value as ServiceStatus }))
                   }
                   style={inputStyle}
                 >
@@ -1801,12 +2495,7 @@ export default function AtlasPage() {
               Notes
               <textarea
                 value={newService.notes}
-                onChange={(event) =>
-                  setNewService((current) => ({
-                    ...current,
-                    notes: event.target.value,
-                  }))
-                }
+                onChange={(event) => setNewService((current) => ({ ...current, notes: event.target.value }))}
                 placeholder="Write what happened, what needs to happen next, and anything to watch."
                 rows={6}
                 style={{ ...inputStyle, resize: "vertical" }}
@@ -1837,37 +2526,17 @@ export default function AtlasPage() {
               .slice()
               .sort((a, b) => b.date.localeCompare(a.date))
               .map((record) => (
-                <div
-                  key={record.id}
-                  style={{
-                    border: `1px solid ${colors.line}`,
-                    borderRadius: 16,
-                    padding: 15,
-                    background: "#FBFCFE",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 12,
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                    }}
-                  >
+                <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, padding: 15, background: "#FBFCFE" }}>
+                  <div style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
-                      <div style={{ color: colors.navy, fontWeight: 950 }}>
-                        {record.title}
-                      </div>
+                      <div style={{ color: colors.navy, fontWeight: 950 }}>{record.title}</div>
                       <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
-                        {formatDate(record.date)} · {getAssetName(record.assetId)} ·{" "}
-                        {getVendorName(record.vendorId)}
+                        {formatDate(record.date)} · {getAssetName(record.assetId)} · {getVendorName(record.vendorId)}
                       </div>
                     </div>
                     <span style={badgeStyle(record.status)}>{record.status}</span>
                   </div>
-                  <p style={{ color: colors.text, lineHeight: 1.5, marginBottom: 12 }}>
-                    {record.notes}
-                  </p>
+                  <p style={{ color: colors.text, lineHeight: 1.5, marginBottom: 12 }}>{record.notes}</p>
                   <button
                     type="button"
                     onClick={() => deleteServiceRecord(record.id)}
@@ -1894,40 +2563,14 @@ export default function AtlasPage() {
   function renderVendors() {
     return (
       <SectionShell eyebrow="Vendors" title="Atlas Vendor Directory">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: 14,
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
           {filteredVendors.map((vendor) => (
-            <div
-              key={vendor.id}
-              style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 18,
-                padding: 16,
-                background: "#FBFCFE",
-              }}
-            >
-              <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>
-                {vendor.category}
-              </div>
+            <div key={vendor.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 18, padding: 16, background: "#FBFCFE" }}>
+              <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{vendor.category}</div>
               <h3 style={{ color: colors.navy, margin: "6px 0" }}>{vendor.name}</h3>
-              {vendor.phone ? (
-                <div style={{ color: colors.text, fontSize: 13, marginTop: 4 }}>
-                  {vendor.phone}
-                </div>
-              ) : null}
-              {vendor.email ? (
-                <div style={{ color: colors.text, fontSize: 13, marginTop: 4 }}>
-                  {vendor.email}
-                </div>
-              ) : null}
-              <p style={{ color: colors.muted, fontSize: 14, lineHeight: 1.45 }}>
-                {vendor.notes}
-              </p>
+              {vendor.phone ? <div style={{ color: colors.text, fontSize: 13, marginTop: 4 }}>{vendor.phone}</div> : null}
+              {vendor.email ? <div style={{ color: colors.text, fontSize: 13, marginTop: 4 }}>{vendor.email}</div> : null}
+              <p style={{ color: colors.muted, fontSize: 14, lineHeight: 1.45 }}>{vendor.notes}</p>
             </div>
           ))}
         </div>
@@ -1956,16 +2599,10 @@ export default function AtlasPage() {
                   background: "#FBFCFE",
                 }}
               >
-                <div style={{ color: colors.navy, fontWeight: 950 }}>
-                  {formatDate(item.date)}
-                </div>
+                <div style={{ color: colors.navy, fontWeight: 950 }}>{formatDate(item.date)}</div>
                 <div>
-                  <div style={{ color: colors.navy, fontWeight: 950 }}>
-                    {item.title}
-                  </div>
-                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
-                    {item.area}
-                  </div>
+                  <div style={{ color: colors.navy, fontWeight: 950 }}>{item.title}</div>
+                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{item.area}</div>
                 </div>
                 <span style={badgeStyle(item.status)}>{item.status}</span>
               </div>
@@ -1976,36 +2613,34 @@ export default function AtlasPage() {
   }
 
   function renderWeather() {
+    const cards = [
+      {
+        title: "Dock / Wind",
+        text: "Watch lake level, wind, dock power, SeaDoo lift, Cobalt lift, dock lift boxes, and water trampoline before storms or heavy use.",
+      },
+      {
+        title: "Freeze",
+        text: "During cold weather, check exterior hose bibs, mechanical room, garage, pool equipment, spa area, and lower generator area.",
+      },
+      {
+        title: "Heavy Rain",
+        text: "During heavy rain, check gutters, roof drainage, basement, ADU, garage, FloLogic, and leak-detection records.",
+      },
+      {
+        title: "Heat / Humidity",
+        text: "For indoor pool comfort, monitor Desert Aire performance, condensation, pool HVAC status, and room humidity.",
+      },
+    ];
+
     return (
       <SectionShell eyebrow="Weather Watch" title="2000 Property Conditions">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: 14,
-          }}
-        >
-          <div style={weatherCardStyle}>
-            <div style={weatherValueStyle}>Dock</div>
-            <p style={weatherTextStyle}>
-              Watch lake level, wind, dock power, SeaDoo lift, and Cobalt lift before
-              storms or heavy use.
-            </p>
-          </div>
-          <div style={weatherCardStyle}>
-            <div style={weatherValueStyle}>Freeze</div>
-            <p style={weatherTextStyle}>
-              During cold weather, check exterior hose bibs, mechanical room, garage,
-              pool equipment, and spa area.
-            </p>
-          </div>
-          <div style={weatherCardStyle}>
-            <div style={weatherValueStyle}>Rain</div>
-            <p style={weatherTextStyle}>
-              During heavy rain, check gutters, drainage, basement, ADU, garage, and
-              leak-detection records.
-            </p>
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
+          {cards.map((card) => (
+            <div key={card.title} style={{ border: `1px solid ${colors.line}`, borderRadius: 18, padding: 18, background: "#FBFCFE", minHeight: 150 }}>
+              <div style={{ color: colors.navy, fontSize: 24, fontWeight: 950, marginBottom: 8 }}>{card.title}</div>
+              <p style={{ color: colors.muted, lineHeight: 1.5, margin: 0 }}>{card.text}</p>
+            </div>
+          ))}
         </div>
       </SectionShell>
     );
@@ -2013,23 +2648,12 @@ export default function AtlasPage() {
 
   function renderDocuments() {
     return (
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "0.75fr 1.25fr",
-          gap: 18,
-          alignItems: "start",
-        }}
-      >
-        <SectionShell eyebrow="Upload" title="Photos / Documents">
+      <div style={{ display: "grid", gridTemplateColumns: "0.78fr 1.22fr", gap: 18, alignItems: "start" }}>
+        <SectionShell eyebrow="Upload" title="Photos">
           <div style={{ display: "grid", gap: 12 }}>
             <label style={{ display: "grid", gap: 6, color: colors.navy, fontWeight: 900 }}>
               Attach to Asset
-              <select
-                value={selectedAssetId}
-                onChange={(event) => setSelectedAssetId(event.target.value)}
-                style={inputStyle}
-              >
+              <select value={selectedAssetId} onChange={(event) => setSelectedAssetId(event.target.value)} style={inputStyle}>
                 {assets.map((asset) => (
                   <option key={asset.id} value={asset.id}>
                     {asset.name}
@@ -2053,79 +2677,62 @@ export default function AtlasPage() {
             >
               Add photos for {selectedAsset.name}
               <span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>
-                Uploads are saved in this browser for now.
+                Uploads save in this browser for now.
               </span>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handlePhotoUpload}
-                style={{ color: colors.muted }}
-              />
+              <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} />
             </label>
+
+            {selectedAssetPhotos.length ? (
+              <div style={{ display: "grid", gap: 12 }}>
+                {selectedAssetPhotos.map((photo) => (
+                  <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
+                    <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 145, objectFit: "cover" }} />
+                    <div style={{ padding: 12 }}>
+                      <div style={{ color: colors.navy, fontWeight: 900, fontSize: 13 }}>{photo.name}</div>
+                      <button
+                        type="button"
+                        onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))}
+                        style={{
+                          marginTop: 10,
+                          border: `1px solid ${colors.line}`,
+                          background: "white",
+                          color: colors.red,
+                          borderRadius: 10,
+                          padding: "7px 10px",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: colors.muted }}>No photos added for this selected asset yet.</div>
+            )}
           </div>
         </SectionShell>
 
-        <SectionShell eyebrow="Gallery" title={`${selectedAsset.name} Photos`}>
-          {selectedAssetPhotos.length ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                gap: 14,
-              }}
-            >
-              {selectedAssetPhotos.map((photo) => (
-                <div
-                  key={photo.id}
-                  style={{
-                    border: `1px solid ${colors.line}`,
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    background: "#FBFCFE",
-                  }}
-                >
-                  <img
-                    src={photo.dataUrl}
-                    alt={photo.name}
-                    style={{ width: "100%", height: 160, objectFit: "cover" }}
-                  />
-                  <div style={{ padding: 12 }}>
-                    <div style={{ color: colors.navy, fontWeight: 900, fontSize: 13 }}>
-                      {photo.name}
+        <SectionShell eyebrow="Documents" title="Atlas Document Records">
+          <div style={{ display: "grid", gap: 12 }}>
+            {filteredDocuments.map((document) => (
+              <div key={document.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, padding: 15, background: "#FBFCFE" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{document.area}</div>
+                    <h3 style={{ color: colors.navy, margin: "5px 0" }}>{document.title}</h3>
+                    <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>
+                      {document.type}
+                      {document.linkedAssetId ? ` · ${getAssetName(document.linkedAssetId)}` : ""}
                     </div>
-                    <div style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
-                      {new Date(photo.createdAt).toLocaleString()}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPhotos((current) =>
-                          current.filter((item) => item.id !== photo.id)
-                        )
-                      }
-                      style={{
-                        marginTop: 10,
-                        border: `1px solid ${colors.line}`,
-                        background: "white",
-                        color: colors.red,
-                        borderRadius: 10,
-                        padding: "7px 10px",
-                        fontWeight: 900,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Delete
-                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ color: colors.muted }}>
-              No photos added for this asset yet.
-            </div>
-          )}
+                <p style={{ color: colors.text, lineHeight: 1.5 }}>{document.notes}</p>
+              </div>
+            ))}
+          </div>
         </SectionShell>
       </div>
     );
@@ -2133,48 +2740,16 @@ export default function AtlasPage() {
 
   function renderProcedures() {
     return (
-      <SectionShell eyebrow="Procedures" title="Atlas How-To Records">
+      <SectionShell eyebrow="Procedures" title="Atlas How-To Records / Work Templates">
         <div style={{ display: "grid", gap: 14 }}>
-          {procedures.map((procedure) => (
-            <div
-              key={procedure.id}
-              style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 18,
-                padding: 16,
-                background: "#FBFCFE",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  alignItems: "center",
-                  marginBottom: 10,
-                }}
-              >
+          {filteredProcedures.map((procedure) => (
+            <div key={procedure.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 18, padding: 16, background: "#FBFCFE" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
                 <div>
-                  <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>
-                    {procedure.area}
-                  </div>
-                  <h3 style={{ color: colors.navy, margin: "5px 0 0" }}>
-                    {procedure.title}
-                  </h3>
+                  <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{procedure.area}</div>
+                  <h3 style={{ color: colors.navy, margin: "5px 0 0" }}>{procedure.title}</h3>
                 </div>
-                <span
-                  style={{
-                    ...badgeStyle(
-                      procedure.priority === "High"
-                        ? "Open"
-                        : procedure.priority === "Seasonal"
-                          ? "Seasonal"
-                          : "Completed"
-                    ),
-                  }}
-                >
-                  {procedure.priority}
-                </span>
+                <span style={priorityBadge(procedure.priority)}>{procedure.priority}</span>
               </div>
               <ol style={{ margin: 0, paddingLeft: 21, color: colors.text, lineHeight: 1.6 }}>
                 {procedure.steps.map((step) => (
@@ -2191,37 +2766,26 @@ export default function AtlasPage() {
   function renderAssistant() {
     const quickQuestions = [
       "What boiler do we have?",
+      "What is the pool equipment chain?",
+      "Which lift box is for the Cobalt?",
       "Who worked on the Lutron blinds?",
       "What do we know about the Sundance spa?",
-      "Which lift box is for the Cobalt?",
-      "Where is the pool backwash procedure?",
+      "What aircraft are in the Hangar?",
+      "Where should password info go?",
     ];
 
     return (
       <SectionShell
         eyebrow="Ask Atlas"
         title="Search the Local Atlas Records"
-        right={
-          <img
-            src="/atlas-logo.png"
-            alt="Atlas logo"
-            style={{ width: 52, height: 52, objectFit: "contain" }}
-          />
-        }
+        right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}
       >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "0.85fr 1.15fr",
-            gap: 18,
-            alignItems: "start",
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 18, alignItems: "start" }}>
           <div style={{ display: "grid", gap: 12 }}>
             <textarea
               value={assistantQuestion}
               onChange={(event) => setAssistantQuestion(event.target.value)}
-              placeholder="Ask about assets, vendors, procedures, service notes, pool equipment, boilers, dock lifts, blinds, or the spa..."
+              placeholder="Ask about assets, vendors, procedures, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..."
               rows={7}
               style={{ ...inputStyle, resize: "vertical" }}
             />
@@ -2273,7 +2837,7 @@ export default function AtlasPage() {
               borderRadius: 18,
               padding: 18,
               background: "#FBFCFE",
-              minHeight: 275,
+              minHeight: 310,
               whiteSpace: "pre-wrap",
               color: colors.text,
               lineHeight: 1.55,
@@ -2334,24 +2898,8 @@ export default function AtlasPage() {
             }}
           />
           <div>
-            <div
-              style={{
-                fontSize: 26,
-                fontWeight: 950,
-                letterSpacing: 1.8,
-                lineHeight: 1,
-              }}
-            >
-              ATLAS
-            </div>
-            <div
-              style={{
-                color: "rgba(255,255,255,0.68)",
-                fontSize: 13,
-                fontWeight: 750,
-                marginTop: 6,
-              }}
-            >
+            <div style={{ fontSize: 26, fontWeight: 950, letterSpacing: 1.8, lineHeight: 1 }}>ATLAS</div>
+            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 13, fontWeight: 750, marginTop: 6 }}>
               2000 Estate Operations
             </div>
           </div>
@@ -2367,9 +2915,7 @@ export default function AtlasPage() {
                 type="button"
                 onClick={() => setScreen(item.id)}
                 style={{
-                  border: active
-                    ? `1px solid ${colors.gold2}`
-                    : "1px solid rgba(255,255,255,0.08)",
+                  border: active ? `1px solid ${colors.gold2}` : "1px solid rgba(255,255,255,0.08)",
                   background: active ? "rgba(201,154,61,0.18)" : "rgba(255,255,255,0.04)",
                   color: "white",
                   borderRadius: 16,
@@ -2383,30 +2929,13 @@ export default function AtlasPage() {
                 }}
               >
                 <span>
-                  <span style={{ display: "block", fontWeight: 950 }}>
-                    {item.label}
-                  </span>
-                  <span
-                    style={{
-                      display: "block",
-                      color: "rgba(255,255,255,0.62)",
-                      fontSize: 12,
-                      marginTop: 3,
-                    }}
-                  >
+                  <span style={{ display: "block", fontWeight: 950 }}>{item.label}</span>
+                  <span style={{ display: "block", color: "rgba(255,255,255,0.62)", fontSize: 12, marginTop: 3 }}>
                     {item.description}
                   </span>
                 </span>
                 {active ? (
-                  <span
-                    style={{
-                      width: 9,
-                      height: 9,
-                      borderRadius: "50%",
-                      background: colors.gold2,
-                      flex: "0 0 auto",
-                    }}
-                  />
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: colors.gold2, flex: "0 0 auto" }} />
                 ) : null}
               </button>
             );
@@ -2422,21 +2951,10 @@ export default function AtlasPage() {
             background: "rgba(255,255,255,0.05)",
           }}
         >
-          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>
-            BRANDING
-          </div>
-          <div style={{ fontWeight: 900, marginTop: 6 }}>
-            Official Atlas logo active
-          </div>
-          <div
-            style={{
-              color: "rgba(255,255,255,0.65)",
-              fontSize: 12,
-              marginTop: 5,
-              lineHeight: 1.4,
-            }}
-          >
-            Navy-and-gold mark is now used inside the app shell and header.
+          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>MASTER DATA</div>
+          <div style={{ fontWeight: 900, marginTop: 6 }}>Expanded 2000 records active</div>
+          <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>
+            Logo, locations, assets, vendors, procedures, documents, history, map, and Ask Atlas are loaded.
           </div>
         </div>
       </aside>
@@ -2471,31 +2989,14 @@ export default function AtlasPage() {
               }}
             />
             <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  color: colors.gold,
-                  fontSize: 12,
-                  fontWeight: 950,
-                  letterSpacing: 1.3,
-                  textTransform: "uppercase",
-                }}
-              >
+              <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.3, textTransform: "uppercase" }}>
                 {activeNav?.label ?? "Dashboard"}
               </div>
-              <h1
-                style={{
-                  margin: "4px 0 0",
-                  color: colors.navy,
-                  fontSize: 31,
-                  letterSpacing: -0.9,
-                  lineHeight: 1.05,
-                }}
-              >
+              <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: 31, letterSpacing: -0.9, lineHeight: 1.05 }}>
                 Atlas / 2000
               </h1>
               <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>
-                Private estate systems, service history, vendors, procedures, and
-                Ask Atlas records.
+                Private estate systems, service history, vendors, procedures, documents, photos, and Ask Atlas.
               </div>
             </div>
           </div>
@@ -2511,11 +3012,7 @@ export default function AtlasPage() {
               padding: 10,
             }}
           >
-            <img
-              src="/atlas-logo.png"
-              alt="Atlas logo"
-              style={{ width: 30, height: 30, objectFit: "contain" }}
-            />
+            <img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 30, height: 30, objectFit: "contain" }} />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -2551,46 +3048,26 @@ export default function AtlasPage() {
         </header>
 
         {query ? (
-          <div
-            style={{
-              marginBottom: 18,
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                border: `1px solid ${colors.line}`,
-                background: colors.card,
-                borderRadius: 18,
-                padding: 14,
-              }}
-            >
+          <div style={{ marginBottom: 18, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
+            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
+              <strong style={{ color: colors.navy }}>{filteredLocations.length}</strong>
+              <span style={{ color: colors.muted }}> locations</span>
+            </div>
+            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
               <strong style={{ color: colors.navy }}>{filteredAssets.length}</strong>
-              <span style={{ color: colors.muted }}> asset matches</span>
+              <span style={{ color: colors.muted }}> assets</span>
             </div>
-            <div
-              style={{
-                border: `1px solid ${colors.line}`,
-                background: colors.card,
-                borderRadius: 18,
-                padding: 14,
-              }}
-            >
+            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
               <strong style={{ color: colors.navy }}>{filteredVendors.length}</strong>
-              <span style={{ color: colors.muted }}> vendor matches</span>
+              <span style={{ color: colors.muted }}> vendors</span>
             </div>
-            <div
-              style={{
-                border: `1px solid ${colors.line}`,
-                background: colors.card,
-                borderRadius: 18,
-                padding: 14,
-              }}
-            >
+            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
               <strong style={{ color: colors.navy }}>{filteredServices.length}</strong>
-              <span style={{ color: colors.muted }}> service matches</span>
+              <span style={{ color: colors.muted }}> service</span>
+            </div>
+            <div style={{ border: `1px solid ${colors.line}`, background: colors.card, borderRadius: 18, padding: 14 }}>
+              <strong style={{ color: colors.navy }}>{filteredDocuments.length}</strong>
+              <span style={{ color: colors.muted }}> docs</span>
             </div>
           </div>
         ) : null}
@@ -2610,37 +3087,4 @@ export default function AtlasPage() {
     </main>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  border: `1px solid ${colors.line}`,
-  background: "#FBFCFE",
-  color: colors.navy,
-  borderRadius: 13,
-  padding: "11px 12px",
-  fontSize: 14,
-  fontWeight: 750,
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const weatherCardStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  borderRadius: 18,
-  padding: 18,
-  background: "#FBFCFE",
-  minHeight: 150,
-};
-
-const weatherValueStyle: React.CSSProperties = {
-  color: colors.navy,
-  fontSize: 26,
-  fontWeight: 950,
-  marginBottom: 8,
-};
-
-const weatherTextStyle: React.CSSProperties = {
-  color: colors.muted,
-  lineHeight: 1.5,
-  margin: 0,
-};
+```
