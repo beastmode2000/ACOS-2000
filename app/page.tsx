@@ -1926,7 +1926,6 @@ return ( <div> <Header title="Procedures" subtitle="Step-by-step operating proce
     ))}
   </div>
 </div>
-```
 
 );
 }
