@@ -987,7 +987,7 @@ export default function Page() {
     <main style={styles.shell}>
       <aside style={styles.sidebar}>
         <div style={styles.brandBox}>
-          <div style={styles.logoCircle}>A</div>
+          <img src="/atlas-logo.png" alt="Atlas official logo" style={styles.logoImage} />
           <div>
             <div style={styles.brandTitle}>ATLAS</div>
             <div style={styles.brandSubtitle}>2000 Estate Operations</div>
