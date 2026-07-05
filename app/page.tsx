@@ -1345,7 +1345,6 @@ return ( <div> <Header
      subtitle="Pick the asset, then type or paste service notes, work orders, vendor updates, invoices, repair comments, and linked photos/documents."
    />
 
-```
   <div style={styles.statGrid}>
     <Stat label="Total Records" value={serviceHistory.length} />
     <Stat label="Active" value={activeCount} />
