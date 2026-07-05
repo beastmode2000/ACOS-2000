@@ -1,12 +1,3 @@
-Replace only:
-
-```txt
-app/page.tsx
-```
-
-Delete everything in that file, then paste this whole code.
-
-```tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -3087,4 +3078,3 @@ export default function AtlasPage() {
     </main>
   );
 }
-```
