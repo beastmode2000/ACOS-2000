@@ -415,6 +415,36 @@ const defaultDocuments: DocumentRecord[] = [
     fileDataUrl: "",
     mimeType: "",
     notes: "Sundance 880 Series Optima nameplate / cabinet photo record. Serial 00P3LCD-100528521-0315."
+  },
+  {
+    id: "doc-seadoo-repair-photos",
+    date: todayISO(),
+    title: "Sea-Doo service / repair photos",
+    type: "Photo",
+    assetId: "craft-seadoo-2024",
+    serviceId: "svc-seadoo-service",
+    vendorId: "seadoo-service",
+    locationId: "dock",
+    url: "",
+    fileName: "",
+    fileDataUrl: "",
+    mimeType: "",
+    notes: "Use this record to describe or link Sea-Doo repair photos."
+  },
+  {
+    id: "doc-pool-backwash-note",
+    date: todayISO(),
+    title: "Pool backwash notes/photos",
+    type: "Note",
+    assetId: "pool",
+    serviceId: "svc-pool-backwash",
+    vendorId: "aqua-quip",
+    locationId: "pool",
+    url: "",
+    fileName: "",
+    fileDataUrl: "",
+    mimeType: "",
+    notes: "Record pressure before/after, backwash date, water clarity, and any photos or observations."
   }
 ];
 
@@ -495,7 +525,7 @@ export default function Page() {
   const selectedAsset = assets.find((item) => item.id === selectedAssetId) || assets[0] || defaultAssets[0];
   const selectedLocation = locations.find((item) => item.id === selectedLocationId) || locations[0] || defaultLocations[0];
   const selectedVendor = vendors.find((item) => item.id === selectedVendorId) || vendors[0] || defaultVendors[0];
-  const selectedService = serviceHistory.find((item) => item.id === selectedServiceId) || serviceHistory[0] || defaultServiceHistory[0];
+  const selectedService = serviceHistory.find((item) => item.id === selectedServiceId) || serviceHistory[0] || null;
   const selectedDocument = documents.find((item) => item.id === selectedDocumentId) || documents[0] || null;
 
   const filteredAssets = useMemo(() => {
@@ -557,6 +587,60 @@ export default function Page() {
     const remaining = documents.filter((row) => row.id !== id);
     setDocuments(remaining);
     setSelectedDocumentId(remaining[0]?.id || "");
+  }
+
+  function deleteServiceRecord(id: string) {
+    if (serviceHistory.length <= 1) {
+      if (typeof window !== "undefined") window.alert("Keep at least one service record.");
+      return;
+    }
+
+    const ok = typeof window === "undefined" ? true : window.confirm("Delete this service note / work order?");
+    if (!ok) return;
+
+    const remaining = serviceHistory.filter((row) => row.id !== id);
+    setServiceHistory(remaining);
+    setDocuments((rows) => rows.map((row) => row.serviceId === id ? { ...row, serviceId: "" } : row));
+    setSelectedServiceId(remaining[0]?.id || "");
+  }
+
+  function deleteAssetRecord(id: string) {
+    if (assets.length <= 1) {
+      if (typeof window !== "undefined") window.alert("Keep at least one asset.");
+      return;
+    }
+
+    const target = assets.find((row) => row.id === id);
+    const ok = typeof window === "undefined" ? true : window.confirm("Delete this asset? Service notes and documents will stay, but they will no longer be linked to this asset.");
+    if (!ok) return;
+
+    const remaining = assets.filter((row) => row.id !== id);
+    setAssets(remaining);
+    setServiceHistory((rows) => rows.map((row) => row.assetId === id ? { ...row, assetId: "" } : row));
+    setDocuments((rows) => rows.map((row) => row.assetId === id ? { ...row, assetId: "" } : row));
+    setSelectedAssetId(remaining[0]?.id || "");
+    if (target?.vendorIds?.length) {
+      setSelectedVendorId(target.vendorIds[0]);
+    }
+  }
+
+  function deleteVendorRecord(id: string) {
+    if (vendors.length <= 1) {
+      if (typeof window !== "undefined") window.alert("Keep at least one vendor.");
+      return;
+    }
+
+    const ok = typeof window === "undefined" ? true : window.confirm("Delete this vendor? Linked assets will stay, but this vendor will be removed from them.");
+    if (!ok) return;
+
+    const remaining = vendors.filter((row) => row.id !== id);
+    const replacementVendorId = remaining[0]?.id || "";
+
+    setVendors(remaining);
+    setAssets((rows) => rows.map((row) => ({ ...row, vendorIds: row.vendorIds.filter((vendorId) => vendorId !== id) })));
+    setServiceHistory((rows) => rows.map((row) => row.vendorId === id ? { ...row, vendorId: replacementVendorId } : row));
+    setDocuments((rows) => rows.map((row) => row.vendorId === id ? { ...row, vendorId: "" } : row));
+    setSelectedVendorId(replacementVendorId);
   }
 
   function addAsset() {
@@ -886,7 +970,6 @@ export default function Page() {
 
         {screen === "assets" && (
           <AssetsPanel
-            assets={assets}
             filteredAssets={filteredAssets}
             locations={locations}
             vendors={vendors}
@@ -902,6 +985,7 @@ export default function Page() {
             setSelectedDocumentId={setSelectedDocumentId}
             setSelectedServiceId={setSelectedServiceId}
             updateAsset={updateAsset}
+            deleteAssetRecord={deleteAssetRecord}
             linkVendorToAsset={linkVendorToAsset}
             unlinkVendorFromAsset={unlinkVendorFromAsset}
             addServiceRecordForAsset={addServiceRecordForAsset}
@@ -919,6 +1003,7 @@ export default function Page() {
             documents={documents}
             setSelectedServiceId={setSelectedServiceId}
             updateServiceRecord={updateServiceRecord}
+            deleteServiceRecord={deleteServiceRecord}
             addServiceRecordForAsset={addServiceRecordForAsset}
             addDocumentForService={addDocumentForService}
             setSelectedAssetId={setSelectedAssetId}
@@ -945,6 +1030,7 @@ export default function Page() {
             setSelectedDocumentId={setSelectedDocumentId}
             setSelectedServiceId={setSelectedServiceId}
             updateVendor={updateVendor}
+            deleteVendorRecord={deleteVendorRecord}
             addVendor={addVendor}
             duplicateVendor={duplicateVendor}
             linkVendorToAsset={linkVendorToAsset}
@@ -1258,13 +1344,13 @@ function AssetsPanel({
   setSelectedDocumentId,
   setSelectedServiceId,
   updateAsset,
+  deleteAssetRecord,
   linkVendorToAsset,
   unlinkVendorFromAsset,
   addServiceRecordForAsset,
   addDocumentForAsset,
   setScreen
 }: {
-  assets: AssetRecord[];
   filteredAssets: AssetRecord[];
   locations: LocationRecord[];
   vendors: VendorRecord[];
@@ -1280,6 +1366,7 @@ function AssetsPanel({
   setSelectedDocumentId: (id: string) => void;
   setSelectedServiceId: (id: string) => void;
   updateAsset: (id: string, patch: Partial<AssetRecord>) => void;
+  deleteAssetRecord: (id: string) => void;
   linkVendorToAsset: (assetId: string, vendorId: string) => void;
   unlinkVendorFromAsset: (assetId: string, vendorId: string) => void;
   addServiceRecordForAsset: (assetId?: string) => void;
@@ -1383,6 +1470,10 @@ function AssetsPanel({
               <span style={styles.smallMuted}>{row.date} · {row.status}</span>
             </button>
           ))}
+
+          <button type="button" onClick={() => deleteAssetRecord(selectedAsset.id)} style={styles.dangerButton}>
+            Delete Asset
+          </button>
         </section>
       </div>
     </div>
@@ -1397,6 +1488,7 @@ function ServiceHistoryPanel({
   documents,
   setSelectedServiceId,
   updateServiceRecord,
+  deleteServiceRecord,
   addServiceRecordForAsset,
   addDocumentForService,
   setSelectedAssetId,
@@ -1405,12 +1497,13 @@ function ServiceHistoryPanel({
   setScreen
 }: {
   serviceHistory: ServiceHistoryRecord[];
-  selectedService: ServiceHistoryRecord;
+  selectedService: ServiceHistoryRecord | null;
   assets: AssetRecord[];
   vendors: VendorRecord[];
   documents: DocumentRecord[];
   setSelectedServiceId: (id: string) => void;
   updateServiceRecord: (id: string, patch: Partial<ServiceHistoryRecord>) => void;
+  deleteServiceRecord: (id: string) => void;
   addServiceRecordForAsset: (assetId?: string) => void;
   addDocumentForService: (serviceId: string) => void;
   setSelectedAssetId: (id: string) => void;
@@ -1418,9 +1511,9 @@ function ServiceHistoryPanel({
   setSelectedDocumentId: (id: string) => void;
   setScreen: (screen: Screen) => void;
 }) {
-  const linkedAsset = assets.find((row) => row.id === selectedService.assetId);
-  const linkedVendor = vendors.find((row) => row.id === selectedService.vendorId);
-  const linkedDocs = documents.filter((row) => row.serviceId === selectedService.id);
+  const linkedAsset = selectedService ? assets.find((row) => row.id === selectedService.assetId) : undefined;
+  const linkedVendor = selectedService ? vendors.find((row) => row.id === selectedService.vendorId) : undefined;
+  const linkedDocs = selectedService ? documents.filter((row) => row.serviceId === selectedService.id) : [];
   const activeCount = serviceHistory.filter((row) => row.status !== "Completed").length;
   const completedCount = serviceHistory.filter((row) => row.status === "Completed").length;
 
@@ -1432,7 +1525,7 @@ function ServiceHistoryPanel({
         <Stat label="Total Records" value={serviceHistory.length} />
         <Stat label="Active" value={activeCount} />
         <Stat label="Completed" value={completedCount} />
-        <Stat label="Current" value={selectedService.status} />
+        <Stat label="Current" value={selectedService?.status || "None"} />
       </div>
 
       <div style={styles.gridTwo}>
@@ -1454,10 +1547,10 @@ function ServiceHistoryPanel({
               const linkedAssetRow = assets.find((assetRow) => assetRow.id === row.assetId);
               const linkedVendorRow = vendors.find((vendorRow) => vendorRow.id === row.vendorId);
               return (
-                <button key={row.id} type="button" onClick={() => setSelectedServiceId(row.id)} style={row.id === selectedService.id ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}>
+                <button key={row.id} type="button" onClick={() => setSelectedServiceId(row.id)} style={selectedService && row.id === selectedService.id ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}>
                   <strong>{row.title}</strong>
                   <span style={styles.smallMuted}>{row.date} · {row.status}</span>
-                  <span style={styles.smallMuted}>{linkedAssetRow?.name || "Unknown asset"} · {linkedVendorRow?.name || "Unknown vendor"}</span>
+                  <span style={styles.smallMuted}>{linkedAssetRow?.name || "No linked asset"} · {linkedVendorRow?.name || "No linked vendor"}</span>
                 </button>
               );
             })}
@@ -1465,59 +1558,76 @@ function ServiceHistoryPanel({
         </section>
 
         <section style={styles.card}>
-          <h2 style={styles.h2}>Service Comment / Work Order</h2>
-          <p style={styles.kicker}>{linkedAsset?.name || "Choose asset"} · {selectedService.status}</p>
+          {!selectedService && (
+            <div>
+              <h2 style={styles.h2}>No service note selected</h2>
+              <p style={styles.muted}>Pick an asset on the left to create a new service note.</p>
+            </div>
+          )}
 
-          <label style={styles.label}>1. Asset this service belongs to</label>
-          <select value={selectedService.assetId} onChange={(e) => updateServiceRecord(selectedService.id, { assetId: e.target.value })} style={styles.input}>
-            {assets.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-          </select>
+          {selectedService && (
+            <div>
+              <h2 style={styles.h2}>Service Comment / Work Order</h2>
+              <p style={styles.kicker}>{linkedAsset?.name || "No linked asset"} · {selectedService.status}</p>
 
-          <label style={styles.label}>2. Date</label>
-          <input value={selectedService.date} onChange={(e) => updateServiceRecord(selectedService.id, { date: e.target.value })} style={styles.input} />
+              <label style={styles.label}>1. Asset this service belongs to</label>
+              <select value={selectedService.assetId} onChange={(e) => updateServiceRecord(selectedService.id, { assetId: e.target.value })} style={styles.input}>
+                <option value="">No asset</option>
+                {assets.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </select>
 
-          <label style={styles.label}>3. Title / short description</label>
-          <input value={selectedService.title} onChange={(e) => updateServiceRecord(selectedService.id, { title: e.target.value })} style={styles.input} />
+              <label style={styles.label}>2. Date</label>
+              <input value={selectedService.date} onChange={(e) => updateServiceRecord(selectedService.id, { date: e.target.value })} style={styles.input} />
 
-          <label style={styles.label}>4. Vendor</label>
-          <select value={selectedService.vendorId} onChange={(e) => updateServiceRecord(selectedService.id, { vendorId: e.target.value })} style={styles.input}>
-            {vendors.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-          </select>
+              <label style={styles.label}>3. Title / short description</label>
+              <input value={selectedService.title} onChange={(e) => updateServiceRecord(selectedService.id, { title: e.target.value })} style={styles.input} />
 
-          <label style={styles.label}>5. Status</label>
-          <select value={selectedService.status} onChange={(e) => updateServiceRecord(selectedService.id, { status: e.target.value as ServiceStatus })} style={styles.input}>
-            <option value="Open">Open</option>
-            <option value="Scheduled">Scheduled</option>
-            <option value="Completed">Completed</option>
-            <option value="Monitor">Monitor</option>
-          </select>
+              <label style={styles.label}>4. Vendor</label>
+              <select value={selectedService.vendorId} onChange={(e) => updateServiceRecord(selectedService.id, { vendorId: e.target.value })} style={styles.input}>
+                <option value="">No vendor</option>
+                {vendors.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </select>
 
-          <label style={styles.label}>6. Cost</label>
-          <input value={selectedService.cost || ""} onChange={(e) => updateServiceRecord(selectedService.id, { cost: e.target.value })} placeholder="$0.00" style={styles.input} />
+              <label style={styles.label}>5. Status</label>
+              <select value={selectedService.status} onChange={(e) => updateServiceRecord(selectedService.id, { status: e.target.value as ServiceStatus })} style={styles.input}>
+                <option value="Open">Open</option>
+                <option value="Scheduled">Scheduled</option>
+                <option value="Completed">Completed</option>
+                <option value="Monitor">Monitor</option>
+              </select>
 
-          <label style={styles.label}>7. Comments / paste notes here</label>
-          <textarea value={selectedService.notes} onChange={(e) => updateServiceRecord(selectedService.id, { notes: e.target.value })} placeholder="Paste invoice notes, vendor text, work performed, parts used, photos to attach later, next steps, or anything important..." style={styles.textareaHuge} />
+              <label style={styles.label}>6. Cost</label>
+              <input value={selectedService.cost || ""} onChange={(e) => updateServiceRecord(selectedService.id, { cost: e.target.value })} placeholder="$0.00" style={styles.input} />
 
-          <h3 style={styles.h3}>Photos / Documents for This Service</h3>
-          <button type="button" onClick={() => addDocumentForService(selectedService.id)} style={styles.listButton}>+ Add photo, invoice, manual, warranty, or note for this service record</button>
-          {linkedDocs.map((row) => (
-            <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
-              <strong>{row.title}</strong>
-              <span style={styles.smallMuted}>{row.date} · {row.type}</span>
-              {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached</span>}
-            </button>
-          ))}
+              <label style={styles.label}>7. Comments / paste notes here</label>
+              <textarea value={selectedService.notes} onChange={(e) => updateServiceRecord(selectedService.id, { notes: e.target.value })} placeholder="Paste invoice notes, vendor text, work performed, parts used, photos to attach later, next steps, or anything important..." style={styles.textareaHuge} />
 
-          <div style={styles.miniGrid}>
-            <button type="button" onClick={() => { if (linkedAsset) { setSelectedAssetId(linkedAsset.id); setScreen("assets"); } }} style={styles.listButton}>
-              <strong>Open Linked Asset</strong>
-              <span style={styles.smallMuted}>{linkedAsset?.name || "No linked asset"}</span>
-            </button>
-            <button type="button" onClick={() => { if (linkedVendor) { setSelectedVendorId(linkedVendor.id); setScreen("vendors"); } }} style={styles.listButton}>
-              <strong>Open Linked Vendor</strong>
-              <span style={styles.smallMuted}>{linkedVendor?.name || "No linked vendor"}</span>
-            </button>
-          </div>
+              <button type="button" onClick={() => deleteServiceRecord(selectedService.id)} style={styles.dangerButton}>
+                Delete Service Note / Work Order
+              </button>
+
+              <h3 style={styles.h3}>Photos / Documents for This Service</h3>
+              <button type="button" onClick={() => addDocumentForService(selectedService.id)} style={styles.listButton}>+ Add photo, invoice, manual, warranty, or note for this service record</button>
+              {linkedDocs.map((row) => (
+                <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
+                  <strong>{row.title}</strong>
+                  <span style={styles.smallMuted}>{row.date} · {row.type}</span>
+                  {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached</span>}
+                </button>
+              ))}
+
+              <div style={styles.miniGrid}>
+                <button type="button" onClick={() => { if (linkedAsset) { setSelectedAssetId(linkedAsset.id); setScreen("assets"); } }} style={styles.listButton}>
+                  <strong>Open Linked Asset</strong>
+                  <span style={styles.smallMuted}>{linkedAsset?.name || "No linked asset"}</span>
+                </button>
+                <button type="button" onClick={() => { if (linkedVendor) { setSelectedVendorId(linkedVendor.id); setScreen("vendors"); } }} style={styles.listButton}>
+                  <strong>Open Linked Vendor</strong>
+                  <span style={styles.smallMuted}>{linkedVendor?.name || "No linked vendor"}</span>
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>
@@ -1540,6 +1650,7 @@ function VendorsPanel({
   setSelectedDocumentId,
   setSelectedServiceId,
   updateVendor,
+  deleteVendorRecord,
   addVendor,
   duplicateVendor,
   linkVendorToAsset,
@@ -1563,6 +1674,7 @@ function VendorsPanel({
   setSelectedDocumentId: (id: string) => void;
   setSelectedServiceId: (id: string) => void;
   updateVendor: (id: string, patch: Partial<VendorRecord>) => void;
+  deleteVendorRecord: (id: string) => void;
   addVendor: () => void;
   duplicateVendor: (vendor: VendorRecord) => void;
   linkVendorToAsset: (assetId: string, vendorId: string) => void;
@@ -1619,6 +1731,10 @@ function VendorsPanel({
 
           <label style={styles.label}>Vendor Notes / paste details here</label>
           <textarea value={selectedVendor.notes} onChange={(e) => updateVendor(selectedVendor.id, { notes: e.target.value })} placeholder="Paste vendor notes, contact details, service scope, account info, invoice notes, or anything useful..." style={styles.textareaHuge} />
+
+          <button type="button" onClick={() => deleteVendorRecord(selectedVendor.id)} style={styles.dangerButton}>
+            Delete Vendor
+          </button>
 
           <h3 style={styles.h3}>Link Asset to This Vendor</h3>
           <select value={selectedAssetId} onChange={(e) => setSelectedAssetId(e.target.value)} style={styles.input}>
