@@ -58,6 +58,7 @@ type AssetRecord = {
   serial?: string;
   notes: string;
   vendorIds: string[];
+  documents?: UploadedFileRecord[];
 };
 
 type ServiceRecord = {
@@ -220,15 +221,7 @@ const vendorSeed: VendorRecord[] = [
   { id: "maplevalleyelectric", name: "Maple Valley Electric", category: "Electrical", notes: "Electrical vendor record.", documents: [] },
   { id: "mcdonnellmiller", name: "McDonnell & Miller", category: "Boiler Safety", notes: "GuardDog low-water cut-off model 751P-MT-120.", documents: [] },
   { id: "pentair", name: "Pentair", category: "Pool Pump", notes: "Pentair 3.0 HP pool pump reference in the pool equipment chain.", documents: [] },
-  {
-    id: "penthousedrapery",
-    name: "Penthouse Drapery",
-    category: "Blinds / Drapery",
-    phone: "+1 206-292-8336",
-    email: "accounting@penthousedrapery.com",
-    notes: "4033 16th Ave SW Suite A, Seattle, WA 98106. Invoice #176396 dated 06/16/2026 linked to Blinds Lutron.",
-    documents: [],
-  },
+  { id: "penthousedrapery", name: "Penthouse Drapery", category: "Blinds / Drapery", phone: "+1 206-292-8336", email: "accounting@penthousedrapery.com", notes: "4033 16th Ave SW Suite A, Seattle, WA 98106. Invoice #176396 dated 06/16/2026 linked to Blinds Lutron.", documents: [] },
   { id: "precisiongaragedoor", name: "Precision Garage Door", category: "Garage Doors", notes: "Garage door service vendor record.", documents: [] },
   { id: "psf", name: "PSF Mechanical", category: "Pool / Mechanical", notes: "Pool equipment, water treatment, and mechanical service records.", documents: [] },
   { id: "seadooservice", name: "Sea-Doo Service", category: "Sea-Doo / PWC", notes: "Sea-Doo repair and service vendor record.", documents: [] },
@@ -243,54 +236,54 @@ const vendorSeed: VendorRecord[] = [
   { id: "viessmann", name: "Viessmann", category: "Boilers / DHW", notes: "Vitodens 200 boilers and Vitocell 300-V domestic hot water tanks.", documents: [] },
 ].sort((a, b) => a.name.localeCompare(b.name));
 
-const assets: AssetRecord[] = [
-  { id: "boiler-1", name: "Boiler B-1", locationId: "mechanical-room", category: "Hydronic Heating", status: "Online", make: "Viessmann", model: "Vitodens 200", serial: "758960502925", notes: "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Nameplate details previously visible: year built 2018, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.", vendorIds: ["viessmann"] },
-  { id: "boiler-2", name: "Boiler B-2", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", serial: "758960507593", notes: "White wall-mounted Viessmann Vitodens 200. Latest clear nameplate: serial 758960507593, year built 2025, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.", vendorIds: ["viessmann"] },
-  { id: "boiler-2-new", name: "Boiler B-2 New", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", notes: "MaintainX asset list showed Boiler B-2 New in the Mechanical Room. Keep this record de-duplicated against Boiler B-2 when the final asset database is cleaned.", vendorIds: ["viessmann"] },
-  { id: "vitocell-tanks", name: "Twin Viessmann Vitocell 300-V DHW Tanks", locationId: "mechanical-room", category: "Domestic Hot Water", status: "Online", make: "Viessmann", model: "Vitocell 300-V EVIA 300", notes: "Twin gray indirect-fired domestic hot water storage tanks. Tank model EVIA 300. 79 USG / 300 L. Stainless steel tank / heat exchanger AISI 444 / 316 Ti.", vendorIds: ["viessmann"] },
-  { id: "guarddog-low-water", name: "GuardDog Low Water Cut-Off", locationId: "mechanical-room", category: "Boiler Safety", status: "Online", make: "McDonnell & Miller", model: "751P-MT-120", notes: "Manual-reset low-water cut-off device. Include green/red LED meanings, test/reset behavior, and CSD-1 compliance notes with boiler safety records.", vendorIds: ["mcdonnellmiller", "viessmann"] },
-  { id: "carrier-hvac-hz432", name: "Carrier Forced-Air HVAC + Honeywell HZ432 Zones", locationId: "mechanical-room", category: "HVAC", status: "Online", make: "Carrier / Honeywell", model: "HZ432", notes: "Forced-air Carrier HVAC with Honeywell HZ432 zoning controls. Thermostat zone references include Play Room, Kitchen, Exercise Room, Gym / Nanny, and Master Bath Floor.", vendorIds: ["carrier", "honeywell"] },
-  { id: "mini-split-elliot-option", name: "Elliot Room Mini-Split Option", locationId: "elliot-room", category: "HVAC Planning", status: "Monitor", notes: "Two options were discussed: $16k dedicated mini split with its own outdoor unit; $10k mini split tied to existing outdoor unit.", vendorIds: ["carrier"] },
-  { id: "desertaire-dhu1", name: "Desert Aire DHU-1 Pool Dehumidification", locationId: "indoor-pool", category: "Pool HVAC", status: "Monitor", make: "Desert Aire", model: "DHU-1", notes: "Indoor pool dehumidification system. Pool HVAC includes Desert Aire DHU-1, Desert Aire control/display, SR501 relay, and hydronic heat coil.", vendorIds: ["desertaire"] },
-  { id: "pool-pump-pentair", name: "Pentair 3.0 HP Pool Pump", locationId: "pool-equipment", category: "Pool Equipment", status: "Online", make: "Pentair", model: "3.0 HP", notes: "Pool water treatment chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool.", vendorIds: ["psf", "pentair"] },
-  { id: "pool-filter-triton", name: "Triton II Sand Filter", locationId: "pool-equipment", category: "Pool Filtration", status: "Online", make: "Triton II", notes: "Sand filter in pool water treatment chain. Keep pressure readings and backwash history in service notes.", vendorIds: ["psf", "triton"] },
-  { id: "pool-uv-ozone", name: "UltraPure / Paramount UV2 UV-Ozone", locationId: "pool-equipment", category: "Pool Water Treatment", status: "Online", make: "UltraPure / Paramount", model: "UV2", notes: "UV-ozone equipment in pool treatment chain before return to pool.", vendorIds: ["psf", "ultrapure"] },
-  { id: "pool-hx-p8", name: "Pool Heat Transfer HX-1 / P-8", locationId: "pool-equipment", category: "Pool Heat Transfer", status: "Online", notes: "Heat transfer uses HX-1 / P-8 into the isolated pool loop.", vendorIds: ["psf"] },
-  { id: "pool-loop-p9", name: "Pool Water Loop P-9", locationId: "pool-equipment", category: "Pool Circulation", status: "Online", notes: "P-9 circulates the pool water loop.", vendorIds: ["psf"] },
-  { id: "taylor-test-kit", name: "Taylor Technologies K-2006 / K-2006C Test Kit", locationId: "pool-equipment", category: "Pool Testing", status: "Online", make: "Taylor Technologies", model: "K-2006 / K-2006C", notes: "Pool test kit reference for chemical testing procedure.", vendorIds: ["taylor", "psf"] },
-  { id: "sundance-optima", name: "Sundance 880 Optima Spa", locationId: "standalone-spa", category: "Spa", status: "Monitor", make: "Sundance", model: "OPTIMA", serial: "00P3LCD-100528521-0315", notes: "Sundance 880-series Optima spa. Date 03/21/15. Electrical rating label: 240 V, current 26/40/48 A, breaker size 40/50/60 A, 60 Hz, single phase, 3 wires.", vendorIds: ["sundance", "aquaquip"] },
-  { id: "spa-control-system", name: "Spa Control System", locationId: "standalone-spa", category: "Spa Controls", status: "Monitor", model: "LCD controller part #6600-328 Rev E", notes: "Gray spa control system enclosure and LCD controller part #6600-328 Rev E.", vendorIds: ["sundance"] },
-  { id: "spa-heater-hydroquip", name: "HydroQuip Water Pro Smart Heater Plus", locationId: "standalone-spa", category: "Spa Heater", status: "Monitor", make: "Therm Products / HydroQuip", notes: "Water Pro Series Smart Heater Plus with Titanium Inside label.", vendorIds: ["hydroquip", "sundance"] },
-  { id: "clearray-uv", name: "ClearRay UV-C Water Purification", locationId: "standalone-spa", category: "Spa UV", status: "Monitor", make: "ClearRay", notes: "ClearRay UV-C water purification / ballast equipment labeled QC tested 230V passed.", vendorIds: ["sundance"] },
-  { id: "sunstream-cobalt", name: "Sunstream Lift Box — Cobalt", locationId: "cobalt-lift", category: "Dock / Boat Lift", status: "Online", make: "Sunstream", notes: "Larger / newer Sunstream lift control, battery, and solar box from last summer. This box belongs to the Cobalt boat lift.", vendorIds: ["sunstream"] },
-  { id: "sunstream-seadoo", name: "Sunstream Lift Box — SeaDoo", locationId: "seadoo-lift", category: "Dock / PWC Lift", status: "Monitor", make: "Sunstream", notes: "SeaDoo lift box. Smaller / older Sunstream box. Keep separate from Cobalt box.", vendorIds: ["sunstream"] },
-  { id: "sunstream-dock", name: "Sunstream Lift Box — Dock", locationId: "dock-lift", category: "Dock Lift Controls", status: "Monitor", make: "Sunstream", notes: "Additional dock lift box. Smaller / older box.", vendorIds: ["sunstream"] },
-  { id: "craft-cobalt", name: "Craft — Cobalt R-7", locationId: "dock", category: "Watercraft", status: "Seasonal", notes: "Cobalt R-7 watercraft record connected to dock and newer Sunstream Cobalt lift box.", vendorIds: ["sunstream", "i90motorsports", "seattleboat"] },
-  { id: "craft-seadoo", name: "Craft — SeaDoo 2024", locationId: "dock", category: "Watercraft", status: "Seasonal", notes: "2024 SeaDoo record connected to dock and SeaDoo lift records.", vendorIds: ["i90motorsports", "sunstream", "seadooservice"] },
-  { id: "water-trampoline", name: "Water Trampoline", locationId: "water-trampoline", category: "Waterfront", status: "Seasonal", notes: "Water trampoline added to the map and seasonal waterfront check list.", vendorIds: [] },
-  { id: "blinds-lutron", name: "Blinds Lutron", locationId: "general", category: "Motorized Shades", status: "Monitor", make: "Lutron", notes: "Motorized roller shade asset. Penthouse Drapery invoice #176396 / motorized roller shade repair belongs here.", vendorIds: ["penthousedrapery", "aallproblinds"] },
-  { id: "blinds-hunter", name: "Blinds Hunter Douglas", locationId: "elyses-room", category: "Blinds", status: "Online", make: "Hunter Douglas", notes: "MaintainX asset record showed Blinds Hunter Douglas — Elyse's Room.", vendorIds: ["aallproblinds"] },
-  { id: "dishwasher-dw1", name: "Dishwasher DW-1", locationId: "fitness-room", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-1 — Fitness Room.", vendorIds: ["bosch", "applianceservice"] },
-  { id: "dishwasher-dw2", name: "Dishwasher DW-2", locationId: "house-office", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-2 — House Managers Office.", vendorIds: ["bosch", "applianceservice"] },
-  { id: "dishwasher-dw3", name: "Dishwasher DW-3 Right", locationId: "kitchen", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-3 (Right) — Kitchen.", vendorIds: ["bosch", "applianceservice"] },
-  { id: "dishwasher-dw4", name: "Dishwasher DW-4 Left", locationId: "kitchen", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-4 (Left) — Kitchen.", vendorIds: ["bosch", "applianceservice"] },
-  { id: "dryer-dr1", name: "Dryer DR-1", locationId: "upstairs-laundry", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dryer DR-1 — Upstairs Laundry Closet.", vendorIds: ["applianceservice"] },
-  { id: "dryer-dr2", name: "Dryer DR-2", locationId: "pool-changing-room", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dryer DR-2 — Pool Changing Room.", vendorIds: ["applianceservice"] },
-  { id: "dryer-dr3", name: "Dryer DR-3", locationId: "house-office", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dryer DR-3 — House Managers Office.", vendorIds: ["applianceservice"] },
-  { id: "freezer-fr1", name: "Freezer FR-1", locationId: "pantry", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-1 — Pantry.", vendorIds: ["electromatic", "applianceservice"] },
-  { id: "freezer-fr2", name: "Freezer FR-2", locationId: "indoor-pool", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-2 — Pool.", vendorIds: ["electromatic", "applianceservice"] },
-  { id: "freezer-fr3", name: "Freezer FR-3", locationId: "indoor-pool", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-3 — Pool.", vendorIds: ["electromatic", "applianceservice"] },
-  { id: "freezer-fr4", name: "Freezer FR-4", locationId: "kitchen", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-4 — Kitchen.", vendorIds: ["electromatic", "applianceservice"] },
-  { id: "freezer-fr5", name: "Freezer FR-5", locationId: "wine-room", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-5 — Wine Room.", vendorIds: ["electromatic", "applianceservice"] },
-  { id: "wolf-range", name: "Wolfe Range / Range-Wolf", locationId: "kitchen", category: "Cooking", status: "Online", notes: "MaintainX showed a separate asset named wolfe range. Possible duplicate against Range-Wolf; keep for de-duplication.", vendorIds: ["applianceservice"] },
-  { id: "flologic", name: "FloLogic", locationId: "general", category: "Water Protection", status: "Online", notes: "Whole-property water monitoring / shutoff asset.", vendorIds: ["bestplumbing", "americanleak"] },
-  { id: "garage-openers", name: "Garage Door Openers", locationId: "garage", category: "Garage", status: "Online", notes: "MaintainX asset record showed Garage Door Openers — General.", vendorIds: ["precisiongaragedoor"] },
-  { id: "generator-lower", name: "Generator Lower", locationId: "lower-generator-area", category: "Generator", status: "Monitor", notes: "MaintainX asset record showed Generator (Lower) — Outdoor Generator.", vendorIds: ["dsquare"] },
-  { id: "g600-n23pa", name: "Gulfstream G600 N23PA", locationId: "gulfstream-g600-n23pa", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [] },
-  { id: "g280-n280cc", name: "Gulfstream G280 N280CC", locationId: "gulfstream-g280-n280cc", category: "Aircraft", status: "Monitor", notes: "Standardized aircraft name from uploaded aircraft photo. Use N280CC, not N28CC.", vendorIds: [] },
-  { id: "g280-n755pa", name: "Gulfstream G280 N755PA", locationId: "gulfstream-g280-n755pa", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [] },
-  { id: "pc12-n126al", name: "Pilatus PC12 N126AL", locationId: "pilatus-pc12-n126al", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [] },
-];
+const assetSeed: AssetRecord[] = [
+  { id: "boiler-1", name: "Boiler B-1", locationId: "mechanical-room", category: "Hydronic Heating", status: "Online", make: "Viessmann", model: "Vitodens 200", serial: "758960502925", notes: "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Nameplate details previously visible: year built 2018, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.", vendorIds: ["viessmann"], documents: [] },
+  { id: "boiler-2", name: "Boiler B-2", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", serial: "758960507593", notes: "White wall-mounted Viessmann Vitodens 200. Latest clear nameplate: serial 758960507593, year built 2025, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.", vendorIds: ["viessmann"], documents: [] },
+  { id: "boiler-2-new", name: "Boiler B-2 New", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", notes: "MaintainX asset list showed Boiler B-2 New in the Mechanical Room. Keep this record de-duplicated against Boiler B-2 when the final asset database is cleaned.", vendorIds: ["viessmann"], documents: [] },
+  { id: "vitocell-tanks", name: "Twin Viessmann Vitocell 300-V DHW Tanks", locationId: "mechanical-room", category: "Domestic Hot Water", status: "Online", make: "Viessmann", model: "Vitocell 300-V EVIA 300", notes: "Twin gray indirect-fired domestic hot water storage tanks. Tank model EVIA 300. 79 USG / 300 L. Stainless steel tank / heat exchanger AISI 444 / 316 Ti.", vendorIds: ["viessmann"], documents: [] },
+  { id: "guarddog-low-water", name: "GuardDog Low Water Cut-Off", locationId: "mechanical-room", category: "Boiler Safety", status: "Online", make: "McDonnell & Miller", model: "751P-MT-120", notes: "Manual-reset low-water cut-off device. Include green/red LED meanings, test/reset behavior, and CSD-1 compliance notes with boiler safety records.", vendorIds: ["mcdonnellmiller", "viessmann"], documents: [] },
+  { id: "carrier-hvac-hz432", name: "Carrier Forced-Air HVAC + Honeywell HZ432 Zones", locationId: "mechanical-room", category: "HVAC", status: "Online", make: "Carrier / Honeywell", model: "HZ432", notes: "Forced-air Carrier HVAC with Honeywell HZ432 zoning controls. Thermostat zone references include Play Room, Kitchen, Exercise Room, Gym / Nanny, and Master Bath Floor.", vendorIds: ["carrier", "honeywell"], documents: [] },
+  { id: "mini-split-elliot-option", name: "Elliot Room Mini-Split Option", locationId: "elliot-room", category: "HVAC Planning", status: "Monitor", notes: "Two options were discussed: $16k dedicated mini split with its own outdoor unit; $10k mini split tied to existing outdoor unit.", vendorIds: ["carrier"], documents: [] },
+  { id: "desertaire-dhu1", name: "Desert Aire DHU-1 Pool Dehumidification", locationId: "indoor-pool", category: "Pool HVAC", status: "Monitor", make: "Desert Aire", model: "DHU-1", notes: "Indoor pool dehumidification system. Pool HVAC includes Desert Aire DHU-1, Desert Aire control/display, SR501 relay, and hydronic heat coil.", vendorIds: ["desertaire"], documents: [] },
+  { id: "pool-pump-pentair", name: "Pentair 3.0 HP Pool Pump", locationId: "pool-equipment", category: "Pool Equipment", status: "Online", make: "Pentair", model: "3.0 HP", notes: "Pool water treatment chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool.", vendorIds: ["psf", "pentair"], documents: [] },
+  { id: "pool-filter-triton", name: "Triton II Sand Filter", locationId: "pool-equipment", category: "Pool Filtration", status: "Online", make: "Triton II", notes: "Sand filter in pool water treatment chain. Keep pressure readings and backwash history in service notes.", vendorIds: ["psf", "triton"], documents: [] },
+  { id: "pool-uv-ozone", name: "UltraPure / Paramount UV2 UV-Ozone", locationId: "pool-equipment", category: "Pool Water Treatment", status: "Online", make: "UltraPure / Paramount", model: "UV2", notes: "UV-ozone equipment in pool treatment chain before return to pool.", vendorIds: ["psf", "ultrapure"], documents: [] },
+  { id: "pool-hx-p8", name: "Pool Heat Transfer HX-1 / P-8", locationId: "pool-equipment", category: "Pool Heat Transfer", status: "Online", notes: "Heat transfer uses HX-1 / P-8 into the isolated pool loop.", vendorIds: ["psf"], documents: [] },
+  { id: "pool-loop-p9", name: "Pool Water Loop P-9", locationId: "pool-equipment", category: "Pool Circulation", status: "Online", notes: "P-9 circulates the pool water loop.", vendorIds: ["psf"], documents: [] },
+  { id: "taylor-test-kit", name: "Taylor Technologies K-2006 / K-2006C Test Kit", locationId: "pool-equipment", category: "Pool Testing", status: "Online", make: "Taylor Technologies", model: "K-2006 / K-2006C", notes: "Pool test kit reference for chemical testing procedure.", vendorIds: ["taylor", "psf"], documents: [] },
+  { id: "sundance-optima", name: "Sundance 880 Optima Spa", locationId: "standalone-spa", category: "Spa", status: "Monitor", make: "Sundance", model: "OPTIMA", serial: "00P3LCD-100528521-0315", notes: "Sundance 880-series Optima spa. Date 03/21/15. Electrical rating label: 240 V, current 26/40/48 A, breaker size 40/50/60 A, 60 Hz, single phase, 3 wires.", vendorIds: ["sundance", "aquaquip"], documents: [] },
+  { id: "spa-control-system", name: "Spa Control System", locationId: "standalone-spa", category: "Spa Controls", status: "Monitor", model: "LCD controller part #6600-328 Rev E", notes: "Gray spa control system enclosure and LCD controller part #6600-328 Rev E.", vendorIds: ["sundance"], documents: [] },
+  { id: "spa-heater-hydroquip", name: "HydroQuip Water Pro Smart Heater Plus", locationId: "standalone-spa", category: "Spa Heater", status: "Monitor", make: "Therm Products / HydroQuip", notes: "Water Pro Series Smart Heater Plus with Titanium Inside label.", vendorIds: ["hydroquip", "sundance"], documents: [] },
+  { id: "clearray-uv", name: "ClearRay UV-C Water Purification", locationId: "standalone-spa", category: "Spa UV", status: "Monitor", make: "ClearRay", notes: "ClearRay UV-C water purification / ballast equipment labeled QC tested 230V passed.", vendorIds: ["sundance"], documents: [] },
+  { id: "sunstream-cobalt", name: "Sunstream Lift Box — Cobalt", locationId: "cobalt-lift", category: "Dock / Boat Lift", status: "Online", make: "Sunstream", notes: "Larger / newer Sunstream lift control, battery, and solar box from last summer. This box belongs to the Cobalt boat lift.", vendorIds: ["sunstream"], documents: [] },
+  { id: "sunstream-seadoo", name: "Sunstream Lift Box — SeaDoo", locationId: "seadoo-lift", category: "Dock / PWC Lift", status: "Monitor", make: "Sunstream", notes: "SeaDoo lift box. Smaller / older Sunstream box. Keep separate from Cobalt box.", vendorIds: ["sunstream"], documents: [] },
+  { id: "sunstream-dock", name: "Sunstream Lift Box — Dock", locationId: "dock-lift", category: "Dock Lift Controls", status: "Monitor", make: "Sunstream", notes: "Additional dock lift box. Smaller / older box.", vendorIds: ["sunstream"], documents: [] },
+  { id: "craft-cobalt", name: "Craft — Cobalt R-7", locationId: "dock", category: "Watercraft", status: "Seasonal", notes: "Cobalt R-7 watercraft record connected to dock and newer Sunstream Cobalt lift box.", vendorIds: ["sunstream", "i90motorsports", "seattleboat"], documents: [] },
+  { id: "craft-seadoo", name: "Craft — SeaDoo 2024", locationId: "dock", category: "Watercraft", status: "Seasonal", notes: "2024 SeaDoo record connected to dock and SeaDoo lift records.", vendorIds: ["i90motorsports", "sunstream", "seadooservice"], documents: [] },
+  { id: "water-trampoline", name: "Water Trampoline", locationId: "water-trampoline", category: "Waterfront", status: "Seasonal", notes: "Water trampoline added to the map and seasonal waterfront check list.", vendorIds: [], documents: [] },
+  { id: "blinds-lutron", name: "Blinds Lutron", locationId: "general", category: "Motorized Shades", status: "Monitor", make: "Lutron", notes: "Motorized roller shade asset. Penthouse Drapery invoice #176396 / motorized roller shade repair belongs here.", vendorIds: ["penthousedrapery", "aallproblinds"], documents: [] },
+  { id: "blinds-hunter", name: "Blinds Hunter Douglas", locationId: "elyses-room", category: "Blinds", status: "Online", make: "Hunter Douglas", notes: "MaintainX asset record showed Blinds Hunter Douglas — Elyse's Room.", vendorIds: ["aallproblinds"], documents: [] },
+  { id: "dishwasher-dw1", name: "Dishwasher DW-1", locationId: "fitness-room", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-1 — Fitness Room.", vendorIds: ["bosch", "applianceservice"], documents: [] },
+  { id: "dishwasher-dw2", name: "Dishwasher DW-2", locationId: "house-office", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-2 — House Managers Office.", vendorIds: ["bosch", "applianceservice"], documents: [] },
+  { id: "dishwasher-dw3", name: "Dishwasher DW-3 Right", locationId: "kitchen", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-3 (Right) — Kitchen.", vendorIds: ["bosch", "applianceservice"], documents: [] },
+  { id: "dishwasher-dw4", name: "Dishwasher DW-4 Left", locationId: "kitchen", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-4 (Left) — Kitchen.", vendorIds: ["bosch", "applianceservice"], documents: [] },
+  { id: "dryer-dr1", name: "Dryer DR-1", locationId: "upstairs-laundry", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dryer DR-1 — Upstairs Laundry Closet.", vendorIds: ["applianceservice"], documents: [] },
+  { id: "dryer-dr2", name: "Dryer DR-2", locationId: "pool-changing-room", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dryer DR-2 — Pool Changing Room.", vendorIds: ["applianceservice"], documents: [] },
+  { id: "dryer-dr3", name: "Dryer DR-3", locationId: "house-office", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dryer DR-3 — House Managers Office.", vendorIds: ["applianceservice"], documents: [] },
+  { id: "freezer-fr1", name: "Freezer FR-1", locationId: "pantry", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-1 — Pantry.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "freezer-fr2", name: "Freezer FR-2", locationId: "indoor-pool", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-2 — Pool.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "freezer-fr3", name: "Freezer FR-3", locationId: "indoor-pool", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-3 — Pool.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "freezer-fr4", name: "Freezer FR-4", locationId: "kitchen", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-4 — Kitchen.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "freezer-fr5", name: "Freezer FR-5", locationId: "wine-room", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-5 — Wine Room.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "wolf-range", name: "Wolfe Range / Range-Wolf", locationId: "kitchen", category: "Cooking", status: "Online", notes: "MaintainX showed a separate asset named wolfe range. Possible duplicate against Range-Wolf; keep for de-duplication.", vendorIds: ["applianceservice"], documents: [] },
+  { id: "flologic", name: "FloLogic", locationId: "general", category: "Water Protection", status: "Online", notes: "Whole-property water monitoring / shutoff asset.", vendorIds: ["bestplumbing", "americanleak"], documents: [] },
+  { id: "garage-openers", name: "Garage Door Openers", locationId: "garage", category: "Garage", status: "Online", notes: "MaintainX asset record showed Garage Door Openers — General.", vendorIds: ["precisiongaragedoor"], documents: [] },
+  { id: "generator-lower", name: "Generator Lower", locationId: "lower-generator-area", category: "Generator", status: "Monitor", notes: "MaintainX asset record showed Generator (Lower) — Outdoor Generator.", vendorIds: ["dsquare"], documents: [] },
+  { id: "g600-n23pa", name: "Gulfstream G600 N23PA", locationId: "gulfstream-g600-n23pa", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [], documents: [] },
+  { id: "g280-n280cc", name: "Gulfstream G280 N280CC", locationId: "gulfstream-g280-n280cc", category: "Aircraft", status: "Monitor", notes: "Standardized aircraft name from uploaded aircraft photo. Use N280CC, not N28CC.", vendorIds: [], documents: [] },
+  { id: "g280-n755pa", name: "Gulfstream G280 N755PA", locationId: "gulfstream-g280-n755pa", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [], documents: [] },
+  { id: "pc12-n126al", name: "Pilatus PC12 N126AL", locationId: "pilatus-pc12-n126al", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [], documents: [] },
+].sort((a, b) => a.name.localeCompare(b.name));
 
 const serviceSeed: ServiceRecord[] = [
   { id: "service-penthouse-176396", assetId: "blinds-lutron", vendorId: "penthousedrapery", date: "2026-06-16", title: "Motorized roller shade repair — Invoice #176396", status: "Completed", notes: "Penthouse Drapery invoice #176396 dated 06/16/2026. Link this service record to Blinds Lutron." },
@@ -345,7 +338,7 @@ const navItems: { id: Screen; label: string; description: string }[] = [
   { id: "dashboard", label: "Dashboard", description: "Control center" },
   { id: "map", label: "Map", description: "Property layout" },
   { id: "locations", label: "Locations", description: "42 areas" },
-  { id: "assets", label: "Assets", description: "Equipment records" },
+  { id: "assets", label: "Assets", description: "Add / edit / docs" },
   { id: "history", label: "Service History", description: "Work notes" },
   { id: "vendors", label: "Vendors", description: "Add / edit / docs" },
   { id: "calendar", label: "Calendar", description: "Scheduled work" },
@@ -361,10 +354,14 @@ function uid(prefix: string) {
 
 function slugify(value: string) {
   const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 42);
-  return slug || uid("vendor");
+  return slug || uid("record");
 }
 
 function sortVendors(list: VendorRecord[]) {
+  return [...list].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function sortAssets(list: AssetRecord[]) {
   return [...list].sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -382,6 +379,22 @@ function blankVendor(): VendorRecord {
   };
 }
 
+function blankAsset(): AssetRecord {
+  return {
+    id: "",
+    name: "",
+    locationId: "general",
+    category: "",
+    status: "Monitor",
+    make: "",
+    model: "",
+    serial: "",
+    notes: "",
+    vendorIds: [],
+    documents: [],
+  };
+}
+
 function formatDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
   return date.toLocaleDateString(undefined, {
@@ -393,10 +406,6 @@ function formatDate(value: string) {
 
 function getLocationName(locationId: string) {
   return locations.find((location) => location.id === locationId)?.name ?? "General";
-}
-
-function getAssetName(assetId: string) {
-  return assets.find((asset) => asset.id === assetId)?.name ?? "Asset";
 }
 
 function badgeStyle(status: Status | ServiceStatus): React.CSSProperties {
@@ -504,7 +513,10 @@ function SectionShell({
 export default function AtlasPage() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
-  const [selectedAssetId, setSelectedAssetId] = useState("boiler-2");
+  const [assetRecords, setAssetRecords] = useState<AssetRecord[]>(assetSeed);
+  const [selectedAssetId, setSelectedAssetId] = useState(assetSeed[0]?.id ?? "");
+  const [assetForm, setAssetForm] = useState<AssetRecord>(assetSeed[0] ?? blankAsset());
+  const [assetMode, setAssetMode] = useState<"edit" | "new">("edit");
   const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>(serviceSeed);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>(calendarSeed);
@@ -531,13 +543,23 @@ export default function AtlasPage() {
     return vendorRecords.find((vendor) => vendor.id === vendorId)?.name ?? "Vendor";
   }
 
+  function assetName(assetId: string) {
+    return assetRecords.find((asset) => asset.id === assetId)?.name ?? "Asset";
+  }
+
   useEffect(() => {
     try {
-      const savedService = window.localStorage.getItem("atlas-service-records-v5");
-      const savedPhotos = window.localStorage.getItem("atlas-photo-records-v5");
-      const savedCalendar = window.localStorage.getItem("atlas-calendar-v5");
-      const savedVendors = window.localStorage.getItem("atlas-vendor-records-v1");
+      const savedAssets = window.localStorage.getItem("atlas-asset-records-v1");
+      const savedService = window.localStorage.getItem("atlas-service-records-v6");
+      const savedPhotos = window.localStorage.getItem("atlas-photo-records-v6");
+      const savedCalendar = window.localStorage.getItem("atlas-calendar-v6");
+      const savedVendors = window.localStorage.getItem("atlas-vendor-records-v2");
 
+      if (savedAssets) {
+        const parsedAssets = sortAssets(JSON.parse(savedAssets) as AssetRecord[]);
+        setAssetRecords(parsedAssets);
+        setSelectedAssetId(parsedAssets[0]?.id ?? "");
+      }
       if (savedService) setServiceRecords(JSON.parse(savedService) as ServiceRecord[]);
       if (savedPhotos) setPhotos(JSON.parse(savedPhotos) as PhotoRecord[]);
       if (savedCalendar) setCalendarItems(JSON.parse(savedCalendar) as CalendarItem[]);
@@ -554,6 +576,20 @@ export default function AtlasPage() {
   }, []);
 
   useEffect(() => {
+    const selected = assetRecords.find((asset) => asset.id === selectedAssetId);
+
+    if (assetMode === "new") return;
+
+    if (selected) {
+      setAssetForm({
+        ...selected,
+        documents: selected.documents ?? [],
+        vendorIds: selected.vendorIds ?? [],
+      });
+    }
+  }, [selectedAssetId, assetRecords, assetMode]);
+
+  useEffect(() => {
     const selected = vendorRecords.find((vendor) => vendor.id === selectedVendorId);
 
     if (vendorMode === "new") return;
@@ -568,25 +604,30 @@ export default function AtlasPage() {
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-service-records-v5", JSON.stringify(serviceRecords));
+    window.localStorage.setItem("atlas-asset-records-v1", JSON.stringify(sortAssets(assetRecords)));
+  }, [ready, assetRecords]);
+
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem("atlas-service-records-v6", JSON.stringify(serviceRecords));
   }, [ready, serviceRecords]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-photo-records-v5", JSON.stringify(photos));
+    window.localStorage.setItem("atlas-photo-records-v6", JSON.stringify(photos));
   }, [ready, photos]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-calendar-v5", JSON.stringify(calendarItems));
+    window.localStorage.setItem("atlas-calendar-v6", JSON.stringify(calendarItems));
   }, [ready, calendarItems]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-vendor-records-v1", JSON.stringify(sortVendors(vendorRecords)));
+    window.localStorage.setItem("atlas-vendor-records-v2", JSON.stringify(sortVendors(vendorRecords)));
   }, [ready, vendorRecords]);
 
-  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? assets[0];
+  const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? blankAsset();
 
   const selectedAssetServices = serviceRecords
     .filter((record) => record.assetId === selectedAsset.id)
@@ -604,8 +645,11 @@ export default function AtlasPage() {
   }, [q]);
 
   const filteredAssets = useMemo(() => {
-    if (!q) return assets;
-    return assets.filter((asset) =>
+    const sorted = sortAssets(assetRecords);
+
+    if (!q) return sorted;
+
+    return sorted.filter((asset) =>
       [
         asset.name,
         asset.category,
@@ -622,7 +666,7 @@ export default function AtlasPage() {
         .toLowerCase()
         .includes(q)
     );
-  }, [q, vendorRecords]);
+  }, [q, assetRecords, vendorRecords]);
 
   const filteredVendors = useMemo(() => {
     const sorted = sortVendors(vendorRecords);
@@ -641,22 +685,22 @@ export default function AtlasPage() {
   const filteredServices = useMemo(() => {
     if (!q) return serviceRecords;
     return serviceRecords.filter((record) =>
-      [record.title, record.status, record.notes, record.date, getAssetName(record.assetId), vendorName(record.vendorId)]
+      [record.title, record.status, record.notes, record.date, assetName(record.assetId), vendorName(record.vendorId)]
         .join(" ")
         .toLowerCase()
         .includes(q)
     );
-  }, [q, serviceRecords, vendorRecords]);
+  }, [q, serviceRecords, assetRecords, vendorRecords]);
 
   const filteredDocuments = useMemo(() => {
     if (!q) return documents;
     return documents.filter((document) =>
-      [document.title, document.area, document.type, document.notes, document.linkedAssetId ? getAssetName(document.linkedAssetId) : ""]
+      [document.title, document.area, document.type, document.notes, document.linkedAssetId ? assetName(document.linkedAssetId) : ""]
         .join(" ")
         .toLowerCase()
         .includes(q)
     );
-  }, [q]);
+  }, [q, assetRecords]);
 
   const filteredProcedures = useMemo(() => {
     if (!q) return procedures;
@@ -702,7 +746,7 @@ export default function AtlasPage() {
         id: `service-${record.id}`,
         type: "Service" as const,
         title: record.title,
-        subtitle: `${formatDate(record.date)} · ${getAssetName(record.assetId)} · ${vendorName(record.vendorId)}`,
+        subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)}`,
         detail: record.notes,
         screen: "history" as const,
         assetId: record.assetId,
@@ -711,7 +755,7 @@ export default function AtlasPage() {
         id: `document-${document.id}`,
         type: "Document" as const,
         title: document.title,
-        subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${getAssetName(document.linkedAssetId)}` : ""}`,
+        subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`,
         detail: document.notes,
         screen: "documents" as const,
         assetId: document.linkedAssetId,
@@ -727,11 +771,12 @@ export default function AtlasPage() {
     ];
 
     return results.slice(0, 12);
-  }, [q, filteredLocations, filteredAssets, filteredVendors, filteredServices, filteredDocuments, filteredProcedures, vendorRecords]);
+  }, [q, filteredLocations, filteredAssets, filteredVendors, filteredServices, filteredDocuments, filteredProcedures, assetRecords, vendorRecords]);
 
   const openServiceCount = serviceRecords.filter((record) => record.status === "Open" || record.status === "Monitor").length;
-  const monitorAssetCount = assets.filter((asset) => asset.status === "Monitor" || asset.status === "Offline").length;
+  const monitorAssetCount = assetRecords.filter((asset) => asset.status === "Monitor" || asset.status === "Offline").length;
   const vendorDocumentCount = vendorRecords.reduce((total, vendor) => total + (vendor.documents?.length ?? 0), 0);
+  const assetDocumentCount = assetRecords.reduce((total, asset) => total + (asset.documents?.length ?? 0), 0);
 
   function addServiceRecord() {
     if (!newService.title.trim()) return;
@@ -788,12 +833,123 @@ export default function AtlasPage() {
   }
 
   function openSearchResult(result: SearchResult) {
-    if (result.assetId) setSelectedAssetId(result.assetId);
+    if (result.assetId) {
+      setSelectedAssetId(result.assetId);
+      setAssetMode("edit");
+    }
     if (result.vendorId) {
       setSelectedVendorId(result.vendorId);
       setVendorMode("edit");
     }
     setScreen(result.screen);
+  }
+
+  function startNewAsset() {
+    setAssetMode("new");
+    setSelectedAssetId("");
+    setAssetForm(blankAsset());
+  }
+
+  function saveAsset() {
+    const name = assetForm.name.trim();
+
+    if (!name) return;
+
+    const existingId = assetMode === "edit" ? assetForm.id : "";
+    let id = existingId || slugify(name);
+
+    if (assetMode === "new" && assetRecords.some((asset) => asset.id === id)) {
+      id = `${id}-${Date.now()}`;
+    }
+
+    const cleanAsset: AssetRecord = {
+      ...assetForm,
+      id,
+      name,
+      locationId: assetForm.locationId || "general",
+      category: assetForm.category.trim() || "General",
+      status: assetForm.status || "Monitor",
+      make: assetForm.make?.trim(),
+      model: assetForm.model?.trim(),
+      serial: assetForm.serial?.trim(),
+      notes: assetForm.notes.trim() || "No notes added yet.",
+      vendorIds: assetForm.vendorIds ?? [],
+      documents: assetForm.documents ?? [],
+    };
+
+    setAssetRecords((current) => {
+      const exists = current.some((asset) => asset.id === id);
+      const next = exists
+        ? current.map((asset) => (asset.id === id ? cleanAsset : asset))
+        : [...current, cleanAsset];
+
+      return sortAssets(next);
+    });
+
+    setAssetMode("edit");
+    setSelectedAssetId(id);
+  }
+
+  function deleteAsset() {
+    if (!assetForm.id) return;
+
+    const confirmed = window.confirm(`Delete ${assetForm.name}? This removes the asset card and attached asset documents from this browser.`);
+
+    if (!confirmed) return;
+
+    const remainingAssets = sortAssets(assetRecords.filter((asset) => asset.id !== assetForm.id));
+    setAssetRecords(remainingAssets);
+    setPhotos((current) => current.filter((photo) => photo.assetId !== assetForm.id));
+    const nextAsset = remainingAssets[0];
+    setSelectedAssetId(nextAsset?.id ?? "");
+    setAssetForm(nextAsset ?? blankAsset());
+    setAssetMode(nextAsset ? "edit" : "new");
+  }
+
+  function handleAssetDocumentUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        const documentRecord: UploadedFileRecord = {
+          id: uid("asset-doc"),
+          name: file.name,
+          type: file.type || "File",
+          dataUrl: String(reader.result),
+          createdAt: new Date().toISOString(),
+        };
+
+        setAssetForm((current) => ({
+          ...current,
+          documents: [documentRecord, ...(current.documents ?? [])],
+        }));
+      };
+
+      reader.readAsDataURL(file);
+    });
+
+    event.target.value = "";
+  }
+
+  function removeAssetDocument(documentId: string) {
+    setAssetForm((current) => ({
+      ...current,
+      documents: (current.documents ?? []).filter((document) => document.id !== documentId),
+    }));
+  }
+
+  function toggleAssetVendor(vendorId: string) {
+    setAssetForm((current) => {
+      const currentIds = current.vendorIds ?? [];
+      const exists = currentIds.includes(vendorId);
+
+      return {
+        ...current,
+        vendorIds: exists ? currentIds.filter((id) => id !== vendorId) : [...currentIds, vendorId],
+      };
+    });
   }
 
   function startNewVendor() {
@@ -846,8 +1002,15 @@ export default function AtlasPage() {
 
     if (!confirmed) return;
 
-    setVendorRecords((current) => sortVendors(current.filter((vendor) => vendor.id !== vendorForm.id)));
-    const nextVendor = sortVendors(vendorRecords.filter((vendor) => vendor.id !== vendorForm.id))[0];
+    const remainingVendors = sortVendors(vendorRecords.filter((vendor) => vendor.id !== vendorForm.id));
+    setVendorRecords(remainingVendors);
+    setAssetRecords((current) =>
+      current.map((asset) => ({
+        ...asset,
+        vendorIds: asset.vendorIds.filter((id) => id !== vendorForm.id),
+      }))
+    );
+    const nextVendor = remainingVendors[0];
     setSelectedVendorId(nextVendor?.id ?? "");
     setVendorForm(nextVendor ?? blankVendor());
     setVendorMode(nextVendor ? "edit" : "new");
@@ -913,6 +1076,13 @@ export default function AtlasPage() {
       return;
     }
 
+    if (text.includes("asset") || text.includes("equipment")) {
+      setAssistantAnswer(
+        `Atlas has ${assetRecords.length} asset records. Assets can now be added, edited, deleted, assigned vendors, given photos, and given attached documents.`
+      );
+      return;
+    }
+
     if (text.includes("vendor") || text.includes("contact")) {
       setAssistantAnswer(
         `Atlas has ${vendorRecords.length} vendor records. They are listed alphabetically in Vendors. You can add, edit, delete, upload a logo/photo, and attach vendor documents.`
@@ -963,9 +1133,9 @@ export default function AtlasPage() {
     }
 
     const matches = [
-      ...assets.map((asset) => ({ type: "Asset", title: asset.name, detail: `${asset.category} — ${getLocationName(asset.locationId)}. ${asset.notes}` })),
+      ...assetRecords.map((asset) => ({ type: "Asset", title: asset.name, detail: `${asset.category} — ${getLocationName(asset.locationId)}. ${asset.notes}` })),
       ...vendorRecords.map((vendor) => ({ type: "Vendor", title: vendor.name, detail: `${vendor.category}. ${vendor.notes}` })),
-      ...serviceRecords.map((record) => ({ type: "Service", title: record.title, detail: `${formatDate(record.date)} — ${getAssetName(record.assetId)} — ${vendorName(record.vendorId)}. ${record.notes}` })),
+      ...serviceRecords.map((record) => ({ type: "Service", title: record.title, detail: `${formatDate(record.date)} — ${assetName(record.assetId)} — ${vendorName(record.vendorId)}. ${record.notes}` })),
       ...documents.map((document) => ({ type: "Document", title: document.title, detail: `${document.area} — ${document.type}. ${document.notes}` })),
       ...procedures.map((procedure) => ({ type: "Procedure", title: procedure.title, detail: `${procedure.area}. ${procedure.steps.join(" ")}` })),
       ...locations.map((location) => ({ type: "Location", title: location.name, detail: `${location.zone} — ${location.type}. ${location.notes}` })),
@@ -1018,24 +1188,25 @@ export default function AtlasPage() {
   function renderDashboard() {
     return (
       <div style={{ display: "grid", gap: 18 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 16 }}>
-          <StatCard label="Locations" value={locations.length} detail="Full 2000 baseline areas" />
-          <StatCard label="Assets" value={assets.length} detail="Equipment and systems" />
-          <StatCard label="Vendors" value={vendorRecords.length} detail="Alphabetical editable directory" />
-          <StatCard label="Vendor Docs" value={vendorDocumentCount} detail="Uploaded vendor files" />
-          <StatCard label="Open / Monitor" value={openServiceCount + monitorAssetCount} detail="Items needing attention" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 16 }}>
+          <StatCard label="Locations" value={locations.length} detail="2000 baseline areas" />
+          <StatCard label="Assets" value={assetRecords.length} detail="Editable equipment" />
+          <StatCard label="Asset Docs" value={assetDocumentCount} detail="Attached files" />
+          <StatCard label="Vendors" value={vendorRecords.length} detail="Editable directory" />
+          <StatCard label="Vendor Docs" value={vendorDocumentCount} detail="Uploaded files" />
+          <StatCard label="Open / Monitor" value={openServiceCount + monitorAssetCount} detail="Needs attention" />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
-          <SectionShell eyebrow="Master Data Import" title="Atlas / 2000 Estate Operations">
+          <SectionShell eyebrow="Asset System" title="Atlas / 2000 Estate Operations">
             <div style={heroCardStyle}>
               <div style={heroOrbStyle} />
               <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
                 <img src="/atlas-logo.png" alt="Atlas logo" style={heroLogoStyle} />
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Vendor directory is now editable.</h2>
+                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Assets are now editable.</h2>
                   <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.5 }}>
-                    Vendors are alphabetical and can now be added, edited, deleted, assigned logo/photos, and given attached documents.
+                    Assets can now be added, edited, deleted, assigned vendors, given photos, and given attached documents.
                   </p>
                 </div>
               </div>
@@ -1044,11 +1215,11 @@ export default function AtlasPage() {
 
           <SectionShell eyebrow="Watch List" title="Needs Attention">
             <div style={{ display: "grid", gap: 10 }}>
-              {assets
+              {assetRecords
                 .filter((asset) => asset.status === "Monitor" || asset.status === "Offline")
                 .slice(0, 8)
                 .map((asset) => (
-                  <button key={asset.id} type="button" onClick={() => { setSelectedAssetId(asset.id); setScreen("assets"); }} style={smallRecordButtonStyle}>
+                  <button key={asset.id} type="button" onClick={() => { setSelectedAssetId(asset.id); setAssetMode("edit"); setScreen("assets"); }} style={smallRecordButtonStyle}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                       <strong style={{ color: colors.navy }}>{asset.name}</strong>
                       <span style={badgeStyle(asset.status)}>{asset.status}</span>
@@ -1071,7 +1242,7 @@ export default function AtlasPage() {
                   <div style={{ color: colors.muted, fontWeight: 850 }}>{formatDate(record.date)}</div>
                   <div>
                     <div style={{ color: colors.navy, fontWeight: 900 }}>{record.title}</div>
-                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{getAssetName(record.assetId)} · {vendorName(record.vendorId)}</div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{assetName(record.assetId)} · {vendorName(record.vendorId)}</div>
                   </div>
                   <span style={badgeStyle(record.status)}>{record.status}</span>
                 </div>
@@ -1152,18 +1323,29 @@ export default function AtlasPage() {
 
   function renderAssets() {
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "0.88fr 1.12fr", gap: 18, alignItems: "start" }}>
-        <SectionShell eyebrow="Assets" title="Equipment Records">
+      <div style={{ display: "grid", gridTemplateColumns: "0.78fr 1.22fr", gap: 18, alignItems: "start" }}>
+        <SectionShell
+          eyebrow="Assets"
+          title="Editable Asset Directory"
+          right={
+            <button type="button" onClick={startNewAsset} style={primaryButtonStyle}>
+              Add Asset
+            </button>
+          }
+        >
           <div style={{ display: "grid", gap: 10 }}>
             {filteredAssets.map((asset) => (
               <button
                 key={asset.id}
                 type="button"
-                onClick={() => setSelectedAssetId(asset.id)}
+                onClick={() => {
+                  setSelectedAssetId(asset.id);
+                  setAssetMode("edit");
+                }}
                 style={{
                   ...smallRecordButtonStyle,
-                  border: selectedAsset.id === asset.id ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
-                  background: selectedAsset.id === asset.id ? "#FFF9EA" : "#FBFCFE",
+                  border: selectedAssetId === asset.id && assetMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
+                  background: selectedAssetId === asset.id && assetMode === "edit" ? "#FFF9EA" : "#FBFCFE",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
@@ -1171,55 +1353,176 @@ export default function AtlasPage() {
                   <span style={badgeStyle(asset.status)}>{asset.status}</span>
                 </div>
                 <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{asset.category} · {getLocationName(asset.locationId)}</div>
+                <div style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>
+                  {(asset.vendorIds ?? []).length ? asset.vendorIds.map(vendorName).join(", ") : "No vendors assigned"} · {asset.documents?.length ?? 0} docs
+                </div>
               </button>
             ))}
           </div>
         </SectionShell>
 
-        <SectionShell eyebrow={getLocationName(selectedAsset.locationId)} title={selectedAsset.name} right={<span style={badgeStyle(selectedAsset.status)}>{selectedAsset.status}</span>}>
-          <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-              {[
-                ["Make", selectedAsset.make ?? "Not set"],
-                ["Model", selectedAsset.model ?? "Not set"],
-                ["Serial", selectedAsset.serial ?? "Not set"],
-                ["Vendors", selectedAsset.vendorIds.length ? selectedAsset.vendorIds.map(vendorName).join(", ") : "Not set"],
-              ].map(([label, value]) => (
-                <div key={label} style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: 13 }}>
-                  <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>{label}</div>
-                  <div style={{ color: colors.navy, fontWeight: 900 }}>{value}</div>
-                </div>
-              ))}
-            </div>
+        <SectionShell
+          eyebrow={assetMode === "new" ? "New Asset" : "Edit Asset"}
+          title={assetForm.name || "Asset Details"}
+          right={
+            assetMode === "edit" && assetForm.id ? (
+              <button type="button" onClick={deleteAsset} style={deleteButtonStyle}>
+                Delete Asset
+              </button>
+            ) : null
+          }
+        >
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={labelStyle}>
+                Asset Name
+                <input value={assetForm.name} onChange={(event) => setAssetForm((current) => ({ ...current, name: event.target.value }))} placeholder="Asset name" style={inputStyle} />
+              </label>
 
-            <div style={notesBoxStyle}>
-              <div style={{ color: colors.muted, fontSize: 12, fontWeight: 950 }}>NOTES</div>
-              <p style={{ color: colors.text, lineHeight: 1.55, marginBottom: 0 }}>{selectedAsset.notes}</p>
-            </div>
+              <label style={labelStyle}>
+                Location
+                <select value={assetForm.locationId} onChange={(event) => setAssetForm((current) => ({ ...current, locationId: event.target.value }))} style={inputStyle}>
+                  {locations.map((location) => (
+                    <option key={location.id} value={location.id}>{location.name}</option>
+                  ))}
+                </select>
+              </label>
 
-            <div style={{ border: `1px solid ${colors.line}`, borderRadius: 16, padding: 15 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
-                <strong style={{ color: colors.navy }}>Recent Service</strong>
-                <button type="button" onClick={() => { setNewService((current) => ({ ...current, assetId: selectedAsset.id })); setScreen("history"); }} style={goldButtonStyle}>
-                  Add Note
+              <label style={labelStyle}>
+                Category
+                <input value={assetForm.category} onChange={(event) => setAssetForm((current) => ({ ...current, category: event.target.value }))} placeholder="Example: Boiler" style={inputStyle} />
+              </label>
+
+              <label style={labelStyle}>
+                Status
+                <select value={assetForm.status} onChange={(event) => setAssetForm((current) => ({ ...current, status: event.target.value as Status }))} style={inputStyle}>
+                  <option value="Online">Online</option>
+                  <option value="Offline">Offline</option>
+                  <option value="Seasonal">Seasonal</option>
+                  <option value="Monitor">Monitor</option>
+                </select>
+              </label>
+
+              <label style={labelStyle}>
+                Make
+                <input value={assetForm.make ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, make: event.target.value }))} placeholder="Make" style={inputStyle} />
+              </label>
+
+              <label style={labelStyle}>
+                Model
+                <input value={assetForm.model ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, model: event.target.value }))} placeholder="Model" style={inputStyle} />
+              </label>
+
+              <label style={labelStyle}>
+                Serial
+                <input value={assetForm.serial ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, serial: event.target.value }))} placeholder="Serial number" style={inputStyle} />
+              </label>
+
+              <div style={{ ...labelStyle, alignSelf: "end" }}>
+                <button type="button" onClick={saveAsset} style={widePrimaryButtonStyle}>
+                  Save Asset
                 </button>
               </div>
+            </div>
 
-              {selectedAssetServices.length ? (
-                <div style={{ display: "grid", gap: 9 }}>
-                  {selectedAssetServices.slice(0, 5).map((record) => (
-                    <div key={record.id} style={inlineCardStyle}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                        <strong style={{ color: colors.navy }}>{record.title}</strong>
-                        <span style={badgeStyle(record.status)}>{record.status}</span>
+            <label style={labelStyle}>
+              Notes
+              <textarea value={assetForm.notes} onChange={(event) => setAssetForm((current) => ({ ...current, notes: event.target.value }))} rows={5} placeholder="Asset notes, nameplate info, service reminders, setup details, etc." style={{ ...inputStyle, resize: "vertical" }} />
+            </label>
+
+            <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
+              <div>
+                <div style={goldEyebrowStyle}>Assigned Vendors</div>
+                <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
+                  Check every vendor connected to this asset.
+                </div>
+              </div>
+
+              <div style={vendorCheckGridStyle}>
+                {sortVendors(vendorRecords).map((vendor) => (
+                  <label key={vendor.id} style={vendorCheckStyle}>
+                    <input
+                      type="checkbox"
+                      checked={(assetForm.vendorIds ?? []).includes(vendor.id)}
+                      onChange={() => toggleAssetVendor(vendor.id)}
+                    />
+                    <span>
+                      <strong style={{ color: colors.navy }}>{vendor.name}</strong>
+                      <span style={{ color: colors.muted, display: "block", fontSize: 12 }}>{vendor.category}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
+              <label style={labelStyle}>
+                Add asset documents
+                <input type="file" multiple onChange={handleAssetDocumentUpload} style={{ color: colors.muted }} />
+              </label>
+
+              {(assetForm.documents ?? []).length ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {(assetForm.documents ?? []).map((document) => (
+                    <div key={document.id} style={inlineCardStyle}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                        <div>
+                          <div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div>
+                          <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
+                            {document.type || "File"} · {new Date(document.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <a href={document.dataUrl} download={document.name} style={linkButtonStyle}>
+                            Download
+                          </a>
+                          <button type="button" onClick={() => removeAssetDocument(document.id)} style={deleteButtonStyle}>
+                            Remove
+                          </button>
+                        </div>
                       </div>
-                      <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{formatDate(record.date)} · {vendorName(record.vendorId)}</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div style={{ color: colors.muted }}>No service history yet.</div>
+                <div style={emptyStateStyle}>No asset documents attached yet.</div>
               )}
+            </div>
+
+            <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
+              {assetMode === "edit" && assetForm.id ? (
+                <>
+                  <label style={uploadBoxStyle}>
+                    Add photos for {assetForm.name}
+                    <span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Photos save in this browser for now.</span>
+                    <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} />
+                  </label>
+
+                  {selectedAssetPhotos.length ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                      {selectedAssetPhotos.map((photo) => (
+                        <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
+                          <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 130, objectFit: "cover" }} />
+                          <div style={{ padding: 10 }}>
+                            <div style={{ color: colors.navy, fontWeight: 900, fontSize: 12 }}>{photo.name}</div>
+                            <button type="button" onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))} style={{ ...deleteButtonStyle, marginTop: 8 }}>
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={emptyStateStyle}>No asset photos attached yet.</div>
+                  )}
+                </>
+              ) : (
+                <div style={emptyStateStyle}>Save this new asset first, then add photos.</div>
+              )}
+
+              <div style={{ color: colors.muted, fontSize: 13, lineHeight: 1.4 }}>
+                Asset edits, photos, and documents save in this browser for now. Next database pass will move this to shared storage.
+              </div>
             </div>
           </div>
         </SectionShell>
@@ -1235,7 +1538,7 @@ export default function AtlasPage() {
             <label style={labelStyle}>
               Asset
               <select value={newService.assetId} onChange={(event) => setNewService((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>
-                {assets.map((asset) => (
+                {sortAssets(assetRecords).map((asset) => (
                   <option key={asset.id} value={asset.id}>{asset.name}</option>
                 ))}
               </select>
@@ -1292,7 +1595,7 @@ export default function AtlasPage() {
                   <div style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
                       <div style={{ color: colors.navy, fontWeight: 950 }}>{record.title}</div>
-                      <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{formatDate(record.date)} · {getAssetName(record.assetId)} · {vendorName(record.vendorId)}</div>
+                      <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{formatDate(record.date)} · {assetName(record.assetId)} · {vendorName(record.vendorId)}</div>
                     </div>
                     <span style={badgeStyle(record.status)}>{record.status}</span>
                   </div>
@@ -1513,7 +1816,7 @@ export default function AtlasPage() {
             <label style={labelStyle}>
               Attach to Asset
               <select value={selectedAssetId} onChange={(event) => setSelectedAssetId(event.target.value)} style={inputStyle}>
-                {assets.map((asset) => (
+                {sortAssets(assetRecords).map((asset) => (
                   <option key={asset.id} value={asset.id}>{asset.name}</option>
                 ))}
               </select>
@@ -1550,7 +1853,7 @@ export default function AtlasPage() {
                 <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{document.area}</div>
                 <h3 style={{ color: colors.navy, margin: "5px 0" }}>{document.title}</h3>
                 <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>
-                  {document.type}{document.linkedAssetId ? ` · ${getAssetName(document.linkedAssetId)}` : ""}
+                  {document.type}{document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}
                 </div>
                 <p style={{ color: colors.text, lineHeight: 1.5 }}>{document.notes}</p>
               </div>
@@ -1586,6 +1889,7 @@ export default function AtlasPage() {
 
   function renderAssistant() {
     const quickQuestions = [
+      "Show my assets",
       "Show my vendors",
       "What boiler do we have?",
       "What is the pool equipment chain?",
@@ -1599,7 +1903,7 @@ export default function AtlasPage() {
       <SectionShell eyebrow="Ask Atlas" title="Search the Local Atlas Records" right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}>
         <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 18, alignItems: "start" }}>
           <div style={{ display: "grid", gap: 12 }}>
-            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about vendors, assets, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
+            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
             <button type="button" onClick={() => askAtlas(assistantQuestion)} style={widePrimaryButtonStyle}>Ask Atlas</button>
 
             <div style={{ display: "grid", gap: 8 }}>
@@ -1647,10 +1951,10 @@ export default function AtlasPage() {
         </nav>
 
         <div style={sidebarStatusStyle}>
-          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>VENDOR SYSTEM</div>
+          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>ASSET SYSTEM</div>
           <div style={{ fontWeight: 900, marginTop: 6 }}>Add / edit / upload active</div>
           <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>
-            Vendor directory saves edits, logos, and documents in this browser.
+            Asset records save edits, vendors, photos, and documents in this browser.
           </div>
         </div>
       </aside>
@@ -1849,16 +2153,6 @@ const widePrimaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const goldButtonStyle: React.CSSProperties = {
-  border: "none",
-  background: colors.gold,
-  color: colors.navy,
-  borderRadius: 12,
-  padding: "8px 11px",
-  fontWeight: 950,
-  cursor: "pointer",
-};
-
 const deleteButtonStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
   background: "white",
@@ -1930,13 +2224,6 @@ const goldEyebrowStyle: React.CSSProperties = {
   color: colors.gold,
   fontSize: 12,
   fontWeight: 950,
-};
-
-const notesBoxStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  borderRadius: 16,
-  padding: 15,
-  background: "#FBFCFE",
 };
 
 const searchResultStyle: React.CSSProperties = {
@@ -2060,4 +2347,28 @@ const assistantAnswerStyle: React.CSSProperties = {
   whiteSpace: "pre-wrap",
   color: colors.text,
   lineHeight: 1.55,
+};
+
+const vendorCheckGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 8,
+  maxHeight: 260,
+  overflowY: "auto",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  padding: 12,
+  background: "#FBFCFE",
+};
+
+const vendorCheckStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "18px 1fr",
+  gap: 9,
+  alignItems: "start",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 12,
+  padding: 9,
+  background: "white",
+  cursor: "pointer",
 };
