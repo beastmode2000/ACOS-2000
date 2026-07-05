@@ -1,13 +1,3 @@
-Got it. I’ll always send the **full replacement file** from now on, not section edits.
-
-Replace **only** this file:
-
-```txt
-app/page.tsx
-```
-
-This full replacement keeps your current app and adds the new **Procedures** screen. It is based on the `page.tsx` you uploaded. 
-
 ```tsx
 "use client";
 
@@ -1287,4 +1277,3 @@ const styles: Record<string, React.CSSProperties> = {
   }
 };
 ```
-
