@@ -99,6 +99,14 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function cleanId(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
 const defaultLocations: LocationRecord[] = [
   { id: "2000", name: "2000", type: "Property", notes: "Overall parent property record." },
   { id: "general", name: "General", type: "General", notes: "Use when a more specific location still needs to be assigned." },
@@ -366,6 +374,7 @@ export default function Page() {
   const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
   const [selectedServiceId, setSelectedServiceId] = useState(defaultServiceHistory[0].id);
   const [assetSearch, setAssetSearch] = useState("");
+  const [vendorSearch, setVendorSearch] = useState("");
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about an asset, location, vendor, boiler, HVAC unit, pool, spa, vehicle, aircraft, procedure, or service history.");
   const [weather, setWeather] = useState("Loading weather...");
@@ -413,6 +422,14 @@ export default function Page() {
     });
   }, [assets, assetSearch]);
 
+  const filteredVendors = useMemo(() => {
+    const q = vendorSearch.toLowerCase();
+    return vendors.filter((item) => {
+      const text = item.name + " " + item.category + " " + (item.phone || "") + " " + (item.email || "") + " " + item.notes;
+      return text.toLowerCase().includes(q);
+    });
+  }, [vendors, vendorSearch]);
+
   function updateAsset(id: string, patch: Partial<AssetRecord>) {
     setAssets((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
   }
@@ -445,6 +462,55 @@ export default function Page() {
     setScreen("assets");
   }
 
+  function addVendor() {
+    const newId = "vendor-" + Date.now();
+    const next: VendorRecord = {
+      id: newId,
+      name: "New Vendor",
+      category: "General",
+      phone: "",
+      email: "",
+      address: "",
+      notes: ""
+    };
+    setVendors((rows) => [next, ...rows]);
+    setSelectedVendorId(newId);
+    setVendorSearch("");
+    setScreen("vendors");
+  }
+
+  function duplicateVendor(vendor: VendorRecord) {
+    const base = cleanId(vendor.name) || "vendor";
+    const newId = base + "-copy-" + Date.now();
+    const next: VendorRecord = {
+      ...vendor,
+      id: newId,
+      name: vendor.name + " Copy"
+    };
+    setVendors((rows) => [next, ...rows]);
+    setSelectedVendorId(newId);
+    setScreen("vendors");
+  }
+
+  function linkVendorToAsset(assetId: string, vendorId: string) {
+    setAssets((rows) =>
+      rows.map((asset) => {
+        if (asset.id !== assetId) return asset;
+        if (asset.vendorIds.includes(vendorId)) return asset;
+        return { ...asset, vendorIds: [...asset.vendorIds, vendorId] };
+      })
+    );
+  }
+
+  function unlinkVendorFromAsset(assetId: string, vendorId: string) {
+    setAssets((rows) =>
+      rows.map((asset) => {
+        if (asset.id !== assetId) return asset;
+        return { ...asset, vendorIds: asset.vendorIds.filter((id) => id !== vendorId) };
+      })
+    );
+  }
+
   function addServiceRecordForAsset(assetId?: string) {
     const assetForRecord = assets.find((asset) => asset.id === assetId) || selectedAsset || assets[0];
     const vendorForRecord =
@@ -471,6 +537,32 @@ export default function Page() {
     setScreen("history");
   }
 
+  function addServiceRecordForVendor(vendorId?: string) {
+    const vendorForRecord = vendors.find((vendor) => vendor.id === vendorId) || selectedVendor || vendors[0];
+    const linkedAsset =
+      assets.find((asset) => asset.vendorIds.includes(vendorForRecord.id)) ||
+      selectedAsset ||
+      assets[0];
+
+    const newId = "svc-" + Date.now();
+    const next: ServiceHistoryRecord = {
+      id: newId,
+      date: todayISO(),
+      assetId: linkedAsset.id,
+      vendorId: vendorForRecord.id,
+      title: "Vendor note for " + vendorForRecord.name,
+      status: "Open",
+      cost: "",
+      notes: ""
+    };
+
+    setServiceHistory((rows) => [next, ...rows]);
+    setSelectedServiceId(newId);
+    setSelectedAssetId(linkedAsset.id);
+    setSelectedVendorId(vendorForRecord.id);
+    setScreen("history");
+  }
+
   function addCalendarEvent() {
     const next: CalendarEvent = {
       id: "cal-" + Date.now(),
@@ -492,6 +584,7 @@ export default function Page() {
     setSelectedLocationId("courtyard");
     setSelectedVendorId(defaultVendors[0].id);
     setSelectedServiceId(defaultServiceHistory[0].id);
+    setVendorSearch("");
   }
 
   function askAtlas() {
@@ -504,7 +597,7 @@ export default function Page() {
     const allLines: string[] = [];
     assets.forEach((item) => allLines.push("Asset: " + item.name + ". " + item.category + ". " + item.notes));
     locations.forEach((item) => allLines.push("Location: " + item.name + ". " + item.type + ". " + item.notes));
-    vendors.forEach((item) => allLines.push("Vendor: " + item.name + ". " + item.category + ". " + item.notes));
+    vendors.forEach((item) => allLines.push("Vendor: " + item.name + ". " + item.category + ". " + (item.phone || "") + ". " + (item.email || "") + ". " + item.notes));
     serviceHistory.forEach((item) => allLines.push("Service History: " + item.title + ". " + item.date + ". " + item.status + ". " + item.notes));
 
     const words = q.split(" ").filter((word) => word.length > 2);
@@ -546,6 +639,7 @@ export default function Page() {
         </nav>
 
         <button type="button" onClick={addAsset} style={styles.goldButton}>+ New Asset</button>
+        <button type="button" onClick={addVendor} style={styles.goldButton}>+ New Vendor</button>
         <button type="button" onClick={() => addServiceRecordForAsset(selectedAsset.id)} style={styles.goldButton}>+ Service Record</button>
         <button type="button" onClick={resetAllLocalData} style={styles.resetButton}>Reset Local Data</button>
       </aside>
@@ -577,6 +671,7 @@ export default function Page() {
                 <QuickRecord label="Pool Dehumidifier" onClick={() => { setSelectedAssetId("pool-dehumidifier"); setScreen("assets"); }} />
                 <QuickRecord label="Hottub Sundance" onClick={() => { setSelectedAssetId("hottub"); setScreen("assets"); }} />
                 <QuickRecord label="Craft-SeaDoo 2024" onClick={() => { setSelectedAssetId("craft-seadoo-2024"); setScreen("assets"); }} />
+                <QuickRecord label="Add New Vendor" onClick={addVendor} />
                 <QuickRecord label="Open Service History" onClick={() => setScreen("history")} />
               </section>
             </div>
@@ -731,11 +826,29 @@ export default function Page() {
                 <label style={styles.label}>Notes</label>
                 <textarea value={selectedAsset.notes} onChange={(e) => updateAsset(selectedAsset.id, { notes: e.target.value })} style={styles.textarea} />
 
+                <h3 style={styles.h3}>Add Vendor to This Asset</h3>
+                <select value={selectedVendorId} onChange={(e) => setSelectedVendorId(e.target.value)} style={styles.input}>
+                  {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => linkVendorToAsset(selectedAsset.id, selectedVendorId)}
+                  style={styles.primaryButton}
+                >
+                  + Link Selected Vendor
+                </button>
+
                 <h3 style={styles.h3}>Linked Vendors</h3>
                 {vendors.filter((vendor) => selectedAsset.vendorIds.includes(vendor.id)).map((vendor) => (
-                  <button key={vendor.id} type="button" onClick={() => { setSelectedVendorId(vendor.id); setScreen("vendors"); }} style={styles.listButton}>
-                    {vendor.name}
-                  </button>
+                  <div key={vendor.id} style={styles.linkedRow}>
+                    <button type="button" onClick={() => { setSelectedVendorId(vendor.id); setScreen("vendors"); }} style={styles.linkedMainButton}>
+                      <strong>{vendor.name}</strong>
+                      <span style={styles.smallMuted}>{vendor.category}</span>
+                    </button>
+                    <button type="button" onClick={() => unlinkVendorFromAsset(selectedAsset.id, vendor.id)} style={styles.smallDangerButton}>
+                      Unlink
+                    </button>
+                  </div>
                 ))}
 
                 <h3 style={styles.h3}>Service History</h3>
@@ -780,48 +893,95 @@ export default function Page() {
 
         {screen === "vendors" && (
           <div>
-            <Header title="Vendors" subtitle="Vendor directory linked to asset records and service history." />
+            <Header title="Vendors" subtitle="Add vendors, edit contacts, link vendors to assets, and track vendor service history." />
             <div style={styles.gridTwo}>
               <section style={styles.card}>
-                {vendors.map((vendor) => (
-                  <button
-                    key={vendor.id}
-                    type="button"
-                    onClick={() => setSelectedVendorId(vendor.id)}
-                    style={vendor.id === selectedVendorId ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}
-                  >
-                    <strong>{vendor.name}</strong>
-                    <span style={styles.smallMuted}>{vendor.category}</span>
-                  </button>
-                ))}
+                <button type="button" onClick={addVendor} style={styles.primaryButton}>+ New Vendor</button>
+                <input value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)} placeholder="Search vendors..." style={styles.input} />
+
+                <div style={styles.scrollList}>
+                  {filteredVendors.map((vendor) => (
+                    <button
+                      key={vendor.id}
+                      type="button"
+                      onClick={() => setSelectedVendorId(vendor.id)}
+                      style={vendor.id === selectedVendorId ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}
+                    >
+                      <strong>{vendor.name}</strong>
+                      <span style={styles.smallMuted}>{vendor.category}</span>
+                      {vendor.phone && <span style={styles.smallMuted}>{vendor.phone}</span>}
+                      {vendor.email && <span style={styles.smallMuted}>{vendor.email}</span>}
+                    </button>
+                  ))}
+                </div>
               </section>
 
               <section style={styles.card}>
                 <h2 style={styles.h2}>{selectedVendor.name}</h2>
-                <label style={styles.label}>Name</label>
+                <p style={styles.kicker}>{selectedVendor.category}</p>
+
+                <div style={styles.buttonRow}>
+                  <button type="button" onClick={addVendor} style={styles.primaryButton}>+ New Vendor</button>
+                  <button type="button" onClick={() => duplicateVendor(selectedVendor)} style={styles.secondaryButton}>Duplicate Vendor</button>
+                  <button type="button" onClick={() => addServiceRecordForVendor(selectedVendor.id)} style={styles.secondaryButton}>+ Vendor Service Note</button>
+                </div>
+
+                <label style={styles.label}>Vendor Name</label>
                 <input value={selectedVendor.name} onChange={(e) => updateVendor(selectedVendor.id, { name: e.target.value })} style={styles.input} />
+
                 <label style={styles.label}>Category</label>
                 <input value={selectedVendor.category} onChange={(e) => updateVendor(selectedVendor.id, { category: e.target.value })} style={styles.input} />
+
                 <label style={styles.label}>Phone</label>
-                <input value={selectedVendor.phone || ""} onChange={(e) => updateVendor(selectedVendor.id, { phone: e.target.value })} style={styles.input} />
+                <input value={selectedVendor.phone || ""} onChange={(e) => updateVendor(selectedVendor.id, { phone: e.target.value })} placeholder="Phone number" style={styles.input} />
+
                 <label style={styles.label}>Email</label>
-                <input value={selectedVendor.email || ""} onChange={(e) => updateVendor(selectedVendor.id, { email: e.target.value })} style={styles.input} />
+                <input value={selectedVendor.email || ""} onChange={(e) => updateVendor(selectedVendor.id, { email: e.target.value })} placeholder="Email address" style={styles.input} />
+
                 <label style={styles.label}>Address</label>
-                <input value={selectedVendor.address || ""} onChange={(e) => updateVendor(selectedVendor.id, { address: e.target.value })} style={styles.input} />
-                <label style={styles.label}>Notes</label>
-                <textarea value={selectedVendor.notes} onChange={(e) => updateVendor(selectedVendor.id, { notes: e.target.value })} style={styles.textarea} />
+                <input value={selectedVendor.address || ""} onChange={(e) => updateVendor(selectedVendor.id, { address: e.target.value })} placeholder="Address" style={styles.input} />
+
+                <label style={styles.label}>Vendor Notes / paste details here</label>
+                <textarea
+                  value={selectedVendor.notes}
+                  onChange={(e) => updateVendor(selectedVendor.id, { notes: e.target.value })}
+                  placeholder="Paste vendor notes, contact details, service scope, account info, invoice notes, or anything useful..."
+                  style={styles.textareaHuge}
+                />
+
+                <h3 style={styles.h3}>Link Asset to This Vendor</h3>
+                <select value={selectedAssetId} onChange={(e) => setSelectedAssetId(e.target.value)} style={styles.input}>
+                  {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => linkVendorToAsset(selectedAssetId, selectedVendor.id)}
+                  style={styles.primaryButton}
+                >
+                  + Link Selected Asset
+                </button>
 
                 <h3 style={styles.h3}>Linked Assets</h3>
                 {assets.filter((asset) => asset.vendorIds.includes(selectedVendor.id)).map((asset) => (
-                  <button key={asset.id} type="button" onClick={() => { setSelectedAssetId(asset.id); setScreen("assets"); }} style={styles.listButton}>
-                    {asset.name}
-                  </button>
+                  <div key={asset.id} style={styles.linkedRow}>
+                    <button type="button" onClick={() => { setSelectedAssetId(asset.id); setScreen("assets"); }} style={styles.linkedMainButton}>
+                      <strong>{asset.name}</strong>
+                      <span style={styles.smallMuted}>{asset.category} · {asset.status}</span>
+                    </button>
+                    <button type="button" onClick={() => unlinkVendorFromAsset(asset.id, selectedVendor.id)} style={styles.smallDangerButton}>
+                      Unlink
+                    </button>
+                  </div>
                 ))}
 
                 <h3 style={styles.h3}>Service History</h3>
+                <button type="button" onClick={() => addServiceRecordForVendor(selectedVendor.id)} style={styles.listButton}>
+                  + Add service note for {selectedVendor.name}
+                </button>
+
                 {serviceHistory.filter((record) => record.vendorId === selectedVendor.id).map((record) => (
                   <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={styles.listButton}>
-                    {record.title}
+                    <strong>{record.title}</strong>
                     <span style={styles.smallMuted}>{record.date} · {record.status}</span>
                   </button>
                 ))}
@@ -858,7 +1018,7 @@ export default function Page() {
 
         {screen === "assistant" && (
           <div>
-            <Header title="AI Assistant" subtitle="Local Atlas search across saved records, including service history." />
+            <Header title="AI Assistant" subtitle="Local Atlas search across saved records, including vendors and service history." />
             <section style={styles.card}>
               <textarea value={assistantQuestion} onChange={(e) => setAssistantQuestion(e.target.value)} placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, service history, locations..." style={styles.textareaLarge} />
               <button type="button" onClick={askAtlas} style={styles.primaryButton}>Ask Atlas</button>
@@ -1432,6 +1592,33 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 10,
     marginBottom: 12
   },
+  secondaryButton: {
+    border: "1px solid #d0d5dd",
+    background: "#ffffff",
+    color: "#071d3a",
+    borderRadius: 12,
+    padding: "11px 14px",
+    fontWeight: 900,
+    cursor: "pointer",
+    marginTop: 10,
+    marginBottom: 12
+  },
+  smallDangerButton: {
+    border: "1px solid #f1b4b4",
+    background: "#fff5f5",
+    color: "#8a1f1f",
+    borderRadius: 10,
+    padding: "8px 10px",
+    fontWeight: 900,
+    cursor: "pointer",
+    whiteSpace: "nowrap"
+  },
+  buttonRow: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    marginBottom: 10
+  },
   mapPreview: {
     marginTop: 14,
     borderRadius: 14,
@@ -1477,6 +1664,24 @@ const styles: Record<string, React.CSSProperties> = {
   selectedListButton: {
     border: "1px solid #caa24a",
     background: "#fff7df"
+  },
+  linkedRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: 8,
+    alignItems: "center",
+    marginBottom: 8
+  },
+  linkedMainButton: {
+    width: "100%",
+    border: "1px solid #e4e8f0",
+    background: "#ffffff",
+    color: "#10213d",
+    borderRadius: 12,
+    padding: 12,
+    textAlign: "left",
+    cursor: "pointer",
+    fontWeight: 800
   },
   scrollList: {
     maxHeight: "calc(100vh - 190px)",
