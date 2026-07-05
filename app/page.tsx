@@ -114,6 +114,7 @@ type SearchResult = {
   assetId?: string;
   vendorId?: string;
   calendarId?: string;
+  procedureId?: string;
 };
 
 const colors = {
@@ -127,16 +128,10 @@ const colors = {
   line: "#DCE4EC",
   text: "#172331",
   muted: "#607086",
-  green: "#16805D",
   red: "#B42318",
-  orange: "#B54708",
-  blue: "#175CD3",
 };
 
-const badgeColors: Record<
-  Status | ServiceStatus,
-  { background: string; color: string; border: string }
-> = {
+const badgeColors: Record<Status | ServiceStatus, { background: string; color: string; border: string }> = {
   Online: { background: "#EAF7F1", color: "#087443", border: "#BDE7D2" },
   Offline: { background: "#FEECEC", color: "#B42318", border: "#FACACA" },
   Seasonal: { background: "#FFF4E5", color: "#B54708", border: "#FFD8A8" },
@@ -158,7 +153,7 @@ const locations: LocationRecord[] = [
   { id: "fitness-room", name: "Fitness Room", type: "Interior", zone: "Main House", notes: "Fitness room appliances and systems." },
   { id: "house-office", name: "House Managers Office", type: "Office", zone: "Main House", notes: "House manager office appliances and operational records." },
   { id: "elyses-room", name: "Elyse's Room", type: "Bedroom", zone: "Main House", notes: "Room-level records including blinds / shade assets." },
-  { id: "elliot-room", name: "Elliot's Room", type: "Bedroom", zone: "Main House", notes: "Room-level HVAC and comfort records. Mini-split options were discussed for allergies and independent control." },
+  { id: "elliot-room", name: "Elliot's Room", type: "Bedroom", zone: "Main House", notes: "Room-level HVAC and comfort records." },
   { id: "play-room", name: "Play Room", type: "Thermostat Zone", zone: "Main House", notes: "Honeywell thermostat zone shown in energy report references." },
   { id: "exercise-room", name: "Exercise Room", type: "Thermostat Zone", zone: "Main House", notes: "Honeywell thermostat zone shown in energy report references." },
   { id: "gym-nanny", name: "Gym / Nanny", type: "Thermostat Zone", zone: "Main House", notes: "Honeywell thermostat zone shown in energy report references." },
@@ -238,86 +233,82 @@ const vendorSeed: VendorRecord[] = [
 ];
 
 const assetSeed: AssetRecord[] = [
-  { id: "boiler-1", name: "Boiler B-1", locationId: "mechanical-room", category: "Hydronic Heating", status: "Online", make: "Viessmann", model: "Vitodens 200", serial: "758960502925", notes: "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Nameplate details previously visible: year built 2018, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.", vendorIds: ["viessmann"], documents: [] },
-  { id: "boiler-2", name: "Boiler B-2", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", serial: "758960507593", notes: "White wall-mounted Viessmann Vitodens 200. Latest clear nameplate: serial 758960507593, year built 2025, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, minimum relief valve capacity 255.9 lb/hr, CRN R1497.5C.", vendorIds: ["viessmann"], documents: [] },
-  { id: "boiler-2-new", name: "Boiler B-2 New", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", notes: "MaintainX asset list showed Boiler B-2 New in the Mechanical Room. Keep this record de-duplicated against Boiler B-2 when the final asset database is cleaned.", vendorIds: ["viessmann"], documents: [] },
-  { id: "vitocell-tanks", name: "Twin Viessmann Vitocell 300-V DHW Tanks", locationId: "mechanical-room", category: "Domestic Hot Water", status: "Online", make: "Viessmann", model: "Vitocell 300-V EVIA 300", notes: "Twin gray indirect-fired domestic hot water storage tanks. Tank model EVIA 300. 79 USG / 300 L. Stainless steel tank / heat exchanger AISI 444 / 316 Ti.", vendorIds: ["viessmann"], documents: [] },
-  { id: "guarddog-low-water", name: "GuardDog Low Water Cut-Off", locationId: "mechanical-room", category: "Boiler Safety", status: "Online", make: "McDonnell & Miller", model: "751P-MT-120", notes: "Manual-reset low-water cut-off device. Include green/red LED meanings, test/reset behavior, and CSD-1 compliance notes with boiler safety records.", vendorIds: ["mcdonnellmiller", "viessmann"], documents: [] },
-  { id: "carrier-hvac-hz432", name: "Carrier Forced-Air HVAC + Honeywell HZ432 Zones", locationId: "mechanical-room", category: "HVAC", status: "Online", make: "Carrier / Honeywell", model: "HZ432", notes: "Forced-air Carrier HVAC with Honeywell HZ432 zoning controls. Thermostat zone references include Play Room, Kitchen, Exercise Room, Gym / Nanny, and Master Bath Floor.", vendorIds: ["carrier", "honeywell"], documents: [] },
-  { id: "mini-split-elliot-option", name: "Elliot Room Mini-Split Option", locationId: "elliot-room", category: "HVAC Planning", status: "Monitor", notes: "Two options were discussed: $16k dedicated mini split with its own outdoor unit; $10k mini split tied to existing outdoor unit.", vendorIds: ["carrier"], documents: [] },
-  { id: "desertaire-dhu1", name: "Desert Aire DHU-1 Pool Dehumidification", locationId: "indoor-pool", category: "Pool HVAC", status: "Monitor", make: "Desert Aire", model: "DHU-1", notes: "Indoor pool dehumidification system. Pool HVAC includes Desert Aire DHU-1, Desert Aire control/display, SR501 relay, and hydronic heat coil.", vendorIds: ["desertaire"], documents: [] },
-  { id: "pool-pump-pentair", name: "Pentair 3.0 HP Pool Pump", locationId: "pool-equipment", category: "Pool Equipment", status: "Online", make: "Pentair", model: "3.0 HP", notes: "Pool water treatment chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool.", vendorIds: ["psf", "pentair"], documents: [] },
+  { id: "boiler-1", name: "Boiler B-1", locationId: "mechanical-room", category: "Hydronic Heating", status: "Online", make: "Viessmann", model: "Vitodens 200", serial: "758960502925", notes: "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Nameplate details previously visible: year built 2018, MAWP water 60 PSI, max water temperature 210°F, heating surface 31.99 sq ft, relief valve capacity 255.9 lb/hr, CRN R1497.5C.", vendorIds: ["viessmann"], documents: [] },
+  { id: "boiler-2", name: "Boiler B-2", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", serial: "758960507593", notes: "White wall-mounted Viessmann Vitodens 200. Latest clear nameplate: serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief valve capacity 255.9 lb/hr, CRN R1497.5C.", vendorIds: ["viessmann"], documents: [] },
+  { id: "boiler-2-new", name: "Boiler B-2 New", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", notes: "MaintainX asset list showed Boiler B-2 New. Keep de-duplicated against Boiler B-2 when final database is cleaned.", vendorIds: ["viessmann"], documents: [] },
+  { id: "vitocell-tanks", name: "Twin Viessmann Vitocell 300-V DHW Tanks", locationId: "mechanical-room", category: "Domestic Hot Water", status: "Online", make: "Viessmann", model: "Vitocell 300-V EVIA 300", notes: "Twin gray indirect-fired domestic hot water tanks. EVIA 300, 79 USG / 300 L, stainless steel tank / heat exchanger AISI 444 / 316 Ti.", vendorIds: ["viessmann"], documents: [] },
+  { id: "guarddog-low-water", name: "GuardDog Low Water Cut-Off", locationId: "mechanical-room", category: "Boiler Safety", status: "Online", make: "McDonnell & Miller", model: "751P-MT-120", notes: "Manual-reset low-water cut-off device. Include green/red LED meanings, test/reset behavior, and CSD-1 compliance notes.", vendorIds: ["mcdonnellmiller", "viessmann"], documents: [] },
+  { id: "carrier-hvac-hz432", name: "Carrier Forced-Air HVAC + Honeywell HZ432 Zones", locationId: "mechanical-room", category: "HVAC", status: "Online", make: "Carrier / Honeywell", model: "HZ432", notes: "Forced-air Carrier HVAC with Honeywell HZ432 zoning controls. Zones include Play Room, Kitchen, Exercise Room, Gym / Nanny, and Master Bath Floor.", vendorIds: ["carrier", "honeywell"], documents: [] },
+  { id: "mini-split-elliot-option", name: "Elliot Room Mini-Split Option", locationId: "elliot-room", category: "HVAC Planning", status: "Monitor", notes: "Mini-split options were discussed for allergies and independent control.", vendorIds: ["carrier"], documents: [] },
+  { id: "desertaire-dhu1", name: "Desert Aire DHU-1 Pool Dehumidification", locationId: "indoor-pool", category: "Pool HVAC", status: "Monitor", make: "Desert Aire", model: "DHU-1", notes: "Indoor pool dehumidification system with control/display, SR501 relay, and hydronic heat coil.", vendorIds: ["desertaire"], documents: [] },
+  { id: "pool-pump-pentair", name: "Pentair 3.0 HP Pool Pump", locationId: "pool-equipment", category: "Pool Equipment", status: "Online", make: "Pentair", model: "3.0 HP", notes: "Pool/Spa source → Pentair pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone → return to pool.", vendorIds: ["psf", "pentair"], documents: [] },
   { id: "pool-filter-triton", name: "Triton II Sand Filter", locationId: "pool-equipment", category: "Pool Filtration", status: "Online", make: "Triton II", notes: "Sand filter in pool water treatment chain. Keep pressure readings and backwash history in service notes.", vendorIds: ["psf", "triton"], documents: [] },
   { id: "pool-uv-ozone", name: "UltraPure / Paramount UV2 UV-Ozone", locationId: "pool-equipment", category: "Pool Water Treatment", status: "Online", make: "UltraPure / Paramount", model: "UV2", notes: "UV-ozone equipment in pool treatment chain before return to pool.", vendorIds: ["psf", "ultrapure"], documents: [] },
   { id: "pool-hx-p8", name: "Pool Heat Transfer HX-1 / P-8", locationId: "pool-equipment", category: "Pool Heat Transfer", status: "Online", notes: "Heat transfer uses HX-1 / P-8 into the isolated pool loop.", vendorIds: ["psf"], documents: [] },
   { id: "pool-loop-p9", name: "Pool Water Loop P-9", locationId: "pool-equipment", category: "Pool Circulation", status: "Online", notes: "P-9 circulates the pool water loop.", vendorIds: ["psf"], documents: [] },
   { id: "taylor-test-kit", name: "Taylor Technologies K-2006 / K-2006C Test Kit", locationId: "pool-equipment", category: "Pool Testing", status: "Online", make: "Taylor Technologies", model: "K-2006 / K-2006C", notes: "Pool test kit reference for chemical testing procedure.", vendorIds: ["taylor", "psf"], documents: [] },
-  { id: "sundance-optima", name: "Sundance 880 Optima Spa", locationId: "standalone-spa", category: "Spa", status: "Monitor", make: "Sundance", model: "OPTIMA", serial: "00P3LCD-100528521-0315", notes: "Sundance 880-series Optima spa. Date 03/21/15. Electrical rating label: 240 V, current 26/40/48 A, breaker size 40/50/60 A, 60 Hz, single phase, 3 wires.", vendorIds: ["sundance", "aquaquip"], documents: [] },
-  { id: "spa-control-system", name: "Spa Control System", locationId: "standalone-spa", category: "Spa Controls", status: "Monitor", model: "LCD controller part #6600-328 Rev E", notes: "Gray spa control system enclosure and LCD controller part #6600-328 Rev E.", vendorIds: ["sundance"], documents: [] },
+  { id: "sundance-optima", name: "Sundance 880 Optima Spa", locationId: "standalone-spa", category: "Spa", status: "Monitor", make: "Sundance", model: "OPTIMA", serial: "00P3LCD-100528521-0315", notes: "Sundance 880-series Optima spa. Date 03/21/15. Electrical rating: 240 V, 26/40/48 A, breaker 40/50/60 A, 60 Hz, single phase, 3 wires.", vendorIds: ["sundance", "aquaquip"], documents: [] },
+  { id: "spa-control-system", name: "Spa Control System", locationId: "standalone-spa", category: "Spa Controls", status: "Monitor", model: "LCD controller part #6600-328 Rev E", notes: "Gray spa control system enclosure and LCD controller.", vendorIds: ["sundance"], documents: [] },
   { id: "spa-heater-hydroquip", name: "HydroQuip Water Pro Smart Heater Plus", locationId: "standalone-spa", category: "Spa Heater", status: "Monitor", make: "Therm Products / HydroQuip", notes: "Water Pro Series Smart Heater Plus with Titanium Inside label.", vendorIds: ["hydroquip", "sundance"], documents: [] },
   { id: "clearray-uv", name: "ClearRay UV-C Water Purification", locationId: "standalone-spa", category: "Spa UV", status: "Monitor", make: "ClearRay", notes: "ClearRay UV-C water purification / ballast equipment labeled QC tested 230V passed.", vendorIds: ["sundance"], documents: [] },
-  { id: "sunstream-cobalt", name: "Sunstream Lift Box — Cobalt", locationId: "cobalt-lift", category: "Dock / Boat Lift", status: "Online", make: "Sunstream", notes: "Larger / newer Sunstream lift control, battery, and solar box from last summer. This box belongs to the Cobalt boat lift.", vendorIds: ["sunstream"], documents: [] },
+  { id: "sunstream-cobalt", name: "Sunstream Lift Box — Cobalt", locationId: "cobalt-lift", category: "Dock / Boat Lift", status: "Online", make: "Sunstream", notes: "Larger / newer Sunstream lift control, battery, and solar box from last summer. Belongs to Cobalt boat lift.", vendorIds: ["sunstream"], documents: [] },
   { id: "sunstream-seadoo", name: "Sunstream Lift Box — SeaDoo", locationId: "seadoo-lift", category: "Dock / PWC Lift", status: "Monitor", make: "Sunstream", notes: "SeaDoo lift box. Smaller / older Sunstream box. Keep separate from Cobalt box.", vendorIds: ["sunstream"], documents: [] },
   { id: "sunstream-dock", name: "Sunstream Lift Box — Dock", locationId: "dock-lift", category: "Dock Lift Controls", status: "Monitor", make: "Sunstream", notes: "Additional dock lift box. Smaller / older box.", vendorIds: ["sunstream"], documents: [] },
   { id: "craft-cobalt", name: "Craft — Cobalt R-7", locationId: "dock", category: "Watercraft", status: "Seasonal", notes: "Cobalt R-7 watercraft record connected to dock and newer Sunstream Cobalt lift box.", vendorIds: ["sunstream", "i90motorsports", "seattleboat"], documents: [] },
   { id: "craft-seadoo", name: "Craft — SeaDoo 2024", locationId: "dock", category: "Watercraft", status: "Seasonal", notes: "2024 SeaDoo record connected to dock and SeaDoo lift records.", vendorIds: ["i90motorsports", "sunstream", "seadooservice"], documents: [] },
-  { id: "water-trampoline", name: "Water Trampoline", locationId: "water-trampoline", category: "Waterfront", status: "Seasonal", notes: "Water trampoline added to the map and seasonal waterfront check list.", vendorIds: [], documents: [] },
-  { id: "blinds-lutron", name: "Blinds Lutron", locationId: "general", category: "Motorized Shades", status: "Monitor", make: "Lutron", notes: "Motorized roller shade asset. Penthouse Drapery invoice #176396 / motorized roller shade repair belongs here.", vendorIds: ["penthousedrapery", "aallproblinds"], documents: [] },
+  { id: "water-trampoline", name: "Water Trampoline", locationId: "water-trampoline", category: "Waterfront", status: "Seasonal", notes: "Water trampoline added to the map and seasonal waterfront checklist.", vendorIds: [], documents: [] },
+  { id: "blinds-lutron", name: "Blinds Lutron", locationId: "general", category: "Motorized Shades", status: "Monitor", make: "Lutron", notes: "Motorized roller shade asset. Penthouse Drapery invoice #176396 belongs here.", vendorIds: ["penthousedrapery", "aallproblinds"], documents: [] },
   { id: "blinds-hunter", name: "Blinds Hunter Douglas", locationId: "elyses-room", category: "Blinds", status: "Online", make: "Hunter Douglas", notes: "MaintainX asset record showed Blinds Hunter Douglas — Elyse's Room.", vendorIds: ["aallproblinds"], documents: [] },
-  { id: "dishwasher-dw1", name: "Dishwasher DW-1", locationId: "fitness-room", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-1 — Fitness Room.", vendorIds: ["bosch", "applianceservice"], documents: [] },
-  { id: "dishwasher-dw2", name: "Dishwasher DW-2", locationId: "house-office", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-2 — House Managers Office.", vendorIds: ["bosch", "applianceservice"], documents: [] },
-  { id: "dishwasher-dw3", name: "Dishwasher DW-3 Right", locationId: "kitchen", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-3 (Right) — Kitchen.", vendorIds: ["bosch", "applianceservice"], documents: [] },
-  { id: "dishwasher-dw4", name: "Dishwasher DW-4 Left", locationId: "kitchen", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dishwasher DW-4 (Left) — Kitchen.", vendorIds: ["bosch", "applianceservice"], documents: [] },
-  { id: "dryer-dr1", name: "Dryer DR-1", locationId: "upstairs-laundry", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dryer DR-1 — Upstairs Laundry Closet.", vendorIds: ["applianceservice"], documents: [] },
-  { id: "dryer-dr2", name: "Dryer DR-2", locationId: "pool-changing-room", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dryer DR-2 — Pool Changing Room.", vendorIds: ["applianceservice"], documents: [] },
-  { id: "dryer-dr3", name: "Dryer DR-3", locationId: "house-office", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Dryer DR-3 — House Managers Office.", vendorIds: ["applianceservice"], documents: [] },
-  { id: "freezer-fr1", name: "Freezer FR-1", locationId: "pantry", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-1 — Pantry.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
-  { id: "freezer-fr2", name: "Freezer FR-2", locationId: "indoor-pool", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-2 — Pool.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
-  { id: "freezer-fr3", name: "Freezer FR-3", locationId: "indoor-pool", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-3 — Pool.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
-  { id: "freezer-fr4", name: "Freezer FR-4", locationId: "kitchen", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-4 — Kitchen.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
-  { id: "freezer-fr5", name: "Freezer FR-5", locationId: "wine-room", category: "Appliance", status: "Online", notes: "MaintainX asset record showed Freezer FR-5 — Wine Room.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
-  { id: "wolf-range", name: "Wolfe Range / Range-Wolf", locationId: "kitchen", category: "Cooking", status: "Online", notes: "MaintainX showed a separate asset named wolfe range. Possible duplicate against Range-Wolf; keep for de-duplication.", vendorIds: ["applianceservice"], documents: [] },
+  { id: "dishwasher-dw1", name: "Dishwasher DW-1", locationId: "fitness-room", category: "Appliance", status: "Online", notes: "Dishwasher DW-1 — Fitness Room.", vendorIds: ["bosch", "applianceservice"], documents: [] },
+  { id: "dishwasher-dw2", name: "Dishwasher DW-2", locationId: "house-office", category: "Appliance", status: "Online", notes: "Dishwasher DW-2 — House Managers Office.", vendorIds: ["bosch", "applianceservice"], documents: [] },
+  { id: "dishwasher-dw3", name: "Dishwasher DW-3 Right", locationId: "kitchen", category: "Appliance", status: "Online", notes: "Dishwasher DW-3 Right — Kitchen.", vendorIds: ["bosch", "applianceservice"], documents: [] },
+  { id: "dishwasher-dw4", name: "Dishwasher DW-4 Left", locationId: "kitchen", category: "Appliance", status: "Online", notes: "Dishwasher DW-4 Left — Kitchen.", vendorIds: ["bosch", "applianceservice"], documents: [] },
+  { id: "dryer-dr1", name: "Dryer DR-1", locationId: "upstairs-laundry", category: "Appliance", status: "Online", notes: "Dryer DR-1 — Upstairs Laundry Closet.", vendorIds: ["applianceservice"], documents: [] },
+  { id: "dryer-dr2", name: "Dryer DR-2", locationId: "pool-changing-room", category: "Appliance", status: "Online", notes: "Dryer DR-2 — Pool Changing Room.", vendorIds: ["applianceservice"], documents: [] },
+  { id: "dryer-dr3", name: "Dryer DR-3", locationId: "house-office", category: "Appliance", status: "Online", notes: "Dryer DR-3 — House Managers Office.", vendorIds: ["applianceservice"], documents: [] },
+  { id: "freezer-fr1", name: "Freezer FR-1", locationId: "pantry", category: "Appliance", status: "Online", notes: "Freezer FR-1 — Pantry.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "freezer-fr2", name: "Freezer FR-2", locationId: "indoor-pool", category: "Appliance", status: "Online", notes: "Freezer FR-2 — Pool.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "freezer-fr3", name: "Freezer FR-3", locationId: "indoor-pool", category: "Appliance", status: "Online", notes: "Freezer FR-3 — Pool.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "freezer-fr4", name: "Freezer FR-4", locationId: "kitchen", category: "Appliance", status: "Online", notes: "Freezer FR-4 — Kitchen.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "freezer-fr5", name: "Freezer FR-5", locationId: "wine-room", category: "Appliance", status: "Online", notes: "Freezer FR-5 — Wine Room.", vendorIds: ["electromatic", "applianceservice"], documents: [] },
+  { id: "wolf-range", name: "Wolfe Range / Range-Wolf", locationId: "kitchen", category: "Cooking", status: "Online", notes: "Possible duplicate against Range-Wolf; keep for de-duplication.", vendorIds: ["applianceservice"], documents: [] },
   { id: "flologic", name: "FloLogic", locationId: "general", category: "Water Protection", status: "Online", notes: "Whole-property water monitoring / shutoff asset.", vendorIds: ["bestplumbing", "americanleak"], documents: [] },
-  { id: "garage-openers", name: "Garage Door Openers", locationId: "garage", category: "Garage", status: "Online", notes: "MaintainX asset record showed Garage Door Openers — General.", vendorIds: ["precisiongaragedoor"], documents: [] },
-  { id: "generator-lower", name: "Generator Lower", locationId: "lower-generator-area", category: "Generator", status: "Monitor", notes: "MaintainX asset record showed Generator (Lower) — Outdoor Generator.", vendorIds: ["dsquare"], documents: [] },
+  { id: "garage-openers", name: "Garage Door Openers", locationId: "garage", category: "Garage", status: "Online", notes: "Garage door openers — General.", vendorIds: ["precisiongaragedoor"], documents: [] },
+  { id: "generator-lower", name: "Generator Lower", locationId: "lower-generator-area", category: "Generator", status: "Monitor", notes: "Generator Lower — Outdoor Generator.", vendorIds: ["dsquare"], documents: [] },
   { id: "g600-n23pa", name: "Gulfstream G600 N23PA", locationId: "gulfstream-g600-n23pa", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [], documents: [] },
-  { id: "g280-n280cc", name: "Gulfstream G280 N280CC", locationId: "gulfstream-g280-n280cc", category: "Aircraft", status: "Monitor", notes: "Standardized aircraft name from uploaded aircraft photo. Use N280CC, not N28CC.", vendorIds: [], documents: [] },
+  { id: "g280-n280cc", name: "Gulfstream G280 N280CC", locationId: "gulfstream-g280-n280cc", category: "Aircraft", status: "Monitor", notes: "Standardized aircraft name from uploaded aircraft photo. Use N280CC.", vendorIds: [], documents: [] },
   { id: "g280-n755pa", name: "Gulfstream G280 N755PA", locationId: "gulfstream-g280-n755pa", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [], documents: [] },
   { id: "pc12-n126al", name: "Pilatus PC12 N126AL", locationId: "pilatus-pc12-n126al", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [], documents: [] },
 ];
 
 const serviceSeed: ServiceRecord[] = [
   { id: "service-penthouse-176396", assetId: "blinds-lutron", vendorId: "penthousedrapery", date: "2026-06-16", title: "Motorized roller shade repair — Invoice #176396", status: "Completed", notes: "Penthouse Drapery invoice #176396 dated 06/16/2026. Link this service record to Blinds Lutron." },
-  { id: "service-boiler-nameplate", assetId: "boiler-2", vendorId: "viessmann", date: "2026-07-02", title: "Clear Boiler B-2 nameplate captured", status: "Completed", notes: "Confirmed Viessmann boiler nameplate details: serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief capacity 255.9 lb/hr, CRN R1497.5C." },
-  { id: "service-boiler-heat-exchanger", assetId: "boiler-2", vendorId: "viessmann", date: "2026-07-02", title: "Boiler 2 recalled heat exchanger / igniter issue", status: "Monitor", notes: "Recalled heat exchanger was replaced on a Vitodens 200W / Boiler 2. After new parts were installed, the igniter would not turn on. Keep this as a monitor record until resolved." },
-  { id: "service-dhw-tanks", assetId: "vitocell-tanks", vendorId: "viessmann", date: "2026-07-02", title: "Twin Vitocell 300-V DHW tanks documented", status: "Completed", notes: "Recorded twin gray Viessmann Vitocell 300-V EVIA 300 tanks and capacity / pressure / temperature details." },
-  { id: "service-pool-chain", assetId: "pool-pump-pentair", vendorId: "psf", date: "2026-07-02", title: "Pool equipment chain recorded", status: "Completed", notes: "Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool. Heat transfer uses HX-1 / P-8 into isolated pool loop; P-9 circulates pool water loop." },
+  { id: "service-boiler-nameplate", assetId: "boiler-2", vendorId: "viessmann", date: "2026-07-02", title: "Clear Boiler B-2 nameplate captured", status: "Completed", notes: "Confirmed Viessmann boiler serial 758960507593, year built 2025, MAWP 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief 255.9 lb/hr, CRN R1497.5C." },
+  { id: "service-boiler-heat-exchanger", assetId: "boiler-2", vendorId: "viessmann", date: "2026-07-02", title: "Boiler 2 recalled heat exchanger / igniter issue", status: "Monitor", notes: "Recalled heat exchanger was replaced on Boiler 2. After new parts were installed, igniter would not turn on." },
+  { id: "service-dhw-tanks", assetId: "vitocell-tanks", vendorId: "viessmann", date: "2026-07-02", title: "Twin Vitocell 300-V DHW tanks documented", status: "Completed", notes: "Recorded twin gray Viessmann Vitocell 300-V EVIA 300 tanks." },
+  { id: "service-pool-chain", assetId: "pool-pump-pentair", vendorId: "psf", date: "2026-07-02", title: "Pool equipment chain recorded", status: "Completed", notes: "Pool/Spa source → Pentair pump → Triton II sand filter → UltraPure / Paramount UV2 → return to pool." },
   { id: "service-desertaire", assetId: "desertaire-dhu1", vendorId: "desertaire", date: "2026-07-02", title: "Desert Aire pool HVAC record added", status: "Monitor", notes: "Desert Aire DHU-1, control/display, SR501 relay, and hydronic heat coil added to pool HVAC records." },
-  { id: "service-spa-record", assetId: "sundance-optima", vendorId: "sundance", date: "2026-07-02", title: "Sundance Optima spa equipment record created", status: "Completed", notes: "Recorded Sundance 880-series Optima model, serial 00P3LCD-100528521-0315, electrical rating, HydroQuip heater, ClearRay UV-C equipment, and visible corrosion notes." },
-  { id: "service-sunstream-lifts", assetId: "sunstream-cobalt", vendorId: "sunstream", date: "2026-07-02", title: "Dock lift control boxes documented", status: "Completed", notes: "Confirmed multiple Sunstream lift boxes on dock. Larger/newer Sunstream lift box belongs to the Cobalt boat lift. Smaller/older boxes belong to SeaDoo and dock lift records." },
-  { id: "service-indoor-pool-construction", assetId: "desertaire-dhu1", date: "2026-07-02", title: "Indoor pool construction photo added", status: "Completed", notes: "Photo label: Indoor pool construction — first floor of addition." },
-  { id: "service-hangar-n280cc", assetId: "g280-n280cc", date: "2026-07-01", title: "Aircraft tail number standardized", status: "Completed", notes: "Uploaded aircraft photo clearly showed Gulfstream tail number N280CC. Standardize as Gulfstream G280 N280CC." },
+  { id: "service-spa-record", assetId: "sundance-optima", vendorId: "sundance", date: "2026-07-02", title: "Sundance Optima spa equipment record created", status: "Completed", notes: "Recorded Sundance 880-series Optima model, serial, electrical rating, HydroQuip heater, and ClearRay UV-C." },
+  { id: "service-sunstream-lifts", assetId: "sunstream-cobalt", vendorId: "sunstream", date: "2026-07-02", title: "Dock lift control boxes documented", status: "Completed", notes: "Confirmed multiple Sunstream lift boxes. Larger/newer box belongs to Cobalt lift." },
+  { id: "service-hangar-n280cc", assetId: "g280-n280cc", date: "2026-07-01", title: "Aircraft tail number standardized", status: "Completed", notes: "Uploaded aircraft photo clearly showed Gulfstream tail number N280CC." },
   { id: "service-credentials-redacted", assetId: "flologic", date: "2026-07-02", title: "Credential inventory redacted", status: "Completed", notes: "Do not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes." },
-  { id: "service-branding", assetId: "flologic", date: "2026-07-05", title: "Official Atlas logo selected", status: "Completed", notes: "Official logo is the clean navy-and-gold Atlas mark with stylized A, gold globe arcs, gold compass/star, and ATLAS wordmark." },
 ];
 
 const documents: DocumentRecord[] = [
   { id: "doc-systems-layout", title: "2000 Systems Layout Draft v1", area: "Mechanical / Pool / HVAC", type: "PDF", notes: "Filename: 2000_systems_layout_draft_v1.pdf. Draft layout of main mechanical, electrical, pool, HVAC, Viessmann hydronic boiler/cascade/DHW, Carrier + Honeywell HZ432 zones, Desert Aire pool dehumidification, and pool water treatment systems." },
-  { id: "doc-pool-equipment", title: "2000 Pool Equipment Record v1", area: "Pool Equipment Room", type: "PDF", linkedAssetId: "pool-pump-pentair", notes: "Pool chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool." },
-  { id: "doc-property-map", title: "Locked Original Property Map", area: "Property Map", type: "Image", notes: "Original map should stay locked. Use editable overlay labels for boat, SeaDoo, water trampoline, ADU, and other pins." },
+  { id: "doc-pool-equipment", title: "2000 Pool Equipment Record v1", area: "Pool Equipment Room", type: "PDF", linkedAssetId: "pool-pump-pentair", notes: "Pool chain record." },
+  { id: "doc-property-map", title: "Locked Original Property Map", area: "Property Map", type: "Image", notes: "Original map should stay locked. Use editable overlay labels." },
   { id: "doc-pool-construction", title: "Indoor pool construction — first floor of addition", area: "Addition First Floor", type: "Photo", notes: "Construction photo showing indoor pool shell/trench area, concrete work, lighting, hoses, and worker present." },
-  { id: "doc-penthouse-invoice", title: "Penthouse Drapery Invoice #176396", area: "Blinds Lutron", type: "Invoice", linkedAssetId: "blinds-lutron", notes: "Invoice #176396 dated 06/16/2026 for motorized roller shade repair. Vendor: Penthouse Drapery." },
-  { id: "doc-sunstream-photos", title: "Sunstream lift box photo set", area: "Dock", type: "Photos", notes: "Photos show white Sunstream lift boxes with lid-mounted solar panels, dock-mounted enclosures, internal battery/control wiring, and Sunstream control module with up/down controls." },
-  { id: "doc-spa-nameplate", title: "Sundance Optima spa nameplate and control photos", area: "Standalone Spa", type: "Photos", linkedAssetId: "sundance-optima", notes: "Includes nameplate, electrical rating, gray spa control system enclosure, HydroQuip heater, ClearRay UV-C equipment, and corrosion notes." },
-  { id: "doc-boiler-nameplates", title: "Viessmann boiler nameplate photos", area: "Mechanical Room", type: "Photos", linkedAssetId: "boiler-2", notes: "Photos confirm Boiler 1 and Boiler 2 details, including serial 758960507593 and 2025 nameplate for Boiler B-2." },
-  { id: "doc-maintainx-assets", title: "MaintainX asset screenshots", area: "Assets", type: "Screenshots", notes: "Asset records include blinds, boilers, craft, dishwashers, dryers, FloLogic, freezers, garage door openers, generator, and hangar aircraft records." },
-  { id: "doc-maintainx-vendors", title: "MaintainX vendor screenshots", area: "Vendors", type: "Screenshots", notes: "Vendor import source for de-duplicated Atlas vendor directory." },
+  { id: "doc-penthouse-invoice", title: "Penthouse Drapery Invoice #176396", area: "Blinds Lutron", type: "Invoice", linkedAssetId: "blinds-lutron", notes: "Invoice #176396 dated 06/16/2026 for motorized roller shade repair." },
+  { id: "doc-sunstream-photos", title: "Sunstream lift box photo set", area: "Dock", type: "Photos", notes: "Photos show Sunstream lift boxes, solar panels, dock-mounted enclosures, wiring, and up/down controls." },
+  { id: "doc-spa-nameplate", title: "Sundance Optima spa nameplate and control photos", area: "Standalone Spa", type: "Photos", linkedAssetId: "sundance-optima", notes: "Includes nameplate, electrical rating, spa control system, HydroQuip heater, ClearRay UV-C, and corrosion notes." },
+  { id: "doc-boiler-nameplates", title: "Viessmann boiler nameplate photos", area: "Mechanical Room", type: "Photos", linkedAssetId: "boiler-2", notes: "Photos confirm Boiler 1 and Boiler 2 details." },
+  { id: "doc-maintainx-assets", title: "MaintainX asset screenshots", area: "Assets", type: "Screenshots", notes: "Asset import source." },
+  { id: "doc-maintainx-vendors", title: "MaintainX vendor screenshots", area: "Vendors", type: "Screenshots", notes: "Vendor import source." },
   { id: "doc-credentials-redacted", title: "Redacted / admin-only credential inventory", area: "Admin", type: "Secure Note", notes: "Do not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes." },
-  { id: "doc-boat-sos", title: "Boat S.O.S. fluid analysis", area: "Dock / Cobalt", type: "Service Record", linkedAssetId: "craft-cobalt", notes: "Placeholder document record for Boat S.O.S. fluid analysis records to attach to Cobalt / dock service history." },
-  { id: "doc-seadoo-repair", title: "Sea-Doo repair records", area: "Dock / SeaDoo", type: "Service Record", linkedAssetId: "craft-seadoo", notes: "Placeholder document record for Sea-Doo repair records to attach to the 2024 SeaDoo asset." },
 ];
 
-const procedures: ProcedureRecord[] = [
+const procedureSeed: ProcedureRecord[] = [
   { id: "pool-backwash", title: "Pool Backwash Procedure", area: "Pool Equipment Room", priority: "High", steps: ["Confirm pump and valve positions before changing anything.", "Turn pump off before moving the multiport/backwash valve.", "Move valve to backwash position.", "Run pump until discharge / sight glass water clears.", "Turn pump off before moving valve again.", "Move valve to rinse and run briefly.", "Return valve to filter position.", "Restart system and verify pressure, flow, and leaks.", "Log date, pressure, and anything unusual in Atlas."] },
   { id: "pool-equipment-check", title: "Pool Equipment Room Check", area: "Pool Equipment Room", priority: "Normal", steps: ["Check Pentair pump operation.", "Check Triton II filter pressure.", "Check UV / ozone equipment status.", "Check HX-1 / P-8 and P-9 circulation notes.", "Photo any leaks, unusual sound, or abnormal pressure.", "Save a service note if anything changes."] },
   { id: "boiler-low-water", title: "Boiler Low-Water Cut-Off Check", area: "Mechanical Room", priority: "High", steps: ["Identify the boiler before touching controls.", "Review GuardDog indicator lights.", "Do not bypass safety controls.", "Use manual reset only when the cause is understood.", "Record boiler number, indicator status, and action taken."] },
@@ -345,7 +336,7 @@ const navItems: { id: Screen; label: string; description: string }[] = [
   { id: "calendar", label: "Calendar", description: "Full month calendar" },
   { id: "weather", label: "Weather", description: "Property watch" },
   { id: "documents", label: "Photos / Docs", description: "Records" },
-  { id: "procedures", label: "Procedures", description: "How-to records" },
+  { id: "procedures", label: "Procedures", description: "Add / edit / schedule" },
   { id: "assistant", label: "Ask Atlas", description: "Search records" },
 ];
 
@@ -370,6 +361,10 @@ function sortCalendar(list: CalendarItem[]) {
   return [...list].sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function sortProcedures(list: ProcedureRecord[]) {
+  return [...list].sort((a, b) => a.title.localeCompare(b.title));
+}
+
 function dateKeyFromDate(date: Date) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -381,23 +376,16 @@ function dateFromKey(key: string) {
   return new Date(`${key}T12:00:00`);
 }
 
-function monthYearLabel(date: Date) {
-  return date.toLocaleDateString(undefined, {
-    month: "long",
-    year: "numeric",
-  });
-}
-
 function addMonthsToDate(date: Date, months: number) {
-  return new Date(date.getFullYear(), date.getMonth() + months, 1, 12, 0, 0);
+  return new Date(date.getFullYear(), date.getMonth() + months, 1, 12);
 }
 
 function addYearsToDate(date: Date, years: number) {
-  return new Date(date.getFullYear() + years, date.getMonth(), 1, 12, 0, 0);
+  return new Date(date.getFullYear() + years, date.getMonth(), 1, 12);
 }
 
 function getCalendarMonthDays(cursor: Date) {
-  const firstOfMonth = new Date(cursor.getFullYear(), cursor.getMonth(), 1, 12, 0, 0);
+  const firstOfMonth = new Date(cursor.getFullYear(), cursor.getMonth(), 1, 12);
   const firstGridDay = new Date(firstOfMonth);
   firstGridDay.setDate(firstOfMonth.getDate() - firstOfMonth.getDay());
 
@@ -410,52 +398,24 @@ function getCalendarMonthDays(cursor: Date) {
 }
 
 function blankVendor(): VendorRecord {
-  return {
-    id: "",
-    name: "",
-    category: "",
-    phone: "",
-    email: "",
-    website: "",
-    notes: "",
-    logoDataUrl: "",
-    documents: [],
-  };
+  return { id: "", name: "", category: "", phone: "", email: "", website: "", notes: "", logoDataUrl: "", documents: [] };
 }
 
 function blankAsset(): AssetRecord {
-  return {
-    id: "",
-    name: "",
-    locationId: "general",
-    category: "",
-    status: "Monitor",
-    make: "",
-    model: "",
-    serial: "",
-    notes: "",
-    vendorIds: [],
-    documents: [],
-  };
+  return { id: "", name: "", locationId: "general", category: "", status: "Monitor", make: "", model: "", serial: "", notes: "", vendorIds: [], documents: [] };
 }
 
 function blankCalendarItem(date?: string): CalendarItem {
-  return {
-    id: "",
-    date: date || dateKeyFromDate(new Date()),
-    title: "",
-    area: "General",
-    status: "Scheduled",
-  };
+  return { id: "", date: date || dateKeyFromDate(new Date()), title: "", area: "General", status: "Scheduled" };
+}
+
+function blankProcedure(): ProcedureRecord {
+  return { id: "", title: "", area: "General", priority: "Normal", steps: [""] };
 }
 
 function formatDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function getLocationName(locationId: string) {
@@ -464,7 +424,6 @@ function getLocationName(locationId: string) {
 
 function badgeStyle(status: Status | ServiceStatus): React.CSSProperties {
   const color = badgeColors[status];
-
   return {
     display: "inline-flex",
     alignItems: "center",
@@ -482,7 +441,6 @@ function badgeStyle(status: Status | ServiceStatus): React.CSSProperties {
 
 function miniCalendarBadgeStyle(status: ServiceStatus): React.CSSProperties {
   const color = badgeColors[status];
-
   return {
     display: "block",
     width: "100%",
@@ -520,62 +478,22 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-function StatCard({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string | number;
-  detail: string;
-}) {
+function StatCard({ label, value, detail }: { label: string; value: string | number; detail: string }) {
   return (
-    <div
-      style={{
-        background: colors.card,
-        border: `1px solid ${colors.line}`,
-        borderRadius: 20,
-        padding: 18,
-        boxShadow: "0 12px 30px rgba(11, 30, 51, 0.06)",
-      }}
-    >
+    <div style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 20, padding: 18, boxShadow: "0 12px 30px rgba(11, 30, 51, 0.06)" }}>
       <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{label}</div>
-      <div style={{ color: colors.navy, fontSize: 34, fontWeight: 950, lineHeight: 1.1, marginTop: 8 }}>
-        {value}
-      </div>
+      <div style={{ color: colors.navy, fontSize: 34, fontWeight: 950, lineHeight: 1.1, marginTop: 8 }}>{value}</div>
       <div style={{ color: colors.muted, fontSize: 13, marginTop: 7 }}>{detail}</div>
     </div>
   );
 }
 
-function SectionShell({
-  title,
-  eyebrow,
-  children,
-  right,
-}: {
-  title: string;
-  eyebrow?: string;
-  children: React.ReactNode;
-  right?: React.ReactNode;
-}) {
+function SectionShell({ title, eyebrow, children, right }: { title: string; eyebrow?: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <section
-      style={{
-        background: colors.card,
-        border: `1px solid ${colors.line}`,
-        borderRadius: 24,
-        padding: 22,
-        boxShadow: "0 14px 35px rgba(11, 30, 51, 0.06)",
-      }}
-    >
+    <section style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 24, padding: 22, boxShadow: "0 14px 35px rgba(11, 30, 51, 0.06)" }}>
       <div style={{ display: "flex", gap: 14, justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
         <div>
-          {eyebrow ? (
-            <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.1, textTransform: "uppercase", marginBottom: 6 }}>
-              {eyebrow}
-            </div>
-          ) : null}
+          {eyebrow ? <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.1, textTransform: "uppercase", marginBottom: 6 }}>{eyebrow}</div> : null}
           <h2 style={{ margin: 0, color: colors.navy, fontSize: 23, lineHeight: 1.15 }}>{title}</h2>
         </div>
         {right}
@@ -606,16 +524,19 @@ export default function AtlasPage() {
   const [selectedVendorId, setSelectedVendorId] = useState(vendorSeed[0]?.id ?? "");
   const [vendorForm, setVendorForm] = useState<VendorRecord>(vendorSeed[0] ?? blankVendor());
   const [vendorMode, setVendorMode] = useState<"edit" | "new">("edit");
+  const [procedureRecords, setProcedureRecords] = useState<ProcedureRecord[]>(procedureSeed);
+  const [selectedProcedureId, setSelectedProcedureId] = useState(procedureSeed[0]?.id ?? "");
+  const [procedureForm, setProcedureForm] = useState<ProcedureRecord>(procedureSeed[0] ?? blankProcedure());
+  const [procedureMode, setProcedureMode] = useState<"edit" | "new">("edit");
+  const [procedureScheduleDate, setProcedureScheduleDate] = useState(todayKey);
   const [assistantQuestion, setAssistantQuestion] = useState("");
-  const [assistantAnswer, setAssistantAnswer] = useState(
-    "Ask Atlas about boilers, pool equipment, Sunstream lifts, Lutron blinds, the Sundance spa, vendors, procedures, documents, locations, calendar work, or service history."
-  );
+  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about calendar work, procedures, assets, vendors, documents, service history, boilers, pool equipment, dock lifts, blinds, the spa, or aircraft.");
   const [ready, setReady] = useState(false);
   const [newService, setNewService] = useState({
     assetId: "boiler-2",
     vendorId: "",
     title: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: todayKey,
     status: "Open" as ServiceStatus,
     notes: "",
   });
@@ -632,27 +553,11 @@ export default function AtlasPage() {
   useEffect(() => {
     try {
       const savedAssets = window.localStorage.getItem("atlas-asset-records-v1");
-      const savedService =
-        window.localStorage.getItem("atlas-service-records-v8") ||
-        window.localStorage.getItem("atlas-service-records-v7") ||
-        window.localStorage.getItem("atlas-service-records-v6") ||
-        window.localStorage.getItem("atlas-service-records-v5") ||
-        window.localStorage.getItem("atlas-service-records-v4");
-      const savedPhotos =
-        window.localStorage.getItem("atlas-photo-records-v8") ||
-        window.localStorage.getItem("atlas-photo-records-v7") ||
-        window.localStorage.getItem("atlas-photo-records-v6") ||
-        window.localStorage.getItem("atlas-photo-records-v5") ||
-        window.localStorage.getItem("atlas-photo-records-v4");
-      const savedCalendar =
-        window.localStorage.getItem("atlas-calendar-v8") ||
-        window.localStorage.getItem("atlas-calendar-v7") ||
-        window.localStorage.getItem("atlas-calendar-v6") ||
-        window.localStorage.getItem("atlas-calendar-v5") ||
-        window.localStorage.getItem("atlas-calendar-v4");
-      const savedVendors =
-        window.localStorage.getItem("atlas-vendor-records-v2") ||
-        window.localStorage.getItem("atlas-vendor-records-v1");
+      const savedService = window.localStorage.getItem("atlas-service-records-v9") || window.localStorage.getItem("atlas-service-records-v8") || window.localStorage.getItem("atlas-service-records-v7") || window.localStorage.getItem("atlas-service-records-v6");
+      const savedPhotos = window.localStorage.getItem("atlas-photo-records-v9") || window.localStorage.getItem("atlas-photo-records-v8") || window.localStorage.getItem("atlas-photo-records-v7") || window.localStorage.getItem("atlas-photo-records-v6");
+      const savedCalendar = window.localStorage.getItem("atlas-calendar-v9") || window.localStorage.getItem("atlas-calendar-v8") || window.localStorage.getItem("atlas-calendar-v7") || window.localStorage.getItem("atlas-calendar-v6");
+      const savedVendors = window.localStorage.getItem("atlas-vendor-records-v2") || window.localStorage.getItem("atlas-vendor-records-v1");
+      const savedProcedures = window.localStorage.getItem("atlas-procedure-records-v1");
 
       if (savedAssets) {
         const parsedAssets = sortAssets(JSON.parse(savedAssets) as AssetRecord[]);
@@ -674,6 +579,12 @@ export default function AtlasPage() {
         setVendorRecords(parsedVendors);
         setSelectedVendorId(parsedVendors[0]?.id ?? "");
       }
+
+      if (savedProcedures) {
+        const parsedProcedures = sortProcedures(JSON.parse(savedProcedures) as ProcedureRecord[]);
+        setProcedureRecords(parsedProcedures);
+        setSelectedProcedureId(parsedProcedures[0]?.id ?? "");
+      }
     } catch {
       // Keep seeded records if local storage cannot be read.
     } finally {
@@ -683,36 +594,19 @@ export default function AtlasPage() {
 
   useEffect(() => {
     const selected = assetRecords.find((asset) => asset.id === selectedAssetId);
-
     if (assetMode === "new") return;
-
-    if (selected) {
-      setAssetForm({
-        ...selected,
-        documents: selected.documents ?? [],
-        vendorIds: selected.vendorIds ?? [],
-      });
-    }
+    if (selected) setAssetForm({ ...selected, documents: selected.documents ?? [], vendorIds: selected.vendorIds ?? [] });
   }, [selectedAssetId, assetRecords, assetMode]);
 
   useEffect(() => {
     const selected = vendorRecords.find((vendor) => vendor.id === selectedVendorId);
-
     if (vendorMode === "new") return;
-
-    if (selected) {
-      setVendorForm({
-        ...selected,
-        documents: selected.documents ?? [],
-      });
-    }
+    if (selected) setVendorForm({ ...selected, documents: selected.documents ?? [] });
   }, [selectedVendorId, vendorRecords, vendorMode]);
 
   useEffect(() => {
     const selected = calendarItems.find((item) => item.id === selectedCalendarId);
-
     if (calendarMode === "new") return;
-
     if (selected) {
       setCalendarForm(selected);
       setSelectedCalendarDate(selected.date);
@@ -721,23 +615,29 @@ export default function AtlasPage() {
   }, [selectedCalendarId, calendarItems, calendarMode]);
 
   useEffect(() => {
+    const selected = procedureRecords.find((procedure) => procedure.id === selectedProcedureId);
+    if (procedureMode === "new") return;
+    if (selected) setProcedureForm({ ...selected, steps: selected.steps.length ? selected.steps : [""] });
+  }, [selectedProcedureId, procedureRecords, procedureMode]);
+
+  useEffect(() => {
     if (!ready) return;
     window.localStorage.setItem("atlas-asset-records-v1", JSON.stringify(sortAssets(assetRecords)));
   }, [ready, assetRecords]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-service-records-v8", JSON.stringify(serviceRecords));
+    window.localStorage.setItem("atlas-service-records-v9", JSON.stringify(serviceRecords));
   }, [ready, serviceRecords]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-photo-records-v8", JSON.stringify(photos));
+    window.localStorage.setItem("atlas-photo-records-v9", JSON.stringify(photos));
   }, [ready, photos]);
 
   useEffect(() => {
     if (!ready) return;
-    window.localStorage.setItem("atlas-calendar-v8", JSON.stringify(sortCalendar(calendarItems)));
+    window.localStorage.setItem("atlas-calendar-v9", JSON.stringify(sortCalendar(calendarItems)));
   }, [ready, calendarItems]);
 
   useEffect(() => {
@@ -745,40 +645,25 @@ export default function AtlasPage() {
     window.localStorage.setItem("atlas-vendor-records-v2", JSON.stringify(sortVendors(vendorRecords)));
   }, [ready, vendorRecords]);
 
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem("atlas-procedure-records-v1", JSON.stringify(sortProcedures(procedureRecords)));
+  }, [ready, procedureRecords]);
+
   const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? blankAsset();
-
-  const selectedAssetServices = serviceRecords
-    .filter((record) => record.assetId === selectedAsset.id)
-    .sort((a, b) => b.date.localeCompare(a.date));
-
   const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
-
   const q = query.trim().toLowerCase();
 
   const filteredLocations = useMemo(() => {
     if (!q) return locations;
-    return locations.filter((location) =>
-      [location.name, location.type, location.zone, location.notes].join(" ").toLowerCase().includes(q)
-    );
+    return locations.filter((location) => [location.name, location.type, location.zone, location.notes].join(" ").toLowerCase().includes(q));
   }, [q]);
 
   const filteredAssets = useMemo(() => {
     const sorted = sortAssets(assetRecords);
-
     if (!q) return sorted;
-
     return sorted.filter((asset) =>
-      [
-        asset.name,
-        asset.category,
-        asset.status,
-        asset.make,
-        asset.model,
-        asset.serial,
-        asset.notes,
-        getLocationName(asset.locationId),
-        asset.vendorIds.map(vendorName).join(" "),
-      ]
+      [asset.name, asset.category, asset.status, asset.make, asset.model, asset.serial, asset.notes, getLocationName(asset.locationId), asset.vendorIds.map(vendorName).join(" ")]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -788,126 +673,43 @@ export default function AtlasPage() {
 
   const filteredVendors = useMemo(() => {
     const sorted = sortVendors(vendorRecords);
-
     if (!q) return sorted;
-
-    return sorted.filter((vendor) =>
-      [vendor.name, vendor.category, vendor.phone, vendor.email, vendor.website, vendor.notes]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
+    return sorted.filter((vendor) => [vendor.name, vendor.category, vendor.phone, vendor.email, vendor.website, vendor.notes].filter(Boolean).join(" ").toLowerCase().includes(q));
   }, [q, vendorRecords]);
 
   const filteredServices = useMemo(() => {
     if (!q) return serviceRecords;
-    return serviceRecords.filter((record) =>
-      [record.title, record.status, record.notes, record.date, assetName(record.assetId), vendorName(record.vendorId)]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
+    return serviceRecords.filter((record) => [record.title, record.status, record.notes, record.date, assetName(record.assetId), vendorName(record.vendorId)].join(" ").toLowerCase().includes(q));
   }, [q, serviceRecords, assetRecords, vendorRecords]);
 
   const filteredCalendar = useMemo(() => {
     const sorted = sortCalendar(calendarItems);
-
     if (!q) return sorted;
-
-    return sorted.filter((item) =>
-      [item.title, item.area, item.status, item.date, formatDate(item.date)]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
+    return sorted.filter((item) => [item.title, item.area, item.status, item.date, formatDate(item.date)].join(" ").toLowerCase().includes(q));
   }, [q, calendarItems]);
 
   const filteredDocuments = useMemo(() => {
     if (!q) return documents;
-    return documents.filter((document) =>
-      [document.title, document.area, document.type, document.notes, document.linkedAssetId ? assetName(document.linkedAssetId) : ""]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
+    return documents.filter((document) => [document.title, document.area, document.type, document.notes, document.linkedAssetId ? assetName(document.linkedAssetId) : ""].join(" ").toLowerCase().includes(q));
   }, [q, assetRecords]);
 
   const filteredProcedures = useMemo(() => {
-    if (!q) return procedures;
-    return procedures.filter((procedure) =>
-      [procedure.title, procedure.area, procedure.priority, procedure.steps.join(" ")]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [q]);
+    const sorted = sortProcedures(procedureRecords);
+    if (!q) return sorted;
+    return sorted.filter((procedure) => [procedure.title, procedure.area, procedure.priority, procedure.steps.join(" ")].join(" ").toLowerCase().includes(q));
+  }, [q, procedureRecords]);
 
   const searchResults = useMemo<SearchResult[]>(() => {
     if (!q) return [];
 
     const results: SearchResult[] = [
-      ...filteredLocations.map((location) => ({
-        id: `location-${location.id}`,
-        type: "Location" as const,
-        title: location.name,
-        subtitle: `${location.zone} · ${location.type}`,
-        detail: location.notes,
-        screen: "locations" as const,
-      })),
-      ...filteredAssets.map((asset) => ({
-        id: `asset-${asset.id}`,
-        type: "Asset" as const,
-        title: asset.name,
-        subtitle: `${getLocationName(asset.locationId)} · ${asset.category}`,
-        detail: asset.notes,
-        screen: "assets" as const,
-        assetId: asset.id,
-      })),
-      ...filteredVendors.map((vendor) => ({
-        id: `vendor-${vendor.id}`,
-        type: "Vendor" as const,
-        title: vendor.name,
-        subtitle: vendor.category,
-        detail: vendor.notes,
-        screen: "vendors" as const,
-        vendorId: vendor.id,
-      })),
-      ...filteredServices.map((record) => ({
-        id: `service-${record.id}`,
-        type: "Service" as const,
-        title: record.title,
-        subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)}`,
-        detail: record.notes,
-        screen: "history" as const,
-        assetId: record.assetId,
-      })),
-      ...filteredCalendar.map((item) => ({
-        id: `calendar-${item.id}`,
-        type: "Calendar" as const,
-        title: item.title,
-        subtitle: `${formatDate(item.date)} · ${item.area}`,
-        detail: item.status,
-        screen: "calendar" as const,
-        calendarId: item.id,
-      })),
-      ...filteredDocuments.map((document) => ({
-        id: `document-${document.id}`,
-        type: "Document" as const,
-        title: document.title,
-        subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`,
-        detail: document.notes,
-        screen: "documents" as const,
-        assetId: document.linkedAssetId,
-      })),
-      ...filteredProcedures.map((procedure) => ({
-        id: `procedure-${procedure.id}`,
-        type: "Procedure" as const,
-        title: procedure.title,
-        subtitle: `${procedure.area} · ${procedure.priority}`,
-        detail: procedure.steps.join(" "),
-        screen: "procedures" as const,
-      })),
+      ...filteredLocations.map((location) => ({ id: `location-${location.id}`, type: "Location" as const, title: location.name, subtitle: `${location.zone} · ${location.type}`, detail: location.notes, screen: "locations" as const })),
+      ...filteredAssets.map((asset) => ({ id: `asset-${asset.id}`, type: "Asset" as const, title: asset.name, subtitle: `${getLocationName(asset.locationId)} · ${asset.category}`, detail: asset.notes, screen: "assets" as const, assetId: asset.id })),
+      ...filteredVendors.map((vendor) => ({ id: `vendor-${vendor.id}`, type: "Vendor" as const, title: vendor.name, subtitle: vendor.category, detail: vendor.notes, screen: "vendors" as const, vendorId: vendor.id })),
+      ...filteredServices.map((record) => ({ id: `service-${record.id}`, type: "Service" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)}`, detail: record.notes, screen: "history" as const, assetId: record.assetId })),
+      ...filteredCalendar.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar" as const, title: item.title, subtitle: `${formatDate(item.date)} · ${item.area}`, detail: item.status, screen: "calendar" as const, calendarId: item.id })),
+      ...filteredDocuments.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: document.notes, screen: "documents" as const, assetId: document.linkedAssetId })),
+      ...filteredProcedures.map((procedure) => ({ id: `procedure-${procedure.id}`, type: "Procedure" as const, title: procedure.title, subtitle: `${procedure.area} · ${procedure.priority}`, detail: procedure.steps.join(" "), screen: "procedures" as const, procedureId: procedure.id })),
     ];
 
     return results.slice(0, 12);
@@ -921,28 +723,11 @@ export default function AtlasPage() {
 
   function addServiceRecord() {
     if (!newService.title.trim()) return;
-
-    const record: ServiceRecord = {
-      id: uid("service"),
-      assetId: newService.assetId,
-      vendorId: newService.vendorId || undefined,
-      date: newService.date,
-      title: newService.title.trim(),
-      status: newService.status,
-      notes: newService.notes.trim() || "No notes added yet.",
-    };
-
+    const record: ServiceRecord = { id: uid("service"), assetId: newService.assetId, vendorId: newService.vendorId || undefined, date: newService.date, title: newService.title.trim(), status: newService.status, notes: newService.notes.trim() || "No notes added yet." };
     setServiceRecords((current) => [record, ...current]);
     setSelectedAssetId(record.assetId);
     setScreen("history");
-    setNewService({
-      assetId: record.assetId,
-      vendorId: "",
-      title: "",
-      date: new Date().toISOString().slice(0, 10),
-      status: "Open",
-      notes: "",
-    });
+    setNewService({ assetId: record.assetId, vendorId: "", title: "", date: todayKey, status: "Open", notes: "" });
   }
 
   function deleteServiceRecord(id: string) {
@@ -951,25 +736,14 @@ export default function AtlasPage() {
 
   function handlePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
-
     files.forEach((file) => {
       const reader = new FileReader();
-
       reader.onload = () => {
-        const photo: PhotoRecord = {
-          id: uid("photo"),
-          assetId: selectedAsset.id,
-          name: file.name,
-          dataUrl: String(reader.result),
-          createdAt: new Date().toISOString(),
-        };
-
+        const photo: PhotoRecord = { id: uid("photo"), assetId: selectedAsset.id, name: file.name, dataUrl: String(reader.result), createdAt: new Date().toISOString() };
         setPhotos((current) => [photo, ...current]);
       };
-
       reader.readAsDataURL(file);
     });
-
     event.target.value = "";
   }
 
@@ -986,6 +760,10 @@ export default function AtlasPage() {
       setSelectedCalendarId(result.calendarId);
       setCalendarMode("edit");
     }
+    if (result.procedureId) {
+      setSelectedProcedureId(result.procedureId);
+      setProcedureMode("edit");
+    }
     setScreen(result.screen);
   }
 
@@ -997,15 +775,10 @@ export default function AtlasPage() {
 
   function saveAsset() {
     const name = assetForm.name.trim();
-
     if (!name) return;
-
     const existingId = assetMode === "edit" ? assetForm.id : "";
     let id = existingId || slugify(name);
-
-    if (assetMode === "new" && assetRecords.some((asset) => asset.id === id)) {
-      id = `${id}-${Date.now()}`;
-    }
+    if (assetMode === "new" && assetRecords.some((asset) => asset.id === id)) id = `${id}-${Date.now()}`;
 
     const cleanAsset: AssetRecord = {
       ...assetForm,
@@ -1022,15 +795,7 @@ export default function AtlasPage() {
       documents: assetForm.documents ?? [],
     };
 
-    setAssetRecords((current) => {
-      const exists = current.some((asset) => asset.id === id);
-      const next = exists
-        ? current.map((asset) => (asset.id === id ? cleanAsset : asset))
-        : [...current, cleanAsset];
-
-      return sortAssets(next);
-    });
-
+    setAssetRecords((current) => sortAssets(current.some((asset) => asset.id === id) ? current.map((asset) => (asset.id === id ? cleanAsset : asset)) : [...current, cleanAsset]));
     setAssetMode("edit");
     setSelectedAssetId(id);
     setNewService((current) => ({ ...current, assetId: id }));
@@ -1038,9 +803,7 @@ export default function AtlasPage() {
 
   function deleteAsset() {
     if (!assetForm.id) return;
-
     const confirmed = window.confirm(`Delete ${assetForm.name}? This removes the asset, asset photos, asset documents, and service notes from this browser.`);
-
     if (!confirmed) return;
 
     const remainingAssets = sortAssets(assetRecords.filter((asset) => asset.id !== assetForm.id));
@@ -1056,47 +819,26 @@ export default function AtlasPage() {
 
   function handleAssetDocumentUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
-
     files.forEach((file) => {
       const reader = new FileReader();
-
       reader.onload = () => {
-        const documentRecord: UploadedFileRecord = {
-          id: uid("asset-doc"),
-          name: file.name,
-          type: file.type || "File",
-          dataUrl: String(reader.result),
-          createdAt: new Date().toISOString(),
-        };
-
-        setAssetForm((current) => ({
-          ...current,
-          documents: [documentRecord, ...(current.documents ?? [])],
-        }));
+        const documentRecord: UploadedFileRecord = { id: uid("asset-doc"), name: file.name, type: file.type || "File", dataUrl: String(reader.result), createdAt: new Date().toISOString() };
+        setAssetForm((current) => ({ ...current, documents: [documentRecord, ...(current.documents ?? [])] }));
       };
-
       reader.readAsDataURL(file);
     });
-
     event.target.value = "";
   }
 
   function removeAssetDocument(documentId: string) {
-    setAssetForm((current) => ({
-      ...current,
-      documents: (current.documents ?? []).filter((document) => document.id !== documentId),
-    }));
+    setAssetForm((current) => ({ ...current, documents: (current.documents ?? []).filter((document) => document.id !== documentId) }));
   }
 
   function toggleAssetVendor(vendorId: string) {
     setAssetForm((current) => {
       const currentIds = current.vendorIds ?? [];
       const exists = currentIds.includes(vendorId);
-
-      return {
-        ...current,
-        vendorIds: exists ? currentIds.filter((id) => id !== vendorId) : [...currentIds, vendorId],
-      };
+      return { ...current, vendorIds: exists ? currentIds.filter((id) => id !== vendorId) : [...currentIds, vendorId] };
     });
   }
 
@@ -1108,15 +850,10 @@ export default function AtlasPage() {
 
   function saveVendor() {
     const name = vendorForm.name.trim();
-
     if (!name) return;
-
     const existingId = vendorMode === "edit" ? vendorForm.id : "";
     let id = existingId || slugify(name);
-
-    if (vendorMode === "new" && vendorRecords.some((vendor) => vendor.id === id)) {
-      id = `${id}-${Date.now()}`;
-    }
+    if (vendorMode === "new" && vendorRecords.some((vendor) => vendor.id === id)) id = `${id}-${Date.now()}`;
 
     const cleanVendor: VendorRecord = {
       ...vendorForm,
@@ -1130,34 +867,19 @@ export default function AtlasPage() {
       documents: vendorForm.documents ?? [],
     };
 
-    setVendorRecords((current) => {
-      const exists = current.some((vendor) => vendor.id === id);
-      const next = exists
-        ? current.map((vendor) => (vendor.id === id ? cleanVendor : vendor))
-        : [...current, cleanVendor];
-
-      return sortVendors(next);
-    });
-
+    setVendorRecords((current) => sortVendors(current.some((vendor) => vendor.id === id) ? current.map((vendor) => (vendor.id === id ? cleanVendor : vendor)) : [...current, cleanVendor]));
     setVendorMode("edit");
     setSelectedVendorId(id);
   }
 
   function deleteVendor() {
     if (!vendorForm.id) return;
-
     const confirmed = window.confirm(`Delete ${vendorForm.name}? This removes the vendor card and attached vendor documents from this browser.`);
-
     if (!confirmed) return;
 
     const remainingVendors = sortVendors(vendorRecords.filter((vendor) => vendor.id !== vendorForm.id));
     setVendorRecords(remainingVendors);
-    setAssetRecords((current) =>
-      current.map((asset) => ({
-        ...asset,
-        vendorIds: asset.vendorIds.filter((id) => id !== vendorForm.id),
-      }))
-    );
+    setAssetRecords((current) => current.map((asset) => ({ ...asset, vendorIds: asset.vendorIds.filter((id) => id !== vendorForm.id) })));
     const nextVendor = remainingVendors[0];
     setSelectedVendorId(nextVendor?.id ?? "");
     setVendorForm(nextVendor ?? blankVendor());
@@ -1166,54 +888,28 @@ export default function AtlasPage() {
 
   function handleVendorLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-
     if (!file) return;
-
     const reader = new FileReader();
-
-    reader.onload = () => {
-      setVendorForm((current) => ({
-        ...current,
-        logoDataUrl: String(reader.result),
-      }));
-    };
-
+    reader.onload = () => setVendorForm((current) => ({ ...current, logoDataUrl: String(reader.result) }));
     reader.readAsDataURL(file);
     event.target.value = "";
   }
 
   function handleVendorDocumentUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
-
     files.forEach((file) => {
       const reader = new FileReader();
-
       reader.onload = () => {
-        const documentRecord: UploadedFileRecord = {
-          id: uid("vendor-doc"),
-          name: file.name,
-          type: file.type || "File",
-          dataUrl: String(reader.result),
-          createdAt: new Date().toISOString(),
-        };
-
-        setVendorForm((current) => ({
-          ...current,
-          documents: [documentRecord, ...(current.documents ?? [])],
-        }));
+        const documentRecord: UploadedFileRecord = { id: uid("vendor-doc"), name: file.name, type: file.type || "File", dataUrl: String(reader.result), createdAt: new Date().toISOString() };
+        setVendorForm((current) => ({ ...current, documents: [documentRecord, ...(current.documents ?? [])] }));
       };
-
       reader.readAsDataURL(file);
     });
-
     event.target.value = "";
   }
 
   function removeVendorDocument(documentId: string) {
-    setVendorForm((current) => ({
-      ...current,
-      documents: (current.documents ?? []).filter((document) => document.id !== documentId),
-    }));
+    setVendorForm((current) => ({ ...current, documents: (current.documents ?? []).filter((document) => document.id !== documentId) }));
   }
 
   function selectCalendarDate(dateKey: string) {
@@ -1243,33 +939,14 @@ export default function AtlasPage() {
 
   function saveCalendarItem() {
     const title = calendarForm.title.trim();
-
     if (!title) return;
-
     const existingId = calendarMode === "edit" ? calendarForm.id : "";
     let id = existingId || slugify(title);
+    if (calendarMode === "new" && calendarItems.some((item) => item.id === id)) id = `${id}-${Date.now()}`;
 
-    if (calendarMode === "new" && calendarItems.some((item) => item.id === id)) {
-      id = `${id}-${Date.now()}`;
-    }
+    const cleanItem: CalendarItem = { id, title, date: calendarForm.date || selectedCalendarDate || todayKey, area: calendarForm.area.trim() || "General", status: calendarForm.status || "Scheduled" };
 
-    const cleanItem: CalendarItem = {
-      id,
-      title,
-      date: calendarForm.date || selectedCalendarDate || todayKey,
-      area: calendarForm.area.trim() || "General",
-      status: calendarForm.status || "Scheduled",
-    };
-
-    setCalendarItems((current) => {
-      const exists = current.some((item) => item.id === id);
-      const next = exists
-        ? current.map((item) => (item.id === id ? cleanItem : item))
-        : [...current, cleanItem];
-
-      return sortCalendar(next);
-    });
-
+    setCalendarItems((current) => sortCalendar(current.some((item) => item.id === id) ? current.map((item) => (item.id === id ? cleanItem : item)) : [...current, cleanItem]));
     setCalendarMode("edit");
     setSelectedCalendarId(id);
     setSelectedCalendarDate(cleanItem.date);
@@ -1278,9 +955,7 @@ export default function AtlasPage() {
 
   function deleteCalendarItem() {
     if (!calendarForm.id) return;
-
     const confirmed = window.confirm(`Delete scheduled item: ${calendarForm.title}?`);
-
     if (!confirmed) return;
 
     const remainingItems = sortCalendar(calendarItems.filter((item) => item.id !== calendarForm.id));
@@ -1292,18 +967,83 @@ export default function AtlasPage() {
   }
 
   function markCalendarCompleted(itemId: string) {
-    setCalendarItems((current) =>
-      sortCalendar(
-        current.map((item) =>
-          item.id === itemId
-            ? {
-                ...item,
-                status: "Completed",
-              }
-            : item
-        )
-      )
-    );
+    setCalendarItems((current) => sortCalendar(current.map((item) => (item.id === itemId ? { ...item, status: "Completed" } : item))));
+  }
+
+  function startNewProcedure() {
+    setProcedureMode("new");
+    setSelectedProcedureId("");
+    setProcedureForm(blankProcedure());
+  }
+
+  function saveProcedure() {
+    const title = procedureForm.title.trim();
+    if (!title) return;
+
+    const existingId = procedureMode === "edit" ? procedureForm.id : "";
+    let id = existingId || slugify(title);
+    if (procedureMode === "new" && procedureRecords.some((procedure) => procedure.id === id)) id = `${id}-${Date.now()}`;
+
+    const cleanProcedure: ProcedureRecord = {
+      id,
+      title,
+      area: procedureForm.area.trim() || "General",
+      priority: procedureForm.priority || "Normal",
+      steps: procedureForm.steps.map((step) => step.trim()).filter(Boolean).length ? procedureForm.steps.map((step) => step.trim()).filter(Boolean) : ["Add procedure steps."],
+    };
+
+    setProcedureRecords((current) => sortProcedures(current.some((procedure) => procedure.id === id) ? current.map((procedure) => (procedure.id === id ? cleanProcedure : procedure)) : [...current, cleanProcedure]));
+    setProcedureMode("edit");
+    setSelectedProcedureId(id);
+  }
+
+  function deleteProcedure() {
+    if (!procedureForm.id) return;
+    const confirmed = window.confirm(`Delete procedure: ${procedureForm.title}?`);
+    if (!confirmed) return;
+
+    const remainingProcedures = sortProcedures(procedureRecords.filter((procedure) => procedure.id !== procedureForm.id));
+    setProcedureRecords(remainingProcedures);
+    const nextProcedure = remainingProcedures[0];
+    setSelectedProcedureId(nextProcedure?.id ?? "");
+    setProcedureForm(nextProcedure ?? blankProcedure());
+    setProcedureMode(nextProcedure ? "edit" : "new");
+  }
+
+  function updateProcedureStep(index: number, value: string) {
+    setProcedureForm((current) => ({
+      ...current,
+      steps: current.steps.map((step, stepIndex) => (stepIndex === index ? value : step)),
+    }));
+  }
+
+  function addProcedureStep() {
+    setProcedureForm((current) => ({ ...current, steps: [...current.steps, ""] }));
+  }
+
+  function removeProcedureStep(index: number) {
+    setProcedureForm((current) => ({ ...current, steps: current.steps.filter((_, stepIndex) => stepIndex !== index).length ? current.steps.filter((_, stepIndex) => stepIndex !== index) : [""] }));
+  }
+
+  function scheduleProcedure(procedure: ProcedureRecord) {
+    if (!procedure.title.trim()) return;
+
+    const date = procedureScheduleDate || selectedCalendarDate || todayKey;
+    const calendarItem: CalendarItem = {
+      id: uid("cal-procedure"),
+      date,
+      title: procedure.title,
+      area: procedure.area || "General",
+      status: "Scheduled",
+    };
+
+    setCalendarItems((current) => sortCalendar([...current, calendarItem]));
+    setSelectedCalendarDate(date);
+    setCalendarCursor(dateFromKey(date));
+    setSelectedCalendarId(calendarItem.id);
+    setCalendarForm(calendarItem);
+    setCalendarMode("edit");
+    setScreen("calendar");
   }
 
   function askAtlas(question: string) {
@@ -1314,66 +1054,43 @@ export default function AtlasPage() {
       return;
     }
 
+    if (text.includes("procedure") || text.includes("process") || text.includes("how to")) {
+      setAssistantAnswer(`Atlas has ${procedureRecords.length} procedures. Procedures can now be added, edited, deleted, searched, and scheduled directly onto the full calendar.`);
+      return;
+    }
+
     if (text.includes("calendar") || text.includes("schedule") || text.includes("scheduled")) {
-      setAssistantAnswer(
-        `Atlas has ${calendarItems.length} calendar items. The Calendar now has a full month grid, month/year navigation, day selection, add/edit/delete, mark completed, and search. Upcoming/open items: ${upcomingCalendarCount}.`
-      );
+      setAssistantAnswer(`Atlas has ${calendarItems.length} calendar items. The Calendar has a full month grid, month/year navigation, day selection, add/edit/delete, mark completed, and search.`);
       return;
     }
 
     if (text.includes("asset") || text.includes("equipment")) {
-      setAssistantAnswer(
-        `Atlas has ${assetRecords.length} asset records. Assets can now be added, edited, deleted, assigned vendors, given photos, and given attached documents.`
-      );
+      setAssistantAnswer(`Atlas has ${assetRecords.length} asset records. Assets can be added, edited, deleted, assigned vendors, given photos, and given attached documents.`);
       return;
     }
 
     if (text.includes("vendor") || text.includes("contact")) {
-      setAssistantAnswer(
-        `Atlas has ${vendorRecords.length} vendor records. They are listed alphabetically in Vendors. You can add, edit, delete, upload a logo/photo, and attach vendor documents.`
-      );
+      setAssistantAnswer(`Atlas has ${vendorRecords.length} vendor records. Vendors can be added, edited, deleted, given a logo/photo, and given attached documents.`);
       return;
     }
 
     if (text.includes("boiler") || text.includes("viessmann") || text.includes("vitodens")) {
-      setAssistantAnswer(
-        "Atlas found the boiler records in the Mechanical Room.\n\nBoiler B-1: Viessmann Vitodens 200, earlier nameplate showed serial 758960502925, year built 2018, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief capacity 255.9 lb/hr, CRN R1497.5C.\n\nBoiler B-2: Viessmann Vitodens 200, clear nameplate shows serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief capacity 255.9 lb/hr, CRN R1497.5C.\n\nSafety: McDonnell & Miller GuardDog 751P-MT-120 low-water cut-off.\n\nOpen monitor note: recalled heat exchanger was replaced on Boiler 2, then the igniter would not turn on."
-      );
+      setAssistantAnswer("Atlas found the boiler records in the Mechanical Room.\n\nBoiler B-1: Viessmann Vitodens 200, earlier nameplate showed serial 758960502925, year built 2018, MAWP water 60 PSI, max water temp 210°F.\n\nBoiler B-2: Viessmann Vitodens 200, clear nameplate shows serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F.\n\nSafety: McDonnell & Miller GuardDog 751P-MT-120 low-water cut-off.\n\nMonitor note: recalled heat exchanger was replaced on Boiler 2, then the igniter would not turn on.");
       return;
     }
 
     if (text.includes("pool") || text.includes("backwash") || text.includes("pentair") || text.includes("triton")) {
-      setAssistantAnswer(
-        "Atlas found the pool records.\n\nPool water chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool.\n\nPool heat transfer: HX-1 / P-8 feeds the isolated pool loop. P-9 circulates the pool water loop.\n\nPool HVAC: Desert Aire DHU-1 with control/display, SR501 relay, and hydronic heat coil.\n\nThe pool backwash procedure and chemical test procedure are saved under Procedures."
-      );
+      setAssistantAnswer("Atlas found the pool records.\n\nPool water chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool.\n\nPool heat transfer: HX-1 / P-8 feeds the isolated pool loop. P-9 circulates the pool water loop.\n\nPool HVAC: Desert Aire DHU-1 with control/display, SR501 relay, and hydronic heat coil.");
       return;
     }
 
     if (text.includes("spa") || text.includes("hot tub") || text.includes("sundance")) {
-      setAssistantAnswer(
-        "Atlas found the standalone spa record.\n\nIt is a Sundance 880-series Optima, model OPTIMA, serial 00P3LCD-100528521-0315, date 03/21/15.\n\nElectrical label: 240 V, current 26/40/48 A, breaker size 40/50/60 A, 60 Hz, single phase, 3 wires.\n\nRelated records include the spa control system, HydroQuip Water Pro Smart Heater Plus, ClearRay UV-C water purification, and visible corrosion notes."
-      );
+      setAssistantAnswer("Atlas found the standalone spa record.\n\nIt is a Sundance 880-series Optima, model OPTIMA, serial 00P3LCD-100528521-0315, date 03/21/15.\n\nElectrical label: 240 V, current 26/40/48 A, breaker size 40/50/60 A, 60 Hz, single phase, 3 wires.");
       return;
     }
 
     if (text.includes("sunstream") || text.includes("lift") || text.includes("cobalt") || text.includes("seadoo")) {
-      setAssistantAnswer(
-        "Atlas found the dock lift records.\n\nThere are multiple Sunstream lift boxes on the dock and they should stay separate.\n\nCobalt: larger / newer Sunstream lift box from last summer.\nSeaDoo: smaller / older Sunstream box.\nDock lift: additional smaller / older lift box.\n\nCraft records: Cobalt R-7 and SeaDoo 2024 are both seasonal watercraft records."
-      );
-      return;
-    }
-
-    if (text.includes("blind") || text.includes("shade") || text.includes("lutron") || text.includes("penthousedrapery")) {
-      setAssistantAnswer(
-        "Atlas found the blinds records.\n\nBlinds Lutron is the motorized roller shade asset. Penthouse Drapery invoice #176396 dated 06/16/2026 is linked to Blinds Lutron for motorized roller shade repair.\n\nBlinds Hunter Douglas is a separate asset shown in Elyse's Room."
-      );
-      return;
-    }
-
-    if (text.includes("hangar") || text.includes("gulfstream") || text.includes("pilatus") || text.includes("n280cc")) {
-      setAssistantAnswer(
-        "Atlas found the Hangar records.\n\nHangar sub-locations include Gulfstream G600 N23PA, Gulfstream G280 N280CC, Gulfstream G280 N755PA, and Pilatus PC12 N126AL.\n\nThe uploaded aircraft photo clearly showed N280CC, so Atlas standardizes that aircraft as Gulfstream G280 N280CC."
-      );
+      setAssistantAnswer("Atlas found the dock lift records.\n\nThere are multiple Sunstream lift boxes on the dock and they should stay separate.\n\nCobalt: larger / newer Sunstream lift box from last summer.\nSeaDoo: smaller / older Sunstream box.\nDock lift: additional smaller / older lift box.");
       return;
     }
 
@@ -1382,13 +1099,13 @@ export default function AtlasPage() {
       ...vendorRecords.map((vendor) => ({ type: "Vendor", title: vendor.name, detail: `${vendor.category}. ${vendor.notes}` })),
       ...serviceRecords.map((record) => ({ type: "Service", title: record.title, detail: `${formatDate(record.date)} — ${assetName(record.assetId)} — ${vendorName(record.vendorId)}. ${record.notes}` })),
       ...calendarItems.map((item) => ({ type: "Calendar", title: item.title, detail: `${formatDate(item.date)} — ${item.area} — ${item.status}` })),
+      ...procedureRecords.map((procedure) => ({ type: "Procedure", title: procedure.title, detail: `${procedure.area} — ${procedure.priority}. ${procedure.steps.join(" ")}` })),
       ...documents.map((document) => ({ type: "Document", title: document.title, detail: `${document.area} — ${document.type}. ${document.notes}` })),
-      ...procedures.map((procedure) => ({ type: "Procedure", title: procedure.title, detail: `${procedure.area}. ${procedure.steps.join(" ")}` })),
       ...locations.map((location) => ({ type: "Location", title: location.name, detail: `${location.zone} — ${location.type}. ${location.notes}` })),
     ].filter((item) => [item.type, item.title, item.detail].join(" ").toLowerCase().includes(text));
 
     if (!matches.length) {
-      setAssistantAnswer("I did not find that in the local Atlas records yet. Add a calendar item, service note, photo, document, vendor, or asset record, then Ask Atlas will be able to surface it here.");
+      setAssistantAnswer("I did not find that in the local Atlas records yet. Add a procedure, calendar item, service note, photo, document, vendor, or asset record, then Ask Atlas will be able to surface it here.");
       return;
     }
 
@@ -1399,15 +1116,7 @@ export default function AtlasPage() {
     if (!q) return null;
 
     return (
-      <SectionShell
-        eyebrow="Global Search"
-        title={`Results for "${query.trim()}"`}
-        right={
-          <button type="button" onClick={() => setQuery("")} style={primaryButtonStyle}>
-            Clear Search
-          </button>
-        }
-      >
+      <SectionShell eyebrow="Global Search" title={`Results for "${query.trim()}"`} right={<button type="button" onClick={() => setQuery("")} style={primaryButtonStyle}>Clear Search</button>}>
         {searchResults.length ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
             {searchResults.map((result) => (
@@ -1438,21 +1147,21 @@ export default function AtlasPage() {
           <StatCard label="Locations" value={locations.length} detail="2000 baseline areas" />
           <StatCard label="Assets" value={assetRecords.length} detail="Editable equipment" />
           <StatCard label="Vendors" value={vendorRecords.length} detail="Editable directory" />
+          <StatCard label="Procedures" value={procedureRecords.length} detail="Editable templates" />
           <StatCard label="Scheduled" value={upcomingCalendarCount} detail="Calendar work" />
-          <StatCard label="Docs" value={assetDocumentCount + vendorDocumentCount} detail="Uploaded files" />
           <StatCard label="Open / Monitor" value={openServiceCount + monitorAssetCount} detail="Needs attention" />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
-          <SectionShell eyebrow="Full Calendar" title="Atlas / 2000 Estate Operations">
+          <SectionShell eyebrow="Procedures Added" title="Atlas / 2000 Estate Operations">
             <div style={heroCardStyle}>
               <div style={heroOrbStyle} />
               <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
                 <img src="/atlas-logo.png" alt="Atlas logo" style={heroLogoStyle} />
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Full month calendar is live.</h2>
+                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Procedures are now editable.</h2>
                   <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.5 }}>
-                    You can move through days, months, and years, click any date, add work, edit work, delete work, and mark work complete.
+                    Add, edit, delete, search, and schedule procedures directly onto the full calendar.
                   </p>
                 </div>
               </div>
@@ -1477,22 +1186,17 @@ export default function AtlasPage() {
           </SectionShell>
         </div>
 
-        <SectionShell eyebrow="Recent Service" title="Latest Atlas History">
-          <div style={{ display: "grid", gap: 10 }}>
-            {serviceRecords
-              .slice()
-              .sort((a, b) => b.date.localeCompare(a.date))
-              .slice(0, 7)
-              .map((record) => (
-                <div key={record.id} style={serviceRowStyle}>
-                  <div style={{ color: colors.muted, fontWeight: 850 }}>{formatDate(record.date)}</div>
-                  <div>
-                    <div style={{ color: colors.navy, fontWeight: 900 }}>{record.title}</div>
-                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{assetName(record.assetId)} · {vendorName(record.vendorId)}</div>
-                  </div>
-                  <span style={badgeStyle(record.status)}>{record.status}</span>
+        <SectionShell eyebrow="Procedures" title="Work Templates Ready to Schedule">
+          <div style={threeColumnGridStyle}>
+            {sortProcedures(procedureRecords).slice(0, 6).map((procedure) => (
+              <button key={procedure.id} type="button" onClick={() => { setSelectedProcedureId(procedure.id); setProcedureMode("edit"); setScreen("procedures"); }} style={smallRecordButtonStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <strong style={{ color: colors.navy }}>{procedure.title}</strong>
+                  <span style={priorityBadge(procedure.priority)}>{procedure.priority}</span>
                 </div>
-              ))}
+                <div style={{ color: colors.muted, fontSize: 13, marginTop: 7 }}>{procedure.area} · {procedure.steps.length} steps</div>
+              </button>
+            ))}
           </div>
         </SectionShell>
       </div>
@@ -1557,9 +1261,7 @@ export default function AtlasPage() {
               <h3 style={{ margin: "6px 0", color: colors.navy }}>{location.name}</h3>
               <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{location.type}</div>
               <p style={{ color: colors.text, fontSize: 14, lineHeight: 1.45 }}>{location.notes}</p>
-              <button type="button" onClick={() => { setQuery(location.name); setScreen("assets"); }} style={primaryButtonStyle}>
-                View Related Records
-              </button>
+              <button type="button" onClick={() => { setQuery(location.name); setScreen("assets"); }} style={primaryButtonStyle}>View Related Records</button>
             </div>
           ))}
         </div>
@@ -1570,15 +1272,7 @@ export default function AtlasPage() {
   function renderAssets() {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "0.78fr 1.22fr", gap: 18, alignItems: "start" }}>
-        <SectionShell
-          eyebrow="Assets"
-          title="Editable Asset Directory"
-          right={
-            <button type="button" onClick={startNewAsset} style={primaryButtonStyle}>
-              Add Asset
-            </button>
-          }
-        >
+        <SectionShell eyebrow="Assets" title="Editable Asset Directory" right={<button type="button" onClick={startNewAsset} style={primaryButtonStyle}>Add Asset</button>}>
           <div style={{ display: "grid", gap: 10 }}>
             {filteredAssets.map((asset) => (
               <button
@@ -1599,176 +1293,71 @@ export default function AtlasPage() {
                   <span style={badgeStyle(asset.status)}>{asset.status}</span>
                 </div>
                 <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{asset.category} · {getLocationName(asset.locationId)}</div>
-                <div style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>
-                  {(asset.vendorIds ?? []).length ? asset.vendorIds.map(vendorName).join(", ") : "No vendors assigned"} · {asset.documents?.length ?? 0} docs
-                </div>
+                <div style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>{(asset.vendorIds ?? []).length ? asset.vendorIds.map(vendorName).join(", ") : "No vendors assigned"} · {asset.documents?.length ?? 0} docs</div>
               </button>
             ))}
           </div>
         </SectionShell>
 
-        <SectionShell
-          eyebrow={assetMode === "new" ? "New Asset" : "Edit Asset"}
-          title={assetForm.name || "Asset Details"}
-          right={
-            assetMode === "edit" && assetForm.id ? (
-              <button type="button" onClick={deleteAsset} style={deleteButtonStyle}>
-                Delete Asset
-              </button>
-            ) : null
-          }
-        >
+        <SectionShell eyebrow={assetMode === "new" ? "New Asset" : "Edit Asset"} title={assetForm.name || "Asset Details"} right={assetMode === "edit" && assetForm.id ? <button type="button" onClick={deleteAsset} style={deleteButtonStyle}>Delete Asset</button> : null}>
           <div style={{ display: "grid", gap: 16 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <label style={labelStyle}>
-                Asset Name
-                <input value={assetForm.name} onChange={(event) => setAssetForm((current) => ({ ...current, name: event.target.value }))} placeholder="Asset name" style={inputStyle} />
-              </label>
-
-              <label style={labelStyle}>
-                Location
-                <select value={assetForm.locationId} onChange={(event) => setAssetForm((current) => ({ ...current, locationId: event.target.value }))} style={inputStyle}>
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>{location.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={labelStyle}>
-                Category
-                <input value={assetForm.category} onChange={(event) => setAssetForm((current) => ({ ...current, category: event.target.value }))} placeholder="Example: Boiler" style={inputStyle} />
-              </label>
-
-              <label style={labelStyle}>
-                Status
-                <select value={assetForm.status} onChange={(event) => setAssetForm((current) => ({ ...current, status: event.target.value as Status }))} style={inputStyle}>
-                  <option value="Online">Online</option>
-                  <option value="Offline">Offline</option>
-                  <option value="Seasonal">Seasonal</option>
-                  <option value="Monitor">Monitor</option>
-                </select>
-              </label>
-
-              <label style={labelStyle}>
-                Make
-                <input value={assetForm.make ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, make: event.target.value }))} placeholder="Make" style={inputStyle} />
-              </label>
-
-              <label style={labelStyle}>
-                Model
-                <input value={assetForm.model ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, model: event.target.value }))} placeholder="Model" style={inputStyle} />
-              </label>
-
-              <label style={labelStyle}>
-                Serial
-                <input value={assetForm.serial ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, serial: event.target.value }))} placeholder="Serial number" style={inputStyle} />
-              </label>
-
-              <div style={{ ...labelStyle, alignSelf: "end" }}>
-                <button type="button" onClick={saveAsset} style={widePrimaryButtonStyle}>
-                  Save Asset
-                </button>
-              </div>
+              <label style={labelStyle}>Asset Name<input value={assetForm.name} onChange={(event) => setAssetForm((current) => ({ ...current, name: event.target.value }))} placeholder="Asset name" style={inputStyle} /></label>
+              <label style={labelStyle}>Location<select value={assetForm.locationId} onChange={(event) => setAssetForm((current) => ({ ...current, locationId: event.target.value }))} style={inputStyle}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+              <label style={labelStyle}>Category<input value={assetForm.category} onChange={(event) => setAssetForm((current) => ({ ...current, category: event.target.value }))} placeholder="Example: Boiler" style={inputStyle} /></label>
+              <label style={labelStyle}>Status<select value={assetForm.status} onChange={(event) => setAssetForm((current) => ({ ...current, status: event.target.value as Status }))} style={inputStyle}><option value="Online">Online</option><option value="Offline">Offline</option><option value="Seasonal">Seasonal</option><option value="Monitor">Monitor</option></select></label>
+              <label style={labelStyle}>Make<input value={assetForm.make ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, make: event.target.value }))} placeholder="Make" style={inputStyle} /></label>
+              <label style={labelStyle}>Model<input value={assetForm.model ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, model: event.target.value }))} placeholder="Model" style={inputStyle} /></label>
+              <label style={labelStyle}>Serial<input value={assetForm.serial ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, serial: event.target.value }))} placeholder="Serial number" style={inputStyle} /></label>
+              <div style={{ ...labelStyle, alignSelf: "end" }}><button type="button" onClick={saveAsset} style={widePrimaryButtonStyle}>Save Asset</button></div>
             </div>
 
-            <label style={labelStyle}>
-              Notes
-              <textarea value={assetForm.notes} onChange={(event) => setAssetForm((current) => ({ ...current, notes: event.target.value }))} rows={5} placeholder="Asset notes, nameplate info, service reminders, setup details, etc." style={{ ...inputStyle, resize: "vertical" }} />
-            </label>
+            <label style={labelStyle}>Notes<textarea value={assetForm.notes} onChange={(event) => setAssetForm((current) => ({ ...current, notes: event.target.value }))} rows={5} placeholder="Asset notes, nameplate info, service reminders, setup details, etc." style={{ ...inputStyle, resize: "vertical" }} /></label>
 
             <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
-              <div>
-                <div style={goldEyebrowStyle}>Assigned Vendors</div>
-                <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
-                  Check every vendor connected to this asset.
-                </div>
-              </div>
-
+              <div><div style={goldEyebrowStyle}>Assigned Vendors</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>Check every vendor connected to this asset.</div></div>
               <div style={vendorCheckGridStyle}>
                 {sortVendors(vendorRecords).map((vendor) => (
                   <label key={vendor.id} style={vendorCheckStyle}>
-                    <input
-                      type="checkbox"
-                      checked={(assetForm.vendorIds ?? []).includes(vendor.id)}
-                      onChange={() => toggleAssetVendor(vendor.id)}
-                    />
-                    <span>
-                      <strong style={{ color: colors.navy }}>{vendor.name}</strong>
-                      <span style={{ color: colors.muted, display: "block", fontSize: 12 }}>{vendor.category}</span>
-                    </span>
+                    <input type="checkbox" checked={(assetForm.vendorIds ?? []).includes(vendor.id)} onChange={() => toggleAssetVendor(vendor.id)} />
+                    <span><strong style={{ color: colors.navy }}>{vendor.name}</strong><span style={{ color: colors.muted, display: "block", fontSize: 12 }}>{vendor.category}</span></span>
                   </label>
                 ))}
               </div>
             </div>
 
             <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
-              <label style={labelStyle}>
-                Add asset documents
-                <input type="file" multiple onChange={handleAssetDocumentUpload} style={{ color: colors.muted }} />
-              </label>
-
+              <label style={labelStyle}>Add asset documents<input type="file" multiple onChange={handleAssetDocumentUpload} style={{ color: colors.muted }} /></label>
               {(assetForm.documents ?? []).length ? (
                 <div style={{ display: "grid", gap: 10 }}>
                   {(assetForm.documents ?? []).map((document) => (
                     <div key={document.id} style={inlineCardStyle}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                        <div>
-                          <div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div>
-                          <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
-                            {document.type || "File"} · {new Date(document.createdAt).toLocaleString()}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <a href={document.dataUrl} download={document.name} style={linkButtonStyle}>
-                            Download
-                          </a>
-                          <button type="button" onClick={() => removeAssetDocument(document.id)} style={deleteButtonStyle}>
-                            Remove
-                          </button>
-                        </div>
+                        <div><div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{document.type || "File"} · {new Date(document.createdAt).toLocaleString()}</div></div>
+                        <div style={{ display: "flex", gap: 8 }}><a href={document.dataUrl} download={document.name} style={linkButtonStyle}>Download</a><button type="button" onClick={() => removeAssetDocument(document.id)} style={deleteButtonStyle}>Remove</button></div>
                       </div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div style={emptyStateStyle}>No asset documents attached yet.</div>
-              )}
+              ) : <div style={emptyStateStyle}>No asset documents attached yet.</div>}
             </div>
 
             <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
               {assetMode === "edit" && assetForm.id ? (
                 <>
-                  <label style={uploadBoxStyle}>
-                    Add photos for {assetForm.name}
-                    <span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Photos save in this browser for now.</span>
-                    <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} />
-                  </label>
-
+                  <label style={uploadBoxStyle}>Add photos for {assetForm.name}<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Photos save in this browser for now.</span><input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} /></label>
                   {selectedAssetPhotos.length ? (
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                       {selectedAssetPhotos.map((photo) => (
                         <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
                           <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 130, objectFit: "cover" }} />
-                          <div style={{ padding: 10 }}>
-                            <div style={{ color: colors.navy, fontWeight: 900, fontSize: 12 }}>{photo.name}</div>
-                            <button type="button" onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))} style={{ ...deleteButtonStyle, marginTop: 8 }}>
-                              Delete
-                            </button>
-                          </div>
+                          <div style={{ padding: 10 }}><div style={{ color: colors.navy, fontWeight: 900, fontSize: 12 }}>{photo.name}</div><button type="button" onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))} style={{ ...deleteButtonStyle, marginTop: 8 }}>Delete</button></div>
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <div style={emptyStateStyle}>No asset photos attached yet.</div>
-                  )}
+                  ) : <div style={emptyStateStyle}>No asset photos attached yet.</div>}
                 </>
-              ) : (
-                <div style={emptyStateStyle}>Save this new asset first, then add photos.</div>
-              )}
-
-              <div style={{ color: colors.muted, fontSize: 13, lineHeight: 1.4 }}>
-                Asset edits, photos, and documents save in this browser for now. Next database pass will move this to shared storage.
-              </div>
+              ) : <div style={emptyStateStyle}>Save this new asset first, then add photos.</div>}
             </div>
           </div>
         </SectionShell>
@@ -1781,74 +1370,30 @@ export default function AtlasPage() {
       <div style={{ display: "grid", gridTemplateColumns: "0.82fr 1.18fr", gap: 18, alignItems: "start" }}>
         <SectionShell eyebrow="Add Record" title="New Service Note">
           <div style={{ display: "grid", gap: 12 }}>
-            <label style={labelStyle}>
-              Asset
-              <select value={newService.assetId} onChange={(event) => setNewService((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>
-                {sortAssets(assetRecords).map((asset) => (
-                  <option key={asset.id} value={asset.id}>{asset.name}</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={labelStyle}>
-              Vendor
-              <select value={newService.vendorId} onChange={(event) => setNewService((current) => ({ ...current, vendorId: event.target.value }))} style={inputStyle}>
-                <option value="">Internal / Not set</option>
-                {sortVendors(vendorRecords).map((vendor) => (
-                  <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={labelStyle}>
-              Title
-              <input value={newService.title} onChange={(event) => setNewService((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Checked boiler low-water cut-off" style={inputStyle} />
-            </label>
-
+            <label style={labelStyle}>Asset<select value={newService.assetId} onChange={(event) => setNewService((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>{sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+            <label style={labelStyle}>Vendor<select value={newService.vendorId} onChange={(event) => setNewService((current) => ({ ...current, vendorId: event.target.value }))} style={inputStyle}><option value="">Internal / Not set</option>{sortVendors(vendorRecords).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+            <label style={labelStyle}>Title<input value={newService.title} onChange={(event) => setNewService((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Checked boiler low-water cut-off" style={inputStyle} /></label>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <label style={labelStyle}>
-                Date
-                <input type="date" value={newService.date} onChange={(event) => setNewService((current) => ({ ...current, date: event.target.value }))} style={inputStyle} />
-              </label>
-
-              <label style={labelStyle}>
-                Status
-                <select value={newService.status} onChange={(event) => setNewService((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}>
-                  <option value="Open">Open</option>
-                  <option value="Scheduled">Scheduled</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Monitor">Monitor</option>
-                </select>
-              </label>
+              <label style={labelStyle}>Date<input type="date" value={newService.date} onChange={(event) => setNewService((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
+              <label style={labelStyle}>Status<select value={newService.status} onChange={(event) => setNewService((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="Completed">Completed</option><option value="Monitor">Monitor</option></select></label>
             </div>
-
-            <label style={labelStyle}>
-              Notes
-              <textarea value={newService.notes} onChange={(event) => setNewService((current) => ({ ...current, notes: event.target.value }))} placeholder="Write what happened, what needs to happen next, and anything to watch." rows={6} style={{ ...inputStyle, resize: "vertical" }} />
-            </label>
-
+            <label style={labelStyle}>Notes<textarea value={newService.notes} onChange={(event) => setNewService((current) => ({ ...current, notes: event.target.value }))} placeholder="Write what happened, what needs to happen next, and anything to watch." rows={6} style={{ ...inputStyle, resize: "vertical" }} /></label>
             <button type="button" onClick={addServiceRecord} style={widePrimaryButtonStyle}>Save Service Note</button>
           </div>
         </SectionShell>
 
         <SectionShell eyebrow="Service History" title="Atlas Work Log">
           <div style={{ display: "grid", gap: 11 }}>
-            {filteredServices
-              .slice()
-              .sort((a, b) => b.date.localeCompare(a.date))
-              .map((record) => (
-                <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, padding: 15, background: "#FBFCFE" }}>
-                  <div style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div>
-                      <div style={{ color: colors.navy, fontWeight: 950 }}>{record.title}</div>
-                      <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{formatDate(record.date)} · {assetName(record.assetId)} · {vendorName(record.vendorId)}</div>
-                    </div>
-                    <span style={badgeStyle(record.status)}>{record.status}</span>
-                  </div>
-                  <p style={{ color: colors.text, lineHeight: 1.5, marginBottom: 12 }}>{record.notes}</p>
-                  <button type="button" onClick={() => deleteServiceRecord(record.id)} style={deleteButtonStyle}>Delete</button>
+            {filteredServices.slice().sort((a, b) => b.date.localeCompare(a.date)).map((record) => (
+              <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, padding: 15, background: "#FBFCFE" }}>
+                <div style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div><div style={{ color: colors.navy, fontWeight: 950 }}>{record.title}</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{formatDate(record.date)} · {assetName(record.assetId)} · {vendorName(record.vendorId)}</div></div>
+                  <span style={badgeStyle(record.status)}>{record.status}</span>
                 </div>
-              ))}
+                <p style={{ color: colors.text, lineHeight: 1.5, marginBottom: 12 }}>{record.notes}</p>
+                <button type="button" onClick={() => deleteServiceRecord(record.id)} style={deleteButtonStyle}>Delete</button>
+              </div>
+            ))}
           </div>
         </SectionShell>
       </div>
@@ -1858,15 +1403,7 @@ export default function AtlasPage() {
   function renderVendors() {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "0.95fr 1.05fr", gap: 18, alignItems: "start" }}>
-        <SectionShell
-          eyebrow="Vendors"
-          title="Alphabetical Vendor Directory"
-          right={
-            <button type="button" onClick={startNewVendor} style={primaryButtonStyle}>
-              Add Vendor
-            </button>
-          }
-        >
+        <SectionShell eyebrow="Vendors" title="Alphabetical Vendor Directory" right={<button type="button" onClick={startNewVendor} style={primaryButtonStyle}>Add Vendor</button>}>
           <div style={{ display: "grid", gap: 10 }}>
             {filteredVendors.map((vendor) => (
               <button
@@ -1886,19 +1423,11 @@ export default function AtlasPage() {
                   alignItems: "center",
                 }}
               >
-                <div style={vendorLogoBoxStyle}>
-                  {vendor.logoDataUrl ? (
-                    <img src={vendor.logoDataUrl} alt={`${vendor.name} logo`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : (
-                    <span style={{ color: colors.gold, fontWeight: 950 }}>{vendor.name.slice(0, 1).toUpperCase()}</span>
-                  )}
-                </div>
+                <div style={vendorLogoBoxStyle}>{vendor.logoDataUrl ? <img src={vendor.logoDataUrl} alt={`${vendor.name} logo`} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: colors.gold, fontWeight: 950 }}>{vendor.name.slice(0, 1).toUpperCase()}</span>}</div>
                 <div>
                   <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{vendor.category || "General"}</div>
                   <div style={{ color: colors.navy, fontWeight: 950, fontSize: 16, marginTop: 4 }}>{vendor.name}</div>
-                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
-                    {(vendor.phone || vendor.email || vendor.website || "No contact info yet")}
-                  </div>
+                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{vendor.phone || vendor.email || vendor.website || "No contact info yet"}</div>
                 </div>
                 <span style={openPillStyle}>{vendor.documents?.length ?? 0} docs</span>
               </button>
@@ -1906,106 +1435,38 @@ export default function AtlasPage() {
           </div>
         </SectionShell>
 
-        <SectionShell
-          eyebrow={vendorMode === "new" ? "New Vendor" : "Edit Vendor"}
-          title={vendorForm.name || "Vendor Details"}
-          right={
-            vendorMode === "edit" && vendorForm.id ? (
-              <button type="button" onClick={deleteVendor} style={deleteButtonStyle}>
-                Delete Vendor
-              </button>
-            ) : null
-          }
-        >
+        <SectionShell eyebrow={vendorMode === "new" ? "New Vendor" : "Edit Vendor"} title={vendorForm.name || "Vendor Details"} right={vendorMode === "edit" && vendorForm.id ? <button type="button" onClick={deleteVendor} style={deleteButtonStyle}>Delete Vendor</button> : null}>
           <div style={{ display: "grid", gap: 16 }}>
             <div style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 16, alignItems: "center" }}>
-              <div style={{ ...vendorLogoBoxStyle, width: 92, height: 92, borderRadius: 22 }}>
-                {vendorForm.logoDataUrl ? (
-                  <img src={vendorForm.logoDataUrl} alt="Vendor logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  <span style={{ color: colors.gold, fontWeight: 950, fontSize: 30 }}>
-                    {(vendorForm.name || "V").slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <label style={{ ...labelStyle, margin: 0 }}>
-                Vendor logo / photo
-                <input type="file" accept="image/*" onChange={handleVendorLogoUpload} style={{ color: colors.muted }} />
-              </label>
+              <div style={{ ...vendorLogoBoxStyle, width: 92, height: 92, borderRadius: 22 }}>{vendorForm.logoDataUrl ? <img src={vendorForm.logoDataUrl} alt="Vendor logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: colors.gold, fontWeight: 950, fontSize: 30 }}>{(vendorForm.name || "V").slice(0, 1).toUpperCase()}</span>}</div>
+              <label style={{ ...labelStyle, margin: 0 }}>Vendor logo / photo<input type="file" accept="image/*" onChange={handleVendorLogoUpload} style={{ color: colors.muted }} /></label>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <label style={labelStyle}>
-                Name
-                <input value={vendorForm.name} onChange={(event) => setVendorForm((current) => ({ ...current, name: event.target.value }))} placeholder="Vendor name" style={inputStyle} />
-              </label>
-
-              <label style={labelStyle}>
-                Category
-                <input value={vendorForm.category} onChange={(event) => setVendorForm((current) => ({ ...current, category: event.target.value }))} placeholder="Example: Plumbing" style={inputStyle} />
-              </label>
-
-              <label style={labelStyle}>
-                Phone
-                <input value={vendorForm.phone ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone number" style={inputStyle} />
-              </label>
-
-              <label style={labelStyle}>
-                Email
-                <input value={vendorForm.email ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email address" style={inputStyle} />
-              </label>
+              <label style={labelStyle}>Name<input value={vendorForm.name} onChange={(event) => setVendorForm((current) => ({ ...current, name: event.target.value }))} placeholder="Vendor name" style={inputStyle} /></label>
+              <label style={labelStyle}>Category<input value={vendorForm.category} onChange={(event) => setVendorForm((current) => ({ ...current, category: event.target.value }))} placeholder="Example: Plumbing" style={inputStyle} /></label>
+              <label style={labelStyle}>Phone<input value={vendorForm.phone ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone number" style={inputStyle} /></label>
+              <label style={labelStyle}>Email<input value={vendorForm.email ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email address" style={inputStyle} /></label>
             </div>
 
-            <label style={labelStyle}>
-              Website
-              <input value={vendorForm.website ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, website: event.target.value }))} placeholder="Website / portal link" style={inputStyle} />
-            </label>
-
-            <label style={labelStyle}>
-              Notes
-              <textarea value={vendorForm.notes} onChange={(event) => setVendorForm((current) => ({ ...current, notes: event.target.value }))} rows={5} placeholder="Vendor notes, contact details, service history reminders, account notes, etc." style={{ ...inputStyle, resize: "vertical" }} />
-            </label>
-
-            <button type="button" onClick={saveVendor} style={widePrimaryButtonStyle}>
-              Save Vendor
-            </button>
+            <label style={labelStyle}>Website<input value={vendorForm.website ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, website: event.target.value }))} placeholder="Website / portal link" style={inputStyle} /></label>
+            <label style={labelStyle}>Notes<textarea value={vendorForm.notes} onChange={(event) => setVendorForm((current) => ({ ...current, notes: event.target.value }))} rows={5} placeholder="Vendor notes, contact details, service history reminders, account notes, etc." style={{ ...inputStyle, resize: "vertical" }} /></label>
+            <button type="button" onClick={saveVendor} style={widePrimaryButtonStyle}>Save Vendor</button>
 
             <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
-              <label style={labelStyle}>
-                Add vendor documents
-                <input type="file" multiple onChange={handleVendorDocumentUpload} style={{ color: colors.muted }} />
-              </label>
-
+              <label style={labelStyle}>Add vendor documents<input type="file" multiple onChange={handleVendorDocumentUpload} style={{ color: colors.muted }} /></label>
               {(vendorForm.documents ?? []).length ? (
                 <div style={{ display: "grid", gap: 10 }}>
                   {(vendorForm.documents ?? []).map((document) => (
                     <div key={document.id} style={inlineCardStyle}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                        <div>
-                          <div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div>
-                          <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
-                            {document.type || "File"} · {new Date(document.createdAt).toLocaleString()}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <a href={document.dataUrl} download={document.name} style={linkButtonStyle}>
-                            Download
-                          </a>
-                          <button type="button" onClick={() => removeVendorDocument(document.id)} style={deleteButtonStyle}>
-                            Remove
-                          </button>
-                        </div>
+                        <div><div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{document.type || "File"} · {new Date(document.createdAt).toLocaleString()}</div></div>
+                        <div style={{ display: "flex", gap: 8 }}><a href={document.dataUrl} download={document.name} style={linkButtonStyle}>Download</a><button type="button" onClick={() => removeVendorDocument(document.id)} style={deleteButtonStyle}>Remove</button></div>
                       </div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div style={emptyStateStyle}>No vendor documents attached yet.</div>
-              )}
-
-              <div style={{ color: colors.muted, fontSize: 13, lineHeight: 1.4 }}>
-                Vendor logos and documents save in this browser for now. Next database pass will move this to shared storage.
-              </div>
+              ) : <div style={emptyStateStyle}>No vendor documents attached yet.</div>}
             </div>
           </div>
         </SectionShell>
@@ -2016,85 +1477,25 @@ export default function AtlasPage() {
   function renderCalendar() {
     const monthDays = getCalendarMonthDays(calendarCursor);
     const selectedDateItems = sortCalendar(calendarItems.filter((item) => item.date === selectedCalendarDate));
-    const monthName = monthYearLabel(calendarCursor);
     const selectedDateLabel = formatDate(selectedCalendarDate);
 
     return (
       <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr", gap: 18, alignItems: "start" }}>
-        <SectionShell
-          eyebrow="Full Calendar"
-          title={monthName}
-          right={
-            <button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>
-              Add Item
-            </button>
-          }
-        >
+        <SectionShell eyebrow="Full Calendar" title={calendarCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })} right={<button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>Add Item</button>}>
           <div style={{ display: "grid", gap: 14 }}>
             <div style={calendarToolbarStyle}>
-              <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, -1))} style={calendarNavButtonStyle}>
-                ‹ Year
-              </button>
-              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, -1))} style={calendarNavButtonStyle}>
-                ‹ Month
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const now = new Date();
-                  const key = dateKeyFromDate(now);
-                  setCalendarCursor(now);
-                  setSelectedCalendarDate(key);
-                  setCalendarMode("new");
-                  setCalendarForm(blankCalendarItem(key));
-                  setSelectedCalendarId("");
-                }}
-                style={goldButtonStyle}
-              >
-                Today
-              </button>
-              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, 1))} style={calendarNavButtonStyle}>
-                Month ›
-              </button>
-              <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, 1))} style={calendarNavButtonStyle}>
-                Year ›
-              </button>
-
-              <select
-                value={calendarCursor.getMonth()}
-                onChange={(event) => {
-                  const nextMonth = Number(event.target.value);
-                  setCalendarCursor(new Date(calendarCursor.getFullYear(), nextMonth, 1, 12));
-                }}
-                style={{ ...inputStyle, padding: "9px 10px" }}
-              >
-                {Array.from({ length: 12 }, (_, monthIndex) => (
-                  <option key={monthIndex} value={monthIndex}>
-                    {new Date(2026, monthIndex, 1).toLocaleDateString(undefined, { month: "long" })}
-                  </option>
-                ))}
+              <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, -1))} style={calendarNavButtonStyle}>‹ Year</button>
+              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, -1))} style={calendarNavButtonStyle}>‹ Month</button>
+              <button type="button" onClick={() => { const now = new Date(); const key = dateKeyFromDate(now); setCalendarCursor(now); setSelectedCalendarDate(key); setCalendarMode("new"); setCalendarForm(blankCalendarItem(key)); setSelectedCalendarId(""); }} style={goldButtonStyle}>Today</button>
+              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, 1))} style={calendarNavButtonStyle}>Month ›</button>
+              <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, 1))} style={calendarNavButtonStyle}>Year ›</button>
+              <select value={calendarCursor.getMonth()} onChange={(event) => setCalendarCursor(new Date(calendarCursor.getFullYear(), Number(event.target.value), 1, 12))} style={{ ...inputStyle, padding: "9px 10px" }}>
+                {Array.from({ length: 12 }, (_, monthIndex) => <option key={monthIndex} value={monthIndex}>{new Date(2026, monthIndex, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}
               </select>
-
-              <input
-                type="number"
-                value={calendarCursor.getFullYear()}
-                onChange={(event) => {
-                  const year = Number(event.target.value);
-                  if (Number.isFinite(year) && year > 1900 && year < 2300) {
-                    setCalendarCursor(new Date(year, calendarCursor.getMonth(), 1, 12));
-                  }
-                }}
-                style={{ ...inputStyle, padding: "9px 10px" }}
-              />
+              <input type="number" value={calendarCursor.getFullYear()} onChange={(event) => { const year = Number(event.target.value); if (Number.isFinite(year) && year > 1900 && year < 2300) setCalendarCursor(new Date(year, calendarCursor.getMonth(), 1, 12)); }} style={{ ...inputStyle, padding: "9px 10px" }} />
             </div>
 
-            <div style={calendarWeekHeaderStyle}>
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                <div key={day} style={{ color: colors.muted, fontWeight: 950, fontSize: 12, textAlign: "center" }}>
-                  {day}
-                </div>
-              ))}
-            </div>
+            <div style={calendarWeekHeaderStyle}>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} style={{ color: colors.muted, fontWeight: 950, fontSize: 12, textAlign: "center" }}>{day}</div>)}</div>
 
             <div style={calendarMonthGridStyle}>
               {monthDays.map((day) => {
@@ -2121,14 +1522,8 @@ export default function AtlasPage() {
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                      <div style={{ color: isToday ? colors.navy : colors.muted, fontWeight: 950 }}>
-                        {day.getDate()}
-                      </div>
-                      {itemsForDay.length ? (
-                        <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>
-                          {itemsForDay.length}
-                        </div>
-                      ) : null}
+                      <div style={{ color: isToday ? colors.navy : colors.muted, fontWeight: 950 }}>{day.getDate()}</div>
+                      {itemsForDay.length ? <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{itemsForDay.length}</div> : null}
                     </div>
 
                     <div style={{ display: "grid", gap: 5, marginTop: 8 }}>
@@ -2146,11 +1541,7 @@ export default function AtlasPage() {
                           {item.title}
                         </button>
                       ))}
-                      {itemsForDay.length > 3 ? (
-                        <div style={{ color: colors.muted, fontSize: 11, fontWeight: 900 }}>
-                          +{itemsForDay.length - 3} more
-                        </div>
-                      ) : null}
+                      {itemsForDay.length > 3 ? <div style={{ color: colors.muted, fontSize: 11, fontWeight: 900 }}>+{itemsForDay.length - 3} more</div> : null}
                     </div>
                   </div>
                 );
@@ -2160,118 +1551,112 @@ export default function AtlasPage() {
         </SectionShell>
 
         <div style={{ display: "grid", gap: 18 }}>
-          <SectionShell
-            eyebrow="Selected Day"
-            title={selectedDateLabel}
-            right={
-              <button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>
-                Add
-              </button>
-            }
-          >
+          <SectionShell eyebrow="Selected Day" title={selectedDateLabel} right={<button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>Add</button>}>
             <div style={{ display: "grid", gap: 10 }}>
-              {selectedDateItems.length ? (
-                selectedDateItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => openCalendarItem(item)}
-                    style={{
-                      ...smallRecordButtonStyle,
-                      border: selectedCalendarId === item.id && calendarMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
-                      background: selectedCalendarId === item.id && calendarMode === "edit" ? "#FFF9EA" : "#FBFCFE",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                      <strong style={{ color: colors.navy }}>{item.title}</strong>
-                      <span style={badgeStyle(item.status)}>{item.status}</span>
-                    </div>
-                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{item.area}</div>
-                  </button>
-                ))
-              ) : (
-                <div style={emptyStateStyle}>No work scheduled for this day.</div>
-              )}
+              {selectedDateItems.length ? selectedDateItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => openCalendarItem(item)}
+                  style={{ ...smallRecordButtonStyle, border: selectedCalendarId === item.id && calendarMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`, background: selectedCalendarId === item.id && calendarMode === "edit" ? "#FFF9EA" : "#FBFCFE" }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                    <strong style={{ color: colors.navy }}>{item.title}</strong>
+                    <span style={badgeStyle(item.status)}>{item.status}</span>
+                  </div>
+                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{item.area}</div>
+                </button>
+              )) : <div style={emptyStateStyle}>No work scheduled for this day.</div>}
             </div>
           </SectionShell>
 
-          <SectionShell
-            eyebrow={calendarMode === "new" ? "New Scheduled Work" : "Edit Scheduled Work"}
-            title={calendarForm.title || "Calendar Details"}
-            right={
-              calendarMode === "edit" && calendarForm.id ? (
-                <button type="button" onClick={deleteCalendarItem} style={deleteButtonStyle}>
-                  Delete
-                </button>
-              ) : null
-            }
-          >
+          <SectionShell eyebrow={calendarMode === "new" ? "New Scheduled Work" : "Edit Scheduled Work"} title={calendarForm.title || "Calendar Details"} right={calendarMode === "edit" && calendarForm.id ? <button type="button" onClick={deleteCalendarItem} style={deleteButtonStyle}>Delete</button> : null}>
             <div style={{ display: "grid", gap: 14 }}>
-              <label style={labelStyle}>
-                Work Title
-                <input
-                  value={calendarForm.title}
-                  onChange={(event) => setCalendarForm((current) => ({ ...current, title: event.target.value }))}
-                  placeholder="Example: Backwash pool filter"
-                  style={inputStyle}
-                />
-              </label>
-
-              <label style={labelStyle}>
-                Date
-                <input
-                  type="date"
-                  value={calendarForm.date}
-                  onChange={(event) => {
-                    const nextDate = event.target.value;
-                    setCalendarForm((current) => ({ ...current, date: nextDate }));
-                    setSelectedCalendarDate(nextDate);
-                    setCalendarCursor(dateFromKey(nextDate));
-                  }}
-                  style={inputStyle}
-                />
-              </label>
-
-              <label style={labelStyle}>
-                Status
-                <select
-                  value={calendarForm.status}
-                  onChange={(event) => setCalendarForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))}
-                  style={inputStyle}
-                >
-                  <option value="Open">Open</option>
-                  <option value="Scheduled">Scheduled</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Monitor">Monitor</option>
-                </select>
-              </label>
-
-              <label style={labelStyle}>
-                Area / Location
-                <input
-                  value={calendarForm.area}
-                  onChange={(event) => setCalendarForm((current) => ({ ...current, area: event.target.value }))}
-                  placeholder="Example: Pool Equipment Room"
-                  style={inputStyle}
-                />
-              </label>
-
-              <button type="button" onClick={saveCalendarItem} style={widePrimaryButtonStyle}>
-                Save Calendar Item
-              </button>
-
-              {calendarMode === "edit" && calendarForm.id && calendarForm.status !== "Completed" ? (
-                <button type="button" onClick={() => markCalendarCompleted(calendarForm.id)} style={goldButtonStyle}>
-                  Mark Completed
-                </button>
-              ) : null}
-
-              <div style={emptyStateStyle}>
-                Full calendar saves in this browser for now. You can move by month/year, click any day, add work, edit work, delete work, and mark work complete.
-              </div>
+              <label style={labelStyle}>Work Title<input value={calendarForm.title} onChange={(event) => setCalendarForm((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Backwash pool filter" style={inputStyle} /></label>
+              <label style={labelStyle}>Date<input type="date" value={calendarForm.date} onChange={(event) => { const nextDate = event.target.value; setCalendarForm((current) => ({ ...current, date: nextDate })); setSelectedCalendarDate(nextDate); setCalendarCursor(dateFromKey(nextDate)); }} style={inputStyle} /></label>
+              <label style={labelStyle}>Status<select value={calendarForm.status} onChange={(event) => setCalendarForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="Completed">Completed</option><option value="Monitor">Monitor</option></select></label>
+              <label style={labelStyle}>Area / Location<input value={calendarForm.area} onChange={(event) => setCalendarForm((current) => ({ ...current, area: event.target.value }))} placeholder="Example: Pool Equipment Room" style={inputStyle} /></label>
+              <button type="button" onClick={saveCalendarItem} style={widePrimaryButtonStyle}>Save Calendar Item</button>
+              {calendarMode === "edit" && calendarForm.id && calendarForm.status !== "Completed" ? <button type="button" onClick={() => markCalendarCompleted(calendarForm.id)} style={goldButtonStyle}>Mark Completed</button> : null}
             </div>
           </SectionShell>
         </div>
+      </div>
+    );
+  }
+
+  function renderProcedures() {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: 18, alignItems: "start" }}>
+        <SectionShell eyebrow="Procedures" title="Editable Procedure Library" right={<button type="button" onClick={startNewProcedure} style={primaryButtonStyle}>Add Procedure</button>}>
+          <div style={{ display: "grid", gap: 10 }}>
+            {filteredProcedures.map((procedure) => (
+              <button
+                key={procedure.id}
+                type="button"
+                onClick={() => {
+                  setSelectedProcedureId(procedure.id);
+                  setProcedureMode("edit");
+                }}
+                style={{
+                  ...smallRecordButtonStyle,
+                  border: selectedProcedureId === procedure.id && procedureMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
+                  background: selectedProcedureId === procedure.id && procedureMode === "edit" ? "#FFF9EA" : "#FBFCFE",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <strong style={{ color: colors.navy }}>{procedure.title}</strong>
+                  <span style={priorityBadge(procedure.priority)}>{procedure.priority}</span>
+                </div>
+                <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{procedure.area} · {procedure.steps.length} steps</div>
+              </button>
+            ))}
+          </div>
+        </SectionShell>
+
+        <SectionShell
+          eyebrow={procedureMode === "new" ? "New Procedure" : "Edit Procedure"}
+          title={procedureForm.title || "Procedure Details"}
+          right={procedureMode === "edit" && procedureForm.id ? <button type="button" onClick={deleteProcedure} style={deleteButtonStyle}>Delete Procedure</button> : null}
+        >
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={labelStyle}>Procedure Title<input value={procedureForm.title} onChange={(event) => setProcedureForm((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Pool Backwash Procedure" style={inputStyle} /></label>
+              <label style={labelStyle}>Area / Location<input value={procedureForm.area} onChange={(event) => setProcedureForm((current) => ({ ...current, area: event.target.value }))} placeholder="Example: Pool Equipment Room" style={inputStyle} /></label>
+              <label style={labelStyle}>Priority<select value={procedureForm.priority} onChange={(event) => setProcedureForm((current) => ({ ...current, priority: event.target.value as Priority }))} style={inputStyle}><option value="High">High</option><option value="Normal">Normal</option><option value="Seasonal">Seasonal</option></select></label>
+              <label style={labelStyle}>Schedule Date<input type="date" value={procedureScheduleDate} onChange={(event) => setProcedureScheduleDate(event.target.value)} style={inputStyle} /></label>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button type="button" onClick={saveProcedure} style={widePrimaryButtonStyle}>Save Procedure</button>
+              <button type="button" onClick={() => scheduleProcedure({ ...procedureForm, title: procedureForm.title || "Untitled Procedure", area: procedureForm.area || "General", steps: procedureForm.steps.filter(Boolean), priority: procedureForm.priority || "Normal" })} style={goldButtonStyle}>Schedule This Procedure</button>
+            </div>
+
+            <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <div>
+                  <div style={goldEyebrowStyle}>Steps</div>
+                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>Edit each step in order. Empty steps are ignored when saved.</div>
+                </div>
+                <button type="button" onClick={addProcedureStep} style={primaryButtonStyle}>Add Step</button>
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                {procedureForm.steps.map((step, index) => (
+                  <div key={index} style={{ display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 10, alignItems: "center" }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 999, background: colors.navy, color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 950 }}>{index + 1}</div>
+                    <input value={step} onChange={(event) => updateProcedureStep(index, event.target.value)} placeholder={`Step ${index + 1}`} style={inputStyle} />
+                    <button type="button" onClick={() => removeProcedureStep(index)} style={deleteButtonStyle}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={emptyStateStyle}>
+              Procedures now save in this browser, appear in search, and can be scheduled directly onto the full calendar.
+            </div>
+          </div>
+        </SectionShell>
       </div>
     );
   }
@@ -2303,36 +1688,18 @@ export default function AtlasPage() {
       <div style={{ display: "grid", gridTemplateColumns: "0.78fr 1.22fr", gap: 18, alignItems: "start" }}>
         <SectionShell eyebrow="Upload" title="Photos">
           <div style={{ display: "grid", gap: 12 }}>
-            <label style={labelStyle}>
-              Attach to Asset
-              <select value={selectedAssetId} onChange={(event) => setSelectedAssetId(event.target.value)} style={inputStyle}>
-                {sortAssets(assetRecords).map((asset) => (
-                  <option key={asset.id} value={asset.id}>{asset.name}</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={uploadBoxStyle}>
-              Add photos for {selectedAsset.name}
-              <span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Uploads save in this browser for now.</span>
-              <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} />
-            </label>
-
+            <label style={labelStyle}>Attach to Asset<select value={selectedAssetId} onChange={(event) => setSelectedAssetId(event.target.value)} style={inputStyle}>{sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+            <label style={uploadBoxStyle}>Add photos for {selectedAsset.name}<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Uploads save in this browser for now.</span><input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} /></label>
             {selectedAssetPhotos.length ? (
               <div style={{ display: "grid", gap: 12 }}>
                 {selectedAssetPhotos.map((photo) => (
                   <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
                     <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 145, objectFit: "cover" }} />
-                    <div style={{ padding: 12 }}>
-                      <div style={{ color: colors.navy, fontWeight: 900, fontSize: 13 }}>{photo.name}</div>
-                      <button type="button" onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))} style={{ ...deleteButtonStyle, marginTop: 10 }}>Delete</button>
-                    </div>
+                    <div style={{ padding: 12 }}><div style={{ color: colors.navy, fontWeight: 900, fontSize: 13 }}>{photo.name}</div><button type="button" onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))} style={{ ...deleteButtonStyle, marginTop: 10 }}>Delete</button></div>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div style={{ color: colors.muted }}>No photos added for this selected asset yet.</div>
-            )}
+            ) : <div style={{ color: colors.muted }}>No photos added for this selected asset yet.</div>}
           </div>
         </SectionShell>
 
@@ -2342,9 +1709,7 @@ export default function AtlasPage() {
               <div key={document.id} style={inlineCardStyle}>
                 <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{document.area}</div>
                 <h3 style={{ color: colors.navy, margin: "5px 0" }}>{document.title}</h3>
-                <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>
-                  {document.type}{document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}
-                </div>
+                <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{document.type}{document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}</div>
                 <p style={{ color: colors.text, lineHeight: 1.5 }}>{document.notes}</p>
               </div>
             ))}
@@ -2354,58 +1719,19 @@ export default function AtlasPage() {
     );
   }
 
-  function renderProcedures() {
-    return (
-      <SectionShell eyebrow="Procedures" title="Atlas How-To Records / Work Templates">
-        <div style={{ display: "grid", gap: 14 }}>
-          {filteredProcedures.map((procedure) => (
-            <div key={procedure.id} style={recordCardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
-                <div>
-                  <div style={goldEyebrowStyle}>{procedure.area}</div>
-                  <h3 style={{ color: colors.navy, margin: "5px 0 0" }}>{procedure.title}</h3>
-                </div>
-                <span style={priorityBadge(procedure.priority)}>{procedure.priority}</span>
-              </div>
-              <ol style={{ margin: 0, paddingLeft: 21, color: colors.text, lineHeight: 1.6 }}>
-                {procedure.steps.map((step) => <li key={step}>{step}</li>)}
-              </ol>
-            </div>
-          ))}
-        </div>
-      </SectionShell>
-    );
-  }
-
   function renderAssistant() {
-    const quickQuestions = [
-      "Show my calendar",
-      "Show my assets",
-      "Show my vendors",
-      "What boiler do we have?",
-      "What is the pool equipment chain?",
-      "Which lift box is for the Cobalt?",
-      "Who worked on the Lutron blinds?",
-      "What do we know about the Sundance spa?",
-      "What aircraft are in the Hangar?",
-    ];
+    const quickQuestions = ["Show my procedures", "Show my calendar", "Show my assets", "Show my vendors", "What boiler do we have?", "What is the pool equipment chain?", "Which lift box is for the Cobalt?", "What do we know about the Sundance spa?"];
 
     return (
       <SectionShell eyebrow="Ask Atlas" title="Search the Local Atlas Records" right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}>
         <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 18, alignItems: "start" }}>
           <div style={{ display: "grid", gap: 12 }}>
-            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about calendar work, assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
+            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about procedures, calendar work, assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
             <button type="button" onClick={() => askAtlas(assistantQuestion)} style={widePrimaryButtonStyle}>Ask Atlas</button>
-
             <div style={{ display: "grid", gap: 8 }}>
-              {quickQuestions.map((question) => (
-                <button key={question} type="button" onClick={() => { setAssistantQuestion(question); askAtlas(question); }} style={quickQuestionStyle}>
-                  {question}
-                </button>
-              ))}
+              {quickQuestions.map((question) => <button key={question} type="button" onClick={() => { setAssistantQuestion(question); askAtlas(question); }} style={quickQuestionStyle}>{question}</button>)}
             </div>
           </div>
-
           <div style={assistantAnswerStyle}>{assistantAnswer}</div>
         </div>
       </SectionShell>
@@ -2428,13 +1754,9 @@ export default function AtlasPage() {
         <nav style={{ display: "grid", gap: 8 }}>
           {navItems.map((item) => {
             const active = item.id === screen;
-
             return (
               <button key={item.id} type="button" onClick={() => setScreen(item.id)} style={active ? activeNavButtonStyle : navButtonStyle}>
-                <span>
-                  <span style={{ display: "block", fontWeight: 950 }}>{item.label}</span>
-                  <span style={{ display: "block", color: "rgba(255,255,255,0.62)", fontSize: 12, marginTop: 3 }}>{item.description}</span>
-                </span>
+                <span><span style={{ display: "block", fontWeight: 950 }}>{item.label}</span><span style={{ display: "block", color: "rgba(255,255,255,0.62)", fontSize: 12, marginTop: 3 }}>{item.description}</span></span>
                 {active ? <span style={{ width: 9, height: 9, borderRadius: "50%", background: colors.gold2, flex: "0 0 auto" }} /> : null}
               </button>
             );
@@ -2442,11 +1764,9 @@ export default function AtlasPage() {
         </nav>
 
         <div style={sidebarStatusStyle}>
-          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>FULL CALENDAR</div>
-          <div style={{ fontWeight: 900, marginTop: 6 }}>Month / year navigation active</div>
-          <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>
-            Click a date, add work, edit work, delete work, or mark it complete.
-          </div>
+          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>PROCEDURES ACTIVE</div>
+          <div style={{ fontWeight: 900, marginTop: 6 }}>Add / edit / schedule</div>
+          <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>Procedures can now be saved and scheduled onto the calendar.</div>
         </div>
       </aside>
 
@@ -2457,29 +1777,26 @@ export default function AtlasPage() {
             <div style={{ minWidth: 0 }}>
               <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.3, textTransform: "uppercase" }}>{activeNav?.label ?? "Dashboard"}</div>
               <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: 31, letterSpacing: -0.9, lineHeight: 1.05 }}>Atlas / 2000</h1>
-              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>
-                Private estate systems, service history, vendors, procedures, calendar, documents, photos, and Ask Atlas.
-              </div>
+              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Private estate systems, service history, vendors, procedures, calendar, documents, photos, and Ask Atlas.</div>
             </div>
           </div>
 
           <div style={searchBoxStyle}>
             <img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 30, height: 30, objectFit: "contain" }} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Atlas records..." style={searchInputStyle} />
-            {query ? (
-              <button type="button" onClick={() => setQuery("")} style={smallPrimaryButtonStyle}>Clear</button>
-            ) : null}
+            {query ? <button type="button" onClick={() => setQuery("")} style={smallPrimaryButtonStyle}>Clear</button> : null}
           </div>
         </header>
 
         {query ? (
           <div style={{ display: "grid", gap: 18, marginBottom: 18 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 12 }}>
               <SearchCount label="locations" value={filteredLocations.length} />
               <SearchCount label="assets" value={filteredAssets.length} />
               <SearchCount label="vendors" value={filteredVendors.length} />
               <SearchCount label="service" value={filteredServices.length} />
               <SearchCount label="calendar" value={filteredCalendar.length} />
+              <SearchCount label="procedures" value={filteredProcedures.length} />
               <SearchCount label="docs" value={filteredDocuments.length} />
             </div>
             {renderGlobalSearchResults()}
