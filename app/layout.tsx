@@ -5,17 +5,28 @@ export const metadata: Metadata = {
   title: "Atlas",
   description: "Atlas property systems",
   applicationName: "Atlas",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/atlas-icon.png", type: "image/png", sizes: "512x512" },
+      {
+        url: "/favicon.ico?v=3",
+        sizes: "any",
+      },
+      {
+        url: "/atlas-icon.png?v=3",
+        type: "image/png",
+        sizes: "512x512",
+      },
     ],
+    shortcut: ["/favicon.ico?v=3"],
     apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      {
+        url: "/apple-touch-icon.png?v=3",
+        sizes: "180x180",
+        type: "image/png",
+      },
     ],
-    shortcut: ["/favicon.ico"],
   },
-  manifest: "/manifest.webmanifest",
 };
 
 export const viewport: Viewport = {
