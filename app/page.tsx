@@ -1,3 +1,14 @@
+Got it. I’ll always send the **full replacement file** from now on, not section edits.
+
+Replace **only** this file:
+
+```txt
+app/page.tsx
+```
+
+This full replacement keeps your current app and adds the new **Procedures** screen. It is based on the `page.tsx` you uploaded. 
+
+```tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -11,7 +22,8 @@ type Screen =
   | "calendar"
   | "weather"
   | "assistant"
-  | "blank";
+  | "blank"
+  | "procedures";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
 
@@ -75,7 +87,8 @@ const screens: { id: Screen; label: string }[] = [
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
   { id: "assistant", label: "AI Assistant" },
-  { id: "blank", label: "Blank Canvas" }
+  { id: "blank", label: "Blank Canvas" },
+  { id: "procedures", label: "Procedures" }
 ];
 
 function todayISO() {
@@ -696,6 +709,8 @@ export default function Page() {
         )}
 
         {screen === "blank" && <BlankCanvasPanel />}
+
+        {screen === "procedures" && <ProceduresPanel />}
       </section>
     </main>
   );
@@ -861,6 +876,136 @@ function BlankCanvasPanel() {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ProceduresPanel() {
+  const procedures = [
+    {
+      title: "Pool Backwash Procedure",
+      category: "Pool",
+      priority: "High",
+      steps: [
+        "Confirm the pool pump is off before changing valve positions.",
+        "Set the filter valve to Backwash.",
+        "Turn the pump on and run until the sight glass or discharge water looks clear.",
+        "Turn the pump off.",
+        "Set the valve to Rinse.",
+        "Turn the pump on briefly to rinse the filter bed.",
+        "Turn the pump off.",
+        "Return the valve to Filter.",
+        "Turn the pump back on and confirm normal pressure and flow.",
+        "Record the date, pressure before/after, and any issues."
+      ],
+      notes: "Use this as the starter procedure. Confirm the exact valve positions against the actual pool equipment labels before relying on it as final."
+    },
+    {
+      title: "Spa / Hot Tub Check",
+      category: "Spa",
+      priority: "Medium",
+      steps: [
+        "Check water level.",
+        "Check temperature and display status.",
+        "Inspect for visible leaks or cabinet water.",
+        "Check filter condition.",
+        "Confirm jets and circulation are operating.",
+        "Record chemistry readings and any alerts."
+      ],
+      notes: "Linked asset: Sundance Optima hot tub."
+    },
+    {
+      title: "Leak / Water Shutoff Response",
+      category: "Emergency",
+      priority: "High",
+      steps: [
+        "Locate the leak source if safe.",
+        "Shut off local fixture valve if available.",
+        "If needed, shut off main water or use FloLogic shutoff.",
+        "Protect electrical equipment from water.",
+        "Photograph damage and source.",
+        "Contact plumbing or leak detection vendor.",
+        "Create an Atlas note under the affected asset or location."
+      ],
+      notes: "Do not store private access codes or passwords in this procedure."
+    },
+    {
+      title: "Boiler / Mechanical Room Check",
+      category: "Mechanical",
+      priority: "High",
+      steps: [
+        "Check boiler display for faults.",
+        "Confirm system pressure is in normal range.",
+        "Check for leaks around piping, pumps, relief valves, and tanks.",
+        "Confirm DHW tanks are heating normally.",
+        "Listen for unusual pump or burner noise.",
+        "Record error codes before resetting anything.",
+        "Contact mechanical vendor if fault returns."
+      ],
+      notes: "Linked assets: Viessmann Vitodens 200 boilers and Vitocell 300-V DHW tanks."
+    },
+    {
+      title: "Generator Visual Check",
+      category: "Electrical",
+      priority: "Medium",
+      steps: [
+        "Inspect generator area for debris.",
+        "Check for visible leaks, loose panels, or unusual smell.",
+        "Confirm status indicator is normal.",
+        "Verify service access is clear.",
+        "Record any alert lights or error messages."
+      ],
+      notes: "Do not perform electrical work unless qualified."
+    },
+    {
+      title: "Boat / Dock Seasonal Check",
+      category: "Dock",
+      priority: "Medium",
+      steps: [
+        "Inspect dock surface and edges.",
+        "Check boat lift controls and visible lift box condition.",
+        "Confirm solar panels and battery boxes are secure.",
+        "Check Cobalt and Sea-Doo areas for loose lines or damage.",
+        "Record photos of anything that changed."
+      ],
+      notes: "Linked areas: Dock, Cobalt, Sea-Doo, Sunstream lift boxes."
+    }
+  ];
+
+  return (
+    <div>
+      <Header
+        title="Procedures"
+        subtitle="Step-by-step operating procedures for recurring work, emergency response, and estate systems."
+      />
+
+      <div style={styles.statGrid}>
+        <Stat label="Procedures" value={procedures.length} />
+        <Stat label="High Priority" value={procedures.filter((item) => item.priority === "High").length} />
+        <Stat label="Use" value="Operations" />
+        <Stat label="Status" value="Draft" />
+      </div>
+
+      <div style={styles.gridTwo}>
+        {procedures.map((procedure) => (
+          <section key={procedure.title} style={styles.card}>
+            <p style={styles.kicker}>{procedure.category} · {procedure.priority}</p>
+            <h2 style={styles.h2}>{procedure.title}</h2>
+
+            <ol style={{ marginTop: 10, paddingLeft: 22, lineHeight: 1.55 }}>
+              {procedure.steps.map((step) => (
+                <li key={step} style={{ marginBottom: 8 }}>
+                  {step}
+                </li>
+              ))}
+            </ol>
+
+            <div style={styles.answerBox}>
+              {procedure.notes}
+            </div>
+          </section>
+        ))}
       </div>
     </div>
   );
@@ -1141,3 +1286,5 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5
   }
 };
+```
+
