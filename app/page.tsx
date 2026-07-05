@@ -65,10 +65,14 @@ type ServiceRecord = {
   id: string;
   assetId: string;
   vendorId?: string;
+  procedureId?: string;
   date: string;
   title: string;
   status: ServiceStatus;
   notes: string;
+  followUpDate?: string;
+  photos?: UploadedFileRecord[];
+  documents?: UploadedFileRecord[];
 };
 
 type ProcedureRecord = {
@@ -106,13 +110,14 @@ type CalendarItem = {
 
 type SearchResult = {
   id: string;
-  type: "Location" | "Asset" | "Vendor" | "Service" | "Document" | "Procedure" | "Calendar";
+  type: "Location" | "Asset" | "Vendor" | "Work Order" | "Document" | "Procedure" | "Calendar";
   title: string;
   subtitle: string;
   detail: string;
   screen: Screen;
   assetId?: string;
   vendorId?: string;
+  serviceId?: string;
   calendarId?: string;
   procedureId?: string;
 };
@@ -281,17 +286,22 @@ const assetSeed: AssetRecord[] = [
   { id: "pc12-n126al", name: "Pilatus PC12 N126AL", locationId: "pilatus-pc12-n126al", category: "Aircraft", status: "Monitor", notes: "Hangar sub-location / aircraft record.", vendorIds: [], documents: [] },
 ];
 
+const procedureSeed: ProcedureRecord[] = [
+  { id: "pool-backwash", title: "Pool Backwash Procedure", area: "Pool Equipment Room", priority: "High", steps: ["Confirm pump and valve positions before changing anything.", "Turn pump off before moving the multiport/backwash valve.", "Move valve to backwash position.", "Run pump until discharge / sight glass water clears.", "Turn pump off before moving valve again.", "Move valve to rinse and run briefly.", "Return valve to filter position.", "Restart system and verify pressure, flow, and leaks.", "Log date, pressure, and anything unusual in Atlas."] },
+  { id: "pool-equipment-check", title: "Pool Equipment Room Check", area: "Pool Equipment Room", priority: "Normal", steps: ["Check Pentair pump operation.", "Check Triton II filter pressure.", "Check UV / ozone equipment status.", "Check HX-1 / P-8 and P-9 circulation notes.", "Photo any leaks, unusual sound, or abnormal pressure.", "Save a service note if anything changes."] },
+  { id: "boiler-low-water", title: "Boiler Low-Water Cut-Off Check", area: "Mechanical Room", priority: "High", steps: ["Identify the boiler before touching controls.", "Review GuardDog indicator lights.", "Do not bypass safety controls.", "Use manual reset only when the cause is understood.", "Record boiler number, indicator status, and action taken."] },
+  { id: "spa-check", title: "Sundance Spa Check", area: "Standalone Spa", priority: "Normal", steps: ["Check spa water level.", "Inspect control bay for moisture, corrosion, or tripped indicators.", "Confirm heater-on and high-limit indicators are normal.", "Check ClearRay UV-C equipment status.", "Log condition and photo any corrosion or leaks."] },
+  { id: "dock-lift-check", title: "Dock Lift Box Check", area: "Dock", priority: "Seasonal", steps: ["Confirm which lift box belongs to which craft before operating.", "Inspect solar panel, enclosure, battery wiring, and controls.", "Test up/down controls only when lift area is clear.", "Log any slow operation, battery issue, or wiring concern."] },
+  { id: "vendor-visit-intake", title: "Vendor Visit Intake", area: "General", priority: "Normal", steps: ["Select correct asset before saving notes.", "Record vendor, date, work performed, cost if known, status, and next step.", "Attach photos, invoices, or documents.", "Do not create duplicate vendor records."] },
+];
+
 const serviceSeed: ServiceRecord[] = [
-  { id: "service-penthouse-176396", assetId: "blinds-lutron", vendorId: "penthousedrapery", date: "2026-06-16", title: "Motorized roller shade repair — Invoice #176396", status: "Completed", notes: "Penthouse Drapery invoice #176396 dated 06/16/2026. Link this service record to Blinds Lutron." },
-  { id: "service-boiler-nameplate", assetId: "boiler-2", vendorId: "viessmann", date: "2026-07-02", title: "Clear Boiler B-2 nameplate captured", status: "Completed", notes: "Confirmed Viessmann boiler serial 758960507593, year built 2025, MAWP 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief 255.9 lb/hr, CRN R1497.5C." },
-  { id: "service-boiler-heat-exchanger", assetId: "boiler-2", vendorId: "viessmann", date: "2026-07-02", title: "Boiler 2 recalled heat exchanger / igniter issue", status: "Monitor", notes: "Recalled heat exchanger was replaced on Boiler 2. After new parts were installed, igniter would not turn on." },
-  { id: "service-dhw-tanks", assetId: "vitocell-tanks", vendorId: "viessmann", date: "2026-07-02", title: "Twin Vitocell 300-V DHW tanks documented", status: "Completed", notes: "Recorded twin gray Viessmann Vitocell 300-V EVIA 300 tanks." },
-  { id: "service-pool-chain", assetId: "pool-pump-pentair", vendorId: "psf", date: "2026-07-02", title: "Pool equipment chain recorded", status: "Completed", notes: "Pool/Spa source → Pentair pump → Triton II sand filter → UltraPure / Paramount UV2 → return to pool." },
-  { id: "service-desertaire", assetId: "desertaire-dhu1", vendorId: "desertaire", date: "2026-07-02", title: "Desert Aire pool HVAC record added", status: "Monitor", notes: "Desert Aire DHU-1, control/display, SR501 relay, and hydronic heat coil added to pool HVAC records." },
-  { id: "service-spa-record", assetId: "sundance-optima", vendorId: "sundance", date: "2026-07-02", title: "Sundance Optima spa equipment record created", status: "Completed", notes: "Recorded Sundance 880-series Optima model, serial, electrical rating, HydroQuip heater, and ClearRay UV-C." },
-  { id: "service-sunstream-lifts", assetId: "sunstream-cobalt", vendorId: "sunstream", date: "2026-07-02", title: "Dock lift control boxes documented", status: "Completed", notes: "Confirmed multiple Sunstream lift boxes. Larger/newer box belongs to Cobalt lift." },
-  { id: "service-hangar-n280cc", assetId: "g280-n280cc", date: "2026-07-01", title: "Aircraft tail number standardized", status: "Completed", notes: "Uploaded aircraft photo clearly showed Gulfstream tail number N280CC." },
-  { id: "service-credentials-redacted", assetId: "flologic", date: "2026-07-02", title: "Credential inventory redacted", status: "Completed", notes: "Do not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes." },
+  { id: "service-penthouse-176396", assetId: "blinds-lutron", vendorId: "penthousedrapery", procedureId: "vendor-visit-intake", date: "2026-06-16", title: "Motorized roller shade repair — Invoice #176396", status: "Completed", notes: "Penthouse Drapery invoice #176396 dated 06/16/2026. Link this work order to Blinds Lutron.", documents: [], photos: [] },
+  { id: "service-boiler-nameplate", assetId: "boiler-2", vendorId: "viessmann", procedureId: "boiler-low-water", date: "2026-07-02", title: "Clear Boiler B-2 nameplate captured", status: "Completed", notes: "Confirmed Viessmann boiler serial 758960507593, year built 2025, MAWP 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief 255.9 lb/hr, CRN R1497.5C.", documents: [], photos: [] },
+  { id: "service-boiler-heat-exchanger", assetId: "boiler-2", vendorId: "viessmann", date: "2026-07-02", title: "Boiler 2 recalled heat exchanger / igniter issue", status: "Monitor", notes: "Recalled heat exchanger was replaced on Boiler 2. After new parts were installed, igniter would not turn on.", followUpDate: "", documents: [], photos: [] },
+  { id: "service-pool-chain", assetId: "pool-pump-pentair", vendorId: "psf", procedureId: "pool-equipment-check", date: "2026-07-02", title: "Pool equipment chain recorded", status: "Completed", notes: "Pool/Spa source → Pentair pump → Triton II sand filter → UltraPure / Paramount UV2 → return to pool.", documents: [], photos: [] },
+  { id: "service-spa-record", assetId: "sundance-optima", vendorId: "sundance", procedureId: "spa-check", date: "2026-07-02", title: "Sundance Optima spa equipment record created", status: "Completed", notes: "Recorded Sundance 880-series Optima model, serial, electrical rating, HydroQuip heater, and ClearRay UV-C.", documents: [], photos: [] },
+  { id: "service-sunstream-lifts", assetId: "sunstream-cobalt", vendorId: "sunstream", procedureId: "dock-lift-check", date: "2026-07-02", title: "Dock lift control boxes documented", status: "Completed", notes: "Confirmed multiple Sunstream lift boxes. Larger/newer box belongs to Cobalt lift.", documents: [], photos: [] },
 ];
 
 const documents: DocumentRecord[] = [
@@ -308,15 +318,6 @@ const documents: DocumentRecord[] = [
   { id: "doc-credentials-redacted", title: "Redacted / admin-only credential inventory", area: "Admin", type: "Secure Note", notes: "Do not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes." },
 ];
 
-const procedureSeed: ProcedureRecord[] = [
-  { id: "pool-backwash", title: "Pool Backwash Procedure", area: "Pool Equipment Room", priority: "High", steps: ["Confirm pump and valve positions before changing anything.", "Turn pump off before moving the multiport/backwash valve.", "Move valve to backwash position.", "Run pump until discharge / sight glass water clears.", "Turn pump off before moving valve again.", "Move valve to rinse and run briefly.", "Return valve to filter position.", "Restart system and verify pressure, flow, and leaks.", "Log date, pressure, and anything unusual in Atlas."] },
-  { id: "pool-equipment-check", title: "Pool Equipment Room Check", area: "Pool Equipment Room", priority: "Normal", steps: ["Check Pentair pump operation.", "Check Triton II filter pressure.", "Check UV / ozone equipment status.", "Check HX-1 / P-8 and P-9 circulation notes.", "Photo any leaks, unusual sound, or abnormal pressure.", "Save a service note if anything changes."] },
-  { id: "boiler-low-water", title: "Boiler Low-Water Cut-Off Check", area: "Mechanical Room", priority: "High", steps: ["Identify the boiler before touching controls.", "Review GuardDog indicator lights.", "Do not bypass safety controls.", "Use manual reset only when the cause is understood.", "Record boiler number, indicator status, and action taken."] },
-  { id: "spa-check", title: "Sundance Spa Check", area: "Standalone Spa", priority: "Normal", steps: ["Check spa water level.", "Inspect control bay for moisture, corrosion, or tripped indicators.", "Confirm heater-on and high-limit indicators are normal.", "Check ClearRay UV-C equipment status.", "Log condition and photo any corrosion or leaks."] },
-  { id: "dock-lift-check", title: "Dock Lift Box Check", area: "Dock", priority: "Seasonal", steps: ["Confirm which lift box belongs to which craft before operating.", "Inspect solar panel, enclosure, battery wiring, and controls.", "Test up/down controls only when lift area is clear.", "Log any slow operation, battery issue, or wiring concern."] },
-  { id: "vendor-visit-intake", title: "Vendor Visit Intake", area: "General", priority: "Normal", steps: ["Select correct asset before saving notes.", "Record vendor, date, work performed, cost if known, status, and next step.", "Attach photos, invoices, or documents.", "Do not create duplicate vendor records."] },
-];
-
 const calendarSeed: CalendarItem[] = [
   { id: "cal-pool", date: "2026-07-08", title: "Check pool equipment and record pressures", area: "Pool Equipment Room", status: "Scheduled" },
   { id: "cal-spa", date: "2026-07-10", title: "Spa inspection / water level check", area: "Standalone Spa", status: "Scheduled" },
@@ -331,7 +332,7 @@ const navItems: { id: Screen; label: string; description: string }[] = [
   { id: "map", label: "Map", description: "Property layout" },
   { id: "locations", label: "Locations", description: "42 areas" },
   { id: "assets", label: "Assets", description: "Add / edit / docs" },
-  { id: "history", label: "Service History", description: "Work notes" },
+  { id: "history", label: "Work Orders", description: "Service history" },
   { id: "vendors", label: "Vendors", description: "Add / edit / docs" },
   { id: "calendar", label: "Calendar", description: "Full month calendar" },
   { id: "weather", label: "Weather", description: "Property watch" },
@@ -363,6 +364,10 @@ function sortCalendar(list: CalendarItem[]) {
 
 function sortProcedures(list: ProcedureRecord[]) {
   return [...list].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function sortServices(list: ServiceRecord[]) {
+  return [...list].sort((a, b) => b.date.localeCompare(a.date));
 }
 
 function dateKeyFromDate(date: Date) {
@@ -413,6 +418,33 @@ function blankProcedure(): ProcedureRecord {
   return { id: "", title: "", area: "General", priority: "Normal", steps: [""] };
 }
 
+function blankService(date?: string): ServiceRecord {
+  return {
+    id: "",
+    assetId: "boiler-2",
+    vendorId: "",
+    procedureId: "",
+    date: date || dateKeyFromDate(new Date()),
+    title: "",
+    status: "Open",
+    notes: "",
+    followUpDate: "",
+    photos: [],
+    documents: [],
+  };
+}
+
+function normalizeService(record: ServiceRecord): ServiceRecord {
+  return {
+    ...record,
+    vendorId: record.vendorId ?? "",
+    procedureId: record.procedureId ?? "",
+    followUpDate: record.followUpDate ?? "",
+    photos: record.photos ?? [],
+    documents: record.documents ?? [],
+  };
+}
+
 function formatDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -424,6 +456,7 @@ function getLocationName(locationId: string) {
 
 function badgeStyle(status: Status | ServiceStatus): React.CSSProperties {
   const color = badgeColors[status];
+
   return {
     display: "inline-flex",
     alignItems: "center",
@@ -441,6 +474,7 @@ function badgeStyle(status: Status | ServiceStatus): React.CSSProperties {
 
 function miniCalendarBadgeStyle(status: ServiceStatus): React.CSSProperties {
   const color = badgeColors[status];
+
   return {
     display: "block",
     width: "100%",
@@ -464,19 +498,6 @@ function priorityBadge(priority: Priority): React.CSSProperties {
   if (priority === "Seasonal") return badgeStyle("Seasonal");
   return badgeStyle("Completed");
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  border: `1px solid ${colors.line}`,
-  background: "#FBFCFE",
-  color: colors.navy,
-  borderRadius: 13,
-  padding: "11px 12px",
-  fontSize: 14,
-  fontWeight: 750,
-  outline: "none",
-  boxSizing: "border-box",
-};
 
 function StatCard({ label, value, detail }: { label: string; value: string | number; detail: string }) {
   return (
@@ -508,38 +529,40 @@ export default function AtlasPage() {
 
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
+
   const [assetRecords, setAssetRecords] = useState<AssetRecord[]>(assetSeed);
   const [selectedAssetId, setSelectedAssetId] = useState(assetSeed[0]?.id ?? "");
   const [assetForm, setAssetForm] = useState<AssetRecord>(assetSeed[0] ?? blankAsset());
   const [assetMode, setAssetMode] = useState<"edit" | "new">("edit");
+
+  const [vendorRecords, setVendorRecords] = useState<VendorRecord[]>(vendorSeed);
+  const [selectedVendorId, setSelectedVendorId] = useState(vendorSeed[0]?.id ?? "");
+  const [vendorForm, setVendorForm] = useState<VendorRecord>(vendorSeed[0] ?? blankVendor());
+  const [vendorMode, setVendorMode] = useState<"edit" | "new">("edit");
+
+  const [procedureRecords, setProcedureRecords] = useState<ProcedureRecord[]>(procedureSeed);
+  const [selectedProcedureId, setSelectedProcedureId] = useState(procedureSeed[0]?.id ?? "");
+  const [procedureForm, setProcedureForm] = useState<ProcedureRecord>(procedureSeed[0] ?? blankProcedure());
+  const [procedureMode, setProcedureMode] = useState<"edit" | "new">("edit");
+  const [procedureScheduleDate, setProcedureScheduleDate] = useState(todayKey);
+
   const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>(serviceSeed);
+  const [selectedServiceId, setSelectedServiceId] = useState(serviceSeed[0]?.id ?? "");
+  const [serviceForm, setServiceForm] = useState<ServiceRecord>(serviceSeed[0] ?? blankService(todayKey));
+  const [serviceMode, setServiceMode] = useState<"edit" | "new">("edit");
+
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
+
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>(calendarSeed);
   const [selectedCalendarId, setSelectedCalendarId] = useState(calendarSeed[0]?.id ?? "");
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayKey);
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [calendarForm, setCalendarForm] = useState<CalendarItem>(calendarSeed[0] ?? blankCalendarItem(todayKey));
   const [calendarMode, setCalendarMode] = useState<"edit" | "new">("edit");
-  const [vendorRecords, setVendorRecords] = useState<VendorRecord[]>(vendorSeed);
-  const [selectedVendorId, setSelectedVendorId] = useState(vendorSeed[0]?.id ?? "");
-  const [vendorForm, setVendorForm] = useState<VendorRecord>(vendorSeed[0] ?? blankVendor());
-  const [vendorMode, setVendorMode] = useState<"edit" | "new">("edit");
-  const [procedureRecords, setProcedureRecords] = useState<ProcedureRecord[]>(procedureSeed);
-  const [selectedProcedureId, setSelectedProcedureId] = useState(procedureSeed[0]?.id ?? "");
-  const [procedureForm, setProcedureForm] = useState<ProcedureRecord>(procedureSeed[0] ?? blankProcedure());
-  const [procedureMode, setProcedureMode] = useState<"edit" | "new">("edit");
-  const [procedureScheduleDate, setProcedureScheduleDate] = useState(todayKey);
+
   const [assistantQuestion, setAssistantQuestion] = useState("");
-  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about calendar work, procedures, assets, vendors, documents, service history, boilers, pool equipment, dock lifts, blinds, the spa, or aircraft.");
+  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about work orders, calendar work, procedures, assets, vendors, documents, service history, boilers, pool equipment, dock lifts, blinds, the spa, or aircraft.");
   const [ready, setReady] = useState(false);
-  const [newService, setNewService] = useState({
-    assetId: "boiler-2",
-    vendorId: "",
-    title: "",
-    date: todayKey,
-    status: "Open" as ServiceStatus,
-    notes: "",
-  });
 
   function vendorName(vendorId?: string) {
     if (!vendorId) return "Internal";
@@ -550,13 +573,35 @@ export default function AtlasPage() {
     return assetRecords.find((asset) => asset.id === assetId)?.name ?? "Asset";
   }
 
+  function procedureName(procedureId?: string) {
+    if (!procedureId) return "No procedure";
+    return procedureRecords.find((procedure) => procedure.id === procedureId)?.title ?? "Procedure";
+  }
+
   useEffect(() => {
     try {
       const savedAssets = window.localStorage.getItem("atlas-asset-records-v1");
-      const savedService = window.localStorage.getItem("atlas-service-records-v9") || window.localStorage.getItem("atlas-service-records-v8") || window.localStorage.getItem("atlas-service-records-v7") || window.localStorage.getItem("atlas-service-records-v6");
-      const savedPhotos = window.localStorage.getItem("atlas-photo-records-v9") || window.localStorage.getItem("atlas-photo-records-v8") || window.localStorage.getItem("atlas-photo-records-v7") || window.localStorage.getItem("atlas-photo-records-v6");
-      const savedCalendar = window.localStorage.getItem("atlas-calendar-v9") || window.localStorage.getItem("atlas-calendar-v8") || window.localStorage.getItem("atlas-calendar-v7") || window.localStorage.getItem("atlas-calendar-v6");
-      const savedVendors = window.localStorage.getItem("atlas-vendor-records-v2") || window.localStorage.getItem("atlas-vendor-records-v1");
+      const savedService =
+        window.localStorage.getItem("atlas-service-records-v10") ||
+        window.localStorage.getItem("atlas-service-records-v9") ||
+        window.localStorage.getItem("atlas-service-records-v8") ||
+        window.localStorage.getItem("atlas-service-records-v7") ||
+        window.localStorage.getItem("atlas-service-records-v6");
+      const savedPhotos =
+        window.localStorage.getItem("atlas-photo-records-v10") ||
+        window.localStorage.getItem("atlas-photo-records-v9") ||
+        window.localStorage.getItem("atlas-photo-records-v8") ||
+        window.localStorage.getItem("atlas-photo-records-v7") ||
+        window.localStorage.getItem("atlas-photo-records-v6");
+      const savedCalendar =
+        window.localStorage.getItem("atlas-calendar-v10") ||
+        window.localStorage.getItem("atlas-calendar-v9") ||
+        window.localStorage.getItem("atlas-calendar-v8") ||
+        window.localStorage.getItem("atlas-calendar-v7") ||
+        window.localStorage.getItem("atlas-calendar-v6");
+      const savedVendors =
+        window.localStorage.getItem("atlas-vendor-records-v2") ||
+        window.localStorage.getItem("atlas-vendor-records-v1");
       const savedProcedures = window.localStorage.getItem("atlas-procedure-records-v1");
 
       if (savedAssets) {
@@ -565,7 +610,12 @@ export default function AtlasPage() {
         setSelectedAssetId(parsedAssets[0]?.id ?? "");
       }
 
-      if (savedService) setServiceRecords(JSON.parse(savedService) as ServiceRecord[]);
+      if (savedService) {
+        const parsedServices = sortServices((JSON.parse(savedService) as ServiceRecord[]).map(normalizeService));
+        setServiceRecords(parsedServices);
+        setSelectedServiceId(parsedServices[0]?.id ?? "");
+      }
+
       if (savedPhotos) setPhotos(JSON.parse(savedPhotos) as PhotoRecord[]);
 
       if (savedCalendar) {
@@ -605,6 +655,18 @@ export default function AtlasPage() {
   }, [selectedVendorId, vendorRecords, vendorMode]);
 
   useEffect(() => {
+    const selected = procedureRecords.find((procedure) => procedure.id === selectedProcedureId);
+    if (procedureMode === "new") return;
+    if (selected) setProcedureForm({ ...selected, steps: selected.steps.length ? selected.steps : [""] });
+  }, [selectedProcedureId, procedureRecords, procedureMode]);
+
+  useEffect(() => {
+    const selected = serviceRecords.find((service) => service.id === selectedServiceId);
+    if (serviceMode === "new") return;
+    if (selected) setServiceForm(normalizeService(selected));
+  }, [selectedServiceId, serviceRecords, serviceMode]);
+
+  useEffect(() => {
     const selected = calendarItems.find((item) => item.id === selectedCalendarId);
     if (calendarMode === "new") return;
     if (selected) {
@@ -615,30 +677,9 @@ export default function AtlasPage() {
   }, [selectedCalendarId, calendarItems, calendarMode]);
 
   useEffect(() => {
-    const selected = procedureRecords.find((procedure) => procedure.id === selectedProcedureId);
-    if (procedureMode === "new") return;
-    if (selected) setProcedureForm({ ...selected, steps: selected.steps.length ? selected.steps : [""] });
-  }, [selectedProcedureId, procedureRecords, procedureMode]);
-
-  useEffect(() => {
     if (!ready) return;
     window.localStorage.setItem("atlas-asset-records-v1", JSON.stringify(sortAssets(assetRecords)));
   }, [ready, assetRecords]);
-
-  useEffect(() => {
-    if (!ready) return;
-    window.localStorage.setItem("atlas-service-records-v9", JSON.stringify(serviceRecords));
-  }, [ready, serviceRecords]);
-
-  useEffect(() => {
-    if (!ready) return;
-    window.localStorage.setItem("atlas-photo-records-v9", JSON.stringify(photos));
-  }, [ready, photos]);
-
-  useEffect(() => {
-    if (!ready) return;
-    window.localStorage.setItem("atlas-calendar-v9", JSON.stringify(sortCalendar(calendarItems)));
-  }, [ready, calendarItems]);
 
   useEffect(() => {
     if (!ready) return;
@@ -649,6 +690,21 @@ export default function AtlasPage() {
     if (!ready) return;
     window.localStorage.setItem("atlas-procedure-records-v1", JSON.stringify(sortProcedures(procedureRecords)));
   }, [ready, procedureRecords]);
+
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem("atlas-service-records-v10", JSON.stringify(sortServices(serviceRecords)));
+  }, [ready, serviceRecords]);
+
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem("atlas-photo-records-v10", JSON.stringify(photos));
+  }, [ready, photos]);
+
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem("atlas-calendar-v10", JSON.stringify(sortCalendar(calendarItems)));
+  }, [ready, calendarItems]);
 
   const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? blankAsset();
   const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
@@ -677,10 +733,33 @@ export default function AtlasPage() {
     return sorted.filter((vendor) => [vendor.name, vendor.category, vendor.phone, vendor.email, vendor.website, vendor.notes].filter(Boolean).join(" ").toLowerCase().includes(q));
   }, [q, vendorRecords]);
 
+  const filteredProcedures = useMemo(() => {
+    const sorted = sortProcedures(procedureRecords);
+    if (!q) return sorted;
+    return sorted.filter((procedure) => [procedure.title, procedure.area, procedure.priority, procedure.steps.join(" ")].join(" ").toLowerCase().includes(q));
+  }, [q, procedureRecords]);
+
   const filteredServices = useMemo(() => {
-    if (!q) return serviceRecords;
-    return serviceRecords.filter((record) => [record.title, record.status, record.notes, record.date, assetName(record.assetId), vendorName(record.vendorId)].join(" ").toLowerCase().includes(q));
-  }, [q, serviceRecords, assetRecords, vendorRecords]);
+    const sorted = sortServices(serviceRecords);
+    if (!q) return sorted;
+    return sorted.filter((record) =>
+      [
+        record.title,
+        record.status,
+        record.notes,
+        record.date,
+        record.followUpDate,
+        assetName(record.assetId),
+        vendorName(record.vendorId),
+        procedureName(record.procedureId),
+        record.documents?.map((doc) => doc.name).join(" "),
+        record.photos?.map((photo) => photo.name).join(" "),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [q, serviceRecords, assetRecords, vendorRecords, procedureRecords]);
 
   const filteredCalendar = useMemo(() => {
     const sorted = sortCalendar(calendarItems);
@@ -693,12 +772,6 @@ export default function AtlasPage() {
     return documents.filter((document) => [document.title, document.area, document.type, document.notes, document.linkedAssetId ? assetName(document.linkedAssetId) : ""].join(" ").toLowerCase().includes(q));
   }, [q, assetRecords]);
 
-  const filteredProcedures = useMemo(() => {
-    const sorted = sortProcedures(procedureRecords);
-    if (!q) return sorted;
-    return sorted.filter((procedure) => [procedure.title, procedure.area, procedure.priority, procedure.steps.join(" ")].join(" ").toLowerCase().includes(q));
-  }, [q, procedureRecords]);
-
   const searchResults = useMemo<SearchResult[]>(() => {
     if (!q) return [];
 
@@ -706,65 +779,75 @@ export default function AtlasPage() {
       ...filteredLocations.map((location) => ({ id: `location-${location.id}`, type: "Location" as const, title: location.name, subtitle: `${location.zone} · ${location.type}`, detail: location.notes, screen: "locations" as const })),
       ...filteredAssets.map((asset) => ({ id: `asset-${asset.id}`, type: "Asset" as const, title: asset.name, subtitle: `${getLocationName(asset.locationId)} · ${asset.category}`, detail: asset.notes, screen: "assets" as const, assetId: asset.id })),
       ...filteredVendors.map((vendor) => ({ id: `vendor-${vendor.id}`, type: "Vendor" as const, title: vendor.name, subtitle: vendor.category, detail: vendor.notes, screen: "vendors" as const, vendorId: vendor.id })),
-      ...filteredServices.map((record) => ({ id: `service-${record.id}`, type: "Service" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)}`, detail: record.notes, screen: "history" as const, assetId: record.assetId })),
+      ...filteredServices.map((record) => ({ id: `service-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)}`, detail: record.notes, screen: "history" as const, serviceId: record.id, assetId: record.assetId })),
       ...filteredCalendar.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar" as const, title: item.title, subtitle: `${formatDate(item.date)} · ${item.area}`, detail: item.status, screen: "calendar" as const, calendarId: item.id })),
       ...filteredDocuments.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: document.notes, screen: "documents" as const, assetId: document.linkedAssetId })),
       ...filteredProcedures.map((procedure) => ({ id: `procedure-${procedure.id}`, type: "Procedure" as const, title: procedure.title, subtitle: `${procedure.area} · ${procedure.priority}`, detail: procedure.steps.join(" "), screen: "procedures" as const, procedureId: procedure.id })),
     ];
 
-    return results.slice(0, 12);
+    return results.slice(0, 14);
   }, [q, filteredLocations, filteredAssets, filteredVendors, filteredServices, filteredCalendar, filteredDocuments, filteredProcedures]);
 
-  const openServiceCount = serviceRecords.filter((record) => record.status === "Open" || record.status === "Monitor").length;
+  const openWorkOrderCount = serviceRecords.filter((record) => record.status === "Open" || record.status === "Monitor").length;
   const monitorAssetCount = assetRecords.filter((asset) => asset.status === "Monitor" || asset.status === "Offline").length;
-  const vendorDocumentCount = vendorRecords.reduce((total, vendor) => total + (vendor.documents?.length ?? 0), 0);
-  const assetDocumentCount = assetRecords.reduce((total, asset) => total + (asset.documents?.length ?? 0), 0);
+  const uploadedDocumentCount =
+    vendorRecords.reduce((total, vendor) => total + (vendor.documents?.length ?? 0), 0) +
+    assetRecords.reduce((total, asset) => total + (asset.documents?.length ?? 0), 0) +
+    serviceRecords.reduce((total, service) => total + (service.documents?.length ?? 0), 0);
+  const uploadedServicePhotoCount = serviceRecords.reduce((total, service) => total + (service.photos?.length ?? 0), 0);
   const upcomingCalendarCount = calendarItems.filter((item) => item.status === "Scheduled" || item.status === "Monitor" || item.status === "Open").length;
-
-  function addServiceRecord() {
-    if (!newService.title.trim()) return;
-    const record: ServiceRecord = { id: uid("service"), assetId: newService.assetId, vendorId: newService.vendorId || undefined, date: newService.date, title: newService.title.trim(), status: newService.status, notes: newService.notes.trim() || "No notes added yet." };
-    setServiceRecords((current) => [record, ...current]);
-    setSelectedAssetId(record.assetId);
-    setScreen("history");
-    setNewService({ assetId: record.assetId, vendorId: "", title: "", date: todayKey, status: "Open", notes: "" });
-  }
-
-  function deleteServiceRecord(id: string) {
-    setServiceRecords((current) => current.filter((record) => record.id !== id));
-  }
-
-  function handlePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const photo: PhotoRecord = { id: uid("photo"), assetId: selectedAsset.id, name: file.name, dataUrl: String(reader.result), createdAt: new Date().toISOString() };
-        setPhotos((current) => [photo, ...current]);
-      };
-      reader.readAsDataURL(file);
-    });
-    event.target.value = "";
-  }
 
   function openSearchResult(result: SearchResult) {
     if (result.assetId) {
       setSelectedAssetId(result.assetId);
       setAssetMode("edit");
     }
+
     if (result.vendorId) {
       setSelectedVendorId(result.vendorId);
       setVendorMode("edit");
     }
-    if (result.calendarId) {
-      setSelectedCalendarId(result.calendarId);
-      setCalendarMode("edit");
-    }
+
     if (result.procedureId) {
       setSelectedProcedureId(result.procedureId);
       setProcedureMode("edit");
     }
+
+    if (result.serviceId) {
+      setSelectedServiceId(result.serviceId);
+      setServiceMode("edit");
+    }
+
+    if (result.calendarId) {
+      setSelectedCalendarId(result.calendarId);
+      setCalendarMode("edit");
+    }
+
     setScreen(result.screen);
+  }
+
+  function handlePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        const photo: PhotoRecord = {
+          id: uid("photo"),
+          assetId: selectedAsset.id,
+          name: file.name,
+          dataUrl: String(reader.result),
+          createdAt: new Date().toISOString(),
+        };
+
+        setPhotos((current) => [photo, ...current]);
+      };
+
+      reader.readAsDataURL(file);
+    });
+
+    event.target.value = "";
   }
 
   function startNewAsset() {
@@ -776,6 +859,7 @@ export default function AtlasPage() {
   function saveAsset() {
     const name = assetForm.name.trim();
     if (!name) return;
+
     const existingId = assetMode === "edit" ? assetForm.id : "";
     let id = existingId || slugify(name);
     if (assetMode === "new" && assetRecords.some((asset) => asset.id === id)) id = `${id}-${Date.now()}`;
@@ -798,35 +882,45 @@ export default function AtlasPage() {
     setAssetRecords((current) => sortAssets(current.some((asset) => asset.id === id) ? current.map((asset) => (asset.id === id ? cleanAsset : asset)) : [...current, cleanAsset]));
     setAssetMode("edit");
     setSelectedAssetId(id);
-    setNewService((current) => ({ ...current, assetId: id }));
   }
 
   function deleteAsset() {
     if (!assetForm.id) return;
-    const confirmed = window.confirm(`Delete ${assetForm.name}? This removes the asset, asset photos, asset documents, and service notes from this browser.`);
+    const confirmed = window.confirm(`Delete ${assetForm.name}? This removes the asset, asset photos, asset documents, and work orders from this browser.`);
     if (!confirmed) return;
 
     const remainingAssets = sortAssets(assetRecords.filter((asset) => asset.id !== assetForm.id));
     setAssetRecords(remainingAssets);
     setPhotos((current) => current.filter((photo) => photo.assetId !== assetForm.id));
     setServiceRecords((current) => current.filter((record) => record.assetId !== assetForm.id));
+
     const nextAsset = remainingAssets[0];
     setSelectedAssetId(nextAsset?.id ?? "");
     setAssetForm(nextAsset ?? blankAsset());
     setAssetMode(nextAsset ? "edit" : "new");
-    setNewService((current) => ({ ...current, assetId: nextAsset?.id ?? "" }));
   }
 
   function handleAssetDocumentUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
+
     files.forEach((file) => {
       const reader = new FileReader();
+
       reader.onload = () => {
-        const documentRecord: UploadedFileRecord = { id: uid("asset-doc"), name: file.name, type: file.type || "File", dataUrl: String(reader.result), createdAt: new Date().toISOString() };
+        const documentRecord: UploadedFileRecord = {
+          id: uid("asset-doc"),
+          name: file.name,
+          type: file.type || "File",
+          dataUrl: String(reader.result),
+          createdAt: new Date().toISOString(),
+        };
+
         setAssetForm((current) => ({ ...current, documents: [documentRecord, ...(current.documents ?? [])] }));
       };
+
       reader.readAsDataURL(file);
     });
+
     event.target.value = "";
   }
 
@@ -851,6 +945,7 @@ export default function AtlasPage() {
   function saveVendor() {
     const name = vendorForm.name.trim();
     if (!name) return;
+
     const existingId = vendorMode === "edit" ? vendorForm.id : "";
     let id = existingId || slugify(name);
     if (vendorMode === "new" && vendorRecords.some((vendor) => vendor.id === id)) id = `${id}-${Date.now()}`;
@@ -880,6 +975,8 @@ export default function AtlasPage() {
     const remainingVendors = sortVendors(vendorRecords.filter((vendor) => vendor.id !== vendorForm.id));
     setVendorRecords(remainingVendors);
     setAssetRecords((current) => current.map((asset) => ({ ...asset, vendorIds: asset.vendorIds.filter((id) => id !== vendorForm.id) })));
+    setServiceRecords((current) => current.map((service) => (service.vendorId === vendorForm.id ? { ...service, vendorId: "" } : service)));
+
     const nextVendor = remainingVendors[0];
     setSelectedVendorId(nextVendor?.id ?? "");
     setVendorForm(nextVendor ?? blankVendor());
@@ -889,6 +986,7 @@ export default function AtlasPage() {
   function handleVendorLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = () => setVendorForm((current) => ({ ...current, logoDataUrl: String(reader.result) }));
     reader.readAsDataURL(file);
@@ -897,77 +995,30 @@ export default function AtlasPage() {
 
   function handleVendorDocumentUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
+
     files.forEach((file) => {
       const reader = new FileReader();
+
       reader.onload = () => {
-        const documentRecord: UploadedFileRecord = { id: uid("vendor-doc"), name: file.name, type: file.type || "File", dataUrl: String(reader.result), createdAt: new Date().toISOString() };
+        const documentRecord: UploadedFileRecord = {
+          id: uid("vendor-doc"),
+          name: file.name,
+          type: file.type || "File",
+          dataUrl: String(reader.result),
+          createdAt: new Date().toISOString(),
+        };
+
         setVendorForm((current) => ({ ...current, documents: [documentRecord, ...(current.documents ?? [])] }));
       };
+
       reader.readAsDataURL(file);
     });
+
     event.target.value = "";
   }
 
   function removeVendorDocument(documentId: string) {
     setVendorForm((current) => ({ ...current, documents: (current.documents ?? []).filter((document) => document.id !== documentId) }));
-  }
-
-  function selectCalendarDate(dateKey: string) {
-    setSelectedCalendarDate(dateKey);
-    setCalendarCursor(dateFromKey(dateKey));
-    setCalendarMode("new");
-    setSelectedCalendarId("");
-    setCalendarForm(blankCalendarItem(dateKey));
-  }
-
-  function openCalendarItem(item: CalendarItem) {
-    setSelectedCalendarId(item.id);
-    setSelectedCalendarDate(item.date);
-    setCalendarCursor(dateFromKey(item.date));
-    setCalendarMode("edit");
-    setCalendarForm(item);
-  }
-
-  function startNewCalendarItem(date?: string) {
-    const itemDate = date || selectedCalendarDate || todayKey;
-    setCalendarMode("new");
-    setSelectedCalendarId("");
-    setSelectedCalendarDate(itemDate);
-    setCalendarCursor(dateFromKey(itemDate));
-    setCalendarForm(blankCalendarItem(itemDate));
-  }
-
-  function saveCalendarItem() {
-    const title = calendarForm.title.trim();
-    if (!title) return;
-    const existingId = calendarMode === "edit" ? calendarForm.id : "";
-    let id = existingId || slugify(title);
-    if (calendarMode === "new" && calendarItems.some((item) => item.id === id)) id = `${id}-${Date.now()}`;
-
-    const cleanItem: CalendarItem = { id, title, date: calendarForm.date || selectedCalendarDate || todayKey, area: calendarForm.area.trim() || "General", status: calendarForm.status || "Scheduled" };
-
-    setCalendarItems((current) => sortCalendar(current.some((item) => item.id === id) ? current.map((item) => (item.id === id ? cleanItem : item)) : [...current, cleanItem]));
-    setCalendarMode("edit");
-    setSelectedCalendarId(id);
-    setSelectedCalendarDate(cleanItem.date);
-    setCalendarCursor(dateFromKey(cleanItem.date));
-  }
-
-  function deleteCalendarItem() {
-    if (!calendarForm.id) return;
-    const confirmed = window.confirm(`Delete scheduled item: ${calendarForm.title}?`);
-    if (!confirmed) return;
-
-    const remainingItems = sortCalendar(calendarItems.filter((item) => item.id !== calendarForm.id));
-    setCalendarItems(remainingItems);
-    const nextItem = remainingItems.find((item) => item.date === selectedCalendarDate) ?? remainingItems[0];
-    setSelectedCalendarId(nextItem?.id ?? "");
-    setCalendarForm(nextItem ?? blankCalendarItem(selectedCalendarDate));
-    setCalendarMode(nextItem ? "edit" : "new");
-  }
-
-  function markCalendarCompleted(itemId: string) {
-    setCalendarItems((current) => sortCalendar(current.map((item) => (item.id === itemId ? { ...item, status: "Completed" } : item))));
   }
 
   function startNewProcedure() {
@@ -1004,6 +1055,8 @@ export default function AtlasPage() {
 
     const remainingProcedures = sortProcedures(procedureRecords.filter((procedure) => procedure.id !== procedureForm.id));
     setProcedureRecords(remainingProcedures);
+    setServiceRecords((current) => current.map((service) => (service.procedureId === procedureForm.id ? { ...service, procedureId: "" } : service)));
+
     const nextProcedure = remainingProcedures[0];
     setSelectedProcedureId(nextProcedure?.id ?? "");
     setProcedureForm(nextProcedure ?? blankProcedure());
@@ -1011,10 +1064,7 @@ export default function AtlasPage() {
   }
 
   function updateProcedureStep(index: number, value: string) {
-    setProcedureForm((current) => ({
-      ...current,
-      steps: current.steps.map((step, stepIndex) => (stepIndex === index ? value : step)),
-    }));
+    setProcedureForm((current) => ({ ...current, steps: current.steps.map((step, stepIndex) => (stepIndex === index ? value : step)) }));
   }
 
   function addProcedureStep() {
@@ -1022,7 +1072,10 @@ export default function AtlasPage() {
   }
 
   function removeProcedureStep(index: number) {
-    setProcedureForm((current) => ({ ...current, steps: current.steps.filter((_, stepIndex) => stepIndex !== index).length ? current.steps.filter((_, stepIndex) => stepIndex !== index) : [""] }));
+    setProcedureForm((current) => {
+      const nextSteps = current.steps.filter((_, stepIndex) => stepIndex !== index);
+      return { ...current, steps: nextSteps.length ? nextSteps : [""] };
+    });
   }
 
   function scheduleProcedure(procedure: ProcedureRecord) {
@@ -1046,6 +1099,200 @@ export default function AtlasPage() {
     setScreen("calendar");
   }
 
+  function startNewService() {
+    setServiceMode("new");
+    setSelectedServiceId("");
+    setServiceForm(blankService(todayKey));
+  }
+
+  function saveService() {
+    const title = serviceForm.title.trim();
+    if (!title) return;
+
+    const existingId = serviceMode === "edit" ? serviceForm.id : "";
+    let id = existingId || slugify(title);
+    if (serviceMode === "new" && serviceRecords.some((service) => service.id === id)) id = `${id}-${Date.now()}`;
+
+    const cleanService: ServiceRecord = {
+      ...serviceForm,
+      id,
+      title,
+      assetId: serviceForm.assetId || assetRecords[0]?.id || "general",
+      vendorId: serviceForm.vendorId || "",
+      procedureId: serviceForm.procedureId || "",
+      date: serviceForm.date || todayKey,
+      status: serviceForm.status || "Open",
+      notes: serviceForm.notes.trim() || "No notes added yet.",
+      followUpDate: serviceForm.followUpDate || "",
+      photos: serviceForm.photos ?? [],
+      documents: serviceForm.documents ?? [],
+    };
+
+    setServiceRecords((current) => sortServices(current.some((service) => service.id === id) ? current.map((service) => (service.id === id ? cleanService : service)) : [cleanService, ...current]));
+    setServiceMode("edit");
+    setSelectedServiceId(id);
+  }
+
+  function deleteService() {
+    if (!serviceForm.id) return;
+    const confirmed = window.confirm(`Delete work order: ${serviceForm.title}?`);
+    if (!confirmed) return;
+
+    const remainingServices = sortServices(serviceRecords.filter((service) => service.id !== serviceForm.id));
+    setServiceRecords(remainingServices);
+
+    const nextService = remainingServices[0];
+    setSelectedServiceId(nextService?.id ?? "");
+    setServiceForm(nextService ? normalizeService(nextService) : blankService(todayKey));
+    setServiceMode(nextService ? "edit" : "new");
+  }
+
+  function markServiceCompleted() {
+    setServiceForm((current) => ({ ...current, status: "Completed" }));
+  }
+
+  function handleServiceDocumentUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        const documentRecord: UploadedFileRecord = {
+          id: uid("service-doc"),
+          name: file.name,
+          type: file.type || "File",
+          dataUrl: String(reader.result),
+          createdAt: new Date().toISOString(),
+        };
+
+        setServiceForm((current) => ({ ...current, documents: [documentRecord, ...(current.documents ?? [])] }));
+      };
+
+      reader.readAsDataURL(file);
+    });
+
+    event.target.value = "";
+  }
+
+  function handleServicePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        const photoRecord: UploadedFileRecord = {
+          id: uid("service-photo"),
+          name: file.name,
+          type: file.type || "image",
+          dataUrl: String(reader.result),
+          createdAt: new Date().toISOString(),
+        };
+
+        setServiceForm((current) => ({ ...current, photos: [photoRecord, ...(current.photos ?? [])] }));
+      };
+
+      reader.readAsDataURL(file);
+    });
+
+    event.target.value = "";
+  }
+
+  function removeServiceDocument(documentId: string) {
+    setServiceForm((current) => ({ ...current, documents: (current.documents ?? []).filter((document) => document.id !== documentId) }));
+  }
+
+  function removeServicePhoto(photoId: string) {
+    setServiceForm((current) => ({ ...current, photos: (current.photos ?? []).filter((photo) => photo.id !== photoId) }));
+  }
+
+  function scheduleServiceFollowUp() {
+    if (!serviceForm.followUpDate) return;
+
+    const item: CalendarItem = {
+      id: uid("cal-follow-up"),
+      date: serviceForm.followUpDate,
+      title: `Follow up: ${serviceForm.title || "Work Order"}`,
+      area: assetName(serviceForm.assetId),
+      status: "Scheduled",
+    };
+
+    setCalendarItems((current) => sortCalendar([...current, item]));
+    setSelectedCalendarDate(item.date);
+    setCalendarCursor(dateFromKey(item.date));
+    setSelectedCalendarId(item.id);
+    setCalendarForm(item);
+    setCalendarMode("edit");
+    setScreen("calendar");
+  }
+
+  function selectCalendarDate(dateKey: string) {
+    setSelectedCalendarDate(dateKey);
+    setCalendarCursor(dateFromKey(dateKey));
+    setCalendarMode("new");
+    setSelectedCalendarId("");
+    setCalendarForm(blankCalendarItem(dateKey));
+  }
+
+  function openCalendarItem(item: CalendarItem) {
+    setSelectedCalendarId(item.id);
+    setSelectedCalendarDate(item.date);
+    setCalendarCursor(dateFromKey(item.date));
+    setCalendarMode("edit");
+    setCalendarForm(item);
+  }
+
+  function startNewCalendarItem(date?: string) {
+    const itemDate = date || selectedCalendarDate || todayKey;
+    setCalendarMode("new");
+    setSelectedCalendarId("");
+    setSelectedCalendarDate(itemDate);
+    setCalendarCursor(dateFromKey(itemDate));
+    setCalendarForm(blankCalendarItem(itemDate));
+  }
+
+  function saveCalendarItem() {
+    const title = calendarForm.title.trim();
+    if (!title) return;
+
+    const existingId = calendarMode === "edit" ? calendarForm.id : "";
+    let id = existingId || slugify(title);
+    if (calendarMode === "new" && calendarItems.some((item) => item.id === id)) id = `${id}-${Date.now()}`;
+
+    const cleanItem: CalendarItem = {
+      id,
+      title,
+      date: calendarForm.date || selectedCalendarDate || todayKey,
+      area: calendarForm.area.trim() || "General",
+      status: calendarForm.status || "Scheduled",
+    };
+
+    setCalendarItems((current) => sortCalendar(current.some((item) => item.id === id) ? current.map((item) => (item.id === id ? cleanItem : item)) : [...current, cleanItem]));
+    setCalendarMode("edit");
+    setSelectedCalendarId(id);
+    setSelectedCalendarDate(cleanItem.date);
+    setCalendarCursor(dateFromKey(cleanItem.date));
+  }
+
+  function deleteCalendarItem() {
+    if (!calendarForm.id) return;
+    const confirmed = window.confirm(`Delete scheduled item: ${calendarForm.title}?`);
+    if (!confirmed) return;
+
+    const remainingItems = sortCalendar(calendarItems.filter((item) => item.id !== calendarForm.id));
+    setCalendarItems(remainingItems);
+
+    const nextItem = remainingItems.find((item) => item.date === selectedCalendarDate) ?? remainingItems[0];
+    setSelectedCalendarId(nextItem?.id ?? "");
+    setCalendarForm(nextItem ?? blankCalendarItem(selectedCalendarDate));
+    setCalendarMode(nextItem ? "edit" : "new");
+  }
+
+  function markCalendarCompleted(itemId: string) {
+    setCalendarItems((current) => sortCalendar(current.map((item) => (item.id === itemId ? { ...item, status: "Completed" } : item))));
+  }
+
   function askAtlas(question: string) {
     const text = question.trim().toLowerCase();
 
@@ -1054,8 +1301,13 @@ export default function AtlasPage() {
       return;
     }
 
+    if (text.includes("work order") || text.includes("service") || text.includes("history")) {
+      setAssistantAnswer(`Atlas has ${serviceRecords.length} work orders. Work orders can now be added, edited, deleted, linked to assets, vendors, and procedures, given photos/documents/invoices, and scheduled for follow-up on the calendar.`);
+      return;
+    }
+
     if (text.includes("procedure") || text.includes("process") || text.includes("how to")) {
-      setAssistantAnswer(`Atlas has ${procedureRecords.length} procedures. Procedures can now be added, edited, deleted, searched, and scheduled directly onto the full calendar.`);
+      setAssistantAnswer(`Atlas has ${procedureRecords.length} procedures. Procedures can be added, edited, deleted, searched, and scheduled directly onto the full calendar.`);
       return;
     }
 
@@ -1097,7 +1349,7 @@ export default function AtlasPage() {
     const matches = [
       ...assetRecords.map((asset) => ({ type: "Asset", title: asset.name, detail: `${asset.category} — ${getLocationName(asset.locationId)}. ${asset.notes}` })),
       ...vendorRecords.map((vendor) => ({ type: "Vendor", title: vendor.name, detail: `${vendor.category}. ${vendor.notes}` })),
-      ...serviceRecords.map((record) => ({ type: "Service", title: record.title, detail: `${formatDate(record.date)} — ${assetName(record.assetId)} — ${vendorName(record.vendorId)}. ${record.notes}` })),
+      ...serviceRecords.map((record) => ({ type: "Work Order", title: record.title, detail: `${formatDate(record.date)} — ${assetName(record.assetId)} — ${vendorName(record.vendorId)} — ${procedureName(record.procedureId)}. ${record.notes}` })),
       ...calendarItems.map((item) => ({ type: "Calendar", title: item.title, detail: `${formatDate(item.date)} — ${item.area} — ${item.status}` })),
       ...procedureRecords.map((procedure) => ({ type: "Procedure", title: procedure.title, detail: `${procedure.area} — ${procedure.priority}. ${procedure.steps.join(" ")}` })),
       ...documents.map((document) => ({ type: "Document", title: document.title, detail: `${document.area} — ${document.type}. ${document.notes}` })),
@@ -1105,7 +1357,7 @@ export default function AtlasPage() {
     ].filter((item) => [item.type, item.title, item.detail].join(" ").toLowerCase().includes(text));
 
     if (!matches.length) {
-      setAssistantAnswer("I did not find that in the local Atlas records yet. Add a procedure, calendar item, service note, photo, document, vendor, or asset record, then Ask Atlas will be able to surface it here.");
+      setAssistantAnswer("I did not find that in the local Atlas records yet. Add a work order, procedure, calendar item, photo, document, vendor, or asset record, then Ask Atlas will be able to surface it here.");
       return;
     }
 
@@ -1144,58 +1396,61 @@ export default function AtlasPage() {
     return (
       <div style={{ display: "grid", gap: 18 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 16 }}>
-          <StatCard label="Locations" value={locations.length} detail="2000 baseline areas" />
           <StatCard label="Assets" value={assetRecords.length} detail="Editable equipment" />
           <StatCard label="Vendors" value={vendorRecords.length} detail="Editable directory" />
+          <StatCard label="Work Orders" value={serviceRecords.length} detail="Photos + docs" />
           <StatCard label="Procedures" value={procedureRecords.length} detail="Editable templates" />
           <StatCard label="Scheduled" value={upcomingCalendarCount} detail="Calendar work" />
-          <StatCard label="Open / Monitor" value={openServiceCount + monitorAssetCount} detail="Needs attention" />
+          <StatCard label="Open / Monitor" value={openWorkOrderCount + monitorAssetCount} detail="Needs attention" />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
-          <SectionShell eyebrow="Procedures Added" title="Atlas / 2000 Estate Operations">
+          <SectionShell eyebrow="Work Orders Added" title="Atlas / 2000 Estate Operations">
             <div style={heroCardStyle}>
               <div style={heroOrbStyle} />
               <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
                 <img src="/atlas-logo.png" alt="Atlas logo" style={heroLogoStyle} />
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Procedures are now editable.</h2>
+                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Work orders are now real records.</h2>
                   <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.5 }}>
-                    Add, edit, delete, search, and schedule procedures directly onto the full calendar.
+                    Add, edit, delete, attach photos, attach invoices/documents, link assets, vendors, procedures, and schedule follow-ups.
                   </p>
                 </div>
               </div>
             </div>
           </SectionShell>
 
-          <SectionShell eyebrow="Upcoming Work" title="Calendar Watch">
+          <SectionShell eyebrow="Needs Attention" title="Open / Monitor Work">
             <div style={{ display: "grid", gap: 10 }}>
-              {sortCalendar(calendarItems)
+              {sortServices(serviceRecords)
                 .filter((item) => item.status !== "Completed")
                 .slice(0, 8)
                 .map((item) => (
-                  <button key={item.id} type="button" onClick={() => { openCalendarItem(item); setScreen("calendar"); }} style={smallRecordButtonStyle}>
+                  <button key={item.id} type="button" onClick={() => { setSelectedServiceId(item.id); setServiceMode("edit"); setScreen("history"); }} style={smallRecordButtonStyle}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                       <strong style={{ color: colors.navy }}>{item.title}</strong>
                       <span style={badgeStyle(item.status)}>{item.status}</span>
                     </div>
-                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{formatDate(item.date)} · {item.area}</div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{formatDate(item.date)} · {assetName(item.assetId)} · {vendorName(item.vendorId)}</div>
                   </button>
                 ))}
             </div>
           </SectionShell>
         </div>
 
-        <SectionShell eyebrow="Procedures" title="Work Templates Ready to Schedule">
-          <div style={threeColumnGridStyle}>
-            {sortProcedures(procedureRecords).slice(0, 6).map((procedure) => (
-              <button key={procedure.id} type="button" onClick={() => { setSelectedProcedureId(procedure.id); setProcedureMode("edit"); setScreen("procedures"); }} style={smallRecordButtonStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <strong style={{ color: colors.navy }}>{procedure.title}</strong>
-                  <span style={priorityBadge(procedure.priority)}>{procedure.priority}</span>
+        <SectionShell eyebrow="Recently Updated" title="Latest Work Orders">
+          <div style={{ display: "grid", gap: 10 }}>
+            {sortServices(serviceRecords).slice(0, 7).map((record) => (
+              <div key={record.id} style={serviceRowStyle}>
+                <div style={{ color: colors.muted, fontWeight: 850 }}>{formatDate(record.date)}</div>
+                <div>
+                  <div style={{ color: colors.navy, fontWeight: 900 }}>{record.title}</div>
+                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
+                    {assetName(record.assetId)} · {vendorName(record.vendorId)} · {(record.photos?.length ?? 0) + (record.documents?.length ?? 0)} files
+                  </div>
                 </div>
-                <div style={{ color: colors.muted, fontSize: 13, marginTop: 7 }}>{procedure.area} · {procedure.steps.length} steps</div>
-              </button>
+                <span style={badgeStyle(record.status)}>{record.status}</span>
+              </div>
             ))}
           </div>
         </SectionShell>
@@ -1368,32 +1623,104 @@ export default function AtlasPage() {
   function renderHistory() {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "0.82fr 1.18fr", gap: 18, alignItems: "start" }}>
-        <SectionShell eyebrow="Add Record" title="New Service Note">
-          <div style={{ display: "grid", gap: 12 }}>
-            <label style={labelStyle}>Asset<select value={newService.assetId} onChange={(event) => setNewService((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>{sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
-            <label style={labelStyle}>Vendor<select value={newService.vendorId} onChange={(event) => setNewService((current) => ({ ...current, vendorId: event.target.value }))} style={inputStyle}><option value="">Internal / Not set</option>{sortVendors(vendorRecords).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
-            <label style={labelStyle}>Title<input value={newService.title} onChange={(event) => setNewService((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Checked boiler low-water cut-off" style={inputStyle} /></label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <label style={labelStyle}>Date<input type="date" value={newService.date} onChange={(event) => setNewService((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
-              <label style={labelStyle}>Status<select value={newService.status} onChange={(event) => setNewService((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="Completed">Completed</option><option value="Monitor">Monitor</option></select></label>
-            </div>
-            <label style={labelStyle}>Notes<textarea value={newService.notes} onChange={(event) => setNewService((current) => ({ ...current, notes: event.target.value }))} placeholder="Write what happened, what needs to happen next, and anything to watch." rows={6} style={{ ...inputStyle, resize: "vertical" }} /></label>
-            <button type="button" onClick={addServiceRecord} style={widePrimaryButtonStyle}>Save Service Note</button>
+        <SectionShell eyebrow="Work Orders" title="Editable Service History" right={<button type="button" onClick={startNewService} style={primaryButtonStyle}>Add Work Order</button>}>
+          <div style={{ display: "grid", gap: 10 }}>
+            {filteredServices.map((record) => (
+              <button
+                key={record.id}
+                type="button"
+                onClick={() => {
+                  setSelectedServiceId(record.id);
+                  setServiceMode("edit");
+                }}
+                style={{
+                  ...smallRecordButtonStyle,
+                  border: selectedServiceId === record.id && serviceMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
+                  background: selectedServiceId === record.id && serviceMode === "edit" ? "#FFF9EA" : "#FBFCFE",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <strong style={{ color: colors.navy }}>{record.title}</strong>
+                  <span style={badgeStyle(record.status)}>{record.status}</span>
+                </div>
+                <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{formatDate(record.date)} · {assetName(record.assetId)} · {vendorName(record.vendorId)}</div>
+                <div style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>{procedureName(record.procedureId)} · {(record.photos?.length ?? 0)} photos · {(record.documents?.length ?? 0)} docs</div>
+              </button>
+            ))}
           </div>
         </SectionShell>
 
-        <SectionShell eyebrow="Service History" title="Atlas Work Log">
-          <div style={{ display: "grid", gap: 11 }}>
-            {filteredServices.slice().sort((a, b) => b.date.localeCompare(a.date)).map((record) => (
-              <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, padding: 15, background: "#FBFCFE" }}>
-                <div style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div><div style={{ color: colors.navy, fontWeight: 950 }}>{record.title}</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{formatDate(record.date)} · {assetName(record.assetId)} · {vendorName(record.vendorId)}</div></div>
-                  <span style={badgeStyle(record.status)}>{record.status}</span>
-                </div>
-                <p style={{ color: colors.text, lineHeight: 1.5, marginBottom: 12 }}>{record.notes}</p>
-                <button type="button" onClick={() => deleteServiceRecord(record.id)} style={deleteButtonStyle}>Delete</button>
+        <SectionShell
+          eyebrow={serviceMode === "new" ? "New Work Order" : "Edit Work Order"}
+          title={serviceForm.title || "Work Order Details"}
+          right={serviceMode === "edit" && serviceForm.id ? <button type="button" onClick={deleteService} style={deleteButtonStyle}>Delete Work Order</button> : null}
+        >
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={labelStyle}>Title<input value={serviceForm.title} onChange={(event) => setServiceForm((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Checked boiler low-water cut-off" style={inputStyle} /></label>
+
+              <label style={labelStyle}>Asset<select value={serviceForm.assetId} onChange={(event) => setServiceForm((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>{sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+
+              <label style={labelStyle}>Vendor<select value={serviceForm.vendorId ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, vendorId: event.target.value }))} style={inputStyle}><option value="">Internal / Not set</option>{sortVendors(vendorRecords).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+
+              <label style={labelStyle}>Procedure<select value={serviceForm.procedureId ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, procedureId: event.target.value }))} style={inputStyle}><option value="">No procedure linked</option>{sortProcedures(procedureRecords).map((procedure) => <option key={procedure.id} value={procedure.id}>{procedure.title}</option>)}</select></label>
+
+              <label style={labelStyle}>Work Date<input type="date" value={serviceForm.date} onChange={(event) => setServiceForm((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
+
+              <label style={labelStyle}>Status<select value={serviceForm.status} onChange={(event) => setServiceForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="Completed">Completed</option><option value="Monitor">Monitor</option></select></label>
+
+              <label style={labelStyle}>Follow-Up Date<input type="date" value={serviceForm.followUpDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, followUpDate: event.target.value }))} style={inputStyle} /></label>
+
+              <div style={{ ...labelStyle, alignSelf: "end" }}>
+                <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>Save Work Order</button>
               </div>
-            ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button type="button" onClick={markServiceCompleted} style={goldButtonStyle}>Mark Completed</button>
+              <button type="button" onClick={scheduleServiceFollowUp} style={primaryButtonStyle}>Schedule Follow-Up</button>
+            </div>
+
+            <label style={labelStyle}>Notes<textarea value={serviceForm.notes} onChange={(event) => setServiceForm((current) => ({ ...current, notes: event.target.value }))} rows={6} placeholder="Write what happened, what needs to happen next, vendor findings, model/serial details, cost, and watch items." style={{ ...inputStyle, resize: "vertical" }} /></label>
+
+            <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
+              <label style={uploadBoxStyle}>Attach work-order photos<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Photos save on this work order after you click Save Work Order.</span><input type="file" accept="image/*" multiple onChange={handleServicePhotoUpload} style={{ color: colors.muted }} /></label>
+
+              {(serviceForm.photos ?? []).length ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                  {(serviceForm.photos ?? []).map((photo) => (
+                    <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
+                      <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 130, objectFit: "cover" }} />
+                      <div style={{ padding: 10 }}>
+                        <div style={{ color: colors.navy, fontWeight: 900, fontSize: 12 }}>{photo.name}</div>
+                        <button type="button" onClick={() => removeServicePhoto(photo.id)} style={{ ...deleteButtonStyle, marginTop: 8 }}>Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <div style={emptyStateStyle}>No photos attached to this work order yet.</div>}
+            </div>
+
+            <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
+              <label style={labelStyle}>Attach invoices / documents<input type="file" multiple onChange={handleServiceDocumentUpload} style={{ color: colors.muted }} /></label>
+
+              {(serviceForm.documents ?? []).length ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {(serviceForm.documents ?? []).map((document) => (
+                    <div key={document.id} style={inlineCardStyle}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                        <div><div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{document.type || "File"} · {new Date(document.createdAt).toLocaleString()}</div></div>
+                        <div style={{ display: "flex", gap: 8 }}><a href={document.dataUrl} download={document.name} style={linkButtonStyle}>Download</a><button type="button" onClick={() => removeServiceDocument(document.id)} style={deleteButtonStyle}>Remove</button></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <div style={emptyStateStyle}>No invoices or documents attached to this work order yet.</div>}
+            </div>
+
+            <div style={emptyStateStyle}>
+              Work orders now connect assets, vendors, procedures, photos, invoices/documents, status, notes, and calendar follow-up.
+            </div>
           </div>
         </SectionShell>
       </div>
@@ -1651,10 +1978,6 @@ export default function AtlasPage() {
                 ))}
               </div>
             </div>
-
-            <div style={emptyStateStyle}>
-              Procedures now save in this browser, appear in search, and can be scheduled directly onto the full calendar.
-            </div>
           </div>
         </SectionShell>
       </div>
@@ -1686,7 +2009,7 @@ export default function AtlasPage() {
   function renderDocuments() {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "0.78fr 1.22fr", gap: 18, alignItems: "start" }}>
-        <SectionShell eyebrow="Upload" title="Photos">
+        <SectionShell eyebrow="Upload" title="Asset Photos">
           <div style={{ display: "grid", gap: 12 }}>
             <label style={labelStyle}>Attach to Asset<select value={selectedAssetId} onChange={(event) => setSelectedAssetId(event.target.value)} style={inputStyle}>{sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
             <label style={uploadBoxStyle}>Add photos for {selectedAsset.name}<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Uploads save in this browser for now.</span><input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} /></label>
@@ -1705,6 +2028,10 @@ export default function AtlasPage() {
 
         <SectionShell eyebrow="Documents" title="Atlas Document Records">
           <div style={{ display: "grid", gap: 12 }}>
+            <div style={emptyStateStyle}>
+              Uploaded document count: {uploadedDocumentCount}. Work-order photo count: {uploadedServicePhotoCount}. Static document records are listed below.
+            </div>
+
             {filteredDocuments.map((document) => (
               <div key={document.id} style={inlineCardStyle}>
                 <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{document.area}</div>
@@ -1720,13 +2047,13 @@ export default function AtlasPage() {
   }
 
   function renderAssistant() {
-    const quickQuestions = ["Show my procedures", "Show my calendar", "Show my assets", "Show my vendors", "What boiler do we have?", "What is the pool equipment chain?", "Which lift box is for the Cobalt?", "What do we know about the Sundance spa?"];
+    const quickQuestions = ["Show my work orders", "Show my procedures", "Show my calendar", "Show my assets", "Show my vendors", "What boiler do we have?", "What is the pool equipment chain?", "Which lift box is for the Cobalt?", "What do we know about the Sundance spa?"];
 
     return (
       <SectionShell eyebrow="Ask Atlas" title="Search the Local Atlas Records" right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}>
         <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 18, alignItems: "start" }}>
           <div style={{ display: "grid", gap: 12 }}>
-            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about procedures, calendar work, assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
+            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about work orders, procedures, calendar work, assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
             <button type="button" onClick={() => askAtlas(assistantQuestion)} style={widePrimaryButtonStyle}>Ask Atlas</button>
             <div style={{ display: "grid", gap: 8 }}>
               {quickQuestions.map((question) => <button key={question} type="button" onClick={() => { setAssistantQuestion(question); askAtlas(question); }} style={quickQuestionStyle}>{question}</button>)}
@@ -1764,9 +2091,11 @@ export default function AtlasPage() {
         </nav>
 
         <div style={sidebarStatusStyle}>
-          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>PROCEDURES ACTIVE</div>
-          <div style={{ fontWeight: 900, marginTop: 6 }}>Add / edit / schedule</div>
-          <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>Procedures can now be saved and scheduled onto the calendar.</div>
+          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>WORK ORDERS ACTIVE</div>
+          <div style={{ fontWeight: 900, marginTop: 6 }}>Photos / docs / follow-up</div>
+          <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>
+            Work orders now connect assets, vendors, procedures, photos, documents, and calendar follow-ups.
+          </div>
         </div>
       </aside>
 
@@ -1777,7 +2106,7 @@ export default function AtlasPage() {
             <div style={{ minWidth: 0 }}>
               <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.3, textTransform: "uppercase" }}>{activeNav?.label ?? "Dashboard"}</div>
               <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: 31, letterSpacing: -0.9, lineHeight: 1.05 }}>Atlas / 2000</h1>
-              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Private estate systems, service history, vendors, procedures, calendar, documents, photos, and Ask Atlas.</div>
+              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Private estate systems, work orders, vendors, procedures, calendar, documents, photos, and Ask Atlas.</div>
             </div>
           </div>
 
@@ -1794,7 +2123,7 @@ export default function AtlasPage() {
               <SearchCount label="locations" value={filteredLocations.length} />
               <SearchCount label="assets" value={filteredAssets.length} />
               <SearchCount label="vendors" value={filteredVendors.length} />
-              <SearchCount label="service" value={filteredServices.length} />
+              <SearchCount label="work orders" value={filteredServices.length} />
               <SearchCount label="calendar" value={filteredCalendar.length} />
               <SearchCount label="procedures" value={filteredProcedures.length} />
               <SearchCount label="docs" value={filteredDocuments.length} />
@@ -1827,6 +2156,19 @@ function SearchCount({ label, value }: { label: string; value: number }) {
     </div>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  border: `1px solid ${colors.line}`,
+  background: "#FBFCFE",
+  color: colors.navy,
+  borderRadius: 13,
+  padding: "11px 12px",
+  fontSize: 14,
+  fontWeight: 750,
+  outline: "none",
+  boxSizing: "border-box",
+};
 
 const appShellStyle: React.CSSProperties = {
   minHeight: "100vh",
