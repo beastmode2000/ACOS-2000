@@ -1277,7 +1277,6 @@ color: label.locationId === selectedLocationId ? "#071d3a" : "#ffffff"
     </section>
   </div>
 </div>
-```
 
 );
 }
