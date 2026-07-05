@@ -1488,7 +1488,6 @@ return ( <div> <Header title="Assets" subtitle="Equipment, systems, vehicles, ai
     </section>
   </div>
 </div>
-```
 
 );
 }
