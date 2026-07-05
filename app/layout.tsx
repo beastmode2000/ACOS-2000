@@ -9,21 +9,17 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/favicon.ico?v=3",
-        sizes: "any",
-      },
-      {
-        url: "/atlas-icon.png?v=3",
+        url: "/atlas-logo.png?v=5",
         type: "image/png",
         sizes: "512x512",
       },
     ],
-    shortcut: ["/favicon.ico?v=3"],
+    shortcut: ["/atlas-logo.png?v=5"],
     apple: [
       {
-        url: "/apple-touch-icon.png?v=3",
-        sizes: "180x180",
+        url: "/atlas-logo.png?v=5",
         type: "image/png",
+        sizes: "512x512",
       },
     ],
   },
