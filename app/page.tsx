@@ -1136,7 +1136,6 @@ return ( <main style={styles.shell}> <aside style={styles.sidebar}> <div style={
     {screen === "procedures" && <ProceduresPanel />}
   </section>
 </main>
-```
 
 );
 }
