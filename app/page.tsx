@@ -87,6 +87,9 @@ type DocumentRecord = {
   vendorId?: string;
   locationId?: string;
   url?: string;
+  fileName?: string;
+  fileDataUrl?: string;
+  mimeType?: string;
   notes: string;
 };
 
@@ -378,6 +381,9 @@ const defaultDocuments: DocumentRecord[] = [
     vendorId: "psf-mechanical",
     locationId: "mechanical-room",
     url: "",
+    fileName: "",
+    fileDataUrl: "",
+    mimeType: "",
     notes: "Record for Viessmann Boiler B-2 New nameplate photo. Serial 758960507593. Year built 2025."
   },
   {
@@ -390,6 +396,9 @@ const defaultDocuments: DocumentRecord[] = [
     vendorId: "penthouse-drapery",
     locationId: "general",
     url: "",
+    fileName: "",
+    fileDataUrl: "",
+    mimeType: "",
     notes: "Invoice 176396 dated 06/16/2026 for motorized roller shade repair. Linked to Blinds Lutron."
   },
   {
@@ -402,31 +411,10 @@ const defaultDocuments: DocumentRecord[] = [
     vendorId: "krisco-pool-spas",
     locationId: "back-patio-water-side",
     url: "",
+    fileName: "",
+    fileDataUrl: "",
+    mimeType: "",
     notes: "Sundance 880 Series Optima nameplate / cabinet photo record. Serial 00P3LCD-100528521-0315."
-  },
-  {
-    id: "doc-seadoo-repair-photos",
-    date: todayISO(),
-    title: "Sea-Doo service / repair photos",
-    type: "Photo",
-    assetId: "craft-seadoo-2024",
-    serviceId: "svc-seadoo-service",
-    vendorId: "seadoo-service",
-    locationId: "dock",
-    url: "",
-    notes: "Use this record to describe or link Sea-Doo repair photos until real file uploads are connected."
-  },
-  {
-    id: "doc-pool-backwash-note",
-    date: todayISO(),
-    title: "Pool backwash notes/photos",
-    type: "Note",
-    assetId: "pool",
-    serviceId: "svc-pool-backwash",
-    vendorId: "aqua-quip",
-    locationId: "pool",
-    url: "",
-    notes: "Record pressure before/after, backwash date, water clarity, and any photos or observations."
   }
 ];
 
@@ -484,33 +472,13 @@ export default function Page() {
     setLoaded(true);
   }, []);
 
-  useEffect(() => {
-    if (loaded) saveData(STORE_LOCATIONS, locations);
-  }, [loaded, locations]);
-
-  useEffect(() => {
-    if (loaded) saveData(STORE_ASSETS, assets);
-  }, [loaded, assets]);
-
-  useEffect(() => {
-    if (loaded) saveData(STORE_VENDORS, vendors);
-  }, [loaded, vendors]);
-
-  useEffect(() => {
-    if (loaded) saveData(STORE_LABELS, labels);
-  }, [loaded, labels]);
-
-  useEffect(() => {
-    if (loaded) saveData(STORE_CALENDAR, calendar);
-  }, [loaded, calendar]);
-
-  useEffect(() => {
-    if (loaded) saveData(STORE_SERVICE_HISTORY, serviceHistory);
-  }, [loaded, serviceHistory]);
-
-  useEffect(() => {
-    if (loaded) saveData(STORE_DOCUMENTS, documents);
-  }, [loaded, documents]);
+  useEffect(() => { if (loaded) saveData(STORE_LOCATIONS, locations); }, [loaded, locations]);
+  useEffect(() => { if (loaded) saveData(STORE_ASSETS, assets); }, [loaded, assets]);
+  useEffect(() => { if (loaded) saveData(STORE_VENDORS, vendors); }, [loaded, vendors]);
+  useEffect(() => { if (loaded) saveData(STORE_LABELS, labels); }, [loaded, labels]);
+  useEffect(() => { if (loaded) saveData(STORE_CALENDAR, calendar); }, [loaded, calendar]);
+  useEffect(() => { if (loaded) saveData(STORE_SERVICE_HISTORY, serviceHistory); }, [loaded, serviceHistory]);
+  useEffect(() => { if (loaded) saveData(STORE_DOCUMENTS, documents); }, [loaded, documents]);
 
   useEffect(() => {
     fetch("https://api.open-meteo.com/v1/forecast?latitude=47.57&longitude=-122.22&current=temperature_2m,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto")
@@ -528,7 +496,7 @@ export default function Page() {
   const selectedLocation = locations.find((item) => item.id === selectedLocationId) || locations[0] || defaultLocations[0];
   const selectedVendor = vendors.find((item) => item.id === selectedVendorId) || vendors[0] || defaultVendors[0];
   const selectedService = serviceHistory.find((item) => item.id === selectedServiceId) || serviceHistory[0] || defaultServiceHistory[0];
-  const selectedDocument = documents.find((item) => item.id === selectedDocumentId) || documents[0] || defaultDocuments[0];
+  const selectedDocument = documents.find((item) => item.id === selectedDocumentId) || documents[0] || null;
 
   const filteredAssets = useMemo(() => {
     const q = assetSearch.toLowerCase();
@@ -552,6 +520,7 @@ export default function Page() {
         item.type + " " +
         item.date + " " +
         (item.url || "") + " " +
+        (item.fileName || "") + " " +
         item.notes + " " +
         (linkedAsset?.name || "") + " " +
         (linkedVendor?.name || "") + " " +
@@ -579,6 +548,15 @@ export default function Page() {
 
   function updateDocument(id: string, patch: Partial<DocumentRecord>) {
     setDocuments((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  }
+
+  function deleteDocumentRecord(id: string) {
+    const ok = typeof window === "undefined" ? true : window.confirm("Delete this photo, note, or document?");
+    if (!ok) return;
+
+    const remaining = documents.filter((row) => row.id !== id);
+    setDocuments(remaining);
+    setSelectedDocumentId(remaining[0]?.id || "");
   }
 
   function addAsset() {
@@ -709,6 +687,9 @@ export default function Page() {
       vendorId: patch?.vendorId || vendorForDoc.id,
       locationId: patch?.locationId || assetForDoc.locationId || selectedLocation.id,
       url: patch?.url || "",
+      fileName: patch?.fileName || "",
+      fileDataUrl: patch?.fileDataUrl || "",
+      mimeType: patch?.mimeType || "",
       notes: patch?.notes || ""
     };
 
@@ -811,7 +792,7 @@ export default function Page() {
     locations.forEach((row) => allLines.push("Location: " + row.name + ". " + row.type + ". " + row.notes));
     vendors.forEach((row) => allLines.push("Vendor: " + row.name + ". " + row.category + ". " + (row.phone || "") + ". " + (row.email || "") + ". " + row.notes));
     serviceHistory.forEach((row) => allLines.push("Service History: " + row.title + ". " + row.date + ". " + row.status + ". " + row.notes));
-    documents.forEach((row) => allLines.push("Document: " + row.title + ". " + row.type + ". " + row.date + ". " + row.notes + ". " + (row.url || "")));
+    documents.forEach((row) => allLines.push("Document: " + row.title + ". " + row.type + ". " + row.date + ". " + (row.fileName || "") + ". " + row.notes + ". " + (row.url || "")));
 
     const words = q.split(" ").filter((word) => word.length > 2);
     const hits = allLines.filter((line) => {
@@ -987,6 +968,7 @@ export default function Page() {
             setDocumentSearch={setDocumentSearch}
             setSelectedDocumentId={setSelectedDocumentId}
             updateDocument={updateDocument}
+            deleteDocumentRecord={deleteDocumentRecord}
             addDocumentRecord={addDocumentRecord}
             setSelectedAssetId={setSelectedAssetId}
             setSelectedVendorId={setSelectedVendorId}
@@ -1188,6 +1170,7 @@ function MapPanel({
             <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
               <strong>{row.title}</strong>
               <span style={styles.smallMuted}>{row.date} · {row.type}</span>
+              {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached</span>}
             </button>
           ))}
         </section>
@@ -1250,6 +1233,7 @@ function LocationsPanel({
             <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
               <strong>{row.title}</strong>
               <span style={styles.smallMuted}>{row.date} · {row.type}</span>
+              {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached</span>}
             </button>
           ))}
         </section>
@@ -1259,7 +1243,6 @@ function LocationsPanel({
 }
 
 function AssetsPanel({
-  assets,
   filteredAssets,
   locations,
   vendors,
@@ -1388,6 +1371,7 @@ function AssetsPanel({
             <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
               <strong>{row.title}</strong>
               <span style={styles.smallMuted}>{row.date} · {row.type}</span>
+              {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached: {row.fileName || "image"}</span>}
             </button>
           ))}
 
@@ -1520,6 +1504,7 @@ function ServiceHistoryPanel({
             <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
               <strong>{row.title}</strong>
               <span style={styles.smallMuted}>{row.date} · {row.type}</span>
+              {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached</span>}
             </button>
           ))}
 
@@ -1658,6 +1643,7 @@ function VendorsPanel({
             <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
               <strong>{row.title}</strong>
               <span style={styles.smallMuted}>{row.date} · {row.type}</span>
+              {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached</span>}
             </button>
           ))}
 
@@ -1687,6 +1673,7 @@ function DocumentsPanel({
   setDocumentSearch,
   setSelectedDocumentId,
   updateDocument,
+  deleteDocumentRecord,
   addDocumentRecord,
   setSelectedAssetId,
   setSelectedVendorId,
@@ -1696,7 +1683,7 @@ function DocumentsPanel({
 }: {
   documents: DocumentRecord[];
   filteredDocuments: DocumentRecord[];
-  selectedDocument: DocumentRecord;
+  selectedDocument: DocumentRecord | null;
   assets: AssetRecord[];
   vendors: VendorRecord[];
   locations: LocationRecord[];
@@ -1705,6 +1692,7 @@ function DocumentsPanel({
   setDocumentSearch: (value: string) => void;
   setSelectedDocumentId: (id: string) => void;
   updateDocument: (id: string, patch: Partial<DocumentRecord>) => void;
+  deleteDocumentRecord: (id: string) => void;
   addDocumentRecord: (patch?: Partial<DocumentRecord>) => void;
   setSelectedAssetId: (id: string) => void;
   setSelectedVendorId: (id: string) => void;
@@ -1712,22 +1700,44 @@ function DocumentsPanel({
   setSelectedServiceId: (id: string) => void;
   setScreen: (screen: Screen) => void;
 }) {
-  const linkedAsset = assets.find((row) => row.id === selectedDocument.assetId);
-  const linkedVendor = vendors.find((row) => row.id === selectedDocument.vendorId);
-  const linkedLocation = locations.find((row) => row.id === selectedDocument.locationId);
-  const linkedService = serviceHistory.find((row) => row.id === selectedDocument.serviceId);
+  const linkedAsset = selectedDocument ? assets.find((row) => row.id === selectedDocument.assetId) : undefined;
+  const linkedVendor = selectedDocument ? vendors.find((row) => row.id === selectedDocument.vendorId) : undefined;
+  const linkedLocation = selectedDocument ? locations.find((row) => row.id === selectedDocument.locationId) : undefined;
+  const linkedService = selectedDocument ? serviceHistory.find((row) => row.id === selectedDocument.serviceId) : undefined;
   const photoCount = documents.filter((row) => row.type === "Photo").length;
   const invoiceCount = documents.filter((row) => row.type === "Invoice").length;
 
+  function handlePhotoUpload(fileList: FileList | null) {
+    if (!selectedDocument) return;
+    const file = fileList?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      if (typeof window !== "undefined") window.alert("Choose a photo/image file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateDocument(selectedDocument.id, {
+        type: "Photo",
+        fileName: file.name,
+        fileDataUrl: String(reader.result || ""),
+        mimeType: file.type
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
   return (
     <div>
-      <Header title="Documents / Photos" subtitle="Track photos, invoices, manuals, warranties, notes, links, and paperwork connected to assets, vendors, locations, and service records." />
+      <Header title="Documents / Photos" subtitle="Upload visible photos, track invoices, manuals, warranties, notes, links, and delete bad records." />
 
       <div style={styles.statGrid}>
         <Stat label="Total Docs" value={documents.length} />
         <Stat label="Photos" value={photoCount} />
         <Stat label="Invoices" value={invoiceCount} />
-        <Stat label="Current Type" value={selectedDocument.type} />
+        <Stat label="Selected" value={selectedDocument?.type || "None"} />
       </div>
 
       <div style={styles.gridTwo}>
@@ -1740,10 +1750,11 @@ function DocumentsPanel({
               const linkedAssetRow = assets.find((assetRow) => assetRow.id === row.assetId);
               const linkedVendorRow = vendors.find((vendorRow) => vendorRow.id === row.vendorId);
               return (
-                <button key={row.id} type="button" onClick={() => setSelectedDocumentId(row.id)} style={row.id === selectedDocument.id ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}>
+                <button key={row.id} type="button" onClick={() => setSelectedDocumentId(row.id)} style={selectedDocument && row.id === selectedDocument.id ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}>
                   <strong>{row.title}</strong>
                   <span style={styles.smallMuted}>{row.date} · {row.type}</span>
                   <span style={styles.smallMuted}>{linkedAssetRow?.name || "No asset"} · {linkedVendorRow?.name || "No vendor"}</span>
+                  {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached: {row.fileName || "image"}</span>}
                 </button>
               );
             })}
@@ -1751,83 +1762,129 @@ function DocumentsPanel({
         </section>
 
         <section style={styles.card}>
-          <h2 style={styles.h2}>{selectedDocument.title}</h2>
-          <p style={styles.kicker}>{selectedDocument.type}</p>
-
-          <label style={styles.label}>Title</label>
-          <input value={selectedDocument.title} onChange={(e) => updateDocument(selectedDocument.id, { title: e.target.value })} style={styles.input} />
-
-          <label style={styles.label}>Type</label>
-          <select value={selectedDocument.type} onChange={(e) => updateDocument(selectedDocument.id, { type: e.target.value as DocumentType })} style={styles.input}>
-            <option value="Photo">Photo</option>
-            <option value="Invoice">Invoice</option>
-            <option value="Manual">Manual</option>
-            <option value="Warranty">Warranty</option>
-            <option value="Note">Note</option>
-            <option value="Other">Other</option>
-          </select>
-
-          <label style={styles.label}>Date</label>
-          <input value={selectedDocument.date} onChange={(e) => updateDocument(selectedDocument.id, { date: e.target.value })} style={styles.input} />
-
-          <label style={styles.label}>Linked Asset</label>
-          <select value={selectedDocument.assetId || ""} onChange={(e) => updateDocument(selectedDocument.id, { assetId: e.target.value })} style={styles.input}>
-            <option value="">No asset</option>
-            {assets.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-          </select>
-
-          <label style={styles.label}>Linked Service Record</label>
-          <select value={selectedDocument.serviceId || ""} onChange={(e) => updateDocument(selectedDocument.id, { serviceId: e.target.value })} style={styles.input}>
-            <option value="">No service record</option>
-            {serviceHistory.map((row) => <option key={row.id} value={row.id}>{row.date} · {row.title}</option>)}
-          </select>
-
-          <label style={styles.label}>Linked Vendor</label>
-          <select value={selectedDocument.vendorId || ""} onChange={(e) => updateDocument(selectedDocument.id, { vendorId: e.target.value })} style={styles.input}>
-            <option value="">No vendor</option>
-            {vendors.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-          </select>
-
-          <label style={styles.label}>Linked Location</label>
-          <select value={selectedDocument.locationId || ""} onChange={(e) => updateDocument(selectedDocument.id, { locationId: e.target.value })} style={styles.input}>
-            <option value="">No location</option>
-            {locations.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-          </select>
-
-          <label style={styles.label}>URL / file note / where this is stored</label>
-          <input value={selectedDocument.url || ""} onChange={(e) => updateDocument(selectedDocument.id, { url: e.target.value })} placeholder="Paste Google Drive link, photo filename, invoice location, manual URL, or note" style={styles.input} />
-
-          <label style={styles.label}>Notes / paste details here</label>
-          <textarea value={selectedDocument.notes} onChange={(e) => updateDocument(selectedDocument.id, { notes: e.target.value })} placeholder="Paste invoice details, photo description, warranty info, manual notes, repair notes, or where the real file is stored..." style={styles.textareaHuge} />
-
-          {selectedDocument.url && (
-            <a href={selectedDocument.url} target="_blank" rel="noreferrer" style={styles.linkButton}>
-              Open Link
-            </a>
+          {!selectedDocument && (
+            <div>
+              <h2 style={styles.h2}>No photo or document selected</h2>
+              <p style={styles.muted}>Create a new photo, note, invoice, manual, warranty, or document record.</p>
+              <button type="button" onClick={() => addDocumentRecord()} style={styles.primaryButton}>+ New Photo / Document</button>
+            </div>
           )}
 
-          <h3 style={styles.h3}>Open Linked Records</h3>
-          <div style={styles.miniGrid}>
-            <button type="button" onClick={() => { if (linkedAsset) { setSelectedAssetId(linkedAsset.id); setScreen("assets"); } }} style={styles.listButton}>
-              <strong>Asset</strong>
-              <span style={styles.smallMuted}>{linkedAsset?.name || "No linked asset"}</span>
-            </button>
+          {selectedDocument && (
+            <div>
+              <h2 style={styles.h2}>{selectedDocument.title}</h2>
+              <p style={styles.kicker}>{selectedDocument.type}</p>
 
-            <button type="button" onClick={() => { if (linkedVendor) { setSelectedVendorId(linkedVendor.id); setScreen("vendors"); } }} style={styles.listButton}>
-              <strong>Vendor</strong>
-              <span style={styles.smallMuted}>{linkedVendor?.name || "No linked vendor"}</span>
-            </button>
+              {selectedDocument.fileDataUrl && (
+                <div style={styles.photoPreviewBox}>
+                  <img src={selectedDocument.fileDataUrl} alt={selectedDocument.title} style={styles.photoPreview} />
+                  <span style={styles.smallMuted}>{selectedDocument.fileName || "Uploaded photo"}</span>
+                </div>
+              )}
 
-            <button type="button" onClick={() => { if (linkedLocation) { setSelectedLocationId(linkedLocation.id); setScreen("locations"); } }} style={styles.listButton}>
-              <strong>Location</strong>
-              <span style={styles.smallMuted}>{linkedLocation?.name || "No linked location"}</span>
-            </button>
+              <label style={styles.uploadBox}>
+                Choose Photo / Upload Photo
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    handlePhotoUpload(e.target.files);
+                    e.currentTarget.value = "";
+                  }}
+                  style={styles.hiddenFileInput}
+                />
+              </label>
 
-            <button type="button" onClick={() => { if (linkedService) { setSelectedServiceId(linkedService.id); setScreen("history"); } }} style={styles.listButton}>
-              <strong>Service</strong>
-              <span style={styles.smallMuted}>{linkedService?.title || "No linked service"}</span>
-            </button>
-          </div>
+              {selectedDocument.fileDataUrl && (
+                <button
+                  type="button"
+                  onClick={() => updateDocument(selectedDocument.id, { fileName: "", fileDataUrl: "", mimeType: "" })}
+                  style={styles.secondaryButton}
+                >
+                  Remove Uploaded Photo Only
+                </button>
+              )}
+
+              <label style={styles.label}>Title</label>
+              <input value={selectedDocument.title} onChange={(e) => updateDocument(selectedDocument.id, { title: e.target.value })} style={styles.input} />
+
+              <label style={styles.label}>Type</label>
+              <select value={selectedDocument.type} onChange={(e) => updateDocument(selectedDocument.id, { type: e.target.value as DocumentType })} style={styles.input}>
+                <option value="Photo">Photo</option>
+                <option value="Invoice">Invoice</option>
+                <option value="Manual">Manual</option>
+                <option value="Warranty">Warranty</option>
+                <option value="Note">Note</option>
+                <option value="Other">Other</option>
+              </select>
+
+              <label style={styles.label}>Date</label>
+              <input value={selectedDocument.date} onChange={(e) => updateDocument(selectedDocument.id, { date: e.target.value })} style={styles.input} />
+
+              <label style={styles.label}>Linked Asset</label>
+              <select value={selectedDocument.assetId || ""} onChange={(e) => updateDocument(selectedDocument.id, { assetId: e.target.value })} style={styles.input}>
+                <option value="">No asset</option>
+                {assets.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </select>
+
+              <label style={styles.label}>Linked Service Record</label>
+              <select value={selectedDocument.serviceId || ""} onChange={(e) => updateDocument(selectedDocument.id, { serviceId: e.target.value })} style={styles.input}>
+                <option value="">No service record</option>
+                {serviceHistory.map((row) => <option key={row.id} value={row.id}>{row.date} · {row.title}</option>)}
+              </select>
+
+              <label style={styles.label}>Linked Vendor</label>
+              <select value={selectedDocument.vendorId || ""} onChange={(e) => updateDocument(selectedDocument.id, { vendorId: e.target.value })} style={styles.input}>
+                <option value="">No vendor</option>
+                {vendors.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </select>
+
+              <label style={styles.label}>Linked Location</label>
+              <select value={selectedDocument.locationId || ""} onChange={(e) => updateDocument(selectedDocument.id, { locationId: e.target.value })} style={styles.input}>
+                <option value="">No location</option>
+                {locations.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </select>
+
+              <label style={styles.label}>URL / file note / where this is stored</label>
+              <input value={selectedDocument.url || ""} onChange={(e) => updateDocument(selectedDocument.id, { url: e.target.value })} placeholder="Paste Google Drive link, photo filename, invoice location, manual URL, or note" style={styles.input} />
+
+              <label style={styles.label}>Notes / paste details here</label>
+              <textarea value={selectedDocument.notes} onChange={(e) => updateDocument(selectedDocument.id, { notes: e.target.value })} placeholder="Paste invoice details, photo description, warranty info, manual notes, repair notes, or where the real file is stored..." style={styles.textareaHuge} />
+
+              {selectedDocument.url && (
+                <a href={selectedDocument.url} target="_blank" rel="noreferrer" style={styles.linkButton}>
+                  Open Link
+                </a>
+              )}
+
+              <button type="button" onClick={() => deleteDocumentRecord(selectedDocument.id)} style={styles.dangerButton}>
+                Delete Photo / Note / Document
+              </button>
+
+              <h3 style={styles.h3}>Open Linked Records</h3>
+              <div style={styles.miniGrid}>
+                <button type="button" onClick={() => { if (linkedAsset) { setSelectedAssetId(linkedAsset.id); setScreen("assets"); } }} style={styles.listButton}>
+                  <strong>Asset</strong>
+                  <span style={styles.smallMuted}>{linkedAsset?.name || "No linked asset"}</span>
+                </button>
+
+                <button type="button" onClick={() => { if (linkedVendor) { setSelectedVendorId(linkedVendor.id); setScreen("vendors"); } }} style={styles.listButton}>
+                  <strong>Vendor</strong>
+                  <span style={styles.smallMuted}>{linkedVendor?.name || "No linked vendor"}</span>
+                </button>
+
+                <button type="button" onClick={() => { if (linkedLocation) { setSelectedLocationId(linkedLocation.id); setScreen("locations"); } }} style={styles.listButton}>
+                  <strong>Location</strong>
+                  <span style={styles.smallMuted}>{linkedLocation?.name || "No linked location"}</span>
+                </button>
+
+                <button type="button" onClick={() => { if (linkedService) { setSelectedServiceId(linkedService.id); setScreen("history"); } }} style={styles.listButton}>
+                  <strong>Service</strong>
+                  <span style={styles.smallMuted}>{linkedService?.title || "No linked service"}</span>
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>
@@ -2208,6 +2265,18 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 10,
     marginBottom: 12
   },
+  dangerButton: {
+    width: "100%",
+    border: "1px solid #f1b4b4",
+    background: "#fff5f5",
+    color: "#8a1f1f",
+    borderRadius: 12,
+    padding: "12px 14px",
+    fontWeight: 900,
+    cursor: "pointer",
+    marginTop: 8,
+    marginBottom: 12
+  },
   smallDangerButton: {
     border: "1px solid #f1b4b4",
     background: "#fff5f5",
@@ -2230,6 +2299,37 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
     marginTop: 4,
     marginBottom: 12
+  },
+  uploadBox: {
+    display: "block",
+    width: "100%",
+    border: "2px dashed #caa24a",
+    background: "#fff7df",
+    color: "#071d3a",
+    borderRadius: 14,
+    padding: 16,
+    textAlign: "center",
+    fontWeight: 900,
+    cursor: "pointer",
+    marginTop: 10,
+    marginBottom: 12
+  },
+  hiddenFileInput: {
+    display: "none"
+  },
+  photoPreviewBox: {
+    border: "1px solid #e4e8f0",
+    borderRadius: 16,
+    padding: 12,
+    background: "#f8fafc",
+    marginBottom: 12
+  },
+  photoPreview: {
+    width: "100%",
+    maxHeight: 360,
+    objectFit: "contain",
+    borderRadius: 12,
+    background: "#071d3a"
   },
   buttonRow: {
     display: "flex",
