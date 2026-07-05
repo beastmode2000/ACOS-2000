@@ -1,3 +1,12 @@
+Replace only:
+
+```text
+app/page.tsx
+```
+
+Wait until this whole message finishes, then click the double-square copy button on this one code box.
+
+```tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
