@@ -21,6 +21,7 @@ type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
 type ServiceStatus = "Open" | "Scheduled" | "Completed" | "Monitor";
 type DocumentType = "Photo" | "Invoice" | "Manual" | "Warranty" | "Note" | "Other";
 type CalendarSource = "Atlas" | "Outlook" | "Apple" | "Google" | "Other";
+type AtlasResultKind = "Asset" | "Vendor" | "Location" | "Service" | "Document" | "Calendar" | "Procedure";
 
 type LocationRecord = {
   id: string;
@@ -99,6 +100,30 @@ type DocumentRecord = {
   notes: string;
 };
 
+type ProcedureRecord = {
+  id: string;
+  title: string;
+  category: string;
+  priority: string;
+  steps: string[];
+  notes: string;
+};
+
+type AtlasSearchResult = {
+  kind: AtlasResultKind;
+  id: string;
+  title: string;
+  subtitle: string;
+  body: string;
+  score: number;
+  assetId?: string;
+  vendorId?: string;
+  serviceId?: string;
+  documentId?: string;
+  locationId?: string;
+  calendarId?: string;
+};
+
 const STORE_ASSETS = "atlas_2000_assets_safe_v1";
 const STORE_LOCATIONS = "atlas_2000_locations_safe_v1";
 const STORE_VENDORS = "atlas_2000_vendors_safe_v1";
@@ -141,6 +166,30 @@ function cleanId(text: string) {
     .slice(0, 48);
 }
 
+function normalizeText(text: string) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function uniqueWords(text: string) {
+  return Array.from(new Set(normalizeText(text).split(" ").filter((word) => word.length > 2)));
+}
+
+function scoreText(query: string, text: string) {
+  const words = uniqueWords(query);
+  const haystack = normalizeText(text);
+  if (words.length === 0) return 0;
+
+  let score = 0;
+  words.forEach((word) => {
+    if (haystack.includes(word)) score += 2;
+  });
+
+  const exact = normalizeText(query);
+  if (exact.length > 2 && haystack.includes(exact)) score += 8;
+
+  return score;
+}
+
 function asset(row: Partial<AssetRecord> & { id: string; name: string; locationId: string; category: string }): AssetRecord {
   return {
     status: "Online",
@@ -149,6 +198,103 @@ function asset(row: Partial<AssetRecord> & { id: string; name: string; locationI
     ...row
   };
 }
+
+const procedureRecords: ProcedureRecord[] = [
+  {
+    id: "procedure-pool-backwash",
+    title: "Pool Backwash Procedure",
+    category: "Pool",
+    priority: "High",
+    steps: [
+      "Confirm the pool pump is off before changing valve positions.",
+      "Set the filter valve to Backwash.",
+      "Turn the pump on and run until the sight glass or discharge water looks clear.",
+      "Turn the pump off.",
+      "Set the valve to Rinse.",
+      "Turn the pump on briefly to rinse the filter bed.",
+      "Turn the pump off.",
+      "Return the valve to Filter.",
+      "Turn the pump back on and confirm normal pressure and flow.",
+      "Record the date, pressure before/after, and any issues."
+    ],
+    notes: "Confirm exact valve positions against the actual pool equipment labels before relying on this as final."
+  },
+  {
+    id: "procedure-spa-check",
+    title: "Spa / Hot Tub Check",
+    category: "Spa",
+    priority: "Medium",
+    steps: [
+      "Check water level.",
+      "Check temperature and display status.",
+      "Inspect for visible leaks or cabinet water.",
+      "Check filter condition.",
+      "Confirm jets and circulation are operating.",
+      "Record chemistry readings and any alerts."
+    ],
+    notes: "Linked asset: Sundance Optima hot tub."
+  },
+  {
+    id: "procedure-leak-water-shutoff",
+    title: "Leak / Water Shutoff Response",
+    category: "Emergency",
+    priority: "High",
+    steps: [
+      "Locate the leak source if safe.",
+      "Shut off local fixture valve if available.",
+      "If needed, shut off main water or use FloLogic shutoff.",
+      "Protect electrical equipment from water.",
+      "Photograph damage and source.",
+      "Contact plumbing or leak detection vendor.",
+      "Create an Atlas note under the affected asset or location."
+    ],
+    notes: "Do not store private access codes or passwords in this procedure."
+  },
+  {
+    id: "procedure-boiler-mechanical-room",
+    title: "Boiler / Mechanical Room Check",
+    category: "Mechanical",
+    priority: "High",
+    steps: [
+      "Check boiler display for faults.",
+      "Confirm system pressure is in normal range.",
+      "Check for leaks around piping, pumps, relief valves, and tanks.",
+      "Confirm DHW tanks are heating normally.",
+      "Listen for unusual pump or burner noise.",
+      "Record error codes before resetting anything.",
+      "Contact mechanical vendor if fault returns."
+    ],
+    notes: "Linked assets: Viessmann Vitodens 200 boilers and Vitocell 300-V DHW tanks."
+  },
+  {
+    id: "procedure-generator-visual-check",
+    title: "Generator Visual Check",
+    category: "Electrical",
+    priority: "Medium",
+    steps: [
+      "Inspect generator area for debris.",
+      "Check for visible leaks, loose panels, or unusual smell.",
+      "Confirm status indicator is normal.",
+      "Verify service access is clear.",
+      "Record any alert lights or error messages."
+    ],
+    notes: "Do not perform electrical work unless qualified."
+  },
+  {
+    id: "procedure-boat-dock-seasonal",
+    title: "Boat / Dock Seasonal Check",
+    category: "Dock",
+    priority: "Medium",
+    steps: [
+      "Inspect dock surface and edges.",
+      "Check boat lift controls and visible lift box condition.",
+      "Confirm solar panels and battery boxes are secure.",
+      "Check Cobalt and Sea-Doo areas for loose lines or damage.",
+      "Record photos of anything that changed."
+    ],
+    notes: "Linked areas: Dock, Cobalt, Sea-Doo, Sunstream lift boxes."
+  }
+];
 
 const defaultLocations: LocationRecord[] = [
   { id: "2000", name: "2000", type: "Property", notes: "Overall parent property record." },
@@ -247,52 +393,13 @@ const defaultAssets: AssetRecord[] = [
   asset({ id: "hot-water-storage-tank-2", name: "Hot Water Storage Tank 2", locationId: "mechanical-room", category: "Domestic Hot Water", make: "Viessmann", model: "Vitocell 300-V EVIA 300", notes: "79 USG / 300 L indirect-fired stainless DHW tank.", vendorIds: ["psf-mechanical"] }),
   asset({ id: "hottub", name: "Hottub", locationId: "back-patio-water-side", category: "Spa / Hot Tub", make: "Sundance", model: "880 Series Optima", serial: "00P3LCD-100528521-0315", notes: "Sundance Optima hot tub. Date 03/21/15. 240V. ClearRay UV-C. HydroQuip Water Pro Series Smart Heater Plus.", vendorIds: ["aqua-quip", "krisco-pool-spas"] }),
   asset({ id: "hunter-irrigation-controller", name: "Hunter Irrigation Controller", locationId: "general", category: "Irrigation Controller", make: "Hunter", vendorIds: ["advanced-irrigation"] }),
-  asset({ id: "hvac-ah-1-indoor", name: "HVAC AH-1 Indoor", locationId: "mechanical-room-2", category: "HVAC Air Handler", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-ah-2-indoor", name: "HVAC AH-2 Indoor", locationId: "mechanical-room-2", category: "HVAC Air Handler", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-ah-3-indoor", name: "HVAC AH-3 Indoor", locationId: "mechanical-room-2", category: "HVAC Air Handler", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-ah-4-indoor", name: "HVAC AH-4 Indoor", locationId: "mechanical-room-2", category: "HVAC Air Handler", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-ah-5-indoor", name: "HVAC AH-5 Indoor", locationId: "mechanical-room", category: "HVAC Air Handler", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-cu-1-outdoor", name: "HVAC CU-1 Outdoor", locationId: "outdoor-condenser-area", category: "HVAC Condenser", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-cu-2-outdoor", name: "HVAC CU-2 Outdoor", locationId: "outdoor-condenser-area", category: "HVAC Condenser", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-cu-3-outdoor", name: "HVAC CU-3 Outdoor", locationId: "outdoor-condenser-area", category: "HVAC Condenser", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-cu-4-outdoor", name: "HVAC CU-4 Outdoor", locationId: "outdoor-condenser-area", category: "HVAC Condenser", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-cu-5-outdoor", name: "HVAC CU-5 Outdoor", locationId: "outdoor-condenser-area", category: "HVAC Condenser", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-hp-1-indoor", name: "HVAC HP-1 Indoor", locationId: "attic", category: "Heat Pump / HVAC", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-hp-123-outdoor", name: "HVAC HP-123 Outdoor", locationId: "outdoor-generator-area", category: "Heat Pump / HVAC", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-hp-2-indoor", name: "HVAC HP-2 Indoor", locationId: "attic-2", category: "Heat Pump / HVAC", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-hp-3-indoor", name: "HVAC HP-3 Indoor", locationId: "upstairs-laundry-closet", category: "Heat Pump / HVAC", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-hp-4-outdoor-mr", name: "HVAC HP-4 outdoor MR", locationId: "roof", category: "Heat Pump / HVAC", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "hvac-hp-5-outdoor", name: "HVAC HP-5 outdoor", locationId: "roof", category: "Heat Pump / HVAC", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "invisible-fence-asset", name: "Invisible Fence", locationId: "vegetable-garden", category: "Pet / Fence", vendorIds: ["invisible-fence"] }),
-  asset({ id: "irrigation-lake-water-meter", name: "Irrigation Lake Water Meter", locationId: "2000", category: "Irrigation / Water Meter", vendorIds: ["advanced-irrigation"] }),
-  asset({ id: "lynx-grill", name: "Lynx Grill", locationId: "back-patio-water-side", category: "Outdoor Kitchen / Grill", make: "Lynx", vendorIds: ["appliance-service-station"] }),
-  asset({ id: "marantec-wke", name: "Marantec WKE", locationId: "2000", category: "Access / Gate / Garage Control", make: "Marantec", vendorIds: ["precision-garage-door"] }),
-  asset({ id: "outdoor-dehumidifier", name: "Outdoor Dehumidifier", locationId: "outdoor-condenser-area", category: "Dehumidification", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "plane-gulfstream-g280-n280cc", name: "Plane Gulfstream G280 N280CC", locationId: "hangar", category: "Aircraft", make: "Gulfstream", model: "G280", serial: "N280CC" }),
-  asset({ id: "plane-gulfstream-g280-n755pa", name: "Plane Gulfstream G280 N755PA", locationId: "hangar", category: "Aircraft", make: "Gulfstream", model: "G280", serial: "N755PA" }),
-  asset({ id: "plane-gulfstream-g600-n23pa", name: "Plane Gulfstream G600 N23PA", locationId: "hangar", category: "Aircraft", make: "Gulfstream", model: "G600", serial: "N23PA" }),
-  asset({ id: "plane-pilatus-pc12-n126al", name: "Plane Pilatus PC12 N126AL", locationId: "hangar", category: "Aircraft", make: "Pilatus", model: "PC12", serial: "N126AL" }),
   asset({ id: "pool", name: "Pool", locationId: "pool", category: "Pool", status: "Offline", notes: "Pool asset shown as Offline in screenshot.", vendorIds: ["psf-mechanical", "aqua-quip", "krisco-pool-spas"] }),
   asset({ id: "pool-dehumidifier", name: "Pool Dehumidifier", locationId: "mechanical-room", category: "Pool HVAC / Dehumidification", make: "Desert Aire", model: "LC05R2WBDTDLAED", serial: "4217D25175", notes: "Pool dehumidification system.", vendorIds: ["psf-mechanical"] }),
   asset({ id: "range-wolf", name: "Range-Wolf", locationId: "kitchen", category: "Range", make: "Wolf", vendorIds: ["appliance-service-station"] }),
-  asset({ id: "refrigerator-fitness-room", name: "Refrigerator", locationId: "fitness-room", category: "Refrigerator", vendorIds: ["appliance-service-station"] }),
-  asset({ id: "refrigerator-left", name: "Refrigerator Left", locationId: "kitchen", category: "Refrigerator", vendorIds: ["appliance-service-station"] }),
-  asset({ id: "steam-generator-attic", name: "Steam Generator Attic", locationId: "general", category: "Steam Generator", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "vehicle-audi-e-tron-gt", name: "Vehicle Audi E-Tron GT", locationId: "old-garage", category: "Vehicle", make: "Audi", model: "E-Tron GT", vendorIds: ["les-schwab"] }),
   asset({ id: "vehicle-ford-f-150", name: "Vehicle Ford F-150", locationId: "new-garage", category: "Vehicle", make: "Ford", model: "F-150", vendorIds: ["autonation-ford-bellevue", "les-schwab"] }),
-  asset({ id: "vehicle-mercedes-gl", name: "Vehicle Mercedes GL", locationId: "general", category: "Vehicle", make: "Mercedes", model: "GL", vendorIds: ["les-schwab"] }),
   asset({ id: "vehicle-rivian", name: "Vehicle Rivian", locationId: "2000", category: "Vehicle", make: "Rivian", vendorIds: ["les-schwab"] }),
-  asset({ id: "washer-wm-1", name: "Washer WM-1", locationId: "upstairs-laundry-closet", category: "Washer", vendorIds: ["appliance-service-station"] }),
-  asset({ id: "washer-wm-2", name: "Washer WM-2", locationId: "pool-changing-room", category: "Washer", vendorIds: ["appliance-service-station"] }),
-  asset({ id: "washer-wm-3", name: "Washer WM-3", locationId: "house-managers-office", category: "Washer", vendorIds: ["appliance-service-station"] }),
-  asset({ id: "west-steam-generator", name: "West Steam Generator", locationId: "west-side-house", category: "Steam Generator", vendorIds: ["psf-mechanical"] }),
-  asset({ id: "wine-chiller", name: "Wine Chiller", locationId: "formal-dining-room", category: "Wine Cooler", vendorIds: ["appliance-service-station", "electromatic-refrigeration"] }),
-  asset({ id: "wine-fridge", name: "Wine Fridge", locationId: "mechanical-room-2", category: "Wine Fridge", vendorIds: ["appliance-service-station", "electromatic-refrigeration"] }),
   asset({ id: "wine-room-cooler-1", name: "Wine Room Cooler 1", locationId: "wine-room", category: "Wine Room Cooling", vendorIds: ["electromatic-refrigeration", "psf-mechanical"] }),
-  asset({ id: "wine-room-cooler-2", name: "Wine Room Cooler 2", locationId: "wine-room", category: "Wine Room Cooling", vendorIds: ["electromatic-refrigeration", "psf-mechanical"] }),
-  asset({ id: "wine-room-cooler-3", name: "Wine Room Cooler 3", locationId: "wine-room", category: "Wine Room Cooling", vendorIds: ["electromatic-refrigeration", "psf-mechanical"] }),
-  asset({ id: "wine-room-cooler-4", name: "Wine Room Cooler 4", locationId: "wine-room", category: "Wine Room Cooling", vendorIds: ["electromatic-refrigeration", "psf-mechanical"] }),
-  asset({ id: "wolfe-range", name: "wolfe range", locationId: "kitchen", category: "Range", make: "Wolf", notes: "Duplicate/variant naming of Range-Wolf. Keep until confirmed merge.", vendorIds: ["appliance-service-station"] })
+  asset({ id: "wine-room-cooler-2", name: "Wine Room Cooler 2", locationId: "wine-room", category: "Wine Room Cooling", vendorIds: ["electromatic-refrigeration", "psf-mechanical"] })
 ];
 
 const defaultLabels: MapLabel[] = [
@@ -428,36 +535,6 @@ const defaultDocuments: DocumentRecord[] = [
     fileDataUrl: "",
     mimeType: "",
     notes: "Sundance 880 Series Optima nameplate / cabinet photo record. Serial 00P3LCD-100528521-0315."
-  },
-  {
-    id: "doc-seadoo-repair-photos",
-    date: todayISO(),
-    title: "Sea-Doo service / repair photos",
-    type: "Photo",
-    assetId: "craft-seadoo-2024",
-    serviceId: "svc-seadoo-service",
-    vendorId: "seadoo-service",
-    locationId: "dock",
-    url: "",
-    fileName: "",
-    fileDataUrl: "",
-    mimeType: "",
-    notes: "Use this record to describe or link Sea-Doo repair photos."
-  },
-  {
-    id: "doc-pool-backwash-note",
-    date: todayISO(),
-    title: "Pool backwash notes/photos",
-    type: "Note",
-    assetId: "pool",
-    serviceId: "svc-pool-backwash",
-    vendorId: "aqua-quip",
-    locationId: "pool",
-    url: "",
-    fileName: "",
-    fileDataUrl: "",
-    mimeType: "",
-    notes: "Record pressure before/after, backwash date, water clarity, and any photos or observations."
   }
 ];
 
@@ -482,6 +559,32 @@ function qrUrl(type: string, id: string) {
   return "https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=" + encodeURIComponent(target);
 }
 
+function webSearchUrl(query: string) {
+  return "https://www.google.com/search?q=" + encodeURIComponent(query);
+}
+
+function assetLookupText(assetItem: AssetRecord) {
+  return [assetItem.make, assetItem.model, assetItem.serial, assetItem.name, assetItem.category]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function manualSearchUrl(assetItem: AssetRecord) {
+  return webSearchUrl(assetLookupText(assetItem) + " manual PDF manufacturer support");
+}
+
+function partsSearchUrl(assetItem: AssetRecord) {
+  return webSearchUrl(assetLookupText(assetItem) + " parts diagram parts list");
+}
+
+function troubleshootingSearchUrl(assetItem: AssetRecord) {
+  return webSearchUrl(assetLookupText(assetItem) + " troubleshooting fault reset service manual");
+}
+
+function manufacturerSearchUrl(assetItem: AssetRecord) {
+  return webSearchUrl(assetLookupText(assetItem) + " manufacturer support");
+}
+
 export default function Page() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [locations, setLocations] = useState<LocationRecord[]>(defaultLocations);
@@ -499,8 +602,6 @@ export default function Page() {
   const [assetSearch, setAssetSearch] = useState("");
   const [vendorSearch, setVendorSearch] = useState("");
   const [documentSearch, setDocumentSearch] = useState("");
-  const [assistantQuestion, setAssistantQuestion] = useState("");
-  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about an asset, location, vendor, document, photo, invoice, procedure, or service history.");
   const [weather, setWeather] = useState("Loading weather...");
   const [loaded, setLoaded] = useState(false);
 
@@ -596,7 +697,6 @@ export default function Page() {
   function deleteDocumentRecord(id: string) {
     const ok = typeof window === "undefined" ? true : window.confirm("Delete this photo, note, or document?");
     if (!ok) return;
-
     const remaining = documents.filter((row) => row.id !== id);
     setDocuments(remaining);
     setSelectedDocumentId(remaining[0]?.id || "");
@@ -634,9 +734,7 @@ export default function Page() {
     setDocuments((rows) => rows.map((row) => row.assetId === id ? { ...row, assetId: "" } : row));
     setCalendar((rows) => rows.map((row) => row.assetId === id ? { ...row, assetId: "" } : row));
     setSelectedAssetId(remaining[0]?.id || "");
-    if (target?.vendorIds?.length) {
-      setSelectedVendorId(target.vendorIds[0]);
-    }
+    if (target?.vendorIds?.length) setSelectedVendorId(target.vendorIds[0]);
   }
 
   function deleteVendorRecord(id: string) {
@@ -693,11 +791,7 @@ export default function Page() {
   function duplicateVendor(vendor: VendorRecord) {
     const base = cleanId(vendor.name) || "vendor";
     const newId = base + "-copy-" + Date.now();
-    const next: VendorRecord = {
-      ...vendor,
-      id: newId,
-      name: vendor.name + " Copy"
-    };
+    const next: VendorRecord = { ...vendor, id: newId, name: vendor.name + " Copy" };
     setVendors((rows) => [next, ...rows]);
     setSelectedVendorId(newId);
     setScreen("vendors");
@@ -715,10 +809,7 @@ export default function Page() {
 
   function unlinkVendorFromAsset(assetId: string, vendorId: string) {
     setAssets((rows) =>
-      rows.map((row) => {
-        if (row.id !== assetId) return row;
-        return { ...row, vendorIds: row.vendorIds.filter((id) => id !== vendorId) };
-      })
+      rows.map((row) => row.id === assetId ? { ...row, vendorIds: row.vendorIds.filter((id) => id !== vendorId) } : row)
     );
   }
 
@@ -803,6 +894,30 @@ export default function Page() {
     setScreen("documents");
   }
 
+  function saveManualSearchToAsset(assetItem: AssetRecord) {
+    const newId = "doc-manual-search-" + Date.now();
+    const next: DocumentRecord = {
+      id: newId,
+      date: todayISO(),
+      title: "Manual lookup for " + assetItem.name,
+      type: "Manual",
+      assetId: assetItem.id,
+      serviceId: "",
+      vendorId: assetItem.vendorIds[0] || "",
+      locationId: assetItem.locationId,
+      url: manualSearchUrl(assetItem),
+      fileName: "",
+      fileDataUrl: "",
+      mimeType: "",
+      notes: "Atlas manual lookup search created from make/model/serial: " + assetLookupText(assetItem)
+    };
+
+    setDocuments((rows) => [next, ...rows]);
+    setSelectedDocumentId(newId);
+    setSelectedAssetId(assetItem.id);
+    setScreen("documents");
+  }
+
   function addDocumentForAsset(assetId: string) {
     const targetAsset = assets.find((row) => row.id === assetId);
     addDocumentRecord({
@@ -866,37 +981,6 @@ export default function Page() {
     setAssetSearch("");
     setVendorSearch("");
     setDocumentSearch("");
-  }
-
-  function askAtlas() {
-    const q = assistantQuestion.toLowerCase();
-
-    if (q.trim().length === 0) {
-      setAssistantAnswer("Type a question first.");
-      return;
-    }
-
-    const allLines: string[] = [];
-
-    assets.forEach((row) => allLines.push("Asset: " + row.name + ". " + row.category + ". " + row.notes));
-    locations.forEach((row) => allLines.push("Location: " + row.name + ". " + row.type + ". " + row.notes));
-    vendors.forEach((row) => allLines.push("Vendor: " + row.name + ". " + row.category + ". " + (row.phone || "") + ". " + (row.email || "") + ". " + row.notes));
-    serviceHistory.forEach((row) => allLines.push("Service History: " + row.title + ". " + row.date + ". " + row.status + ". " + row.notes));
-    documents.forEach((row) => allLines.push("Document: " + row.title + ". " + row.type + ". " + row.date + ". " + (row.fileName || "") + ". " + row.notes + ". " + (row.url || "")));
-    calendar.forEach((row) => allLines.push("Calendar: " + row.title + ". " + row.date + ". " + (row.source || "Atlas") + ". " + row.notes + ". " + (row.externalLink || "")));
-
-    const words = q.split(" ").filter((word) => word.length > 2);
-    const hits = allLines.filter((line) => {
-      const low = line.toLowerCase();
-      return words.some((word) => low.includes(word));
-    }).slice(0, 12);
-
-    if (hits.length === 0) {
-      setAssistantAnswer("I did not find that in the local Atlas records yet.");
-      return;
-    }
-
-    setAssistantAnswer(hits.join("\n\n"));
   }
 
   return (
@@ -1100,19 +1184,21 @@ export default function Page() {
         )}
 
         {screen === "assistant" && (
-          <div>
-            <Header title="AI Assistant" subtitle="Local Atlas search across saved records, including vendors, documents, photos, calendar, and service history." />
-            <section style={styles.card}>
-              <textarea
-                value={assistantQuestion}
-                onChange={(e) => setAssistantQuestion(e.target.value)}
-                placeholder="Ask about boilers, HVAC, Sundance, Cobalt, Sea-Doo, pool, vendors, photos, documents, service history, calendar, locations..."
-                style={styles.textareaLarge}
-              />
-              <button type="button" onClick={askAtlas} style={styles.primaryButton}>Ask Atlas</button>
-              <pre style={styles.answerBox}>{assistantAnswer}</pre>
-            </section>
-          </div>
+          <AskAtlasPanel
+            assets={assets}
+            vendors={vendors}
+            locations={locations}
+            serviceHistory={serviceHistory}
+            documents={documents}
+            calendar={calendar}
+            setSelectedAssetId={setSelectedAssetId}
+            setSelectedVendorId={setSelectedVendorId}
+            setSelectedLocationId={setSelectedLocationId}
+            setSelectedServiceId={setSelectedServiceId}
+            setSelectedDocumentId={setSelectedDocumentId}
+            setScreen={setScreen}
+            saveManualSearchToAsset={saveManualSearchToAsset}
+          />
         )}
 
         {screen === "blank" && <BlankCanvasPanel />}
@@ -1197,7 +1283,7 @@ function DashboardPanel({
           <QuickRecord label="Boiler B-2 New" onClick={() => { setSelectedAssetId("boiler-b-2-new"); setScreen("assets"); }} />
           <QuickRecord label="Pool Dehumidifier" onClick={() => { setSelectedAssetId("pool-dehumidifier"); setScreen("assets"); }} />
           <QuickRecord label="Hottub Sundance" onClick={() => { setSelectedAssetId("hottub"); setScreen("assets"); }} />
-          <QuickRecord label="Craft-SeaDoo 2024" onClick={() => { setSelectedAssetId("craft-seadoo-2024"); setScreen("assets"); }} />
+          <QuickRecord label="Ask Atlas" onClick={() => setScreen("assistant")} />
           <QuickRecord label="Open Calendar" onClick={() => setScreen("calendar")} />
           <QuickRecord label="Add New Vendor" onClick={addVendor} />
           <QuickRecord label="Add Photo / Document" onClick={() => addDocumentRecord()} />
@@ -1205,6 +1291,450 @@ function DashboardPanel({
           <div style={styles.answerBox}>Service records: {serviceHistory.length}{"\n"}Documents/photos: {documents.length}</div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function AskAtlasPanel({
+  assets,
+  vendors,
+  locations,
+  serviceHistory,
+  documents,
+  calendar,
+  setSelectedAssetId,
+  setSelectedVendorId,
+  setSelectedLocationId,
+  setSelectedServiceId,
+  setSelectedDocumentId,
+  setScreen,
+  saveManualSearchToAsset
+}: {
+  assets: AssetRecord[];
+  vendors: VendorRecord[];
+  locations: LocationRecord[];
+  serviceHistory: ServiceHistoryRecord[];
+  documents: DocumentRecord[];
+  calendar: CalendarEvent[];
+  setSelectedAssetId: (id: string) => void;
+  setSelectedVendorId: (id: string) => void;
+  setSelectedLocationId: (id: string) => void;
+  setSelectedServiceId: (id: string) => void;
+  setSelectedDocumentId: (id: string) => void;
+  setScreen: (screen: Screen) => void;
+  saveManualSearchToAsset: (assetItem: AssetRecord) => void;
+}) {
+  const [question, setQuestion] = useState("");
+  const [lastQuestion, setLastQuestion] = useState("");
+
+  const results = useMemo(() => {
+    const query = lastQuestion.trim();
+    if (!query) return [];
+
+    const rows: AtlasSearchResult[] = [];
+
+    assets.forEach((row) => {
+      const location = locations.find((item) => item.id === row.locationId);
+      const linkedVendors = vendors.filter((vendor) => row.vendorIds.includes(vendor.id)).map((vendor) => vendor.name).join(", ");
+      const linkedServices = serviceHistory.filter((service) => service.assetId === row.id);
+      const linkedDocs = documents.filter((doc) => doc.assetId === row.id);
+      const linkedCalendar = calendar.filter((event) => event.assetId === row.id);
+      const text = [
+        row.name,
+        row.category,
+        row.make,
+        row.model,
+        row.serial,
+        row.status,
+        row.notes,
+        location?.name,
+        linkedVendors,
+        linkedServices.map((item) => item.title + " " + item.notes).join(" "),
+        linkedDocs.map((item) => item.title + " " + item.notes).join(" "),
+        linkedCalendar.map((item) => item.title + " " + item.notes).join(" ")
+      ].join(" ");
+
+      const score = scoreText(query, text);
+      if (score > 0) {
+        rows.push({
+          kind: "Asset",
+          id: row.id,
+          title: row.name,
+          subtitle: row.category + " · " + row.status,
+          body:
+            "Location: " + (location?.name || "No location") + "\n" +
+            "Make/model/serial: " + [row.make, row.model, row.serial].filter(Boolean).join(" · ") + "\n" +
+            "Vendors: " + (linkedVendors || "None linked") + "\n" +
+            "Service records: " + linkedServices.length + "\n" +
+            "Documents/photos: " + linkedDocs.length + "\n" +
+            "Calendar items: " + linkedCalendar.length + "\n\n" +
+            row.notes,
+          score,
+          assetId: row.id
+        });
+      }
+    });
+
+    vendors.forEach((row) => {
+      const linkedAssets = assets.filter((assetItem) => assetItem.vendorIds.includes(row.id));
+      const linkedServices = serviceHistory.filter((service) => service.vendorId === row.id);
+      const linkedDocs = documents.filter((doc) => doc.vendorId === row.id);
+      const text = [
+        row.name,
+        row.category,
+        row.phone,
+        row.email,
+        row.address,
+        row.notes,
+        linkedAssets.map((item) => item.name).join(" "),
+        linkedServices.map((item) => item.title + " " + item.notes).join(" ")
+      ].join(" ");
+
+      const score = scoreText(query, text);
+      if (score > 0) {
+        rows.push({
+          kind: "Vendor",
+          id: row.id,
+          title: row.name,
+          subtitle: row.category,
+          body:
+            "Phone: " + (row.phone || "Not saved") + "\n" +
+            "Email: " + (row.email || "Not saved") + "\n" +
+            "Address: " + (row.address || "Not saved") + "\n" +
+            "Linked assets: " + linkedAssets.length + "\n" +
+            "Service records: " + linkedServices.length + "\n" +
+            "Documents/photos: " + linkedDocs.length + "\n\n" +
+            row.notes,
+          score,
+          vendorId: row.id
+        });
+      }
+    });
+
+    serviceHistory.forEach((row) => {
+      const linkedAsset = assets.find((assetItem) => assetItem.id === row.assetId);
+      const linkedVendor = vendors.find((vendorItem) => vendorItem.id === row.vendorId);
+      const linkedDocs = documents.filter((doc) => doc.serviceId === row.id);
+      const text = [
+        row.title,
+        row.date,
+        row.status,
+        row.cost,
+        row.notes,
+        linkedAsset?.name,
+        linkedVendor?.name,
+        linkedDocs.map((item) => item.title + " " + item.notes).join(" ")
+      ].join(" ");
+
+      const score = scoreText(query, text);
+      if (score > 0) {
+        rows.push({
+          kind: "Service",
+          id: row.id,
+          title: row.title,
+          subtitle: row.date + " · " + row.status,
+          body:
+            "Asset: " + (linkedAsset?.name || "No linked asset") + "\n" +
+            "Vendor: " + (linkedVendor?.name || "No linked vendor") + "\n" +
+            "Cost: " + (row.cost || "Not entered") + "\n" +
+            "Linked documents/photos: " + linkedDocs.length + "\n\n" +
+            row.notes,
+          score,
+          serviceId: row.id,
+          assetId: row.assetId,
+          vendorId: row.vendorId
+        });
+      }
+    });
+
+    documents.forEach((row) => {
+      const linkedAsset = assets.find((assetItem) => assetItem.id === row.assetId);
+      const linkedVendor = vendors.find((vendorItem) => vendorItem.id === row.vendorId);
+      const linkedService = serviceHistory.find((serviceItem) => serviceItem.id === row.serviceId);
+      const text = [
+        row.title,
+        row.type,
+        row.date,
+        row.url,
+        row.fileName,
+        row.notes,
+        linkedAsset?.name,
+        linkedVendor?.name,
+        linkedService?.title
+      ].join(" ");
+
+      const score = scoreText(query, text);
+      if (score > 0) {
+        rows.push({
+          kind: "Document",
+          id: row.id,
+          title: row.title,
+          subtitle: row.type + " · " + row.date,
+          body:
+            "Asset: " + (linkedAsset?.name || "No linked asset") + "\n" +
+            "Vendor: " + (linkedVendor?.name || "No linked vendor") + "\n" +
+            "Service: " + (linkedService?.title || "No linked service") + "\n" +
+            "URL/file: " + (row.url || row.fileName || "No URL/file saved") + "\n\n" +
+            row.notes,
+          score,
+          documentId: row.id,
+          assetId: row.assetId,
+          vendorId: row.vendorId,
+          serviceId: row.serviceId
+        });
+      }
+    });
+
+    calendar.forEach((row) => {
+      const linkedAsset = assets.find((assetItem) => assetItem.id === row.assetId);
+      const linkedVendor = vendors.find((vendorItem) => vendorItem.id === row.vendorId);
+      const linkedService = serviceHistory.find((serviceItem) => serviceItem.id === row.serviceId);
+      const text = [
+        row.title,
+        row.date,
+        row.source,
+        row.externalLink,
+        row.notes,
+        linkedAsset?.name,
+        linkedVendor?.name,
+        linkedService?.title
+      ].join(" ");
+
+      const score = scoreText(query, text);
+      if (score > 0) {
+        rows.push({
+          kind: "Calendar",
+          id: row.id,
+          title: row.title,
+          subtitle: row.date + " · " + (row.source || "Atlas"),
+          body:
+            "Asset: " + (linkedAsset?.name || "No linked asset") + "\n" +
+            "Vendor: " + (linkedVendor?.name || "No linked vendor") + "\n" +
+            "Service: " + (linkedService?.title || "No linked service") + "\n" +
+            "External link: " + (row.externalLink || "None") + "\n\n" +
+            row.notes,
+          score,
+          calendarId: row.id,
+          assetId: row.assetId,
+          vendorId: row.vendorId,
+          serviceId: row.serviceId
+        });
+      }
+    });
+
+    locations.forEach((row) => {
+      const linkedAssets = assets.filter((assetItem) => assetItem.locationId === row.id);
+      const linkedDocs = documents.filter((doc) => doc.locationId === row.id);
+      const text = [row.name, row.type, row.notes, linkedAssets.map((item) => item.name).join(" "), linkedDocs.map((item) => item.title).join(" ")].join(" ");
+      const score = scoreText(query, text);
+      if (score > 0) {
+        rows.push({
+          kind: "Location",
+          id: row.id,
+          title: row.name,
+          subtitle: row.type,
+          body:
+            "Assets here: " + linkedAssets.length + "\n" +
+            "Documents/photos here: " + linkedDocs.length + "\n\n" +
+            row.notes,
+          score,
+          locationId: row.id
+        });
+      }
+    });
+
+    procedureRecords.forEach((row) => {
+      const text = [row.title, row.category, row.priority, row.notes, row.steps.join(" ")].join(" ");
+      const score = scoreText(query, text);
+      if (score > 0) {
+        rows.push({
+          kind: "Procedure",
+          id: row.id,
+          title: row.title,
+          subtitle: row.category + " · " + row.priority,
+          body: row.steps.map((step, index) => String(index + 1) + ". " + step).join("\n") + "\n\n" + row.notes,
+          score
+        });
+      }
+    });
+
+    return rows.sort((a, b) => b.score - a.score).slice(0, 12);
+  }, [lastQuestion, assets, vendors, locations, serviceHistory, documents, calendar]);
+
+  const topAssets = useMemo(() => {
+    const ids = results.map((row) => row.assetId).filter(Boolean) as string[];
+    const unique = Array.from(new Set(ids));
+    return unique.map((id) => assets.find((row) => row.id === id)).filter(Boolean) as AssetRecord[];
+  }, [results, assets]);
+
+  const directAssetGuess = useMemo(() => {
+    if (!lastQuestion.trim()) return null;
+    const scored = assets
+      .map((row) => ({
+        asset: row,
+        score: scoreText(lastQuestion, [row.name, row.category, row.make, row.model, row.serial, row.notes].join(" "))
+      }))
+      .filter((row) => row.score > 0)
+      .sort((a, b) => b.score - a.score)[0];
+
+    return scored?.asset || null;
+  }, [lastQuestion, assets]);
+
+  function runQuestion() {
+    setLastQuestion(question.trim());
+  }
+
+  function openResult(result: AtlasSearchResult) {
+    if (result.assetId) {
+      setSelectedAssetId(result.assetId);
+      setScreen("assets");
+      return;
+    }
+
+    if (result.vendorId) {
+      setSelectedVendorId(result.vendorId);
+      setScreen("vendors");
+      return;
+    }
+
+    if (result.serviceId) {
+      setSelectedServiceId(result.serviceId);
+      setScreen("history");
+      return;
+    }
+
+    if (result.documentId) {
+      setSelectedDocumentId(result.documentId);
+      setScreen("documents");
+      return;
+    }
+
+    if (result.locationId) {
+      setSelectedLocationId(result.locationId);
+      setScreen("locations");
+      return;
+    }
+
+    if (result.calendarId) {
+      setScreen("calendar");
+      return;
+    }
+
+    if (result.kind === "Procedure") {
+      setScreen("procedures");
+    }
+  }
+
+  function answerIntro() {
+    if (!lastQuestion.trim()) {
+      return "Ask a property question like: What boiler do we have? Find the Sundance manual. Who services the pool? What is linked to Penthouse Drapery?";
+    }
+
+    if (results.length === 0) {
+      return "I did not find that in the saved Atlas records yet. Try using an asset name, vendor name, model, serial number, location, procedure, or service keyword.";
+    }
+
+    const first = results[0];
+    if (first.kind === "Asset") {
+      return "Best match: " + first.title + ". I found the asset record plus linked vendors, service history, documents/photos, and calendar references.";
+    }
+
+    if (first.kind === "Vendor") {
+      return "Best match: " + first.title + ". I found the vendor record plus linked assets, documents/photos, and service history.";
+    }
+
+    if (first.kind === "Service") {
+      return "Best match: " + first.title + ". I found the service/work-order record and any linked asset, vendor, and documents.";
+    }
+
+    if (first.kind === "Document") {
+      return "Best match: " + first.title + ". I found a saved document/photo/manual/invoice record.";
+    }
+
+    return "I found matching Atlas records below.";
+  }
+
+  return (
+    <div>
+      <Header title="Ask Atlas" subtitle="Ask questions about the property, assets, vendors, service history, documents, calendar, and procedures. Manual lookup tools use make/model/serial to search the internet." />
+
+      <div style={styles.statGrid}>
+        <Stat label="Assets" value={assets.length} />
+        <Stat label="Vendors" value={vendors.length} />
+        <Stat label="Docs / Photos" value={documents.length} />
+        <Stat label="Calendar" value={calendar.length} />
+      </div>
+
+      <section style={styles.card}>
+        <textarea
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Ask Atlas: What boiler do we have? Find the Sundance hot tub manual. Who services the pool? What is linked to Boiler B-2 New?"
+          style={styles.textareaLarge}
+        />
+
+        <div style={styles.buttonRow}>
+          <button type="button" onClick={runQuestion} style={styles.primaryButton}>Ask Atlas</button>
+          <button type="button" onClick={() => { setQuestion("Find the manual for the Sundance hot tub"); setLastQuestion("Find the manual for the Sundance hot tub"); }} style={styles.secondaryButton}>Sundance Manual</button>
+          <button type="button" onClick={() => { setQuestion("What boiler do we have"); setLastQuestion("What boiler do we have"); }} style={styles.secondaryButton}>Boiler Question</button>
+          <button type="button" onClick={() => { setQuestion("Pool backwash procedure"); setLastQuestion("Pool backwash procedure"); }} style={styles.secondaryButton}>Pool Backwash</button>
+        </div>
+
+        <div style={styles.answerBox}>{answerIntro()}</div>
+      </section>
+
+      {directAssetGuess && (
+        <section style={{ ...styles.card, marginTop: 18 }}>
+          <h2 style={styles.h2}>Internet / Manual Lookup Tools</h2>
+          <p style={styles.muted}>Best asset guess: <strong>{directAssetGuess.name}</strong>. These buttons search the internet using saved make/model/serial. Save Manual Search creates a manual document record attached to the asset.</p>
+
+          <div style={styles.lookupGrid}>
+            <a href={manualSearchUrl(directAssetGuess)} target="_blank" rel="noreferrer" style={styles.linkButton}>Find Manual</a>
+            <a href={partsSearchUrl(directAssetGuess)} target="_blank" rel="noreferrer" style={styles.linkButton}>Find Parts</a>
+            <a href={troubleshootingSearchUrl(directAssetGuess)} target="_blank" rel="noreferrer" style={styles.linkButton}>Troubleshooting</a>
+            <a href={manufacturerSearchUrl(directAssetGuess)} target="_blank" rel="noreferrer" style={styles.linkButton}>Manufacturer Support</a>
+            <button type="button" onClick={() => saveManualSearchToAsset(directAssetGuess)} style={styles.primaryButton}>Save Manual Search to Asset</button>
+          </div>
+        </section>
+      )}
+
+      {topAssets.length > 0 && (
+        <section style={{ ...styles.card, marginTop: 18 }}>
+          <h2 style={styles.h2}>Matched Asset Manual Tools</h2>
+          <div style={styles.gridTwo}>
+            {topAssets.slice(0, 4).map((assetItem) => (
+              <div key={assetItem.id} style={styles.listButton}>
+                <strong>{assetItem.name}</strong>
+                <span style={styles.smallMuted}>{[assetItem.make, assetItem.model, assetItem.serial].filter(Boolean).join(" · ") || assetItem.category}</span>
+                <div style={styles.buttonRow}>
+                  <a href={manualSearchUrl(assetItem)} target="_blank" rel="noreferrer" style={styles.smallLinkButton}>Manual</a>
+                  <a href={partsSearchUrl(assetItem)} target="_blank" rel="noreferrer" style={styles.smallLinkButton}>Parts</a>
+                  <a href={troubleshootingSearchUrl(assetItem)} target="_blank" rel="noreferrer" style={styles.smallLinkButton}>Troubleshoot</a>
+                  <button type="button" onClick={() => saveManualSearchToAsset(assetItem)} style={styles.smallPrimaryButton}>Save</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section style={{ ...styles.card, marginTop: 18 }}>
+        <h2 style={styles.h2}>Answer / Matching Records</h2>
+
+        {results.length === 0 && lastQuestion && (
+          <div style={styles.answerBox}>No matching records found yet.</div>
+        )}
+
+        {results.map((result) => (
+          <div key={result.kind + result.id} style={styles.resultCard}>
+            <p style={styles.kicker}>{result.kind}</p>
+            <h3 style={styles.h3}>{result.title}</h3>
+            <p style={styles.muted}>{result.subtitle}</p>
+            <pre style={styles.resultBody}>{result.body}</pre>
+            <button type="button" onClick={() => openResult(result)} style={styles.primaryButton}>Open Linked Record</button>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
@@ -1415,8 +1945,11 @@ function AssetsPanel({
           <h2 style={styles.h2}>{selectedAsset.name}</h2>
           <p style={styles.kicker}>{selectedAsset.category}</p>
 
-          <button type="button" onClick={() => addServiceRecordForAsset(selectedAsset.id)} style={styles.primaryButton}>+ Add Service Note for This Asset</button>
-          <button type="button" onClick={() => addDocumentForAsset(selectedAsset.id)} style={styles.secondaryButton}>+ Add Photo / Document for This Asset</button>
+          <div style={styles.buttonRow}>
+            <button type="button" onClick={() => addServiceRecordForAsset(selectedAsset.id)} style={styles.primaryButton}>+ Add Service Note</button>
+            <button type="button" onClick={() => addDocumentForAsset(selectedAsset.id)} style={styles.secondaryButton}>+ Add Photo / Document</button>
+            <a href={manualSearchUrl(selectedAsset)} target="_blank" rel="noreferrer" style={styles.linkButton}>Find Manual</a>
+          </div>
 
           <div style={styles.qrRow}>
             <img src={qrUrl("asset", selectedAsset.id)} alt="Asset QR code" style={styles.qrImage} />
@@ -1457,6 +1990,14 @@ function AssetsPanel({
           <label style={styles.label}>Notes</label>
           <textarea value={selectedAsset.notes} onChange={(e) => updateAsset(selectedAsset.id, { notes: e.target.value })} style={styles.textarea} />
 
+          <h3 style={styles.h3}>Manual / Parts Lookup</h3>
+          <div style={styles.buttonRow}>
+            <a href={manualSearchUrl(selectedAsset)} target="_blank" rel="noreferrer" style={styles.smallLinkButton}>Manual</a>
+            <a href={partsSearchUrl(selectedAsset)} target="_blank" rel="noreferrer" style={styles.smallLinkButton}>Parts</a>
+            <a href={troubleshootingSearchUrl(selectedAsset)} target="_blank" rel="noreferrer" style={styles.smallLinkButton}>Troubleshoot</a>
+            <a href={manufacturerSearchUrl(selectedAsset)} target="_blank" rel="noreferrer" style={styles.smallLinkButton}>Support</a>
+          </div>
+
           <h3 style={styles.h3}>Add Vendor to This Asset</h3>
           <select value={selectedVendorId} onChange={(e) => setSelectedVendorId(e.target.value)} style={styles.input}>
             {vendors.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
@@ -1483,7 +2024,6 @@ function AssetsPanel({
           ))}
 
           <h3 style={styles.h3}>Photos / Documents</h3>
-          <button type="button" onClick={() => addDocumentForAsset(selectedAsset.id)} style={styles.listButton}>+ Add photo, invoice, manual, warranty, or note for {selectedAsset.name}</button>
           {documents.filter((row) => row.assetId === selectedAsset.id).map((row) => (
             <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
               <strong>{row.title}</strong>
@@ -1493,7 +2033,6 @@ function AssetsPanel({
           ))}
 
           <h3 style={styles.h3}>Service History</h3>
-          <button type="button" onClick={() => addServiceRecordForAsset(selectedAsset.id)} style={styles.listButton}>+ Add new service comment for {selectedAsset.name}</button>
           {serviceHistory.filter((row) => row.assetId === selectedAsset.id).map((row) => (
             <button key={row.id} type="button" onClick={() => { setSelectedServiceId(row.id); setScreen("history"); }} style={styles.listButton}>
               <strong>{row.title}</strong>
@@ -1564,7 +2103,6 @@ function ServiceHistoryPanel({
       <div style={styles.gridTwo}>
         <section style={styles.card}>
           <h2 style={styles.h2}>Add Service Record</h2>
-          <p style={styles.muted}>Click an asset below to start a new service note already attached to that asset.</p>
           <div style={styles.scrollListSmall}>
             {assets.map((row) => (
               <button key={row.id} type="button" onClick={() => addServiceRecordForAsset(row.id)} style={styles.listButton}>
@@ -1591,37 +2129,32 @@ function ServiceHistoryPanel({
         </section>
 
         <section style={styles.card}>
-          {!selectedService && (
-            <div>
-              <h2 style={styles.h2}>No service note selected</h2>
-              <p style={styles.muted}>Pick an asset on the left to create a new service note.</p>
-            </div>
-          )}
+          {!selectedService && <p style={styles.muted}>Pick an asset on the left to create a new service note.</p>}
 
           {selectedService && (
             <div>
               <h2 style={styles.h2}>Service Comment / Work Order</h2>
               <p style={styles.kicker}>{linkedAsset?.name || "No linked asset"} · {selectedService.status}</p>
 
-              <label style={styles.label}>1. Asset this service belongs to</label>
+              <label style={styles.label}>Asset</label>
               <select value={selectedService.assetId} onChange={(e) => updateServiceRecord(selectedService.id, { assetId: e.target.value })} style={styles.input}>
                 <option value="">No asset</option>
                 {assets.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
               </select>
 
-              <label style={styles.label}>2. Date</label>
+              <label style={styles.label}>Date</label>
               <input value={selectedService.date} onChange={(e) => updateServiceRecord(selectedService.id, { date: e.target.value })} style={styles.input} />
 
-              <label style={styles.label}>3. Title / short description</label>
+              <label style={styles.label}>Title</label>
               <input value={selectedService.title} onChange={(e) => updateServiceRecord(selectedService.id, { title: e.target.value })} style={styles.input} />
 
-              <label style={styles.label}>4. Vendor</label>
+              <label style={styles.label}>Vendor</label>
               <select value={selectedService.vendorId} onChange={(e) => updateServiceRecord(selectedService.id, { vendorId: e.target.value })} style={styles.input}>
                 <option value="">No vendor</option>
                 {vendors.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
               </select>
 
-              <label style={styles.label}>5. Status</label>
+              <label style={styles.label}>Status</label>
               <select value={selectedService.status} onChange={(e) => updateServiceRecord(selectedService.id, { status: e.target.value as ServiceStatus })} style={styles.input}>
                 <option value="Open">Open</option>
                 <option value="Scheduled">Scheduled</option>
@@ -1629,11 +2162,11 @@ function ServiceHistoryPanel({
                 <option value="Monitor">Monitor</option>
               </select>
 
-              <label style={styles.label}>6. Cost</label>
+              <label style={styles.label}>Cost</label>
               <input value={selectedService.cost || ""} onChange={(e) => updateServiceRecord(selectedService.id, { cost: e.target.value })} placeholder="$0.00" style={styles.input} />
 
-              <label style={styles.label}>7. Comments / paste notes here</label>
-              <textarea value={selectedService.notes} onChange={(e) => updateServiceRecord(selectedService.id, { notes: e.target.value })} placeholder="Paste invoice notes, vendor text, work performed, parts used, photos to attach later, next steps, or anything important..." style={styles.textareaHuge} />
+              <label style={styles.label}>Comments / paste notes here</label>
+              <textarea value={selectedService.notes} onChange={(e) => updateServiceRecord(selectedService.id, { notes: e.target.value })} style={styles.textareaHuge} />
 
               <button type="button" onClick={() => deleteServiceRecord(selectedService.id)} style={styles.dangerButton}>
                 Delete Service Note / Work Order
@@ -1653,7 +2186,6 @@ function ServiceHistoryPanel({
                 <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
                   <strong>{row.title}</strong>
                   <span style={styles.smallMuted}>{row.date} · {row.type}</span>
-                  {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached</span>}
                 </button>
               ))}
 
@@ -1739,8 +2271,6 @@ function VendorsPanel({
               <button key={row.id} type="button" onClick={() => setSelectedVendorId(row.id)} style={row.id === selectedVendorId ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}>
                 <strong>{row.name}</strong>
                 <span style={styles.smallMuted}>{row.category}</span>
-                {row.phone && <span style={styles.smallMuted}>{row.phone}</span>}
-                {row.email && <span style={styles.smallMuted}>{row.email}</span>}
               </button>
             ))}
           </div>
@@ -1764,16 +2294,16 @@ function VendorsPanel({
           <input value={selectedVendor.category} onChange={(e) => updateVendor(selectedVendor.id, { category: e.target.value })} style={styles.input} />
 
           <label style={styles.label}>Phone</label>
-          <input value={selectedVendor.phone || ""} onChange={(e) => updateVendor(selectedVendor.id, { phone: e.target.value })} placeholder="Phone number" style={styles.input} />
+          <input value={selectedVendor.phone || ""} onChange={(e) => updateVendor(selectedVendor.id, { phone: e.target.value })} style={styles.input} />
 
           <label style={styles.label}>Email</label>
-          <input value={selectedVendor.email || ""} onChange={(e) => updateVendor(selectedVendor.id, { email: e.target.value })} placeholder="Email address" style={styles.input} />
+          <input value={selectedVendor.email || ""} onChange={(e) => updateVendor(selectedVendor.id, { email: e.target.value })} style={styles.input} />
 
           <label style={styles.label}>Address</label>
-          <input value={selectedVendor.address || ""} onChange={(e) => updateVendor(selectedVendor.id, { address: e.target.value })} placeholder="Address" style={styles.input} />
+          <input value={selectedVendor.address || ""} onChange={(e) => updateVendor(selectedVendor.id, { address: e.target.value })} style={styles.input} />
 
-          <label style={styles.label}>Vendor Notes / paste details here</label>
-          <textarea value={selectedVendor.notes} onChange={(e) => updateVendor(selectedVendor.id, { notes: e.target.value })} placeholder="Paste vendor notes, contact details, service scope, account info, invoice notes, or anything useful..." style={styles.textareaHuge} />
+          <label style={styles.label}>Vendor Notes</label>
+          <textarea value={selectedVendor.notes} onChange={(e) => updateVendor(selectedVendor.id, { notes: e.target.value })} style={styles.textareaHuge} />
 
           <button type="button" onClick={() => deleteVendorRecord(selectedVendor.id)} style={styles.dangerButton}>
             Delete Vendor
@@ -1805,17 +2335,14 @@ function VendorsPanel({
           ))}
 
           <h3 style={styles.h3}>Vendor Documents / Photos</h3>
-          <button type="button" onClick={() => addDocumentForVendor(selectedVendor.id)} style={styles.listButton}>+ Add invoice, photo, manual, warranty, or note for {selectedVendor.name}</button>
           {documents.filter((row) => row.vendorId === selectedVendor.id).map((row) => (
             <button key={row.id} type="button" onClick={() => { setSelectedDocumentId(row.id); setScreen("documents"); }} style={styles.listButton}>
               <strong>{row.title}</strong>
               <span style={styles.smallMuted}>{row.date} · {row.type}</span>
-              {row.fileDataUrl && <span style={styles.smallMuted}>Photo attached</span>}
             </button>
           ))}
 
           <h3 style={styles.h3}>Service History</h3>
-          <button type="button" onClick={() => addServiceRecordForVendor(selectedVendor.id)} style={styles.listButton}>+ Add service note for {selectedVendor.name}</button>
           {serviceHistory.filter((row) => row.vendorId === selectedVendor.id).map((row) => (
             <button key={row.id} type="button" onClick={() => { setSelectedServiceId(row.id); setScreen("history"); }} style={styles.listButton}>
               <strong>{row.title}</strong>
@@ -1963,11 +2490,7 @@ function DocumentsPanel({
               </label>
 
               {selectedDocument.fileDataUrl && (
-                <button
-                  type="button"
-                  onClick={() => updateDocument(selectedDocument.id, { fileName: "", fileDataUrl: "", mimeType: "" })}
-                  style={styles.secondaryButton}
-                >
+                <button type="button" onClick={() => updateDocument(selectedDocument.id, { fileName: "", fileDataUrl: "", mimeType: "" })} style={styles.secondaryButton}>
                   Remove Uploaded Photo Only
                 </button>
               )}
@@ -2016,7 +2539,7 @@ function DocumentsPanel({
               <input value={selectedDocument.url || ""} onChange={(e) => updateDocument(selectedDocument.id, { url: e.target.value })} placeholder="Paste Google Drive link, photo filename, invoice location, manual URL, or note" style={styles.input} />
 
               <label style={styles.label}>Notes / paste details here</label>
-              <textarea value={selectedDocument.notes} onChange={(e) => updateDocument(selectedDocument.id, { notes: e.target.value })} placeholder="Paste invoice details, photo description, warranty info, manual notes, repair notes, or where the real file is stored..." style={styles.textareaHuge} />
+              <textarea value={selectedDocument.notes} onChange={(e) => updateDocument(selectedDocument.id, { notes: e.target.value })} style={styles.textareaHuge} />
 
               {selectedDocument.url && (
                 <a href={selectedDocument.url} target="_blank" rel="noreferrer" style={styles.linkButton}>
@@ -2093,34 +2616,9 @@ function CalendarPanel({
     return date;
   });
 
-  const selectedDayEvents = calendar
-    .filter((row) => row.date === selectedDate)
-    .sort((a, b) => a.title.localeCompare(b.title));
-
-  const selectedEvent =
-    calendar.find((row) => row.id === selectedEventId) ||
-    selectedDayEvents[0] ||
-    calendar[0] ||
-    null;
-
-  const upcomingEvents = [...calendar]
-    .filter((row) => row.date >= todayISO())
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 8);
-
-  function goPreviousMonth() {
-    setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1));
-  }
-
-  function goNextMonth() {
-    setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1));
-  }
-
-  function goToday() {
-    const today = new Date();
-    setVisibleMonth(today);
-    setSelectedDate(todayISO());
-  }
+  const selectedDayEvents = calendar.filter((row) => row.date === selectedDate).sort((a, b) => a.title.localeCompare(b.title));
+  const selectedEvent = calendar.find((row) => row.id === selectedEventId) || selectedDayEvents[0] || calendar[0] || null;
+  const upcomingEvents = [...calendar].filter((row) => row.date >= todayISO()).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
 
   function updateCalendarEvent(id: string, patch: Partial<CalendarEvent>) {
     setCalendar(calendar.map((row) => row.id === id ? { ...row, ...patch } : row));
@@ -2148,7 +2646,6 @@ function CalendarPanel({
   function deleteCalendarEvent(id: string) {
     const ok = typeof window === "undefined" ? true : window.confirm("Delete this calendar item?");
     if (!ok) return;
-
     const remaining = calendar.filter((row) => row.id !== id);
     setCalendar(remaining);
     setSelectedEventId(remaining.find((row) => row.date === selectedDate)?.id || remaining[0]?.id || "");
@@ -2163,7 +2660,7 @@ function CalendarPanel({
 
   return (
     <div>
-      <Header title="Full Month Calendar" subtitle="Schedule work, edit/delete calendar items, and attach them to assets, vendors, and service notes. Outlook, Apple, Google, or other calendar links can be tracked here now and synced later with account connections." />
+      <Header title="Full Month Calendar" subtitle="Schedule work, edit/delete calendar items, and attach them to assets, vendors, and service notes." />
 
       <div style={styles.statGrid}>
         <Stat label="Calendar Items" value={calendar.length} />
@@ -2175,10 +2672,10 @@ function CalendarPanel({
       <div style={styles.calendarLayout}>
         <section style={styles.card}>
           <div style={styles.calendarToolbar}>
-            <button type="button" onClick={goPreviousMonth} style={styles.secondaryButton}>Previous</button>
+            <button type="button" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))} style={styles.secondaryButton}>Previous</button>
             <h2 style={styles.calendarTitle}>{monthName}</h2>
-            <button type="button" onClick={goNextMonth} style={styles.secondaryButton}>Next</button>
-            <button type="button" onClick={goToday} style={styles.primaryButton}>Today</button>
+            <button type="button" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))} style={styles.secondaryButton}>Next</button>
+            <button type="button" onClick={() => { const now = new Date(); setVisibleMonth(now); setSelectedDate(todayISO()); }} style={styles.primaryButton}>Today</button>
           </div>
 
           <div style={styles.weekHeaderGrid}>
@@ -2209,13 +2706,9 @@ function CalendarPanel({
                 >
                   <div style={styles.dayNumber}>{date.getDate()}</div>
                   {dayEvents.slice(0, 3).map((event) => (
-                    <div key={event.id} style={styles.eventPill}>
-                      {event.title}
-                    </div>
+                    <div key={event.id} style={styles.eventPill}>{event.title}</div>
                   ))}
-                  {dayEvents.length > 3 && (
-                    <div style={styles.moreEvents}>+{dayEvents.length - 3} more</div>
-                  )}
+                  {dayEvents.length > 3 && <div style={styles.moreEvents}>+{dayEvents.length - 3} more</div>}
                 </button>
               );
             })}
@@ -2224,25 +2717,16 @@ function CalendarPanel({
 
         <section style={styles.card}>
           <h2 style={styles.h2}>{selectedDate}</h2>
-          <button type="button" onClick={() => addCalendarEventForDate(selectedDate)} style={styles.primaryButton}>
-            + Add Item to This Day
-          </button>
+          <button type="button" onClick={() => addCalendarEventForDate(selectedDate)} style={styles.primaryButton}>+ Add Item to This Day</button>
 
           <h3 style={styles.h3}>Items on Selected Day</h3>
-          {selectedDayEvents.length === 0 && (
-            <div style={styles.answerBox}>No calendar items on this day yet.</div>
-          )}
+          {selectedDayEvents.length === 0 && <div style={styles.answerBox}>No calendar items on this day yet.</div>}
 
           {selectedDayEvents.map((event) => {
             const linkedAsset = assets.find((row) => row.id === event.assetId);
             const linkedVendor = vendors.find((row) => row.id === event.vendorId);
             return (
-              <button
-                key={event.id}
-                type="button"
-                onClick={() => setSelectedEventId(event.id)}
-                style={selectedEvent && event.id === selectedEvent.id ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}
-              >
+              <button key={event.id} type="button" onClick={() => setSelectedEventId(event.id)} style={selectedEvent && event.id === selectedEvent.id ? { ...styles.listButton, ...styles.selectedListButton } : styles.listButton}>
                 <strong>{event.title}</strong>
                 <span style={styles.smallMuted}>{event.source || "Atlas"} · {linkedAsset?.name || "No asset"} · {linkedVendor?.name || "No vendor"}</span>
               </button>
@@ -2273,9 +2757,7 @@ function CalendarPanel({
         {!selectedEvent && (
           <div>
             <h2 style={styles.h2}>No calendar item selected</h2>
-            <button type="button" onClick={() => addCalendarEventForDate(selectedDate)} style={styles.primaryButton}>
-              + Add Item to Selected Day
-            </button>
+            <button type="button" onClick={() => addCalendarEventForDate(selectedDate)} style={styles.primaryButton}>+ Add Item to Selected Day</button>
           </div>
         )}
 
@@ -2308,7 +2790,7 @@ function CalendarPanel({
 
               <div>
                 <label style={styles.label}>External Calendar Link / Sync Note</label>
-                <input value={selectedEvent.externalLink || ""} onChange={(e) => updateCalendarEvent(selectedEvent.id, { externalLink: e.target.value })} placeholder="Paste Outlook, Apple, Google, or shared calendar link/note" style={styles.input} />
+                <input value={selectedEvent.externalLink || ""} onChange={(e) => updateCalendarEvent(selectedEvent.id, { externalLink: e.target.value })} style={styles.input} />
               </div>
 
               <div>
@@ -2337,13 +2819,9 @@ function CalendarPanel({
             </div>
 
             <label style={styles.label}>Notes</label>
-            <textarea value={selectedEvent.notes} onChange={(e) => updateCalendarEvent(selectedEvent.id, { notes: e.target.value })} placeholder="Scheduled work details, reminders, vendor timing, owner notes, external calendar notes..." style={styles.textareaHuge} />
+            <textarea value={selectedEvent.notes} onChange={(e) => updateCalendarEvent(selectedEvent.id, { notes: e.target.value })} style={styles.textareaHuge} />
 
-            {selectedEvent.externalLink && (
-              <a href={selectedEvent.externalLink} target="_blank" rel="noreferrer" style={styles.linkButton}>
-                Open External Calendar Link
-              </a>
-            )}
+            {selectedEvent.externalLink && <a href={selectedEvent.externalLink} target="_blank" rel="noreferrer" style={styles.linkButton}>Open External Calendar Link</a>}
 
             <div style={styles.miniGrid}>
               <button type="button" onClick={() => { if (selectedEvent.assetId) { setSelectedAssetId(selectedEvent.assetId); setScreen("assets"); } }} style={styles.listButton}>
@@ -2362,9 +2840,7 @@ function CalendarPanel({
               </button>
             </div>
 
-            <button type="button" onClick={() => deleteCalendarEvent(selectedEvent.id)} style={styles.dangerButton}>
-              Delete Calendar Item
-            </button>
+            <button type="button" onClick={() => deleteCalendarEvent(selectedEvent.id)} style={styles.dangerButton}>Delete Calendar Item</button>
           </div>
         )}
       </section>
@@ -2431,110 +2907,19 @@ function BlankCanvasPanel() {
 }
 
 function ProceduresPanel() {
-  const procedures = [
-    {
-      title: "Pool Backwash Procedure",
-      category: "Pool",
-      priority: "High",
-      steps: [
-        "Confirm the pool pump is off before changing valve positions.",
-        "Set the filter valve to Backwash.",
-        "Turn the pump on and run until the sight glass or discharge water looks clear.",
-        "Turn the pump off.",
-        "Set the valve to Rinse.",
-        "Turn the pump on briefly to rinse the filter bed.",
-        "Turn the pump off.",
-        "Return the valve to Filter.",
-        "Turn the pump back on and confirm normal pressure and flow.",
-        "Record the date, pressure before/after, and any issues."
-      ],
-      notes: "Confirm exact valve positions against the actual pool equipment labels before relying on this as final."
-    },
-    {
-      title: "Spa / Hot Tub Check",
-      category: "Spa",
-      priority: "Medium",
-      steps: [
-        "Check water level.",
-        "Check temperature and display status.",
-        "Inspect for visible leaks or cabinet water.",
-        "Check filter condition.",
-        "Confirm jets and circulation are operating.",
-        "Record chemistry readings and any alerts."
-      ],
-      notes: "Linked asset: Sundance Optima hot tub."
-    },
-    {
-      title: "Leak / Water Shutoff Response",
-      category: "Emergency",
-      priority: "High",
-      steps: [
-        "Locate the leak source if safe.",
-        "Shut off local fixture valve if available.",
-        "If needed, shut off main water or use FloLogic shutoff.",
-        "Protect electrical equipment from water.",
-        "Photograph damage and source.",
-        "Contact plumbing or leak detection vendor.",
-        "Create an Atlas note under the affected asset or location."
-      ],
-      notes: "Do not store private access codes or passwords in this procedure."
-    },
-    {
-      title: "Boiler / Mechanical Room Check",
-      category: "Mechanical",
-      priority: "High",
-      steps: [
-        "Check boiler display for faults.",
-        "Confirm system pressure is in normal range.",
-        "Check for leaks around piping, pumps, relief valves, and tanks.",
-        "Confirm DHW tanks are heating normally.",
-        "Listen for unusual pump or burner noise.",
-        "Record error codes before resetting anything.",
-        "Contact mechanical vendor if fault returns."
-      ],
-      notes: "Linked assets: Viessmann Vitodens 200 boilers and Vitocell 300-V DHW tanks."
-    },
-    {
-      title: "Generator Visual Check",
-      category: "Electrical",
-      priority: "Medium",
-      steps: [
-        "Inspect generator area for debris.",
-        "Check for visible leaks, loose panels, or unusual smell.",
-        "Confirm status indicator is normal.",
-        "Verify service access is clear.",
-        "Record any alert lights or error messages."
-      ],
-      notes: "Do not perform electrical work unless qualified."
-    },
-    {
-      title: "Boat / Dock Seasonal Check",
-      category: "Dock",
-      priority: "Medium",
-      steps: [
-        "Inspect dock surface and edges.",
-        "Check boat lift controls and visible lift box condition.",
-        "Confirm solar panels and battery boxes are secure.",
-        "Check Cobalt and Sea-Doo areas for loose lines or damage.",
-        "Record photos of anything that changed."
-      ],
-      notes: "Linked areas: Dock, Cobalt, Sea-Doo, Sunstream lift boxes."
-    }
-  ];
-
   return (
     <div>
       <Header title="Procedures" subtitle="Step-by-step operating procedures for recurring work, emergency response, and estate systems." />
 
       <div style={styles.statGrid}>
-        <Stat label="Procedures" value={procedures.length} />
-        <Stat label="High Priority" value={procedures.filter((item) => item.priority === "High").length} />
+        <Stat label="Procedures" value={procedureRecords.length} />
+        <Stat label="High Priority" value={procedureRecords.filter((item) => item.priority === "High").length} />
         <Stat label="Use" value="Operations" />
         <Stat label="Status" value="Draft" />
       </div>
 
       <div style={styles.gridTwo}>
-        {procedures.map((procedure) => (
+        {procedureRecords.map((procedure) => (
           <section key={procedure.title} style={styles.card}>
             <p style={styles.kicker}>{procedure.category} · {procedure.priority}</p>
             <h2 style={styles.h2}>{procedure.title}</h2>
@@ -2697,12 +3082,34 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "1fr 1fr",
     gap: 10
   },
+  lookupGrid: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    alignItems: "center"
+  },
   card: {
     background: "#ffffff",
     border: "1px solid #e4e8f0",
     borderRadius: 18,
     padding: 20,
     boxShadow: "0 8px 20px rgba(15,23,42,0.06)"
+  },
+  resultCard: {
+    border: "1px solid #e4e8f0",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    background: "#ffffff"
+  },
+  resultBody: {
+    whiteSpace: "pre-wrap",
+    background: "#f8fafc",
+    color: "#10213d",
+    borderRadius: 12,
+    padding: 14,
+    lineHeight: 1.5,
+    border: "1px solid #e4e8f0"
   },
   primaryButton: {
     border: 0,
@@ -2714,6 +3121,17 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
     marginTop: 10,
     marginBottom: 12
+  },
+  smallPrimaryButton: {
+    border: 0,
+    background: "#071d3a",
+    color: "#ffffff",
+    borderRadius: 999,
+    padding: "7px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: "pointer",
+    marginTop: 8
   },
   secondaryButton: {
     border: "1px solid #d0d5dd",
@@ -2758,8 +3176,21 @@ const styles: Record<string, CSSProperties> = {
     padding: "11px 14px",
     fontWeight: 900,
     cursor: "pointer",
-    marginTop: 4,
+    marginTop: 10,
     marginBottom: 12
+  },
+  smallLinkButton: {
+    display: "inline-block",
+    textDecoration: "none",
+    border: "1px solid #d0d5dd",
+    background: "#ffffff",
+    color: "#071d3a",
+    borderRadius: 999,
+    padding: "7px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: "pointer",
+    marginTop: 8
   },
   uploadBox: {
     display: "block",
@@ -2935,12 +3366,6 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     border: "1px solid #e4e8f0",
     background: "#ffffff"
-  },
-  calendarRow: {
-    display: "grid",
-    gridTemplateColumns: "150px 1fr 1fr",
-    gap: 10,
-    marginBottom: 10
   },
   weatherText: {
     fontSize: 34,
