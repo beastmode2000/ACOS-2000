@@ -1,7 +1,5 @@
-```tsx id="atlas-route-replacement-fixed"
 import { neon } from "@neondatabase/serverless";
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,36 +29,47 @@ function getSql() {
 }
 
 function asString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+  if (typeof value !== "string") return "";
+  return value.trim();
 }
 
 function nullableString(value: unknown) {
   const text = asString(value);
-  return text ? text : null;
+  if (!text) return null;
+  return text;
 }
 
 function asDate(value: unknown) {
   const text = asString(value);
-  return text ? text : null;
+  if (!text) return null;
+  return text;
 }
 
 function asStatus(value: unknown, fallback: string) {
   const text = asString(value);
-  return text || fallback;
+  if (!text) return fallback;
+  return text;
 }
 
 function asArray(value: unknown) {
-  return Array.isArray(value) ? value : [];
+  if (Array.isArray(value)) return value;
+  return [];
 }
 
 function asStringArray(value: unknown) {
-  if (Array.isArray(value)) return value.map((item) => String(item));
+  if (Array.isArray(value)) {
+    return value.map(function (item) {
+      return String(item);
+    });
+  }
 
   if (typeof value === "string" && value.startsWith("{") && value.endsWith("}")) {
     return value
       .slice(1, -1)
       .split(",")
-      .map((item) => item.replace(/^"|"$/g, "").trim())
+      .map(function (item) {
+        return item.replace(/^"|"$/g, "").trim();
+      })
       .filter(Boolean);
   }
 
@@ -68,51 +77,57 @@ function asStringArray(value: unknown) {
 }
 
 function jsonArray(value: unknown) {
-  return JSON.stringify(Array.isArray(value) ? value : []);
+  if (Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+
+  return "[]";
+}
+
+function makeId(prefix: string) {
+  return prefix + "-" + Date.now().toString() + "-" + Math.random().toString(16).slice(2);
 }
 
 function getId(record: JsonRecord, prefix: string) {
-  return asString(record.id) || `${prefix}-${randomUUID()}`;
+  const existingId = asString(record.id);
+  if (existingId) return existingId;
+  return makeId(prefix);
 }
 
 function cleanTable(value: unknown): AtlasTable | "" {
   const table = asString(value);
 
-  if (
-    table === "vendors" ||
-    table === "assets" ||
-    table === "procedures" ||
-    table === "work_orders" ||
-    table === "calendar" ||
-    table === "documents" ||
-    table === "asset_photos"
-  ) {
-    return table;
-  }
+  if (table === "vendors") return "vendors";
+  if (table === "assets") return "assets";
+  if (table === "procedures") return "procedures";
+  if (table === "work_orders") return "work_orders";
+  if (table === "calendar") return "calendar";
+  if (table === "documents") return "documents";
+  if (table === "asset_photos") return "asset_photos";
 
   return "";
 }
 
 function mapLocation(row: JsonRecord) {
   return {
-    id: String(row.id ?? ""),
-    name: String(row.name ?? ""),
-    type: String(row.type ?? ""),
-    zone: String(row.zone ?? ""),
-    notes: String(row.notes ?? ""),
-    sort_order: Number(row.sort_order ?? 0),
+    id: String(row.id || ""),
+    name: String(row.name || ""),
+    type: String(row.type || ""),
+    zone: String(row.zone || ""),
+    notes: String(row.notes || ""),
+    sort_order: Number(row.sort_order || 0),
   };
 }
 
 function mapVendor(row: JsonRecord) {
   return {
-    id: String(row.id ?? ""),
-    name: String(row.name ?? ""),
-    category: String(row.category ?? ""),
+    id: String(row.id || ""),
+    name: String(row.name || ""),
+    category: String(row.category || ""),
     phone: row.phone ? String(row.phone) : "",
     email: row.email ? String(row.email) : "",
     website: row.website ? String(row.website) : "",
-    notes: String(row.notes ?? ""),
+    notes: String(row.notes || ""),
     logoDataUrl: row.logo_data_url ? String(row.logo_data_url) : "",
     documents: asArray(row.documents),
   };
@@ -120,15 +135,15 @@ function mapVendor(row: JsonRecord) {
 
 function mapAsset(row: JsonRecord) {
   return {
-    id: String(row.id ?? ""),
-    name: String(row.name ?? ""),
-    locationId: String(row.location_id ?? "general"),
-    category: String(row.category ?? ""),
-    status: String(row.status ?? "Monitor"),
+    id: String(row.id || ""),
+    name: String(row.name || ""),
+    locationId: String(row.location_id || "general"),
+    category: String(row.category || ""),
+    status: String(row.status || "Monitor"),
     make: row.make ? String(row.make) : "",
     model: row.model ? String(row.model) : "",
     serial: row.serial ? String(row.serial) : "",
-    notes: String(row.notes ?? ""),
+    notes: String(row.notes || ""),
     vendorIds: asStringArray(row.vendor_ids),
     documents: asArray(row.documents),
   };
@@ -136,24 +151,24 @@ function mapAsset(row: JsonRecord) {
 
 function mapProcedure(row: JsonRecord) {
   return {
-    id: String(row.id ?? ""),
-    title: String(row.title ?? ""),
-    area: String(row.area ?? ""),
-    priority: String(row.priority ?? "Normal"),
+    id: String(row.id || ""),
+    title: String(row.title || ""),
+    area: String(row.area || ""),
+    priority: String(row.priority || "Normal"),
     steps: asStringArray(row.steps),
   };
 }
 
 function mapWorkOrder(row: JsonRecord) {
   return {
-    id: String(row.id ?? ""),
-    assetId: String(row.asset_id ?? ""),
+    id: String(row.id || ""),
+    assetId: String(row.asset_id || ""),
     vendorId: row.vendor_id ? String(row.vendor_id) : "",
     procedureId: row.procedure_id ? String(row.procedure_id) : "",
     date: row.date ? String(row.date).slice(0, 10) : "",
-    title: String(row.title ?? ""),
-    status: String(row.status ?? "Open"),
-    notes: String(row.notes ?? ""),
+    title: String(row.title || ""),
+    status: String(row.status || "Open"),
+    notes: String(row.notes || ""),
     followUpDate: row.follow_up_date ? String(row.follow_up_date).slice(0, 10) : "",
     photos: asArray(row.photos),
     documents: asArray(row.documents),
@@ -162,31 +177,31 @@ function mapWorkOrder(row: JsonRecord) {
 
 function mapCalendarItem(row: JsonRecord) {
   return {
-    id: String(row.id ?? ""),
+    id: String(row.id || ""),
     date: row.date ? String(row.date).slice(0, 10) : "",
-    title: String(row.title ?? ""),
-    area: String(row.area ?? ""),
-    status: String(row.status ?? "Scheduled"),
+    title: String(row.title || ""),
+    area: String(row.area || ""),
+    status: String(row.status || "Scheduled"),
   };
 }
 
 function mapDocument(row: JsonRecord) {
   return {
-    id: String(row.id ?? ""),
-    title: String(row.title ?? ""),
-    area: String(row.area ?? ""),
-    type: String(row.type ?? ""),
+    id: String(row.id || ""),
+    title: String(row.title || ""),
+    area: String(row.area || ""),
+    type: String(row.type || ""),
     linkedAssetId: row.linked_asset_id ? String(row.linked_asset_id) : "",
-    notes: String(row.notes ?? ""),
+    notes: String(row.notes || ""),
   };
 }
 
 function mapPhoto(row: JsonRecord) {
   return {
-    id: String(row.id ?? ""),
-    assetId: String(row.asset_id ?? ""),
-    name: String(row.name ?? ""),
-    dataUrl: String(row.data_url ?? ""),
+    id: String(row.id || ""),
+    assetId: String(row.asset_id || ""),
+    name: String(row.name || ""),
+    dataUrl: String(row.data_url || ""),
     createdAt: row.created_at ? String(row.created_at) : new Date().toISOString(),
   };
 }
@@ -199,49 +214,49 @@ export async function GET() {
       SELECT id, name, type, zone, notes, sort_order
       FROM atlas_locations
       ORDER BY sort_order ASC, name ASC
-    `) as JsonRecord[];
+    `) as unknown as JsonRecord[];
 
     const vendorRows = (await sql`
       SELECT id, name, category, phone, email, website, notes, logo_data_url, documents
       FROM atlas_vendors
       ORDER BY name ASC
-    `) as JsonRecord[];
+    `) as unknown as JsonRecord[];
 
     const assetRows = (await sql`
       SELECT id, name, location_id, category, status, make, model, serial, notes, vendor_ids, documents
       FROM atlas_assets
       ORDER BY name ASC
-    `) as JsonRecord[];
+    `) as unknown as JsonRecord[];
 
     const procedureRows = (await sql`
       SELECT id, title, area, priority, steps
       FROM atlas_procedures
       ORDER BY title ASC
-    `) as JsonRecord[];
+    `) as unknown as JsonRecord[];
 
     const workOrderRows = (await sql`
       SELECT id, asset_id, vendor_id, procedure_id, date, title, status, notes, follow_up_date, photos, documents
       FROM atlas_work_orders
       ORDER BY date DESC, title ASC
-    `) as JsonRecord[];
+    `) as unknown as JsonRecord[];
 
     const calendarRows = (await sql`
       SELECT id, date, title, area, status
       FROM atlas_calendar_items
       ORDER BY date ASC, title ASC
-    `) as JsonRecord[];
+    `) as unknown as JsonRecord[];
 
     const documentRows = (await sql`
       SELECT id, title, area, type, linked_asset_id, notes
       FROM atlas_documents
       ORDER BY title ASC
-    `) as JsonRecord[];
+    `) as unknown as JsonRecord[];
 
     const photoRows = (await sql`
       SELECT id, asset_id, name, data_url, created_at
       FROM atlas_asset_photos
       ORDER BY created_at DESC
-    `) as JsonRecord[];
+    `) as unknown as JsonRecord[];
 
     return NextResponse.json({
       ok: true,
@@ -269,15 +284,18 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const sql = getSql();
-    const body = (await request.json().catch(() => ({}))) as JsonRecord;
+    const body = (await request.json().catch(function () {
+      return {};
+    })) as JsonRecord;
+
     const table = cleanTable(body.table);
-    const record = (body.record && typeof body.record === "object" ? body.record : {}) as JsonRecord;
+    const record = body.record && typeof body.record === "object" ? (body.record as JsonRecord) : {};
 
     if (!table) {
       return NextResponse.json(
         {
           ok: false,
-          error: `Unsupported table: ${asString(body.table)}`,
+          error: "Unsupported table: " + asString(body.table),
         },
         { status: 400 }
       );
@@ -557,7 +575,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: `Unsupported table: ${table}`,
+        error: "Unsupported table: " + table,
       },
       { status: 400 }
     );
@@ -575,7 +593,10 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const sql = getSql();
-    const body = (await request.json().catch(() => ({}))) as JsonRecord;
+    const body = (await request.json().catch(function () {
+      return {};
+    })) as JsonRecord;
+
     const table = cleanTable(body.table);
     const id = asString(body.id);
 
@@ -590,46 +611,82 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (table === "vendors") {
-      await sql`DELETE FROM atlas_vendors WHERE id = ${id}`;
+      await sql`
+        DELETE FROM atlas_vendors
+        WHERE id = ${id}
+      `;
+
       return NextResponse.json({ ok: true });
     }
 
     if (table === "assets") {
-      await sql`DELETE FROM atlas_asset_photos WHERE asset_id = ${id}`;
-      await sql`DELETE FROM atlas_work_orders WHERE asset_id = ${id}`;
-      await sql`DELETE FROM atlas_assets WHERE id = ${id}`;
+      await sql`
+        DELETE FROM atlas_asset_photos
+        WHERE asset_id = ${id}
+      `;
+
+      await sql`
+        DELETE FROM atlas_work_orders
+        WHERE asset_id = ${id}
+      `;
+
+      await sql`
+        DELETE FROM atlas_assets
+        WHERE id = ${id}
+      `;
+
       return NextResponse.json({ ok: true });
     }
 
     if (table === "procedures") {
-      await sql`DELETE FROM atlas_procedures WHERE id = ${id}`;
+      await sql`
+        DELETE FROM atlas_procedures
+        WHERE id = ${id}
+      `;
+
       return NextResponse.json({ ok: true });
     }
 
     if (table === "work_orders") {
-      await sql`DELETE FROM atlas_work_orders WHERE id = ${id}`;
+      await sql`
+        DELETE FROM atlas_work_orders
+        WHERE id = ${id}
+      `;
+
       return NextResponse.json({ ok: true });
     }
 
     if (table === "calendar") {
-      await sql`DELETE FROM atlas_calendar_items WHERE id = ${id}`;
+      await sql`
+        DELETE FROM atlas_calendar_items
+        WHERE id = ${id}
+      `;
+
       return NextResponse.json({ ok: true });
     }
 
     if (table === "documents") {
-      await sql`DELETE FROM atlas_documents WHERE id = ${id}`;
+      await sql`
+        DELETE FROM atlas_documents
+        WHERE id = ${id}
+      `;
+
       return NextResponse.json({ ok: true });
     }
 
     if (table === "asset_photos") {
-      await sql`DELETE FROM atlas_asset_photos WHERE id = ${id}`;
+      await sql`
+        DELETE FROM atlas_asset_photos
+        WHERE id = ${id}
+      `;
+
       return NextResponse.json({ ok: true });
     }
 
     return NextResponse.json(
       {
         ok: false,
-        error: `Unsupported table: ${table}`,
+        error: "Unsupported table: " + table,
       },
       { status: 400 }
     );
