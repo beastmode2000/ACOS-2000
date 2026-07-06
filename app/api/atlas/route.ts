@@ -155,12 +155,12 @@ function quoteIdentifier(value: string) {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-function locationIdFromDb(locationName: unknown, savedLocationId: unknown) {
-  const nameKey = text(locationName).trim().toLowerCase();
-  if (nameKey && LOCATION_ID_BY_NAME[nameKey]) return LOCATION_ID_BY_NAME[nameKey];
+function locationIdFromRecord(row: AnyRow) {
+  const savedFrontendId = text(row.locationId);
+  if (savedFrontendId && LOCATION_NAME_BY_ID[savedFrontendId]) return savedFrontendId;
 
-  const saved = text(savedLocationId, "general");
-  if (LOCATION_NAME_BY_ID[saved]) return saved;
+  const locationName = text(row.location_name).trim().toLowerCase();
+  if (locationName && LOCATION_ID_BY_NAME[locationName]) return LOCATION_ID_BY_NAME[locationName];
 
   return "general";
 }
@@ -212,7 +212,7 @@ async function getOrCreateLocationId(userId: string, frontendLocationId: unknown
   const frontendId = text(frontendLocationId, "general");
   const locationName = LOCATION_NAME_BY_ID[frontendId] || "General";
 
-  const existing = await queryRows<{ id: string }>(
+  const existing = await queryRows<{ id: any }>(
     `
       SELECT id
       FROM locations
@@ -223,9 +223,9 @@ async function getOrCreateLocationId(userId: string, frontendLocationId: unknown
     [userId, locationName]
   );
 
-  if (existing[0]?.id) return existing[0].id;
+  if (existing[0]?.id !== undefined && existing[0]?.id !== null) return existing[0].id;
 
-  const created = await queryRows<{ id: string }>(
+  const created = await queryRows<{ id: any }>(
     `
       INSERT INTO locations ("userId", name)
       VALUES ($1, $2)
@@ -234,7 +234,7 @@ async function getOrCreateLocationId(userId: string, frontendLocationId: unknown
     [userId, locationName]
   );
 
-  return created[0]?.id || null;
+  return created[0]?.id ?? null;
 }
 
 function mapVendor(row: AnyRow) {
@@ -255,7 +255,7 @@ function mapAsset(row: AnyRow) {
   return {
     id: normalizeId(row.id, "asset"),
     name: text(row.name, "Unnamed Asset"),
-    locationId: locationIdFromDb(row.location_name, row.locationId || row.location_id),
+    locationId: locationIdFromRecord(row),
     category: text(row.category, "General"),
     status: status(row.status),
     make: text(row.make),
@@ -462,14 +462,10 @@ export async function GET() {
 
     const assetRows = await queryRows(
       `
-        SELECT
-          a.*,
-          l.name AS location_name
-        FROM assets a
-        LEFT JOIN locations l
-          ON l.id = a.location_id
-        WHERE a."userId" = $1
-        ORDER BY lower(a.name)
+        SELECT *
+        FROM assets
+        WHERE "userId" = $1
+        ORDER BY lower(name)
       `,
       [userId]
     );
