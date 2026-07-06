@@ -436,12 +436,14 @@ function mapAsset(row: AnyRow) {
 }
 
 function mapProcedure(row: AnyRow) {
+  const steps = arr<string>(row.steps);
+
   return {
     id: normalizeId(row.id, "procedure"),
     title: text(row.title, "Untitled Procedure"),
     area: text(row.area, "General"),
     priority: priority(row.priority),
-    steps: arr<string>(row.steps),
+    steps: steps.length ? steps : [""],
   };
 }
 
