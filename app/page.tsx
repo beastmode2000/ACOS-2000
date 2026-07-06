@@ -1040,6 +1040,38 @@ export default function AtlasPage() {
   const uploadedServicePhotoCount = serviceRecords.reduce((total, service) => total + (service.photos?.length ?? 0), 0);
   const upcomingCalendarCount = calendarItems.filter((item) => item.status === "Scheduled" || item.status === "Monitor" || item.status === "Open").length;
 
+  useEffect(() => {
+    if (!ready || screen !== "history" || serviceMode === "new") return;
+
+    const visibleWorkOrders = getVisibleWorkOrdersForBoard();
+
+    if (!visibleWorkOrders.length) {
+      if (selectedServiceId) {
+        setSelectedServiceId("");
+        setServiceForm(blankService(todayKey));
+        setServiceMode("new");
+      }
+      return;
+    }
+
+    const selectedIsVisible = visibleWorkOrders.some((record) => record.id === selectedServiceId);
+    if (!selectedIsVisible) openServiceRecord(visibleWorkOrders[0]);
+  }, [
+    ready,
+    screen,
+    serviceMode,
+    selectedServiceId,
+    workOrderTab,
+    workOrderStatusFilter,
+    workOrderLocationFilter,
+    workOrderAssetFilter,
+    workOrderSort,
+    q,
+    serviceRecords,
+    assetRecords,
+    filteredServices,
+  ]);
+
   function openSearchResult(result: SearchResult) {
     if (result.assetId) {
       setSelectedAssetId(result.assetId);
@@ -1057,8 +1089,8 @@ export default function AtlasPage() {
     }
 
     if (result.serviceId) {
-      setSelectedServiceId(result.serviceId);
-      setServiceMode("edit");
+      const selectedService = serviceRecords.find((record) => record.id === result.serviceId);
+      if (selectedService) openServiceRecord(selectedService);
     }
 
     if (result.calendarId) {
@@ -1578,6 +1610,98 @@ export default function AtlasPage() {
     return 4;
   }
 
+  function openServiceRecord(record: ServiceRecord) {
+    setSelectedServiceId(record.id);
+    setServiceForm(normalizeService(record));
+    setServiceMode("edit");
+  }
+
+  function getWorkOrderLocationId(record: ServiceRecord) {
+    return assetRecords.find((asset) => asset.id === record.assetId)?.locationId || "general";
+  }
+
+  function workOrderMatchesBoardFilters(
+    record: ServiceRecord,
+    tab = workOrderTab,
+    statusFilter = workOrderStatusFilter,
+    locationFilter = workOrderLocationFilter,
+    assetFilter = workOrderAssetFilter
+  ) {
+    const locationId = getWorkOrderLocationId(record);
+    const matchesTab = tab === "done" ? record.status === "Completed" : record.status !== "Completed";
+    const matchesStatus = statusFilter === "all" || record.status === statusFilter;
+    const matchesAsset = assetFilter === "all" || record.assetId === assetFilter;
+    const matchesLocation = locationFilter === "all" || locationId === locationFilter;
+    const matchesSearch = !q || filteredServices.some((service) => service.id === record.id);
+    return matchesTab && matchesStatus && matchesAsset && matchesLocation && matchesSearch;
+  }
+
+  function sortWorkOrderBoardRecords(records: ServiceRecord[], sortBy = workOrderSort) {
+    return sortServices(records).sort((a, b) => {
+      if (sortBy === "priority") return getWorkOrderPriorityRank(a) - getWorkOrderPriorityRank(b) || getWorkOrderDueDate(a).localeCompare(getWorkOrderDueDate(b));
+      if (sortBy === "due-asc") return getWorkOrderDueDate(a).localeCompare(getWorkOrderDueDate(b));
+      if (sortBy === "asset") return assetName(a.assetId).localeCompare(assetName(b.assetId)) || getWorkOrderDueDate(a).localeCompare(getWorkOrderDueDate(b));
+      return b.date.localeCompare(a.date);
+    });
+  }
+
+  function getVisibleWorkOrdersForBoard(
+    tab = workOrderTab,
+    statusFilter = workOrderStatusFilter,
+    locationFilter = workOrderLocationFilter,
+    assetFilter = workOrderAssetFilter,
+    sortBy = workOrderSort
+  ) {
+    return sortWorkOrderBoardRecords(
+      serviceRecords.filter((record) => workOrderMatchesBoardFilters(record, tab, statusFilter, locationFilter, assetFilter)),
+      sortBy
+    );
+  }
+
+  function selectFirstVisibleWorkOrder(
+    tab = workOrderTab,
+    statusFilter = workOrderStatusFilter,
+    locationFilter = workOrderLocationFilter,
+    assetFilter = workOrderAssetFilter,
+    sortBy = workOrderSort
+  ) {
+    const firstVisible = getVisibleWorkOrdersForBoard(tab, statusFilter, locationFilter, assetFilter, sortBy)[0];
+
+    if (firstVisible) {
+      openServiceRecord(firstVisible);
+      return;
+    }
+
+    setSelectedServiceId("");
+    setServiceForm(blankService(todayKey));
+    setServiceMode("new");
+  }
+
+  function changeWorkOrderTab(tab: "todo" | "done") {
+    setWorkOrderTab(tab);
+    selectFirstVisibleWorkOrder(tab);
+  }
+
+  function changeWorkOrderStatusFilter(statusFilter: "all" | ServiceStatus) {
+    setWorkOrderStatusFilter(statusFilter);
+    selectFirstVisibleWorkOrder(workOrderTab, statusFilter);
+  }
+
+  function changeWorkOrderLocationFilter(locationFilter: string) {
+    setWorkOrderLocationFilter(locationFilter);
+    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, locationFilter);
+  }
+
+  function changeWorkOrderAssetFilter(assetFilter: string) {
+    setWorkOrderAssetFilter(assetFilter);
+    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, workOrderLocationFilter, assetFilter);
+  }
+
+  function changeWorkOrderSort(sortBy: "priority" | "due-asc" | "date-desc" | "asset") {
+    setWorkOrderSort(sortBy);
+    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, workOrderLocationFilter, workOrderAssetFilter, sortBy);
+  }
+
   function markServiceCompleted() {
     setServiceForm((current) => ({ ...current, status: "Completed" }));
   }
@@ -1615,11 +1739,9 @@ export default function AtlasPage() {
 
     setServiceRecords((current) => sortServices(current.map((service) => (service.id === reopenedRecord.id ? reopenedRecord : service))));
 
-    if (!record || reopenedRecord.id === serviceForm.id) {
-      setServiceForm(reopenedRecord);
-      setSelectedServiceId(reopenedRecord.id);
-      setServiceMode("edit");
-    }
+    setServiceForm(reopenedRecord);
+    setSelectedServiceId(reopenedRecord.id);
+    setServiceMode("edit");
 
     void postAtlasRecord("work_orders", reopenedRecord);
   }
@@ -2204,23 +2326,7 @@ export default function AtlasPage() {
       )
     ).sort((a, b) => getLocationName(a).localeCompare(getLocationName(b)));
 
-    const visibleWorkOrders = sortServices(
-      serviceRecords.filter((record) => {
-        const asset = assetRecords.find((item) => item.id === record.assetId);
-        const locationId = asset?.locationId || "general";
-        const matchesTab = workOrderTab === "done" ? record.status === "Completed" : record.status !== "Completed";
-        const matchesStatus = workOrderStatusFilter === "all" || record.status === workOrderStatusFilter;
-        const matchesAsset = workOrderAssetFilter === "all" || record.assetId === workOrderAssetFilter;
-        const matchesLocation = workOrderLocationFilter === "all" || locationId === workOrderLocationFilter;
-        const matchesSearch = !q || filteredServices.some((service) => service.id === record.id);
-        return matchesTab && matchesStatus && matchesAsset && matchesLocation && matchesSearch;
-      })
-    ).sort((a, b) => {
-      if (workOrderSort === "priority") return getWorkOrderPriorityRank(a) - getWorkOrderPriorityRank(b) || getWorkOrderDueDate(a).localeCompare(getWorkOrderDueDate(b));
-      if (workOrderSort === "due-asc") return getWorkOrderDueDate(a).localeCompare(getWorkOrderDueDate(b));
-      if (workOrderSort === "asset") return assetName(a.assetId).localeCompare(assetName(b.assetId)) || getWorkOrderDueDate(a).localeCompare(getWorkOrderDueDate(b));
-      return b.date.localeCompare(a.date);
-    });
+    const visibleWorkOrders = getVisibleWorkOrdersForBoard();
 
     const selectedWorkOrderPriority = getWorkOrderPriority(serviceForm);
     const selectedWorkOrderNumber = serviceForm.id ? getWorkOrderNumber(serviceForm) : "New";
@@ -2251,7 +2357,7 @@ export default function AtlasPage() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button
                 type="button"
-                onClick={() => setWorkOrderTab("todo")}
+                onClick={() => changeWorkOrderTab("todo")}
                 style={{
                   ...widePrimaryButtonStyle,
                   background: workOrderTab === "todo" ? colors.navy : "#FFFFFF",
@@ -2263,7 +2369,7 @@ export default function AtlasPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setWorkOrderTab("done")}
+                onClick={() => changeWorkOrderTab("done")}
                 style={{
                   ...widePrimaryButtonStyle,
                   background: workOrderTab === "done" ? colors.navy : "#FFFFFF",
@@ -2277,7 +2383,7 @@ export default function AtlasPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <label style={labelStyle}>Status Filter
-                <select value={workOrderStatusFilter} onChange={(event) => setWorkOrderStatusFilter(event.target.value as "all" | ServiceStatus)} style={inputStyle}>
+                <select value={workOrderStatusFilter} onChange={(event) => changeWorkOrderStatusFilter(event.target.value as "all" | ServiceStatus)} style={inputStyle}>
                   <option value="all">All statuses</option>
                   <option value="Open">Open</option>
                   <option value="Scheduled">Scheduled</option>
@@ -2286,7 +2392,7 @@ export default function AtlasPage() {
                 </select>
               </label>
               <label style={labelStyle}>Sort By
-                <select value={workOrderSort} onChange={(event) => setWorkOrderSort(event.target.value as "priority" | "due-asc" | "date-desc" | "asset")} style={inputStyle}>
+                <select value={workOrderSort} onChange={(event) => changeWorkOrderSort(event.target.value as "priority" | "due-asc" | "date-desc" | "asset")} style={inputStyle}>
                   <option value="priority">Priority / due date</option>
                   <option value="due-asc">Due date</option>
                   <option value="date-desc">Newest first</option>
@@ -2294,13 +2400,13 @@ export default function AtlasPage() {
                 </select>
               </label>
               <label style={labelStyle}>Location Filter
-                <select value={workOrderLocationFilter} onChange={(event) => setWorkOrderLocationFilter(event.target.value)} style={inputStyle}>
+                <select value={workOrderLocationFilter} onChange={(event) => changeWorkOrderLocationFilter(event.target.value)} style={inputStyle}>
                   <option value="all">All locations</option>
                   {availableWorkOrderLocations.map((locationId) => <option key={locationId} value={locationId}>{getLocationName(locationId)}</option>)}
                 </select>
               </label>
               <label style={labelStyle}>Asset Filter
-                <select value={workOrderAssetFilter} onChange={(event) => setWorkOrderAssetFilter(event.target.value)} style={inputStyle}>
+                <select value={workOrderAssetFilter} onChange={(event) => changeWorkOrderAssetFilter(event.target.value)} style={inputStyle}>
                   <option value="all">All assets</option>
                   {sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
                 </select>
@@ -2319,14 +2425,10 @@ export default function AtlasPage() {
                     key={record.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => {
-                      setSelectedServiceId(record.id);
-                      setServiceMode("edit");
-                    }}
+                    onClick={() => openServiceRecord(record)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
-                        setSelectedServiceId(record.id);
-                        setServiceMode("edit");
+                        openServiceRecord(record);
                       }
                     }}
                     style={{
@@ -2418,7 +2520,7 @@ export default function AtlasPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
               <button type="button" onClick={() => markServiceDoneAndSave()} style={goldButtonStyle}>Mark Done + Save</button>
-              <button type="button" onClick={() => reopenServiceAndSave()} style={primaryButtonStyle}>Reopen + Save</button>
+              <button type="button" onClick={() => { reopenServiceAndSave(); setWorkOrderTab("todo"); }} style={primaryButtonStyle}>Reopen + Save</button>
               <button type="button" onClick={scheduleServiceFollowUp} style={primaryButtonStyle}>Schedule Follow-Up</button>
             </div>
 
