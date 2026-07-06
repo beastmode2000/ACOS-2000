@@ -1,10 +1,12 @@
-import { neon } from "@neondatabase/serverless";
 import { NextRequest, NextResponse } from "next/server";
+import { neon } from "@neondatabase/serverless";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
 
-type JsonRecord = Record<string, unknown>;
+const MAIN_EMAIL = "nthornton87@yahoo.com";
+const sql = neon(process.env.DATABASE_URL || "");
+
+type AnyRow = Record<string, any>;
 
 type AtlasTable =
   | "vendors"
@@ -12,738 +14,634 @@ type AtlasTable =
   | "procedures"
   | "work_orders"
   | "calendar"
-  | "documents"
   | "asset_photos";
 
-function getSql() {
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.NEON_DATABASE_URL;
+const LOCATION_ID_BY_NAME: Record<string, string> = {
+  "general": "general",
+  "2000": "general",
+  "main house": "main-house",
+  "mechanical room": "mechanical-room",
+  "mechanical room 2": "mechanical-room",
+  "formal dining room": "main-house",
+  "wine room": "wine-room",
+  "fitness room": "fitness-room",
+  "kitchen": "kitchen",
+  "pantry": "pantry",
+  "pool": "indoor-pool",
+  "indoor pool": "indoor-pool",
+  "pool equipment room": "pool-equipment",
+  "back patio (water side)": "standalone-spa",
+  "upstairs laundry closet": "upstairs-laundry",
+  "pool changing room": "pool-changing-room",
+  "house managers office": "house-office",
+  "house manager office": "house-office",
+  "west side of house": "exterior",
+  "attic": "main-house",
+  "attic 2": "main-house",
+  "outdoor condenser area": "exterior",
+  "outdoor generator area": "lower-generator-area",
+  "vegetable garden": "irrigation",
+  "garage": "garage",
+  "garage (new)": "garage",
+  "garage (old)": "old-garage",
+  "old garage": "old-garage",
+  "roof": "roof-gutters",
+  "hangar": "hangar",
+  "gulfstream g600 n23pa": "gulfstream-g600-n23pa",
+  "gulfstream g280 n280cc": "gulfstream-g280-n280cc",
+  "gulfstream g280 n755pa": "gulfstream-g280-n755pa",
+  "pilatus pc12 n126al": "pilatus-pc12-n126al",
+};
 
-  if (!connectionString) {
-    throw new Error("Missing DATABASE_URL");
+const LOCATION_NAME_BY_ID: Record<string, string> = {
+  general: "General",
+  "main-house": "Main House",
+  "mechanical-room": "Mechanical Room",
+  kitchen: "Kitchen",
+  pantry: "Pantry",
+  "wine-room": "Wine Room",
+  "upstairs-laundry": "Upstairs Laundry Closet",
+  "pool-changing-room": "Pool Changing Room",
+  "fitness-room": "Fitness Room",
+  "house-office": "House Managers Office",
+  "elyses-room": "Elyse's Room",
+  "elliot-room": "Elliot's Room",
+  "play-room": "Play Room",
+  "exercise-room": "Exercise Room",
+  "gym-nanny": "Gym / Nanny",
+  "master-bath-floor": "Master Bath Floor",
+  "indoor-pool": "Indoor Pool",
+  "pool-equipment": "Pool Equipment Room",
+  "standalone-spa": "Standalone Spa",
+  dock: "Dock",
+  "cobalt-lift": "Cobalt Lift",
+  "seadoo-lift": "SeaDoo Lift",
+  "dock-lift": "Dock Lift Box",
+  "water-trampoline": "Water Trampoline",
+  lakefront: "Lakefront",
+  garage: "Garage",
+  "old-garage": "Old Garage",
+  adu: "ADU",
+  driveway: "Driveway",
+  gate: "Gate",
+  exterior: "Exterior",
+  "roof-gutters": "Roof / Gutters",
+  irrigation: "Irrigation",
+  "lower-generator-area": "Lower Generator Area",
+  basement: "Basement",
+  "basement-stairs-trampoline": "Basement Stairs from Trampoline Area",
+  "addition-first-floor": "Addition First Floor",
+  hangar: "Hangar",
+  "gulfstream-g600-n23pa": "Gulfstream G600 N23PA",
+  "gulfstream-g280-n280cc": "Gulfstream G280 N280CC",
+  "gulfstream-g280-n755pa": "Gulfstream G280 N755PA",
+  "pilatus-pc12-n126al": "Pilatus PC12 N126AL",
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    },
+  });
+}
+
+async function queryRows<T = AnyRow>(query: string, params: any[] = []) {
+  return (await sql(query, params)) as T[];
+}
+
+function normalizeText(value: unknown, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
+function parseArray<T = any>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (value === null || value === undefined || value === "") return [];
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
 
-  return neon(connectionString);
-}
-
-function asString(value: unknown) {
-  if (typeof value !== "string") return "";
-  return value.trim();
-}
-
-function nullableString(value: unknown) {
-  const text = asString(value);
-  if (!text) return null;
-  return text;
-}
-
-function asDate(value: unknown) {
-  const text = asString(value);
-  if (!text) return null;
-  return text;
-}
-
-function toDateKey(value: unknown) {
-  if (!value) return "";
-
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    const year = value.getUTCFullYear();
-    const month = String(value.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(value.getUTCDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }
-
-  const text = String(value).trim();
-  if (!text) return "";
-
-  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (isoMatch) return isoMatch[1];
-
-  const parsed = new Date(text);
-  if (!Number.isNaN(parsed.getTime())) {
-    const year = parsed.getUTCFullYear();
-    const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(parsed.getUTCDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }
-
-  return "";
-}
-
-function asStatus(value: unknown, fallback: string) {
-  const text = asString(value);
-  if (!text) return fallback;
-  return text;
-}
-
-function asArray(value: unknown) {
-  if (Array.isArray(value)) return value;
   return [];
 }
 
-function asStringArray(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.map(function (item) {
-      return String(item);
-    });
+function cleanStatus(value: unknown) {
+  const status = normalizeText(value, "Monitor");
+  if (["Online", "Offline", "Seasonal", "Monitor"].includes(status)) return status;
+  return "Monitor";
+}
+
+function cleanServiceStatus(value: unknown) {
+  const status = normalizeText(value, "Open");
+  if (["Open", "Scheduled", "Completed", "Monitor"].includes(status)) return status;
+  return "Open";
+}
+
+function cleanPriority(value: unknown) {
+  const priority = normalizeText(value, "Normal");
+  if (["High", "Normal", "Seasonal"].includes(priority)) return priority;
+  return "Normal";
+}
+
+function cleanLocationId(locationName: unknown, fallbackLocationId: unknown) {
+  const nameKey = normalizeText(locationName).trim().toLowerCase();
+  if (nameKey && LOCATION_ID_BY_NAME[nameKey]) return LOCATION_ID_BY_NAME[nameKey];
+
+  const fallback = normalizeText(fallbackLocationId, "general");
+  if (LOCATION_NAME_BY_ID[fallback]) return fallback;
+
+  return "general";
+}
+
+function normalizeId(value: unknown, prefix: string) {
+  const raw = normalizeText(value).trim();
+  if (raw) return raw;
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function quoteIdentifier(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+async function getColumns(table: string) {
+  const rows = await queryRows<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+    `,
+    [table]
+  );
+
+  return new Set(rows.map((row) => row.column_name));
+}
+
+async function getTargetUserId() {
+  const assetUsers = await queryRows<{ userId: string }>(
+    `
+      SELECT "userId"
+      FROM assets
+      WHERE "userId" IS NOT NULL
+      GROUP BY "userId"
+      ORDER BY COUNT(*) DESC
+      LIMIT 1
+    `
+  );
+
+  if (assetUsers[0]?.userId) return String(assetUsers[0].userId);
+
+  const emailUsers = await queryRows<{ id: string }>(
+    `
+      SELECT id
+      FROM "user"
+      WHERE lower(email) = lower($1)
+      LIMIT 1
+    `,
+    [MAIN_EMAIL]
+  );
+
+  if (emailUsers[0]?.id) return String(emailUsers[0].id);
+
+  const anyUsers = await queryRows<{ id: string }>(
+    `
+      SELECT id
+      FROM "user"
+      ORDER BY "createdAt" ASC NULLS LAST
+      LIMIT 1
+    `
+  );
+
+  if (anyUsers[0]?.id) return String(anyUsers[0].id);
+
+  return "atlas-master";
+}
+
+async function getOrCreateLocationId(userId: string, locationId: unknown) {
+  const staticLocationId = normalizeText(locationId, "general");
+  const locationName = LOCATION_NAME_BY_ID[staticLocationId] || "General";
+
+  const existing = await queryRows<{ id: string }>(
+    `
+      SELECT id
+      FROM locations
+      WHERE "userId" = $1
+        AND lower(trim(name)) = lower(trim($2))
+      LIMIT 1
+    `,
+    [userId, locationName]
+  );
+
+  if (existing[0]?.id) return existing[0].id;
+
+  const created = await queryRows<{ id: string }>(
+    `
+      INSERT INTO locations ("userId", name)
+      VALUES ($1, $2)
+      RETURNING id
+    `,
+    [userId, locationName]
+  );
+
+  return created[0]?.id || null;
+}
+
+function mapVendor(row: AnyRow) {
+  return {
+    id: normalizeId(row.id, "vendor"),
+    name: normalizeText(row.name, "Unnamed Vendor"),
+    category: normalizeText(row.category, "General"),
+    phone: normalizeText(row.phone),
+    email: normalizeText(row.email),
+    website: normalizeText(row.website),
+    notes: normalizeText(row.notes, "No notes added yet."),
+    logoDataUrl: normalizeText(row.logoDataUrl || row.logo_data_url),
+    documents: parseArray(row.documents),
+  };
+}
+
+function mapAsset(row: AnyRow) {
+  return {
+    id: normalizeId(row.id, "asset"),
+    name: normalizeText(row.name, "Unnamed Asset"),
+    locationId: cleanLocationId(row.location_name, row.locationId || row.location_id),
+    category: normalizeText(row.category, "General"),
+    status: cleanStatus(row.status),
+    make: normalizeText(row.make),
+    model: normalizeText(row.model),
+    serial: normalizeText(row.serial),
+    notes: normalizeText(row.notes, "No notes added yet."),
+    vendorIds: parseArray<string>(row.vendorIds || row.vendor_ids || row.vendorids),
+    documents: parseArray(row.documents),
+  };
+}
+
+function mapProcedure(row: AnyRow) {
+  return {
+    id: normalizeId(row.id, "procedure"),
+    title: normalizeText(row.title, "Untitled Procedure"),
+    area: normalizeText(row.area, "General"),
+    priority: cleanPriority(row.priority),
+    steps: parseArray<string>(row.steps).length ? parseArray<string>(row.steps) : [],
+  };
+}
+
+function mapWorkOrder(row: AnyRow) {
+  return {
+    id: normalizeId(row.id, "service"),
+    assetId: normalizeText(row.assetId || row.asset_id, ""),
+    vendorId: normalizeText(row.vendorId || row.vendor_id, ""),
+    procedureId: normalizeText(row.procedureId || row.procedure_id, ""),
+    date: normalizeText(row.date, new Date().toISOString().slice(0, 10)),
+    title: normalizeText(row.title, "Untitled Work Order"),
+    status: cleanServiceStatus(row.status),
+    notes: normalizeText(row.notes, "No notes added yet."),
+    followUpDate: normalizeText(row.followUpDate || row.follow_up_date),
+    photos: parseArray(row.photos),
+    documents: parseArray(row.documents),
+  };
+}
+
+function mapCalendar(row: AnyRow) {
+  return {
+    id: normalizeId(row.id, "calendar"),
+    date: normalizeText(row.date, new Date().toISOString().slice(0, 10)),
+    title: normalizeText(row.title, "Untitled Calendar Item"),
+    area: normalizeText(row.area, "General"),
+    status: cleanServiceStatus(row.status),
+  };
+}
+
+function mapPhoto(row: AnyRow) {
+  return {
+    id: normalizeId(row.id, "photo"),
+    assetId: normalizeText(row.assetId || row.asset_id, ""),
+    name: normalizeText(row.name, "Photo"),
+    dataUrl: normalizeText(row.dataUrl || row.data_url),
+    createdAt: normalizeText(row.createdAt || row.created_at, new Date().toISOString()),
+  };
+}
+
+async function buildPayload(table: AtlasTable, record: AnyRow, userId: string) {
+  const columns = await getColumns(table);
+  const payload: AnyRow = {};
+
+  function set(column: string, value: unknown) {
+    if (columns.has(column)) payload[column] = value;
   }
 
-  if (typeof value === "string" && value.startsWith("{") && value.endsWith("}")) {
-    return value
-      .slice(1, -1)
-      .split(",")
-      .map(function (item) {
-        return item.replace(/^"|"$/g, "").trim();
-      })
-      .filter(Boolean);
+  const id = normalizeId(record.id, table.replace("_", "-"));
+
+  set("id", id);
+  set("userId", userId);
+
+  if (table === "vendors") {
+    set("name", normalizeText(record.name, "Unnamed Vendor"));
+    set("category", normalizeText(record.category, "General"));
+    set("phone", normalizeText(record.phone));
+    set("email", normalizeText(record.email));
+    set("website", normalizeText(record.website));
+    set("notes", normalizeText(record.notes, "No notes added yet."));
+    set("logoDataUrl", normalizeText(record.logoDataUrl));
+    set("logo_data_url", normalizeText(record.logoDataUrl));
+    set("documents", JSON.stringify(parseArray(record.documents)));
   }
 
-  return [];
-}
+  if (table === "assets") {
+    const locationDbId = await getOrCreateLocationId(userId, record.locationId);
 
-function jsonArray(value: unknown) {
-  if (Array.isArray(value)) {
-    return JSON.stringify(value);
+    set("name", normalizeText(record.name, "Unnamed Asset"));
+    set("location_id", locationDbId);
+    set("locationId", record.locationId || "general");
+    set("category", normalizeText(record.category, "General"));
+    set("status", cleanStatus(record.status));
+    set("make", normalizeText(record.make));
+    set("model", normalizeText(record.model));
+    set("serial", normalizeText(record.serial));
+    set("notes", normalizeText(record.notes, "No notes added yet."));
+    set("vendor_ids", JSON.stringify(parseArray(record.vendorIds)));
+    set("vendorIds", JSON.stringify(parseArray(record.vendorIds)));
+    set("documents", JSON.stringify(parseArray(record.documents)));
   }
 
-  return "[]";
+  if (table === "procedures") {
+    set("title", normalizeText(record.title, "Untitled Procedure"));
+    set("area", normalizeText(record.area, "General"));
+    set("priority", cleanPriority(record.priority));
+    set("steps", JSON.stringify(parseArray(record.steps)));
+  }
+
+  if (table === "work_orders") {
+    set("asset_id", normalizeText(record.assetId));
+    set("assetId", normalizeText(record.assetId));
+    set("vendor_id", normalizeText(record.vendorId));
+    set("vendorId", normalizeText(record.vendorId));
+    set("procedure_id", normalizeText(record.procedureId));
+    set("procedureId", normalizeText(record.procedureId));
+    set("date", normalizeText(record.date, new Date().toISOString().slice(0, 10)));
+    set("title", normalizeText(record.title, "Untitled Work Order"));
+    set("status", cleanServiceStatus(record.status));
+    set("notes", normalizeText(record.notes, "No notes added yet."));
+    set("follow_up_date", normalizeText(record.followUpDate));
+    set("followUpDate", normalizeText(record.followUpDate));
+    set("photos", JSON.stringify(parseArray(record.photos)));
+    set("documents", JSON.stringify(parseArray(record.documents)));
+  }
+
+  if (table === "calendar") {
+    set("date", normalizeText(record.date, new Date().toISOString().slice(0, 10)));
+    set("title", normalizeText(record.title, "Untitled Calendar Item"));
+    set("area", normalizeText(record.area, "General"));
+    set("status", cleanServiceStatus(record.status));
+  }
+
+  if (table === "asset_photos") {
+    set("asset_id", normalizeText(record.assetId));
+    set("assetId", normalizeText(record.assetId));
+    set("name", normalizeText(record.name, "Photo"));
+    set("dataUrl", normalizeText(record.dataUrl));
+    set("data_url", normalizeText(record.dataUrl));
+    set("createdAt", normalizeText(record.createdAt, new Date().toISOString()));
+    set("created_at", normalizeText(record.createdAt, new Date().toISOString()));
+  }
+
+  return payload;
 }
 
-function makeId(prefix: string) {
-  return prefix + "-" + Date.now().toString() + "-" + Math.random().toString(16).slice(2);
+async function upsertRecord(table: AtlasTable, record: AnyRow, userId: string) {
+  const payload = await buildPayload(table, record, userId);
+  const columns = Object.keys(payload);
+
+  if (!columns.length) {
+    throw new Error(`No writable columns found for ${table}`);
+  }
+
+  const quotedColumns = columns.map(quoteIdentifier).join(", ");
+  const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
+  const values = columns.map((column) => payload[column]);
+
+  const updateColumns = columns
+    .filter((column) => column !== "id")
+    .map((column) => `${quoteIdentifier(column)} = EXCLUDED.${quoteIdentifier(column)}`)
+    .join(", ");
+
+  const query = `
+    INSERT INTO ${quoteIdentifier(table)} (${quotedColumns})
+    VALUES (${placeholders})
+    ON CONFLICT (id) DO UPDATE SET
+      ${updateColumns || `${quoteIdentifier("id")} = EXCLUDED.${quoteIdentifier("id")}`}
+    RETURNING *
+  `;
+
+  const rows = await queryRows(query, values);
+  return rows[0] || payload;
 }
 
-function getId(record: JsonRecord, prefix: string) {
-  const existingId = asString(record.id);
-  if (existingId) return existingId;
-  return makeId(prefix);
-}
+async function deleteRecord(table: AtlasTable, id: string, userId: string) {
+  const columns = await getColumns(table);
+  const hasUserId = columns.has("userId");
 
-function cleanTable(value: unknown): AtlasTable | "" {
-  const table = asString(value);
+  if (hasUserId) {
+    await queryRows(
+      `
+        DELETE FROM ${quoteIdentifier(table)}
+        WHERE id = $1
+          AND "userId" = $2
+      `,
+      [id, userId]
+    );
+    return;
+  }
 
-  if (table === "vendors") return "vendors";
-  if (table === "assets") return "assets";
-  if (table === "procedures") return "procedures";
-  if (table === "work_orders") return "work_orders";
-  if (table === "calendar") return "calendar";
-  if (table === "documents") return "documents";
-  if (table === "asset_photos") return "asset_photos";
-
-  return "";
-}
-
-function mapLocation(row: JsonRecord) {
-  return {
-    id: String(row.id || ""),
-    name: String(row.name || ""),
-    type: String(row.type || ""),
-    zone: String(row.zone || ""),
-    notes: String(row.notes || ""),
-    sort_order: Number(row.sort_order || 0),
-  };
-}
-
-function mapVendor(row: JsonRecord) {
-  return {
-    id: String(row.id || ""),
-    name: String(row.name || ""),
-    category: String(row.category || ""),
-    phone: row.phone ? String(row.phone) : "",
-    email: row.email ? String(row.email) : "",
-    website: row.website ? String(row.website) : "",
-    notes: String(row.notes || ""),
-    logoDataUrl: row.logo_data_url ? String(row.logo_data_url) : "",
-    documents: asArray(row.documents),
-  };
-}
-
-function mapAsset(row: JsonRecord) {
-  return {
-    id: String(row.id || ""),
-    name: String(row.name || ""),
-    locationId: String(row.location_id || "general"),
-    category: String(row.category || ""),
-    status: String(row.status || "Monitor"),
-    make: row.make ? String(row.make) : "",
-    model: row.model ? String(row.model) : "",
-    serial: row.serial ? String(row.serial) : "",
-    notes: String(row.notes || ""),
-    vendorIds: asStringArray(row.vendor_ids),
-    documents: asArray(row.documents),
-  };
-}
-
-function mapProcedure(row: JsonRecord) {
-  return {
-    id: String(row.id || ""),
-    title: String(row.title || ""),
-    area: String(row.area || ""),
-    priority: String(row.priority || "Normal"),
-    steps: asStringArray(row.steps),
-  };
-}
-
-function mapWorkOrder(row: JsonRecord) {
-  const cleanDate = toDateKey(row.date || row.work_date);
-  const cleanFollowUpDate = toDateKey(row.follow_up_date);
-
-  return {
-    id: String(row.id || ""),
-    assetId: String(row.asset_id || ""),
-    vendorId: row.vendor_id ? String(row.vendor_id) : "",
-    procedureId: row.procedure_id ? String(row.procedure_id) : "",
-    date: cleanDate,
-    title: String(row.title || ""),
-    status: String(row.status || "Open"),
-    notes: String(row.notes || ""),
-    followUpDate: cleanFollowUpDate,
-    photos: asArray(row.photos),
-    documents: asArray(row.documents),
-  };
-}
-
-function mapCalendarItem(row: JsonRecord) {
-  return {
-    id: String(row.id || ""),
-    date: toDateKey(row.date),
-    title: String(row.title || ""),
-    area: String(row.area || ""),
-    status: String(row.status || "Scheduled"),
-  };
-}
-
-function mapDocument(row: JsonRecord) {
-  return {
-    id: String(row.id || ""),
-    title: String(row.title || ""),
-    area: String(row.area || ""),
-    type: String(row.type || ""),
-    linkedAssetId: row.linked_asset_id ? String(row.linked_asset_id) : "",
-    notes: String(row.notes || ""),
-  };
-}
-
-function mapPhoto(row: JsonRecord) {
-  return {
-    id: String(row.id || ""),
-    assetId: String(row.asset_id || ""),
-    name: String(row.name || ""),
-    dataUrl: String(row.data_url || ""),
-    createdAt: row.created_at ? String(row.created_at) : new Date().toISOString(),
-  };
+  await queryRows(
+    `
+      DELETE FROM ${quoteIdentifier(table)}
+      WHERE id = $1
+    `,
+    [id]
+  );
 }
 
 export async function GET() {
   try {
-    const sql = getSql();
+    const userId = await getTargetUserId();
 
-    const locationRows = (await sql`
-      SELECT id, name, type, zone, notes, sort_order
-      FROM atlas_locations
-      ORDER BY sort_order ASC, name ASC
-    `) as unknown as JsonRecord[];
+    const [
+      vendorRows,
+      assetRows,
+      procedureRows,
+      serviceRows,
+      calendarRows,
+      photoRows,
+    ] = await Promise.all([
+      queryRows(
+        `
+          SELECT *
+          FROM vendors
+          WHERE "userId" = $1 OR "userId" IS NULL
+          ORDER BY lower(name)
+        `,
+        [userId]
+      ),
+      queryRows(
+        `
+          SELECT
+            a.*,
+            l.name AS location_name
+          FROM assets a
+          LEFT JOIN locations l
+            ON l.id = a.location_id
+          WHERE a."userId" = $1
+          ORDER BY lower(a.name)
+        `,
+        [userId]
+      ),
+      queryRows(
+        `
+          SELECT *
+          FROM procedures
+          WHERE "userId" = $1 OR "userId" IS NULL
+          ORDER BY lower(title)
+        `,
+        [userId]
+      ),
+      queryRows(
+        `
+          SELECT *
+          FROM work_orders
+          WHERE "userId" = $1 OR "userId" IS NULL
+          ORDER BY date DESC NULLS LAST, lower(title)
+        `,
+        [userId]
+      ),
+      queryRows(
+        `
+          SELECT *
+          FROM calendar
+          WHERE "userId" = $1 OR "userId" IS NULL
+          ORDER BY date ASC NULLS LAST, lower(title)
+        `,
+        [userId]
+      ),
+      queryRows(
+        `
+          SELECT *
+          FROM asset_photos
+          WHERE "userId" = $1 OR "userId" IS NULL
+          ORDER BY "createdAt" DESC NULLS LAST
+        `,
+        [userId]
+      ).catch(() =>
+        queryRows(
+          `
+            SELECT *
+            FROM asset_photos
+            WHERE "userId" = $1 OR "userId" IS NULL
+            ORDER BY id DESC
+          `,
+          [userId]
+        )
+      ),
+    ]);
 
-    const vendorRows = (await sql`
-      SELECT id, name, category, phone, email, website, notes, logo_data_url, documents
-      FROM atlas_vendors
-      ORDER BY name ASC
-    `) as unknown as JsonRecord[];
-
-    const assetRows = (await sql`
-      SELECT id, name, location_id, category, status, make, model, serial, notes, vendor_ids, documents
-      FROM atlas_assets
-      ORDER BY name ASC
-    `) as unknown as JsonRecord[];
-
-    const procedureRows = (await sql`
-      SELECT id, title, area, priority, steps
-      FROM atlas_procedures
-      ORDER BY title ASC
-    `) as unknown as JsonRecord[];
-
-    const workOrderRows = (await sql`
-      SELECT
-        id,
-        asset_id,
-        vendor_id,
-        procedure_id,
-        COALESCE("date", work_date) AS date,
-        work_date,
-        title,
-        status,
-        notes,
-        follow_up_date,
-        photos,
-        documents
-      FROM atlas_work_orders
-      ORDER BY COALESCE("date", work_date) DESC NULLS LAST, title ASC
-    `) as unknown as JsonRecord[];
-
-    const calendarRows = (await sql`
-      SELECT id, date, title, area, status
-      FROM atlas_calendar_items
-      ORDER BY date ASC, title ASC
-    `) as unknown as JsonRecord[];
-
-    const documentRows = (await sql`
-      SELECT id, title, area, type, linked_asset_id, notes
-      FROM atlas_documents
-      ORDER BY title ASC
-    `) as unknown as JsonRecord[];
-
-    const photoRows = (await sql`
-      SELECT id, asset_id, name, data_url, created_at
-      FROM atlas_asset_photos
-      ORDER BY created_at DESC
-    `) as unknown as JsonRecord[];
-
-    return NextResponse.json({
+    return jsonResponse({
       ok: true,
       source: "neon",
-      locations: locationRows.map(mapLocation),
+      userId,
       vendorRecords: vendorRows.map(mapVendor),
       assetRecords: assetRows.map(mapAsset),
       procedureRecords: procedureRows.map(mapProcedure),
-      serviceRecords: workOrderRows.map(mapWorkOrder),
-      calendarItems: calendarRows.map(mapCalendarItem),
-      documents: documentRows.map(mapDocument),
+      serviceRecords: serviceRows.map(mapWorkOrder),
+      calendarItems: calendarRows.map(mapCalendar),
       photos: photoRows.map(mapPhoto),
     });
   } catch (error) {
-    return NextResponse.json(
+    return jsonResponse(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Unknown Atlas database read error",
+        source: "neon",
+        error: error instanceof Error ? error.message : "Atlas API load failed",
       },
-      { status: 500 }
+      500
     );
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const sql = getSql();
-    const body = (await request.json().catch(function () {
-      return {};
-    })) as JsonRecord;
+    const body = await req.json();
+    const table = body?.table as AtlasTable;
+    const record = body?.record as AnyRow;
 
-    const table = cleanTable(body.table);
-    const record = body.record && typeof body.record === "object" ? (body.record as JsonRecord) : {};
-
-    if (!table) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Unsupported table: " + asString(body.table),
-        },
-        { status: 400 }
-      );
+    if (!table || !record) {
+      return jsonResponse({ ok: false, error: "Missing table or record" }, 400);
     }
 
-    if (table === "vendors") {
-      const id = getId(record, "vendor");
-
-      await sql`
-        INSERT INTO atlas_vendors (
-          id,
-          name,
-          category,
-          phone,
-          email,
-          website,
-          notes,
-          logo_data_url,
-          documents,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.name) || "Untitled Vendor"},
-          ${asString(record.category) || "General"},
-          ${nullableString(record.phone)},
-          ${nullableString(record.email)},
-          ${nullableString(record.website)},
-          ${asString(record.notes)},
-          ${nullableString(record.logoDataUrl)},
-          ${jsonArray(record.documents)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          name = EXCLUDED.name,
-          category = EXCLUDED.category,
-          phone = EXCLUDED.phone,
-          email = EXCLUDED.email,
-          website = EXCLUDED.website,
-          notes = EXCLUDED.notes,
-          logo_data_url = EXCLUDED.logo_data_url,
-          documents = EXCLUDED.documents,
-          updated_at = NOW()
-      `;
-
-      return NextResponse.json({ ok: true, id });
+    if (!["vendors", "assets", "procedures", "work_orders", "calendar", "asset_photos"].includes(table)) {
+      return jsonResponse({ ok: false, error: "Invalid Atlas table" }, 400);
     }
 
-    if (table === "assets") {
-      const id = getId(record, "asset");
+    const userId = await getTargetUserId();
+    const saved = await upsertRecord(table, record, userId);
 
-      await sql`
-        INSERT INTO atlas_assets (
-          id,
-          name,
-          location_id,
-          category,
-          status,
-          make,
-          model,
-          serial,
-          notes,
-          vendor_ids,
-          documents,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.name) || "Untitled Asset"},
-          ${asString(record.locationId) || "general"},
-          ${asString(record.category) || "General"},
-          ${asStatus(record.status, "Monitor")},
-          ${nullableString(record.make)},
-          ${nullableString(record.model)},
-          ${nullableString(record.serial)},
-          ${asString(record.notes)},
-          ARRAY(SELECT jsonb_array_elements_text(${jsonArray(record.vendorIds)}::jsonb)),
-          ${jsonArray(record.documents)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          name = EXCLUDED.name,
-          location_id = EXCLUDED.location_id,
-          category = EXCLUDED.category,
-          status = EXCLUDED.status,
-          make = EXCLUDED.make,
-          model = EXCLUDED.model,
-          serial = EXCLUDED.serial,
-          notes = EXCLUDED.notes,
-          vendor_ids = EXCLUDED.vendor_ids,
-          documents = EXCLUDED.documents,
-          updated_at = NOW()
-      `;
-
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "procedures") {
-      const id = getId(record, "procedure");
-
-      await sql`
-        INSERT INTO atlas_procedures (
-          id,
-          title,
-          area,
-          priority,
-          steps,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.title) || "Untitled Procedure"},
-          ${asString(record.area) || "General"},
-          ${asString(record.priority) || "Normal"},
-          ARRAY(SELECT jsonb_array_elements_text(${jsonArray(record.steps)}::jsonb)),
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          title = EXCLUDED.title,
-          area = EXCLUDED.area,
-          priority = EXCLUDED.priority,
-          steps = EXCLUDED.steps,
-          updated_at = NOW()
-      `;
-
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "work_orders") {
-      const id = getId(record, "work-order");
-      const cleanDate = asDate(record.date);
-      const cleanFollowUpDate = asDate(record.followUpDate);
-
-      await sql`
-        INSERT INTO atlas_work_orders (
-          id,
-          asset_id,
-          vendor_id,
-          procedure_id,
-          date,
-          work_date,
-          title,
-          status,
-          notes,
-          follow_up_date,
-          photos,
-          documents,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.assetId) || "general"},
-          ${nullableString(record.vendorId)},
-          ${nullableString(record.procedureId)},
-          ${cleanDate}::date,
-          ${cleanDate}::date,
-          ${asString(record.title) || "Untitled Work Order"},
-          ${asStatus(record.status, "Open")},
-          ${asString(record.notes)},
-          ${cleanFollowUpDate}::date,
-          ${jsonArray(record.photos)}::jsonb,
-          ${jsonArray(record.documents)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          asset_id = EXCLUDED.asset_id,
-          vendor_id = EXCLUDED.vendor_id,
-          procedure_id = EXCLUDED.procedure_id,
-          date = EXCLUDED.date,
-          work_date = EXCLUDED.work_date,
-          title = EXCLUDED.title,
-          status = EXCLUDED.status,
-          notes = EXCLUDED.notes,
-          follow_up_date = EXCLUDED.follow_up_date,
-          photos = EXCLUDED.photos,
-          documents = EXCLUDED.documents,
-          updated_at = NOW()
-      `;
-
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "calendar") {
-      const id = getId(record, "calendar");
-
-      await sql`
-        INSERT INTO atlas_calendar_items (
-          id,
-          date,
-          title,
-          area,
-          status,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asDate(record.date)}::date,
-          ${asString(record.title) || "Untitled Calendar Item"},
-          ${asString(record.area) || "General"},
-          ${asStatus(record.status, "Scheduled")},
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          date = EXCLUDED.date,
-          title = EXCLUDED.title,
-          area = EXCLUDED.area,
-          status = EXCLUDED.status,
-          updated_at = NOW()
-      `;
-
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "documents") {
-      const id = getId(record, "document");
-
-      await sql`
-        INSERT INTO atlas_documents (
-          id,
-          title,
-          area,
-          type,
-          linked_asset_id,
-          notes,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.title) || "Untitled Document"},
-          ${asString(record.area) || "General"},
-          ${asString(record.type) || "Document"},
-          ${nullableString(record.linkedAssetId)},
-          ${asString(record.notes)},
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          title = EXCLUDED.title,
-          area = EXCLUDED.area,
-          type = EXCLUDED.type,
-          linked_asset_id = EXCLUDED.linked_asset_id,
-          notes = EXCLUDED.notes,
-          updated_at = NOW()
-      `;
-
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "asset_photos") {
-      const id = getId(record, "photo");
-
-      await sql`
-        INSERT INTO atlas_asset_photos (
-          id,
-          asset_id,
-          name,
-          data_url,
-          created_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.assetId) || "general"},
-          ${asString(record.name) || "Photo"},
-          ${asString(record.dataUrl)},
-          COALESCE(${nullableString(record.createdAt)}::timestamptz, NOW())
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          asset_id = EXCLUDED.asset_id,
-          name = EXCLUDED.name,
-          data_url = EXCLUDED.data_url
-      `;
-
-      return NextResponse.json({ ok: true, id });
-    }
-
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Unsupported table: " + table,
-      },
-      { status: 400 }
-    );
+    return jsonResponse({
+      ok: true,
+      source: "neon",
+      table,
+      record: saved,
+    });
   } catch (error) {
-    return NextResponse.json(
+    return jsonResponse(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Unknown Atlas database save error",
+        source: "neon",
+        error: error instanceof Error ? error.message : "Atlas API save failed",
       },
-      { status: 500 }
+      500
     );
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(req: NextRequest) {
   try {
-    const sql = getSql();
-    const body = (await request.json().catch(function () {
-      return {};
-    })) as JsonRecord;
-
-    const table = cleanTable(body.table);
-    const id = asString(body.id);
+    const body = await req.json();
+    const table = body?.table as AtlasTable;
+    const id = normalizeText(body?.id);
 
     if (!table || !id) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Table and id are required.",
-        },
-        { status: 400 }
-      );
+      return jsonResponse({ ok: false, error: "Missing table or id" }, 400);
     }
 
-    if (table === "vendors") {
-      await sql`
-        DELETE FROM atlas_vendors
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
+    if (!["vendors", "assets", "procedures", "work_orders", "calendar", "asset_photos"].includes(table)) {
+      return jsonResponse({ ok: false, error: "Invalid Atlas table" }, 400);
     }
 
-    if (table === "assets") {
-      await sql`
-        DELETE FROM atlas_asset_photos
-        WHERE asset_id = ${id}
-      `;
+    const userId = await getTargetUserId();
+    await deleteRecord(table, id, userId);
 
-      await sql`
-        DELETE FROM atlas_work_orders
-        WHERE asset_id = ${id}
-      `;
-
-      await sql`
-        DELETE FROM atlas_assets
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "procedures") {
-      await sql`
-        DELETE FROM atlas_procedures
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "work_orders") {
-      await sql`
-        DELETE FROM atlas_work_orders
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "calendar") {
-      await sql`
-        DELETE FROM atlas_calendar_items
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "documents") {
-      await sql`
-        DELETE FROM atlas_documents
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "asset_photos") {
-      await sql`
-        DELETE FROM atlas_asset_photos
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Unsupported table: " + table,
-      },
-      { status: 400 }
-    );
+    return jsonResponse({
+      ok: true,
+      source: "neon",
+      table,
+      id,
+    });
   } catch (error) {
-    return NextResponse.json(
+    return jsonResponse(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Unknown Atlas database delete error",
+        source: "neon",
+        error: error instanceof Error ? error.message : "Atlas API delete failed",
       },
-      { status: 500 }
+      500
     );
   }
 }
