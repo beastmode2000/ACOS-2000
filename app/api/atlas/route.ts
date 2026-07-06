@@ -136,21 +136,36 @@ function arr<T = unknown>(value: unknown): T[] {
   return [];
 }
 
-function status(value: unknown) {
-  const clean = text(value, "Monitor");
-  if (clean === "Online" || clean === "Offline" || clean === "Seasonal" || clean === "Monitor") return clean;
+function assetStatus(value: unknown) {
+  const clean = text(value, "Monitor").trim().toLowerCase();
+
+  if (clean === "online") return "Online";
+  if (clean === "offline") return "Offline";
+  if (clean === "seasonal") return "Seasonal";
+  if (clean === "monitor") return "Monitor";
+
   return "Monitor";
 }
 
 function serviceStatus(value: unknown) {
-  const clean = text(value, "Open");
-  if (clean === "Open" || clean === "Scheduled" || clean === "Completed" || clean === "Monitor") return clean;
+  const clean = text(value, "Open").trim().toLowerCase();
+
+  if (clean === "open") return "Open";
+  if (clean === "scheduled") return "Scheduled";
+  if (clean === "completed") return "Completed";
+  if (clean === "complete") return "Completed";
+  if (clean === "done") return "Completed";
+  if (clean === "monitor") return "Monitor";
+
   return "Open";
 }
 
 function priority(value: unknown) {
-  const clean = text(value, "Normal");
-  if (clean === "High" || clean === "Normal" || clean === "Seasonal") return clean;
+  const clean = text(value, "Normal").trim().toLowerCase();
+
+  if (clean === "high") return "High";
+  if (clean === "seasonal") return "Seasonal";
+
   return "Normal";
 }
 
@@ -425,7 +440,7 @@ function mapAsset(row: AnyRow) {
     name: text(row.name, "Unnamed Asset"),
     locationId: locationIdFromRecord(row),
     category: text(row.category, "General"),
-    status: status(row.status),
+    status: assetStatus(row.status),
     make: text(row.make),
     model: text(row.model),
     serial: text(row.serial),
@@ -516,7 +531,7 @@ async function buildPayload(table: AtlasTable, record: AnyRow, userId: string) {
     set("location_id", locationDbId);
     set("locationId", text(record.locationId, "general"));
     set("category", text(record.category, "General"));
-    set("status", status(record.status));
+    set("status", assetStatus(record.status));
     set("make", text(record.make));
     set("model", text(record.model));
     set("serial", text(record.serial));
