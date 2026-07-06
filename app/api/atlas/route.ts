@@ -45,6 +45,33 @@ function asDate(value: unknown) {
   return text;
 }
 
+function toDateKey(value: unknown) {
+  if (!value) return "";
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(value.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const text = String(value).trim();
+  if (!text) return "";
+
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    const year = parsed.getUTCFullYear();
+    const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  return "";
+}
+
 function asStatus(value: unknown, fallback: string) {
   const text = asString(value);
   if (!text) return fallback;
@@ -160,16 +187,19 @@ function mapProcedure(row: JsonRecord) {
 }
 
 function mapWorkOrder(row: JsonRecord) {
+  const cleanDate = toDateKey(row.date || row.work_date);
+  const cleanFollowUpDate = toDateKey(row.follow_up_date);
+
   return {
     id: String(row.id || ""),
     assetId: String(row.asset_id || ""),
     vendorId: row.vendor_id ? String(row.vendor_id) : "",
     procedureId: row.procedure_id ? String(row.procedure_id) : "",
-    date: row.date ? String(row.date).slice(0, 10) : "",
+    date: cleanDate,
     title: String(row.title || ""),
     status: String(row.status || "Open"),
     notes: String(row.notes || ""),
-    followUpDate: row.follow_up_date ? String(row.follow_up_date).slice(0, 10) : "",
+    followUpDate: cleanFollowUpDate,
     photos: asArray(row.photos),
     documents: asArray(row.documents),
   };
@@ -178,7 +208,7 @@ function mapWorkOrder(row: JsonRecord) {
 function mapCalendarItem(row: JsonRecord) {
   return {
     id: String(row.id || ""),
-    date: row.date ? String(row.date).slice(0, 10) : "",
+    date: toDateKey(row.date),
     title: String(row.title || ""),
     area: String(row.area || ""),
     status: String(row.status || "Scheduled"),
@@ -235,9 +265,21 @@ export async function GET() {
     `) as unknown as JsonRecord[];
 
     const workOrderRows = (await sql`
-      SELECT id, asset_id, vendor_id, procedure_id, date, title, status, notes, follow_up_date, photos, documents
+      SELECT
+        id,
+        asset_id,
+        vendor_id,
+        procedure_id,
+        COALESCE("date", work_date) AS date,
+        work_date,
+        title,
+        status,
+        notes,
+        follow_up_date,
+        photos,
+        documents
       FROM atlas_work_orders
-      ORDER BY date DESC, title ASC
+      ORDER BY COALESCE("date", work_date) DESC NULLS LAST, title ASC
     `) as unknown as JsonRecord[];
 
     const calendarRows = (await sql`
@@ -429,6 +471,8 @@ export async function POST(request: NextRequest) {
 
     if (table === "work_orders") {
       const id = getId(record, "work-order");
+      const cleanDate = asDate(record.date);
+      const cleanFollowUpDate = asDate(record.followUpDate);
 
       await sql`
         INSERT INTO atlas_work_orders (
@@ -437,6 +481,7 @@ export async function POST(request: NextRequest) {
           vendor_id,
           procedure_id,
           date,
+          work_date,
           title,
           status,
           notes,
@@ -450,11 +495,12 @@ export async function POST(request: NextRequest) {
           ${asString(record.assetId) || "general"},
           ${nullableString(record.vendorId)},
           ${nullableString(record.procedureId)},
-          ${asDate(record.date)}::date,
+          ${cleanDate}::date,
+          ${cleanDate}::date,
           ${asString(record.title) || "Untitled Work Order"},
           ${asStatus(record.status, "Open")},
           ${asString(record.notes)},
-          ${asDate(record.followUpDate)}::date,
+          ${cleanFollowUpDate}::date,
           ${jsonArray(record.photos)}::jsonb,
           ${jsonArray(record.documents)}::jsonb,
           NOW()
@@ -465,6 +511,7 @@ export async function POST(request: NextRequest) {
           vendor_id = EXCLUDED.vendor_id,
           procedure_id = EXCLUDED.procedure_id,
           date = EXCLUDED.date,
+          work_date = EXCLUDED.work_date,
           title = EXCLUDED.title,
           status = EXCLUDED.status,
           notes = EXCLUDED.notes,
