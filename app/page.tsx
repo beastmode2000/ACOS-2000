@@ -2020,7 +2020,7 @@ export default function AtlasPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
           <SectionShell
             eyebrow="Database Connected"
-            title="Atlas / 2000 Estate Operations"
+            title="Atlas Estate Systems / 2000"
             right={<button type="button" onClick={syncCurrentToDatabase} style={primaryButtonStyle}>Sync to Neon</button>}
           >
             <div style={heroCardStyle}>
@@ -2028,9 +2028,9 @@ export default function AtlasPage() {
               <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
                 <img src="/atlas-logo.png" alt="Atlas logo" style={heroLogoStyle} />
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Atlas now saves to Neon.</h2>
+                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Atlas Estate Systems is live for 2000.</h2>
                   <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.5 }}>
-                    Assets, vendors, work orders, procedures, calendar records, and asset photos sync through the database API.
+                    Private estate operations software for assets, vendors, work orders, procedures, calendar records, documents, photos, and property history.
                   </p>
                   <p style={{ margin: "10px 0 0", color: "rgba(255,255,255,0.9)", fontWeight: 900 }}>
                     Status: {databaseStatus}
@@ -2970,8 +2970,9 @@ export default function AtlasPage() {
         <div style={sidebarBrandStyle}>
           <img src="/atlas-logo.png" alt="Atlas logo" style={sidebarLogoStyle} />
           <div>
-            <div style={{ fontSize: 26, fontWeight: 950, letterSpacing: 1.8, lineHeight: 1 }}>ATLAS</div>
-            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 13, fontWeight: 750, marginTop: 6 }}>2000 Estate Operations</div>
+            <div style={{ fontSize: 24, fontWeight: 950, letterSpacing: 1.2, lineHeight: 1 }}>ATLAS</div>
+            <div style={{ color: "rgba(255,255,255,0.9)", fontSize: 13, fontWeight: 900, marginTop: 5 }}>Estate Systems</div>
+            <div style={{ color: "rgba(255,255,255,0.62)", fontSize: 12, fontWeight: 750, marginTop: 3 }}>Private instance: 2000</div>
           </div>
         </div>
 
@@ -3002,8 +3003,8 @@ export default function AtlasPage() {
             <img src="/atlas-logo.png" alt="Atlas logo" style={headerLogoStyle} />
             <div style={{ minWidth: 0 }}>
               <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.3, textTransform: "uppercase" }}>{activeNav?.label ?? "Dashboard"}</div>
-              <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: 31, letterSpacing: -0.9, lineHeight: 1.05 }}>Atlas / 2000</h1>
-              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Private estate systems, work orders, vendors, procedures, calendar, documents, photos, Ask Atlas, and Neon database sync.</div>
+              <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: 31, letterSpacing: -0.9, lineHeight: 1.05 }}>Atlas Estate Systems</h1>
+              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Atlas / 2000 · Private estate operations software for work orders, assets, vendors, procedures, documents, photos, and property history.</div>
             </div>
           </div>
 
