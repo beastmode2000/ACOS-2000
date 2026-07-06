@@ -393,7 +393,7 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: "0 18px 35px rgba(11, 30, 51, 0.16)",
   },
   eyebrow: {
-    color: colors.gold2,
+    color: colors.gold,
     fontSize: 12,
     fontWeight: 950,
     letterSpacing: 1,
