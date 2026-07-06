@@ -1718,11 +1718,9 @@ export default function AtlasPage() {
 
     setServiceRecords((current) => sortServices(current.map((service) => (service.id === completedRecord.id ? completedRecord : service))));
 
-    if (!record || completedRecord.id === serviceForm.id) {
-      setServiceForm(completedRecord);
-      setSelectedServiceId(completedRecord.id);
-      setServiceMode("edit");
-    }
+    setServiceForm(completedRecord);
+    setSelectedServiceId(completedRecord.id);
+    setServiceMode("edit");
 
     void postAtlasRecord("work_orders", completedRecord);
   }
@@ -2334,25 +2332,29 @@ export default function AtlasPage() {
     const selectedAssetExists = Boolean(serviceForm.assetId && assetRecords.some((asset) => asset.id === serviceForm.assetId));
     const detailAssetValue = selectedAssetExists ? serviceForm.assetId : "";
     const currentViewLabel = workOrderTab === "todo" ? "To Do" : "Done";
-    const currentViewHint = workOrderTab === "todo" ? "Open, scheduled, and monitor work that still needs attention." : "Completed work history.";
     const noResultsTitle = workOrderTab === "todo" ? "No To Do work orders match this view." : "No Done work orders match this view.";
-    const noResultsDetail = workOrderTab === "todo" ? "Use Done to review completed history, clear filters, or create a new work order." : "Clear filters or switch back to To Do.";
+    const noResultsDetail = workOrderTab === "todo" ? "Switch to Done, clear filters, or create a new work order." : "Clear filters or switch back to To Do.";
 
-    const activeTabButton = {
-      ...widePrimaryButtonStyle,
-      background: colors.navy,
-      color: "#FFFFFF",
-      border: `1px solid ${colors.navy}`,
-      minHeight: 48,
-    };
+    const boardHeight = "calc(100vh - 190px)";
 
-    const inactiveTabButton = {
-      ...widePrimaryButtonStyle,
+    const tabStyle = (active: boolean): React.CSSProperties => ({
+      border: "none",
+      borderBottom: active ? `3px solid ${colors.gold}` : `1px solid ${colors.line}`,
+      background: active ? "#FFFFFF" : "#F7FAFD",
+      color: active ? colors.navy : colors.muted,
+      padding: "13px 10px",
+      fontSize: 14,
+      fontWeight: 950,
+      cursor: "pointer",
+    });
+
+    const filterChipStyle: React.CSSProperties = {
+      ...inputStyle,
+      minHeight: 34,
+      borderRadius: 10,
+      fontSize: 12,
+      padding: "6px 10px",
       background: "#FFFFFF",
-      color: colors.navy,
-      border: `1px solid ${colors.line}`,
-      minHeight: 48,
-      boxShadow: "none",
     };
 
     function clearWorkOrderFilters() {
@@ -2363,252 +2365,261 @@ export default function AtlasPage() {
       selectFirstVisibleWorkOrder(workOrderTab, "all", "all", "all", "priority");
     }
 
+    function selectedActionText() {
+      if (!hasSelectedWorkOrder) return "Save New Work Order";
+      if (serviceForm.status === "Completed") return "Reopen + Save";
+      return "Mark as Done";
+    }
+
+    function runPrimaryWorkOrderAction() {
+      if (!hasSelectedWorkOrder) {
+        saveService();
+        return;
+      }
+
+      if (serviceForm.status === "Completed") {
+        reopenServiceAndSave();
+        setWorkOrderTab("todo");
+        return;
+      }
+
+      markServiceDoneAndSave();
+      setWorkOrderTab("done");
+    }
+
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "0.82fr 1.18fr", gap: 18, alignItems: "start" }}>
-        <SectionShell
-          eyebrow="Work Orders"
-          title="Work Orders"
-          right={<button type="button" onClick={startNewService} style={primaryButtonStyle}>New Work Order</button>}
-        >
-          <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button type="button" onClick={() => changeWorkOrderTab("todo")} style={workOrderTab === "todo" ? activeTabButton : inactiveTabButton}>
-                To Do · {activeWorkOrders.length}
-              </button>
-              <button type="button" onClick={() => changeWorkOrderTab("done")} style={workOrderTab === "done" ? activeTabButton : inactiveTabButton}>
-                Done · {completedWorkOrders.length}
-              </button>
+      <div style={{ display: "grid", gridTemplateColumns: "390px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+        <section style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 22, boxShadow: "0 14px 35px rgba(11, 30, 51, 0.06)", overflow: "hidden", minHeight: boardHeight }}>
+          <div style={{ padding: "16px 16px 12px", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+            <div>
+              <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.1, textTransform: "uppercase" }}>Work Orders</div>
+              <h2 style={{ margin: "5px 0 0", color: colors.navy, fontSize: 24, lineHeight: 1.1 }}>List</h2>
             </div>
+            <button type="button" onClick={startNewService} style={primaryButtonStyle}>New</button>
+          </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <div style={{ ...inlineCardStyle, padding: 12 }}>
-                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 950 }}>Current View</div>
-                <div style={{ color: colors.navy, fontSize: 22, fontWeight: 950 }}>{currentViewLabel}</div>
-              </div>
-              <div style={{ ...inlineCardStyle, padding: 12 }}>
-                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 950 }}>Showing</div>
-                <div style={{ color: colors.navy, fontSize: 22, fontWeight: 950 }}>{visibleWorkOrders.length}</div>
-              </div>
-              <div style={{ ...inlineCardStyle, padding: 12 }}>
-                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 950 }}>High Priority</div>
-                <div style={{ color: urgentWorkOrders.length ? colors.red : colors.navy, fontSize: 22, fontWeight: 950 }}>{urgentWorkOrders.length}</div>
-              </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+            <button type="button" onClick={() => changeWorkOrderTab("todo")} style={tabStyle(workOrderTab === "todo")}>• To Do ({activeWorkOrders.length})</button>
+            <button type="button" onClick={() => changeWorkOrderTab("done")} style={tabStyle(workOrderTab === "done")}>Done ({completedWorkOrders.length})</button>
+          </div>
+
+          <div style={{ padding: 12, borderBottom: `1px solid ${colors.line}`, display: "grid", gap: 9, background: "#FBFCFE" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <select value={workOrderStatusFilter} onChange={(event) => changeWorkOrderStatusFilter(event.target.value as "all" | ServiceStatus)} style={filterChipStyle}>
+                <option value="all">Status: All</option>
+                <option value="Open">Status: Open</option>
+                <option value="Scheduled">Status: Scheduled</option>
+                <option value="Monitor">Status: Monitor</option>
+                <option value="Completed">Status: Completed</option>
+              </select>
+              <select value={workOrderSort} onChange={(event) => changeWorkOrderSort(event.target.value as "priority" | "due-asc" | "date-desc" | "asset")} style={filterChipStyle}>
+                <option value="priority">Sort: Priority</option>
+                <option value="due-asc">Sort: Due Date</option>
+                <option value="date-desc">Sort: Newest</option>
+                <option value="asset">Sort: Asset</option>
+              </select>
             </div>
-
-            <div style={{ ...emptyStateStyle, textAlign: "left", color: colors.navy, background: workOrderTab === "todo" ? "#FFF9EA" : "#F7FAFD", borderStyle: "solid" }}>
-              <strong>{currentViewLabel} view:</strong> {currentViewHint}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <select value={workOrderLocationFilter} onChange={(event) => changeWorkOrderLocationFilter(event.target.value)} style={filterChipStyle}>
+                <option value="all">Location: All</option>
+                {availableWorkOrderLocations.map((locationId) => <option key={locationId} value={locationId}>Location: {getLocationName(locationId)}</option>)}
+              </select>
+              <select value={workOrderAssetFilter} onChange={(event) => changeWorkOrderAssetFilter(event.target.value)} style={filterChipStyle}>
+                <option value="all">Asset: All</option>
+                {sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+              </select>
             </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div style={{ color: colors.muted, fontSize: 12, fontWeight: 850 }}>{currentViewLabel} view · showing {visibleWorkOrders.length} · high priority {urgentWorkOrders.length}</div>
+              <button type="button" onClick={clearWorkOrderFilters} style={{ ...linkButtonStyle, padding: "5px 8px" }}>Reset</button>
+            </div>
+          </div>
 
-            <details open style={{ border: `1px solid ${colors.line}`, borderRadius: 18, padding: 12, background: "#FBFCFE" }}>
-              <summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 950, fontSize: 14 }}>Filters and sorting</summary>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-                <label style={{ ...labelStyle, margin: 0 }}>
-                  Status
-                  <select value={workOrderStatusFilter} onChange={(event) => changeWorkOrderStatusFilter(event.target.value as "all" | ServiceStatus)} style={inputStyle}>
-                    <option value="all">All statuses</option>
-                    <option value="Open">Open</option>
-                    <option value="Scheduled">Scheduled</option>
-                    <option value="Monitor">Monitor</option>
-                    <option value="Completed">Completed</option>
-                  </select>
-                </label>
-                <label style={{ ...labelStyle, margin: 0 }}>
-                  Sort
-                  <select value={workOrderSort} onChange={(event) => changeWorkOrderSort(event.target.value as "priority" | "due-asc" | "date-desc" | "asset")} style={inputStyle}>
-                    <option value="priority">Priority / due date</option>
-                    <option value="due-asc">Due date first</option>
-                    <option value="date-desc">Newest created first</option>
-                    <option value="asset">Asset name</option>
-                  </select>
-                </label>
-                <label style={{ ...labelStyle, margin: 0 }}>
-                  Location
-                  <select value={workOrderLocationFilter} onChange={(event) => changeWorkOrderLocationFilter(event.target.value)} style={inputStyle}>
-                    <option value="all">All locations</option>
-                    {availableWorkOrderLocations.map((locationId) => <option key={locationId} value={locationId}>{getLocationName(locationId)}</option>)}
-                  </select>
-                </label>
-                <label style={{ ...labelStyle, margin: 0 }}>
-                  Asset
-                  <select value={workOrderAssetFilter} onChange={(event) => changeWorkOrderAssetFilter(event.target.value)} style={inputStyle}>
-                    <option value="all">All assets</option>
-                    {sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-                  </select>
-                </label>
-              </div>
-              <button type="button" onClick={clearWorkOrderFilters} style={{ ...linkButtonStyle, marginTop: 12 }}>Clear filters</button>
-            </details>
+          <div style={{ maxHeight: "calc(100vh - 405px)", overflowY: "auto", background: "#FFFFFF" }}>
+            {visibleWorkOrders.length ? visibleWorkOrders.map((record) => {
+              const priority = getWorkOrderPriority(record);
+              const isSelected = selectedServiceId === record.id && serviceMode === "edit";
+              const firstPhoto = record.photos?.[0];
 
-            <div style={{ display: "grid", gap: 10 }}>
-              {visibleWorkOrders.length ? visibleWorkOrders.map((record) => {
-                const priority = getWorkOrderPriority(record);
-                const isSelected = selectedServiceId === record.id && serviceMode === "edit";
-                const cardAssetName = assetName(record.assetId);
-                const cardLocation = getLocationName(getWorkOrderLocationId(record));
-
-                return (
-                  <button
-                    key={record.id}
-                    type="button"
-                    onClick={() => openServiceRecord(record)}
-                    style={{
-                      ...smallRecordButtonStyle,
-                      border: isSelected ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
-                      background: isSelected ? "#FFF9EA" : "#FFFFFF",
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto",
-                      gap: 12,
-                      alignItems: "center",
-                      textAlign: "left",
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                        <span style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{getWorkOrderNumber(record)}</span>
-                        <span style={badgeStyle(record.status)}>{record.status}</span>
-                        <span style={priority === "High" ? badgeStyle("Seasonal") : priority === "Done" ? badgeStyle("Completed") : badgeStyle("Monitor")}>{priority} Priority</span>
-                      </div>
-                      <div style={{ color: colors.navy, fontWeight: 950, fontSize: 15, marginTop: 8 }}>{record.title}</div>
-                      <div style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>
-                        {cardAssetName} · {cardLocation} · Due/work date: {formatDate(getWorkOrderDueDate(record))}
-                      </div>
-                      <div style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
-                        Vendor: {vendorName(record.vendorId)} · {record.photos?.length ?? 0} photos · {record.documents?.length ?? 0} docs
-                      </div>
+              return (
+                <button
+                  key={record.id}
+                  type="button"
+                  onClick={() => openServiceRecord(record)}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    borderLeft: isSelected ? `4px solid ${colors.gold}` : "4px solid transparent",
+                    borderBottom: `1px solid ${colors.line}`,
+                    background: isSelected ? "#FFF9EA" : "#FFFFFF",
+                    padding: "12px 12px 12px 9px",
+                    display: "grid",
+                    gridTemplateColumns: "46px 1fr auto",
+                    gap: 10,
+                    alignItems: "start",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <div style={{ width: 46, height: 46, borderRadius: 10, overflow: "hidden", background: "#EDF3FF", border: `1px solid ${colors.line}`, display: "flex", alignItems: "center", justifyContent: "center", color: colors.navy, fontWeight: 950, fontSize: 12 }}>
+                    {firstPhoto ? <img src={firstPhoto.dataUrl} alt={firstPhoto.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "WO"}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: colors.navy, fontWeight: 950, fontSize: 14, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled work order"}</div>
+                    <div style={{ color: colors.muted, fontSize: 12, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Asset: {assetName(record.assetId)}</div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 7 }}>
+                      <span style={{ ...badgeStyle(record.status), padding: "3px 7px", fontSize: 11 }}>{record.status}</span>
+                      <span style={{ ...(priority === "High" ? badgeStyle("Seasonal") : priority === "Done" ? badgeStyle("Completed") : badgeStyle("Monitor")), padding: "3px 7px", fontSize: 11 }}>{priority}</span>
                     </div>
-                    {record.status !== "Completed" ? (
-                      <button type="button" onClick={(event) => { event.stopPropagation(); markServiceDoneAndSave(record); }} style={goldButtonStyle}>Mark Done</button>
-                    ) : (
-                      <button type="button" onClick={(event) => { event.stopPropagation(); reopenServiceAndSave(record); }} style={smallPrimaryButtonStyle}>Reopen</button>
-                    )}
-                  </button>
-                );
-              }) : (
+                  </div>
+                  <div style={{ textAlign: "right", color: colors.muted, fontSize: 11, fontWeight: 850, whiteSpace: "nowrap" }}>
+                    <div style={{ color: colors.gold }}>{getWorkOrderNumber(record)}</div>
+                    <div style={{ marginTop: 6 }}>{formatDate(getWorkOrderDueDate(record))}</div>
+                    <div style={{ marginTop: 6 }}>{record.photos?.length ?? 0} pics</div>
+                  </div>
+                </button>
+              );
+            }) : (
+              <div style={{ padding: 16 }}>
                 <div style={{ ...emptyStateStyle, textAlign: "left" }}>
                   <div style={{ color: colors.navy, fontWeight: 950 }}>{noResultsTitle}</div>
                   <div style={{ marginTop: 6 }}>{noResultsDetail}</div>
                 </div>
-              )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 22, boxShadow: "0 14px 35px rgba(11, 30, 51, 0.06)", overflow: "hidden", minHeight: boardHeight }}>
+          <div style={{ padding: "18px 20px", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start" }}>
+            <div>
+              <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.1, textTransform: "uppercase" }}>{hasSelectedWorkOrder ? `Work Order ${selectedWorkOrderNumber}` : "New Work Order"}</div>
+              <h2 style={{ margin: "6px 0 0", color: colors.navy, fontSize: 26, lineHeight: 1.12 }}>{hasSelectedWorkOrder ? serviceForm.title || "Work Order Details" : "Create a Work Order"}</h2>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                <span style={hasSelectedWorkOrder ? badgeStyle(serviceForm.status) : badgeStyle("Open")}>{hasSelectedWorkOrder ? serviceForm.status : "Open"}</span>
+                <span style={selectedWorkOrderPriority === "High" ? badgeStyle("Seasonal") : selectedWorkOrderPriority === "Done" ? badgeStyle("Completed") : badgeStyle("Monitor")}>{selectedWorkOrderPriority} Priority</span>
+                <span style={openPillStyle}>Due/work date: {formatDate(serviceForm.date || todayKey)}</span>
+                <span style={openPillStyle}>{serviceForm.photos?.length ?? 0} photos</span>
+                <span style={openPillStyle}>{serviceForm.documents?.length ?? 0} docs</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {hasSelectedWorkOrder ? <button type="button" onClick={runPrimaryWorkOrderAction} style={serviceForm.status === "Completed" ? widePrimaryButtonStyle : goldButtonStyle}>{selectedActionText()}</button> : null}
+              <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>{hasSelectedWorkOrder ? "Save" : "Save New"}</button>
+              {hasSelectedWorkOrder ? <button type="button" onClick={deleteService} style={deleteButtonStyle}>Delete</button> : null}
             </div>
           </div>
-        </SectionShell>
 
-        <SectionShell
-          eyebrow={hasSelectedWorkOrder ? `Work Order ${selectedWorkOrderNumber}` : "New Work Order"}
-          title={hasSelectedWorkOrder ? serviceForm.title || "Work Order Details" : "Create a Work Order"}
-          right={hasSelectedWorkOrder ? <button type="button" onClick={deleteService} style={deleteButtonStyle}>Delete</button> : null}
-        >
-          <div style={{ display: "grid", gap: 16 }}>
-            <div style={{ ...emptyStateStyle, textAlign: "left", background: hasSelectedWorkOrder ? "#FBFCFE" : "#FFF9EA", borderStyle: "solid" }}>
-              {hasSelectedWorkOrder ? (
-                <>
-                  <strong>{serviceForm.status === "Completed" ? "Completed work order." : "Active work order."}</strong>{" "}
-                  {serviceForm.status === "Completed" ? "Use Reopen + Save only if this needs to return to To Do." : "Review the details, add notes/photos if needed, then use Mark Done + Save when the work is finished."}
-                </>
-              ) : (
-                <>
-                  <strong>No work order is selected.</strong> Add a title and details, then click Save New Work Order.
-                </>
-              )}
-            </div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <span style={hasSelectedWorkOrder ? badgeStyle(serviceForm.status) : badgeStyle("Open")}>{hasSelectedWorkOrder ? serviceForm.status : "Open"}</span>
-              <span style={selectedWorkOrderPriority === "High" ? badgeStyle("Seasonal") : selectedWorkOrderPriority === "Done" ? badgeStyle("Completed") : badgeStyle("Monitor")}>{selectedWorkOrderPriority} Priority</span>
-              <span style={openPillStyle}>Due/work date: {formatDate(serviceForm.date || todayKey)}</span>
-              <span style={openPillStyle}>{serviceForm.photos?.length ?? 0} photos</span>
-              <span style={openPillStyle}>{serviceForm.documents?.length ?? 0} docs</span>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 0 }}>
+            <div style={{ padding: 20, display: "grid", gap: 16, borderRight: `1px solid ${colors.line}` }}>
               <label style={labelStyle}>Title<input value={serviceForm.title} onChange={(event) => setServiceForm((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Clean dryer vent" style={inputStyle} /></label>
-              <label style={labelStyle}>
-                Asset
-                <select value={detailAssetValue} onChange={(event) => setServiceForm((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>
-                  <option value="">No asset linked / choose asset</option>
-                  {sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-                </select>
-                {!selectedAssetExists && serviceForm.assetId ? <span style={{ color: colors.red, fontSize: 12, marginTop: 6, display: "block" }}>Saved asset link is old or missing. Choose the correct asset before saving.</span> : null}
-              </label>
-              <label style={labelStyle}>
-                Vendor
-                <select value={serviceForm.vendorId ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, vendorId: event.target.value }))} style={inputStyle}>
-                  <option value="">Internal / Not set</option>
-                  {sortVendors(vendorRecords).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
-                </select>
-              </label>
-              <label style={labelStyle}>
-                Procedure
-                <select value={serviceForm.procedureId ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, procedureId: event.target.value }))} style={inputStyle}>
-                  <option value="">No procedure linked</option>
-                  {sortProcedures(procedureRecords).map((procedure) => <option key={procedure.id} value={procedure.id}>{procedure.title}</option>)}
-                </select>
-              </label>
-              <label style={labelStyle}>Work / Created Date<input type="date" value={serviceForm.date || todayKey} onChange={(event) => setServiceForm((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
-              <label style={labelStyle}>
-                Status
-                <select value={serviceForm.status} onChange={(event) => setServiceForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}>
-                  <option value="Open">Open</option>
-                  <option value="Scheduled">Scheduled</option>
-                  <option value="Monitor">Monitor</option>
-                  <option value="Completed">Completed</option>
-                </select>
-              </label>
-              <label style={labelStyle}>Due / Follow-Up Date<input type="date" value={serviceForm.followUpDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, followUpDate: event.target.value }))} style={inputStyle} /></label>
-              <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>{hasSelectedWorkOrder ? "Save Work Order to Neon" : "Save New Work Order"}</button>
-            </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: hasSelectedWorkOrder ? "1fr 1fr" : "1fr", gap: 10 }}>
-              {hasSelectedWorkOrder && serviceForm.status !== "Completed" ? <button type="button" onClick={() => markServiceDoneAndSave()} style={goldButtonStyle}>Mark Done + Save</button> : null}
-              {hasSelectedWorkOrder && serviceForm.status === "Completed" ? <button type="button" onClick={() => reopenServiceAndSave()} style={widePrimaryButtonStyle}>Reopen + Save</button> : null}
-              <button type="button" onClick={scheduleServiceFollowUp} disabled={!serviceForm.followUpDate || !serviceForm.title.trim()} style={{ ...widePrimaryButtonStyle, opacity: serviceForm.followUpDate && serviceForm.title.trim() ? 1 : 0.55 }}>Schedule Follow-Up</button>
-            </div>
-
-            <label style={labelStyle}>Comments / Notes Thread<textarea value={serviceForm.notes} onChange={(event) => setServiceForm((current) => ({ ...current, notes: event.target.value }))} rows={6} placeholder="Updates, sign-off notes, vendor findings, cost, parts used, and next steps." style={{ ...inputStyle, resize: "vertical" }} /></label>
-
-            <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
-              <div style={uploadBoxStyle}>
-                <label style={{ ...labelStyle, margin: 0 }}>Attach work-order photos<input type="file" multiple accept="image/*" onChange={handleServicePhotoUpload} style={{ color: colors.muted }} /></label>
-                <div style={{ color: colors.muted, fontSize: 13, marginTop: 6 }}>Photos save on this work order after you click Save Work Order.</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <label style={labelStyle}>Work / Created Date<input type="date" value={serviceForm.date || todayKey} onChange={(event) => setServiceForm((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
+                <label style={labelStyle}>Due / Follow-Up Date<input type="date" value={serviceForm.followUpDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, followUpDate: event.target.value }))} style={inputStyle} /></label>
               </div>
 
-              {(serviceForm.photos ?? []).length ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-                  {(serviceForm.photos ?? []).map((photo) => (
-                    <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
-                      <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 130, objectFit: "cover" }} />
-                      <div style={{ padding: 10 }}>
-                        <div style={{ color: colors.navy, fontWeight: 900, fontSize: 12 }}>{photo.name}</div>
-                        <div style={{ color: colors.muted, fontSize: 12, marginTop: 3 }}>{new Date(photo.createdAt).toLocaleString()}</div>
-                        <button type="button" onClick={() => removeServicePhoto(photo.id)} style={{ ...deleteButtonStyle, marginTop: 8 }}>Remove</button>
-                      </div>
-                    </div>
-                  ))}
+              <label style={labelStyle}>Comments / Notes<textarea value={serviceForm.notes} onChange={(event) => setServiceForm((current) => ({ ...current, notes: event.target.value }))} rows={8} placeholder="Write updates, sign-off notes, vendor findings, parts used, costs, and next steps." style={{ ...inputStyle, resize: "vertical" }} /></label>
+
+              <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
+                <div style={uploadBoxStyle}>
+                  <label style={{ ...labelStyle, margin: 0 }}>Attach work-order photos<input type="file" multiple accept="image/*" onChange={handleServicePhotoUpload} style={{ color: colors.muted }} /></label>
+                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 6 }}>Photos save on this work order after you click Save.</div>
                 </div>
-              ) : <div style={emptyStateStyle}>No photos attached to this work order yet.</div>}
+
+                {(serviceForm.photos ?? []).length ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+                    {(serviceForm.photos ?? []).map((photo) => (
+                      <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
+                        <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 120, objectFit: "cover" }} />
+                        <div style={{ padding: 10 }}>
+                          <div style={{ color: colors.navy, fontWeight: 900, fontSize: 12 }}>{photo.name}</div>
+                          <button type="button" onClick={() => removeServicePhoto(photo.id)} style={{ ...deleteButtonStyle, marginTop: 8 }}>Remove</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <div style={emptyStateStyle}>No photos attached yet.</div>}
+              </div>
+
+              <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
+                <label style={labelStyle}>Attach invoices / documents<input type="file" multiple onChange={handleServiceDocumentUpload} style={{ color: colors.muted }} /></label>
+                {(serviceForm.documents ?? []).length ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {(serviceForm.documents ?? []).map((document) => (
+                      <div key={document.id} style={inlineCardStyle}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                          <div><div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{document.type || "File"} · {new Date(document.createdAt).toLocaleString()}</div></div>
+                          <div style={{ display: "flex", gap: 8 }}><a href={document.dataUrl} download={document.name} style={linkButtonStyle}>Download</a><button type="button" onClick={() => removeServiceDocument(document.id)} style={deleteButtonStyle}>Remove</button></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <div style={emptyStateStyle}>No invoices or documents attached yet.</div>}
+              </div>
             </div>
 
-            <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
-              <label style={labelStyle}>Attach invoices / documents<input type="file" multiple onChange={handleServiceDocumentUpload} style={{ color: colors.muted }} /></label>
-              {(serviceForm.documents ?? []).length ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  {(serviceForm.documents ?? []).map((document) => (
-                    <div key={document.id} style={inlineCardStyle}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                        <div><div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{document.type || "File"} · {new Date(document.createdAt).toLocaleString()}</div></div>
-                        <div style={{ display: "flex", gap: 8 }}><a href={document.dataUrl} download={document.name} style={linkButtonStyle}>Download</a><button type="button" onClick={() => removeServiceDocument(document.id)} style={deleteButtonStyle}>Remove</button></div>
-                      </div>
-                    </div>
-                  ))}
+            <aside style={{ padding: 20, display: "grid", gap: 14, alignContent: "start", background: "#FBFCFE" }}>
+              <div style={inlineCardStyle}>
+                <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8 }}>Assignment</div>
+                <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+                  <label style={labelStyle}>
+                    Asset
+                    <select value={detailAssetValue} onChange={(event) => setServiceForm((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>
+                      <option value="">No asset linked / choose asset</option>
+                      {sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                    </select>
+                    {!selectedAssetExists && serviceForm.assetId ? <span style={{ color: colors.red, fontSize: 12, marginTop: 6, display: "block" }}>Saved asset link is old or missing. Choose the correct asset before saving.</span> : null}
+                  </label>
+                  <label style={labelStyle}>
+                    Vendor
+                    <select value={serviceForm.vendorId ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, vendorId: event.target.value }))} style={inputStyle}>
+                      <option value="">Internal / Not set</option>
+                      {sortVendors(vendorRecords).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+                    </select>
+                  </label>
+                  <label style={labelStyle}>
+                    Procedure
+                    <select value={serviceForm.procedureId ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, procedureId: event.target.value }))} style={inputStyle}>
+                      <option value="">No procedure linked</option>
+                      {sortProcedures(procedureRecords).map((procedure) => <option key={procedure.id} value={procedure.id}>{procedure.title}</option>)}
+                    </select>
+                  </label>
+                  <label style={labelStyle}>
+                    Status
+                    <select value={serviceForm.status} onChange={(event) => setServiceForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}>
+                      <option value="Open">Open</option>
+                      <option value="Scheduled">Scheduled</option>
+                      <option value="Monitor">Monitor</option>
+                      <option value="Completed">Completed</option>
+                    </select>
+                  </label>
                 </div>
-              ) : <div style={emptyStateStyle}>No invoices or documents attached to this work order yet.</div>}
-            </div>
+              </div>
 
-            <div style={emptyStateStyle}>
-              MaintainX-style cleanup: clear To Do / Done list on the left, details and actions on the right, no extra search required. Uses the existing Neon work_orders route.
-            </div>
+              <div style={inlineCardStyle}>
+                <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8 }}>Quick Actions</div>
+                <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                  <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>{hasSelectedWorkOrder ? "Save Work Order" : "Save New Work Order"}</button>
+                  {hasSelectedWorkOrder && serviceForm.status !== "Completed" ? <button type="button" onClick={() => { markServiceDoneAndSave(); setWorkOrderTab("done"); }} style={goldButtonStyle}>Mark as Done</button> : null}
+                  {hasSelectedWorkOrder && serviceForm.status === "Completed" ? <button type="button" onClick={() => { reopenServiceAndSave(); setWorkOrderTab("todo"); }} style={widePrimaryButtonStyle}>Reopen Work Order</button> : null}
+                  <button type="button" onClick={scheduleServiceFollowUp} disabled={!serviceForm.followUpDate || !serviceForm.title.trim()} style={{ ...widePrimaryButtonStyle, opacity: serviceForm.followUpDate && serviceForm.title.trim() ? 1 : 0.55 }}>Schedule Follow-Up</button>
+                </div>
+              </div>
+
+              <div style={inlineCardStyle}>
+                <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8 }}>Record Info</div>
+                <div style={{ display: "grid", gap: 8, marginTop: 12, color: colors.muted, fontSize: 13 }}>
+                  <div><strong style={{ color: colors.navy }}>Number:</strong> {selectedWorkOrderNumber}</div>
+                  <div><strong style={{ color: colors.navy }}>Asset:</strong> {serviceForm.assetId ? assetName(serviceForm.assetId) : "Not linked"}</div>
+                  <div><strong style={{ color: colors.navy }}>Location:</strong> {serviceForm.assetId ? getLocationName(getWorkOrderLocationId(serviceForm)) : "Not linked"}</div>
+                  <div><strong style={{ color: colors.navy }}>Vendor:</strong> {vendorName(serviceForm.vendorId)}</div>
+                  <div><strong style={{ color: colors.navy }}>Procedure:</strong> {procedureName(serviceForm.procedureId)}</div>
+                </div>
+              </div>
+            </aside>
           </div>
-        </SectionShell>
+        </section>
       </div>
     );
   }
