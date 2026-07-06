@@ -645,6 +645,11 @@ export default function AtlasPage() {
   const [selectedServiceId, setSelectedServiceId] = useState(serviceSeed[0]?.id ?? "");
   const [serviceForm, setServiceForm] = useState<ServiceRecord>(serviceSeed[0] ?? blankService(todayKey));
   const [serviceMode, setServiceMode] = useState<"edit" | "new">("edit");
+  const [workOrderTab, setWorkOrderTab] = useState<"todo" | "done">("todo");
+  const [workOrderStatusFilter, setWorkOrderStatusFilter] = useState<"all" | ServiceStatus>("all");
+  const [workOrderAssetFilter, setWorkOrderAssetFilter] = useState("all");
+  const [workOrderLocationFilter, setWorkOrderLocationFilter] = useState("all");
+  const [workOrderSort, setWorkOrderSort] = useState<"priority" | "due-asc" | "date-desc" | "asset">("priority");
 
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
 
@@ -1545,8 +1550,78 @@ export default function AtlasPage() {
     void deleteAtlasRecord("work_orders", idToDelete);
   }
 
+  function getWorkOrderNumber(record: ServiceRecord) {
+    const raw = record.id || slugify(record.title || "work-order");
+    const compact = raw.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
+    return `#${compact || "NEW"}`;
+  }
+
+  function getWorkOrderDueDate(record: ServiceRecord) {
+    return record.followUpDate || record.date || todayKey;
+  }
+
+  function getWorkOrderPriority(record: ServiceRecord): "High" | "Normal" | "Low" | "Done" {
+    if (record.status === "Completed") return "Done";
+
+    const dueDate = getWorkOrderDueDate(record);
+    if (record.status === "Open" || record.status === "Monitor") return "High";
+    if (dueDate && dueDate <= todayKey) return "High";
+    if (record.status === "Scheduled") return "Normal";
+    return "Low";
+  }
+
+  function getWorkOrderPriorityRank(record: ServiceRecord) {
+    const priority = getWorkOrderPriority(record);
+    if (priority === "High") return 1;
+    if (priority === "Normal") return 2;
+    if (priority === "Low") return 3;
+    return 4;
+  }
+
   function markServiceCompleted() {
     setServiceForm((current) => ({ ...current, status: "Completed" }));
+  }
+
+  function markServiceDoneAndSave(record?: ServiceRecord) {
+    const baseRecord = record ?? serviceForm;
+    if (!baseRecord.id && !baseRecord.title.trim()) return;
+
+    const completedRecord: ServiceRecord = normalizeService({
+      ...baseRecord,
+      status: "Completed",
+      notes: baseRecord.notes?.trim() || "Completed.",
+    });
+
+    setServiceRecords((current) => sortServices(current.map((service) => (service.id === completedRecord.id ? completedRecord : service))));
+
+    if (!record || completedRecord.id === serviceForm.id) {
+      setServiceForm(completedRecord);
+      setSelectedServiceId(completedRecord.id);
+      setServiceMode("edit");
+    }
+
+    void postAtlasRecord("work_orders", completedRecord);
+  }
+
+  function reopenServiceAndSave(record?: ServiceRecord) {
+    const baseRecord = record ?? serviceForm;
+    if (!baseRecord.id && !baseRecord.title.trim()) return;
+
+    const reopenedRecord: ServiceRecord = normalizeService({
+      ...baseRecord,
+      status: "Open",
+      notes: baseRecord.notes?.trim() || "Reopened.",
+    });
+
+    setServiceRecords((current) => sortServices(current.map((service) => (service.id === reopenedRecord.id ? reopenedRecord : service))));
+
+    if (!record || reopenedRecord.id === serviceForm.id) {
+      setServiceForm(reopenedRecord);
+      setSelectedServiceId(reopenedRecord.id);
+      setServiceMode("edit");
+    }
+
+    void postAtlasRecord("work_orders", reopenedRecord);
   }
 
   function handleServiceDocumentUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -2118,43 +2193,211 @@ export default function AtlasPage() {
   }
 
   function renderHistory() {
+    const activeWorkOrders = serviceRecords.filter((record) => record.status !== "Completed");
+    const completedWorkOrders = serviceRecords.filter((record) => record.status === "Completed");
+
+    const availableWorkOrderLocations = Array.from(
+      new Set(
+        serviceRecords
+          .map((record) => assetRecords.find((asset) => asset.id === record.assetId)?.locationId || "general")
+          .filter(Boolean)
+      )
+    ).sort((a, b) => getLocationName(a).localeCompare(getLocationName(b)));
+
+    const visibleWorkOrders = sortServices(
+      serviceRecords.filter((record) => {
+        const asset = assetRecords.find((item) => item.id === record.assetId);
+        const locationId = asset?.locationId || "general";
+        const matchesTab = workOrderTab === "done" ? record.status === "Completed" : record.status !== "Completed";
+        const matchesStatus = workOrderStatusFilter === "all" || record.status === workOrderStatusFilter;
+        const matchesAsset = workOrderAssetFilter === "all" || record.assetId === workOrderAssetFilter;
+        const matchesLocation = workOrderLocationFilter === "all" || locationId === workOrderLocationFilter;
+        const matchesSearch = !q || filteredServices.some((service) => service.id === record.id);
+        return matchesTab && matchesStatus && matchesAsset && matchesLocation && matchesSearch;
+      })
+    ).sort((a, b) => {
+      if (workOrderSort === "priority") return getWorkOrderPriorityRank(a) - getWorkOrderPriorityRank(b) || getWorkOrderDueDate(a).localeCompare(getWorkOrderDueDate(b));
+      if (workOrderSort === "due-asc") return getWorkOrderDueDate(a).localeCompare(getWorkOrderDueDate(b));
+      if (workOrderSort === "asset") return assetName(a.assetId).localeCompare(assetName(b.assetId)) || getWorkOrderDueDate(a).localeCompare(getWorkOrderDueDate(b));
+      return b.date.localeCompare(a.date);
+    });
+
+    const selectedWorkOrderPriority = getWorkOrderPriority(serviceForm);
+    const selectedWorkOrderNumber = serviceForm.id ? getWorkOrderNumber(serviceForm) : "New";
+
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "0.82fr 1.18fr", gap: 18, alignItems: "start" }}>
-        <SectionShell eyebrow="Work Orders" title="Editable Service History" right={<button type="button" onClick={startNewService} style={primaryButtonStyle}>Add Work Order</button>}>
-          <div style={{ display: "grid", gap: 10 }}>
-            {filteredServices.map((record) => (
+      <div style={{ display: "grid", gridTemplateColumns: "0.92fr 1.08fr", gap: 18, alignItems: "start" }}>
+        <SectionShell
+          eyebrow="Work Orders"
+          title="To Do / Done Board"
+          right={<button type="button" onClick={startNewService} style={primaryButtonStyle}>New Work Order</button>}
+        >
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div style={{ ...inlineCardStyle, padding: 12 }}>
+                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>To Do</div>
+                <div style={{ color: colors.navy, fontSize: 26, fontWeight: 950 }}>{activeWorkOrders.length}</div>
+              </div>
+              <div style={{ ...inlineCardStyle, padding: 12 }}>
+                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>Done</div>
+                <div style={{ color: colors.navy, fontSize: 26, fontWeight: 950 }}>{completedWorkOrders.length}</div>
+              </div>
+              <div style={{ ...inlineCardStyle, padding: 12 }}>
+                <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>High Priority</div>
+                <div style={{ color: colors.navy, fontSize: 26, fontWeight: 950 }}>{activeWorkOrders.filter((record) => getWorkOrderPriority(record) === "High").length}</div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button
-                key={record.id}
                 type="button"
-                onClick={() => {
-                  setSelectedServiceId(record.id);
-                  setServiceMode("edit");
-                }}
+                onClick={() => setWorkOrderTab("todo")}
                 style={{
-                  ...smallRecordButtonStyle,
-                  border: selectedServiceId === record.id && serviceMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
-                  background: selectedServiceId === record.id && serviceMode === "edit" ? "#FFF9EA" : "#FBFCFE",
+                  ...widePrimaryButtonStyle,
+                  background: workOrderTab === "todo" ? colors.navy : "#FFFFFF",
+                  color: workOrderTab === "todo" ? "#FFFFFF" : colors.navy,
+                  border: `1px solid ${workOrderTab === "todo" ? colors.navy : colors.line}`,
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                  <strong style={{ color: colors.navy }}>{record.title}</strong>
-                  <span style={badgeStyle(record.status)}>{record.status}</span>
-                </div>
-                <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{formatDate(record.date)} · {assetName(record.assetId)} · {vendorName(record.vendorId)}</div>
-                <div style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>{procedureName(record.procedureId)} · {(record.photos?.length ?? 0)} photos · {(record.documents?.length ?? 0)} docs</div>
+                To Do
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => setWorkOrderTab("done")}
+                style={{
+                  ...widePrimaryButtonStyle,
+                  background: workOrderTab === "done" ? colors.navy : "#FFFFFF",
+                  color: workOrderTab === "done" ? "#FFFFFF" : colors.navy,
+                  border: `1px solid ${workOrderTab === "done" ? colors.navy : colors.line}`,
+                }}
+              >
+                Done
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <label style={labelStyle}>Status Filter
+                <select value={workOrderStatusFilter} onChange={(event) => setWorkOrderStatusFilter(event.target.value as "all" | ServiceStatus)} style={inputStyle}>
+                  <option value="all">All statuses</option>
+                  <option value="Open">Open</option>
+                  <option value="Scheduled">Scheduled</option>
+                  <option value="Monitor">Monitor</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </label>
+              <label style={labelStyle}>Sort By
+                <select value={workOrderSort} onChange={(event) => setWorkOrderSort(event.target.value as "priority" | "due-asc" | "date-desc" | "asset")} style={inputStyle}>
+                  <option value="priority">Priority / due date</option>
+                  <option value="due-asc">Due date</option>
+                  <option value="date-desc">Newest first</option>
+                  <option value="asset">Asset name</option>
+                </select>
+              </label>
+              <label style={labelStyle}>Location Filter
+                <select value={workOrderLocationFilter} onChange={(event) => setWorkOrderLocationFilter(event.target.value)} style={inputStyle}>
+                  <option value="all">All locations</option>
+                  {availableWorkOrderLocations.map((locationId) => <option key={locationId} value={locationId}>{getLocationName(locationId)}</option>)}
+                </select>
+              </label>
+              <label style={labelStyle}>Asset Filter
+                <select value={workOrderAssetFilter} onChange={(event) => setWorkOrderAssetFilter(event.target.value)} style={inputStyle}>
+                  <option value="all">All assets</option>
+                  {sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div style={{ display: "grid", gap: 10, maxHeight: 720, overflow: "auto", paddingRight: 4 }}>
+              {visibleWorkOrders.length ? visibleWorkOrders.map((record) => {
+                const priority = getWorkOrderPriority(record);
+                const dueDate = getWorkOrderDueDate(record);
+                const asset = assetRecords.find((item) => item.id === record.assetId);
+                const isSelected = selectedServiceId === record.id && serviceMode === "edit";
+
+                return (
+                  <div
+                    key={record.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setSelectedServiceId(record.id);
+                      setServiceMode("edit");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        setSelectedServiceId(record.id);
+                        setServiceMode("edit");
+                      }
+                    }}
+                    style={{
+                      ...smallRecordButtonStyle,
+                      cursor: "pointer",
+                      border: isSelected ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
+                      background: isSelected ? "#FFF9EA" : "#FBFCFE",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{getWorkOrderNumber(record)}</span>
+                          <span style={badgeStyle(record.status)}>{record.status}</span>
+                          <span style={priority === "High" ? badgeStyle("Open") : priority === "Done" ? badgeStyle("Completed") : badgeStyle("Scheduled")}>{priority}</span>
+                        </div>
+                        <strong style={{ display: "block", color: colors.navy, fontSize: 15, marginTop: 8 }}>{record.title}</strong>
+                        <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{assetName(record.assetId)} · {getLocationName(asset?.locationId || "general")}</div>
+                        <div style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>Due/work date: {formatDate(dueDate)} · {vendorName(record.vendorId)} · {procedureName(record.procedureId)}</div>
+                        <div style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>{(record.photos?.length ?? 0)} photos · {(record.documents?.length ?? 0)} docs</div>
+                      </div>
+                      <div style={{ display: "grid", gap: 8, minWidth: 104 }}>
+                        {record.status === "Completed" ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              reopenServiceAndSave(record);
+                              setWorkOrderTab("todo");
+                            }}
+                            style={primaryButtonStyle}
+                          >
+                            Reopen
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              markServiceDoneAndSave(record);
+                            }}
+                            style={goldButtonStyle}
+                          >
+                            Mark Done
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }) : <div style={emptyStateStyle}>No work orders match these filters.</div>}
+            </div>
           </div>
         </SectionShell>
 
         <SectionShell
-          eyebrow={serviceMode === "new" ? "New Work Order" : "Edit Work Order"}
+          eyebrow={serviceMode === "new" ? "New Work Order" : `Work Order ${selectedWorkOrderNumber}`}
           title={serviceForm.title || "Work Order Details"}
-          right={serviceMode === "edit" && serviceForm.id ? <button type="button" onClick={deleteService} style={deleteButtonStyle}>Delete Work Order</button> : null}
+          right={serviceMode === "edit" && serviceForm.id ? <button type="button" onClick={deleteService} style={deleteButtonStyle}>Delete</button> : null}
         >
           <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={badgeStyle(serviceForm.status || "Open")}>{serviceForm.status || "Open"}</span>
+              <span style={selectedWorkOrderPriority === "High" ? badgeStyle("Open") : selectedWorkOrderPriority === "Done" ? badgeStyle("Completed") : badgeStyle("Scheduled")}>{selectedWorkOrderPriority} Priority</span>
+              <span style={openPillStyle}>Due/work date: {formatDate(getWorkOrderDueDate(serviceForm))}</span>
+              <span style={openPillStyle}>{(serviceForm.photos?.length ?? 0)} photos</span>
+              <span style={openPillStyle}>{(serviceForm.documents?.length ?? 0)} docs</span>
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <label style={labelStyle}>Title<input value={serviceForm.title} onChange={(event) => setServiceForm((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Checked boiler low-water cut-off" style={inputStyle} /></label>
+              <label style={labelStyle}>Title<input value={serviceForm.title} onChange={(event) => setServiceForm((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Clean dryer vent" style={inputStyle} /></label>
 
               <label style={labelStyle}>Asset<select value={serviceForm.assetId} onChange={(event) => setServiceForm((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>{sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
 
@@ -2162,23 +2405,24 @@ export default function AtlasPage() {
 
               <label style={labelStyle}>Procedure<select value={serviceForm.procedureId ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, procedureId: event.target.value }))} style={inputStyle}><option value="">No procedure linked</option>{sortProcedures(procedureRecords).map((procedure) => <option key={procedure.id} value={procedure.id}>{procedure.title}</option>)}</select></label>
 
-              <label style={labelStyle}>Work Date<input type="date" value={serviceForm.date} onChange={(event) => setServiceForm((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
+              <label style={labelStyle}>Work / Created Date<input type="date" value={serviceForm.date} onChange={(event) => setServiceForm((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
 
               <label style={labelStyle}>Status<select value={serviceForm.status} onChange={(event) => setServiceForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="Completed">Completed</option><option value="Monitor">Monitor</option></select></label>
 
-              <label style={labelStyle}>Follow-Up Date<input type="date" value={serviceForm.followUpDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, followUpDate: event.target.value }))} style={inputStyle} /></label>
+              <label style={labelStyle}>Due / Follow-Up Date<input type="date" value={serviceForm.followUpDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, followUpDate: event.target.value }))} style={inputStyle} /></label>
 
               <div style={{ ...labelStyle, alignSelf: "end" }}>
                 <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>Save Work Order to Neon</button>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button type="button" onClick={markServiceCompleted} style={goldButtonStyle}>Mark Completed</button>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <button type="button" onClick={() => markServiceDoneAndSave()} style={goldButtonStyle}>Mark Done + Save</button>
+              <button type="button" onClick={() => reopenServiceAndSave()} style={primaryButtonStyle}>Reopen + Save</button>
               <button type="button" onClick={scheduleServiceFollowUp} style={primaryButtonStyle}>Schedule Follow-Up</button>
             </div>
 
-            <label style={labelStyle}>Notes<textarea value={serviceForm.notes} onChange={(event) => setServiceForm((current) => ({ ...current, notes: event.target.value }))} rows={6} placeholder="Write what happened, what needs to happen next, vendor findings, model/serial details, cost, and watch items." style={{ ...inputStyle, resize: "vertical" }} /></label>
+            <label style={labelStyle}>Comments / Notes Thread<textarea value={serviceForm.notes} onChange={(event) => setServiceForm((current) => ({ ...current, notes: event.target.value }))} rows={8} placeholder="Use this as the work-order comment thread: updates, sign-off notes, vendor findings, costs, parts used, and next steps." style={{ ...inputStyle, resize: "vertical" }} /></label>
 
             <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
               <label style={uploadBoxStyle}>Attach work-order photos<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Photos save on this work order after you click Save Work Order.</span><input type="file" accept="image/*" multiple onChange={handleServicePhotoUpload} style={{ color: colors.muted }} /></label>
@@ -2216,7 +2460,7 @@ export default function AtlasPage() {
             </div>
 
             <div style={emptyStateStyle}>
-              Work orders now save through Neon after you click Save Work Order.
+              Safe upgrade: this uses the existing work-order fields and saves through the current Neon work_orders route. No auth/login or API route changes.
             </div>
           </div>
         </SectionShell>
