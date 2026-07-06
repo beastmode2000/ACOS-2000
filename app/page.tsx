@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Screen =
   | "dashboard"
@@ -120,6 +120,20 @@ type SearchResult = {
   serviceId?: string;
   calendarId?: string;
   procedureId?: string;
+};
+
+type AtlasTable = "vendors" | "assets" | "procedures" | "work_orders" | "calendar" | "asset_photos";
+
+type AtlasApiPayload = {
+  ok: boolean;
+  source?: string;
+  error?: string;
+  vendorRecords?: VendorRecord[];
+  assetRecords?: AssetRecord[];
+  procedureRecords?: ProcedureRecord[];
+  serviceRecords?: ServiceRecord[];
+  calendarItems?: CalendarItem[];
+  photos?: PhotoRecord[];
 };
 
 const colors = {
@@ -499,6 +513,49 @@ function priorityBadge(priority: Priority): React.CSSProperties {
   return badgeStyle("Completed");
 }
 
+function readLocalStorageList<T>(keys: string[], fallback: T[]): T[] {
+  if (typeof window === "undefined") return fallback;
+
+  for (const key of keys) {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) continue;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as T[];
+    } catch {
+      continue;
+    }
+  }
+
+  return fallback;
+}
+
+function readBrowserSnapshot() {
+  const assetRecords = sortAssets(readLocalStorageList<AssetRecord>(["atlas-asset-records-v1"], assetSeed));
+  const vendorRecords = sortVendors(readLocalStorageList<VendorRecord>(["atlas-vendor-records-v2", "atlas-vendor-records-v1"], vendorSeed));
+  const procedureRecords = sortProcedures(readLocalStorageList<ProcedureRecord>(["atlas-procedure-records-v1"], procedureSeed));
+  const serviceRecords = sortServices(
+    readLocalStorageList<ServiceRecord>(
+      ["atlas-service-records-v10", "atlas-service-records-v9", "atlas-service-records-v8", "atlas-service-records-v7", "atlas-service-records-v6"],
+      serviceSeed
+    ).map(normalizeService)
+  );
+  const calendarItems = sortCalendar(
+    readLocalStorageList<CalendarItem>(["atlas-calendar-v10", "atlas-calendar-v9", "atlas-calendar-v8", "atlas-calendar-v7", "atlas-calendar-v6"], calendarSeed)
+  );
+  const photos = readLocalStorageList<PhotoRecord>(["atlas-photo-records-v10", "atlas-photo-records-v9", "atlas-photo-records-v8", "atlas-photo-records-v7", "atlas-photo-records-v6"], []);
+
+  return {
+    assetRecords,
+    vendorRecords,
+    procedureRecords,
+    serviceRecords,
+    calendarItems,
+    photos,
+  };
+}
+
 function StatCard({ label, value, detail }: { label: string; value: string | number; detail: string }) {
   return (
     <div style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 20, padding: 18, boxShadow: "0 12px 30px rgba(11, 30, 51, 0.06)" }}>
@@ -526,6 +583,7 @@ function SectionShell({ title, eyebrow, children, right }: { title: string; eyeb
 
 export default function AtlasPage() {
   const todayKey = dateKeyFromDate(new Date());
+  const bootstrappedRef = useRef(false);
 
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
@@ -563,6 +621,7 @@ export default function AtlasPage() {
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about work orders, calendar work, procedures, assets, vendors, documents, service history, boilers, pool equipment, dock lifts, blinds, the spa, or aircraft.");
   const [ready, setReady] = useState(false);
+  const [databaseStatus, setDatabaseStatus] = useState("Connecting to Neon...");
 
   function vendorName(vendorId?: string) {
     if (!vendorId) return "Internal";
@@ -578,68 +637,164 @@ export default function AtlasPage() {
     return procedureRecords.find((procedure) => procedure.id === procedureId)?.title ?? "Procedure";
   }
 
-  useEffect(() => {
+  async function postAtlasRecord(table: AtlasTable, record: unknown) {
     try {
-      const savedAssets = window.localStorage.getItem("atlas-asset-records-v1");
-      const savedService =
-        window.localStorage.getItem("atlas-service-records-v10") ||
-        window.localStorage.getItem("atlas-service-records-v9") ||
-        window.localStorage.getItem("atlas-service-records-v8") ||
-        window.localStorage.getItem("atlas-service-records-v7") ||
-        window.localStorage.getItem("atlas-service-records-v6");
-      const savedPhotos =
-        window.localStorage.getItem("atlas-photo-records-v10") ||
-        window.localStorage.getItem("atlas-photo-records-v9") ||
-        window.localStorage.getItem("atlas-photo-records-v8") ||
-        window.localStorage.getItem("atlas-photo-records-v7") ||
-        window.localStorage.getItem("atlas-photo-records-v6");
-      const savedCalendar =
-        window.localStorage.getItem("atlas-calendar-v10") ||
-        window.localStorage.getItem("atlas-calendar-v9") ||
-        window.localStorage.getItem("atlas-calendar-v8") ||
-        window.localStorage.getItem("atlas-calendar-v7") ||
-        window.localStorage.getItem("atlas-calendar-v6");
-      const savedVendors =
-        window.localStorage.getItem("atlas-vendor-records-v2") ||
-        window.localStorage.getItem("atlas-vendor-records-v1");
-      const savedProcedures = window.localStorage.getItem("atlas-procedure-records-v1");
+      const response = await fetch("/api/atlas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table, record }),
+      });
 
-      if (savedAssets) {
-        const parsedAssets = sortAssets(JSON.parse(savedAssets) as AssetRecord[]);
-        setAssetRecords(parsedAssets);
-        setSelectedAssetId(parsedAssets[0]?.id ?? "");
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Database save failed");
       }
 
-      if (savedService) {
-        const parsedServices = sortServices((JSON.parse(savedService) as ServiceRecord[]).map(normalizeService));
-        setServiceRecords(parsedServices);
-        setSelectedServiceId(parsedServices[0]?.id ?? "");
-      }
-
-      if (savedPhotos) setPhotos(JSON.parse(savedPhotos) as PhotoRecord[]);
-
-      if (savedCalendar) {
-        const parsedCalendar = sortCalendar(JSON.parse(savedCalendar) as CalendarItem[]);
-        setCalendarItems(parsedCalendar);
-        setSelectedCalendarId(parsedCalendar[0]?.id ?? "");
-      }
-
-      if (savedVendors) {
-        const parsedVendors = sortVendors(JSON.parse(savedVendors) as VendorRecord[]);
-        setVendorRecords(parsedVendors);
-        setSelectedVendorId(parsedVendors[0]?.id ?? "");
-      }
-
-      if (savedProcedures) {
-        const parsedProcedures = sortProcedures(JSON.parse(savedProcedures) as ProcedureRecord[]);
-        setProcedureRecords(parsedProcedures);
-        setSelectedProcedureId(parsedProcedures[0]?.id ?? "");
-      }
-    } catch {
-      // Keep seeded records if local storage cannot be read.
-    } finally {
-      setReady(true);
+      setDatabaseStatus("Saved to Neon");
+      return true;
+    } catch (error) {
+      setDatabaseStatus(error instanceof Error ? `Neon save failed: ${error.message}` : "Neon save failed");
+      return false;
     }
+  }
+
+  async function deleteAtlasRecord(table: AtlasTable, id: string) {
+    try {
+      const response = await fetch("/api/atlas", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table, id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Database delete failed");
+      }
+
+      setDatabaseStatus("Deleted from Neon");
+      return true;
+    } catch (error) {
+      setDatabaseStatus(error instanceof Error ? `Neon delete failed: ${error.message}` : "Neon delete failed");
+      return false;
+    }
+  }
+
+  async function syncSnapshotToDatabase(snapshot: {
+    assetRecords: AssetRecord[];
+    vendorRecords: VendorRecord[];
+    procedureRecords: ProcedureRecord[];
+    serviceRecords: ServiceRecord[];
+    calendarItems: CalendarItem[];
+    photos: PhotoRecord[];
+  }) {
+    try {
+      setDatabaseStatus("Syncing Atlas records to Neon...");
+
+      for (const vendor of snapshot.vendorRecords) await postAtlasRecord("vendors", vendor);
+      for (const asset of snapshot.assetRecords) await postAtlasRecord("assets", asset);
+      for (const procedure of snapshot.procedureRecords) await postAtlasRecord("procedures", procedure);
+      for (const service of snapshot.serviceRecords) await postAtlasRecord("work_orders", normalizeService(service));
+      for (const item of snapshot.calendarItems) await postAtlasRecord("calendar", item);
+      for (const photo of snapshot.photos) await postAtlasRecord("asset_photos", photo);
+
+      setDatabaseStatus("Neon connected + synced");
+    } catch {
+      setDatabaseStatus("Neon sync needs attention");
+    }
+  }
+
+  async function syncCurrentToDatabase() {
+    await syncSnapshotToDatabase({
+      assetRecords,
+      vendorRecords,
+      procedureRecords,
+      serviceRecords,
+      calendarItems,
+      photos,
+    });
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDatabase() {
+      const browserSnapshot = readBrowserSnapshot();
+
+      try {
+        const response = await fetch("/api/atlas", { cache: "no-store" });
+        const data = (await response.json()) as AtlasApiPayload;
+
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "Database API returned an error");
+        }
+
+        const dbSnapshot = {
+          assetRecords: data.assetRecords?.length ? sortAssets(data.assetRecords) : browserSnapshot.assetRecords,
+          vendorRecords: data.vendorRecords?.length ? sortVendors(data.vendorRecords) : browserSnapshot.vendorRecords,
+          procedureRecords: data.procedureRecords?.length ? sortProcedures(data.procedureRecords) : browserSnapshot.procedureRecords,
+          serviceRecords: data.serviceRecords?.length ? sortServices(data.serviceRecords.map(normalizeService)) : browserSnapshot.serviceRecords,
+          calendarItems: data.calendarItems?.length ? sortCalendar(data.calendarItems) : browserSnapshot.calendarItems,
+          photos: data.photos?.length ? data.photos : browserSnapshot.photos,
+        };
+
+        if (cancelled) return;
+
+        setAssetRecords(dbSnapshot.assetRecords);
+        setVendorRecords(dbSnapshot.vendorRecords);
+        setProcedureRecords(dbSnapshot.procedureRecords);
+        setServiceRecords(dbSnapshot.serviceRecords);
+        setCalendarItems(dbSnapshot.calendarItems);
+        setPhotos(dbSnapshot.photos);
+
+        setSelectedAssetId(dbSnapshot.assetRecords[0]?.id ?? "");
+        setSelectedVendorId(dbSnapshot.vendorRecords[0]?.id ?? "");
+        setSelectedProcedureId(dbSnapshot.procedureRecords[0]?.id ?? "");
+        setSelectedServiceId(dbSnapshot.serviceRecords[0]?.id ?? "");
+        setSelectedCalendarId(dbSnapshot.calendarItems[0]?.id ?? "");
+
+        setDatabaseStatus("Neon connected");
+        setReady(true);
+
+        const dbHadOperationalData =
+          Boolean(data.assetRecords?.length) ||
+          Boolean(data.vendorRecords?.length) ||
+          Boolean(data.procedureRecords?.length) ||
+          Boolean(data.serviceRecords?.length) ||
+          Boolean(data.calendarItems?.length) ||
+          Boolean(data.photos?.length);
+
+        if (!dbHadOperationalData && !bootstrappedRef.current) {
+          bootstrappedRef.current = true;
+          await syncSnapshotToDatabase(dbSnapshot);
+        }
+      } catch (error) {
+        if (cancelled) return;
+
+        setAssetRecords(browserSnapshot.assetRecords);
+        setVendorRecords(browserSnapshot.vendorRecords);
+        setProcedureRecords(browserSnapshot.procedureRecords);
+        setServiceRecords(browserSnapshot.serviceRecords);
+        setCalendarItems(browserSnapshot.calendarItems);
+        setPhotos(browserSnapshot.photos);
+
+        setSelectedAssetId(browserSnapshot.assetRecords[0]?.id ?? "");
+        setSelectedVendorId(browserSnapshot.vendorRecords[0]?.id ?? "");
+        setSelectedProcedureId(browserSnapshot.procedureRecords[0]?.id ?? "");
+        setSelectedServiceId(browserSnapshot.serviceRecords[0]?.id ?? "");
+        setSelectedCalendarId(browserSnapshot.calendarItems[0]?.id ?? "");
+
+        setDatabaseStatus(error instanceof Error ? `Browser fallback: ${error.message}` : "Browser fallback active");
+        setReady(true);
+      }
+    }
+
+    loadDatabase();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -842,6 +997,7 @@ export default function AtlasPage() {
         };
 
         setPhotos((current) => [photo, ...current]);
+        void postAtlasRecord("asset_photos", photo);
       };
 
       reader.readAsDataURL(file);
@@ -882,22 +1038,25 @@ export default function AtlasPage() {
     setAssetRecords((current) => sortAssets(current.some((asset) => asset.id === id) ? current.map((asset) => (asset.id === id ? cleanAsset : asset)) : [...current, cleanAsset]));
     setAssetMode("edit");
     setSelectedAssetId(id);
+    void postAtlasRecord("assets", cleanAsset);
   }
 
   function deleteAsset() {
     if (!assetForm.id) return;
-    const confirmed = window.confirm(`Delete ${assetForm.name}? This removes the asset, asset photos, asset documents, and work orders from this browser.`);
+    const confirmed = window.confirm(`Delete ${assetForm.name}? This removes the asset, asset photos, asset documents, and work orders from this browser/database.`);
     if (!confirmed) return;
 
-    const remainingAssets = sortAssets(assetRecords.filter((asset) => asset.id !== assetForm.id));
+    const idToDelete = assetForm.id;
+    const remainingAssets = sortAssets(assetRecords.filter((asset) => asset.id !== idToDelete));
     setAssetRecords(remainingAssets);
-    setPhotos((current) => current.filter((photo) => photo.assetId !== assetForm.id));
-    setServiceRecords((current) => current.filter((record) => record.assetId !== assetForm.id));
+    setPhotos((current) => current.filter((photo) => photo.assetId !== idToDelete));
+    setServiceRecords((current) => current.filter((record) => record.assetId !== idToDelete));
 
     const nextAsset = remainingAssets[0];
     setSelectedAssetId(nextAsset?.id ?? "");
     setAssetForm(nextAsset ?? blankAsset());
     setAssetMode(nextAsset ? "edit" : "new");
+    void deleteAtlasRecord("assets", idToDelete);
   }
 
   function handleAssetDocumentUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -965,22 +1124,25 @@ export default function AtlasPage() {
     setVendorRecords((current) => sortVendors(current.some((vendor) => vendor.id === id) ? current.map((vendor) => (vendor.id === id ? cleanVendor : vendor)) : [...current, cleanVendor]));
     setVendorMode("edit");
     setSelectedVendorId(id);
+    void postAtlasRecord("vendors", cleanVendor);
   }
 
   function deleteVendor() {
     if (!vendorForm.id) return;
-    const confirmed = window.confirm(`Delete ${vendorForm.name}? This removes the vendor card and attached vendor documents from this browser.`);
+    const confirmed = window.confirm(`Delete ${vendorForm.name}? This removes the vendor card and attached vendor documents from this browser/database.`);
     if (!confirmed) return;
 
-    const remainingVendors = sortVendors(vendorRecords.filter((vendor) => vendor.id !== vendorForm.id));
+    const idToDelete = vendorForm.id;
+    const remainingVendors = sortVendors(vendorRecords.filter((vendor) => vendor.id !== idToDelete));
     setVendorRecords(remainingVendors);
-    setAssetRecords((current) => current.map((asset) => ({ ...asset, vendorIds: asset.vendorIds.filter((id) => id !== vendorForm.id) })));
-    setServiceRecords((current) => current.map((service) => (service.vendorId === vendorForm.id ? { ...service, vendorId: "" } : service)));
+    setAssetRecords((current) => current.map((asset) => ({ ...asset, vendorIds: asset.vendorIds.filter((id) => id !== idToDelete) })));
+    setServiceRecords((current) => current.map((service) => (service.vendorId === idToDelete ? { ...service, vendorId: "" } : service)));
 
     const nextVendor = remainingVendors[0];
     setSelectedVendorId(nextVendor?.id ?? "");
     setVendorForm(nextVendor ?? blankVendor());
     setVendorMode(nextVendor ? "edit" : "new");
+    void deleteAtlasRecord("vendors", idToDelete);
   }
 
   function handleVendorLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1046,6 +1208,7 @@ export default function AtlasPage() {
     setProcedureRecords((current) => sortProcedures(current.some((procedure) => procedure.id === id) ? current.map((procedure) => (procedure.id === id ? cleanProcedure : procedure)) : [...current, cleanProcedure]));
     setProcedureMode("edit");
     setSelectedProcedureId(id);
+    void postAtlasRecord("procedures", cleanProcedure);
   }
 
   function deleteProcedure() {
@@ -1053,14 +1216,16 @@ export default function AtlasPage() {
     const confirmed = window.confirm(`Delete procedure: ${procedureForm.title}?`);
     if (!confirmed) return;
 
-    const remainingProcedures = sortProcedures(procedureRecords.filter((procedure) => procedure.id !== procedureForm.id));
+    const idToDelete = procedureForm.id;
+    const remainingProcedures = sortProcedures(procedureRecords.filter((procedure) => procedure.id !== idToDelete));
     setProcedureRecords(remainingProcedures);
-    setServiceRecords((current) => current.map((service) => (service.procedureId === procedureForm.id ? { ...service, procedureId: "" } : service)));
+    setServiceRecords((current) => current.map((service) => (service.procedureId === idToDelete ? { ...service, procedureId: "" } : service)));
 
     const nextProcedure = remainingProcedures[0];
     setSelectedProcedureId(nextProcedure?.id ?? "");
     setProcedureForm(nextProcedure ?? blankProcedure());
     setProcedureMode(nextProcedure ? "edit" : "new");
+    void deleteAtlasRecord("procedures", idToDelete);
   }
 
   function updateProcedureStep(index: number, value: string) {
@@ -1097,6 +1262,7 @@ export default function AtlasPage() {
     setCalendarForm(calendarItem);
     setCalendarMode("edit");
     setScreen("calendar");
+    void postAtlasRecord("calendar", calendarItem);
   }
 
   function startNewService() {
@@ -1131,6 +1297,7 @@ export default function AtlasPage() {
     setServiceRecords((current) => sortServices(current.some((service) => service.id === id) ? current.map((service) => (service.id === id ? cleanService : service)) : [cleanService, ...current]));
     setServiceMode("edit");
     setSelectedServiceId(id);
+    void postAtlasRecord("work_orders", cleanService);
   }
 
   function deleteService() {
@@ -1138,13 +1305,15 @@ export default function AtlasPage() {
     const confirmed = window.confirm(`Delete work order: ${serviceForm.title}?`);
     if (!confirmed) return;
 
-    const remainingServices = sortServices(serviceRecords.filter((service) => service.id !== serviceForm.id));
+    const idToDelete = serviceForm.id;
+    const remainingServices = sortServices(serviceRecords.filter((service) => service.id !== idToDelete));
     setServiceRecords(remainingServices);
 
     const nextService = remainingServices[0];
     setSelectedServiceId(nextService?.id ?? "");
     setServiceForm(nextService ? normalizeService(nextService) : blankService(todayKey));
     setServiceMode(nextService ? "edit" : "new");
+    void deleteAtlasRecord("work_orders", idToDelete);
   }
 
   function markServiceCompleted() {
@@ -1225,6 +1394,7 @@ export default function AtlasPage() {
     setCalendarForm(item);
     setCalendarMode("edit");
     setScreen("calendar");
+    void postAtlasRecord("calendar", item);
   }
 
   function selectCalendarDate(dateKey: string) {
@@ -1273,6 +1443,7 @@ export default function AtlasPage() {
     setSelectedCalendarId(id);
     setSelectedCalendarDate(cleanItem.date);
     setCalendarCursor(dateFromKey(cleanItem.date));
+    void postAtlasRecord("calendar", cleanItem);
   }
 
   function deleteCalendarItem() {
@@ -1280,17 +1451,30 @@ export default function AtlasPage() {
     const confirmed = window.confirm(`Delete scheduled item: ${calendarForm.title}?`);
     if (!confirmed) return;
 
-    const remainingItems = sortCalendar(calendarItems.filter((item) => item.id !== calendarForm.id));
+    const idToDelete = calendarForm.id;
+    const remainingItems = sortCalendar(calendarItems.filter((item) => item.id !== idToDelete));
     setCalendarItems(remainingItems);
 
     const nextItem = remainingItems.find((item) => item.date === selectedCalendarDate) ?? remainingItems[0];
     setSelectedCalendarId(nextItem?.id ?? "");
     setCalendarForm(nextItem ?? blankCalendarItem(selectedCalendarDate));
     setCalendarMode(nextItem ? "edit" : "new");
+    void deleteAtlasRecord("calendar", idToDelete);
   }
 
   function markCalendarCompleted(itemId: string) {
-    setCalendarItems((current) => sortCalendar(current.map((item) => (item.id === itemId ? { ...item, status: "Completed" } : item))));
+    const nextItem = calendarItems.find((item) => item.id === itemId);
+    if (!nextItem) return;
+
+    const completedItem: CalendarItem = { ...nextItem, status: "Completed" };
+    setCalendarItems((current) => sortCalendar(current.map((item) => (item.id === itemId ? completedItem : item))));
+    setCalendarForm(completedItem);
+    void postAtlasRecord("calendar", completedItem);
+  }
+
+  function deleteAssetPhoto(photoId: string) {
+    setPhotos((current) => current.filter((item) => item.id !== photoId));
+    void deleteAtlasRecord("asset_photos", photoId);
   }
 
   function askAtlas(question: string) {
@@ -1301,8 +1485,13 @@ export default function AtlasPage() {
       return;
     }
 
+    if (text.includes("database") || text.includes("neon") || text.includes("save")) {
+      setAssistantAnswer(`Atlas is connected to Neon. Current status: ${databaseStatus}. Assets, vendors, work orders, calendar items, procedures, and asset photos now save through /api/atlas.`);
+      return;
+    }
+
     if (text.includes("work order") || text.includes("service") || text.includes("history")) {
-      setAssistantAnswer(`Atlas has ${serviceRecords.length} work orders. Work orders can now be added, edited, deleted, linked to assets, vendors, and procedures, given photos/documents/invoices, and scheduled for follow-up on the calendar.`);
+      setAssistantAnswer(`Atlas has ${serviceRecords.length} work orders. Work orders can be added, edited, deleted, linked to assets, vendors, and procedures, given photos/documents/invoices, and scheduled for follow-up on the calendar.`);
       return;
     }
 
@@ -1396,8 +1585,8 @@ export default function AtlasPage() {
     return (
       <div style={{ display: "grid", gap: 18 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 16 }}>
-          <StatCard label="Assets" value={assetRecords.length} detail="Editable equipment" />
-          <StatCard label="Vendors" value={vendorRecords.length} detail="Editable directory" />
+          <StatCard label="Assets" value={assetRecords.length} detail="Neon connected" />
+          <StatCard label="Vendors" value={vendorRecords.length} detail="Neon connected" />
           <StatCard label="Work Orders" value={serviceRecords.length} detail="Photos + docs" />
           <StatCard label="Procedures" value={procedureRecords.length} detail="Editable templates" />
           <StatCard label="Scheduled" value={upcomingCalendarCount} detail="Calendar work" />
@@ -1405,15 +1594,22 @@ export default function AtlasPage() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
-          <SectionShell eyebrow="Work Orders Added" title="Atlas / 2000 Estate Operations">
+          <SectionShell
+            eyebrow="Database Connected"
+            title="Atlas / 2000 Estate Operations"
+            right={<button type="button" onClick={syncCurrentToDatabase} style={primaryButtonStyle}>Sync to Neon</button>}
+          >
             <div style={heroCardStyle}>
               <div style={heroOrbStyle} />
               <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
                 <img src="/atlas-logo.png" alt="Atlas logo" style={heroLogoStyle} />
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Work orders are now real records.</h2>
+                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Atlas now saves to Neon.</h2>
                   <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.5 }}>
-                    Add, edit, delete, attach photos, attach invoices/documents, link assets, vendors, procedures, and schedule follow-ups.
+                    Assets, vendors, work orders, procedures, calendar records, and asset photos sync through the database API.
+                  </p>
+                  <p style={{ margin: "10px 0 0", color: "rgba(255,255,255,0.9)", fontWeight: 900 }}>
+                    Status: {databaseStatus}
                   </p>
                 </div>
               </div>
@@ -1564,7 +1760,7 @@ export default function AtlasPage() {
               <label style={labelStyle}>Make<input value={assetForm.make ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, make: event.target.value }))} placeholder="Make" style={inputStyle} /></label>
               <label style={labelStyle}>Model<input value={assetForm.model ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, model: event.target.value }))} placeholder="Model" style={inputStyle} /></label>
               <label style={labelStyle}>Serial<input value={assetForm.serial ?? ""} onChange={(event) => setAssetForm((current) => ({ ...current, serial: event.target.value }))} placeholder="Serial number" style={inputStyle} /></label>
-              <div style={{ ...labelStyle, alignSelf: "end" }}><button type="button" onClick={saveAsset} style={widePrimaryButtonStyle}>Save Asset</button></div>
+              <div style={{ ...labelStyle, alignSelf: "end" }}><button type="button" onClick={saveAsset} style={widePrimaryButtonStyle}>Save Asset to Neon</button></div>
             </div>
 
             <label style={labelStyle}>Notes<textarea value={assetForm.notes} onChange={(event) => setAssetForm((current) => ({ ...current, notes: event.target.value }))} rows={5} placeholder="Asset notes, nameplate info, service reminders, setup details, etc." style={{ ...inputStyle, resize: "vertical" }} /></label>
@@ -1600,13 +1796,13 @@ export default function AtlasPage() {
             <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
               {assetMode === "edit" && assetForm.id ? (
                 <>
-                  <label style={uploadBoxStyle}>Add photos for {assetForm.name}<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Photos save in this browser for now.</span><input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} /></label>
+                  <label style={uploadBoxStyle}>Add photos for {assetForm.name}<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Asset photos now save through Neon.</span><input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} /></label>
                   {selectedAssetPhotos.length ? (
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                       {selectedAssetPhotos.map((photo) => (
                         <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
                           <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 130, objectFit: "cover" }} />
-                          <div style={{ padding: 10 }}><div style={{ color: colors.navy, fontWeight: 900, fontSize: 12 }}>{photo.name}</div><button type="button" onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))} style={{ ...deleteButtonStyle, marginTop: 8 }}>Delete</button></div>
+                          <div style={{ padding: 10 }}><div style={{ color: colors.navy, fontWeight: 900, fontSize: 12 }}>{photo.name}</div><button type="button" onClick={() => deleteAssetPhoto(photo.id)} style={{ ...deleteButtonStyle, marginTop: 8 }}>Delete</button></div>
                         </div>
                       ))}
                     </div>
@@ -1672,7 +1868,7 @@ export default function AtlasPage() {
               <label style={labelStyle}>Follow-Up Date<input type="date" value={serviceForm.followUpDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, followUpDate: event.target.value }))} style={inputStyle} /></label>
 
               <div style={{ ...labelStyle, alignSelf: "end" }}>
-                <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>Save Work Order</button>
+                <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>Save Work Order to Neon</button>
               </div>
             </div>
 
@@ -1719,7 +1915,7 @@ export default function AtlasPage() {
             </div>
 
             <div style={emptyStateStyle}>
-              Work orders now connect assets, vendors, procedures, photos, invoices/documents, status, notes, and calendar follow-up.
+              Work orders now save through Neon after you click Save Work Order.
             </div>
           </div>
         </SectionShell>
@@ -1778,7 +1974,7 @@ export default function AtlasPage() {
 
             <label style={labelStyle}>Website<input value={vendorForm.website ?? ""} onChange={(event) => setVendorForm((current) => ({ ...current, website: event.target.value }))} placeholder="Website / portal link" style={inputStyle} /></label>
             <label style={labelStyle}>Notes<textarea value={vendorForm.notes} onChange={(event) => setVendorForm((current) => ({ ...current, notes: event.target.value }))} rows={5} placeholder="Vendor notes, contact details, service history reminders, account notes, etc." style={{ ...inputStyle, resize: "vertical" }} /></label>
-            <button type="button" onClick={saveVendor} style={widePrimaryButtonStyle}>Save Vendor</button>
+            <button type="button" onClick={saveVendor} style={widePrimaryButtonStyle}>Save Vendor to Neon</button>
 
             <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
               <label style={labelStyle}>Add vendor documents<input type="file" multiple onChange={handleVendorDocumentUpload} style={{ color: colors.muted }} /></label>
@@ -1903,7 +2099,7 @@ export default function AtlasPage() {
               <label style={labelStyle}>Date<input type="date" value={calendarForm.date} onChange={(event) => { const nextDate = event.target.value; setCalendarForm((current) => ({ ...current, date: nextDate })); setSelectedCalendarDate(nextDate); setCalendarCursor(dateFromKey(nextDate)); }} style={inputStyle} /></label>
               <label style={labelStyle}>Status<select value={calendarForm.status} onChange={(event) => setCalendarForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="Completed">Completed</option><option value="Monitor">Monitor</option></select></label>
               <label style={labelStyle}>Area / Location<input value={calendarForm.area} onChange={(event) => setCalendarForm((current) => ({ ...current, area: event.target.value }))} placeholder="Example: Pool Equipment Room" style={inputStyle} /></label>
-              <button type="button" onClick={saveCalendarItem} style={widePrimaryButtonStyle}>Save Calendar Item</button>
+              <button type="button" onClick={saveCalendarItem} style={widePrimaryButtonStyle}>Save Calendar Item to Neon</button>
               {calendarMode === "edit" && calendarForm.id && calendarForm.status !== "Completed" ? <button type="button" onClick={() => markCalendarCompleted(calendarForm.id)} style={goldButtonStyle}>Mark Completed</button> : null}
             </div>
           </SectionShell>
@@ -1955,7 +2151,7 @@ export default function AtlasPage() {
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button type="button" onClick={saveProcedure} style={widePrimaryButtonStyle}>Save Procedure</button>
+              <button type="button" onClick={saveProcedure} style={widePrimaryButtonStyle}>Save Procedure to Neon</button>
               <button type="button" onClick={() => scheduleProcedure({ ...procedureForm, title: procedureForm.title || "Untitled Procedure", area: procedureForm.area || "General", steps: procedureForm.steps.filter(Boolean), priority: procedureForm.priority || "Normal" })} style={goldButtonStyle}>Schedule This Procedure</button>
             </div>
 
@@ -2012,13 +2208,13 @@ export default function AtlasPage() {
         <SectionShell eyebrow="Upload" title="Asset Photos">
           <div style={{ display: "grid", gap: 12 }}>
             <label style={labelStyle}>Attach to Asset<select value={selectedAssetId} onChange={(event) => setSelectedAssetId(event.target.value)} style={inputStyle}>{sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
-            <label style={uploadBoxStyle}>Add photos for {selectedAsset.name}<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Uploads save in this browser for now.</span><input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} /></label>
+            <label style={uploadBoxStyle}>Add photos for {selectedAsset.name}<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Uploads save to Neon.</span><input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} /></label>
             {selectedAssetPhotos.length ? (
               <div style={{ display: "grid", gap: 12 }}>
                 {selectedAssetPhotos.map((photo) => (
                   <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
                     <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 145, objectFit: "cover" }} />
-                    <div style={{ padding: 12 }}><div style={{ color: colors.navy, fontWeight: 900, fontSize: 13 }}>{photo.name}</div><button type="button" onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))} style={{ ...deleteButtonStyle, marginTop: 10 }}>Delete</button></div>
+                    <div style={{ padding: 12 }}><div style={{ color: colors.navy, fontWeight: 900, fontSize: 13 }}>{photo.name}</div><button type="button" onClick={() => deleteAssetPhoto(photo.id)} style={{ ...deleteButtonStyle, marginTop: 10 }}>Delete</button></div>
                   </div>
                 ))}
               </div>
@@ -2029,7 +2225,7 @@ export default function AtlasPage() {
         <SectionShell eyebrow="Documents" title="Atlas Document Records">
           <div style={{ display: "grid", gap: 12 }}>
             <div style={emptyStateStyle}>
-              Uploaded document count: {uploadedDocumentCount}. Work-order photo count: {uploadedServicePhotoCount}. Static document records are listed below.
+              Uploaded document count: {uploadedDocumentCount}. Work-order photo count: {uploadedServicePhotoCount}. Static document records are listed below. Database status: {databaseStatus}
             </div>
 
             {filteredDocuments.map((document) => (
@@ -2047,13 +2243,13 @@ export default function AtlasPage() {
   }
 
   function renderAssistant() {
-    const quickQuestions = ["Show my work orders", "Show my procedures", "Show my calendar", "Show my assets", "Show my vendors", "What boiler do we have?", "What is the pool equipment chain?", "Which lift box is for the Cobalt?", "What do we know about the Sundance spa?"];
+    const quickQuestions = ["Database status", "Show my work orders", "Show my procedures", "Show my calendar", "Show my assets", "Show my vendors", "What boiler do we have?", "What is the pool equipment chain?", "Which lift box is for the Cobalt?", "What do we know about the Sundance spa?"];
 
     return (
       <SectionShell eyebrow="Ask Atlas" title="Search the Local Atlas Records" right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}>
         <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 18, alignItems: "start" }}>
           <div style={{ display: "grid", gap: 12 }}>
-            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about work orders, procedures, calendar work, assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
+            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about work orders, procedures, calendar work, assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, database, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
             <button type="button" onClick={() => askAtlas(assistantQuestion)} style={widePrimaryButtonStyle}>Ask Atlas</button>
             <div style={{ display: "grid", gap: 8 }}>
               {quickQuestions.map((question) => <button key={question} type="button" onClick={() => { setAssistantQuestion(question); askAtlas(question); }} style={quickQuestionStyle}>{question}</button>)}
@@ -2091,10 +2287,10 @@ export default function AtlasPage() {
         </nav>
 
         <div style={sidebarStatusStyle}>
-          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>WORK ORDERS ACTIVE</div>
-          <div style={{ fontWeight: 900, marginTop: 6 }}>Photos / docs / follow-up</div>
+          <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>NEON DATABASE</div>
+          <div style={{ fontWeight: 900, marginTop: 6 }}>{databaseStatus}</div>
           <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>
-            Work orders now connect assets, vendors, procedures, photos, documents, and calendar follow-ups.
+            Saves now go through /api/atlas.
           </div>
         </div>
       </aside>
@@ -2106,7 +2302,7 @@ export default function AtlasPage() {
             <div style={{ minWidth: 0 }}>
               <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.3, textTransform: "uppercase" }}>{activeNav?.label ?? "Dashboard"}</div>
               <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: 31, letterSpacing: -0.9, lineHeight: 1.05 }}>Atlas / 2000</h1>
-              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Private estate systems, work orders, vendors, procedures, calendar, documents, photos, and Ask Atlas.</div>
+              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Private estate systems, work orders, vendors, procedures, calendar, documents, photos, Ask Atlas, and Neon database sync.</div>
             </div>
           </div>
 
