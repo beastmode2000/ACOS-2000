@@ -35,6 +35,16 @@ type UploadedFileRecord = {
   createdAt: string;
 };
 
+type MapLabelRecord = {
+  id: string;
+  label: string;
+  category: string;
+  x: number;
+  y: number;
+  notes: string;
+  photos: UploadedFileRecord[];
+};
+
 type VendorRecord = {
   id: string;
   name: string;
@@ -110,7 +120,7 @@ type CalendarItem = {
 
 type SearchResult = {
   id: string;
-  type: "Location" | "Asset" | "Vendor" | "Work Order" | "Document" | "Procedure" | "Calendar";
+  type: "Location" | "Map Label" | "Asset" | "Vendor" | "Work Order" | "Document" | "Procedure" | "Calendar";
   title: string;
   subtitle: string;
   detail: string;
@@ -341,6 +351,27 @@ const calendarSeed: CalendarItem[] = [
   { id: "cal-generator", date: "2026-07-20", title: "Lower generator visual check", area: "Lower Generator Area", status: "Scheduled" },
 ];
 
+const mapLocalStorageKey = "atlas-map-labels-v1";
+
+const defaultMapLabels: MapLabelRecord[] = [
+  { id: "map-dock", label: "Dock", category: "Waterfront", x: 58, y: 78, notes: "Dock location. Boat lifts, lift boxes, dock power, and waterfront service records.", photos: [] },
+  { id: "map-cobalt", label: "Cobalt", category: "Watercraft", x: 63, y: 72, notes: "Cobalt boat / Craft-Cobalt R-7 area near the dock. Keep separate from the Cobalt Sunstream lift box asset.", photos: [] },
+  { id: "map-seadoo", label: "SeaDoo", category: "Watercraft", x: 64, y: 82, notes: "SeaDoo / PWC area south of the small dock slip.", photos: [] },
+  { id: "map-water-trampoline", label: "Water Trampoline", category: "Waterfront", x: 47, y: 86, notes: "Seasonal water trampoline location.", photos: [] },
+  { id: "map-waterside-lawn-north", label: "Waterside Lawn (North)", category: "Grounds", x: 50, y: 68, notes: "North waterside lawn area near the lake side of the property.", photos: [] },
+  { id: "map-east-lawn", label: "East Lawn", category: "Grounds", x: 74, y: 47, notes: "East lawn area and grounds records.", photos: [] },
+  { id: "map-sport-court", label: "Sport Court", category: "Recreation", x: 83, y: 26, notes: "Sport court location.", photos: [] },
+  { id: "map-veggie-boxes", label: "Veggie Boxes", category: "Grounds", x: 77, y: 62, notes: "Three veggie boxes at the south end of the east lawn.", photos: [] },
+  { id: "map-new-garage", label: "New Garage", category: "Building", x: 40, y: 31, notes: "New garage location.", photos: [] },
+  { id: "map-old-garage", label: "Old Garage", category: "Building", x: 33, y: 35, notes: "Old garage location.", photos: [] },
+  { id: "map-adu", label: "ADU", category: "Location", x: 27, y: 42, notes: "ADU is a location/map label only, not an asset.", photos: [] },
+  { id: "map-courtyard", label: "Courtyard", category: "Outdoor Living", x: 47, y: 44, notes: "Courtyard / patio area with chairs and fire pit.", photos: [] },
+  { id: "map-trampoline-dog", label: "Trampoline / Dog", category: "Grounds", x: 36, y: 56, notes: "Trampoline and dog cleanup/turf area.", photos: [] },
+  { id: "map-original-house", label: "Original House", category: "Building", x: 47, y: 38, notes: "Original house portion of 2000.", photos: [] },
+  { id: "map-addition", label: "Addition", category: "Building", x: 56, y: 52, notes: "Addition area including indoor pool construction records.", photos: [] },
+  { id: "map-hot-tub", label: "Hot Tub", category: "Spa", x: 54, y: 61, notes: "Sundance Optima hot tub / standalone spa location.", photos: [] },
+];
+
 const navItems: { id: Screen; label: string; description: string }[] = [
   { id: "dashboard", label: "Dashboard", description: "Control center" },
   { id: "map", label: "Map", description: "Property layout" },
@@ -362,6 +393,11 @@ function uid(prefix: string) {
 function slugify(value: string) {
   const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 42);
   return slug || uid("record");
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return 50;
+  return Math.max(0, Math.min(100, value));
 }
 
 function sortVendors(list: VendorRecord[]) {
@@ -584,6 +620,7 @@ function SectionShell({ title, eyebrow, children, right }: { title: string; eyeb
 export default function AtlasPage() {
   const todayKey = dateKeyFromDate(new Date());
   const bootstrappedRef = useRef(false);
+  const mapRef = useRef<HTMLDivElement | null>(null);
 
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
@@ -610,6 +647,11 @@ export default function AtlasPage() {
   const [serviceMode, setServiceMode] = useState<"edit" | "new">("edit");
 
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
+
+  const [mapLabels, setMapLabels] = useState<MapLabelRecord[]>(defaultMapLabels);
+  const [selectedMapLabelId, setSelectedMapLabelId] = useState(defaultMapLabels[0]?.id ?? "");
+  const [mapLabelForm, setMapLabelForm] = useState<MapLabelRecord>(defaultMapLabels[0] ?? { id: "", label: "", category: "Location", x: 50, y: 50, notes: "", photos: [] });
+  const [mapLabelMode, setMapLabelMode] = useState<"edit" | "new">("edit");
 
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>(calendarSeed);
   const [selectedCalendarId, setSelectedCalendarId] = useState(calendarSeed[0]?.id ?? "");
@@ -798,6 +840,35 @@ export default function AtlasPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const raw = window.localStorage.getItem(mapLocalStorageKey);
+    if (!raw) return;
+
+    try {
+      const parsed = JSON.parse(raw) as MapLabelRecord[];
+      if (!Array.isArray(parsed) || !parsed.length) return;
+
+      const cleaned = parsed.map((label) => ({
+        ...label,
+        id: label.id || uid("map"),
+        label: label.label || "Map Label",
+        category: label.category || "Location",
+        x: clampPercent(Number(label.x)),
+        y: clampPercent(Number(label.y)),
+        notes: label.notes || "",
+        photos: Array.isArray(label.photos) ? label.photos : [],
+      }));
+
+      setMapLabels(cleaned);
+      setSelectedMapLabelId(cleaned[0]?.id ?? "");
+      setMapLabelForm(cleaned[0] ?? defaultMapLabels[0]);
+    } catch {
+      setMapLabels(defaultMapLabels);
+    }
+  }, []);
+
+  useEffect(() => {
     const selected = assetRecords.find((asset) => asset.id === selectedAssetId);
     if (assetMode === "new") return;
     if (selected) setAssetForm({ ...selected, documents: selected.documents ?? [], vendorIds: selected.vendorIds ?? [] });
@@ -861,14 +932,25 @@ export default function AtlasPage() {
     window.localStorage.setItem("atlas-calendar-v10", JSON.stringify(sortCalendar(calendarItems)));
   }, [ready, calendarItems]);
 
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem(mapLocalStorageKey, JSON.stringify(mapLabels));
+  }, [ready, mapLabels]);
+
   const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? blankAsset();
   const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
+  const selectedMapLabel = mapLabels.find((label) => label.id === selectedMapLabelId) ?? mapLabels[0] ?? defaultMapLabels[0];
   const q = query.trim().toLowerCase();
 
   const filteredLocations = useMemo(() => {
     if (!q) return locations;
     return locations.filter((location) => [location.name, location.type, location.zone, location.notes].join(" ").toLowerCase().includes(q));
   }, [q]);
+
+  const filteredMapLabels = useMemo(() => {
+    if (!q) return mapLabels;
+    return mapLabels.filter((label) => [label.label, label.category, label.notes].join(" ").toLowerCase().includes(q));
+  }, [q, mapLabels]);
 
   const filteredAssets = useMemo(() => {
     const sorted = sortAssets(assetRecords);
@@ -932,6 +1014,7 @@ export default function AtlasPage() {
 
     const results: SearchResult[] = [
       ...filteredLocations.map((location) => ({ id: `location-${location.id}`, type: "Location" as const, title: location.name, subtitle: `${location.zone} · ${location.type}`, detail: location.notes, screen: "locations" as const })),
+      ...filteredMapLabels.map((label) => ({ id: `map-label-${label.id}`, type: "Map Label" as const, title: label.label, subtitle: `${label.category} · ${Math.round(label.x)}% / ${Math.round(label.y)}%`, detail: label.notes, screen: "map" as const })),
       ...filteredAssets.map((asset) => ({ id: `asset-${asset.id}`, type: "Asset" as const, title: asset.name, subtitle: `${getLocationName(asset.locationId)} · ${asset.category}`, detail: asset.notes, screen: "assets" as const, assetId: asset.id })),
       ...filteredVendors.map((vendor) => ({ id: `vendor-${vendor.id}`, type: "Vendor" as const, title: vendor.name, subtitle: vendor.category, detail: vendor.notes, screen: "vendors" as const, vendorId: vendor.id })),
       ...filteredServices.map((record) => ({ id: `service-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)}`, detail: record.notes, screen: "history" as const, serviceId: record.id, assetId: record.assetId })),
@@ -941,7 +1024,7 @@ export default function AtlasPage() {
     ];
 
     return results.slice(0, 14);
-  }, [q, filteredLocations, filteredAssets, filteredVendors, filteredServices, filteredCalendar, filteredDocuments, filteredProcedures]);
+  }, [q, filteredLocations, filteredMapLabels, filteredAssets, filteredVendors, filteredServices, filteredCalendar, filteredDocuments, filteredProcedures]);
 
   const openWorkOrderCount = serviceRecords.filter((record) => record.status === "Open" || record.status === "Monitor").length;
   const monitorAssetCount = assetRecords.filter((asset) => asset.status === "Monitor" || asset.status === "Offline").length;
@@ -1004,6 +1087,152 @@ export default function AtlasPage() {
     });
 
     event.target.value = "";
+  }
+
+  function selectMapLabel(id: string) {
+    const selected = mapLabels.find((label) => label.id === id);
+    if (!selected) return;
+
+    setSelectedMapLabelId(id);
+    setMapLabelForm({ ...selected, photos: selected.photos ?? [] });
+    setMapLabelMode("edit");
+  }
+
+  function startNewMapLabel() {
+    const nextLabel: MapLabelRecord = {
+      id: "",
+      label: "New Label",
+      category: "Location",
+      x: 50,
+      y: 50,
+      notes: "",
+      photos: [],
+    };
+
+    setSelectedMapLabelId("");
+    setMapLabelForm(nextLabel);
+    setMapLabelMode("new");
+  }
+
+  function saveMapLabel() {
+    const labelText = mapLabelForm.label.trim();
+    if (!labelText) return;
+
+    const existingId = mapLabelMode === "edit" ? mapLabelForm.id : "";
+    let id = existingId || slugify(`map-${labelText}`);
+    if (mapLabelMode === "new" && mapLabels.some((label) => label.id === id)) id = `${id}-${Date.now()}`;
+
+    const cleanLabel: MapLabelRecord = {
+      ...mapLabelForm,
+      id,
+      label: labelText,
+      category: mapLabelForm.category.trim() || "Location",
+      x: clampPercent(Number(mapLabelForm.x)),
+      y: clampPercent(Number(mapLabelForm.y)),
+      notes: mapLabelForm.notes.trim(),
+      photos: mapLabelForm.photos ?? [],
+    };
+
+    setMapLabels((current) => (current.some((label) => label.id === id) ? current.map((label) => (label.id === id ? cleanLabel : label)) : [...current, cleanLabel]));
+    setSelectedMapLabelId(id);
+    setMapLabelForm(cleanLabel);
+    setMapLabelMode("edit");
+  }
+
+  function deleteMapLabel() {
+    if (!mapLabelForm.id) return;
+    const confirmed = window.confirm(`Delete map label ${mapLabelForm.label}?`);
+    if (!confirmed) return;
+
+    const remainingLabels = mapLabels.filter((label) => label.id !== mapLabelForm.id);
+    const nextLabel = remainingLabels[0] ?? defaultMapLabels[0];
+
+    setMapLabels(remainingLabels.length ? remainingLabels : defaultMapLabels);
+    setSelectedMapLabelId(nextLabel?.id ?? "");
+    setMapLabelForm(nextLabel ?? { id: "", label: "", category: "Location", x: 50, y: 50, notes: "", photos: [] });
+    setMapLabelMode(nextLabel ? "edit" : "new");
+  }
+
+  function resetMapLabels() {
+    const confirmed = window.confirm("Reset the map labels back to the Atlas default layout? This will remove custom label positions, notes, and photos stored in this browser.");
+    if (!confirmed) return;
+
+    setMapLabels(defaultMapLabels);
+    setSelectedMapLabelId(defaultMapLabels[0]?.id ?? "");
+    setMapLabelForm(defaultMapLabels[0] ?? { id: "", label: "", category: "Location", x: 50, y: 50, notes: "", photos: [] });
+    setMapLabelMode("edit");
+  }
+
+  function handleMapLabelPhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const labelId = mapLabelForm.id || selectedMapLabelId;
+    const files = Array.from(event.target.files ?? []);
+
+    if (!labelId) {
+      window.alert("Save the map label before adding photos.");
+      event.target.value = "";
+      return;
+    }
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        const photo: UploadedFileRecord = {
+          id: uid("map-photo"),
+          name: file.name,
+          type: file.type || "photo",
+          dataUrl: String(reader.result),
+          createdAt: new Date().toISOString(),
+        };
+
+        setMapLabels((current) =>
+          current.map((label) => (label.id === labelId ? { ...label, photos: [photo, ...(label.photos ?? [])] } : label))
+        );
+        setMapLabelForm((current) => (current.id === labelId ? { ...current, photos: [photo, ...(current.photos ?? [])] } : current));
+      };
+
+      reader.readAsDataURL(file);
+    });
+
+    event.target.value = "";
+  }
+
+  function deleteMapLabelPhoto(photoId: string) {
+    const labelId = mapLabelForm.id || selectedMapLabelId;
+    if (!labelId) return;
+
+    setMapLabels((current) =>
+      current.map((label) => (label.id === labelId ? { ...label, photos: (label.photos ?? []).filter((photo) => photo.id !== photoId) } : label))
+    );
+    setMapLabelForm((current) => ({ ...current, photos: (current.photos ?? []).filter((photo) => photo.id !== photoId) }));
+  }
+
+  function handleMapLabelPointerDown(event: React.PointerEvent<HTMLButtonElement>, labelId: string) {
+    const mapElement = mapRef.current;
+    if (!mapElement) return;
+
+    event.preventDefault();
+    selectMapLabel(labelId);
+
+    const updatePosition = (clientX: number, clientY: number) => {
+      const rect = mapElement.getBoundingClientRect();
+      const x = clampPercent(((clientX - rect.left) / rect.width) * 100);
+      const y = clampPercent(((clientY - rect.top) / rect.height) * 100);
+
+      setMapLabels((current) => current.map((label) => (label.id === labelId ? { ...label, x, y } : label)));
+      setMapLabelForm((current) => (current.id === labelId ? { ...current, x, y } : current));
+    };
+
+    updatePosition(event.clientX, event.clientY);
+
+    const handlePointerMove = (pointerEvent: PointerEvent) => updatePosition(pointerEvent.clientX, pointerEvent.clientY);
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
   }
 
   function startNewAsset() {
@@ -1655,48 +1884,120 @@ export default function AtlasPage() {
   }
 
   function renderMap() {
-    const pins = [
-      { label: "Main House", top: "38%", left: "48%", search: "Main House" },
-      { label: "Mechanical", top: "47%", left: "51%", search: "Mechanical" },
-      { label: "Indoor Pool", top: "55%", left: "56%", search: "Indoor Pool" },
-      { label: "Dock", top: "77%", left: "57%", search: "Dock" },
-      { label: "Cobalt", top: "72%", left: "62%", search: "Cobalt" },
-      { label: "SeaDoo", top: "80%", left: "63%", search: "SeaDoo" },
-      { label: "Water Trampoline", top: "84%", left: "48%", search: "Water Trampoline" },
-      { label: "ADU", top: "42%", left: "29%", search: "ADU" },
-      { label: "Garage", top: "34%", left: "34%", search: "Garage" },
-    ];
+    const mapPhotoCount = mapLabels.reduce((total, label) => total + (label.photos?.length ?? 0), 0);
 
     return (
-      <SectionShell eyebrow="Property Map" title="Locked Map with Editable Atlas Overlay" right={<span style={badgeStyle("Online")}>Map Ready</span>}>
-        <div style={mapShellStyle}>
-          <img src="/atlas-property-map.png" alt="Atlas property map" style={{ width: "100%", height: 590, objectFit: "cover", display: "block" }} />
-          {pins.map((pin) => (
-            <button
-              key={pin.label}
-              type="button"
-              onClick={() => {
-                setQuery(pin.search);
-                setScreen("locations");
-              }}
-              style={{
-                position: "absolute",
-                top: pin.top,
-                left: pin.left,
-                transform: "translate(-50%, -50%)",
-                border: `2px solid ${colors.gold2}`,
-                background: colors.navy,
-                color: "white",
-                borderRadius: 999,
-                padding: "8px 12px",
-                fontWeight: 900,
-                boxShadow: "0 12px 24px rgba(0,0,0,0.28)",
-                cursor: "pointer",
-              }}
-            >
-              {pin.label}
-            </button>
-          ))}
+      <SectionShell
+        eyebrow="Property Map"
+        title="Locked Map with Movable Atlas Labels"
+        right={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span style={badgeStyle("Online")}>{mapLabels.length} Labels</span>
+            <button type="button" onClick={startNewMapLabel} style={goldButtonStyle}>Add Label</button>
+            <button type="button" onClick={resetMapLabels} style={deleteButtonStyle}>Reset Map</button>
+          </div>
+        }
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr", gap: 16, alignItems: "start" }}>
+          <div>
+            <div style={{ ...emptyStateStyle, marginBottom: 12 }}>
+              Drag a label to move it. Click a label to edit its name, type, info, and photos. The map image stays locked.
+            </div>
+
+            <div ref={mapRef} style={mapShellStyle}>
+              <img src="/atlas-property-map.png" alt="Atlas property map" style={mapImageStyle} draggable={false} />
+
+              {mapLabels.map((label) => {
+                const isSelected = label.id === selectedMapLabelId;
+
+                return (
+                  <button
+                    key={label.id}
+                    type="button"
+                    onPointerDown={(event) => handleMapLabelPointerDown(event, label.id)}
+                    style={{
+                      ...mapLabelPinStyle,
+                      top: `${label.y}%`,
+                      left: `${label.x}%`,
+                      background: isSelected ? colors.gold : colors.navy,
+                      color: isSelected ? colors.navy : "white",
+                      borderColor: isSelected ? colors.navy : colors.gold2,
+                      zIndex: isSelected ? 4 : 3,
+                    }}
+                    title="Drag to move. Edit details on the right."
+                  >
+                    <span style={mapPinDotStyle}>{Math.round(label.x)}/{Math.round(label.y)}</span>
+                    {label.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={recordCardStyle}>
+              <div style={goldEyebrowStyle}>{mapLabelMode === "new" ? "New Map Label" : "Selected Map Label"}</div>
+              <h3 style={{ color: colors.navy, margin: "7px 0 10px" }}>{mapLabelForm.label || selectedMapLabel?.label || "Map Label"}</h3>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                <label style={labelStyle}>Label Name<input value={mapLabelForm.label} onChange={(event) => setMapLabelForm((current) => ({ ...current, label: event.target.value }))} style={inputStyle} /></label>
+                <label style={labelStyle}>Type / Category<input value={mapLabelForm.category} onChange={(event) => setMapLabelForm((current) => ({ ...current, category: event.target.value }))} style={inputStyle} /></label>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <label style={labelStyle}>Left %<input type="number" min="0" max="100" value={Math.round(mapLabelForm.x)} onChange={(event) => setMapLabelForm((current) => ({ ...current, x: clampPercent(Number(event.target.value)) }))} style={inputStyle} /></label>
+                  <label style={labelStyle}>Top %<input type="number" min="0" max="100" value={Math.round(mapLabelForm.y)} onChange={(event) => setMapLabelForm((current) => ({ ...current, y: clampPercent(Number(event.target.value)) }))} style={inputStyle} /></label>
+                </div>
+
+                <label style={labelStyle}>Info / Notes<textarea value={mapLabelForm.notes} onChange={(event) => setMapLabelForm((current) => ({ ...current, notes: event.target.value }))} style={{ ...inputStyle, minHeight: 110, resize: "vertical" }} /></label>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <button type="button" onClick={saveMapLabel} style={widePrimaryButtonStyle}>Save Label</button>
+                  <button type="button" onClick={deleteMapLabel} style={deleteButtonStyle}>Delete Label</button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery(mapLabelForm.label || selectedMapLabel?.label || "");
+                    setScreen("locations");
+                  }}
+                  style={linkButtonStyle}
+                >
+                  Search Atlas Records for This Label
+                </button>
+              </div>
+            </div>
+
+            <div style={recordCardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div>
+                  <div style={goldEyebrowStyle}>Map Photos</div>
+                  <h3 style={{ color: colors.navy, margin: "6px 0 0" }}>{(mapLabelForm.photos ?? []).length} on this label</h3>
+                </div>
+                <span style={badgeStyle("Monitor")}>{mapPhotoCount} Total</span>
+              </div>
+
+              <label style={{ ...uploadBoxStyle, marginTop: 12 }}>
+                Add Photos to Label
+                <input type="file" accept="image/*" multiple onChange={handleMapLabelPhotoUpload} style={{ display: "none" }} />
+              </label>
+
+              {(mapLabelForm.photos ?? []).length ? (
+                <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                  {(mapLabelForm.photos ?? []).map((photo) => (
+                    <div key={photo.id} style={inlineCardStyle}>
+                      <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 150, objectFit: "cover", borderRadius: 14, marginBottom: 8 }} />
+                      <div style={{ color: colors.navy, fontWeight: 950, fontSize: 13, wordBreak: "break-word" }}>{photo.name}</div>
+                      <div style={{ color: colors.muted, fontSize: 12, margin: "4px 0 8px" }}>{new Date(photo.createdAt).toLocaleString()}</div>
+                      <button type="button" onClick={() => deleteMapLabelPhoto(photo.id)} style={deleteButtonStyle}>Delete Photo</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ ...emptyStateStyle, marginTop: 12 }}>No photos added to this map label yet.</div>
+              )}
+            </div>
+          </div>
         </div>
       </SectionShell>
     );
@@ -2665,8 +2966,47 @@ const mapShellStyle: React.CSSProperties = {
   borderRadius: 24,
   overflow: "hidden",
   border: `1px solid ${colors.line}`,
-  minHeight: 560,
+  minHeight: 520,
   background: "#E9EEF5",
+  userSelect: "none",
+  touchAction: "none",
+};
+
+const mapImageStyle: React.CSSProperties = {
+  width: "100%",
+  height: "auto",
+  display: "block",
+  objectFit: "contain",
+  pointerEvents: "none",
+};
+
+const mapLabelPinStyle: React.CSSProperties = {
+  position: "absolute",
+  transform: "translate(-50%, -50%)",
+  border: `2px solid ${colors.gold2}`,
+  borderRadius: 999,
+  padding: "7px 10px",
+  fontWeight: 950,
+  fontSize: 12,
+  boxShadow: "0 12px 24px rgba(0,0,0,0.28)",
+  cursor: "grab",
+  display: "inline-flex",
+  gap: 7,
+  alignItems: "center",
+  whiteSpace: "nowrap",
+  maxWidth: 210,
+};
+
+const mapPinDotStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: 38,
+  height: 22,
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.22)",
+  fontSize: 10,
+  fontWeight: 950,
 };
 
 const vendorLogoBoxStyle: React.CSSProperties = {
