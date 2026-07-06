@@ -1,35 +1,21 @@
+```tsx id="atlas-route-replacement-fixed"
 import { neon } from "@neondatabase/serverless";
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type AtlasRole = "owner" | "admin" | "manager" | "tech" | "viewer";
-type AtlasUserStatus = "pending" | "approved" | "disabled";
+type JsonRecord = Record<string, unknown>;
 
-type AtlasUser = {
-  id: string;
-  email: string;
-  displayName: string;
-  role: AtlasRole;
-  status: AtlasUserStatus;
-  approvedAt: string | null;
-  lastLoginAt: string | null;
-  createdAt: string | null;
-};
-
-type CurrentAuth = {
-  user: AtlasUser;
-  sessionToken: string;
-};
-
-type Sql = ReturnType<typeof neon>;
-
-const COOKIE_NAME = "atlas_session";
-const SESSION_DAYS = 30;
-
-const allowedRoles: AtlasRole[] = ["owner", "admin", "manager", "tech", "viewer"];
+type AtlasTable =
+  | "vendors"
+  | "assets"
+  | "procedures"
+  | "work_orders"
+  | "calendar"
+  | "documents"
+  | "asset_photos";
 
 function getSql() {
   const connectionString =
@@ -48,697 +34,232 @@ function asString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeEmail(value: unknown) {
-  return asString(value).toLowerCase();
+function nullableString(value: unknown) {
+  const text = asString(value);
+  return text ? text : null;
 }
 
-function isRole(value: unknown): value is AtlasRole {
-  return typeof value === "string" && allowedRoles.includes(value as AtlasRole);
+function asDate(value: unknown) {
+  const text = asString(value);
+  return text ? text : null;
 }
 
-function cleanRole(value: unknown, fallback: AtlasRole = "viewer"): AtlasRole {
-  return isRole(value) ? value : fallback;
+function asStatus(value: unknown, fallback: string) {
+  const text = asString(value);
+  return text || fallback;
 }
 
-function isAdmin(user: AtlasUser) {
-  return user.role === "owner" || user.role === "admin";
+function asArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
 }
 
-function sanitizeUser(row: Record<string, unknown>): AtlasUser {
-  return {
-    id: String(row.id ?? ""),
-    email: String(row.email ?? ""),
-    displayName: String(row.display_name ?? ""),
-    role: cleanRole(row.role),
-    status: (String(row.status ?? "pending") as AtlasUserStatus) || "pending",
-    approvedAt: row.approved_at ? String(row.approved_at) : null,
-    lastLoginAt: row.last_login_at ? String(row.last_login_at) : null,
-    createdAt: row.created_at ? String(row.created_at) : null,
-  };
+function asStringArray(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => String(item));
+
+  if (typeof value === "string" && value.startsWith("{") && value.endsWith("}")) {
+    return value
+      .slice(1, -1)
+      .split(",")
+      .map((item) => item.replace(/^"|"$/g, "").trim())
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
-function fail(message: string, status = 400) {
-  return NextResponse.json({ ok: false, error: message }, { status });
+function jsonArray(value: unknown) {
+  return JSON.stringify(Array.isArray(value) ? value : []);
 }
 
-function sessionCookieOptions() {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 60 * 60 * 24 * SESSION_DAYS,
-  };
+function getId(record: JsonRecord, prefix: string) {
+  return asString(record.id) || `${prefix}-${randomUUID()}`;
 }
 
-function clearCookieOptions() {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 0,
-  };
-}
+function cleanTable(value: unknown): AtlasTable | "" {
+  const table = asString(value);
 
-function validatePassword(password: string) {
-  if (!password || password.length < 8) {
-    return "Password must be at least 8 characters.";
+  if (
+    table === "vendors" ||
+    table === "assets" ||
+    table === "procedures" ||
+    table === "work_orders" ||
+    table === "calendar" ||
+    table === "documents" ||
+    table === "asset_photos"
+  ) {
+    return table;
   }
 
   return "";
 }
 
-async function createSession(sql: Sql, userId: string) {
-  const rows = await sql`
-    INSERT INTO atlas_sessions (user_id)
-    VALUES (${userId})
-    RETURNING session_token, expires_at
-  `;
-
-  await sql`
-    UPDATE atlas_users
-    SET last_login_at = NOW()
-    WHERE id = ${userId}
-  `;
-
+function mapLocation(row: JsonRecord) {
   return {
-    token: String(rows[0]?.session_token ?? ""),
-    expiresAt: String(rows[0]?.expires_at ?? ""),
+    id: String(row.id ?? ""),
+    name: String(row.name ?? ""),
+    type: String(row.type ?? ""),
+    zone: String(row.zone ?? ""),
+    notes: String(row.notes ?? ""),
+    sort_order: Number(row.sort_order ?? 0),
   };
 }
 
-async function getCurrentUser(sql: Sql): Promise<CurrentAuth | null> {
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(COOKIE_NAME)?.value;
-
-  if (!sessionToken) return null;
-
-  const rows = await sql`
-    SELECT
-      u.id,
-      u.email,
-      u.display_name,
-      u.role,
-      u.status,
-      u.approved_at,
-      u.last_login_at,
-      u.created_at
-    FROM atlas_sessions s
-    JOIN atlas_users u ON u.id = s.user_id
-    WHERE s.session_token = ${sessionToken}
-      AND s.expires_at > NOW()
-      AND u.status = 'approved'
-    LIMIT 1
-  `;
-
-  if (!rows.length) return null;
-
+function mapVendor(row: JsonRecord) {
   return {
-    user: sanitizeUser(rows[0] as Record<string, unknown>),
-    sessionToken,
+    id: String(row.id ?? ""),
+    name: String(row.name ?? ""),
+    category: String(row.category ?? ""),
+    phone: row.phone ? String(row.phone) : "",
+    email: row.email ? String(row.email) : "",
+    website: row.website ? String(row.website) : "",
+    notes: String(row.notes ?? ""),
+    logoDataUrl: row.logo_data_url ? String(row.logo_data_url) : "",
+    documents: asArray(row.documents),
   };
 }
 
-async function requireAdmin(sql: Sql) {
-  const current = await getCurrentUser(sql);
-
-  if (!current) {
-    return { current: null, response: fail("Not logged in.", 401) };
-  }
-
-  if (!isAdmin(current.user)) {
-    return { current: null, response: fail("Admin access required.", 403) };
-  }
-
-  return { current, response: null };
+function mapAsset(row: JsonRecord) {
+  return {
+    id: String(row.id ?? ""),
+    name: String(row.name ?? ""),
+    locationId: String(row.location_id ?? "general"),
+    category: String(row.category ?? ""),
+    status: String(row.status ?? "Monitor"),
+    make: row.make ? String(row.make) : "",
+    model: row.model ? String(row.model) : "",
+    serial: row.serial ? String(row.serial) : "",
+    notes: String(row.notes ?? ""),
+    vendorIds: asStringArray(row.vendor_ids),
+    documents: asArray(row.documents),
+  };
 }
 
-async function bootstrapAdmin(sql: Sql, body: Record<string, unknown>) {
-  const countRows = await sql`
-    SELECT COUNT(*)::int AS count
-    FROM atlas_users
-  `;
-
-  const userCount = Number(countRows[0]?.count ?? 0);
-
-  if (userCount > 0) {
-    return fail("Atlas already has users. Log in or request access.", 409);
-  }
-
-  const email = normalizeEmail(body.email);
-  const displayName = asString(body.displayName) || asString(body.display_name) || "Atlas Owner";
-  const password = asString(body.password);
-
-  if (!email) return fail("Email is required.");
-  if (!displayName) return fail("Display name is required.");
-
-  const passwordError = validatePassword(password);
-  if (passwordError) return fail(passwordError);
-
-  const rows = await sql`
-    INSERT INTO atlas_users (
-      email,
-      display_name,
-      role,
-      status,
-      password_hash,
-      approved_at
-    )
-    VALUES (
-      ${email},
-      ${displayName},
-      'owner',
-      'approved',
-      atlas_hash_password(${password}),
-      NOW()
-    )
-    RETURNING
-      id,
-      email,
-      display_name,
-      role,
-      status,
-      approved_at,
-      last_login_at,
-      created_at
-  `;
-
-  const user = sanitizeUser(rows[0] as Record<string, unknown>);
-  const session = await createSession(sql, user.id);
-
-  const response = NextResponse.json({
-    ok: true,
-    authenticated: true,
-    setupRequired: false,
-    user,
-    message: "Owner account created.",
-  });
-
-  response.cookies.set(COOKIE_NAME, session.token, sessionCookieOptions());
-
-  return response;
+function mapProcedure(row: JsonRecord) {
+  return {
+    id: String(row.id ?? ""),
+    title: String(row.title ?? ""),
+    area: String(row.area ?? ""),
+    priority: String(row.priority ?? "Normal"),
+    steps: asStringArray(row.steps),
+  };
 }
 
-async function requestAccess(sql: Sql, body: Record<string, unknown>) {
-  const email = normalizeEmail(body.email);
-  const displayName = asString(body.displayName) || asString(body.display_name);
-  const password = asString(body.password);
-  const requestedRole = cleanRole(body.requestedRole || body.requested_role, "viewer");
-  const message = asString(body.message);
-
-  if (!email) return fail("Email is required.");
-  if (!displayName) return fail("Display name is required.");
-
-  const passwordError = validatePassword(password);
-  if (passwordError) return fail(passwordError);
-
-  const existingRows = await sql`
-    SELECT id, email, display_name, role, status, approved_at, last_login_at, created_at
-    FROM atlas_users
-    WHERE email = ${email}
-    LIMIT 1
-  `;
-
-  if (existingRows.length) {
-    const existingUser = sanitizeUser(existingRows[0] as Record<string, unknown>);
-
-    await sql`
-      INSERT INTO atlas_invite_requests (
-        email,
-        display_name,
-        requested_role,
-        message,
-        status
-      )
-      VALUES (
-        ${email},
-        ${displayName},
-        ${requestedRole},
-        ${message},
-        'pending'
-      )
-    `;
-
-    return NextResponse.json({
-      ok: true,
-      authenticated: false,
-      status: existingUser.status,
-      message:
-        existingUser.status === "approved"
-          ? "This account already exists. Log in instead."
-          : "Access request saved.",
-    });
-  }
-
-  await sql`
-    INSERT INTO atlas_users (
-      email,
-      display_name,
-      role,
-      status,
-      password_hash
-    )
-    VALUES (
-      ${email},
-      ${displayName},
-      ${requestedRole},
-      'pending',
-      atlas_hash_password(${password})
-    )
-  `;
-
-  await sql`
-    INSERT INTO atlas_invite_requests (
-      email,
-      display_name,
-      requested_role,
-      message,
-      status
-    )
-    VALUES (
-      ${email},
-      ${displayName},
-      ${requestedRole},
-      ${message},
-      'pending'
-    )
-  `;
-
-  return NextResponse.json({
-    ok: true,
-    authenticated: false,
-    status: "pending",
-    message: "Access request submitted. An approved Atlas admin must approve this account.",
-  });
+function mapWorkOrder(row: JsonRecord) {
+  return {
+    id: String(row.id ?? ""),
+    assetId: String(row.asset_id ?? ""),
+    vendorId: row.vendor_id ? String(row.vendor_id) : "",
+    procedureId: row.procedure_id ? String(row.procedure_id) : "",
+    date: row.date ? String(row.date).slice(0, 10) : "",
+    title: String(row.title ?? ""),
+    status: String(row.status ?? "Open"),
+    notes: String(row.notes ?? ""),
+    followUpDate: row.follow_up_date ? String(row.follow_up_date).slice(0, 10) : "",
+    photos: asArray(row.photos),
+    documents: asArray(row.documents),
+  };
 }
 
-async function login(sql: Sql, body: Record<string, unknown>) {
-  const email = normalizeEmail(body.email);
-  const password = asString(body.password);
-
-  if (!email) return fail("Email is required.");
-  if (!password) return fail("Password is required.");
-
-  const rows = await sql`
-    SELECT
-      id,
-      email,
-      display_name,
-      role,
-      status,
-      approved_at,
-      last_login_at,
-      created_at,
-      atlas_check_password(${password}, password_hash) AS password_valid
-    FROM atlas_users
-    WHERE email = ${email}
-    LIMIT 1
-  `;
-
-  if (!rows.length || !rows[0]?.password_valid) {
-    return fail("Invalid email or password.", 401);
-  }
-
-  const user = sanitizeUser(rows[0] as Record<string, unknown>);
-
-  if (user.status === "pending") {
-    return fail("This account is pending approval.", 403);
-  }
-
-  if (user.status === "disabled") {
-    return fail("This account is disabled.", 403);
-  }
-
-  if (user.status !== "approved") {
-    return fail("This account is not approved.", 403);
-  }
-
-  const session = await createSession(sql, user.id);
-
-  const response = NextResponse.json({
-    ok: true,
-    authenticated: true,
-    user,
-    message: "Logged in.",
-  });
-
-  response.cookies.set(COOKIE_NAME, session.token, sessionCookieOptions());
-
-  return response;
+function mapCalendarItem(row: JsonRecord) {
+  return {
+    id: String(row.id ?? ""),
+    date: row.date ? String(row.date).slice(0, 10) : "",
+    title: String(row.title ?? ""),
+    area: String(row.area ?? ""),
+    status: String(row.status ?? "Scheduled"),
+  };
 }
 
-async function logout(sql: Sql) {
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(COOKIE_NAME)?.value;
-
-  if (sessionToken) {
-    await sql`
-      DELETE FROM atlas_sessions
-      WHERE session_token = ${sessionToken}
-    `;
-  }
-
-  const response = NextResponse.json({
-    ok: true,
-    authenticated: false,
-    message: "Logged out.",
-  });
-
-  response.cookies.set(COOKIE_NAME, "", clearCookieOptions());
-
-  return response;
+function mapDocument(row: JsonRecord) {
+  return {
+    id: String(row.id ?? ""),
+    title: String(row.title ?? ""),
+    area: String(row.area ?? ""),
+    type: String(row.type ?? ""),
+    linkedAssetId: row.linked_asset_id ? String(row.linked_asset_id) : "",
+    notes: String(row.notes ?? ""),
+  };
 }
 
-async function approveUser(sql: Sql, body: Record<string, unknown>) {
-  const { current, response } = await requireAdmin(sql);
-  if (response) return response;
-
-  const userId = asString(body.userId) || asString(body.user_id);
-  const role = cleanRole(body.role, "viewer");
-
-  if (!userId) return fail("User ID is required.");
-
-  const rows = await sql`
-    UPDATE atlas_users
-    SET
-      status = 'approved',
-      role = ${role},
-      approved_at = COALESCE(approved_at, NOW())
-    WHERE id = ${userId}
-    RETURNING
-      id,
-      email,
-      display_name,
-      role,
-      status,
-      approved_at,
-      last_login_at,
-      created_at
-  `;
-
-  if (!rows.length) {
-    return fail("User not found.", 404);
-  }
-
-  const user = sanitizeUser(rows[0] as Record<string, unknown>);
-
-  await sql`
-    UPDATE atlas_invite_requests
-    SET
-      status = 'approved',
-      reviewed_by = ${current?.user.id},
-      reviewed_at = NOW()
-    WHERE email = ${user.email}
-      AND status = 'pending'
-  `;
-
-  return NextResponse.json({
-    ok: true,
-    user,
-    message: "User approved.",
-  });
-}
-
-async function denyUser(sql: Sql, body: Record<string, unknown>) {
-  const { current, response } = await requireAdmin(sql);
-  if (response) return response;
-
-  const userId = asString(body.userId) || asString(body.user_id);
-
-  if (!userId) return fail("User ID is required.");
-  if (current?.user.id === userId) return fail("You cannot deny your own account.", 400);
-
-  const rows = await sql`
-    UPDATE atlas_users
-    SET status = 'disabled'
-    WHERE id = ${userId}
-    RETURNING
-      id,
-      email,
-      display_name,
-      role,
-      status,
-      approved_at,
-      last_login_at,
-      created_at
-  `;
-
-  if (!rows.length) {
-    return fail("User not found.", 404);
-  }
-
-  const user = sanitizeUser(rows[0] as Record<string, unknown>);
-
-  await sql`
-    UPDATE atlas_invite_requests
-    SET
-      status = 'denied',
-      reviewed_by = ${current?.user.id},
-      reviewed_at = NOW()
-    WHERE email = ${user.email}
-      AND status = 'pending'
-  `;
-
-  await sql`
-    DELETE FROM atlas_sessions
-    WHERE user_id = ${userId}
-  `;
-
-  return NextResponse.json({
-    ok: true,
-    user,
-    message: "User disabled.",
-  });
-}
-
-async function disableUser(sql: Sql, body: Record<string, unknown>) {
-  const { current, response } = await requireAdmin(sql);
-  if (response) return response;
-
-  const userId = asString(body.userId) || asString(body.user_id);
-
-  if (!userId) return fail("User ID is required.");
-  if (current?.user.id === userId) return fail("You cannot disable your own account.", 400);
-
-  const rows = await sql`
-    UPDATE atlas_users
-    SET status = 'disabled'
-    WHERE id = ${userId}
-    RETURNING
-      id,
-      email,
-      display_name,
-      role,
-      status,
-      approved_at,
-      last_login_at,
-      created_at
-  `;
-
-  if (!rows.length) {
-    return fail("User not found.", 404);
-  }
-
-  await sql`
-    DELETE FROM atlas_sessions
-    WHERE user_id = ${userId}
-  `;
-
-  return NextResponse.json({
-    ok: true,
-    user: sanitizeUser(rows[0] as Record<string, unknown>),
-    message: "User disabled.",
-  });
-}
-
-async function changeRole(sql: Sql, body: Record<string, unknown>) {
-  const { response } = await requireAdmin(sql);
-  if (response) return response;
-
-  const userId = asString(body.userId) || asString(body.user_id);
-  const role = cleanRole(body.role, "viewer");
-
-  if (!userId) return fail("User ID is required.");
-
-  const rows = await sql`
-    UPDATE atlas_users
-    SET role = ${role}
-    WHERE id = ${userId}
-    RETURNING
-      id,
-      email,
-      display_name,
-      role,
-      status,
-      approved_at,
-      last_login_at,
-      created_at
-  `;
-
-  if (!rows.length) {
-    return fail("User not found.", 404);
-  }
-
-  return NextResponse.json({
-    ok: true,
-    user: sanitizeUser(rows[0] as Record<string, unknown>),
-    message: "Role changed.",
-  });
-}
-
-async function changePassword(sql: Sql, body: Record<string, unknown>) {
-  const current = await getCurrentUser(sql);
-
-  if (!current) {
-    return fail("Not logged in.", 401);
-  }
-
-  const currentPassword = asString(body.currentPassword) || asString(body.current_password);
-  const newPassword = asString(body.newPassword) || asString(body.new_password);
-
-  if (!currentPassword) return fail("Current password is required.");
-
-  const passwordError = validatePassword(newPassword);
-  if (passwordError) return fail(passwordError);
-
-  const rows = await sql`
-    SELECT atlas_check_password(${currentPassword}, password_hash) AS password_valid
-    FROM atlas_users
-    WHERE id = ${current.user.id}
-    LIMIT 1
-  `;
-
-  if (!rows.length || !rows[0]?.password_valid) {
-    return fail("Current password is incorrect.", 401);
-  }
-
-  await sql`
-    UPDATE atlas_users
-    SET password_hash = atlas_hash_password(${newPassword})
-    WHERE id = ${current.user.id}
-  `;
-
-  return NextResponse.json({
-    ok: true,
-    message: "Password changed.",
-  });
-}
-
-async function adminResetPassword(sql: Sql, body: Record<string, unknown>) {
-  const { response } = await requireAdmin(sql);
-  if (response) return response;
-
-  const userId = asString(body.userId) || asString(body.user_id);
-  const newPassword = asString(body.newPassword) || asString(body.new_password);
-
-  if (!userId) return fail("User ID is required.");
-
-  const passwordError = validatePassword(newPassword);
-  if (passwordError) return fail(passwordError);
-
-  const rows = await sql`
-    UPDATE atlas_users
-    SET password_hash = atlas_hash_password(${newPassword})
-    WHERE id = ${userId}
-    RETURNING
-      id,
-      email,
-      display_name,
-      role,
-      status,
-      approved_at,
-      last_login_at,
-      created_at
-  `;
-
-  if (!rows.length) {
-    return fail("User not found.", 404);
-  }
-
-  await sql`
-    DELETE FROM atlas_sessions
-    WHERE user_id = ${userId}
-  `;
-
-  return NextResponse.json({
-    ok: true,
-    user: sanitizeUser(rows[0] as Record<string, unknown>),
-    message: "Password reset. User must log in again.",
-  });
+function mapPhoto(row: JsonRecord) {
+  return {
+    id: String(row.id ?? ""),
+    assetId: String(row.asset_id ?? ""),
+    name: String(row.name ?? ""),
+    dataUrl: String(row.data_url ?? ""),
+    createdAt: row.created_at ? String(row.created_at) : new Date().toISOString(),
+  };
 }
 
 export async function GET() {
   try {
     const sql = getSql();
 
-    const countRows = await sql`
-      SELECT COUNT(*)::int AS count
-      FROM atlas_users
-    `;
+    const locationRows = (await sql`
+      SELECT id, name, type, zone, notes, sort_order
+      FROM atlas_locations
+      ORDER BY sort_order ASC, name ASC
+    `) as JsonRecord[];
 
-    const userCount = Number(countRows[0]?.count ?? 0);
-    const current = await getCurrentUser(sql);
+    const vendorRows = (await sql`
+      SELECT id, name, category, phone, email, website, notes, logo_data_url, documents
+      FROM atlas_vendors
+      ORDER BY name ASC
+    `) as JsonRecord[];
 
-    if (!current) {
-      return NextResponse.json({
-        ok: true,
-        authenticated: false,
-        setupRequired: userCount === 0,
-        hasUsers: userCount > 0,
-      });
-    }
+    const assetRows = (await sql`
+      SELECT id, name, location_id, category, status, make, model, serial, notes, vendor_ids, documents
+      FROM atlas_assets
+      ORDER BY name ASC
+    `) as JsonRecord[];
 
-    let users: AtlasUser[] = [];
-    let inviteRequests: unknown[] = [];
+    const procedureRows = (await sql`
+      SELECT id, title, area, priority, steps
+      FROM atlas_procedures
+      ORDER BY title ASC
+    `) as JsonRecord[];
 
-    if (isAdmin(current.user)) {
-      const userRows = await sql`
-        SELECT
-          id,
-          email,
-          display_name,
-          role,
-          status,
-          approved_at,
-          last_login_at,
-          created_at
-        FROM atlas_users
-        ORDER BY created_at DESC
-      `;
+    const workOrderRows = (await sql`
+      SELECT id, asset_id, vendor_id, procedure_id, date, title, status, notes, follow_up_date, photos, documents
+      FROM atlas_work_orders
+      ORDER BY date DESC, title ASC
+    `) as JsonRecord[];
 
-      users = userRows.map((row) => sanitizeUser(row as Record<string, unknown>));
+    const calendarRows = (await sql`
+      SELECT id, date, title, area, status
+      FROM atlas_calendar_items
+      ORDER BY date ASC, title ASC
+    `) as JsonRecord[];
 
-      inviteRequests = await sql`
-        SELECT
-          id,
-          email,
-          display_name,
-          requested_role,
-          message,
-          status,
-          reviewed_by,
-          reviewed_at,
-          created_at
-        FROM atlas_invite_requests
-        ORDER BY created_at DESC
-        LIMIT 100
-      `;
-    }
+    const documentRows = (await sql`
+      SELECT id, title, area, type, linked_asset_id, notes
+      FROM atlas_documents
+      ORDER BY title ASC
+    `) as JsonRecord[];
+
+    const photoRows = (await sql`
+      SELECT id, asset_id, name, data_url, created_at
+      FROM atlas_asset_photos
+      ORDER BY created_at DESC
+    `) as JsonRecord[];
 
     return NextResponse.json({
       ok: true,
-      authenticated: true,
-      setupRequired: false,
-      user: current.user,
-      users,
-      inviteRequests,
+      source: "neon",
+      locations: locationRows.map(mapLocation),
+      vendorRecords: vendorRows.map(mapVendor),
+      assetRecords: assetRows.map(mapAsset),
+      procedureRecords: procedureRows.map(mapProcedure),
+      serviceRecords: workOrderRows.map(mapWorkOrder),
+      calendarItems: calendarRows.map(mapCalendarItem),
+      documents: documentRows.map(mapDocument),
+      photos: photoRows.map(mapPhoto),
     });
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Atlas auth API failed.",
+        error: error instanceof Error ? error.message : "Unknown Atlas database read error",
       },
       { status: 500 }
     );
@@ -748,41 +269,375 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const sql = getSql();
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    const action = asString(body.action);
+    const body = (await request.json().catch(() => ({}))) as JsonRecord;
+    const table = cleanTable(body.table);
+    const record = (body.record && typeof body.record === "object" ? body.record : {}) as JsonRecord;
 
-    if (action === "bootstrap-admin") return bootstrapAdmin(sql, body);
-    if (action === "request-access") return requestAccess(sql, body);
-    if (action === "login") return login(sql, body);
-    if (action === "logout") return logout(sql);
-    if (action === "approve-user") return approveUser(sql, body);
-    if (action === "deny-user") return denyUser(sql, body);
-    if (action === "disable-user") return disableUser(sql, body);
-    if (action === "change-role") return changeRole(sql, body);
-    if (action === "change-password") return changePassword(sql, body);
-    if (action === "admin-reset-password") return adminResetPassword(sql, body);
+    if (!table) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Unsupported table: ${asString(body.table)}`,
+        },
+        { status: 400 }
+      );
+    }
 
-    return fail("Unknown auth action.", 400);
+    if (table === "vendors") {
+      const id = getId(record, "vendor");
+
+      await sql`
+        INSERT INTO atlas_vendors (
+          id,
+          name,
+          category,
+          phone,
+          email,
+          website,
+          notes,
+          logo_data_url,
+          documents,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.name) || "Untitled Vendor"},
+          ${asString(record.category) || "General"},
+          ${nullableString(record.phone)},
+          ${nullableString(record.email)},
+          ${nullableString(record.website)},
+          ${asString(record.notes)},
+          ${nullableString(record.logoDataUrl)},
+          ${jsonArray(record.documents)}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          category = EXCLUDED.category,
+          phone = EXCLUDED.phone,
+          email = EXCLUDED.email,
+          website = EXCLUDED.website,
+          notes = EXCLUDED.notes,
+          logo_data_url = EXCLUDED.logo_data_url,
+          documents = EXCLUDED.documents,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "assets") {
+      const id = getId(record, "asset");
+
+      await sql`
+        INSERT INTO atlas_assets (
+          id,
+          name,
+          location_id,
+          category,
+          status,
+          make,
+          model,
+          serial,
+          notes,
+          vendor_ids,
+          documents,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.name) || "Untitled Asset"},
+          ${asString(record.locationId) || "general"},
+          ${asString(record.category) || "General"},
+          ${asStatus(record.status, "Monitor")},
+          ${nullableString(record.make)},
+          ${nullableString(record.model)},
+          ${nullableString(record.serial)},
+          ${asString(record.notes)},
+          ARRAY(SELECT jsonb_array_elements_text(${jsonArray(record.vendorIds)}::jsonb)),
+          ${jsonArray(record.documents)}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          location_id = EXCLUDED.location_id,
+          category = EXCLUDED.category,
+          status = EXCLUDED.status,
+          make = EXCLUDED.make,
+          model = EXCLUDED.model,
+          serial = EXCLUDED.serial,
+          notes = EXCLUDED.notes,
+          vendor_ids = EXCLUDED.vendor_ids,
+          documents = EXCLUDED.documents,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "procedures") {
+      const id = getId(record, "procedure");
+
+      await sql`
+        INSERT INTO atlas_procedures (
+          id,
+          title,
+          area,
+          priority,
+          steps,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.title) || "Untitled Procedure"},
+          ${asString(record.area) || "General"},
+          ${asString(record.priority) || "Normal"},
+          ARRAY(SELECT jsonb_array_elements_text(${jsonArray(record.steps)}::jsonb)),
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          area = EXCLUDED.area,
+          priority = EXCLUDED.priority,
+          steps = EXCLUDED.steps,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "work_orders") {
+      const id = getId(record, "work-order");
+
+      await sql`
+        INSERT INTO atlas_work_orders (
+          id,
+          asset_id,
+          vendor_id,
+          procedure_id,
+          date,
+          title,
+          status,
+          notes,
+          follow_up_date,
+          photos,
+          documents,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.assetId) || "general"},
+          ${nullableString(record.vendorId)},
+          ${nullableString(record.procedureId)},
+          ${asDate(record.date)}::date,
+          ${asString(record.title) || "Untitled Work Order"},
+          ${asStatus(record.status, "Open")},
+          ${asString(record.notes)},
+          ${asDate(record.followUpDate)}::date,
+          ${jsonArray(record.photos)}::jsonb,
+          ${jsonArray(record.documents)}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          asset_id = EXCLUDED.asset_id,
+          vendor_id = EXCLUDED.vendor_id,
+          procedure_id = EXCLUDED.procedure_id,
+          date = EXCLUDED.date,
+          title = EXCLUDED.title,
+          status = EXCLUDED.status,
+          notes = EXCLUDED.notes,
+          follow_up_date = EXCLUDED.follow_up_date,
+          photos = EXCLUDED.photos,
+          documents = EXCLUDED.documents,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "calendar") {
+      const id = getId(record, "calendar");
+
+      await sql`
+        INSERT INTO atlas_calendar_items (
+          id,
+          date,
+          title,
+          area,
+          status,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asDate(record.date)}::date,
+          ${asString(record.title) || "Untitled Calendar Item"},
+          ${asString(record.area) || "General"},
+          ${asStatus(record.status, "Scheduled")},
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          date = EXCLUDED.date,
+          title = EXCLUDED.title,
+          area = EXCLUDED.area,
+          status = EXCLUDED.status,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "documents") {
+      const id = getId(record, "document");
+
+      await sql`
+        INSERT INTO atlas_documents (
+          id,
+          title,
+          area,
+          type,
+          linked_asset_id,
+          notes,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.title) || "Untitled Document"},
+          ${asString(record.area) || "General"},
+          ${asString(record.type) || "Document"},
+          ${nullableString(record.linkedAssetId)},
+          ${asString(record.notes)},
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          area = EXCLUDED.area,
+          type = EXCLUDED.type,
+          linked_asset_id = EXCLUDED.linked_asset_id,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "asset_photos") {
+      const id = getId(record, "photo");
+
+      await sql`
+        INSERT INTO atlas_asset_photos (
+          id,
+          asset_id,
+          name,
+          data_url,
+          created_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.assetId) || "general"},
+          ${asString(record.name) || "Photo"},
+          ${asString(record.dataUrl)},
+          COALESCE(${nullableString(record.createdAt)}::timestamptz, NOW())
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          asset_id = EXCLUDED.asset_id,
+          name = EXCLUDED.name,
+          data_url = EXCLUDED.data_url
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Unsupported table: ${table}`,
+      },
+      { status: 400 }
+    );
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Atlas auth API failed.",
+        error: error instanceof Error ? error.message : "Unknown Atlas database save error",
       },
       { status: 500 }
     );
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
     const sql = getSql();
-    return logout(sql);
+    const body = (await request.json().catch(() => ({}))) as JsonRecord;
+    const table = cleanTable(body.table);
+    const id = asString(body.id);
+
+    if (!table || !id) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Table and id are required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (table === "vendors") {
+      await sql`DELETE FROM atlas_vendors WHERE id = ${id}`;
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "assets") {
+      await sql`DELETE FROM atlas_asset_photos WHERE asset_id = ${id}`;
+      await sql`DELETE FROM atlas_work_orders WHERE asset_id = ${id}`;
+      await sql`DELETE FROM atlas_assets WHERE id = ${id}`;
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "procedures") {
+      await sql`DELETE FROM atlas_procedures WHERE id = ${id}`;
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "work_orders") {
+      await sql`DELETE FROM atlas_work_orders WHERE id = ${id}`;
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "calendar") {
+      await sql`DELETE FROM atlas_calendar_items WHERE id = ${id}`;
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "documents") {
+      await sql`DELETE FROM atlas_documents WHERE id = ${id}`;
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "asset_photos") {
+      await sql`DELETE FROM atlas_asset_photos WHERE id = ${id}`;
+      return NextResponse.json({ ok: true });
+    }
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Unsupported table: ${table}`,
+      },
+      { status: 400 }
+    );
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Atlas logout failed.",
+        error: error instanceof Error ? error.message : "Unknown Atlas database delete error",
       },
       { status: 500 }
     );
