@@ -25,6 +25,15 @@ const ALLOWED_TABLES: AtlasTable[] = [
   "asset_photos",
 ];
 
+const FALLBACK_TABLES: Record<AtlasTable, string[]> = {
+  vendors: ["vendors"],
+  assets: ["assets"],
+  procedures: ["procedures"],
+  work_orders: ["work_orders", "workorders", "service_records", "services"],
+  calendar: ["calendar", "calendar_items"],
+  asset_photos: ["asset_photos", "photos"],
+};
+
 const LOCATION_ID_BY_NAME: Record<string, string> = {
   general: "general",
   "2000": "general",
@@ -165,6 +174,30 @@ function locationIdFromRecord(row: AnyRow) {
   return "general";
 }
 
+async function tableExists(table: string) {
+  const rows = await queryRows<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = $1
+      ) AS exists
+    `,
+    [table]
+  );
+
+  return Boolean(rows[0]?.exists);
+}
+
+async function resolveTable(table: AtlasTable) {
+  for (const candidate of FALLBACK_TABLES[table]) {
+    if (await tableExists(candidate)) return candidate;
+  }
+
+  return null;
+}
+
 async function getColumns(table: string) {
   const rows = await queryRows<{ column_name: string }>(
     `
@@ -180,61 +213,196 @@ async function getColumns(table: string) {
 }
 
 async function getTargetUserId() {
-  const assetUserRows = await queryRows<{ userId: string }>(
-    `
-      SELECT "userId"
-      FROM assets
-      WHERE "userId" IS NOT NULL
-      GROUP BY "userId"
-      ORDER BY COUNT(*) DESC
-      LIMIT 1
-    `
-  );
+  const assetsTable = await resolveTable("assets");
 
-  if (assetUserRows[0]?.userId) return String(assetUserRows[0].userId);
+  if (assetsTable) {
+    const assetColumns = await getColumns(assetsTable);
 
-  const userRows = await queryRows<{ id: string }>(
-    `
-      SELECT id
-      FROM "user"
-      WHERE lower(email) = lower($1)
-      LIMIT 1
-    `,
-    [MAIN_EMAIL]
-  );
+    if (assetColumns.has("userId")) {
+      const assetUserRows = await queryRows<{ userId: string }>(
+        `
+          SELECT "userId"
+          FROM ${quoteIdentifier(assetsTable)}
+          WHERE "userId" IS NOT NULL
+          GROUP BY "userId"
+          ORDER BY COUNT(*) DESC
+          LIMIT 1
+        `
+      );
 
-  if (userRows[0]?.id) return String(userRows[0].id);
+      if (assetUserRows[0]?.userId) return String(assetUserRows[0].userId);
+    }
+  }
+
+  if (await tableExists("user")) {
+    const userRows = await queryRows<{ id: string }>(
+      `
+        SELECT id
+        FROM "user"
+        WHERE lower(email) = lower($1)
+        LIMIT 1
+      `,
+      [MAIN_EMAIL]
+    );
+
+    if (userRows[0]?.id) return String(userRows[0].id);
+  }
 
   return "atlas-master";
 }
 
 async function getOrCreateLocationId(userId: string, frontendLocationId: unknown) {
+  if (!(await tableExists("locations"))) return null;
+
   const frontendId = text(frontendLocationId, "general");
   const locationName = LOCATION_NAME_BY_ID[frontendId] || "General";
+  const columns = await getColumns("locations");
+
+  if (columns.has("userId")) {
+    const existing = await queryRows<{ id: any }>(
+      `
+        SELECT id
+        FROM locations
+        WHERE "userId" = $1
+          AND lower(trim(name)) = lower(trim($2))
+        LIMIT 1
+      `,
+      [userId, locationName]
+    );
+
+    if (existing[0]?.id !== undefined && existing[0]?.id !== null) return existing[0].id;
+
+    const created = await queryRows<{ id: any }>(
+      `
+        INSERT INTO locations ("userId", name)
+        VALUES ($1, $2)
+        RETURNING id
+      `,
+      [userId, locationName]
+    );
+
+    return created[0]?.id ?? null;
+  }
 
   const existing = await queryRows<{ id: any }>(
     `
       SELECT id
       FROM locations
-      WHERE "userId" = $1
-        AND lower(trim(name)) = lower(trim($2))
+      WHERE lower(trim(name)) = lower(trim($1))
       LIMIT 1
     `,
-    [userId, locationName]
+    [locationName]
   );
 
   if (existing[0]?.id !== undefined && existing[0]?.id !== null) return existing[0].id;
 
   const created = await queryRows<{ id: any }>(
     `
-      INSERT INTO locations ("userId", name)
-      VALUES ($1, $2)
+      INSERT INTO locations (name)
+      VALUES ($1)
       RETURNING id
     `,
-    [userId, locationName]
+    [locationName]
   );
 
   return created[0]?.id ?? null;
+}
+
+async function queryTable(table: AtlasTable, userId: string, orderColumn: string) {
+  const actualTable = await resolveTable(table);
+  if (!actualTable) return [];
+
+  const columns = await getColumns(actualTable);
+  const hasUserId = columns.has("userId");
+  const hasOrderColumn = columns.has(orderColumn);
+  const orderBy = hasOrderColumn ? `ORDER BY lower(${quoteIdentifier(orderColumn)}::text)` : `ORDER BY id`;
+
+  if (hasUserId) {
+    return queryRows(
+      `
+        SELECT *
+        FROM ${quoteIdentifier(actualTable)}
+        WHERE "userId" = $1 OR "userId" IS NULL
+        ${orderBy}
+      `,
+      [userId]
+    );
+  }
+
+  return queryRows(
+    `
+      SELECT *
+      FROM ${quoteIdentifier(actualTable)}
+      ${orderBy}
+    `
+  );
+}
+
+async function queryWorkOrders(userId: string) {
+  const actualTable = await resolveTable("work_orders");
+  if (!actualTable) return [];
+
+  const columns = await getColumns(actualTable);
+  const hasUserId = columns.has("userId");
+  const hasDate = columns.has("date");
+  const hasTitle = columns.has("title");
+
+  const orderBy =
+    hasDate && hasTitle
+      ? `ORDER BY date DESC NULLS LAST, lower(title::text)`
+      : hasDate
+      ? `ORDER BY date DESC NULLS LAST`
+      : hasTitle
+      ? `ORDER BY lower(title::text)`
+      : `ORDER BY id`;
+
+  if (hasUserId) {
+    return queryRows(
+      `
+        SELECT *
+        FROM ${quoteIdentifier(actualTable)}
+        WHERE "userId" = $1 OR "userId" IS NULL
+        ${orderBy}
+      `,
+      [userId]
+    );
+  }
+
+  return queryRows(
+    `
+      SELECT *
+      FROM ${quoteIdentifier(actualTable)}
+      ${orderBy}
+    `
+  );
+}
+
+async function queryAssets(userId: string) {
+  const actualTable = await resolveTable("assets");
+  if (!actualTable) return [];
+
+  const columns = await getColumns(actualTable);
+  const hasUserId = columns.has("userId");
+
+  if (hasUserId) {
+    return queryRows(
+      `
+        SELECT *
+        FROM ${quoteIdentifier(actualTable)}
+        WHERE "userId" = $1
+        ORDER BY lower(name::text)
+      `,
+      [userId]
+    );
+  }
+
+  return queryRows(
+    `
+      SELECT *
+      FROM ${quoteIdentifier(actualTable)}
+      ORDER BY lower(name::text)
+    `
+  );
 }
 
 function mapVendor(row: AnyRow) {
@@ -314,7 +482,10 @@ function mapPhoto(row: AnyRow) {
 }
 
 async function buildPayload(table: AtlasTable, record: AnyRow, userId: string) {
-  const columns = await getColumns(table);
+  const actualTable = await resolveTable(table);
+  if (!actualTable) throw new Error(`Missing database table for ${table}`);
+
+  const columns = await getColumns(actualTable);
   const payload: AnyRow = {};
 
   function set(column: string, value: unknown) {
@@ -394,11 +565,11 @@ async function buildPayload(table: AtlasTable, record: AnyRow, userId: string) {
     set("created_at", text(record.createdAt, new Date().toISOString()));
   }
 
-  return payload;
+  return { actualTable, payload };
 }
 
 async function upsertRecord(table: AtlasTable, record: AnyRow, userId: string) {
-  const payload = await buildPayload(table, record, userId);
+  const { actualTable, payload } = await buildPayload(table, record, userId);
   const columns = Object.keys(payload);
 
   const quotedColumns = columns.map(quoteIdentifier).join(", ");
@@ -411,7 +582,7 @@ async function upsertRecord(table: AtlasTable, record: AnyRow, userId: string) {
     .join(", ");
 
   const query = `
-    INSERT INTO ${quoteIdentifier(table)} (${quotedColumns})
+    INSERT INTO ${quoteIdentifier(actualTable)} (${quotedColumns})
     VALUES (${placeholders})
     ON CONFLICT (id) DO UPDATE SET
       ${updateColumns || `${quoteIdentifier("id")} = EXCLUDED.${quoteIdentifier("id")}`}
@@ -423,12 +594,15 @@ async function upsertRecord(table: AtlasTable, record: AnyRow, userId: string) {
 }
 
 async function deleteRecord(table: AtlasTable, id: string, userId: string) {
-  const columns = await getColumns(table);
+  const actualTable = await resolveTable(table);
+  if (!actualTable) return;
+
+  const columns = await getColumns(actualTable);
 
   if (columns.has("userId")) {
     await queryRows(
       `
-        DELETE FROM ${quoteIdentifier(table)}
+        DELETE FROM ${quoteIdentifier(actualTable)}
         WHERE id = $1
           AND "userId" = $2
       `,
@@ -439,7 +613,7 @@ async function deleteRecord(table: AtlasTable, id: string, userId: string) {
 
   await queryRows(
     `
-      DELETE FROM ${quoteIdentifier(table)}
+      DELETE FROM ${quoteIdentifier(actualTable)}
       WHERE id = $1
     `,
     [id]
@@ -450,65 +624,12 @@ export async function GET() {
   try {
     const userId = await getTargetUserId();
 
-    const vendorRows = await queryRows(
-      `
-        SELECT *
-        FROM vendors
-        WHERE "userId" = $1 OR "userId" IS NULL
-        ORDER BY lower(name)
-      `,
-      [userId]
-    );
-
-    const assetRows = await queryRows(
-      `
-        SELECT *
-        FROM assets
-        WHERE "userId" = $1
-        ORDER BY lower(name)
-      `,
-      [userId]
-    );
-
-    const procedureRows = await queryRows(
-      `
-        SELECT *
-        FROM procedures
-        WHERE "userId" = $1 OR "userId" IS NULL
-        ORDER BY lower(title)
-      `,
-      [userId]
-    );
-
-    const serviceRows = await queryRows(
-      `
-        SELECT *
-        FROM work_orders
-        WHERE "userId" = $1 OR "userId" IS NULL
-        ORDER BY date DESC NULLS LAST, lower(title)
-      `,
-      [userId]
-    );
-
-    const calendarRows = await queryRows(
-      `
-        SELECT *
-        FROM calendar
-        WHERE "userId" = $1 OR "userId" IS NULL
-        ORDER BY date ASC NULLS LAST, lower(title)
-      `,
-      [userId]
-    );
-
-    const photoRows = await queryRows(
-      `
-        SELECT *
-        FROM asset_photos
-        WHERE "userId" = $1 OR "userId" IS NULL
-        ORDER BY id DESC
-      `,
-      [userId]
-    ).catch(() => []);
+    const vendorRows = await queryTable("vendors", userId, "name");
+    const assetRows = await queryAssets(userId);
+    const procedureRows = await queryTable("procedures", userId, "title");
+    const serviceRows = await queryWorkOrders(userId);
+    const calendarRows = await queryTable("calendar", userId, "date");
+    const photoRows = await queryTable("asset_photos", userId, "id");
 
     return jsonResponse({
       ok: true,
