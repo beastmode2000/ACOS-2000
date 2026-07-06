@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import WeatherPlanner from "./components/WeatherPlanner";
 
 type Screen =
   | "dashboard"
@@ -2882,23 +2883,9 @@ export default function AtlasPage() {
   }
 
   function renderWeather() {
-    const cards = [
-      { title: "Dock / Wind", text: "Watch lake level, wind, dock power, SeaDoo lift, Cobalt lift, dock lift boxes, and water trampoline before storms or heavy use." },
-      { title: "Freeze", text: "During cold weather, check exterior hose bibs, mechanical room, garage, pool equipment, spa area, and lower generator area." },
-      { title: "Heavy Rain", text: "During heavy rain, check gutters, roof drainage, basement, ADU, garage, FloLogic, and leak-detection records." },
-      { title: "Heat / Humidity", text: "For indoor pool comfort, monitor Desert Aire performance, condensation, pool HVAC status, and room humidity." },
-    ];
-
     return (
-      <SectionShell eyebrow="Weather Watch" title="2000 Property Conditions">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
-          {cards.map((card) => (
-            <div key={card.title} style={{ border: `1px solid ${colors.line}`, borderRadius: 18, padding: 18, background: "#FBFCFE", minHeight: 150 }}>
-              <div style={{ color: colors.navy, fontSize: 24, fontWeight: 950, marginBottom: 8 }}>{card.title}</div>
-              <p style={{ color: colors.muted, lineHeight: 1.5, margin: 0 }}>{card.text}</p>
-            </div>
-          ))}
-        </div>
+      <SectionShell eyebrow="Weather Planning" title="2000 Yard Work + Irrigation Forecast">
+        <WeatherPlanner />
       </SectionShell>
     );
   }
