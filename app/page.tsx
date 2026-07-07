@@ -14,11 +14,13 @@ type Screen =
   | "weather"
   | "documents"
   | "procedures"
+  | "parts"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
 type ServiceStatus = "Open" | "Scheduled" | "Completed" | "Monitor";
 type Priority = "High" | "Normal" | "Seasonal";
+type PartStatus = "In Stock" | "Low" | "Out" | "Order";
 
 type LocationRecord = {
   id: string;
@@ -103,6 +105,23 @@ type DocumentRecord = {
   notes: string;
 };
 
+type PartRecord = {
+  id: string;
+  name: string;
+  category: string;
+  locationId: string;
+  assetId?: string;
+  vendorId?: string;
+  partNumber?: string;
+  sku?: string;
+  quantity: number;
+  minQuantity: number;
+  unit: string;
+  status: PartStatus;
+  reorderUrl?: string;
+  notes: string;
+};
+
 type PhotoRecord = {
   id: string;
   assetId: string;
@@ -119,9 +138,11 @@ type CalendarItem = {
   status: ServiceStatus;
 };
 
+type AttachmentKind = "asset-photo" | "asset-document" | "vendor-document" | "work-order-photo" | "work-order-document" | "map-photo" | "static-document";
+
 type SearchResult = {
   id: string;
-  type: "Location" | "Map Label" | "Asset" | "Vendor" | "Work Order" | "Document" | "Procedure" | "Calendar";
+  type: "Location" | "Map Label" | "Asset" | "Vendor" | "Work Order" | "Document" | "Procedure" | "Calendar" | "Part";
   title: string;
   subtitle: string;
   detail: string;
@@ -131,6 +152,12 @@ type SearchResult = {
   serviceId?: string;
   calendarId?: string;
   procedureId?: string;
+  partId?: string;
+  mapLabelId?: string;
+  attachmentKind?: AttachmentKind;
+  attachmentId?: string;
+  dataUrl?: string;
+  downloadName?: string;
 };
 
 type AtlasTable = "vendors" | "assets" | "procedures" | "work_orders" | "calendar" | "asset_photos";
@@ -343,6 +370,14 @@ const documents: DocumentRecord[] = [
   { id: "doc-credentials-redacted", title: "Redacted / admin-only credential inventory", area: "Admin", type: "Secure Note", notes: "Do not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes." },
 ];
 
+const partSeed: PartRecord[] = [
+  { id: "pool-test-reagents", name: "Taylor pool test reagents", category: "Pool Supplies", locationId: "pool-equipment", assetId: "taylor-test-kit", vendorId: "taylor", partNumber: "K-2006 / K-2006C", sku: "", quantity: 1, minQuantity: 1, unit: "kit", status: "In Stock", reorderUrl: "", notes: "Keep pool testing reagents current and reorder before summer usage increases." },
+  { id: "spa-filter", name: "Sundance spa filter", category: "Spa Supplies", locationId: "standalone-spa", assetId: "sundance-optima", vendorId: "sundance", partNumber: "", sku: "", quantity: 1, minQuantity: 1, unit: "filter", status: "Low", reorderUrl: "", notes: "Replacement filter for Sundance Optima spa. Confirm exact filter model before ordering." },
+  { id: "irrigation-parts", name: "Irrigation repair parts", category: "Irrigation", locationId: "irrigation", vendorId: "advancedirrigation", partNumber: "", sku: "", quantity: 0, minQuantity: 2, unit: "pieces", status: "Out", reorderUrl: "", notes: "General sprinkler heads/nozzles/fittings. Use as placeholder until exact stocked items are added." },
+  { id: "dock-lift-remote-battery", name: "Dock lift remote batteries", category: "Dock / Lift", locationId: "dock", assetId: "sunstream-cobalt", vendorId: "sunstream", partNumber: "", sku: "", quantity: 2, minQuantity: 2, unit: "batteries", status: "In Stock", reorderUrl: "", notes: "Keep spare batteries for dock/lift remotes and controls." },
+  { id: "hvac-filters", name: "HVAC filters", category: "HVAC", locationId: "mechanical-room", assetId: "carrier-hvac-hz432", vendorId: "carrier", partNumber: "Confirm size", sku: "", quantity: 0, minQuantity: 2, unit: "filters", status: "Order", reorderUrl: "", notes: "Confirm filter sizes from the HVAC filter list before ordering." },
+];
+
 const calendarSeed: CalendarItem[] = [
   { id: "cal-pool", date: "2026-07-08", title: "Check pool equipment and record pressures", area: "Pool Equipment Room", status: "Scheduled" },
   { id: "cal-spa", date: "2026-07-10", title: "Spa inspection / water level check", area: "Standalone Spa", status: "Scheduled" },
@@ -384,6 +419,7 @@ const navItems: { id: Screen; label: string; description: string }[] = [
   { id: "weather", label: "Weather", description: "Property watch" },
   { id: "documents", label: "Photos / Docs", description: "Records" },
   { id: "procedures", label: "Procedures", description: "Add / edit / schedule" },
+  { id: "parts", label: "Parts", description: "Inventory / reorder" },
   { id: "assistant", label: "Ask Atlas", description: "Search records" },
 ];
 
@@ -415,6 +451,21 @@ function sortCalendar(list: CalendarItem[]) {
 
 function sortProcedures(list: ProcedureRecord[]) {
   return [...list].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function sortParts(list: PartRecord[]) {
+  return [...list].sort((a, b) => {
+    const aLow = a.quantity <= a.minQuantity || a.status === "Low" || a.status === "Out" || a.status === "Order";
+    const bLow = b.quantity <= b.minQuantity || b.status === "Low" || b.status === "Out" || b.status === "Order";
+    if (aLow !== bLow) return aLow ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function partStatusForQuantity(quantity: number, minQuantity: number): PartStatus {
+  if (quantity <= 0) return "Out";
+  if (quantity <= minQuantity) return "Low";
+  return "In Stock";
 }
 
 function sortServices(list: ServiceRecord[]) {
@@ -467,6 +518,10 @@ function blankCalendarItem(date?: string): CalendarItem {
 
 function blankProcedure(): ProcedureRecord {
   return { id: "", title: "", area: "General", priority: "Normal", steps: [""] };
+}
+
+function blankPart(): PartRecord {
+  return { id: "", name: "", category: "General", locationId: "general", assetId: "", vendorId: "", partNumber: "", sku: "", quantity: 0, minQuantity: 1, unit: "each", status: "Order", reorderUrl: "", notes: "" };
 }
 
 function blankService(date?: string): ServiceRecord {
@@ -548,6 +603,12 @@ function priorityBadge(priority: Priority): React.CSSProperties {
   if (priority === "High") return badgeStyle("Open");
   if (priority === "Seasonal") return badgeStyle("Seasonal");
   return badgeStyle("Completed");
+}
+
+function partBadgeStyle(status: PartStatus): React.CSSProperties {
+  if (status === "Out") return badgeStyle("Offline");
+  if (status === "Low" || status === "Order") return badgeStyle("Seasonal");
+  return badgeStyle("Online");
 }
 
 function readLocalStorageList<T>(keys: string[], fallback: T[]): T[] {
@@ -666,8 +727,15 @@ export default function AtlasPage() {
   const [calendarForm, setCalendarForm] = useState<CalendarItem>(calendarSeed[0] ?? blankCalendarItem(todayKey));
   const [calendarMode, setCalendarMode] = useState<"edit" | "new">("edit");
 
+  const [partRecords, setPartRecords] = useState<PartRecord[]>(partSeed);
+  const [selectedPartId, setSelectedPartId] = useState(partSeed[0]?.id ?? "");
+  const [partForm, setPartForm] = useState<PartRecord>(partSeed[0] ?? blankPart());
+  const [partMode, setPartMode] = useState<"edit" | "new">("edit");
+  const [partStatusFilter, setPartStatusFilter] = useState<"all" | PartStatus>("all");
+  const [partCategoryFilter, setPartCategoryFilter] = useState("all");
+
   const [assistantQuestion, setAssistantQuestion] = useState("");
-  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about work orders, calendar work, procedures, assets, vendors, documents, service history, boilers, pool equipment, dock lifts, blinds, the spa, or aircraft.");
+  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas a simple question like “pool documents,” “pool photos,” “irrigation vendor,” “open pool work orders,” or “Boiler B-2.” Results will show as clickable cards with View, Download, Delete, and Open Related Record when available.");
   const [assistantResults, setAssistantResults] = useState<SearchResult[]>([]);
   const [ready, setReady] = useState(false);
   const [databaseStatus, setDatabaseStatus] = useState("Connecting to Neon...");
@@ -684,6 +752,11 @@ export default function AtlasPage() {
   function procedureName(procedureId?: string) {
     if (!procedureId) return "No procedure";
     return procedureRecords.find((procedure) => procedure.id === procedureId)?.title ?? "Procedure";
+  }
+
+  function partName(partId?: string) {
+    if (!partId) return "Part";
+    return partRecords.find((part) => part.id === partId)?.name ?? "Part";
   }
 
   async function postAtlasRecord(table: AtlasTable, record: unknown) {
@@ -910,6 +983,21 @@ export default function AtlasPage() {
   }, [selectedCalendarId, calendarItems, calendarMode]);
 
   useEffect(() => {
+    const selected = partRecords.find((part) => part.id === selectedPartId);
+    if (partMode === "new") return;
+    if (selected) setPartForm(selected);
+  }, [selectedPartId, partRecords, partMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedParts = readLocalStorageList<PartRecord>(["atlas-part-records-v1"], partSeed);
+    const cleanedParts = sortParts(storedParts.map((part) => ({ ...part, status: part.status || partStatusForQuantity(Number(part.quantity ?? 0), Number(part.minQuantity ?? 1)), quantity: Number(part.quantity ?? 0), minQuantity: Number(part.minQuantity ?? 1) })));
+    setPartRecords(cleanedParts);
+    setSelectedPartId(cleanedParts[0]?.id ?? "");
+    setPartForm(cleanedParts[0] ?? blankPart());
+  }, []);
+
+  useEffect(() => {
     if (!ready) return;
     window.localStorage.setItem("atlas-asset-records-v1", JSON.stringify(sortAssets(assetRecords)));
   }, [ready, assetRecords]);
@@ -923,6 +1011,11 @@ export default function AtlasPage() {
     if (!ready) return;
     window.localStorage.setItem("atlas-procedure-records-v1", JSON.stringify(sortProcedures(procedureRecords)));
   }, [ready, procedureRecords]);
+
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem("atlas-part-records-v1", JSON.stringify(sortParts(partRecords)));
+  }, [ready, partRecords]);
 
   useEffect(() => {
     if (!ready) return;
@@ -945,6 +1038,7 @@ export default function AtlasPage() {
   }, [ready, mapLabels]);
 
   const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? blankAsset();
+  const selectedPart = partRecords.find((part) => part.id === selectedPartId) ?? partRecords[0] ?? blankPart();
   const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
   const selectedMapLabel = mapLabels.find((label) => label.id === selectedMapLabelId) ?? mapLabels[0] ?? defaultMapLabels[0];
   const q = query.trim().toLowerCase();
@@ -1016,6 +1110,23 @@ export default function AtlasPage() {
     return documents.filter((document) => [document.title, document.area, document.type, document.notes, document.linkedAssetId ? assetName(document.linkedAssetId) : ""].join(" ").toLowerCase().includes(q));
   }, [q, assetRecords]);
 
+  const filteredParts = useMemo(() => {
+    let list = sortParts(partRecords);
+    if (partStatusFilter !== "all") list = list.filter((part) => part.status === partStatusFilter);
+    if (partCategoryFilter !== "all") list = list.filter((part) => part.category === partCategoryFilter);
+    if (!q) return list;
+    return list.filter((part) =>
+      [part.name, part.category, part.status, part.partNumber, part.sku, part.notes, getLocationName(part.locationId), assetName(part.assetId || ""), vendorName(part.vendorId)]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [q, partRecords, partStatusFilter, partCategoryFilter, assetRecords, vendorRecords]);
+
+  const lowPartRecords = sortParts(partRecords.filter((part) => part.quantity <= part.minQuantity || part.status === "Low" || part.status === "Out" || part.status === "Order"));
+  const partCategories = Array.from(new Set(partRecords.map((part) => part.category).filter(Boolean))).sort();
+
   const searchResults = useMemo<SearchResult[]>(() => {
     if (!q) return [];
 
@@ -1028,10 +1139,11 @@ export default function AtlasPage() {
       ...filteredCalendar.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar" as const, title: item.title, subtitle: `${formatDate(item.date)} · ${item.area}`, detail: item.status, screen: "calendar" as const, calendarId: item.id })),
       ...filteredDocuments.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: document.notes, screen: "documents" as const, assetId: document.linkedAssetId })),
       ...filteredProcedures.map((procedure) => ({ id: `procedure-${procedure.id}`, type: "Procedure" as const, title: procedure.title, subtitle: `${procedure.area} · ${procedure.priority}`, detail: procedure.steps.join(" "), screen: "procedures" as const, procedureId: procedure.id })),
+      ...filteredParts.map((part) => ({ id: `part-${part.id}`, type: "Part" as const, title: part.name, subtitle: `${part.category} · ${part.status} · Qty ${part.quantity} ${part.unit}`, detail: `${getLocationName(part.locationId)} · ${assetName(part.assetId || "")} · ${vendorName(part.vendorId)} · ${part.notes}`, screen: "parts" as const, partId: part.id, assetId: part.assetId, vendorId: part.vendorId })),
     ];
 
     return results.slice(0, 14);
-  }, [q, filteredLocations, filteredMapLabels, filteredAssets, filteredVendors, filteredServices, filteredCalendar, filteredDocuments, filteredProcedures]);
+  }, [q, filteredLocations, filteredMapLabels, filteredAssets, filteredVendors, filteredServices, filteredCalendar, filteredDocuments, filteredProcedures, filteredParts]);
 
   const openWorkOrderCount = serviceRecords.filter((record) => record.status === "Open" || record.status === "Monitor").length;
   const monitorAssetCount = assetRecords.filter((asset) => asset.status === "Monitor" || asset.status === "Offline").length;
@@ -1104,7 +1216,95 @@ export default function AtlasPage() {
       }
     }
 
+    if (result.partId) {
+      setSelectedPartId(result.partId);
+      setPartMode("edit");
+    }
+
+    if (result.mapLabelId) {
+      selectMapLabel(result.mapLabelId);
+    }
+
     setScreen(result.screen);
+  }
+
+  function openAssistantFile(result: SearchResult) {
+    if (!result.dataUrl) {
+      window.alert("This is an Atlas reference record, not an uploaded file yet. Open the related record and attach the actual PDF/photo/file there.");
+      return;
+    }
+
+    const opened = window.open(result.dataUrl, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      window.alert("Your browser blocked the file preview popup. Use the Download button instead.");
+    }
+  }
+
+  function deleteAssistantAttachment(result: SearchResult) {
+    if (!result.attachmentKind || !result.attachmentId) return;
+
+    if (result.attachmentKind === "static-document") {
+      window.alert("This is a built-in Atlas reference record. It cannot be deleted here. Attach and manage actual uploaded files from the related record.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete ${result.title}?`);
+    if (!confirmed) return;
+
+    if (result.attachmentKind === "asset-photo") {
+      deleteAssetPhoto(result.attachmentId);
+      setAssistantResults((current) => current.filter((item) => item.id !== result.id));
+      return;
+    }
+
+    if (result.attachmentKind === "asset-document" && result.assetId) {
+      const asset = assetRecords.find((item) => item.id === result.assetId);
+      if (!asset) return;
+
+      const updatedAsset = { ...asset, documents: (asset.documents ?? []).filter((document) => document.id !== result.attachmentId) };
+      setAssetRecords((current) => sortAssets(current.map((item) => (item.id === asset.id ? updatedAsset : item))));
+      if (assetForm.id === asset.id) setAssetForm(updatedAsset);
+      void postAtlasRecord("assets", updatedAsset);
+      setAssistantResults((current) => current.filter((item) => item.id !== result.id));
+      return;
+    }
+
+    if (result.attachmentKind === "vendor-document" && result.vendorId) {
+      const vendor = vendorRecords.find((item) => item.id === result.vendorId);
+      if (!vendor) return;
+
+      const updatedVendor = { ...vendor, documents: (vendor.documents ?? []).filter((document) => document.id !== result.attachmentId) };
+      setVendorRecords((current) => sortVendors(current.map((item) => (item.id === vendor.id ? updatedVendor : item))));
+      if (vendorForm.id === vendor.id) setVendorForm(updatedVendor);
+      void postAtlasRecord("vendors", updatedVendor);
+      setAssistantResults((current) => current.filter((item) => item.id !== result.id));
+      return;
+    }
+
+    if ((result.attachmentKind === "work-order-photo" || result.attachmentKind === "work-order-document") && result.serviceId) {
+      const service = serviceRecords.find((item) => item.id === result.serviceId);
+      if (!service) return;
+
+      const updatedService = normalizeService({
+        ...service,
+        photos: result.attachmentKind === "work-order-photo" ? (service.photos ?? []).filter((photo) => photo.id !== result.attachmentId) : service.photos ?? [],
+        documents: result.attachmentKind === "work-order-document" ? (service.documents ?? []).filter((document) => document.id !== result.attachmentId) : service.documents ?? [],
+      });
+
+      setServiceRecords((current) => sortServices(current.map((item) => (item.id === service.id ? updatedService : item))));
+      if (serviceForm.id === service.id) setServiceForm(updatedService);
+      void postAtlasRecord("work_orders", updatedService);
+      setAssistantResults((current) => current.filter((item) => item.id !== result.id));
+      return;
+    }
+
+    if (result.attachmentKind === "map-photo" && result.mapLabelId) {
+      setMapLabels((current) => current.map((label) => (label.id === result.mapLabelId ? { ...label, photos: (label.photos ?? []).filter((photo) => photo.id !== result.attachmentId) } : label)));
+      if (mapLabelForm.id === result.mapLabelId) {
+        setMapLabelForm((current) => ({ ...current, photos: (current.photos ?? []).filter((photo) => photo.id !== result.attachmentId) }));
+      }
+      setAssistantResults((current) => current.filter((item) => item.id !== result.id));
+    }
   }
 
   function handlePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -2014,6 +2214,10 @@ export default function AtlasPage() {
       detail: `Photo attached to ${assetName(photo.assetId)}. Uploaded ${new Date(photo.createdAt).toLocaleString()}.`,
       screen: "documents" as const,
       assetId: photo.assetId,
+      attachmentKind: "asset-photo" as const,
+      attachmentId: photo.id,
+      dataUrl: photo.dataUrl,
+      downloadName: photo.name,
     }));
 
     const assetDocumentResults: SearchResult[] = assetRecords.flatMap((asset) =>
@@ -2025,6 +2229,10 @@ export default function AtlasPage() {
         detail: `${document.type || "File"}. Attached to ${asset.name}. Uploaded ${new Date(document.createdAt).toLocaleString()}.`,
         screen: "documents" as const,
         assetId: asset.id,
+        attachmentKind: "asset-document" as const,
+        attachmentId: document.id,
+        dataUrl: document.dataUrl,
+        downloadName: document.name,
       }))
     );
 
@@ -2037,6 +2245,10 @@ export default function AtlasPage() {
         detail: `${document.type || "File"}. Attached to ${vendor.name}. Uploaded ${new Date(document.createdAt).toLocaleString()}.`,
         screen: "documents" as const,
         vendorId: vendor.id,
+        attachmentKind: "vendor-document" as const,
+        attachmentId: document.id,
+        dataUrl: document.dataUrl,
+        downloadName: document.name,
       }))
     );
 
@@ -2050,6 +2262,11 @@ export default function AtlasPage() {
         screen: "history" as const,
         serviceId: record.id,
         assetId: record.assetId,
+        vendorId: record.vendorId,
+        attachmentKind: "work-order-photo" as const,
+        attachmentId: photo.id,
+        dataUrl: photo.dataUrl,
+        downloadName: photo.name,
       })),
       ...(record.documents ?? []).map((document) => ({
         id: `work-doc-${record.id}-${document.id}`,
@@ -2060,6 +2277,11 @@ export default function AtlasPage() {
         screen: "history" as const,
         serviceId: record.id,
         assetId: record.assetId,
+        vendorId: record.vendorId,
+        attachmentKind: "work-order-document" as const,
+        attachmentId: document.id,
+        dataUrl: document.dataUrl,
+        downloadName: document.name,
       })),
     ]);
 
@@ -2071,7 +2293,11 @@ export default function AtlasPage() {
         subtitle: `Map photo · ${label.label}`,
         detail: `${photo.type || "Photo"}. Attached to map label ${label.label}. Uploaded ${new Date(photo.createdAt).toLocaleString()}.`,
         screen: "map" as const,
-        assetId: undefined,
+        mapLabelId: label.id,
+        attachmentKind: "map-photo" as const,
+        attachmentId: photo.id,
+        dataUrl: photo.dataUrl,
+        downloadName: photo.name,
       }))
     );
 
@@ -2082,8 +2308,9 @@ export default function AtlasPage() {
       ...vendorRecords.map((vendor) => ({ id: `vendor-${vendor.id}`, type: "Vendor" as const, title: vendor.name, subtitle: vendor.category, detail: [vendor.phone, vendor.email, vendor.website, vendor.notes, (vendor.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "vendors" as const, vendorId: vendor.id })),
       ...serviceRecords.map((record) => ({ id: `service-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)} · ${record.status}`, detail: [record.notes, record.followUpDate ? `Follow-up ${formatDate(record.followUpDate)}` : "", procedureName(record.procedureId), (record.photos ?? []).map((photo) => photo.name).join(" "), (record.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "history" as const, serviceId: record.id, assetId: record.assetId, vendorId: record.vendorId })),
       ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar" as const, title: item.title, subtitle: `${formatDate(item.date)} · ${item.area} · ${item.status}`, detail: `${item.title} ${item.area} ${item.status} ${formatDate(item.date)}`, screen: "calendar" as const, calendarId: item.id })),
-      ...documents.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: document.notes, screen: "documents" as const, assetId: document.linkedAssetId })),
+      ...documents.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: `${document.notes} Static Atlas reference record. Attach an actual file to an asset, vendor, work order, or map label if you need a viewable/downloadable document.`, screen: "documents" as const, assetId: document.linkedAssetId, attachmentKind: "static-document" as const })),
       ...procedureRecords.map((procedure) => ({ id: `procedure-${procedure.id}`, type: "Procedure" as const, title: procedure.title, subtitle: `${procedure.area} · ${procedure.priority}`, detail: procedure.steps.join(" "), screen: "procedures" as const, procedureId: procedure.id })),
+      ...partRecords.map((part) => ({ id: `assistant-part-${part.id}`, type: "Part" as const, title: part.name, subtitle: `${part.category} · ${part.status} · Qty ${part.quantity} ${part.unit}`, detail: `${getLocationName(part.locationId)} · ${assetName(part.assetId || "")} · ${vendorName(part.vendorId)} · Part # ${part.partNumber || "n/a"}. SKU ${part.sku || "n/a"}. ${part.notes}`, screen: "parts" as const, partId: part.id, assetId: part.assetId, vendorId: part.vendorId })),
       ...assetPhotoResults,
       ...assetDocumentResults,
       ...vendorDocumentResults,
@@ -2144,7 +2371,7 @@ export default function AtlasPage() {
     }));
 
     if (text.includes("database") || text.includes("neon") || text.includes("save") || text.includes("connected")) {
-      assistantSetAnswer(`Atlas is connected to Neon. Current status: ${databaseStatus}.\n\nRecord counts: ${assetRecords.length} assets, ${vendorRecords.length} vendors, ${serviceRecords.length} work orders, ${calendarItems.length} calendar items, ${procedureRecords.length} procedures, ${photos.length} asset photos, and ${uploadedDocumentCount} uploaded documents.`, []);
+      assistantSetAnswer(`Atlas is connected to Neon. Current status: ${databaseStatus}.\n\nRecord counts: ${assetRecords.length} assets, ${vendorRecords.length} vendors, ${serviceRecords.length} work orders, ${calendarItems.length} calendar items, ${procedureRecords.length} procedures, ${photos.length} asset photos, ${uploadedDocumentCount} uploaded documents, and ${partRecords.length} parts / inventory items.`, []);
       return;
     }
 
@@ -2169,9 +2396,23 @@ export default function AtlasPage() {
       return;
     }
 
-    if (text.includes("photo") || text.includes("picture") || text.includes("document") || text.includes("invoice") || text.includes("file")) {
-      const results = findAssistantResults(text, 10).filter((result) => result.type === "Document" || result.screen === "documents" || result.detail.toLowerCase().includes("photo") || result.detail.toLowerCase().includes("document"));
-      assistantSetAnswer(results.length ? `I found ${results.length} photo/document match(es). Click a result to open the related record or library.` : "I did not find matching photos or documents yet.", results);
+    if (text.includes("part") || text.includes("parts") || text.includes("inventory") || text.includes("reorder") || text.includes("stock") || text.includes("supplies") || text.includes("supply")) {
+      const results = findAssistantResults(text, 10).filter((result) => result.type === "Part" || result.screen === "parts");
+      assistantSetAnswer(results.length ? `Atlas found ${results.length} parts / inventory match(es). Click a result to open it.` : `Atlas is tracking ${partRecords.length} parts / supplies. ${lowPartRecords.length} need attention. Try asking for pool supplies, spa filters, irrigation parts, dock parts, or low stock.`, results);
+      return;
+    }
+
+    if (text.includes("photo") || text.includes("picture") || text.includes("document") || text.includes("documents") || text.includes("doc") || text.includes("docs") || text.includes("invoice") || text.includes("file")) {
+      const results = findAssistantResults(text, 24).filter((result) => result.type === "Document");
+      const viewableCount = results.filter((result) => Boolean(result.dataUrl)).length;
+      const referenceCount = results.length - viewableCount;
+
+      assistantSetAnswer(
+        results.length
+          ? `I found ${results.length} photo/document result(s). ${viewableCount} can be opened directly. ${referenceCount} are Atlas reference records that point you to the related asset/work order/vendor. Use View, Download, Delete, or Open Related Record below.`
+          : "I did not find matching photos or documents yet. Uploaded files will show View/Download/Delete buttons here.",
+        results
+      );
       return;
     }
 
@@ -2270,11 +2511,12 @@ export default function AtlasPage() {
   function renderDashboard() {
     return (
       <div style={{ display: "grid", gap: 18 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 16 }}>
           <StatCard label="Assets" value={assetRecords.length} detail="Neon connected" />
           <StatCard label="Vendors" value={vendorRecords.length} detail="Neon connected" />
           <StatCard label="Work Orders" value={serviceRecords.length} detail="Photos + docs" />
           <StatCard label="Procedures" value={procedureRecords.length} detail="Editable templates" />
+          <StatCard label="Parts" value={partRecords.length} detail={`${lowPartRecords.length} low / order`} />
           <StatCard label="Scheduled" value={upcomingCalendarCount} detail="Calendar work" />
           <StatCard label="Open / Monitor" value={openWorkOrderCount + monitorAssetCount} detail="Needs attention" />
         </div>
@@ -3305,14 +3547,231 @@ export default function AtlasPage() {
     );
   }
 
+  function startNewPart() {
+    setPartMode("new");
+    setSelectedPartId("");
+    setPartForm(blankPart());
+  }
+
+  function savePart() {
+    const name = partForm.name.trim();
+    if (!name) return;
+
+    const existingId = partMode === "edit" ? partForm.id : "";
+    let id = existingId || slugify(`part-${name}`);
+    if (partMode === "new" && partRecords.some((part) => part.id === id)) id = `${id}-${Date.now()}`;
+
+    const quantity = Number(partForm.quantity || 0);
+    const minQuantity = Number(partForm.minQuantity || 0);
+    const status = partForm.status || partStatusForQuantity(quantity, minQuantity);
+
+    const cleanPart: PartRecord = {
+      ...partForm,
+      id,
+      name,
+      category: partForm.category.trim() || "General",
+      locationId: partForm.locationId || "general",
+      assetId: partForm.assetId || "",
+      vendorId: partForm.vendorId || "",
+      partNumber: partForm.partNumber?.trim() || "",
+      sku: partForm.sku?.trim() || "",
+      quantity,
+      minQuantity,
+      unit: partForm.unit.trim() || "each",
+      status,
+      reorderUrl: partForm.reorderUrl?.trim() || "",
+      notes: partForm.notes.trim() || "No notes added yet.",
+    };
+
+    setPartRecords((current) => sortParts(current.some((part) => part.id === id) ? current.map((part) => (part.id === id ? cleanPart : part)) : [...current, cleanPart]));
+    setPartForm(cleanPart);
+    setSelectedPartId(id);
+    setPartMode("edit");
+    setDatabaseStatus("Parts saved locally");
+  }
+
+  function deletePart() {
+    if (!partForm.id) return;
+    const confirmed = window.confirm(`Delete part / inventory item: ${partForm.name}?`);
+    if (!confirmed) return;
+
+    const remaining = sortParts(partRecords.filter((part) => part.id !== partForm.id));
+    setPartRecords(remaining);
+    const nextPart = remaining[0];
+    setSelectedPartId(nextPart?.id ?? "");
+    setPartForm(nextPart ?? blankPart());
+    setPartMode(nextPart ? "edit" : "new");
+    setDatabaseStatus("Parts saved locally");
+  }
+
+  function adjustPartQuantity(delta: number) {
+    setPartForm((current) => {
+      const quantity = Math.max(0, Number(current.quantity || 0) + delta);
+      return { ...current, quantity, status: partStatusForQuantity(quantity, Number(current.minQuantity || 0)) };
+    });
+  }
+
+  function createPartWorkOrder(part?: PartRecord) {
+    const source = part ?? partForm;
+    if (!source.name.trim()) return;
+
+    const assetId = source.assetId || assetRecords[0]?.id || "";
+    const workOrder: ServiceRecord = normalizeService({
+      id: uid("service-part"),
+      assetId,
+      vendorId: source.vendorId || "",
+      procedureId: "vendor-visit-intake",
+      date: todayKey,
+      title: `Order / restock: ${source.name}`,
+      status: "Open",
+      notes: `Inventory request from Parts tab. Current quantity: ${source.quantity} ${source.unit}. Minimum: ${source.minQuantity} ${source.unit}. Location: ${getLocationName(source.locationId)}. Notes: ${source.notes}`,
+      followUpDate: "",
+      photos: [],
+      documents: [],
+    });
+
+    setServiceRecords((current) => sortServices([workOrder, ...current]));
+    setSelectedServiceId(workOrder.id);
+    setServiceForm(workOrder);
+    setServiceMode("edit");
+    setScreen("history");
+    void postAtlasRecord("work_orders", workOrder);
+  }
+
+  function schedulePartRestock(part?: PartRecord) {
+    const source = part ?? partForm;
+    if (!source.name.trim()) return;
+
+    const item: CalendarItem = {
+      id: uid("cal-part"),
+      date: todayKey,
+      title: `Restock: ${source.name}`,
+      area: getLocationName(source.locationId),
+      status: "Scheduled",
+    };
+
+    setCalendarItems((current) => sortCalendar([...current, item]));
+    setSelectedCalendarId(item.id);
+    setSelectedCalendarDate(item.date);
+    setCalendarCursor(dateFromKey(item.date));
+    setCalendarForm(item);
+    setCalendarMode("edit");
+    setScreen("calendar");
+    void postAtlasRecord("calendar", item);
+  }
+
+  function renderParts() {
+    const totalUnits = partRecords.reduce((total, part) => total + Number(part.quantity || 0), 0);
+    const outCount = partRecords.filter((part) => part.status === "Out" || part.quantity <= 0).length;
+    const lowCount = lowPartRecords.length;
+    const selectedPartSaved = Boolean(partMode === "edit" && partForm.id);
+
+    return (
+      <div style={{ display: "grid", gap: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+          <StatCard label="Inventory Items" value={partRecords.length} detail="parts and supplies tracked" />
+          <StatCard label="Low / Order" value={lowCount} detail="items needing attention" />
+          <StatCard label="Out" value={outCount} detail="zero quantity items" />
+          <StatCard label="Total Units" value={totalUnits} detail="across all inventory rows" />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "0.82fr 1.18fr", gap: 18, alignItems: "start" }}>
+          <SectionShell eyebrow="Parts" title="Inventory + Reorder List" right={<button type="button" onClick={startNewPart} style={primaryButtonStyle}>Add Part</button>}>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <label style={labelStyle}>Status Filter<select value={partStatusFilter} onChange={(event) => setPartStatusFilter(event.target.value as "all" | PartStatus)} style={inputStyle}><option value="all">All</option><option value="In Stock">In Stock</option><option value="Low">Low</option><option value="Out">Out</option><option value="Order">Order</option></select></label>
+                <label style={labelStyle}>Category Filter<select value={partCategoryFilter} onChange={(event) => setPartCategoryFilter(event.target.value)} style={inputStyle}><option value="all">All</option>{partCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+              </div>
+
+              {lowPartRecords.length ? (
+                <div style={{ ...inlineCardStyle, background: "#FFF9EA" }}>
+                  <div style={goldEyebrowStyle}>Needs Attention</div>
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    {lowPartRecords.slice(0, 5).map((part) => (
+                      <button key={part.id} type="button" onClick={() => { setSelectedPartId(part.id); setPartMode("edit"); }} style={smallRecordButtonStyle}>
+                        <strong style={{ color: colors.navy }}>{part.name}</strong>
+                        <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{part.status} · Qty {part.quantity} {part.unit} · Min {part.minQuantity}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ display: "grid", gap: 10 }}>
+                {filteredParts.length ? filteredParts.map((part) => (
+                  <button
+                    key={part.id}
+                    type="button"
+                    onClick={() => { setSelectedPartId(part.id); setPartMode("edit"); }}
+                    style={{ ...smallRecordButtonStyle, border: selectedPartId === part.id && partMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`, background: selectedPartId === part.id && partMode === "edit" ? "#FFF9EA" : "#FBFCFE" }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                      <strong style={{ color: colors.navy }}>{part.name}</strong>
+                      <span style={partBadgeStyle(part.status)}>{part.status}</span>
+                    </div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{part.category} · {getLocationName(part.locationId)}</div>
+                    <div style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>Qty {part.quantity} {part.unit} · Min {part.minQuantity} · {vendorName(part.vendorId)}</div>
+                  </button>
+                )) : <div style={emptyStateStyle}>No parts match the current filter.</div>}
+              </div>
+            </div>
+          </SectionShell>
+
+          <SectionShell eyebrow={partMode === "new" ? "New Inventory Item" : "Edit Inventory Item"} title={partForm.name || "Part Details"} right={selectedPartSaved ? <button type="button" onClick={deletePart} style={deleteButtonStyle}>Delete Part</button> : null}>
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <label style={labelStyle}>Part / Supply Name<input value={partForm.name} onChange={(event) => setPartForm((current) => ({ ...current, name: event.target.value }))} placeholder="Example: Spa filter" style={inputStyle} /></label>
+                <label style={labelStyle}>Category<input value={partForm.category} onChange={(event) => setPartForm((current) => ({ ...current, category: event.target.value }))} placeholder="Pool, HVAC, Dock, Irrigation..." style={inputStyle} /></label>
+                <label style={labelStyle}>Location<select value={partForm.locationId} onChange={(event) => setPartForm((current) => ({ ...current, locationId: event.target.value }))} style={inputStyle}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                <label style={labelStyle}>Linked Asset<select value={partForm.assetId ?? ""} onChange={(event) => setPartForm((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}><option value="">No asset</option>{sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                <label style={labelStyle}>Vendor / Supplier<select value={partForm.vendorId ?? ""} onChange={(event) => setPartForm((current) => ({ ...current, vendorId: event.target.value }))} style={inputStyle}><option value="">No vendor</option>{sortVendors(vendorRecords).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                <label style={labelStyle}>Status<select value={partForm.status} onChange={(event) => setPartForm((current) => ({ ...current, status: event.target.value as PartStatus }))} style={inputStyle}><option value="In Stock">In Stock</option><option value="Low">Low</option><option value="Out">Out</option><option value="Order">Order</option></select></label>
+                <label style={labelStyle}>Part Number<input value={partForm.partNumber ?? ""} onChange={(event) => setPartForm((current) => ({ ...current, partNumber: event.target.value }))} placeholder="Part # / model" style={inputStyle} /></label>
+                <label style={labelStyle}>SKU<input value={partForm.sku ?? ""} onChange={(event) => setPartForm((current) => ({ ...current, sku: event.target.value }))} placeholder="SKU / vendor code" style={inputStyle} /></label>
+                <label style={labelStyle}>Quantity<input type="number" value={partForm.quantity} onChange={(event) => { const quantity = Number(event.target.value); setPartForm((current) => ({ ...current, quantity, status: partStatusForQuantity(quantity, Number(current.minQuantity || 0)) })); }} style={inputStyle} /></label>
+                <label style={labelStyle}>Minimum<input type="number" value={partForm.minQuantity} onChange={(event) => { const minQuantity = Number(event.target.value); setPartForm((current) => ({ ...current, minQuantity, status: partStatusForQuantity(Number(current.quantity || 0), minQuantity) })); }} style={inputStyle} /></label>
+                <label style={labelStyle}>Unit<input value={partForm.unit} onChange={(event) => setPartForm((current) => ({ ...current, unit: event.target.value }))} placeholder="each, filters, gallons..." style={inputStyle} /></label>
+                <label style={labelStyle}>Reorder Link<input value={partForm.reorderUrl ?? ""} onChange={(event) => setPartForm((current) => ({ ...current, reorderUrl: event.target.value }))} placeholder="Vendor or Amazon reorder URL" style={inputStyle} /></label>
+              </div>
+
+              <label style={labelStyle}>Notes<textarea value={partForm.notes} onChange={(event) => setPartForm((current) => ({ ...current, notes: event.target.value }))} rows={5} placeholder="Where it is stored, what it fits, reorder notes, size, install notes, and vendor instructions." style={{ ...inputStyle, resize: "vertical" }} /></label>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, auto))", gap: 8, justifyContent: "start", alignItems: "center" }}>
+                <button type="button" onClick={() => adjustPartQuantity(-1)} style={smallPrimaryButtonStyle}>-1</button>
+                <button type="button" onClick={() => adjustPartQuantity(1)} style={smallPrimaryButtonStyle}>+1</button>
+                <button type="button" onClick={savePart} style={widePrimaryButtonStyle}>Save Part</button>
+                <button type="button" onClick={() => createPartWorkOrder()} style={goldButtonStyle}>Make Work Order</button>
+                <button type="button" onClick={() => schedulePartRestock()} style={smallPrimaryButtonStyle}>Schedule Restock</button>
+              </div>
+
+              {partForm.reorderUrl ? (
+                <a href={partForm.reorderUrl.startsWith("http") ? partForm.reorderUrl : `https://${partForm.reorderUrl}`} target="_blank" rel="noreferrer" style={linkButtonStyle}>Open Reorder Link</a>
+              ) : null}
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                <div style={inlineCardStyle}><div style={goldEyebrowStyle}>Linked Asset</div><div style={{ color: colors.navy, fontWeight: 950, marginTop: 6 }}>{assetName(partForm.assetId || "")}</div>{partForm.assetId ? <button type="button" onClick={() => { setSelectedAssetId(partForm.assetId || ""); setAssetMode("edit"); setScreen("assets"); }} style={{ ...smallPrimaryButtonStyle, marginTop: 10 }}>Open Asset</button> : null}</div>
+                <div style={inlineCardStyle}><div style={goldEyebrowStyle}>Vendor</div><div style={{ color: colors.navy, fontWeight: 950, marginTop: 6 }}>{vendorName(partForm.vendorId)}</div>{partForm.vendorId ? <button type="button" onClick={() => { setSelectedVendorId(partForm.vendorId || ""); setVendorMode("edit"); setScreen("vendors"); }} style={{ ...smallPrimaryButtonStyle, marginTop: 10 }}>Open Vendor</button> : null}</div>
+                <div style={inlineCardStyle}><div style={goldEyebrowStyle}>Inventory Rule</div><div style={{ color: colors.navy, fontWeight: 950, marginTop: 6 }}>Keep at least {partForm.minQuantity} {partForm.unit}</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 6 }}>Current status: {partForm.status}</div></div>
+              </div>
+            </div>
+          </SectionShell>
+        </div>
+      </div>
+    );
+  }
+
   function renderAssistant() {
     const quickQuestions = [
       "What needs to be done this week?",
       "Show overdue work orders",
       "Show open pool work orders",
       "Who handles irrigation?",
+      "Pool documents",
+      "Pool photos",
       "What documents are tied to Blinds Lutron?",
       "What photos are attached to the Cobalt lift?",
+      "What parts are low or need ordering?",
+      "Show pool supplies",
       "Show vendor visits coming up",
       "What do we know about Boiler B-2?",
       "What is the pool equipment chain?",
@@ -3327,12 +3786,13 @@ export default function AtlasPage() {
       { label: "Calendar", value: calendarItems.length },
       { label: "Docs", value: uploadedDocumentCount },
       { label: "Photos", value: photos.length + uploadedServicePhotoCount },
+      { label: "Parts", value: partRecords.length },
     ];
 
     return (
       <SectionShell eyebrow="Ask Atlas" title="Property Assistant" right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}>
         <div style={{ display: "grid", gap: 18 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 10 }}>
             {assistantStats.map((stat) => (
               <div key={stat.label} style={{ border: `1px solid ${colors.line}`, background: "#FBFCFE", borderRadius: 16, padding: 12 }}>
                 <div style={{ color: colors.muted, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.6 }}>{stat.label}</div>
@@ -3345,10 +3805,10 @@ export default function AtlasPage() {
             <div style={{ display: "grid", gap: 14 }}>
               <div style={inlineCardStyle}>
                 <div style={goldEyebrowStyle}>Ask a Property Question</div>
-                <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask Atlas: what needs to be done this week, who handles irrigation, show pool work, what photos are attached to Cobalt, what do we know about Boiler B-2..." rows={8} style={{ ...inputStyle, resize: "vertical", marginTop: 10 }} />
+                <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask Atlas simply: pool documents, pool photos, irrigation vendor, open pool work orders, Boiler B-2, Cobalt lift photos, low parts..." rows={8} style={{ ...inputStyle, resize: "vertical", marginTop: 10 }} />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginTop: 10 }}>
                   <button type="button" onClick={() => askAtlas(assistantQuestion)} style={widePrimaryButtonStyle}>Ask Atlas</button>
-                  <button type="button" onClick={() => { setAssistantQuestion(""); assistantSetAnswer("Ask Atlas about work orders, calendar work, procedures, assets, vendors, documents, service history, boilers, pool equipment, dock lifts, blinds, the spa, or aircraft.", []); }} style={smallPrimaryButtonStyle}>Clear</button>
+                  <button type="button" onClick={() => { setAssistantQuestion(""); assistantSetAnswer("Ask Atlas a simple question like “pool documents,” “pool photos,” “irrigation vendor,” “open pool work orders,” or “Boiler B-2.” Results will show as clickable cards with View, Download, Delete, and Open Related Record when available.", []); }} style={smallPrimaryButtonStyle}>Clear</button>
                 </div>
               </div>
 
@@ -3366,29 +3826,46 @@ export default function AtlasPage() {
               <div style={inlineCardStyle}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
                   <div>
-                    <div style={goldEyebrowStyle}>Clickable Results</div>
-                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>Open the related Atlas record directly from the answer.</div>
+                    <div style={goldEyebrowStyle}>Results You Can Act On</div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>Ask Atlas shows a clean list. Uploaded files get View/Download/Delete. Reference records open the related Atlas record.</div>
                   </div>
                   {assistantResults.length ? <span style={openPillStyle}>{assistantResults.length} results</span> : null}
                 </div>
 
                 {assistantResults.length ? (
                   <div style={{ display: "grid", gap: 10 }}>
-                    {assistantResults.map((result) => (
-                      <button key={result.id} type="button" onClick={() => openSearchResult(result)} style={searchResultStyle}>
-                        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "flex-start" }}>
-                          <div>
-                            <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>{result.type}</div>
-                            <div style={{ color: colors.navy, fontWeight: 950, fontSize: 16, marginTop: 4 }}>{result.title}</div>
-                            <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{result.subtitle}</div>
+                    {assistantResults.map((result) => {
+                      const hasFile = Boolean(result.dataUrl);
+                      const isStaticDocument = result.attachmentKind === "static-document";
+
+                      return (
+                        <div key={result.id} style={{ ...searchResultStyle, display: "grid", gap: 10 }}>
+                          <button type="button" onClick={() => openSearchResult(result)} style={{ all: "unset", cursor: "pointer", display: "block" }}>
+                            <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "flex-start" }}>
+                              <div>
+                                <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>{result.type}</div>
+                                <div style={{ color: colors.navy, fontWeight: 950, fontSize: 17, marginTop: 4 }}>{result.title}</div>
+                                <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{result.subtitle}</div>
+                              </div>
+                              <span style={hasFile ? badgeStyle("Online") : isStaticDocument ? badgeStyle("Monitor") : smallPrimaryButtonStyle}>
+                                {hasFile ? "Viewable" : isStaticDocument ? "Reference" : "Open"}
+                              </span>
+                            </div>
+                            <div style={{ color: colors.text, fontSize: 13, lineHeight: 1.45, marginTop: 8 }}>{result.detail}</div>
+                          </button>
+
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {hasFile ? <button type="button" onClick={() => openAssistantFile(result)} style={primaryButtonStyle}>View</button> : null}
+                            {hasFile ? <a href={result.dataUrl} download={result.downloadName || result.title} style={linkButtonStyle}>Download</a> : null}
+                            <button type="button" onClick={() => openSearchResult(result)} style={smallPrimaryButtonStyle}>Open Related Record</button>
+                            <button type="button" onClick={() => openSearchResult(result)} style={goldButtonStyle}>Add / Edit Notes</button>
+                            {result.attachmentKind && result.attachmentKind !== "static-document" ? <button type="button" onClick={() => deleteAssistantAttachment(result)} style={deleteButtonStyle}>Delete</button> : null}
                           </div>
-                          <span style={smallPrimaryButtonStyle}>Open</span>
                         </div>
-                        <div style={{ color: colors.text, fontSize: 13, lineHeight: 1.45, marginTop: 8 }}>{result.detail}</div>
-                      </button>
-                    ))}
+                      );
+                    })}
                   </div>
-                ) : <div style={emptyStateStyle}>Ask a question to get clickable Atlas results.</div>}
+                ) : <div style={emptyStateStyle}>Ask a simple question like “pool documents” or “Cobalt lift photos” to get a clickable list.</div>}
               </div>
             </div>
           </div>
@@ -3439,7 +3916,7 @@ export default function AtlasPage() {
             <div style={{ minWidth: 0 }}>
               <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.3, textTransform: "uppercase" }}>{activeNav?.label ?? "Dashboard"}</div>
               <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: 31, letterSpacing: -0.9, lineHeight: 1.05 }}>Atlas Estate Systems</h1>
-              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Atlas / 2000 · Private estate operations software for work orders, assets, vendors, procedures, documents, photos, and property history.</div>
+              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Atlas / 2000 · Private estate operations software for work orders, assets, vendors, procedures, parts, documents, photos, and property history.</div>
             </div>
           </div>
 
@@ -3452,13 +3929,14 @@ export default function AtlasPage() {
 
         {query ? (
           <div style={{ display: "grid", gap: 18, marginBottom: 18 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", gap: 12 }}>
               <SearchCount label="locations" value={filteredLocations.length} />
               <SearchCount label="assets" value={filteredAssets.length} />
               <SearchCount label="vendors" value={filteredVendors.length} />
               <SearchCount label="work orders" value={filteredServices.length} />
               <SearchCount label="calendar" value={filteredCalendar.length} />
               <SearchCount label="procedures" value={filteredProcedures.length} />
+              <SearchCount label="parts" value={filteredParts.length} />
               <SearchCount label="docs" value={filteredDocuments.length} />
             </div>
             {renderGlobalSearchResults()}
@@ -3475,6 +3953,7 @@ export default function AtlasPage() {
         {screen === "weather" ? renderWeather() : null}
         {screen === "documents" ? renderDocuments() : null}
         {screen === "procedures" ? renderProcedures() : null}
+        {screen === "parts" ? renderParts() : null}
         {screen === "assistant" ? renderAssistant() : null}
       </section>
     </main>
