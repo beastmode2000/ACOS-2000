@@ -111,8 +111,10 @@ type PublicDocRecord = {
   name: string;
   href: string;
   type: string;
-  size: number;
-  updatedAt: string;
+};
+
+type PublicDocCandidate = PublicDocRecord & {
+  searchText: string;
 };
 
 type PartRecord = {
@@ -424,6 +426,20 @@ const documents: DocumentRecord[] = [
   { id: "doc-maintainx-vendors", title: "MaintainX vendor screenshots", area: "Vendors", type: "Screenshot Reference", notes: "Vendor import source. Upload screenshots to Photos / Docs if you want them viewable inside Atlas." },
   { id: "doc-credentials-redacted", title: "Redacted / admin-only credential inventory", area: "Admin", type: "Secure Note", notes: "Do not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes." },
 ];
+
+const publicDocCandidates: PublicDocCandidate[] = [
+  { id: "public-pool-equipment-v2-snake", name: "2000_pool_equipment_record_v2_corrected.pdf", href: "/docs/2000_pool_equipment_record_v2_corrected.pdf", type: "PDF", searchText: "pool equipment record v2 corrected pdf diagram single pool" },
+  { id: "public-pool-equipment-v2-spaces", name: "2000 Pool Equipment Record v2 Corrected.pdf", href: "/docs/2000%20Pool%20Equipment%20Record%20v2%20Corrected.pdf", type: "PDF", searchText: "pool equipment record v2 corrected pdf diagram single pool" },
+  { id: "public-pool-equipment-v1-snake", name: "2000_pool_equipment_record_v1.pdf", href: "/docs/2000_pool_equipment_record_v1.pdf", type: "PDF", searchText: "pool equipment record v1 pdf diagram" },
+  { id: "public-pool-equipment-v1-spaces", name: "2000 Pool Equipment Record v1.pdf", href: "/docs/2000%20Pool%20Equipment%20Record%20v1.pdf", type: "PDF", searchText: "pool equipment record v1 pdf diagram" },
+  { id: "public-systems-layout-snake", name: "2000_systems_layout_draft_v1.pdf", href: "/docs/2000_systems_layout_draft_v1.pdf", type: "PDF", searchText: "systems layout draft v1 mechanical pool hvac diagram pdf" },
+  { id: "public-systems-layout-spaces", name: "2000 Systems Layout Draft v1.pdf", href: "/docs/2000%20Systems%20Layout%20Draft%20v1.pdf", type: "PDF", searchText: "systems layout draft v1 mechanical pool hvac diagram pdf" },
+  { id: "public-exterior-stain-snake-png", name: "2000_exterior_stain_plan_summary.png", href: "/docs/2000_exterior_stain_plan_summary.png", type: "Image", searchText: "exterior stain plan photo based scope summary image png" },
+  { id: "public-exterior-stain-spaces-png", name: "2000 Exterior Stain Plan Photo-Based Scope Summary.png", href: "/docs/2000%20Exterior%20Stain%20Plan%20Photo-Based%20Scope%20Summary.png", type: "Image", searchText: "exterior stain plan photo based scope summary image png" },
+  { id: "public-pool-construction-snake-jpg", name: "pool_construction_first_floor_addition.jpg", href: "/docs/pool_construction_first_floor_addition.jpg", type: "Image", searchText: "pool construction first floor addition photo jpg" },
+  { id: "public-pool-construction-spaces-jpg", name: "Pool construction first floor addition.jpg", href: "/docs/Pool%20construction%20first%20floor%20addition.jpg", type: "Image", searchText: "pool construction first floor addition photo jpg" },
+];
+
 
 const partSeed: PartRecord[] = [
   { id: "pool-test-reagents", name: "Taylor pool test reagents", category: "Pool Supplies", locationId: "pool-equipment", assetId: "taylor-test-kit", vendorId: "taylor", partNumber: "K-2006 / K-2006C", sku: "", quantity: 1, minQuantity: 1, unit: "kit", status: "In Stock", reorderUrl: "", notes: "Keep pool testing reagents current and reorder before summer usage increases." },
@@ -793,7 +809,7 @@ export default function AtlasPage() {
   const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas a simple question like “pool documents,” “pool photos,” “irrigation vendor,” “open pool work orders,” or “Boiler B-2.” Results will show as clickable cards with View, Download, Delete, and Open Related Record when available.");
   const [assistantResults, setAssistantResults] = useState<SearchResult[]>([]);
   const [publicDocs, setPublicDocs] = useState<PublicDocRecord[]>([]);
-  const [publicDocsStatus, setPublicDocsStatus] = useState("Checking public/docs...");
+  const [publicDocsStatus, setPublicDocsStatus] = useState("Checking known public docs...");
   const [ready, setReady] = useState(false);
   const [databaseStatus, setDatabaseStatus] = useState("Connecting to Neon...");
 
@@ -1092,32 +1108,30 @@ export default function AtlasPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadPublicDocs() {
-      try {
-        setPublicDocsStatus("Checking public/docs...");
+    async function checkPublicDocs() {
+      setPublicDocsStatus("Checking known public docs...");
 
-        const response = await fetch("/api/docs", { cache: "no-store" });
-        const data = await response.json();
+      const checks = await Promise.all(
+        publicDocCandidates.map(async (candidate) => {
+          try {
+            const response = await fetch(candidate.href, { method: "HEAD", cache: "no-store" });
+            return response.ok ? candidate : null;
+          } catch {
+            return null;
+          }
+        })
+      );
 
-        if (!response.ok || !data.ok) {
-          throw new Error(data.error || "Could not read public/docs");
-        }
+      const found = checks.filter((candidate): candidate is PublicDocCandidate => Boolean(candidate));
+      const deduped = Array.from(new Map(found.map((candidate) => [candidate.href, candidate])).values());
 
-        const docs = Array.isArray(data.docs) ? data.docs : [];
-
-        if (!cancelled) {
-          setPublicDocs(docs);
-          setPublicDocsStatus(docs.length ? `${docs.length} public docs found` : "No files found in public/docs");
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setPublicDocs([]);
-          setPublicDocsStatus(error instanceof Error ? `Docs route unavailable: ${error.message}` : "Docs route unavailable");
-        }
+      if (!cancelled) {
+        setPublicDocs(deduped.map(({ searchText, ...document }) => document));
+        setPublicDocsStatus(deduped.length ? `${deduped.length} known public doc(s) found` : "No known public docs found at the expected paths");
       }
     }
 
-    void loadPublicDocs();
+    void checkPublicDocs();
 
     return () => {
       cancelled = true;
@@ -2388,17 +2402,21 @@ export default function AtlasPage() {
       }))
     );
 
-    const publicDocResults: SearchResult[] = publicDocs.map((document) => ({
-      id: `public-doc-${document.id}`,
-      type: "Document" as const,
-      title: document.name,
-      subtitle: `Live public/docs file · ${document.type}`,
-      detail: `This file was found directly inside public/docs. Path: ${document.href}. Size: ${Math.round(document.size / 1024)} KB.`,
-      screen: "documents" as const,
-      attachmentKind: "static-document" as const,
-      dataUrl: document.href,
-      downloadName: document.name,
-    }));
+    const publicDocResults: SearchResult[] = publicDocs.map((document) => {
+      const candidate = publicDocCandidates.find((item) => item.href === document.href);
+
+      return {
+        id: `known-public-doc-${document.id}`,
+        type: "Document" as const,
+        title: document.name,
+        subtitle: `Verified public/docs file · ${document.type}`,
+        detail: `${candidate?.searchText ?? "public docs file"}. Verified path: ${document.href}.`,
+        screen: "documents" as const,
+        attachmentKind: "static-document" as const,
+        dataUrl: document.href,
+        downloadName: document.name,
+      };
+    });
 
     return [
       ...locations.map((location) => ({ id: `location-${location.id}`, type: "Location" as const, title: location.name, subtitle: `${location.zone} · ${location.type}`, detail: location.notes, screen: "locations" as const })),
@@ -3630,14 +3648,14 @@ export default function AtlasPage() {
         <SectionShell eyebrow="Documents" title="Atlas Document Records">
           <div style={{ display: "grid", gap: 12 }}>
             <div style={emptyStateStyle}>
-              Uploaded document count: {uploadedDocumentCount}. Public docs count: {publicDocs.length}. Work-order photo count: {uploadedServicePhotoCount}. Public docs status: {publicDocsStatus}. Database status: {databaseStatus}
+              Uploaded document count: {uploadedDocumentCount}. Public docs found: {publicDocs.length}. Work-order photo count: {uploadedServicePhotoCount}. Public docs status: {publicDocsStatus}. Database status: {databaseStatus}
             </div>
 
             <div style={{ ...inlineCardStyle, display: "grid", gap: 12 }}>
               <div>
-                <div style={goldEyebrowStyle}>Live public/docs Files</div>
+                <div style={goldEyebrowStyle}>Verified public/docs Files</div>
                 <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
-                  These are the actual files Atlas found in GitHub at public/docs. These links should not 404 because they come from the real folder listing.
+                  Atlas checks the known generated-doc paths and only shows files that actually answer from Vercel. These View buttons should not 404.
                 </div>
               </div>
 
@@ -3646,7 +3664,7 @@ export default function AtlasPage() {
                   {publicDocs.map((document) => (
                     <div key={document.id} style={inlineCardStyle}>
                       <div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div>
-                      <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{document.type} · {Math.round(document.size / 1024)} KB · {document.href}</div>
+                      <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{document.type} · {document.href}</div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                         <a href={document.href} target="_blank" rel="noreferrer" style={primaryButtonStyle}>View</a>
                         <a href={document.href} download={document.name} style={linkButtonStyle}>Download</a>
@@ -3656,7 +3674,7 @@ export default function AtlasPage() {
                 </div>
               ) : (
                 <div style={emptyStateStyle}>
-                  No actual files were found in public/docs. Add the route file I gave you, then put PDFs/images in the repo folder public/docs.
+                  No generated public docs were found at the known paths yet. This page will still deploy; it just will not show broken View links.
                 </div>
               )}
             </div>
