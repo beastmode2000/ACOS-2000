@@ -2034,6 +2034,7 @@ export default function AtlasPage() {
     setSelectedServiceId(completedRecord.id);
     setServiceMode("edit");
 
+    setDatabaseStatus(`Marked done: ${completedRecord.title}`);
     void postAtlasRecord("work_orders", completedRecord);
   }
 
@@ -2053,6 +2054,7 @@ export default function AtlasPage() {
     setSelectedServiceId(reopenedRecord.id);
     setServiceMode("edit");
 
+    setDatabaseStatus(`Reopened: ${reopenedRecord.title}`);
     void postAtlasRecord("work_orders", reopenedRecord);
   }
 
@@ -3010,7 +3012,7 @@ export default function AtlasPage() {
     function selectedActionText() {
       if (!hasSelectedWorkOrder) return "Save New Work Order";
       if (serviceForm.status === "Completed") return "Reopen + Save";
-      return "Mark as Done";
+      return "Mark This Work Order Done";
     }
 
     function runPrimaryWorkOrderAction() {
@@ -3026,7 +3028,6 @@ export default function AtlasPage() {
       }
 
       markServiceDoneAndSave();
-      setWorkOrderTab("done");
     }
 
     return (
@@ -3243,7 +3244,7 @@ export default function AtlasPage() {
                 <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8 }}>Quick Actions</div>
                 <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                   <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>{hasSelectedWorkOrder ? "Save Work Order" : "Save New Work Order"}</button>
-                  {hasSelectedWorkOrder && serviceForm.status !== "Completed" ? <button type="button" onClick={() => { markServiceDoneAndSave(); setWorkOrderTab("done"); }} style={goldButtonStyle}>Mark as Done</button> : null}
+                  {hasSelectedWorkOrder && serviceForm.status !== "Completed" ? <button type="button" onClick={() => { markServiceDoneAndSave(); }} style={goldButtonStyle}>Mark This Work Order Done</button> : null}
                   {hasSelectedWorkOrder && serviceForm.status === "Completed" ? <button type="button" onClick={() => { reopenServiceAndSave(); setWorkOrderTab("todo"); }} style={widePrimaryButtonStyle}>Reopen Work Order</button> : null}
                   <button type="button" onClick={scheduleServiceFollowUp} disabled={!serviceForm.followUpDate || !serviceForm.title.trim()} style={{ ...widePrimaryButtonStyle, opacity: serviceForm.followUpDate && serviceForm.title.trim() ? 1 : 0.55 }}>Schedule Follow-Up</button>
                 </div>
