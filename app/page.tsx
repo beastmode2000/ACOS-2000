@@ -441,6 +441,11 @@ const publicDocCandidates: PublicDocCandidate[] = [
 ];
 
 
+function findVerifiedPublicDoc(href?: string, publicDocs: PublicDocRecord[] = []) {
+  if (!href) return undefined;
+  return publicDocs.find((document) => document.href === href);
+}
+
 const partSeed: PartRecord[] = [
   { id: "pool-test-reagents", name: "Taylor pool test reagents", category: "Pool Supplies", locationId: "pool-equipment", assetId: "taylor-test-kit", vendorId: "taylor", partNumber: "K-2006 / K-2006C", sku: "", quantity: 1, minQuantity: 1, unit: "kit", status: "In Stock", reorderUrl: "", notes: "Keep pool testing reagents current and reorder before summer usage increases." },
   { id: "spa-filter", name: "Sundance spa filter", category: "Spa Supplies", locationId: "standalone-spa", assetId: "sundance-optima", vendorId: "sundance", partNumber: "", sku: "", quantity: 1, minQuantity: 1, unit: "filter", status: "Low", reorderUrl: "", notes: "Replacement filter for Sundance Optima spa. Confirm exact filter model before ordering." },
@@ -2425,7 +2430,22 @@ export default function AtlasPage() {
       ...vendorRecords.map((vendor) => ({ id: `vendor-${vendor.id}`, type: "Vendor" as const, title: vendor.name, subtitle: vendor.category, detail: [vendor.phone, vendor.email, vendor.website, vendor.notes, (vendor.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "vendors" as const, vendorId: vendor.id })),
       ...serviceRecords.map((record) => ({ id: `service-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)} · ${record.status}`, detail: [record.notes, record.followUpDate ? `Follow-up ${formatDate(record.followUpDate)}` : "", procedureName(record.procedureId), (record.photos ?? []).map((photo) => photo.name).join(" "), (record.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "history" as const, serviceId: record.id, assetId: record.assetId, vendorId: record.vendorId })),
       ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar" as const, title: item.title, subtitle: `${formatDate(item.date)} · ${item.area} · ${item.status}`, detail: `${item.title} ${item.area} ${item.status} ${formatDate(item.date)}`, screen: "calendar" as const, calendarId: item.id })),
-      ...documents.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: document.href ? `${document.notes} Expected file path: ${document.href}` : `${document.notes} Reference only until the actual file/photo is uploaded.`, screen: "documents" as const, assetId: document.linkedAssetId, attachmentKind: "static-document" as const, dataUrl: document.href, downloadName: document.href?.split("/").pop() })),
+      ...documents.map((document) => {
+        const verifiedDoc = findVerifiedPublicDoc(document.href, publicDocs);
+
+        return {
+          id: `document-${document.id}`,
+          type: "Document" as const,
+          title: document.title,
+          subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`,
+          detail: verifiedDoc ? `${document.notes} Verified file path: ${verifiedDoc.href}` : document.href ? `${document.notes} Expected file was not found at ${document.href}. Rename the file in public/docs to match this exactly, or upload the file to the related Atlas record.` : `${document.notes} Reference only until the actual file/photo is uploaded.`,
+          screen: "documents" as const,
+          assetId: document.linkedAssetId,
+          attachmentKind: "static-document" as const,
+          dataUrl: verifiedDoc?.href,
+          downloadName: verifiedDoc?.name,
+        };
+      }),
       ...procedureRecords.map((procedure) => ({ id: `procedure-${procedure.id}`, type: "Procedure" as const, title: procedure.title, subtitle: `${procedure.area} · ${procedure.priority}`, detail: procedure.steps.join(" "), screen: "procedures" as const, procedureId: procedure.id })),
       ...partRecords.map((part) => ({ id: `assistant-part-${part.id}`, type: "Part" as const, title: part.name, subtitle: `${part.category} · ${part.status} · Qty ${part.quantity} ${part.unit}`, detail: `${getLocationName(part.locationId)} · ${assetName(part.assetId || "")} · ${vendorName(part.vendorId)} · Part # ${part.partNumber || "n/a"}. SKU ${part.sku || "n/a"}. ${part.notes}`, screen: "parts" as const, partId: part.id, assetId: part.assetId, vendorId: part.vendorId })),
       ...publicDocResults,
@@ -3674,40 +3694,48 @@ export default function AtlasPage() {
                 </div>
               ) : (
                 <div style={emptyStateStyle}>
-                  No generated public docs were found at the known paths yet. This page will still deploy; it just will not show broken View links.
+                  No generated public docs were found at the known paths yet. The app will not show View buttons for missing files, so this should stop the 404 problem.
                 </div>
               )}
             </div>
 
-            {filteredDocuments.map((document) => (
-              <div key={document.id} style={inlineCardStyle}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (document.linkedAssetId) {
-                      setSelectedAssetId(document.linkedAssetId);
-                      setAssetMode("edit");
-                      setScreen("assets");
-                    } else if (document.id === "doc-property-map") {
-                      setScreen("map");
-                    }
-                  }}
-                  style={{ all: "unset", cursor: "pointer", display: "block" }}
-                >
-                  <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{document.area}</div>
-                  <h3 style={{ color: colors.navy, margin: "5px 0" }}>{document.title}</h3>
-                  <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{document.type}{document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}</div>
-                  <p style={{ color: colors.text, lineHeight: 1.5 }}>{document.notes}</p>
-                  {document.href ? <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>Expected file path: {document.href}</div> : null}
-                </button>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                  {document.href ? <a href={document.href} target="_blank" rel="noreferrer" style={linkButtonStyle}>View</a> : null}
-                  {document.href ? <a href={document.href} download style={smallPrimaryButtonStyle}>Download</a> : null}
-                  {document.linkedAssetId ? <button type="button" onClick={() => { setSelectedAssetId(document.linkedAssetId || ""); setAssetMode("edit"); setScreen("assets"); }} style={goldButtonStyle}>Open Related Asset</button> : null}
-                  {!document.href ? <span style={openPillStyle}>Reference only — upload file/photo to make viewable</span> : null}
+            {filteredDocuments.map((document) => {
+              const verifiedDoc = findVerifiedPublicDoc(document.href, publicDocs);
+
+              return (
+                <div key={document.id} style={inlineCardStyle}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (document.linkedAssetId) {
+                        setSelectedAssetId(document.linkedAssetId);
+                        setAssetMode("edit");
+                        setScreen("assets");
+                      } else if (document.id === "doc-property-map") {
+                        setScreen("map");
+                      }
+                    }}
+                    style={{ all: "unset", cursor: "pointer", display: "block" }}
+                  >
+                    <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{document.area}</div>
+                    <h3 style={{ color: colors.navy, margin: "5px 0" }}>{document.title}</h3>
+                    <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{document.type}{document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}</div>
+                    <p style={{ color: colors.text, lineHeight: 1.5 }}>{document.notes}</p>
+                    {verifiedDoc ? (
+                      <div style={{ color: "#087443", fontSize: 12, fontWeight: 950 }}>Verified file: {verifiedDoc.href}</div>
+                    ) : document.href ? (
+                      <div style={{ color: colors.red, fontSize: 12, fontWeight: 950 }}>Not found at expected path: {document.href}</div>
+                    ) : null}
+                  </button>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                    {verifiedDoc ? <a href={verifiedDoc.href} target="_blank" rel="noreferrer" style={linkButtonStyle}>View</a> : null}
+                    {verifiedDoc ? <a href={verifiedDoc.href} download={verifiedDoc.name} style={smallPrimaryButtonStyle}>Download</a> : null}
+                    {document.linkedAssetId ? <button type="button" onClick={() => { setSelectedAssetId(document.linkedAssetId || ""); setAssetMode("edit"); setScreen("assets"); }} style={goldButtonStyle}>Open Related Asset</button> : null}
+                    {!verifiedDoc ? <span style={openPillStyle}>Reference only — no View button until file path matches</span> : null}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </SectionShell>
       </div>
