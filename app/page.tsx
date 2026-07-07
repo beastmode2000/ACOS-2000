@@ -20,6 +20,7 @@ type Screen =
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
 type ServiceStatus = "Open" | "Scheduled" | "Completed" | "Monitor";
 type Priority = "High" | "Normal" | "Seasonal";
+type WorkOrderPriority = "Low" | "Medium" | "High";
 type PartStatus = "In Stock" | "Low" | "Out" | "Order";
 
 type LocationRecord = {
@@ -82,6 +83,7 @@ type ServiceRecord = {
   date: string;
   title: string;
   status: ServiceStatus;
+  priority?: WorkOrderPriority;
   notes: string;
   followUpDate?: string;
   photos?: UploadedFileRecord[];
@@ -609,6 +611,7 @@ function blankService(date?: string): ServiceRecord {
     date: date || dateKeyFromDate(new Date()),
     title: "",
     status: "Open",
+    priority: "Medium",
     notes: "",
     followUpDate: "",
     photos: [],
@@ -621,6 +624,7 @@ function normalizeService(record: ServiceRecord): ServiceRecord {
     ...record,
     vendorId: record.vendorId ?? "",
     procedureId: record.procedureId ?? "",
+    priority: record.priority ?? "Medium",
     followUpDate: record.followUpDate ?? "",
     photos: record.photos ?? [],
     documents: record.documents ?? [],
@@ -678,6 +682,13 @@ function miniCalendarBadgeStyle(status: ServiceStatus): React.CSSProperties {
 function priorityBadge(priority: Priority): React.CSSProperties {
   if (priority === "High") return badgeStyle("Open");
   if (priority === "Seasonal") return badgeStyle("Seasonal");
+  return badgeStyle("Completed");
+}
+
+function workOrderPriorityBadgeStyle(priority: WorkOrderPriority | "Done"): React.CSSProperties {
+  if (priority === "High") return badgeStyle("Seasonal");
+  if (priority === "Medium") return badgeStyle("Monitor");
+  if (priority === "Low") return badgeStyle("Completed");
   return badgeStyle("Completed");
 }
 
@@ -804,6 +815,7 @@ export default function AtlasPage() {
   const [serviceMode, setServiceMode] = useState<"edit" | "new">("edit");
   const [workOrderTab, setWorkOrderTab] = useState<"todo" | "done">("todo");
   const [workOrderStatusFilter, setWorkOrderStatusFilter] = useState<"all" | ServiceStatus>("all");
+  const [workOrderPriorityFilter, setWorkOrderPriorityFilter] = useState<"all" | WorkOrderPriority>("all");
   const [workOrderAssetFilter, setWorkOrderAssetFilter] = useState("all");
   const [workOrderLocationFilter, setWorkOrderLocationFilter] = useState("all");
   const [workOrderSort, setWorkOrderSort] = useState<"priority" | "due-asc" | "date-desc" | "asset">("priority");
@@ -1209,6 +1221,7 @@ export default function AtlasPage() {
       [
         record.title,
         record.status,
+        record.priority,
         record.notes,
         record.date,
         record.followUpDate,
@@ -1302,6 +1315,7 @@ export default function AtlasPage() {
     selectedServiceId,
     workOrderTab,
     workOrderStatusFilter,
+    workOrderPriorityFilter,
     workOrderLocationFilter,
     workOrderAssetFilter,
     workOrderSort,
@@ -1885,6 +1899,7 @@ export default function AtlasPage() {
       procedureId: serviceForm.procedureId || "",
       date: serviceForm.date || todayKey,
       status: serviceForm.status || "Open",
+      priority: serviceForm.priority ?? "Medium",
       notes: serviceForm.notes.trim() || "No notes added yet.",
       followUpDate: serviceForm.followUpDate || "",
       photos: serviceForm.photos ?? [],
@@ -1923,20 +1938,15 @@ export default function AtlasPage() {
     return record.followUpDate || record.date || todayKey;
   }
 
-  function getWorkOrderPriority(record: ServiceRecord): "High" | "Normal" | "Low" | "Done" {
+  function getWorkOrderPriority(record: ServiceRecord): WorkOrderPriority | "Done" {
     if (record.status === "Completed") return "Done";
-
-    const dueDate = getWorkOrderDueDate(record);
-    if (record.status === "Open" || record.status === "Monitor") return "High";
-    if (dueDate && dueDate <= todayKey) return "High";
-    if (record.status === "Scheduled") return "Normal";
-    return "Low";
+    return record.priority ?? "Medium";
   }
 
   function getWorkOrderPriorityRank(record: ServiceRecord) {
     const priority = getWorkOrderPriority(record);
     if (priority === "High") return 1;
-    if (priority === "Normal") return 2;
+    if (priority === "Medium") return 2;
     if (priority === "Low") return 3;
     return 4;
   }
@@ -1955,16 +1965,18 @@ export default function AtlasPage() {
     record: ServiceRecord,
     tab = workOrderTab,
     statusFilter = workOrderStatusFilter,
+    priorityFilter = workOrderPriorityFilter,
     locationFilter = workOrderLocationFilter,
     assetFilter = workOrderAssetFilter
   ) {
     const locationId = getWorkOrderLocationId(record);
     const matchesTab = tab === "done" ? record.status === "Completed" : record.status !== "Completed";
     const matchesStatus = statusFilter === "all" || record.status === statusFilter;
+    const matchesPriority = priorityFilter === "all" || getWorkOrderPriority(record) === priorityFilter;
     const matchesAsset = assetFilter === "all" || record.assetId === assetFilter;
     const matchesLocation = locationFilter === "all" || locationId === locationFilter;
     const matchesSearch = !q || filteredServices.some((service) => service.id === record.id);
-    return matchesTab && matchesStatus && matchesAsset && matchesLocation && matchesSearch;
+    return matchesTab && matchesStatus && matchesPriority && matchesAsset && matchesLocation && matchesSearch;
   }
 
   function sortWorkOrderBoardRecords(records: ServiceRecord[], sortBy = workOrderSort) {
@@ -1979,12 +1991,13 @@ export default function AtlasPage() {
   function getVisibleWorkOrdersForBoard(
     tab = workOrderTab,
     statusFilter = workOrderStatusFilter,
+    priorityFilter = workOrderPriorityFilter,
     locationFilter = workOrderLocationFilter,
     assetFilter = workOrderAssetFilter,
     sortBy = workOrderSort
   ) {
     return sortWorkOrderBoardRecords(
-      serviceRecords.filter((record) => workOrderMatchesBoardFilters(record, tab, statusFilter, locationFilter, assetFilter)),
+      serviceRecords.filter((record) => workOrderMatchesBoardFilters(record, tab, statusFilter, priorityFilter, locationFilter, assetFilter)),
       sortBy
     );
   }
@@ -1992,11 +2005,12 @@ export default function AtlasPage() {
   function selectFirstVisibleWorkOrder(
     tab = workOrderTab,
     statusFilter = workOrderStatusFilter,
+    priorityFilter = workOrderPriorityFilter,
     locationFilter = workOrderLocationFilter,
     assetFilter = workOrderAssetFilter,
     sortBy = workOrderSort
   ) {
-    const firstVisible = getVisibleWorkOrdersForBoard(tab, statusFilter, locationFilter, assetFilter, sortBy)[0];
+    const firstVisible = getVisibleWorkOrdersForBoard(tab, statusFilter, priorityFilter, locationFilter, assetFilter, sortBy)[0];
 
     if (firstVisible) {
       openServiceRecord(firstVisible);
@@ -2018,19 +2032,24 @@ export default function AtlasPage() {
     selectFirstVisibleWorkOrder(workOrderTab, statusFilter);
   }
 
+  function changeWorkOrderPriorityFilter(priorityFilter: "all" | WorkOrderPriority) {
+    setWorkOrderPriorityFilter(priorityFilter);
+    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, priorityFilter);
+  }
+
   function changeWorkOrderLocationFilter(locationFilter: string) {
     setWorkOrderLocationFilter(locationFilter);
-    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, locationFilter);
+    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, workOrderPriorityFilter, locationFilter);
   }
 
   function changeWorkOrderAssetFilter(assetFilter: string) {
     setWorkOrderAssetFilter(assetFilter);
-    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, workOrderLocationFilter, assetFilter);
+    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, workOrderPriorityFilter, workOrderLocationFilter, assetFilter);
   }
 
   function changeWorkOrderSort(sortBy: "priority" | "due-asc" | "date-desc" | "asset") {
     setWorkOrderSort(sortBy);
-    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, workOrderLocationFilter, workOrderAssetFilter, sortBy);
+    selectFirstVisibleWorkOrder(workOrderTab, workOrderStatusFilter, workOrderPriorityFilter, workOrderLocationFilter, workOrderAssetFilter, sortBy);
   }
 
   function markServiceCompleted() {
@@ -2308,6 +2327,7 @@ export default function AtlasPage() {
       date: source.date || todayKey,
       title: source.title,
       status: source.status === "Completed" ? "Completed" : "Open",
+      priority: "Medium",
       notes: `Created from calendar item for ${source.area || "General"}.`,
       followUpDate: "",
       photos: [],
@@ -2449,7 +2469,7 @@ export default function AtlasPage() {
       ...mapLabels.map((label) => ({ id: `map-label-${label.id}`, type: "Map Label" as const, title: label.label, subtitle: `${label.category} · ${Math.round(label.x)}% / ${Math.round(label.y)}%`, detail: `${label.notes} ${(label.photos ?? []).map((photo) => photo.name).join(" ")}`, screen: "map" as const })),
       ...assetRecords.map((asset) => ({ id: `asset-${asset.id}`, type: "Asset" as const, title: asset.name, subtitle: `${getLocationName(asset.locationId)} · ${asset.category}`, detail: [asset.status, asset.make, asset.model, asset.serial, asset.notes, asset.vendorIds.map(vendorName).join(" "), (asset.documents ?? []).map((document) => document.name).join(" "), photos.filter((photo) => photo.assetId === asset.id).map((photo) => photo.name).join(" ")].filter(Boolean).join(" · "), screen: "assets" as const, assetId: asset.id })),
       ...vendorRecords.map((vendor) => ({ id: `vendor-${vendor.id}`, type: "Vendor" as const, title: vendor.name, subtitle: vendor.category, detail: [vendor.phone, vendor.email, vendor.website, vendor.notes, (vendor.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "vendors" as const, vendorId: vendor.id })),
-      ...serviceRecords.map((record) => ({ id: `service-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)} · ${record.status}`, detail: [record.notes, record.followUpDate ? `Follow-up ${formatDate(record.followUpDate)}` : "", procedureName(record.procedureId), (record.photos ?? []).map((photo) => photo.name).join(" "), (record.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "history" as const, serviceId: record.id, assetId: record.assetId, vendorId: record.vendorId })),
+      ...serviceRecords.map((record) => ({ id: `service-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)} · ${record.status} · ${record.priority ?? "Medium"} priority`, detail: [record.notes, record.followUpDate ? `Follow-up ${formatDate(record.followUpDate)}` : "", procedureName(record.procedureId), (record.photos ?? []).map((photo) => photo.name).join(" "), (record.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "history" as const, serviceId: record.id, assetId: record.assetId, vendorId: record.vendorId })),
       ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar" as const, title: item.title, subtitle: `${formatDate(item.date)} · ${item.area} · ${item.status}`, detail: `${item.title} ${item.area} ${item.status} ${formatDate(item.date)}`, screen: "calendar" as const, calendarId: item.id })),
       ...documents.map((document) => {
         const verifiedDoc = findVerifiedPublicDoc(document.href, publicDocs);
@@ -3091,7 +3111,7 @@ export default function AtlasPage() {
 
     const visibleWorkOrders = getVisibleWorkOrdersForBoard();
     const hasSelectedWorkOrder = serviceMode === "edit" && Boolean(serviceForm.id) && serviceRecords.some((record) => record.id === serviceForm.id);
-    const selectedWorkOrderPriority = hasSelectedWorkOrder ? getWorkOrderPriority(serviceForm) : "High";
+    const selectedWorkOrderPriority = hasSelectedWorkOrder ? getWorkOrderPriority(serviceForm) : "Medium";
     const selectedWorkOrderNumber = hasSelectedWorkOrder ? getWorkOrderNumber(serviceForm) : "New";
     const selectedAssetExists = Boolean(serviceForm.assetId && assetRecords.some((asset) => asset.id === serviceForm.assetId));
     const detailAssetValue = selectedAssetExists ? serviceForm.assetId : "";
@@ -3123,10 +3143,11 @@ export default function AtlasPage() {
 
     function clearWorkOrderFilters() {
       setWorkOrderStatusFilter("all");
+      setWorkOrderPriorityFilter("all");
       setWorkOrderLocationFilter("all");
       setWorkOrderAssetFilter("all");
       setWorkOrderSort("priority");
-      selectFirstVisibleWorkOrder(workOrderTab, "all", "all", "all", "priority");
+      selectFirstVisibleWorkOrder(workOrderTab, "all", "all", "all", "all", "priority");
     }
 
     function selectedActionText() {
@@ -3175,18 +3196,26 @@ export default function AtlasPage() {
                 <option value="Monitor">Status: Monitor</option>
                 <option value="Completed">Status: Completed</option>
               </select>
+              <select value={workOrderPriorityFilter} onChange={(event) => changeWorkOrderPriorityFilter(event.target.value as "all" | WorkOrderPriority)} style={filterChipStyle}>
+                <option value="all">Priority: All</option>
+                <option value="High">Priority: High</option>
+                <option value="Medium">Priority: Medium</option>
+                <option value="Low">Priority: Low</option>
+              </select>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <select value={workOrderSort} onChange={(event) => changeWorkOrderSort(event.target.value as "priority" | "due-asc" | "date-desc" | "asset")} style={filterChipStyle}>
                 <option value="priority">Sort: Priority</option>
                 <option value="due-asc">Sort: Due Date</option>
                 <option value="date-desc">Sort: Newest</option>
                 <option value="asset">Sort: Asset</option>
               </select>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <select value={workOrderLocationFilter} onChange={(event) => changeWorkOrderLocationFilter(event.target.value)} style={filterChipStyle}>
                 <option value="all">Location: All</option>
                 {availableWorkOrderLocations.map((locationId) => <option key={locationId} value={locationId}>Location: {getLocationName(locationId)}</option>)}
               </select>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
               <select value={workOrderAssetFilter} onChange={(event) => changeWorkOrderAssetFilter(event.target.value)} style={filterChipStyle}>
                 <option value="all">Asset: All</option>
                 {sortAssets(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
@@ -3232,7 +3261,7 @@ export default function AtlasPage() {
                     <div style={{ color: colors.muted, fontSize: 12, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Asset: {assetName(record.assetId)}</div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 7 }}>
                       <span style={{ ...badgeStyle(record.status), padding: "3px 7px", fontSize: 11 }}>{record.status}</span>
-                      <span style={{ ...(priority === "High" ? badgeStyle("Seasonal") : priority === "Done" ? badgeStyle("Completed") : badgeStyle("Monitor")), padding: "3px 7px", fontSize: 11 }}>{priority}</span>
+                      <span style={{ ...workOrderPriorityBadgeStyle(priority), padding: "3px 7px", fontSize: 11 }}>{priority}</span>
                     </div>
                   </div>
                   <div style={{ textAlign: "right", color: colors.muted, fontSize: 11, fontWeight: 850, whiteSpace: "nowrap" }}>
@@ -3260,7 +3289,7 @@ export default function AtlasPage() {
               <h2 style={{ margin: "6px 0 0", color: colors.navy, fontSize: 26, lineHeight: 1.12 }}>{hasSelectedWorkOrder ? serviceForm.title || "Work Order Details" : "Create a Work Order"}</h2>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                 <span style={hasSelectedWorkOrder ? badgeStyle(serviceForm.status) : badgeStyle("Open")}>{hasSelectedWorkOrder ? serviceForm.status : "Open"}</span>
-                <span style={selectedWorkOrderPriority === "High" ? badgeStyle("Seasonal") : selectedWorkOrderPriority === "Done" ? badgeStyle("Completed") : badgeStyle("Monitor")}>{selectedWorkOrderPriority} Priority</span>
+                <span style={workOrderPriorityBadgeStyle(selectedWorkOrderPriority)}>{selectedWorkOrderPriority} Priority</span>
                 <span style={openPillStyle}>Due/work date: {formatDate(serviceForm.date || todayKey)}</span>
                 <span style={openPillStyle}>{serviceForm.photos?.length ?? 0} photos</span>
                 <span style={openPillStyle}>{serviceForm.documents?.length ?? 0} docs</span>
@@ -3357,6 +3386,14 @@ export default function AtlasPage() {
                       <option value="Completed">Completed</option>
                     </select>
                   </label>
+                  <label style={labelStyle}>
+                    Priority
+                    <select value={serviceForm.priority ?? "Medium"} onChange={(event) => setServiceForm((current) => ({ ...current, priority: event.target.value as WorkOrderPriority }))} style={inputStyle}>
+                      <option value="High">High</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Low">Low</option>
+                    </select>
+                  </label>
                 </div>
               </div>
 
@@ -3377,6 +3414,7 @@ export default function AtlasPage() {
                   <div><strong style={{ color: colors.navy }}>Asset:</strong> {serviceForm.assetId ? assetName(serviceForm.assetId) : "Not linked"}</div>
                   <div><strong style={{ color: colors.navy }}>Location:</strong> {serviceForm.assetId ? getLocationName(getWorkOrderLocationId(serviceForm)) : "Not linked"}</div>
                   <div><strong style={{ color: colors.navy }}>Vendor:</strong> {vendorName(serviceForm.vendorId)}</div>
+                  <div><strong style={{ color: colors.navy }}>Priority:</strong> {serviceForm.priority ?? "Medium"}</div>
                   <div><strong style={{ color: colors.navy }}>Procedure:</strong> {procedureName(serviceForm.procedureId)}</div>
                 </div>
               </div>
@@ -3940,6 +3978,7 @@ export default function AtlasPage() {
       date: todayKey,
       title: `Order / restock: ${source.name}`,
       status: "Open",
+      priority: "Medium",
       notes: `Inventory request from Parts tab. Current quantity: ${source.quantity} ${source.unit}. Minimum: ${source.minQuantity} ${source.unit}. Location: ${getLocationName(source.locationId)}. Notes: ${source.notes}`,
       followUpDate: "",
       photos: [],
