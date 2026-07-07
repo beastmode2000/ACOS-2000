@@ -65,11 +65,15 @@ type AssetRecord = {
   id: string;
   name: string;
   locationId: string;
+  location?: string;
+  location_id?: string;
   category: string;
   status: Status;
   make?: string;
+  manufacturer?: string;
   model?: string;
   serial?: string;
+  serial_number?: string;
   notes: string;
   vendorIds: string[];
   documents?: UploadedFileRecord[];
@@ -640,6 +644,45 @@ function getLocationName(locationId: string) {
   return locations.find((location) => location.id === locationId)?.name ?? "General";
 }
 
+function resolveLocationId(value?: string) {
+  const raw = (value || "").trim();
+  if (!raw) return "general";
+
+  const directMatch = locations.find((location) => location.id === raw);
+  if (directMatch) return directMatch.id;
+
+  const normalized = raw.toLowerCase();
+  const nameMatch = locations.find((location) => location.name.toLowerCase() === normalized);
+  if (nameMatch) return nameMatch.id;
+
+  const looseMatch = locations.find((location) => {
+    const locationName = location.name.toLowerCase();
+    return locationName.includes(normalized) || normalized.includes(locationName);
+  });
+
+  return looseMatch?.id ?? "general";
+}
+
+function normalizeAssetRecord(record: AssetRecord): AssetRecord {
+  const make = (record.make ?? record.manufacturer ?? "").trim();
+  const serial = (record.serial ?? record.serial_number ?? "").trim();
+  const locationId = resolveLocationId(record.locationId || record.location_id || record.location);
+
+  return {
+    ...record,
+    locationId,
+    location: getLocationName(locationId),
+    make,
+    manufacturer: make,
+    model: (record.model ?? "").trim(),
+    serial,
+    serial_number: serial,
+    notes: record.notes ?? "",
+    vendorIds: record.vendorIds ?? [],
+    documents: record.documents ?? [],
+  };
+}
+
 function badgeStyle(status: Status | ServiceStatus): React.CSSProperties {
   const color = badgeColors[status];
 
@@ -717,7 +760,7 @@ function readLocalStorageList<T>(keys: string[], fallback: T[]): T[] {
 }
 
 function readBrowserSnapshot() {
-  const assetRecords = sortAssets(readLocalStorageList<AssetRecord>(["atlas-asset-records-v1"], assetSeed));
+  const assetRecords = sortAssets(readLocalStorageList<AssetRecord>(["atlas-asset-records-v1"], assetSeed).map(normalizeAssetRecord));
   const vendorRecords = sortVendors(readLocalStorageList<VendorRecord>(["atlas-vendor-records-v2", "atlas-vendor-records-v1"], vendorSeed));
   const procedureRecords = sortProcedures(readLocalStorageList<ProcedureRecord>(["atlas-procedure-records-v1"], procedureSeed));
   const serviceRecords = sortServices(
@@ -933,7 +976,7 @@ export default function AtlasPage() {
       setDatabaseStatus("Syncing Atlas records to Neon...");
 
       for (const vendor of snapshot.vendorRecords) await postAtlasRecord("vendors", vendor);
-      for (const asset of snapshot.assetRecords) await postAtlasRecord("assets", asset);
+      for (const asset of snapshot.assetRecords) await postAtlasRecord("assets", normalizeAssetRecord(asset));
       for (const procedure of snapshot.procedureRecords) await postAtlasRecord("procedures", procedure);
       for (const service of snapshot.serviceRecords) await postAtlasRecord("work_orders", normalizeService(service));
       for (const item of snapshot.calendarItems) await postAtlasRecord("calendar", item);
@@ -971,7 +1014,7 @@ export default function AtlasPage() {
         }
 
         const dbSnapshot = {
-          assetRecords: data.assetRecords?.length ? sortAssets(data.assetRecords) : browserSnapshot.assetRecords,
+          assetRecords: data.assetRecords?.length ? sortAssets(data.assetRecords.map(normalizeAssetRecord)) : browserSnapshot.assetRecords,
           vendorRecords: data.vendorRecords?.length ? sortVendors(data.vendorRecords) : browserSnapshot.vendorRecords,
           procedureRecords: data.procedureRecords?.length ? sortProcedures(data.procedureRecords) : browserSnapshot.procedureRecords,
           serviceRecords: data.serviceRecords?.length ? sortServices(data.serviceRecords.map(normalizeService)) : browserSnapshot.serviceRecords,
@@ -1069,7 +1112,7 @@ export default function AtlasPage() {
   useEffect(() => {
     const selected = assetRecords.find((asset) => asset.id === selectedAssetId);
     if (assetMode === "new") return;
-    if (selected) setAssetForm({ ...selected, documents: selected.documents ?? [], vendorIds: selected.vendorIds ?? [] });
+    if (selected) setAssetForm(normalizeAssetRecord({ ...selected, documents: selected.documents ?? [], vendorIds: selected.vendorIds ?? [] }));
   }, [selectedAssetId, assetRecords, assetMode]);
 
   useEffect(() => {
@@ -1640,20 +1683,27 @@ export default function AtlasPage() {
     let id = existingId || slugify(name);
     if (assetMode === "new" && assetRecords.some((asset) => asset.id === id)) id = `${id}-${Date.now()}`;
 
-    const cleanAsset: AssetRecord = {
+    const cleanMake = (assetForm.make ?? assetForm.manufacturer ?? "").trim();
+    const cleanSerial = (assetForm.serial ?? assetForm.serial_number ?? "").trim();
+    const cleanLocationId = assetForm.locationId || resolveLocationId(assetForm.location);
+
+    const cleanAsset: AssetRecord = normalizeAssetRecord({
       ...assetForm,
       id,
       name,
-      locationId: assetForm.locationId || "general",
+      locationId: cleanLocationId,
+      location: getLocationName(cleanLocationId),
       category: assetForm.category.trim() || "General",
       status: assetForm.status || "Monitor",
-      make: assetForm.make?.trim(),
+      make: cleanMake,
+      manufacturer: cleanMake,
       model: assetForm.model?.trim(),
-      serial: assetForm.serial?.trim(),
+      serial: cleanSerial,
+      serial_number: cleanSerial,
       notes: assetForm.notes.trim() || "No notes added yet.",
       vendorIds: assetForm.vendorIds ?? [],
       documents: assetForm.documents ?? [],
-    };
+    });
 
     setAssetRecords((current) => sortAssets(current.some((asset) => asset.id === id) ? current.map((asset) => (asset.id === id ? cleanAsset : asset)) : [...current, cleanAsset]));
     setAssetMode("edit");
