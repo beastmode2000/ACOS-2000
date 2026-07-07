@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { Pool } from "@neondatabase/serverless";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const MAIN_EMAIL = "nthornton87@yahoo.com";
+const API_VERSION = "atlas-route-asset-field-map-v4";
+
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 type AnyRow = Record<string, any>;
@@ -83,7 +86,7 @@ const LOCATION_NAME_BY_ID: Record<string, string> = {
   "pool-changing-room": "Pool Changing Room",
   "fitness-room": "Fitness Room",
   "house-office": "House Managers Office",
-  "indoor-pool": "Indoor Pool",
+  "indoor-pool": "Pool",
   "pool-equipment": "Pool Equipment Room",
   "standalone-spa": "Standalone Spa",
   dock: "Dock",
@@ -189,25 +192,15 @@ function quoteIdentifier(value: string) {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-function normalizeLocationKey(value: unknown) {
-  return text(value).trim().toLowerCase();
-}
-
 function locationIdFromRecord(row: AnyRow) {
-  const savedFrontendId = text(row.locationId || row.location_id_frontend).trim();
+  const savedFrontendId = text(row.locationId).trim();
   if (savedFrontendId && LOCATION_NAME_BY_ID[savedFrontendId]) return savedFrontendId;
 
   const directLocationId = text(row.location_id).trim();
   if (directLocationId && LOCATION_NAME_BY_ID[directLocationId]) return directLocationId;
 
-  const locationName =
-    normalizeLocationKey(row.location_name) ||
-    normalizeLocationKey(row.locationName) ||
-    normalizeLocationKey(row.location);
-
-  if (locationName && LOCATION_ID_BY_NAME[locationName]) {
-    return LOCATION_ID_BY_NAME[locationName];
-  }
+  const locationName = firstText(row.location_name, row.locationName, row.location).trim().toLowerCase();
+  if (locationName && LOCATION_ID_BY_NAME[locationName]) return LOCATION_ID_BY_NAME[locationName];
 
   return "general";
 }
@@ -426,40 +419,6 @@ async function queryAssets(userId: string) {
   const columns = await getColumns(actualTable);
   const hasUserId = columns.has("userId");
   const hasName = columns.has("name");
-  const hasLocationId = columns.has("location_id");
-
-  let canJoinLocations = false;
-
-  if (hasLocationId && (await tableExists("locations"))) {
-    const locationColumns = await getColumns("locations");
-    canJoinLocations = locationColumns.has("id") && locationColumns.has("name");
-  }
-
-  const orderBy = hasName ? `ORDER BY lower(a.name::text)` : `ORDER BY a.id`;
-
-  if (canJoinLocations) {
-    if (hasUserId) {
-      return queryRows(
-        `
-          SELECT a.*, l.name AS location_name
-          FROM ${quoteIdentifier(actualTable)} a
-          LEFT JOIN locations l ON a.location_id = l.id
-          WHERE a."userId" = $1 OR a."userId" IS NULL
-          ${orderBy}
-        `,
-        [userId]
-      );
-    }
-
-    return queryRows(
-      `
-        SELECT a.*, l.name AS location_name
-        FROM ${quoteIdentifier(actualTable)} a
-        LEFT JOIN locations l ON a.location_id = l.id
-        ${orderBy}
-      `
-    );
-  }
 
   if (hasUserId) {
     return queryRows(
@@ -504,13 +463,16 @@ function mapAsset(row: AnyRow) {
     category: text(row.category, "General"),
     status: assetStatus(row.status),
 
-    // Atlas screen uses "Make"; Neon table uses "manufacturer".
+    // Atlas UI field: Make
+    // Neon field: manufacturer
     make: firstText(row.make, row.manufacturer),
 
-    // Atlas and Neon both use model.
+    // Atlas UI field: Model
+    // Neon field: model
     model: text(row.model),
 
-    // Atlas screen uses "Serial"; Neon table uses "serial_number".
+    // Atlas UI field: Serial
+    // Neon field: serial_number
     serial: firstText(row.serial, row.serial_number),
 
     notes: firstText(row.notes, row.description) || "No notes added yet.",
@@ -597,12 +559,13 @@ async function buildPayload(table: AtlasTable, record: AnyRow, userId: string) {
     const frontendLocationId = text(record.locationId, "general");
     const locationName = locationNameFromFrontendId(frontendLocationId);
     const locationDbId = await getOrCreateLocationId(userId, frontendLocationId);
+
     const makeValue = firstText(record.make, record.manufacturer);
     const serialValue = firstText(record.serial, record.serial_number);
 
     set("name", text(record.name, "Unnamed Asset"));
 
-    // Location support for both possible database patterns.
+    // Support both possible location storage styles.
     set("location_id", locationDbId);
     set("locationId", frontendLocationId);
     set("location", locationName);
@@ -611,13 +574,13 @@ async function buildPayload(table: AtlasTable, record: AnyRow, userId: string) {
     set("category", text(record.category, "General"));
     set("status", assetStatus(record.status));
 
-    // Save Make into both old frontend-style and real Neon-style columns when they exist.
+    // Save Make into both old app column and real Neon column when present.
     set("make", makeValue);
     set("manufacturer", makeValue);
 
     set("model", text(record.model));
 
-    // Save Serial into both old frontend-style and real Neon-style columns when they exist.
+    // Save Serial into both old app column and real Neon column when present.
     set("serial", serialValue);
     set("serial_number", serialValue);
 
@@ -676,6 +639,8 @@ async function buildPayload(table: AtlasTable, record: AnyRow, userId: string) {
 async function upsertRecord(table: AtlasTable, record: AnyRow, userId: string) {
   const { actualTable, payload } = await buildPayload(table, record, userId);
   const columns = Object.keys(payload);
+
+  if (!columns.length) throw new Error(`No writable columns found for ${table}`);
 
   const quotedColumns = columns.map(quoteIdentifier).join(", ");
   const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
@@ -739,6 +704,7 @@ export async function GET() {
     return jsonResponse({
       ok: true,
       source: "neon",
+      apiVersion: API_VERSION,
       userId,
       vendorRecords: vendorRows.map(mapVendor),
       assetRecords: assetRows.map(mapAsset),
@@ -752,6 +718,7 @@ export async function GET() {
       {
         ok: false,
         source: "neon",
+        apiVersion: API_VERSION,
         error: error instanceof Error ? error.message : "Atlas API load failed",
       },
       500
@@ -766,7 +733,7 @@ export async function POST(req: NextRequest) {
     const record = body?.record as AnyRow;
 
     if (!table || !record || !ALLOWED_TABLES.includes(table)) {
-      return jsonResponse({ ok: false, error: "Invalid Atlas save request" }, 400);
+      return jsonResponse({ ok: false, error: "Invalid Atlas save request", apiVersion: API_VERSION }, 400);
     }
 
     const userId = await getTargetUserId();
@@ -775,6 +742,7 @@ export async function POST(req: NextRequest) {
     return jsonResponse({
       ok: true,
       source: "neon",
+      apiVersion: API_VERSION,
       table,
       record: saved,
     });
@@ -783,6 +751,7 @@ export async function POST(req: NextRequest) {
       {
         ok: false,
         source: "neon",
+        apiVersion: API_VERSION,
         error: error instanceof Error ? error.message : "Atlas API save failed",
       },
       500
@@ -797,7 +766,7 @@ export async function DELETE(req: NextRequest) {
     const id = text(body?.id);
 
     if (!table || !id || !ALLOWED_TABLES.includes(table)) {
-      return jsonResponse({ ok: false, error: "Invalid Atlas delete request" }, 400);
+      return jsonResponse({ ok: false, error: "Invalid Atlas delete request", apiVersion: API_VERSION }, 400);
     }
 
     const userId = await getTargetUserId();
@@ -806,6 +775,7 @@ export async function DELETE(req: NextRequest) {
     return jsonResponse({
       ok: true,
       source: "neon",
+      apiVersion: API_VERSION,
       table,
       id,
     });
@@ -814,6 +784,7 @@ export async function DELETE(req: NextRequest) {
       {
         ok: false,
         source: "neon",
+        apiVersion: API_VERSION,
         error: error instanceof Error ? error.message : "Atlas API delete failed",
       },
       500
