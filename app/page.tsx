@@ -103,6 +103,7 @@ type DocumentRecord = {
   type: string;
   linkedAssetId?: string;
   notes: string;
+  href?: string;
 };
 
 type PartRecord = {
@@ -215,7 +216,7 @@ const locations: LocationRecord[] = [
   { id: "exercise-room", name: "Exercise Room", type: "Thermostat Zone", zone: "Main House", notes: "Honeywell thermostat zone shown in energy report references." },
   { id: "gym-nanny", name: "Gym / Nanny", type: "Thermostat Zone", zone: "Main House", notes: "Honeywell thermostat zone shown in energy report references." },
   { id: "master-bath-floor", name: "Master Bath Floor", type: "Thermostat Zone", zone: "Main House", notes: "Honeywell thermostat zone shown as MasBathFloor in energy report references." },
-  { id: "indoor-pool", name: "Indoor Pool", type: "Pool", zone: "Addition", notes: "Indoor pool area, construction records, pool HVAC, dehumidification, and pool systems." },
+  { id: "indoor-pool", name: "Pool", type: "Pool", zone: "Addition", notes: "The only pool on property. Located inside the addition. Use Pool Equipment Room for pumps, filter, UV/ozone, Desert Aire, and hydronic pool-heat equipment." },
   { id: "pool-equipment", name: "Pool Equipment Room", type: "Pool Systems", zone: "Addition", notes: "Pool filtration, pumps, chemical feed, UV / ozone, heat exchanger loop, and service records." },
   { id: "standalone-spa", name: "Standalone Spa", type: "Spa", zone: "Outdoor", notes: "Sundance Optima spa, heater, ClearRay UV-C, and spa controls." },
   { id: "dock", name: "Dock", type: "Waterfront", zone: "Lake", notes: "Boat lifts, SeaDoo lift, dock power, lift control boxes, and waterfront equipment." },
@@ -298,7 +299,7 @@ const assetSeed: AssetRecord[] = [
   { id: "carrier-hvac-hz432", name: "Carrier Forced-Air HVAC + Honeywell HZ432 Zones", locationId: "mechanical-room", category: "HVAC", status: "Online", make: "Carrier / Honeywell", model: "HZ432", notes: "Forced-air Carrier HVAC with Honeywell HZ432 zoning controls. Zones include Play Room, Kitchen, Exercise Room, Gym / Nanny, and Master Bath Floor.", vendorIds: ["carrier", "honeywell"], documents: [] },
   { id: "mini-split-elliot-option", name: "Elliot Room Mini-Split Option", locationId: "elliot-room", category: "HVAC Planning", status: "Monitor", notes: "Mini-split options were discussed for allergies and independent control.", vendorIds: ["carrier"], documents: [] },
   { id: "desertaire-dhu1", name: "Desert Aire DHU-1 Pool Dehumidification", locationId: "indoor-pool", category: "Pool HVAC", status: "Monitor", make: "Desert Aire", model: "DHU-1", notes: "Indoor pool dehumidification system with control/display, SR501 relay, and hydronic heat coil.", vendorIds: ["desertaire"], documents: [] },
-  { id: "pool-pump-pentair", name: "Pentair 3.0 HP Pool Pump", locationId: "pool-equipment", category: "Pool Equipment", status: "Online", make: "Pentair", model: "3.0 HP", notes: "Pool/Spa source → Pentair pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone → return to pool.", vendorIds: ["psf", "pentair"], documents: [] },
+  { id: "pool-pump-pentair", name: "Pentair 3.0 HP Pool Pump", locationId: "pool-equipment", category: "Pool Equipment", status: "Online", make: "Pentair", model: "3.0 HP", notes: "Pool source → Pentair pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone → return to pool. The standalone Sundance spa / hot tub is separate and excluded.", vendorIds: ["psf", "pentair"], documents: [] },
   { id: "pool-filter-triton", name: "Triton II Sand Filter", locationId: "pool-equipment", category: "Pool Filtration", status: "Online", make: "Triton II", notes: "Sand filter in pool water treatment chain. Keep pressure readings and backwash history in service notes.", vendorIds: ["psf", "triton"], documents: [] },
   { id: "pool-uv-ozone", name: "UltraPure / Paramount UV2 UV-Ozone", locationId: "pool-equipment", category: "Pool Water Treatment", status: "Online", make: "UltraPure / Paramount", model: "UV2", notes: "UV-ozone equipment in pool treatment chain before return to pool.", vendorIds: ["psf", "ultrapure"], documents: [] },
   { id: "pool-hx-p8", name: "Pool Heat Transfer HX-1 / P-8", locationId: "pool-equipment", category: "Pool Heat Transfer", status: "Online", notes: "Heat transfer uses HX-1 / P-8 into the isolated pool loop.", vendorIds: ["psf"], documents: [] },
@@ -351,22 +352,67 @@ const serviceSeed: ServiceRecord[] = [
   { id: "service-penthouse-176396", assetId: "blinds-lutron", vendorId: "penthousedrapery", procedureId: "vendor-visit-intake", date: "2026-06-16", title: "Motorized roller shade repair — Invoice #176396", status: "Completed", notes: "Penthouse Drapery invoice #176396 dated 06/16/2026. Link this work order to Blinds Lutron.", documents: [], photos: [] },
   { id: "service-boiler-nameplate", assetId: "boiler-2", vendorId: "viessmann", procedureId: "boiler-low-water", date: "2026-07-02", title: "Clear Boiler B-2 nameplate captured", status: "Completed", notes: "Confirmed Viessmann boiler serial 758960507593, year built 2025, MAWP 60 PSI, max water temp 210°F, heating surface 31.99 sq ft, relief 255.9 lb/hr, CRN R1497.5C.", documents: [], photos: [] },
   { id: "service-boiler-heat-exchanger", assetId: "boiler-2", vendorId: "viessmann", date: "2026-07-02", title: "Boiler 2 recalled heat exchanger / igniter issue", status: "Monitor", notes: "Recalled heat exchanger was replaced on Boiler 2. After new parts were installed, igniter would not turn on.", followUpDate: "", documents: [], photos: [] },
-  { id: "service-pool-chain", assetId: "pool-pump-pentair", vendorId: "psf", procedureId: "pool-equipment-check", date: "2026-07-02", title: "Pool equipment chain recorded", status: "Completed", notes: "Pool/Spa source → Pentair pump → Triton II sand filter → UltraPure / Paramount UV2 → return to pool.", documents: [], photos: [] },
+  { id: "service-pool-chain", assetId: "pool-pump-pentair", vendorId: "psf", procedureId: "pool-equipment-check", date: "2026-07-02", title: "Pool equipment chain recorded", status: "Completed", notes: "Pool source → Pentair pump → Triton II sand filter → UltraPure / Paramount UV2 → return to pool. The standalone Sundance spa / hot tub is separate and excluded.", documents: [], photos: [] },
   { id: "service-spa-record", assetId: "sundance-optima", vendorId: "sundance", procedureId: "spa-check", date: "2026-07-02", title: "Sundance Optima spa equipment record created", status: "Completed", notes: "Recorded Sundance 880-series Optima model, serial, electrical rating, HydroQuip heater, and ClearRay UV-C.", documents: [], photos: [] },
   { id: "service-sunstream-lifts", assetId: "sunstream-cobalt", vendorId: "sunstream", procedureId: "dock-lift-check", date: "2026-07-02", title: "Dock lift control boxes documented", status: "Completed", notes: "Confirmed multiple Sunstream lift boxes. Larger/newer box belongs to Cobalt lift.", documents: [], photos: [] },
 ];
 
 const documents: DocumentRecord[] = [
-  { id: "doc-systems-layout", title: "2000 Systems Layout Draft v1", area: "Mechanical / Pool / HVAC", type: "PDF", notes: "Filename: 2000_systems_layout_draft_v1.pdf. Draft layout of main mechanical, electrical, pool, HVAC, Viessmann hydronic boiler/cascade/DHW, Carrier + Honeywell HZ432 zones, Desert Aire pool dehumidification, and pool water treatment systems." },
-  { id: "doc-pool-equipment", title: "2000 Pool Equipment Record v1", area: "Pool Equipment Room", type: "PDF", linkedAssetId: "pool-pump-pentair", notes: "Pool chain record." },
-  { id: "doc-property-map", title: "Locked Original Property Map", area: "Property Map", type: "Image", notes: "Original map should stay locked. Use editable overlay labels." },
-  { id: "doc-pool-construction", title: "Indoor pool construction — first floor of addition", area: "Addition First Floor", type: "Photo", notes: "Construction photo showing indoor pool shell/trench area, concrete work, lighting, hoses, and worker present." },
-  { id: "doc-penthouse-invoice", title: "Penthouse Drapery Invoice #176396", area: "Blinds Lutron", type: "Invoice", linkedAssetId: "blinds-lutron", notes: "Invoice #176396 dated 06/16/2026 for motorized roller shade repair." },
-  { id: "doc-sunstream-photos", title: "Sunstream lift box photo set", area: "Dock", type: "Photos", notes: "Photos show Sunstream lift boxes, solar panels, dock-mounted enclosures, wiring, and up/down controls." },
-  { id: "doc-spa-nameplate", title: "Sundance Optima spa nameplate and control photos", area: "Standalone Spa", type: "Photos", linkedAssetId: "sundance-optima", notes: "Includes nameplate, electrical rating, spa control system, HydroQuip heater, ClearRay UV-C, and corrosion notes." },
-  { id: "doc-boiler-nameplates", title: "Viessmann boiler nameplate photos", area: "Mechanical Room", type: "Photos", linkedAssetId: "boiler-2", notes: "Photos confirm Boiler 1 and Boiler 2 details." },
-  { id: "doc-maintainx-assets", title: "MaintainX asset screenshots", area: "Assets", type: "Screenshots", notes: "Asset import source." },
-  { id: "doc-maintainx-vendors", title: "MaintainX vendor screenshots", area: "Vendors", type: "Screenshots", notes: "Vendor import source." },
+  {
+    id: "doc-systems-layout",
+    title: "2000 Systems Layout Draft v1",
+    area: "Mechanical / Pool / HVAC",
+    type: "Generated PDF / Diagram",
+    href: "/docs/2000_systems_layout_draft_v1.pdf",
+    notes: "Generated Atlas systems-layout reference. Put the actual PDF in public/docs/2000_systems_layout_draft_v1.pdf so Atlas can open it directly.",
+  },
+  {
+    id: "doc-pool-equipment",
+    title: "2000 Pool Equipment Record v2 Corrected",
+    area: "Pool Equipment Room",
+    type: "Generated PDF / Equipment Record",
+    linkedAssetId: "pool-pump-pentair",
+    href: "/docs/2000_pool_equipment_record_v2_corrected.pdf",
+    notes: "Generated corrected pool equipment record. Documents the single property pool, pool water treatment, Desert Aire pool HVAC/dehumidification, and hydronic pool heat. Excludes the standalone Sundance spa / hot tub.",
+  },
+  {
+    id: "doc-property-map",
+    title: "Locked Original Property Map",
+    area: "Property Map",
+    type: "Image",
+    href: "/atlas-property-map.png",
+    notes: "Original locked Atlas map image used under the movable labels.",
+  },
+  {
+    id: "doc-exterior-stain-plan",
+    title: "2000 Exterior Stain Plan — Photo-Based Scope Summary",
+    area: "Exterior",
+    type: "Generated Image",
+    href: "/docs/2000_exterior_stain_plan_summary.png",
+    notes: "Generated client-facing exterior stain plan summary image. Put the PNG in public/docs/2000_exterior_stain_plan_summary.png so Atlas can open it directly.",
+  },
+  {
+    id: "doc-pool-construction",
+    title: "Pool construction — first floor of addition",
+    area: "Addition First Floor",
+    type: "Photo Reference",
+    href: "/docs/pool_construction_first_floor_addition.jpg",
+    notes: "Construction photo reference showing the pool shell/trench area, concrete work, lighting, hoses, and worker present. Put the photo in public/docs/pool_construction_first_floor_addition.jpg or upload it to the Pool asset.",
+  },
+  {
+    id: "doc-penthouse-invoice",
+    title: "Penthouse Drapery Invoice #176396",
+    area: "Blinds Lutron",
+    type: "Invoice Reference",
+    linkedAssetId: "blinds-lutron",
+    href: "/docs/penthouse_drapery_invoice_176396.pdf",
+    notes: "Invoice #176396 dated 06/16/2026 for motorized roller shade repair. Put the PDF in public/docs/penthouse_drapery_invoice_176396.pdf or upload it to Blinds Lutron.",
+  },
+  { id: "doc-sunstream-photos", title: "Sunstream lift box photo set", area: "Dock", type: "Photo Reference", notes: "Photos show Sunstream lift boxes, solar panels, dock-mounted enclosures, wiring, and up/down controls. Upload the photos to Dock, Cobalt lift, or SeaDoo lift for direct viewing." },
+  { id: "doc-spa-nameplate", title: "Sundance Optima spa nameplate and control photos", area: "Standalone Spa", type: "Photo Reference", linkedAssetId: "sundance-optima", notes: "Includes nameplate, electrical rating, spa control system, HydroQuip heater, ClearRay UV-C, and corrosion notes. Upload the photos to the Sundance Optima asset for direct viewing." },
+  { id: "doc-boiler-nameplates", title: "Viessmann boiler nameplate photos", area: "Mechanical Room", type: "Photo Reference", linkedAssetId: "boiler-2", notes: "Photos confirm Boiler 1 and Boiler 2 details. Upload the photos to Boiler B-1 / Boiler B-2 for direct viewing." },
+  { id: "doc-maintainx-assets", title: "MaintainX asset screenshots", area: "Assets", type: "Screenshot Reference", notes: "Asset import source. Upload screenshots to Photos / Docs if you want them viewable inside Atlas." },
+  { id: "doc-maintainx-vendors", title: "MaintainX vendor screenshots", area: "Vendors", type: "Screenshot Reference", notes: "Vendor import source. Upload screenshots to Photos / Docs if you want them viewable inside Atlas." },
   { id: "doc-credentials-redacted", title: "Redacted / admin-only credential inventory", area: "Admin", type: "Secure Note", notes: "Do not store raw passwords, passcodes, PINs, emails, or access codes in normal Atlas notes." },
 ];
 
@@ -1230,7 +1276,7 @@ export default function AtlasPage() {
 
   function openAssistantFile(result: SearchResult) {
     if (!result.dataUrl) {
-      window.alert("This is an Atlas reference record, not an uploaded file yet. Open the related record and attach the actual PDF/photo/file there.");
+      window.alert("This Atlas reference does not have a file path yet. Upload the actual PDF/photo/file to the related asset, vendor, work order, or map label.");
       return;
     }
 
@@ -1244,7 +1290,7 @@ export default function AtlasPage() {
     if (!result.attachmentKind || !result.attachmentId) return;
 
     if (result.attachmentKind === "static-document") {
-      window.alert("This is a built-in Atlas reference record. It cannot be deleted here. Attach and manage actual uploaded files from the related record.");
+      window.alert("This is a built-in Atlas reference record. It cannot be deleted here. If the View button opens a missing page, add the actual file to the matching public/docs path or upload it to the related Atlas record.");
       return;
     }
 
@@ -2308,7 +2354,7 @@ export default function AtlasPage() {
       ...vendorRecords.map((vendor) => ({ id: `vendor-${vendor.id}`, type: "Vendor" as const, title: vendor.name, subtitle: vendor.category, detail: [vendor.phone, vendor.email, vendor.website, vendor.notes, (vendor.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "vendors" as const, vendorId: vendor.id })),
       ...serviceRecords.map((record) => ({ id: `service-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)} · ${record.status}`, detail: [record.notes, record.followUpDate ? `Follow-up ${formatDate(record.followUpDate)}` : "", procedureName(record.procedureId), (record.photos ?? []).map((photo) => photo.name).join(" "), (record.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "history" as const, serviceId: record.id, assetId: record.assetId, vendorId: record.vendorId })),
       ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar" as const, title: item.title, subtitle: `${formatDate(item.date)} · ${item.area} · ${item.status}`, detail: `${item.title} ${item.area} ${item.status} ${formatDate(item.date)}`, screen: "calendar" as const, calendarId: item.id })),
-      ...documents.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: `${document.notes} Static Atlas reference record. Attach an actual file to an asset, vendor, work order, or map label if you need a viewable/downloadable document.`, screen: "documents" as const, assetId: document.linkedAssetId, attachmentKind: "static-document" as const })),
+      ...documents.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: document.href ? `${document.notes} Expected file path: ${document.href}` : `${document.notes} Reference only until the actual file/photo is uploaded.`, screen: "documents" as const, assetId: document.linkedAssetId, attachmentKind: "static-document" as const, dataUrl: document.href, downloadName: document.href?.split("/").pop() })),
       ...procedureRecords.map((procedure) => ({ id: `procedure-${procedure.id}`, type: "Procedure" as const, title: procedure.title, subtitle: `${procedure.area} · ${procedure.priority}`, detail: procedure.steps.join(" "), screen: "procedures" as const, procedureId: procedure.id })),
       ...partRecords.map((part) => ({ id: `assistant-part-${part.id}`, type: "Part" as const, title: part.name, subtitle: `${part.category} · ${part.status} · Qty ${part.quantity} ${part.unit}`, detail: `${getLocationName(part.locationId)} · ${assetName(part.assetId || "")} · ${vendorName(part.vendorId)} · Part # ${part.partNumber || "n/a"}. SKU ${part.sku || "n/a"}. ${part.notes}`, screen: "parts" as const, partId: part.id, assetId: part.assetId, vendorId: part.vendorId })),
       ...assetPhotoResults,
@@ -2409,7 +2455,7 @@ export default function AtlasPage() {
 
       assistantSetAnswer(
         results.length
-          ? `I found ${results.length} photo/document result(s). ${viewableCount} can be opened directly. ${referenceCount} are Atlas reference records that point you to the related asset/work order/vendor. Use View, Download, Delete, or Open Related Record below.`
+          ? `I found ${results.length} photo/document result(s). ${viewableCount} have a View button. ${referenceCount} are reference records or expected public files. If a View button opens a missing page, the file still needs to be added to GitHub public/docs or uploaded to the related Atlas record.`
           : "I did not find matching photos or documents yet. Uploaded files will show View/Download/Delete buttons here.",
         results
       );
@@ -3535,10 +3581,31 @@ export default function AtlasPage() {
 
             {filteredDocuments.map((document) => (
               <div key={document.id} style={inlineCardStyle}>
-                <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{document.area}</div>
-                <h3 style={{ color: colors.navy, margin: "5px 0" }}>{document.title}</h3>
-                <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{document.type}{document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}</div>
-                <p style={{ color: colors.text, lineHeight: 1.5 }}>{document.notes}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (document.linkedAssetId) {
+                      setSelectedAssetId(document.linkedAssetId);
+                      setAssetMode("edit");
+                      setScreen("assets");
+                    } else if (document.id === "doc-property-map") {
+                      setScreen("map");
+                    }
+                  }}
+                  style={{ all: "unset", cursor: "pointer", display: "block" }}
+                >
+                  <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{document.area}</div>
+                  <h3 style={{ color: colors.navy, margin: "5px 0" }}>{document.title}</h3>
+                  <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{document.type}{document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}</div>
+                  <p style={{ color: colors.text, lineHeight: 1.5 }}>{document.notes}</p>
+                  {document.href ? <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900 }}>Expected file path: {document.href}</div> : null}
+                </button>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                  {document.href ? <a href={document.href} target="_blank" rel="noreferrer" style={linkButtonStyle}>View</a> : null}
+                  {document.href ? <a href={document.href} download style={smallPrimaryButtonStyle}>Download</a> : null}
+                  {document.linkedAssetId ? <button type="button" onClick={() => { setSelectedAssetId(document.linkedAssetId || ""); setAssetMode("edit"); setScreen("assets"); }} style={goldButtonStyle}>Open Related Asset</button> : null}
+                  {!document.href ? <span style={openPillStyle}>Reference only — upload file/photo to make viewable</span> : null}
+                </div>
               </div>
             ))}
           </div>
