@@ -730,13 +730,32 @@ function readBrowserSnapshot() {
   };
 }
 
-function StatCard({ label, value, detail }: { label: string; value: string | number; detail: string }) {
-  return (
-    <div style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 20, padding: 18, boxShadow: "0 12px 30px rgba(11, 30, 51, 0.06)" }}>
+function StatCard({ label, value, detail, onClick }: { label: string; value: string | number; detail: string; onClick?: () => void }) {
+  const content = (
+    <>
       <div style={{ color: colors.muted, fontSize: 13, fontWeight: 850 }}>{label}</div>
       <div style={{ color: colors.navy, fontSize: 34, fontWeight: 950, lineHeight: 1.1, marginTop: 8 }}>{value}</div>
       <div style={{ color: colors.muted, fontSize: 13, marginTop: 7 }}>{detail}</div>
-    </div>
+      {onClick ? <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, marginTop: 10 }}>Open →</div> : null}
+    </>
+  );
+
+  const style: React.CSSProperties = {
+    background: colors.card,
+    border: `1px solid ${colors.line}`,
+    borderRadius: 20,
+    padding: 18,
+    boxShadow: "0 12px 30px rgba(11, 30, 51, 0.06)",
+    textAlign: "left",
+    width: "100%",
+  };
+
+  if (!onClick) return <div style={style}>{content}</div>;
+
+  return (
+    <button type="button" onClick={onClick} style={{ ...style, cursor: "pointer" }}>
+      {content}
+    </button>
   );
 }
 
@@ -2648,17 +2667,118 @@ export default function AtlasPage() {
     );
   }
 
+  function openDashboardWorkOrders(activeOnly = false) {
+    setScreen("history");
+    setWorkOrderTab(activeOnly ? "todo" : workOrderTab);
+    setWorkOrderStatusFilter("all");
+    setWorkOrderLocationFilter("all");
+    setWorkOrderAssetFilter("all");
+    setWorkOrderSort("priority");
+
+    const firstRecord = sortWorkOrderBoardRecords(serviceRecords.filter((record) => (activeOnly ? record.status !== "Completed" : true)), "priority")[0];
+    if (firstRecord) openServiceRecord(firstRecord);
+  }
+
+  function openDashboardMonitor() {
+    setScreen("history");
+    setWorkOrderTab("todo");
+    setWorkOrderStatusFilter("all");
+    setWorkOrderLocationFilter("all");
+    setWorkOrderAssetFilter("all");
+    setWorkOrderSort("priority");
+
+    const firstRecord = sortWorkOrderBoardRecords(serviceRecords.filter((record) => record.status !== "Completed"), "priority")[0];
+    if (firstRecord) openServiceRecord(firstRecord);
+  }
+
+  function startDashboardCreate(kind: "work-order" | "asset" | "vendor" | "procedure" | "calendar" | "part" | "photo-doc" | "map-label") {
+    if (kind === "work-order") {
+      startNewService();
+      setWorkOrderTab("todo");
+      setScreen("history");
+      return;
+    }
+
+    if (kind === "asset") {
+      startNewAsset();
+      setScreen("assets");
+      return;
+    }
+
+    if (kind === "vendor") {
+      startNewVendor();
+      setScreen("vendors");
+      return;
+    }
+
+    if (kind === "procedure") {
+      startNewProcedure();
+      setScreen("procedures");
+      return;
+    }
+
+    if (kind === "calendar") {
+      startNewCalendarItem(todayKey);
+      setScreen("calendar");
+      return;
+    }
+
+    if (kind === "part") {
+      startNewPart();
+      setScreen("parts");
+      return;
+    }
+
+    if (kind === "photo-doc") {
+      setScreen("documents");
+      return;
+    }
+
+    startNewMapLabel();
+    setScreen("map");
+  }
+
   function renderDashboard() {
     return (
       <div style={{ display: "grid", gap: 18 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", gap: 16 }}>
-          <StatCard label="Assets" value={assetRecords.length} detail="Neon connected" />
-          <StatCard label="Vendors" value={vendorRecords.length} detail="Neon connected" />
-          <StatCard label="Work Orders" value={serviceRecords.length} detail="Photos + docs" />
-          <StatCard label="Procedures" value={procedureRecords.length} detail="Editable templates" />
-          <StatCard label="Parts" value={partRecords.length} detail={`${lowPartRecords.length} low / order`} />
-          <StatCard label="Scheduled" value={upcomingCalendarCount} detail="Calendar work" />
-          <StatCard label="Open / Monitor" value={openWorkOrderCount + monitorAssetCount} detail="Needs attention" />
+        <SectionShell
+          eyebrow="Command Center"
+          title="Create or Open Atlas Records"
+          right={<button type="button" onClick={() => startDashboardCreate("work-order")} style={primaryButtonStyle}>Create Work Order</button>}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "1.05fr 1.95fr", gap: 16, alignItems: "stretch" }}>
+            <div style={{ ...heroCardStyle, minHeight: 180 }}>
+              <div style={heroOrbStyle} />
+              <div style={{ position: "relative", zIndex: 2 }}>
+                <div style={{ color: colors.gold2, fontSize: 12, fontWeight: 950, letterSpacing: 1.1, textTransform: "uppercase" }}>Fast Create</div>
+                <h2 style={{ margin: "8px 0 8px", fontSize: 28, letterSpacing: -0.7 }}>What do you need to add?</h2>
+                <p style={{ margin: 0, color: "rgba(255,255,255,0.76)", lineHeight: 1.5 }}>
+                  Start from the dashboard, choose the record type, and Atlas opens the right new form.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+              <button type="button" onClick={() => startDashboardCreate("work-order")} style={dashboardActionButtonStyle}><strong>Work Order</strong><span>Create task / issue</span></button>
+              <button type="button" onClick={() => startDashboardCreate("asset")} style={dashboardActionButtonStyle}><strong>Asset</strong><span>Add equipment</span></button>
+              <button type="button" onClick={() => startDashboardCreate("vendor")} style={dashboardActionButtonStyle}><strong>Vendor</strong><span>Add contact/company</span></button>
+              <button type="button" onClick={() => startDashboardCreate("procedure")} style={dashboardActionButtonStyle}><strong>Procedure</strong><span>Add checklist</span></button>
+              <button type="button" onClick={() => startDashboardCreate("calendar")} style={dashboardActionButtonStyle}><strong>Calendar</strong><span>Schedule work</span></button>
+              <button type="button" onClick={() => startDashboardCreate("part")} style={dashboardActionButtonStyle}><strong>Part</strong><span>Add inventory</span></button>
+              <button type="button" onClick={() => startDashboardCreate("photo-doc")} style={dashboardActionButtonStyle}><strong>Photo / Doc</strong><span>Attach file</span></button>
+              <button type="button" onClick={() => startDashboardCreate("map-label")} style={dashboardActionButtonStyle}><strong>Location</strong><span>Add map label</span></button>
+            </div>
+          </div>
+        </SectionShell>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 16 }}>
+          <StatCard label="Assets" value={assetRecords.length} detail="Open asset directory" onClick={() => setScreen("assets")} />
+          <StatCard label="Vendors" value={vendorRecords.length} detail="Open vendor directory" onClick={() => setScreen("vendors")} />
+          <StatCard label="Work Orders" value={serviceRecords.length} detail="Open work board" onClick={() => openDashboardWorkOrders(false)} />
+          <StatCard label="Procedures" value={procedureRecords.length} detail="Open checklists" onClick={() => setScreen("procedures")} />
+          <StatCard label="Parts" value={partRecords.length} detail={`${lowPartRecords.length} low / order`} onClick={() => setScreen("parts")} />
+          <StatCard label="Scheduled" value={upcomingCalendarCount} detail="Open calendar" onClick={() => setScreen("calendar")} />
+          <StatCard label="Open / Monitor" value={openWorkOrderCount + monitorAssetCount} detail="Needs attention" onClick={openDashboardMonitor} />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
@@ -2667,20 +2787,20 @@ export default function AtlasPage() {
             title="Atlas Estate Systems / 2000"
             right={<button type="button" onClick={syncCurrentToDatabase} style={primaryButtonStyle}>Sync to Neon</button>}
           >
-            <div style={heroCardStyle}>
-              <div style={heroOrbStyle} />
-              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                <img src="/atlas-logo.png" alt="Atlas logo" style={heroLogoStyle} />
-                <div>
-                  <h2 style={{ margin: 0, fontSize: 30, letterSpacing: -0.8 }}>Atlas Estate Systems is live for 2000.</h2>
-                  <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.5 }}>
-                    Private estate operations software for assets, vendors, work orders, procedures, calendar records, documents, photos, and property history.
-                  </p>
-                  <p style={{ margin: "10px 0 0", color: "rgba(255,255,255,0.9)", fontWeight: 900 }}>
-                    Status: {databaseStatus}
-                  </p>
-                </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+              <div style={inlineCardStyle}>
+                <div style={goldEyebrowStyle}>Database</div>
+                <div style={{ color: colors.navy, fontWeight: 950, fontSize: 18, marginTop: 6 }}>{databaseStatus}</div>
+                <p style={{ color: colors.muted, margin: "8px 0 0", lineHeight: 1.45 }}>Records save through Neon when available and fall back safely in the browser.</p>
               </div>
+              <button type="button" onClick={() => { askAtlas("what needs to be done this week"); setAssistantQuestion("What needs to be done this week?"); setScreen("assistant"); }} style={dashboardMiniButtonStyle}>
+                <strong>Ask Atlas</strong>
+                <span>Show this week</span>
+              </button>
+              <button type="button" onClick={syncCurrentToDatabase} style={dashboardMiniButtonStyle}>
+                <strong>Sync</strong>
+                <span>Push current data</span>
+              </button>
             </div>
           </SectionShell>
 
@@ -2705,7 +2825,7 @@ export default function AtlasPage() {
         <SectionShell eyebrow="Recently Updated" title="Latest Work Orders">
           <div style={{ display: "grid", gap: 10 }}>
             {sortServices(serviceRecords).slice(0, 7).map((record) => (
-              <div key={record.id} style={serviceRowStyle}>
+              <button key={record.id} type="button" onClick={() => { openServiceRecord(record); setScreen("history"); }} style={{ ...serviceRowStyle, cursor: "pointer", textAlign: "left", width: "100%" }}>
                 <div style={{ color: colors.muted, fontWeight: 850 }}>{formatDate(record.date)}</div>
                 <div>
                   <div style={{ color: colors.navy, fontWeight: 900 }}>{record.title}</div>
@@ -2714,7 +2834,7 @@ export default function AtlasPage() {
                   </div>
                 </div>
                 <span style={badgeStyle(record.status)}>{record.status}</span>
-              </div>
+              </button>
             ))}
           </div>
         </SectionShell>
@@ -4555,6 +4675,34 @@ const quickQuestionStyle: React.CSSProperties = {
   fontWeight: 850,
   textAlign: "left",
   cursor: "pointer",
+};
+
+const dashboardActionButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FBFCFE",
+  color: colors.navy,
+  borderRadius: 16,
+  padding: 14,
+  fontWeight: 900,
+  cursor: "pointer",
+  textAlign: "left",
+  display: "grid",
+  gap: 5,
+  alignContent: "start",
+};
+
+const dashboardMiniButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FBFCFE",
+  color: colors.navy,
+  borderRadius: 16,
+  padding: 16,
+  fontWeight: 900,
+  cursor: "pointer",
+  textAlign: "left",
+  display: "grid",
+  gap: 6,
+  alignContent: "start",
 };
 
 const assistantAnswerStyle: React.CSSProperties = {
