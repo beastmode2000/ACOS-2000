@@ -668,6 +668,7 @@ export default function AtlasPage() {
 
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about work orders, calendar work, procedures, assets, vendors, documents, service history, boilers, pool equipment, dock lifts, blinds, the spa, or aircraft.");
+  const [assistantResults, setAssistantResults] = useState<SearchResult[]>([]);
   const [ready, setReady] = useState(false);
   const [databaseStatus, setDatabaseStatus] = useState("Connecting to Neon...");
 
@@ -1095,8 +1096,12 @@ export default function AtlasPage() {
     }
 
     if (result.calendarId) {
-      setSelectedCalendarId(result.calendarId);
-      setCalendarMode("edit");
+      const selectedCalendarItem = calendarItems.find((item) => item.id === result.calendarId);
+      if (selectedCalendarItem) openCalendarItem(selectedCalendarItem);
+      else {
+        setSelectedCalendarId(result.calendarId);
+        setCalendarMode("edit");
+      }
     }
 
     setScreen(result.screen);
@@ -1995,80 +2000,243 @@ export default function AtlasPage() {
     void deleteAtlasRecord("asset_photos", photoId);
   }
 
+  function assistantSetAnswer(answer: string, results: SearchResult[] = []) {
+    setAssistantAnswer(answer);
+    setAssistantResults(results.slice(0, 10));
+  }
+
+  function buildAssistantIndex(): SearchResult[] {
+    const assetPhotoResults: SearchResult[] = photos.map((photo) => ({
+      id: `photo-${photo.id}`,
+      type: "Document" as const,
+      title: photo.name,
+      subtitle: `Asset photo · ${assetName(photo.assetId)}`,
+      detail: `Photo attached to ${assetName(photo.assetId)}. Uploaded ${new Date(photo.createdAt).toLocaleString()}.`,
+      screen: "documents" as const,
+      assetId: photo.assetId,
+    }));
+
+    const assetDocumentResults: SearchResult[] = assetRecords.flatMap((asset) =>
+      (asset.documents ?? []).map((document) => ({
+        id: `asset-doc-${asset.id}-${document.id}`,
+        type: "Document" as const,
+        title: document.name,
+        subtitle: `Asset document · ${asset.name}`,
+        detail: `${document.type || "File"}. Attached to ${asset.name}. Uploaded ${new Date(document.createdAt).toLocaleString()}.`,
+        screen: "documents" as const,
+        assetId: asset.id,
+      }))
+    );
+
+    const vendorDocumentResults: SearchResult[] = vendorRecords.flatMap((vendor) =>
+      (vendor.documents ?? []).map((document) => ({
+        id: `vendor-doc-${vendor.id}-${document.id}`,
+        type: "Document" as const,
+        title: document.name,
+        subtitle: `Vendor document · ${vendor.name}`,
+        detail: `${document.type || "File"}. Attached to ${vendor.name}. Uploaded ${new Date(document.createdAt).toLocaleString()}.`,
+        screen: "documents" as const,
+        vendorId: vendor.id,
+      }))
+    );
+
+    const serviceAttachmentResults: SearchResult[] = serviceRecords.flatMap((record) => [
+      ...(record.photos ?? []).map((photo) => ({
+        id: `work-photo-${record.id}-${photo.id}`,
+        type: "Document" as const,
+        title: photo.name,
+        subtitle: `Work-order photo · ${record.title}`,
+        detail: `${photo.type || "Photo"}. Attached to ${record.title}. Asset: ${assetName(record.assetId)}. Vendor: ${vendorName(record.vendorId)}. Uploaded ${new Date(photo.createdAt).toLocaleString()}.`,
+        screen: "history" as const,
+        serviceId: record.id,
+        assetId: record.assetId,
+      })),
+      ...(record.documents ?? []).map((document) => ({
+        id: `work-doc-${record.id}-${document.id}`,
+        type: "Document" as const,
+        title: document.name,
+        subtitle: `Work-order document · ${record.title}`,
+        detail: `${document.type || "File"}. Attached to ${record.title}. Asset: ${assetName(record.assetId)}. Vendor: ${vendorName(record.vendorId)}. Uploaded ${new Date(document.createdAt).toLocaleString()}.`,
+        screen: "history" as const,
+        serviceId: record.id,
+        assetId: record.assetId,
+      })),
+    ]);
+
+    const mapPhotoResults: SearchResult[] = mapLabels.flatMap((label) =>
+      (label.photos ?? []).map((photo) => ({
+        id: `map-photo-${label.id}-${photo.id}`,
+        type: "Document" as const,
+        title: photo.name,
+        subtitle: `Map photo · ${label.label}`,
+        detail: `${photo.type || "Photo"}. Attached to map label ${label.label}. Uploaded ${new Date(photo.createdAt).toLocaleString()}.`,
+        screen: "map" as const,
+        assetId: undefined,
+      }))
+    );
+
+    return [
+      ...locations.map((location) => ({ id: `location-${location.id}`, type: "Location" as const, title: location.name, subtitle: `${location.zone} · ${location.type}`, detail: location.notes, screen: "locations" as const })),
+      ...mapLabels.map((label) => ({ id: `map-label-${label.id}`, type: "Map Label" as const, title: label.label, subtitle: `${label.category} · ${Math.round(label.x)}% / ${Math.round(label.y)}%`, detail: `${label.notes} ${(label.photos ?? []).map((photo) => photo.name).join(" ")}`, screen: "map" as const })),
+      ...assetRecords.map((asset) => ({ id: `asset-${asset.id}`, type: "Asset" as const, title: asset.name, subtitle: `${getLocationName(asset.locationId)} · ${asset.category}`, detail: [asset.status, asset.make, asset.model, asset.serial, asset.notes, asset.vendorIds.map(vendorName).join(" "), (asset.documents ?? []).map((document) => document.name).join(" "), photos.filter((photo) => photo.assetId === asset.id).map((photo) => photo.name).join(" ")].filter(Boolean).join(" · "), screen: "assets" as const, assetId: asset.id })),
+      ...vendorRecords.map((vendor) => ({ id: `vendor-${vendor.id}`, type: "Vendor" as const, title: vendor.name, subtitle: vendor.category, detail: [vendor.phone, vendor.email, vendor.website, vendor.notes, (vendor.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "vendors" as const, vendorId: vendor.id })),
+      ...serviceRecords.map((record) => ({ id: `service-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${vendorName(record.vendorId)} · ${record.status}`, detail: [record.notes, record.followUpDate ? `Follow-up ${formatDate(record.followUpDate)}` : "", procedureName(record.procedureId), (record.photos ?? []).map((photo) => photo.name).join(" "), (record.documents ?? []).map((document) => document.name).join(" ")].filter(Boolean).join(" · "), screen: "history" as const, serviceId: record.id, assetId: record.assetId, vendorId: record.vendorId })),
+      ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar" as const, title: item.title, subtitle: `${formatDate(item.date)} · ${item.area} · ${item.status}`, detail: `${item.title} ${item.area} ${item.status} ${formatDate(item.date)}`, screen: "calendar" as const, calendarId: item.id })),
+      ...documents.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: document.notes, screen: "documents" as const, assetId: document.linkedAssetId })),
+      ...procedureRecords.map((procedure) => ({ id: `procedure-${procedure.id}`, type: "Procedure" as const, title: procedure.title, subtitle: `${procedure.area} · ${procedure.priority}`, detail: procedure.steps.join(" "), screen: "procedures" as const, procedureId: procedure.id })),
+      ...assetPhotoResults,
+      ...assetDocumentResults,
+      ...vendorDocumentResults,
+      ...serviceAttachmentResults,
+      ...mapPhotoResults,
+    ];
+  }
+
+  function findAssistantResults(text: string, limit = 8) {
+    const stopWords = new Set(["show", "what", "when", "where", "who", "does", "have", "with", "about", "atlas", "the", "and", "for", "are", "is", "me", "my", "all", "any", "to", "of", "in", "on", "we", "need", "needs", "do", "done", "from"]);
+    const terms = text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((term) => term.trim())
+      .filter((term) => term.length > 2 && !stopWords.has(term));
+
+    if (!terms.length) return [];
+
+    return buildAssistantIndex()
+      .map((result) => {
+        const haystack = [result.type, result.title, result.subtitle, result.detail].join(" ").toLowerCase();
+        const score = terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
+        return { result, score };
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score || a.result.title.localeCompare(b.result.title))
+      .map(({ result }) => result)
+      .slice(0, limit);
+  }
+
+  function summarizeResults(results: SearchResult[], emptyText: string) {
+    if (!results.length) return emptyText;
+    return results.map((result) => `${result.type}: ${result.title}\n${result.subtitle}\n${result.detail}`).join("\n\n");
+  }
+
   function askAtlas(question: string) {
     const text = question.trim().toLowerCase();
 
     if (!text) {
-      setAssistantAnswer("Type a question first, then Ask Atlas.");
+      assistantSetAnswer("Type a question first, then Ask Atlas.", []);
       return;
     }
 
-    if (text.includes("database") || text.includes("neon") || text.includes("save")) {
-      setAssistantAnswer(`Atlas is connected to Neon. Current status: ${databaseStatus}. Assets, vendors, work orders, calendar items, procedures, and asset photos now save through /api/atlas.`);
+    const today = dateFromKey(todayKey);
+    const nextSevenDays = new Date(today);
+    nextSevenDays.setDate(today.getDate() + 7);
+
+    const openWorkOrders = sortServices(serviceRecords.filter((record) => record.status !== "Completed"));
+    const doneWorkOrders = sortServices(serviceRecords.filter((record) => record.status === "Completed"));
+    const overdueWorkOrders = openWorkOrders.filter((record) => record.date < todayKey);
+    const weekWorkOrders = openWorkOrders.filter((record) => {
+      const date = dateFromKey(record.followUpDate || record.date);
+      return date >= today && date <= nextSevenDays;
+    });
+    const weekCalendar = sortCalendar(calendarItems.filter((item) => {
+      const date = dateFromKey(item.date);
+      return item.status !== "Completed" && date >= today && date <= nextSevenDays;
+    }));
+
+    if (text.includes("database") || text.includes("neon") || text.includes("save") || text.includes("connected")) {
+      assistantSetAnswer(`Atlas is connected to Neon. Current status: ${databaseStatus}.\n\nRecord counts: ${assetRecords.length} assets, ${vendorRecords.length} vendors, ${serviceRecords.length} work orders, ${calendarItems.length} calendar items, ${procedureRecords.length} procedures, ${photos.length} asset photos, and ${uploadedDocumentCount} uploaded documents.`, []);
+      return;
+    }
+
+    if (text.includes("this week") || text.includes("next 7") || text.includes("needs to be done") || text.includes("what needs") || text.includes("upcoming")) {
+      const results: SearchResult[] = [
+        ...weekWorkOrders.map((record) => ({ id: `assistant-week-service-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.followUpDate || record.date)} · ${assetName(record.assetId)} · ${record.status}`, detail: record.notes, screen: "history" as const, serviceId: record.id, assetId: record.assetId, vendorId: record.vendorId })),
+        ...weekCalendar.map((item) => ({ id: `assistant-week-calendar-${item.id}`, type: "Calendar" as const, title: item.title, subtitle: `${formatDate(item.date)} · ${item.area} · ${item.status}`, detail: `Scheduled calendar item for ${item.area}.`, screen: "calendar" as const, calendarId: item.id })),
+      ];
+      assistantSetAnswer(results.length ? `This week has ${weekWorkOrders.length} open work order(s) and ${weekCalendar.length} active calendar item(s). Click any result below to open it.` : "No open work orders or active calendar items are scheduled in the next 7 days.", results);
+      return;
+    }
+
+    if (text.includes("overdue") || text.includes("late") || text.includes("past due")) {
+      const results = overdueWorkOrders.map((record) => ({ id: `assistant-overdue-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · ${record.status}`, detail: record.notes, screen: "history" as const, serviceId: record.id, assetId: record.assetId, vendorId: record.vendorId }));
+      assistantSetAnswer(results.length ? `${results.length} work order(s) look overdue based on the work date. Click below to open them.` : "No overdue open work orders found.", results);
+      return;
+    }
+
+    if (text.includes("done") || text.includes("completed")) {
+      const results = doneWorkOrders.slice(0, 10).map((record) => ({ id: `assistant-done-${record.id}`, type: "Work Order" as const, title: record.title, subtitle: `${formatDate(record.date)} · ${assetName(record.assetId)} · Completed`, detail: record.notes, screen: "history" as const, serviceId: record.id, assetId: record.assetId, vendorId: record.vendorId }));
+      assistantSetAnswer(results.length ? `Showing the latest ${results.length} completed work order(s).` : "No completed work orders found yet.", results);
+      return;
+    }
+
+    if (text.includes("photo") || text.includes("picture") || text.includes("document") || text.includes("invoice") || text.includes("file")) {
+      const results = findAssistantResults(text, 10).filter((result) => result.type === "Document" || result.screen === "documents" || result.detail.toLowerCase().includes("photo") || result.detail.toLowerCase().includes("document"));
+      assistantSetAnswer(results.length ? `I found ${results.length} photo/document match(es). Click a result to open the related record or library.` : "I did not find matching photos or documents yet.", results);
       return;
     }
 
     if (text.includes("work order") || text.includes("service") || text.includes("history")) {
-      setAssistantAnswer(`Atlas has ${serviceRecords.length} work orders. Work orders can be added, edited, deleted, linked to assets, vendors, and procedures, given photos/documents/invoices, and scheduled for follow-up on the calendar.`);
+      const results = findAssistantResults(text, 10).filter((result) => result.type === "Work Order");
+      assistantSetAnswer(results.length ? `Atlas found ${results.length} work order match(es). Click a result to open it.` : `Atlas has ${serviceRecords.length} work orders. Try asking for a specific asset, vendor, area, overdue work, completed work, or this week.`, results);
       return;
     }
 
-    if (text.includes("procedure") || text.includes("process") || text.includes("how to")) {
-      setAssistantAnswer(`Atlas has ${procedureRecords.length} procedures. Procedures can be added, edited, deleted, searched, and scheduled directly onto the full calendar.`);
+    if (text.includes("calendar") || text.includes("schedule") || text.includes("scheduled") || text.includes("vendor visit")) {
+      const results = findAssistantResults(text, 10).filter((result) => result.type === "Calendar");
+      assistantSetAnswer(results.length ? `Atlas found ${results.length} calendar match(es). Click a result to open it.` : `Atlas has ${calendarItems.length} calendar items. Try asking “what needs to be done this week” or search a specific area.`, results);
       return;
     }
 
-    if (text.includes("calendar") || text.includes("schedule") || text.includes("scheduled")) {
-      setAssistantAnswer(`Atlas has ${calendarItems.length} calendar items. The Calendar has a full month grid, month/year navigation, day selection, add/edit/delete, mark completed, and search.`);
+    if (text.includes("vendor") || text.includes("contact") || text.includes("who handles")) {
+      const results = findAssistantResults(text, 10).filter((result) => result.type === "Vendor" || result.type === "Asset" || result.type === "Work Order");
+      assistantSetAnswer(results.length ? `Atlas found ${results.length} vendor/contact-related match(es). Click a result to open it.` : `Atlas has ${vendorRecords.length} vendor records. Try the company name, category, asset, or area.`, results);
       return;
     }
 
     if (text.includes("asset") || text.includes("equipment")) {
-      setAssistantAnswer(`Atlas has ${assetRecords.length} asset records. Assets can be added, edited, deleted, assigned vendors, given photos, and given attached documents.`);
+      const results = findAssistantResults(text, 10).filter((result) => result.type === "Asset");
+      assistantSetAnswer(results.length ? `Atlas found ${results.length} asset match(es). Click a result to open it.` : `Atlas has ${assetRecords.length} asset records. Try a specific asset name, room, make, model, or serial.`, results);
       return;
     }
 
-    if (text.includes("vendor") || text.includes("contact")) {
-      setAssistantAnswer(`Atlas has ${vendorRecords.length} vendor records. Vendors can be added, edited, deleted, given a logo/photo, and given attached documents.`);
+    if (text.includes("procedure") || text.includes("process") || text.includes("how to")) {
+      const results = findAssistantResults(text, 10).filter((result) => result.type === "Procedure");
+      assistantSetAnswer(results.length ? `Atlas found ${results.length} procedure match(es). Click a result to open it.` : `Atlas has ${procedureRecords.length} procedures. Try pool, spa, boiler, dock, vendor intake, or another area.`, results);
       return;
     }
 
-    if (text.includes("boiler") || text.includes("viessmann") || text.includes("vitodens")) {
-      setAssistantAnswer("Atlas found the boiler records in the Mechanical Room.\n\nBoiler B-1: Viessmann Vitodens 200, earlier nameplate showed serial 758960502925, year built 2018, MAWP water 60 PSI, max water temp 210°F.\n\nBoiler B-2: Viessmann Vitodens 200, clear nameplate shows serial 758960507593, year built 2025, MAWP water 60 PSI, max water temp 210°F.\n\nSafety: McDonnell & Miller GuardDog 751P-MT-120 low-water cut-off.\n\nMonitor note: recalled heat exchanger was replaced on Boiler 2, then the igniter would not turn on.");
+    if (text.includes("boiler") || text.includes("viessmann") || text.includes("vitodens") || text.includes("b-2")) {
+      const results = findAssistantResults("boiler viessmann vitodens b-2 guarddog mechanical", 10);
+      assistantSetAnswer("Atlas found the boiler records in the Mechanical Room. Boiler B-1 is a Viessmann Vitodens 200. Boiler B-2 is a Viessmann Vitodens 200 with serial 758960507593 and year built 2025. The boiler safety record includes the McDonnell & Miller GuardDog 751P-MT-120 low-water cut-off. Click a result below to open the matching record.", results);
       return;
     }
 
     if (text.includes("pool") || text.includes("backwash") || text.includes("pentair") || text.includes("triton")) {
-      setAssistantAnswer("Atlas found the pool records.\n\nPool water chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone equipment → return to pool.\n\nPool heat transfer: HX-1 / P-8 feeds the isolated pool loop. P-9 circulates the pool water loop.\n\nPool HVAC: Desert Aire DHU-1 with control/display, SR501 relay, and hydronic heat coil.");
+      const results = findAssistantResults("pool pentair triton backwash uv ozone pool equipment", 10);
+      assistantSetAnswer("Atlas found the pool records. Pool chain: Pool/Spa source → Pentair 3.0 HP pump → Triton II sand filter → UltraPure / Paramount UV2 UV-ozone → return to pool. Click a result below to open the matching record.", results);
       return;
     }
 
     if (text.includes("spa") || text.includes("hot tub") || text.includes("sundance")) {
-      setAssistantAnswer("Atlas found the standalone spa record.\n\nIt is a Sundance 880-series Optima, model OPTIMA, serial 00P3LCD-100528521-0315, date 03/21/15.\n\nElectrical label: 240 V, current 26/40/48 A, breaker size 40/50/60 A, 60 Hz, single phase, 3 wires.");
+      const results = findAssistantResults("sundance optima spa hot tub clearray hydroquip", 10);
+      assistantSetAnswer("Atlas found the standalone spa record. It is a Sundance 880-series Optima, model OPTIMA, serial 00P3LCD-100528521-0315. Click a result below to open the matching record.", results);
       return;
     }
 
-    if (text.includes("sunstream") || text.includes("lift") || text.includes("cobalt") || text.includes("seadoo")) {
-      setAssistantAnswer("Atlas found the dock lift records.\n\nThere are multiple Sunstream lift boxes on the dock and they should stay separate.\n\nCobalt: larger / newer Sunstream lift box from last summer.\nSeaDoo: smaller / older Sunstream box.\nDock lift: additional smaller / older lift box.");
+    if (text.includes("sunstream") || text.includes("lift") || text.includes("cobalt") || text.includes("seadoo") || text.includes("dock")) {
+      const results = findAssistantResults("sunstream lift cobalt seadoo dock", 10);
+      assistantSetAnswer("Atlas found the dock lift records. Cobalt uses the larger/newer Sunstream lift box. SeaDoo and the additional dock lift have separate Sunstream box records. Click a result below to open the matching record.", results);
       return;
     }
 
-    const matches = [
-      ...assetRecords.map((asset) => ({ type: "Asset", title: asset.name, detail: `${asset.category} — ${getLocationName(asset.locationId)}. ${asset.notes}` })),
-      ...vendorRecords.map((vendor) => ({ type: "Vendor", title: vendor.name, detail: `${vendor.category}. ${vendor.notes}` })),
-      ...serviceRecords.map((record) => ({ type: "Work Order", title: record.title, detail: `${formatDate(record.date)} — ${assetName(record.assetId)} — ${vendorName(record.vendorId)} — ${procedureName(record.procedureId)}. ${record.notes}` })),
-      ...calendarItems.map((item) => ({ type: "Calendar", title: item.title, detail: `${formatDate(item.date)} — ${item.area} — ${item.status}` })),
-      ...procedureRecords.map((procedure) => ({ type: "Procedure", title: procedure.title, detail: `${procedure.area} — ${procedure.priority}. ${procedure.steps.join(" ")}` })),
-      ...documents.map((document) => ({ type: "Document", title: document.title, detail: `${document.area} — ${document.type}. ${document.notes}` })),
-      ...locations.map((location) => ({ type: "Location", title: location.name, detail: `${location.zone} — ${location.type}. ${location.notes}` })),
-    ].filter((item) => [item.type, item.title, item.detail].join(" ").toLowerCase().includes(text));
+    const results = findAssistantResults(text, 10);
 
-    if (!matches.length) {
-      setAssistantAnswer("I did not find that in the local Atlas records yet. Add a work order, procedure, calendar item, photo, document, vendor, or asset record, then Ask Atlas will be able to surface it here.");
+    if (!results.length) {
+      assistantSetAnswer("I did not find that in the local Atlas records yet. Add a work order, procedure, calendar item, photo, document, vendor, or asset record, then Ask Atlas will be able to surface it here.", []);
       return;
     }
 
-    setAssistantAnswer(matches.slice(0, 5).map((item) => `${item.type}: ${item.title}\n${item.detail}`).join("\n\n"));
+    assistantSetAnswer(summarizeResults(results.slice(0, 5), "No results."), results);
   }
 
   function renderGlobalSearchResults() {
@@ -3138,19 +3306,92 @@ export default function AtlasPage() {
   }
 
   function renderAssistant() {
-    const quickQuestions = ["Database status", "Show my work orders", "Show my procedures", "Show my calendar", "Show my assets", "Show my vendors", "What boiler do we have?", "What is the pool equipment chain?", "Which lift box is for the Cobalt?", "What do we know about the Sundance spa?"];
+    const quickQuestions = [
+      "What needs to be done this week?",
+      "Show overdue work orders",
+      "Show open pool work orders",
+      "Who handles irrigation?",
+      "What documents are tied to Blinds Lutron?",
+      "What photos are attached to the Cobalt lift?",
+      "Show vendor visits coming up",
+      "What do we know about Boiler B-2?",
+      "What is the pool equipment chain?",
+      "Which lift box is for the Cobalt?",
+      "What do we know about the Sundance spa?",
+    ];
+
+    const assistantStats = [
+      { label: "Assets", value: assetRecords.length },
+      { label: "Vendors", value: vendorRecords.length },
+      { label: "Work Orders", value: serviceRecords.length },
+      { label: "Calendar", value: calendarItems.length },
+      { label: "Docs", value: uploadedDocumentCount },
+      { label: "Photos", value: photos.length + uploadedServicePhotoCount },
+    ];
 
     return (
-      <SectionShell eyebrow="Ask Atlas" title="Search the Local Atlas Records" right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}>
-        <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 18, alignItems: "start" }}>
-          <div style={{ display: "grid", gap: 12 }}>
-            <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask about work orders, procedures, calendar work, assets, vendors, documents, service notes, pool equipment, boilers, dock lifts, blinds, the spa, aircraft, locations, database, or credentials..." rows={7} style={{ ...inputStyle, resize: "vertical" }} />
-            <button type="button" onClick={() => askAtlas(assistantQuestion)} style={widePrimaryButtonStyle}>Ask Atlas</button>
-            <div style={{ display: "grid", gap: 8 }}>
-              {quickQuestions.map((question) => <button key={question} type="button" onClick={() => { setAssistantQuestion(question); askAtlas(question); }} style={quickQuestionStyle}>{question}</button>)}
+      <SectionShell eyebrow="Ask Atlas" title="Property Assistant" right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}>
+        <div style={{ display: "grid", gap: 18 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 10 }}>
+            {assistantStats.map((stat) => (
+              <div key={stat.label} style={{ border: `1px solid ${colors.line}`, background: "#FBFCFE", borderRadius: 16, padding: 12 }}>
+                <div style={{ color: colors.muted, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.6 }}>{stat.label}</div>
+                <div style={{ color: colors.navy, fontSize: 24, fontWeight: 950, marginTop: 3 }}>{stat.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "0.86fr 1.14fr", gap: 18, alignItems: "start" }}>
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={inlineCardStyle}>
+                <div style={goldEyebrowStyle}>Ask a Property Question</div>
+                <textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Ask Atlas: what needs to be done this week, who handles irrigation, show pool work, what photos are attached to Cobalt, what do we know about Boiler B-2..." rows={8} style={{ ...inputStyle, resize: "vertical", marginTop: 10 }} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginTop: 10 }}>
+                  <button type="button" onClick={() => askAtlas(assistantQuestion)} style={widePrimaryButtonStyle}>Ask Atlas</button>
+                  <button type="button" onClick={() => { setAssistantQuestion(""); assistantSetAnswer("Ask Atlas about work orders, calendar work, procedures, assets, vendors, documents, service history, boilers, pool equipment, dock lifts, blinds, the spa, or aircraft.", []); }} style={smallPrimaryButtonStyle}>Clear</button>
+                </div>
+              </div>
+
+              <div style={inlineCardStyle}>
+                <div style={goldEyebrowStyle}>Quick Questions</div>
+                <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                  {quickQuestions.map((question) => <button key={question} type="button" onClick={() => { setAssistantQuestion(question); askAtlas(question); }} style={quickQuestionStyle}>{question}</button>)}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={assistantAnswerStyle}>{assistantAnswer}</div>
+
+              <div style={inlineCardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+                  <div>
+                    <div style={goldEyebrowStyle}>Clickable Results</div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>Open the related Atlas record directly from the answer.</div>
+                  </div>
+                  {assistantResults.length ? <span style={openPillStyle}>{assistantResults.length} results</span> : null}
+                </div>
+
+                {assistantResults.length ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {assistantResults.map((result) => (
+                      <button key={result.id} type="button" onClick={() => openSearchResult(result)} style={searchResultStyle}>
+                        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div>
+                            <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase" }}>{result.type}</div>
+                            <div style={{ color: colors.navy, fontWeight: 950, fontSize: 16, marginTop: 4 }}>{result.title}</div>
+                            <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{result.subtitle}</div>
+                          </div>
+                          <span style={smallPrimaryButtonStyle}>Open</span>
+                        </div>
+                        <div style={{ color: colors.text, fontSize: 13, lineHeight: 1.45, marginTop: 8 }}>{result.detail}</div>
+                      </button>
+                    ))}
+                  </div>
+                ) : <div style={emptyStateStyle}>Ask a question to get clickable Atlas results.</div>}
+              </div>
             </div>
           </div>
-          <div style={assistantAnswerStyle}>{assistantAnswer}</div>
         </div>
       </SectionShell>
     );
