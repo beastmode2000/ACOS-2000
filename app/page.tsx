@@ -1897,6 +1897,99 @@ export default function AtlasPage() {
     void postAtlasRecord("calendar", completedItem);
   }
 
+  function reopenCalendarItem(itemId: string) {
+    const nextItem = calendarItems.find((item) => item.id === itemId);
+    if (!nextItem) return;
+
+    const reopenedItem: CalendarItem = { ...nextItem, status: "Scheduled" };
+    setCalendarItems((current) => sortCalendar(current.map((item) => (item.id === itemId ? reopenedItem : item))));
+    setCalendarForm(reopenedItem);
+    setSelectedCalendarId(reopenedItem.id);
+    setCalendarMode("edit");
+    void postAtlasRecord("calendar", reopenedItem);
+  }
+
+  function quickAddCalendarItem(title: string, area: string, daysFromToday = 0, status: ServiceStatus = "Scheduled") {
+    const date = new Date();
+    date.setDate(date.getDate() + daysFromToday);
+    const dateKey = dateKeyFromDate(date);
+
+    const item: CalendarItem = {
+      id: uid("cal-quick"),
+      date: dateKey,
+      title,
+      area,
+      status,
+    };
+
+    setCalendarItems((current) => sortCalendar([...current, item]));
+    setSelectedCalendarId(item.id);
+    setSelectedCalendarDate(item.date);
+    setCalendarCursor(dateFromKey(item.date));
+    setCalendarForm(item);
+    setCalendarMode("edit");
+    void postAtlasRecord("calendar", item);
+  }
+
+  function addWeeklyCalendarSeries(title: string, area: string, startDaysFromToday: number, weeks: number) {
+    const newItems: CalendarItem[] = Array.from({ length: weeks }, (_, index) => {
+      const date = new Date();
+      date.setDate(date.getDate() + startDaysFromToday + index * 7);
+
+      return {
+        id: uid(`cal-series-${index}`),
+        date: dateKeyFromDate(date),
+        title,
+        area,
+        status: "Scheduled" as ServiceStatus,
+      };
+    });
+
+    setCalendarItems((current) => sortCalendar([...current, ...newItems]));
+
+    const firstItem = newItems[0];
+    if (firstItem) {
+      setSelectedCalendarId(firstItem.id);
+      setSelectedCalendarDate(firstItem.date);
+      setCalendarCursor(dateFromKey(firstItem.date));
+      setCalendarForm(firstItem);
+      setCalendarMode("edit");
+    }
+
+    newItems.forEach((item) => void postAtlasRecord("calendar", item));
+  }
+
+  function createWorkOrderFromCalendarItem(item?: CalendarItem) {
+    const source = item ?? calendarForm;
+    if (!source.title.trim()) return;
+
+    const matchingAsset =
+      assetRecords.find((asset) => source.area.toLowerCase().includes(getLocationName(asset.locationId).toLowerCase())) ??
+      assetRecords.find((asset) => source.title.toLowerCase().includes(asset.name.toLowerCase())) ??
+      assetRecords[0];
+
+    const workOrder: ServiceRecord = normalizeService({
+      id: uid("service-cal"),
+      assetId: matchingAsset?.id ?? "",
+      vendorId: "",
+      procedureId: "",
+      date: source.date || todayKey,
+      title: source.title,
+      status: source.status === "Completed" ? "Completed" : "Open",
+      notes: `Created from calendar item for ${source.area || "General"}.`,
+      followUpDate: "",
+      photos: [],
+      documents: [],
+    });
+
+    setServiceRecords((current) => sortServices([workOrder, ...current]));
+    setSelectedServiceId(workOrder.id);
+    setServiceForm(workOrder);
+    setServiceMode("edit");
+    setScreen("history");
+    void postAtlasRecord("work_orders", workOrder);
+  }
+
   function deleteAssetPhoto(photoId: string) {
     setPhotos((current) => current.filter((item) => item.id !== photoId));
     void deleteAtlasRecord("asset_photos", photoId);
@@ -2703,108 +2796,222 @@ export default function AtlasPage() {
     const monthDays = getCalendarMonthDays(calendarCursor);
     const selectedDateItems = sortCalendar(calendarItems.filter((item) => item.date === selectedCalendarDate));
     const selectedDateLabel = formatDate(selectedCalendarDate);
+    const today = dateFromKey(todayKey);
+    const nextSevenDays = new Date(today);
+    nextSevenDays.setDate(today.getDate() + 7);
+    const nextThirtyDays = new Date(today);
+    nextThirtyDays.setDate(today.getDate() + 30);
+
+    const activeCalendarItems = sortCalendar(calendarItems.filter((item) => item.status !== "Completed"));
+    const thisWeekItems = activeCalendarItems.filter((item) => {
+      const date = dateFromKey(item.date);
+      return date >= today && date <= nextSevenDays;
+    });
+    const upcomingItems = activeCalendarItems.filter((item) => {
+      const date = dateFromKey(item.date);
+      return date > nextSevenDays && date <= nextThirtyDays;
+    });
+    const completedThisMonth = calendarItems.filter((item) => item.status === "Completed" && dateFromKey(item.date).getMonth() === calendarCursor.getMonth() && dateFromKey(item.date).getFullYear() === calendarCursor.getFullYear()).length;
+    const selectedDayOpenCount = selectedDateItems.filter((item) => item.status !== "Completed").length;
+
+    const calendarQuickAdds = [
+      { title: "Pool / spa check", area: "Pool Equipment Room", offset: 0 },
+      { title: "Irrigation walk", area: "Irrigation", offset: 1 },
+      { title: "Grounds cleanup", area: "Grounds", offset: 0 },
+      { title: "Vendor visit", area: "General", offset: 0 },
+      { title: "Dock / lift check", area: "Dock", offset: 2 },
+    ];
+
+    const routineSeries = [
+      { label: "Trash Mondays", title: "Trash / recycle / yard waste reset", area: "General", offset: 1 },
+      { label: "Weekly Weeding", title: "Peter Clark crew weekly weeding", area: "Grounds", offset: 1 },
+      { label: "Pool Weekly", title: "Weekly pool / spa check", area: "Pool Equipment Room", offset: 0 },
+      { label: "Irrigation Weekly", title: "Weekly irrigation walk", area: "Irrigation", offset: 1 },
+    ];
 
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr", gap: 18, alignItems: "start" }}>
-        <SectionShell eyebrow="Full Calendar" title={calendarCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })} right={<button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>Add Item</button>}>
-          <div style={{ display: "grid", gap: 14 }}>
-            <div style={calendarToolbarStyle}>
-              <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, -1))} style={calendarNavButtonStyle}>‹ Year</button>
-              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, -1))} style={calendarNavButtonStyle}>‹ Month</button>
-              <button type="button" onClick={() => { const now = new Date(); const key = dateKeyFromDate(now); setCalendarCursor(now); setSelectedCalendarDate(key); setCalendarMode("new"); setCalendarForm(blankCalendarItem(key)); setSelectedCalendarId(""); }} style={goldButtonStyle}>Today</button>
-              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, 1))} style={calendarNavButtonStyle}>Month ›</button>
-              <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, 1))} style={calendarNavButtonStyle}>Year ›</button>
-              <select value={calendarCursor.getMonth()} onChange={(event) => setCalendarCursor(new Date(calendarCursor.getFullYear(), Number(event.target.value), 1, 12))} style={{ ...inputStyle, padding: "9px 10px" }}>
-                {Array.from({ length: 12 }, (_, monthIndex) => <option key={monthIndex} value={monthIndex}>{new Date(2026, monthIndex, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}
-              </select>
-              <input type="number" value={calendarCursor.getFullYear()} onChange={(event) => { const year = Number(event.target.value); if (Number.isFinite(year) && year > 1900 && year < 2300) setCalendarCursor(new Date(year, calendarCursor.getMonth(), 1, 12)); }} style={{ ...inputStyle, padding: "9px 10px" }} />
-            </div>
+      <div style={{ display: "grid", gap: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+          <StatCard label="Today" value={calendarItems.filter((item) => item.date === todayKey).length} detail="items scheduled today" />
+          <StatCard label="This Week" value={thisWeekItems.length} detail="open / scheduled items" />
+          <StatCard label="Selected Day" value={selectedDayOpenCount} detail={`${selectedDateLabel} active items`} />
+          <StatCard label="Done This Month" value={completedThisMonth} detail="completed calendar items" />
+        </div>
 
-            <div style={calendarWeekHeaderStyle}>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} style={{ color: colors.muted, fontWeight: 950, fontSize: 12, textAlign: "center" }}>{day}</div>)}</div>
-
-            <div style={calendarMonthGridStyle}>
-              {monthDays.map((day) => {
-                const dayKey = dateKeyFromDate(day);
-                const isCurrentMonth = day.getMonth() === calendarCursor.getMonth();
-                const isSelected = dayKey === selectedCalendarDate;
-                const isToday = dayKey === todayKey;
-                const itemsForDay = sortCalendar(calendarItems.filter((item) => item.date === dayKey));
-
-                return (
-                  <div
-                    key={dayKey}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => selectCalendarDate(dayKey)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") selectCalendarDate(dayKey);
-                    }}
-                    style={{
-                      ...calendarDayCellStyle,
-                      opacity: isCurrentMonth ? 1 : 0.42,
-                      border: isSelected ? `2px solid ${colors.gold}` : isToday ? `2px solid ${colors.navy}` : `1px solid ${colors.line}`,
-                      background: isSelected ? "#FFF9EA" : isToday ? "#F3F7FF" : "#FBFCFE",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                      <div style={{ color: isToday ? colors.navy : colors.muted, fontWeight: 950 }}>{day.getDate()}</div>
-                      {itemsForDay.length ? <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950 }}>{itemsForDay.length}</div> : null}
-                    </div>
-
-                    <div style={{ display: "grid", gap: 5, marginTop: 8 }}>
-                      {itemsForDay.slice(0, 3).map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openCalendarItem(item);
-                          }}
-                          style={miniCalendarBadgeStyle(item.status)}
-                          title={`${item.title} — ${item.area}`}
-                        >
-                          {item.title}
-                        </button>
-                      ))}
-                      {itemsForDay.length > 3 ? <div style={{ color: colors.muted, fontSize: 11, fontWeight: 900 }}>+{itemsForDay.length - 3} more</div> : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </SectionShell>
-
-        <div style={{ display: "grid", gap: 18 }}>
-          <SectionShell eyebrow="Selected Day" title={selectedDateLabel} right={<button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>Add</button>}>
-            <div style={{ display: "grid", gap: 10 }}>
-              {selectedDateItems.length ? selectedDateItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => openCalendarItem(item)}
-                  style={{ ...smallRecordButtonStyle, border: selectedCalendarId === item.id && calendarMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`, background: selectedCalendarId === item.id && calendarMode === "edit" ? "#FFF9EA" : "#FBFCFE" }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                    <strong style={{ color: colors.navy }}>{item.title}</strong>
-                    <span style={badgeStyle(item.status)}>{item.status}</span>
-                  </div>
-                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{item.area}</div>
-                </button>
-              )) : <div style={emptyStateStyle}>No work scheduled for this day.</div>}
-            </div>
-          </SectionShell>
-
-          <SectionShell eyebrow={calendarMode === "new" ? "New Scheduled Work" : "Edit Scheduled Work"} title={calendarForm.title || "Calendar Details"} right={calendarMode === "edit" && calendarForm.id ? <button type="button" onClick={deleteCalendarItem} style={deleteButtonStyle}>Delete</button> : null}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.28fr 0.72fr", gap: 18, alignItems: "start" }}>
+          <SectionShell
+            eyebrow="Calendar"
+            title={calendarCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+            right={
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>Add Event</button>
+                <button type="button" onClick={() => createWorkOrderFromCalendarItem()} style={goldButtonStyle}>Make Work Order</button>
+              </div>
+            }
+          >
             <div style={{ display: "grid", gap: 14 }}>
-              <label style={labelStyle}>Work Title<input value={calendarForm.title} onChange={(event) => setCalendarForm((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Backwash pool filter" style={inputStyle} /></label>
-              <label style={labelStyle}>Date<input type="date" value={calendarForm.date} onChange={(event) => { const nextDate = event.target.value; setCalendarForm((current) => ({ ...current, date: nextDate })); setSelectedCalendarDate(nextDate); setCalendarCursor(dateFromKey(nextDate)); }} style={inputStyle} /></label>
-              <label style={labelStyle}>Status<select value={calendarForm.status} onChange={(event) => setCalendarForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="Completed">Completed</option><option value="Monitor">Monitor</option></select></label>
-              <label style={labelStyle}>Area / Location<input value={calendarForm.area} onChange={(event) => setCalendarForm((current) => ({ ...current, area: event.target.value }))} placeholder="Example: Pool Equipment Room" style={inputStyle} /></label>
-              <button type="button" onClick={saveCalendarItem} style={widePrimaryButtonStyle}>Save Calendar Item to Neon</button>
-              {calendarMode === "edit" && calendarForm.id && calendarForm.status !== "Completed" ? <button type="button" onClick={() => markCalendarCompleted(calendarForm.id)} style={goldButtonStyle}>Mark Completed</button> : null}
+              <div style={{ ...calendarToolbarStyle, gridTemplateColumns: "repeat(7, auto)" }}>
+                <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, -1))} style={calendarNavButtonStyle}>‹ Year</button>
+                <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, -1))} style={calendarNavButtonStyle}>‹ Month</button>
+                <button type="button" onClick={() => { const now = new Date(); const key = dateKeyFromDate(now); setCalendarCursor(now); setSelectedCalendarDate(key); setCalendarMode("new"); setCalendarForm(blankCalendarItem(key)); setSelectedCalendarId(""); }} style={goldButtonStyle}>Today</button>
+                <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, 1))} style={calendarNavButtonStyle}>Month ›</button>
+                <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, 1))} style={calendarNavButtonStyle}>Year ›</button>
+                <select value={calendarCursor.getMonth()} onChange={(event) => setCalendarCursor(new Date(calendarCursor.getFullYear(), Number(event.target.value), 1, 12))} style={{ ...inputStyle, padding: "9px 10px" }}>
+                  {Array.from({ length: 12 }, (_, monthIndex) => <option key={monthIndex} value={monthIndex}>{new Date(2026, monthIndex, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}
+                </select>
+                <input type="number" value={calendarCursor.getFullYear()} onChange={(event) => { const year = Number(event.target.value); if (Number.isFinite(year) && year > 1900 && year < 2300) setCalendarCursor(new Date(year, calendarCursor.getMonth(), 1, 12)); }} style={{ ...inputStyle, padding: "9px 10px", width: 110 }} />
+              </div>
+
+              <div style={{ ...inlineCardStyle, display: "grid", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={goldEyebrowStyle}>Fast Scheduling</div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>Add common 2000 routines without opening a separate form.</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {calendarQuickAdds.map((item) => (
+                      <button key={item.title} type="button" onClick={() => quickAddCalendarItem(item.title, item.area, item.offset)} style={smallPrimaryButtonStyle}>{item.title}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {routineSeries.map((routine) => (
+                    <button key={routine.label} type="button" onClick={() => addWeeklyCalendarSeries(routine.title, routine.area, routine.offset, 8)} style={goldButtonStyle}>Add 8 Weeks: {routine.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={calendarWeekHeaderStyle}>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} style={{ color: colors.muted, fontWeight: 950, fontSize: 12, textAlign: "center" }}>{day}</div>)}</div>
+
+              <div style={calendarMonthGridStyle}>
+                {monthDays.map((day) => {
+                  const dayKey = dateKeyFromDate(day);
+                  const isCurrentMonth = day.getMonth() === calendarCursor.getMonth();
+                  const isSelected = dayKey === selectedCalendarDate;
+                  const isToday = dayKey === todayKey;
+                  const itemsForDay = sortCalendar(calendarItems.filter((item) => item.date === dayKey));
+                  const hasOpenItems = itemsForDay.some((item) => item.status === "Open" || item.status === "Monitor");
+
+                  return (
+                    <div
+                      key={dayKey}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => selectCalendarDate(dayKey)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") selectCalendarDate(dayKey);
+                      }}
+                      style={{
+                        ...calendarDayCellStyle,
+                        minHeight: 148,
+                        opacity: isCurrentMonth ? 1 : 0.42,
+                        border: isSelected ? `2px solid ${colors.gold}` : hasOpenItems ? `2px solid ${colors.red}` : isToday ? `2px solid ${colors.navy}` : `1px solid ${colors.line}`,
+                        background: isSelected ? "#FFF9EA" : isToday ? "#F3F7FF" : "#FBFCFE",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ color: isToday ? colors.navy : colors.muted, fontWeight: 950 }}>{day.getDate()}</div>
+                        {itemsForDay.length ? <div style={{ color: hasOpenItems ? colors.red : colors.gold, fontSize: 12, fontWeight: 950 }}>{itemsForDay.length}</div> : null}
+                      </div>
+
+                      <div style={{ display: "grid", gap: 5, marginTop: 8 }}>
+                        {itemsForDay.slice(0, 4).map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openCalendarItem(item);
+                            }}
+                            style={miniCalendarBadgeStyle(item.status)}
+                            title={`${item.title} — ${item.area}`}
+                          >
+                            {item.title}
+                          </button>
+                        ))}
+                        {itemsForDay.length > 4 ? <div style={{ color: colors.muted, fontSize: 11, fontWeight: 900 }}>+{itemsForDay.length - 4} more</div> : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </SectionShell>
+
+          <div style={{ display: "grid", gap: 18 }}>
+            <SectionShell eyebrow="This Week" title="Upcoming Work">
+              <div style={{ display: "grid", gap: 10 }}>
+                {thisWeekItems.length ? thisWeekItems.slice(0, 8).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => openCalendarItem(item)}
+                    style={{ ...smallRecordButtonStyle, border: selectedCalendarId === item.id && calendarMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`, background: selectedCalendarId === item.id && calendarMode === "edit" ? "#FFF9EA" : "#FBFCFE" }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                      <strong style={{ color: colors.navy }}>{item.title}</strong>
+                      <span style={badgeStyle(item.status)}>{item.status}</span>
+                    </div>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{formatDate(item.date)} · {item.area}</div>
+                  </button>
+                )) : <div style={emptyStateStyle}>No open work in the next 7 days.</div>}
+              </div>
+            </SectionShell>
+
+            <SectionShell eyebrow="Selected Day" title={selectedDateLabel} right={<button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={primaryButtonStyle}>Add</button>}>
+              <div style={{ display: "grid", gap: 10 }}>
+                {selectedDateItems.length ? selectedDateItems.map((item) => (
+                  <div key={item.id} style={{ ...inlineCardStyle, display: "grid", gap: 10, border: selectedCalendarId === item.id && calendarMode === "edit" ? `2px solid ${colors.gold}` : `1px solid ${colors.line}` }}>
+                    <button
+                      type="button"
+                      onClick={() => openCalendarItem(item)}
+                      style={{ all: "unset", cursor: "pointer", display: "grid", gap: 6 }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                        <strong style={{ color: colors.navy }}>{item.title}</strong>
+                        <span style={badgeStyle(item.status)}>{item.status}</span>
+                      </div>
+                      <div style={{ color: colors.muted, fontSize: 13 }}>{item.area}</div>
+                    </button>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {item.status !== "Completed" ? <button type="button" onClick={() => markCalendarCompleted(item.id)} style={goldButtonStyle}>Done</button> : <button type="button" onClick={() => reopenCalendarItem(item.id)} style={smallPrimaryButtonStyle}>Reopen</button>}
+                      <button type="button" onClick={() => createWorkOrderFromCalendarItem(item)} style={smallPrimaryButtonStyle}>Make Work Order</button>
+                    </div>
+                  </div>
+                )) : <div style={emptyStateStyle}>No work scheduled for this day. Click Add Event or use Fast Scheduling.</div>}
+              </div>
+            </SectionShell>
+
+            <SectionShell eyebrow="Details" title={calendarForm.title || "Calendar Item"} right={calendarMode === "edit" && calendarForm.id ? <button type="button" onClick={deleteCalendarItem} style={deleteButtonStyle}>Delete</button> : null}>
+              <div style={{ display: "grid", gap: 14 }}>
+                <label style={labelStyle}>Work Title<input value={calendarForm.title} onChange={(event) => setCalendarForm((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Backwash pool filter" style={inputStyle} /></label>
+                <label style={labelStyle}>Date<input type="date" value={calendarForm.date} onChange={(event) => { const nextDate = event.target.value; setCalendarForm((current) => ({ ...current, date: nextDate })); setSelectedCalendarDate(nextDate); setCalendarCursor(dateFromKey(nextDate)); }} style={inputStyle} /></label>
+                <label style={labelStyle}>Status<select value={calendarForm.status} onChange={(event) => setCalendarForm((current) => ({ ...current, status: event.target.value as ServiceStatus }))} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="Completed">Completed</option><option value="Monitor">Monitor</option></select></label>
+                <label style={labelStyle}>Area / Location<input value={calendarForm.area} onChange={(event) => setCalendarForm((current) => ({ ...current, area: event.target.value }))} placeholder="Example: Pool Equipment Room" style={inputStyle} /></label>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <button type="button" onClick={saveCalendarItem} style={widePrimaryButtonStyle}>Save</button>
+                  <button type="button" onClick={() => createWorkOrderFromCalendarItem()} style={goldButtonStyle}>Create Work Order</button>
+                </div>
+
+                {calendarMode === "edit" && calendarForm.id && calendarForm.status !== "Completed" ? <button type="button" onClick={() => markCalendarCompleted(calendarForm.id)} style={goldButtonStyle}>Mark Completed</button> : null}
+                {calendarMode === "edit" && calendarForm.id && calendarForm.status === "Completed" ? <button type="button" onClick={() => reopenCalendarItem(calendarForm.id)} style={smallPrimaryButtonStyle}>Reopen</button> : null}
+              </div>
+            </SectionShell>
+
+            <SectionShell eyebrow="Next 30 Days" title="Later Upcoming">
+              <div style={{ display: "grid", gap: 8 }}>
+                {upcomingItems.length ? upcomingItems.slice(0, 8).map((item) => (
+                  <button key={item.id} type="button" onClick={() => openCalendarItem(item)} style={smallRecordButtonStyle}>
+                    <strong style={{ color: colors.navy }}>{item.title}</strong>
+                    <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>{formatDate(item.date)} · {item.area}</div>
+                  </button>
+                )) : <div style={emptyStateStyle}>No later work scheduled in the next 30 days.</div>}
+              </div>
+            </SectionShell>
+          </div>
         </div>
       </div>
     );
