@@ -65,6 +65,7 @@ const LOCATION_ID_BY_NAME: Record<string, string> = {
   "old garage": "old-garage",
   roof: "roof-gutters",
   hangar: "hangar",
+  dock: "dock",
   "gulfstream g600 n23pa": "gulfstream-g600-n23pa",
   "gulfstream g280 n280cc": "gulfstream-g280-n280cc",
   "gulfstream g280 n755pa": "gulfstream-g280-n755pa",
@@ -118,6 +119,15 @@ async function queryRows<T extends AnyRow = AnyRow>(query: string, params: any[]
 function text(value: unknown, fallback = "") {
   if (value === null || value === undefined) return fallback;
   return String(value);
+}
+
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    const clean = text(value).trim();
+    if (clean) return clean;
+  }
+
+  return "";
 }
 
 function arr<T = unknown>(value: unknown): T[] {
@@ -179,14 +189,32 @@ function quoteIdentifier(value: string) {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
+function normalizeLocationKey(value: unknown) {
+  return text(value).trim().toLowerCase();
+}
+
 function locationIdFromRecord(row: AnyRow) {
-  const savedFrontendId = text(row.locationId);
+  const savedFrontendId = text(row.locationId || row.location_id_frontend).trim();
   if (savedFrontendId && LOCATION_NAME_BY_ID[savedFrontendId]) return savedFrontendId;
 
-  const locationName = text(row.location_name).trim().toLowerCase();
-  if (locationName && LOCATION_ID_BY_NAME[locationName]) return LOCATION_ID_BY_NAME[locationName];
+  const directLocationId = text(row.location_id).trim();
+  if (directLocationId && LOCATION_NAME_BY_ID[directLocationId]) return directLocationId;
+
+  const locationName =
+    normalizeLocationKey(row.location_name) ||
+    normalizeLocationKey(row.locationName) ||
+    normalizeLocationKey(row.location);
+
+  if (locationName && LOCATION_ID_BY_NAME[locationName]) {
+    return LOCATION_ID_BY_NAME[locationName];
+  }
 
   return "general";
+}
+
+function locationNameFromFrontendId(frontendLocationId: unknown) {
+  const id = text(frontendLocationId, "general").trim();
+  return LOCATION_NAME_BY_ID[id] || "General";
 }
 
 async function tableExists(table: string) {
@@ -269,8 +297,7 @@ async function getTargetUserId() {
 async function getOrCreateLocationId(userId: string, frontendLocationId: unknown) {
   if (!(await tableExists("locations"))) return null;
 
-  const frontendId = text(frontendLocationId, "general");
-  const locationName = LOCATION_NAME_BY_ID[frontendId] || "General";
+  const locationName = locationNameFromFrontendId(frontendLocationId);
   const columns = await getColumns("locations");
 
   if (columns.has("userId")) {
@@ -366,10 +393,10 @@ async function queryWorkOrders(userId: string) {
     hasDate && hasTitle
       ? `ORDER BY date DESC NULLS LAST, lower(title::text)`
       : hasDate
-      ? `ORDER BY date DESC NULLS LAST`
-      : hasTitle
-      ? `ORDER BY lower(title::text)`
-      : `ORDER BY id`;
+        ? `ORDER BY date DESC NULLS LAST`
+        : hasTitle
+          ? `ORDER BY lower(title::text)`
+          : `ORDER BY id`;
 
   if (hasUserId) {
     return queryRows(
@@ -398,14 +425,49 @@ async function queryAssets(userId: string) {
 
   const columns = await getColumns(actualTable);
   const hasUserId = columns.has("userId");
+  const hasName = columns.has("name");
+  const hasLocationId = columns.has("location_id");
+
+  let canJoinLocations = false;
+
+  if (hasLocationId && (await tableExists("locations"))) {
+    const locationColumns = await getColumns("locations");
+    canJoinLocations = locationColumns.has("id") && locationColumns.has("name");
+  }
+
+  const orderBy = hasName ? `ORDER BY lower(a.name::text)` : `ORDER BY a.id`;
+
+  if (canJoinLocations) {
+    if (hasUserId) {
+      return queryRows(
+        `
+          SELECT a.*, l.name AS location_name
+          FROM ${quoteIdentifier(actualTable)} a
+          LEFT JOIN locations l ON a.location_id = l.id
+          WHERE a."userId" = $1 OR a."userId" IS NULL
+          ${orderBy}
+        `,
+        [userId]
+      );
+    }
+
+    return queryRows(
+      `
+        SELECT a.*, l.name AS location_name
+        FROM ${quoteIdentifier(actualTable)} a
+        LEFT JOIN locations l ON a.location_id = l.id
+        ${orderBy}
+      `
+    );
+  }
 
   if (hasUserId) {
     return queryRows(
       `
         SELECT *
         FROM ${quoteIdentifier(actualTable)}
-        WHERE "userId" = $1
-        ORDER BY lower(name::text)
+        WHERE "userId" = $1 OR "userId" IS NULL
+        ${hasName ? "ORDER BY lower(name::text)" : "ORDER BY id"}
       `,
       [userId]
     );
@@ -415,7 +477,7 @@ async function queryAssets(userId: string) {
     `
       SELECT *
       FROM ${quoteIdentifier(actualTable)}
-      ORDER BY lower(name::text)
+      ${hasName ? "ORDER BY lower(name::text)" : "ORDER BY id"}
     `
   );
 }
@@ -441,10 +503,17 @@ function mapAsset(row: AnyRow) {
     locationId: locationIdFromRecord(row),
     category: text(row.category, "General"),
     status: assetStatus(row.status),
-    make: text(row.make),
+
+    // Atlas screen uses "Make"; Neon table uses "manufacturer".
+    make: firstText(row.make, row.manufacturer),
+
+    // Atlas and Neon both use model.
     model: text(row.model),
-    serial: text(row.serial),
-    notes: text(row.notes, "No notes added yet."),
+
+    // Atlas screen uses "Serial"; Neon table uses "serial_number".
+    serial: firstText(row.serial, row.serial_number),
+
+    notes: firstText(row.notes, row.description) || "No notes added yet.",
     vendorIds: arr<string>(row.vendorIds || row.vendor_ids || row.vendorids),
     documents: arr(row.documents),
   };
@@ -525,17 +594,36 @@ async function buildPayload(table: AtlasTable, record: AnyRow, userId: string) {
   }
 
   if (table === "assets") {
-    const locationDbId = await getOrCreateLocationId(userId, record.locationId);
+    const frontendLocationId = text(record.locationId, "general");
+    const locationName = locationNameFromFrontendId(frontendLocationId);
+    const locationDbId = await getOrCreateLocationId(userId, frontendLocationId);
+    const makeValue = firstText(record.make, record.manufacturer);
+    const serialValue = firstText(record.serial, record.serial_number);
 
     set("name", text(record.name, "Unnamed Asset"));
+
+    // Location support for both possible database patterns.
     set("location_id", locationDbId);
-    set("locationId", text(record.locationId, "general"));
+    set("locationId", frontendLocationId);
+    set("location", locationName);
+    set("location_name", locationName);
+
     set("category", text(record.category, "General"));
     set("status", assetStatus(record.status));
-    set("make", text(record.make));
+
+    // Save Make into both old frontend-style and real Neon-style columns when they exist.
+    set("make", makeValue);
+    set("manufacturer", makeValue);
+
     set("model", text(record.model));
-    set("serial", text(record.serial));
+
+    // Save Serial into both old frontend-style and real Neon-style columns when they exist.
+    set("serial", serialValue);
+    set("serial_number", serialValue);
+
     set("notes", text(record.notes, "No notes added yet."));
+    set("description", text(record.notes, "No notes added yet."));
+
     set("vendor_ids", JSON.stringify(arr(record.vendorIds)));
     set("vendorIds", JSON.stringify(arr(record.vendorIds)));
     set("documents", JSON.stringify(arr(record.documents)));
