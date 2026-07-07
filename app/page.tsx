@@ -759,6 +759,7 @@ function StatCard({ label, value, detail, onClick }: { label: string; value: str
     boxShadow: "0 12px 30px rgba(11, 30, 51, 0.06)",
     textAlign: "left",
     width: "100%",
+    minWidth: 0,
   };
 
   if (!onClick) return <div style={style}>{content}</div>;
@@ -773,7 +774,7 @@ function StatCard({ label, value, detail, onClick }: { label: string; value: str
 function SectionShell({ title, eyebrow, children, right }: { title: string; eyebrow?: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <section style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 24, padding: 22, boxShadow: "0 14px 35px rgba(11, 30, 51, 0.06)" }}>
-      <div style={{ display: "flex", gap: 14, justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+      <div style={{ display: "flex", gap: 14, justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, flexWrap: "wrap" }}>
         <div>
           {eyebrow ? <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.1, textTransform: "uppercase", marginBottom: 6 }}>{eyebrow}</div> : null}
           <h2 style={{ margin: 0, color: colors.navy, fontSize: 23, lineHeight: 1.15 }}>{title}</h2>
@@ -792,6 +793,14 @@ export default function AtlasPage() {
 
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const updateMobileLayout = () => setIsMobile(window.innerWidth < 820);
+    updateMobileLayout();
+    window.addEventListener("resize", updateMobileLayout);
+    return () => window.removeEventListener("resize", updateMobileLayout);
+  }, []);
 
   const [assetRecords, setAssetRecords] = useState<AssetRecord[]>(assetSeed);
   const [selectedAssetId, setSelectedAssetId] = useState(assetSeed[0]?.id ?? "");
@@ -2665,7 +2674,7 @@ export default function AtlasPage() {
     return (
       <SectionShell eyebrow="Global Search" title={`Results for "${query.trim()}"`} right={<button type="button" onClick={() => setQuery("")} style={primaryButtonStyle}>Clear Search</button>}>
         {searchResults.length ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 12 }}>
             {searchResults.map((result) => (
               <button key={result.id} type="button" onClick={() => openSearchResult(result)} style={searchResultStyle}>
                 <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -2766,7 +2775,7 @@ export default function AtlasPage() {
           title="Create or Open Atlas Records"
           right={<button type="button" onClick={() => startDashboardCreate("work-order")} style={primaryButtonStyle}>Create Work Order</button>}
         >
-          <div style={{ display: "grid", gridTemplateColumns: "1.05fr 1.95fr", gap: 16, alignItems: "stretch" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.05fr 1.95fr", gap: isMobile ? 12 : 16, alignItems: "stretch" }}>
             <div style={{ ...heroCardStyle, minHeight: 180 }}>
               <div style={heroOrbStyle} />
               <div style={{ position: "relative", zIndex: 2 }}>
@@ -2778,7 +2787,7 @@ export default function AtlasPage() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: isMobile ? 8 : 10 }}>
               <button type="button" onClick={() => startDashboardCreate("work-order")} style={dashboardActionButtonStyle}><strong>Work Order</strong><span>Create task / issue</span></button>
               <button type="button" onClick={() => startDashboardCreate("asset")} style={dashboardActionButtonStyle}><strong>Asset</strong><span>Add equipment</span></button>
               <button type="button" onClick={() => startDashboardCreate("vendor")} style={dashboardActionButtonStyle}><strong>Vendor</strong><span>Add contact/company</span></button>
@@ -2791,7 +2800,7 @@ export default function AtlasPage() {
           </div>
         </SectionShell>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(7, minmax(0, 1fr))", gap: isMobile ? 10 : 16 }}>
           <StatCard label="Assets" value={assetRecords.length} detail="Open asset directory" onClick={() => setScreen("assets")} />
           <StatCard label="Vendors" value={vendorRecords.length} detail="Open vendor directory" onClick={() => setScreen("vendors")} />
           <StatCard label="Work Orders" value={serviceRecords.length} detail="Open work board" onClick={() => openDashboardWorkOrders(false)} />
@@ -2801,13 +2810,13 @@ export default function AtlasPage() {
           <StatCard label="Open / Monitor" value={openWorkOrderCount + monitorAssetCount} detail="Needs attention" onClick={openDashboardMonitor} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.8fr", gap: 18, alignItems: "start" }}>
           <SectionShell
             eyebrow="Database Connected"
             title="Atlas Estate Systems / 2000"
             right={<button type="button" onClick={syncCurrentToDatabase} style={primaryButtonStyle}>Sync to Neon</button>}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
               <div style={inlineCardStyle}>
                 <div style={goldEyebrowStyle}>Database</div>
                 <div style={{ color: colors.navy, fontWeight: 950, fontSize: 18, marginTop: 6 }}>{databaseStatus}</div>
@@ -2845,7 +2854,7 @@ export default function AtlasPage() {
         <SectionShell eyebrow="Recently Updated" title="Latest Work Orders">
           <div style={{ display: "grid", gap: 10 }}>
             {sortServices(serviceRecords).slice(0, 7).map((record) => (
-              <button key={record.id} type="button" onClick={() => { openServiceRecord(record); setScreen("history"); }} style={{ ...serviceRowStyle, cursor: "pointer", textAlign: "left", width: "100%" }}>
+              <button key={record.id} type="button" onClick={() => { openServiceRecord(record); setScreen("history"); }} style={{ ...serviceRowStyle, ...(isMobile ? { gridTemplateColumns: "1fr", gap: 8 } : {}), cursor: "pointer", textAlign: "left", width: "100%" }}>
                 <div style={{ color: colors.muted, fontWeight: 850 }}>{formatDate(record.date)}</div>
                 <div>
                   <div style={{ color: colors.navy, fontWeight: 900 }}>{record.title}</div>
@@ -2985,7 +2994,7 @@ export default function AtlasPage() {
   function renderLocations() {
     return (
       <SectionShell eyebrow="Locations" title="2000 Location Baseline">
-        <div style={threeColumnGridStyle}>
+        <div style={isMobile ? { ...threeColumnGridStyle, gridTemplateColumns: "1fr" } : threeColumnGridStyle}>
           {filteredLocations.map((location) => (
             <div key={location.id} style={recordCardStyle}>
               <div style={goldEyebrowStyle}>{location.zone}</div>
@@ -3047,7 +3056,7 @@ export default function AtlasPage() {
 
             <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
               <div><div style={goldEyebrowStyle}>Assigned Vendors</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>Check every vendor connected to this asset.</div></div>
-              <div style={vendorCheckGridStyle}>
+              <div style={isMobile ? { ...vendorCheckGridStyle, gridTemplateColumns: "1fr" } : vendorCheckGridStyle}>
                 {sortVendors(vendorRecords).map((vendor) => (
                   <label key={vendor.id} style={vendorCheckStyle}>
                     <input type="checkbox" checked={(assetForm.vendorIds ?? []).includes(vendor.id)} onChange={() => toggleAssetVendor(vendor.id)} />
@@ -3078,7 +3087,7 @@ export default function AtlasPage() {
                 <>
                   <label style={uploadBoxStyle}>Add photos for {assetForm.name}<span style={{ color: colors.muted, fontSize: 13, fontWeight: 600 }}>Asset photos now save through Neon.</span><input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ color: colors.muted }} /></label>
                   {selectedAssetPhotos.length ? (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                       {selectedAssetPhotos.map((photo) => (
                         <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 16, overflow: "hidden", background: "#FBFCFE" }}>
                           <img src={photo.dataUrl} alt={photo.name} style={{ width: "100%", height: 130, objectFit: "cover" }} />
@@ -3172,7 +3181,7 @@ export default function AtlasPage() {
     }
 
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "390px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "390px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
         <section style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 22, boxShadow: "0 14px 35px rgba(11, 30, 51, 0.06)", overflow: "hidden", minHeight: boardHeight }}>
           <div style={{ padding: "16px 16px 12px", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
             <div>
@@ -3538,14 +3547,14 @@ export default function AtlasPage() {
 
     return (
       <div style={{ display: "grid", gap: 18 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 12 }}>
           <StatCard label="Today" value={calendarItems.filter((item) => item.date === todayKey).length} detail="items scheduled today" />
           <StatCard label="This Week" value={thisWeekItems.length} detail="open / scheduled items" />
           <StatCard label="Selected Day" value={selectedDayOpenCount} detail={`${selectedDateLabel} active items`} />
           <StatCard label="Done This Month" value={completedThisMonth} detail="completed calendar items" />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.28fr 0.72fr", gap: 18, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.28fr 0.72fr", gap: 18, alignItems: "start" }}>
           <SectionShell
             eyebrow="Calendar"
             title={calendarCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
@@ -3557,7 +3566,7 @@ export default function AtlasPage() {
             }
           >
             <div style={{ display: "grid", gap: 14 }}>
-              <div style={{ ...calendarToolbarStyle, gridTemplateColumns: "repeat(7, auto)" }}>
+              <div style={{ ...calendarToolbarStyle, gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(7, auto)" }}>
                 <button type="button" onClick={() => setCalendarCursor((current) => addYearsToDate(current, -1))} style={calendarNavButtonStyle}>‹ Year</button>
                 <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, -1))} style={calendarNavButtonStyle}>‹ Month</button>
                 <button type="button" onClick={() => { const now = new Date(); const key = dateKeyFromDate(now); setCalendarCursor(now); setSelectedCalendarDate(key); setCalendarMode("new"); setCalendarForm(blankCalendarItem(key)); setSelectedCalendarId(""); }} style={goldButtonStyle}>Today</button>
@@ -3589,9 +3598,9 @@ export default function AtlasPage() {
                 </div>
               </div>
 
-              <div style={calendarWeekHeaderStyle}>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} style={{ color: colors.muted, fontWeight: 950, fontSize: 12, textAlign: "center" }}>{day}</div>)}</div>
+              <div style={isMobile ? { ...calendarWeekHeaderStyle, gap: 3 } : calendarWeekHeaderStyle}>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} style={{ color: colors.muted, fontWeight: 950, fontSize: 12, textAlign: "center" }}>{day}</div>)}</div>
 
-              <div style={calendarMonthGridStyle}>
+              <div style={isMobile ? { ...calendarMonthGridStyle, gap: 3 } : calendarMonthGridStyle}>
                 {monthDays.map((day) => {
                   const dayKey = dateKeyFromDate(day);
                   const isCurrentMonth = day.getMonth() === calendarCursor.getMonth();
@@ -4023,7 +4032,7 @@ export default function AtlasPage() {
 
     return (
       <div style={{ display: "grid", gap: 18 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 12 }}>
           <StatCard label="Inventory Items" value={partRecords.length} detail="parts and supplies tracked" />
           <StatCard label="Low / Order" value={lowCount} detail="items needing attention" />
           <StatCard label="Out" value={outCount} detail="zero quantity items" />
@@ -4091,7 +4100,7 @@ export default function AtlasPage() {
 
               <label style={labelStyle}>Notes<textarea value={partForm.notes} onChange={(event) => setPartForm((current) => ({ ...current, notes: event.target.value }))} rows={5} placeholder="Where it is stored, what it fits, reorder notes, size, install notes, and vendor instructions." style={{ ...inputStyle, resize: "vertical" }} /></label>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, auto))", gap: 8, justifyContent: "start", alignItems: "center" }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(5, minmax(0, auto))", gap: 8, justifyContent: "start", alignItems: "center" }}>
                 <button type="button" onClick={() => adjustPartQuantity(-1)} style={smallPrimaryButtonStyle}>-1</button>
                 <button type="button" onClick={() => adjustPartQuantity(1)} style={smallPrimaryButtonStyle}>+1</button>
                 <button type="button" onClick={savePart} style={widePrimaryButtonStyle}>Save Part</button>
@@ -4103,7 +4112,7 @@ export default function AtlasPage() {
                 <a href={partForm.reorderUrl.startsWith("http") ? partForm.reorderUrl : `https://${partForm.reorderUrl}`} target="_blank" rel="noreferrer" style={linkButtonStyle}>Open Reorder Link</a>
               ) : null}
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 <div style={inlineCardStyle}><div style={goldEyebrowStyle}>Linked Asset</div><div style={{ color: colors.navy, fontWeight: 950, marginTop: 6 }}>{assetName(partForm.assetId || "")}</div>{partForm.assetId ? <button type="button" onClick={() => { setSelectedAssetId(partForm.assetId || ""); setAssetMode("edit"); setScreen("assets"); }} style={{ ...smallPrimaryButtonStyle, marginTop: 10 }}>Open Asset</button> : null}</div>
                 <div style={inlineCardStyle}><div style={goldEyebrowStyle}>Vendor</div><div style={{ color: colors.navy, fontWeight: 950, marginTop: 6 }}>{vendorName(partForm.vendorId)}</div>{partForm.vendorId ? <button type="button" onClick={() => { setSelectedVendorId(partForm.vendorId || ""); setVendorMode("edit"); setScreen("vendors"); }} style={{ ...smallPrimaryButtonStyle, marginTop: 10 }}>Open Vendor</button> : null}</div>
                 <div style={inlineCardStyle}><div style={goldEyebrowStyle}>Inventory Rule</div><div style={{ color: colors.navy, fontWeight: 950, marginTop: 6 }}>Keep at least {partForm.minQuantity} {partForm.unit}</div><div style={{ color: colors.muted, fontSize: 13, marginTop: 6 }}>Current status: {partForm.status}</div></div>
@@ -4148,7 +4157,7 @@ export default function AtlasPage() {
     return (
       <SectionShell eyebrow="Ask Atlas" title="Property Assistant" right={<img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 52, height: 52, objectFit: "contain" }} />}>
         <div style={{ display: "grid", gap: 18 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(7, minmax(0, 1fr))", gap: 10 }}>
             {assistantStats.map((stat) => (
               <div key={stat.label} style={{ border: `1px solid ${colors.line}`, background: "#FBFCFE", borderRadius: 16, padding: 12 }}>
                 <div style={{ color: colors.muted, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.6 }}>{stat.label}</div>
@@ -4157,7 +4166,7 @@ export default function AtlasPage() {
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "0.86fr 1.14fr", gap: 18, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "0.86fr 1.14fr", gap: 18, alignItems: "start" }}>
             <div style={{ display: "grid", gap: 14 }}>
               <div style={inlineCardStyle}>
                 <div style={goldEyebrowStyle}>Ask a Property Question</div>
@@ -4233,8 +4242,8 @@ export default function AtlasPage() {
   const activeNav = navItems.find((item) => item.id === screen);
 
   return (
-    <main style={appShellStyle}>
-      <aside style={sidebarStyle}>
+    <main style={isMobile ? { ...appShellStyle, gridTemplateColumns: "1fr" } : appShellStyle}>
+      <aside style={isMobile ? { ...sidebarStyle, position: "relative", height: "auto", maxHeight: "none", padding: 14 } : sidebarStyle}>
         <div style={sidebarBrandStyle}>
           <img src="/atlas-logo.png" alt="Atlas logo" style={sidebarLogoStyle} />
           <div>
@@ -4244,7 +4253,7 @@ export default function AtlasPage() {
           </div>
         </div>
 
-        <nav style={{ display: "grid", gap: 8 }}>
+        <nav style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "1fr", gap: isMobile ? 7 : 8 }}>
           {navItems.map((item) => {
             const active = item.id === screen;
             return (
@@ -4256,7 +4265,7 @@ export default function AtlasPage() {
           })}
         </nav>
 
-        <div style={sidebarStatusStyle}>
+        <div style={isMobile ? { ...sidebarStatusStyle, display: "none" } : sidebarStatusStyle}>
           <div style={{ color: colors.gold2, fontWeight: 950, fontSize: 12 }}>NEON DATABASE</div>
           <div style={{ fontWeight: 900, marginTop: 6 }}>{databaseStatus}</div>
           <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: 5, lineHeight: 1.4 }}>
@@ -4265,14 +4274,14 @@ export default function AtlasPage() {
         </div>
       </aside>
 
-      <section style={{ padding: 24, minWidth: 0 }}>
-        <header style={topHeaderStyle}>
+      <section style={{ padding: isMobile ? 12 : 24, minWidth: 0 }}>
+        <header style={isMobile ? { ...topHeaderStyle, gridTemplateColumns: "1fr", gap: 12, padding: 14, borderRadius: 18 } : topHeaderStyle}>
           <div style={{ display: "flex", gap: 14, alignItems: "center", minWidth: 0 }}>
             <img src="/atlas-logo.png" alt="Atlas logo" style={headerLogoStyle} />
             <div style={{ minWidth: 0 }}>
               <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.3, textTransform: "uppercase" }}>{activeNav?.label ?? "Dashboard"}</div>
-              <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: 31, letterSpacing: -0.9, lineHeight: 1.05 }}>Atlas Estate Systems</h1>
-              <div style={{ color: colors.muted, fontSize: 14, marginTop: 6 }}>Atlas / 2000 · Private estate operations software for work orders, assets, vendors, procedures, parts, documents, photos, and property history.</div>
+              <h1 style={{ margin: "4px 0 0", color: colors.navy, fontSize: isMobile ? 24 : 31, letterSpacing: -0.9, lineHeight: 1.05 }}>Atlas Estate Systems</h1>
+              <div style={{ color: colors.muted, fontSize: isMobile ? 12 : 14, marginTop: 6 }}>Atlas / 2000 · Private estate operations software for work orders, assets, vendors, procedures, parts, documents, photos, and property history.</div>
             </div>
           </div>
 
@@ -4285,7 +4294,7 @@ export default function AtlasPage() {
 
         {query ? (
           <div style={{ display: "grid", gap: 18, marginBottom: 18 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(8, minmax(0, 1fr))", gap: 12 }}>
               <SearchCount label="locations" value={filteredLocations.length} />
               <SearchCount label="assets" value={filteredAssets.length} />
               <SearchCount label="vendors" value={filteredVendors.length} />
@@ -4728,6 +4737,7 @@ const dashboardActionButtonStyle: React.CSSProperties = {
   display: "grid",
   gap: 5,
   alignContent: "start",
+  minWidth: 0,
 };
 
 const dashboardMiniButtonStyle: React.CSSProperties = {
@@ -4742,6 +4752,7 @@ const dashboardMiniButtonStyle: React.CSSProperties = {
   display: "grid",
   gap: 6,
   alignContent: "start",
+  minWidth: 0,
 };
 
 const assistantAnswerStyle: React.CSSProperties = {
@@ -4799,7 +4810,7 @@ const calendarMonthGridStyle: React.CSSProperties = {
 };
 
 const calendarDayCellStyle: React.CSSProperties = {
-  minHeight: 132,
+  minHeight: 92,
   borderRadius: 16,
   padding: 10,
   background: "#FBFCFE",
