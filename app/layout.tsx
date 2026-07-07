@@ -1,42 +1,46 @@
 import type { Metadata, Viewport } from "next";
-import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Atlas",
-  description: "Atlas property systems",
+  description: "Atlas Estate Systems for 2000.",
   applicationName: "Atlas",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Atlas",
+    statusBarStyle: "black-translucent",
+  },
   icons: {
-    icon: [
-      {
-        url: "/atlas-logo.png?v=5",
-        type: "image/png",
-        sizes: "512x512",
-      },
-    ],
-    shortcut: ["/atlas-logo.png?v=5"],
-    apple: [
-      {
-        url: "/atlas-logo.png?v=5",
-        type: "image/png",
-        sizes: "512x512",
-      },
-    ],
+    icon: "/atlas-logo.png",
+    shortcut: "/atlas-logo.png",
+    apple: "/atlas-logo.png",
   },
 };
 
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
   themeColor: "#0B1E33",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ("serviceWorker" in navigator && window.location.protocol === "https:") {
+                window.addEventListener("load", function () {
+                  navigator.serviceWorker.register("/sw.js").catch(function () {});
+                });
+              }
+            `,
+          }}
+        />
+      </body>
     </html>
   );
 }
