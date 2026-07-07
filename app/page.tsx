@@ -106,6 +106,15 @@ type DocumentRecord = {
   href?: string;
 };
 
+type PublicDocRecord = {
+  id: string;
+  name: string;
+  href: string;
+  type: string;
+  size: number;
+  updatedAt: string;
+};
+
 type PartRecord = {
   id: string;
   name: string;
@@ -783,6 +792,8 @@ export default function AtlasPage() {
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas a simple question like “pool documents,” “pool photos,” “irrigation vendor,” “open pool work orders,” or “Boiler B-2.” Results will show as clickable cards with View, Download, Delete, and Open Related Record when available.");
   const [assistantResults, setAssistantResults] = useState<SearchResult[]>([]);
+  const [publicDocs, setPublicDocs] = useState<PublicDocRecord[]>([]);
+  const [publicDocsStatus, setPublicDocsStatus] = useState("Checking public/docs...");
   const [ready, setReady] = useState(false);
   const [databaseStatus, setDatabaseStatus] = useState("Connecting to Neon...");
 
@@ -1079,9 +1090,39 @@ export default function AtlasPage() {
   }, [ready, calendarItems]);
 
   useEffect(() => {
-    if (!ready) return;
-    window.localStorage.setItem(mapLocalStorageKey, JSON.stringify(mapLabels));
-  }, [ready, mapLabels]);
+    let cancelled = false;
+
+    async function loadPublicDocs() {
+      try {
+        setPublicDocsStatus("Checking public/docs...");
+
+        const response = await fetch("/api/docs", { cache: "no-store" });
+        const data = await response.json();
+
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "Could not read public/docs");
+        }
+
+        const docs = Array.isArray(data.docs) ? data.docs : [];
+
+        if (!cancelled) {
+          setPublicDocs(docs);
+          setPublicDocsStatus(docs.length ? `${docs.length} public docs found` : "No files found in public/docs");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPublicDocs([]);
+          setPublicDocsStatus(error instanceof Error ? `Docs route unavailable: ${error.message}` : "Docs route unavailable");
+        }
+      }
+    }
+
+    void loadPublicDocs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? blankAsset();
   const selectedPart = partRecords.find((part) => part.id === selectedPartId) ?? partRecords[0] ?? blankPart();
@@ -2347,6 +2388,18 @@ export default function AtlasPage() {
       }))
     );
 
+    const publicDocResults: SearchResult[] = publicDocs.map((document) => ({
+      id: `public-doc-${document.id}`,
+      type: "Document" as const,
+      title: document.name,
+      subtitle: `Live public/docs file · ${document.type}`,
+      detail: `This file was found directly inside public/docs. Path: ${document.href}. Size: ${Math.round(document.size / 1024)} KB.`,
+      screen: "documents" as const,
+      attachmentKind: "static-document" as const,
+      dataUrl: document.href,
+      downloadName: document.name,
+    }));
+
     return [
       ...locations.map((location) => ({ id: `location-${location.id}`, type: "Location" as const, title: location.name, subtitle: `${location.zone} · ${location.type}`, detail: location.notes, screen: "locations" as const })),
       ...mapLabels.map((label) => ({ id: `map-label-${label.id}`, type: "Map Label" as const, title: label.label, subtitle: `${label.category} · ${Math.round(label.x)}% / ${Math.round(label.y)}%`, detail: `${label.notes} ${(label.photos ?? []).map((photo) => photo.name).join(" ")}`, screen: "map" as const })),
@@ -2357,6 +2410,7 @@ export default function AtlasPage() {
       ...documents.map((document) => ({ id: `document-${document.id}`, type: "Document" as const, title: document.title, subtitle: `${document.area} · ${document.type}${document.linkedAssetId ? ` · ${assetName(document.linkedAssetId)}` : ""}`, detail: document.href ? `${document.notes} Expected file path: ${document.href}` : `${document.notes} Reference only until the actual file/photo is uploaded.`, screen: "documents" as const, assetId: document.linkedAssetId, attachmentKind: "static-document" as const, dataUrl: document.href, downloadName: document.href?.split("/").pop() })),
       ...procedureRecords.map((procedure) => ({ id: `procedure-${procedure.id}`, type: "Procedure" as const, title: procedure.title, subtitle: `${procedure.area} · ${procedure.priority}`, detail: procedure.steps.join(" "), screen: "procedures" as const, procedureId: procedure.id })),
       ...partRecords.map((part) => ({ id: `assistant-part-${part.id}`, type: "Part" as const, title: part.name, subtitle: `${part.category} · ${part.status} · Qty ${part.quantity} ${part.unit}`, detail: `${getLocationName(part.locationId)} · ${assetName(part.assetId || "")} · ${vendorName(part.vendorId)} · Part # ${part.partNumber || "n/a"}. SKU ${part.sku || "n/a"}. ${part.notes}`, screen: "parts" as const, partId: part.id, assetId: part.assetId, vendorId: part.vendorId })),
+      ...publicDocResults,
       ...assetPhotoResults,
       ...assetDocumentResults,
       ...vendorDocumentResults,
@@ -2455,8 +2509,8 @@ export default function AtlasPage() {
 
       assistantSetAnswer(
         results.length
-          ? `I found ${results.length} photo/document result(s). ${viewableCount} have a View button. ${referenceCount} are reference records or expected public files. If a View button opens a missing page, the file still needs to be added to GitHub public/docs or uploaded to the related Atlas record.`
-          : "I did not find matching photos or documents yet. Uploaded files will show View/Download/Delete buttons here.",
+          ? `I found ${results.length} photo/document result(s). ${viewableCount} have a View button. ${referenceCount} are reference records. Public docs status: ${publicDocsStatus}.`
+          : `I did not find matching photos or documents yet. Public docs status: ${publicDocsStatus}. Uploaded files will show View/Download/Delete buttons here.`,
         results
       );
       return;
@@ -2557,7 +2611,7 @@ export default function AtlasPage() {
   function renderDashboard() {
     return (
       <div style={{ display: "grid", gap: 18 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", gap: 16 }}>
           <StatCard label="Assets" value={assetRecords.length} detail="Neon connected" />
           <StatCard label="Vendors" value={vendorRecords.length} detail="Neon connected" />
           <StatCard label="Work Orders" value={serviceRecords.length} detail="Photos + docs" />
@@ -3576,7 +3630,35 @@ export default function AtlasPage() {
         <SectionShell eyebrow="Documents" title="Atlas Document Records">
           <div style={{ display: "grid", gap: 12 }}>
             <div style={emptyStateStyle}>
-              Uploaded document count: {uploadedDocumentCount}. Work-order photo count: {uploadedServicePhotoCount}. Static document records are listed below. Database status: {databaseStatus}
+              Uploaded document count: {uploadedDocumentCount}. Public docs count: {publicDocs.length}. Work-order photo count: {uploadedServicePhotoCount}. Public docs status: {publicDocsStatus}. Database status: {databaseStatus}
+            </div>
+
+            <div style={{ ...inlineCardStyle, display: "grid", gap: 12 }}>
+              <div>
+                <div style={goldEyebrowStyle}>Live public/docs Files</div>
+                <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
+                  These are the actual files Atlas found in GitHub at public/docs. These links should not 404 because they come from the real folder listing.
+                </div>
+              </div>
+
+              {publicDocs.length ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {publicDocs.map((document) => (
+                    <div key={document.id} style={inlineCardStyle}>
+                      <div style={{ color: colors.navy, fontWeight: 950 }}>{document.name}</div>
+                      <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{document.type} · {Math.round(document.size / 1024)} KB · {document.href}</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                        <a href={document.href} target="_blank" rel="noreferrer" style={primaryButtonStyle}>View</a>
+                        <a href={document.href} download={document.name} style={linkButtonStyle}>Download</a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={emptyStateStyle}>
+                  No actual files were found in public/docs. Add the route file I gave you, then put PDFs/images in the repo folder public/docs.
+                </div>
+              )}
             </div>
 
             {filteredDocuments.map((document) => (
@@ -3852,6 +3934,7 @@ export default function AtlasPage() {
       { label: "Work Orders", value: serviceRecords.length },
       { label: "Calendar", value: calendarItems.length },
       { label: "Docs", value: uploadedDocumentCount },
+      { label: "Public Docs", value: publicDocs.length },
       { label: "Photos", value: photos.length + uploadedServicePhotoCount },
       { label: "Parts", value: partRecords.length },
     ];
