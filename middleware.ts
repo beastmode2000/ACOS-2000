@@ -1,66 +1,85 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const REALM = "Atlas Private";
+function isPublicPath(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
 
-function unauthorized() {
-  return new NextResponse("Atlas is private. Authorization required.", {
-    status: 401,
-    headers: {
-      "WWW-Authenticate": `Basic realm="${REALM}", charset="UTF-8"`,
-      "Cache-Control": "no-store",
-    },
-  });
+  if (pathname.startsWith("/_next/")) return true;
+  if (pathname === "/favicon.ico") return true;
+  if (pathname === "/manifest.json") return true;
+  if (pathname === "/robots.txt") return true;
+  if (pathname === "/site.webmanifest") return true;
+
+  if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt)$/i.test(pathname)) return true;
+
+  // Admin Landscape Help page stays private.
+  if (pathname === "/landscape-help") return false;
+
+  // Crew checklist links stay public.
+  if (pathname.startsWith("/landscape-help/")) return true;
+
+  // Public crew API access is only allowed when the share token is in the URL.
+  if (pathname === "/api/landscape-help" && request.nextUrl.searchParams.has("token")) return true;
+
+  return false;
 }
 
-function protectionNotConfigured() {
-  return new NextResponse("Atlas protection is not configured.", {
-    status: 503,
+function getBasicAuth(request: NextRequest) {
+  const header = request.headers.get("authorization") || "";
+
+  if (!header.startsWith("Basic ")) return null;
+
+  try {
+    const decoded = atob(header.slice(6));
+    const separatorIndex = decoded.indexOf(":");
+
+    if (separatorIndex === -1) return null;
+
+    return {
+      username: decoded.slice(0, separatorIndex),
+      password: decoded.slice(separatorIndex + 1),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function unauthorizedResponse() {
+  return new NextResponse("Atlas login required.", {
+    status: 401,
     headers: {
-      "Cache-Control": "no-store",
+      "WWW-Authenticate": 'Basic realm="Atlas 2000", charset="UTF-8"',
     },
   });
 }
 
 export function middleware(request: NextRequest) {
-  const requiredUsername = process.env.ATLAS_SITE_USERNAME;
-  const requiredPassword = process.env.ATLAS_SITE_PASSWORD;
-
-  if (!requiredUsername || !requiredPassword) {
-    return protectionNotConfigured();
+  if (isPublicPath(request)) {
+    return NextResponse.next();
   }
 
-  const authHeader = request.headers.get("authorization");
+  const expectedUsername = process.env.ATLAS_ACCESS_USERNAME || "";
+  const expectedPassword = process.env.ATLAS_ACCESS_PASSWORD || "";
 
-  if (!authHeader || !authHeader.startsWith("Basic ")) {
-    return unauthorized();
+  if (!expectedUsername || !expectedPassword) {
+    return new NextResponse(
+      "Atlas access is not configured. Add ATLAS_ACCESS_USERNAME and ATLAS_ACCESS_PASSWORD in Vercel environment variables.",
+      { status: 500 }
+    );
   }
 
-  try {
-    const encodedCredentials = authHeader.replace("Basic ", "");
-    const decodedCredentials = atob(encodedCredentials);
+  const auth = getBasicAuth(request);
 
-    const separatorIndex = decodedCredentials.indexOf(":");
-
-    if (separatorIndex === -1) {
-      return unauthorized();
-    }
-
-    const submittedUsername = decodedCredentials.slice(0, separatorIndex);
-    const submittedPassword = decodedCredentials.slice(separatorIndex + 1);
-
-    if (
-      submittedUsername === requiredUsername &&
-      submittedPassword === requiredPassword
-    ) {
-      return NextResponse.next();
-    }
-
-    return unauthorized();
-  } catch {
-    return unauthorized();
+  if (!auth) {
+    return unauthorizedResponse();
   }
+
+  if (auth.username !== expectedUsername || auth.password !== expectedPassword) {
+    return unauthorizedResponse();
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: "/:path*",
+  matcher: ["/((?!_next/static|_next/image).*)"],
 };
