@@ -22,22 +22,13 @@ type WorkOrderPriority = "Low" | "Medium" | "High";
 type Priority = "High" | "Normal" | "Seasonal";
 type PartStatus = "In Stock" | "Low" | "Out" | "Order";
 
-type CalendarCategory =
-  | "Maintenance"
-  | "Vendor"
-  | "Personal / Owner"
-  | "Landscaping"
-  | "Cleaning"
-  | "Boat / Dock"
-  | "Pool / Spa"
-  | "Other";
-
 type UploadedFileRecord = {
   id: string;
   name: string;
-  type: string;
-  dataUrl: string;
-  createdAt: string;
+  type?: string;
+  dataUrl?: string;
+  url?: string;
+  createdAt?: string;
 };
 
 type LocationRecord = {
@@ -85,12 +76,15 @@ type ServiceRecord = {
   id: string;
   assetId: string;
   vendorId?: string;
+  procedureId?: string;
   date: string;
   title: string;
   status: ServiceStatus;
-  priority: WorkOrderPriority;
+  priority?: WorkOrderPriority;
   notes: string;
   followUpDate?: string;
+  photos?: UploadedFileRecord[];
+  documents?: UploadedFileRecord[];
 };
 
 type ProcedureRecord = {
@@ -107,6 +101,7 @@ type DocumentRecord = {
   area: string;
   type: string;
   linkedAssetId?: string;
+  linkedVendorId?: string;
   notes: string;
   href?: string;
 };
@@ -124,20 +119,63 @@ type PartRecord = {
   notes: string;
 };
 
+type CalendarColor = {
+  id: string;
+  label: string;
+  hex: string;
+};
+
 type CalendarItem = {
   id: string;
   date: string;
+  time?: string;
   title: string;
   area: string;
-  category: CalendarCategory;
-  color: string;
-  time?: string;
-  notes?: string;
+  status: ServiceStatus;
+  colorId?: string;
 };
 
-type LegacyCalendarItem = Partial<CalendarItem> & {
-  status?: ServiceStatus;
+type PhotoRecord = {
+  id: string;
+  assetId: string;
+  name: string;
+  dataUrl?: string;
+  url?: string;
+  createdAt?: string;
 };
+
+type WeatherDay = {
+  date: string;
+  code: number;
+  high: number;
+  low: number;
+  precipChance: number;
+  precipAmount: number;
+  windMax: number;
+  et0: number;
+};
+
+type AtlasApiPayload = {
+  ok?: boolean;
+  source?: string;
+  error?: string;
+  assetRecords?: AssetRecord[];
+  assets?: AssetRecord[];
+  vendorRecords?: VendorRecord[];
+  vendors?: VendorRecord[];
+  serviceRecords?: ServiceRecord[];
+  workOrders?: ServiceRecord[];
+  procedureRecords?: ProcedureRecord[];
+  procedures?: ProcedureRecord[];
+  calendarItems?: CalendarItem[];
+  calendar?: CalendarItem[];
+  parts?: PartRecord[];
+  partRecords?: PartRecord[];
+  photos?: PhotoRecord[];
+  assetPhotos?: PhotoRecord[];
+};
+
+type AtlasTable = "assets" | "vendors" | "work_orders" | "procedures" | "calendar" | "asset_photos";
 
 type SearchResult = {
   id: string;
@@ -150,49 +188,26 @@ type SearchResult = {
   vendorId?: string;
   serviceId?: string;
   mapLabelId?: string;
+  procedureId?: string;
   calendarId?: string;
+  partId?: string;
 };
 
 const colors = {
-  navy: "#0B1E33",
-  navy2: "#102A44",
-  navy3: "#163B5C",
+  navy: "#071B2F",
+  navy2: "#0B2742",
+  navy3: "#123D63",
   gold: "#C99A3D",
-  gold2: "#E6C16A",
-  bg: "#F5F7FA",
+  gold2: "#E5C06B",
+  bg: "#F4F7FB",
   card: "#FFFFFF",
-  line: "#DCE4EC",
+  panel: "#F8FAFC",
+  line: "#DDE7F0",
   text: "#172331",
-  muted: "#607086",
+  muted: "#64748B",
   red: "#B42318",
   green: "#087443",
-  blue: "#175CD3",
-  orange: "#B54708",
 };
-
-const calendarCategories: { name: CalendarCategory; color: string }[] = [
-  { name: "Maintenance", color: "#175CD3" },
-  { name: "Vendor", color: "#7A3FF2" },
-  { name: "Personal / Owner", color: "#C99A3D" },
-  { name: "Landscaping", color: "#087443" },
-  { name: "Cleaning", color: "#0E7490" },
-  { name: "Boat / Dock", color: "#0369A1" },
-  { name: "Pool / Spa", color: "#0D9488" },
-  { name: "Other", color: "#667085" },
-];
-
-const calendarColorOptions = [
-  "#175CD3",
-  "#7A3FF2",
-  "#C99A3D",
-  "#087443",
-  "#0E7490",
-  "#0369A1",
-  "#0D9488",
-  "#B54708",
-  "#B42318",
-  "#667085",
-];
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -209,22 +224,45 @@ const screens: { id: Screen; label: string }[] = [
   { id: "assistant", label: "Ask Atlas" },
 ];
 
-const mapLocalStorageKey = "atlas-map-labels-v2";
+const logoCandidates = [
+  "/atlas-logo.png",
+  "/atlas-logo.svg",
+  "/logo.png",
+  "/icon-512.png",
+  "/icon-192.png",
+  "/apple-touch-icon.png",
+];
 
 const storageKeys = {
-  assets: "atlas-asset-records-v3",
-  vendors: "atlas-vendor-records-v3",
-  workOrders: "atlas-service-records-v11",
-  calendar: "atlas-calendar-v11",
-  parts: "atlas-part-records-v2",
+  mapLabels: ["atlas-map-labels-v2", "atlas_2000_labels_safe_v1"],
+  assets: ["atlas-asset-records-v3", "atlas-asset-records-v2", "atlas-asset-records-v1", "atlas_2000_assets_safe_v1"],
+  vendors: ["atlas-vendor-records-v3", "atlas-vendor-records-v2", "atlas-vendor-records-v1", "atlas_2000_vendors_safe_v1"],
+  workOrders: [
+    "atlas-service-records-v11",
+    "atlas-service-records-v10",
+    "atlas-service-records-v9",
+    "atlas-service-records-v8",
+    "atlas-service-records-v7",
+    "atlas-service-records-v6",
+  ],
+  calendar: ["atlas-calendar-v12", "atlas-calendar-v11", "atlas-calendar-v10", "atlas-calendar-v9", "atlas-calendar-v8", "atlas-calendar-v7", "atlas-calendar-v6", "atlas_2000_calendar_safe_v1"],
+  calendarColors: ["atlas-calendar-colors-v1"],
+  parts: ["atlas-part-records-v2"],
+  procedures: ["atlas-procedure-records-v1", "atlas_2000_procedures_safe_v1"],
+  photos: ["atlas-photo-records-v10", "atlas-photo-records-v9", "atlas-photo-records-v8", "atlas-photo-records-v7", "atlas-photo-records-v6"],
 };
 
+function localISODate(date = new Date()) {
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return offsetDate.toISOString().slice(0, 10);
+}
+
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return localISODate();
 }
 
 function uid(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function slugify(value: string) {
@@ -237,134 +275,181 @@ function slugify(value: string) {
   );
 }
 
+function blankCalendarItem(date = todayISO(), defaultColorId = "personal-owner"): CalendarItem {
+  return {
+    id: "",
+    date,
+    time: "",
+    title: "",
+    area: "",
+    status: "Scheduled",
+    colorId: defaultColorId,
+  };
+}
+
 function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 50;
   return Math.max(1, Math.min(99, Math.round(value * 10) / 10));
 }
 
-function dateKeyFromDate(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function dateFromKey(key: string) {
-  const safeKey = key || todayISO();
-  return new Date(`${safeKey}T12:00:00`);
-}
-
-function addMonthsToDate(date: Date, months: number) {
-  return new Date(date.getFullYear(), date.getMonth() + months, 1, 12);
-}
-
 function formatDate(date: string) {
   if (!date) return "No date";
-  const parsed = dateFromKey(date);
+  const parsed = new Date(`${date}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function formatMonth(date: Date) {
+function monthName(date: Date) {
   return date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
-function formatCalendarTime(time?: string) {
-  if (!time) return "No time";
-  const [hourRaw, minuteRaw] = time.split(":");
-  const hour = Number(hourRaw);
-  const minute = Number(minuteRaw || 0);
-  if (!Number.isFinite(hour)) return time;
-  const displayHour = hour % 12 || 12;
-  const suffix = hour >= 12 ? "PM" : "AM";
-  return `${displayHour}:${`${minute}`.padStart(2, "0")} ${suffix}`;
+function shortDay(date: string) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
-function readStoredArray<T>(key: string, fallback: T[]): T[] {
+function isStatus(value: unknown): value is Status {
+  return value === "Online" || value === "Offline" || value === "Seasonal" || value === "Monitor";
+}
+
+function isServiceStatus(value: unknown): value is ServiceStatus {
+  return value === "Open" || value === "Scheduled" || value === "Completed" || value === "Monitor";
+}
+
+function isPriority(value: unknown): value is WorkOrderPriority {
+  return value === "Low" || value === "Medium" || value === "High";
+}
+
+function isProcedurePriority(value: unknown): value is Priority {
+  return value === "High" || value === "Normal" || value === "Seasonal";
+}
+
+function isPartStatus(value: unknown): value is PartStatus {
+  return value === "In Stock" || value === "Low" || value === "Out" || value === "Order";
+}
+
+function readStoredArray<T>(keys: string[], fallback: T[]): T[] {
   if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
+
+  for (const key of keys) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as T[];
+    } catch {
+      continue;
+    }
   }
+
+  return fallback;
 }
 
-function categoryMeta(category?: string) {
-  return calendarCategories.find((item) => item.name === category) ?? calendarCategories[0];
+function saveStoredArray<T>(key: string, value: T[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-function normalizeCalendarCategory(value?: string): CalendarCategory {
-  return calendarCategories.find((item) => item.name === value)?.name ?? "Maintenance";
-}
-
-function inferCalendarCategory(item: LegacyCalendarItem): CalendarCategory {
-  const text = `${item.title ?? ""} ${item.area ?? ""} ${item.notes ?? ""}`.toLowerCase();
-
-  if (text.includes("landscape") || text.includes("weeding") || text.includes("pat") || text.includes("peter clark")) return "Landscaping";
-  if (text.includes("pool") || text.includes("spa") || text.includes("hot tub") || text.includes("sundance")) return "Pool / Spa";
-  if (text.includes("dock") || text.includes("boat") || text.includes("cobalt") || text.includes("seadoo") || text.includes("sea-doo")) return "Boat / Dock";
-  if (text.includes("clean") || text.includes("trash") || text.includes("garbage")) return "Cleaning";
-  if (text.includes("vendor") || text.includes("flooring") || text.includes("elliott") || text.includes("paint") || text.includes("psf") || text.includes("irrigation")) return "Vendor";
-  if (text.includes("steve") || text.includes("jessica") || text.includes("jeremy") || text.includes("meeting") || text.includes("owner")) return "Personal / Owner";
-  if (text.includes("service") || text.includes("check") || text.includes("maintenance") || text.includes("work order")) return "Maintenance";
-
-  return "Other";
-}
-
-function inferCalendarTime(item: LegacyCalendarItem) {
-  if (item.time) return item.time;
-
-  const title = item.title ?? "";
-  const amPmMatch = title.match(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(AM|PM)\b/i);
-  if (!amPmMatch) return "";
-
-  let hour = Number(amPmMatch[1]);
-  const minute = amPmMatch[2] ?? "00";
-  const suffix = amPmMatch[3].toUpperCase();
-
-  if (suffix === "PM" && hour !== 12) hour += 12;
-  if (suffix === "AM" && hour === 12) hour = 0;
-
-  return `${`${hour}`.padStart(2, "0")}:${minute}`;
-}
-
-function normalizeCalendarItem(item: LegacyCalendarItem, fallbackDate = todayISO()): CalendarItem {
-  const category = item.category ? normalizeCalendarCategory(item.category) : inferCalendarCategory(item);
-  const defaultColor = categoryMeta(category).color;
-
+function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
+  const name = String(record.name || "Unnamed Asset");
   return {
-    id: item.id || uid("cal"),
-    date: item.date || fallbackDate,
-    title: item.title?.trim() || "New calendar item",
-    area: item.area?.trim() || "2000",
-    category,
-    color: item.color || defaultColor,
-    time: item.time ?? inferCalendarTime(item),
-    notes: item.notes ?? "",
+    id: String(record.id || slugify(name)),
+    name,
+    locationId: String(record.locationId || "general"),
+    category: String(record.category || "General"),
+    status: isStatus(record.status) ? record.status : "Monitor",
+    make: record.make || "",
+    model: record.model || "",
+    serial: record.serial || "",
+    notes: String(record.notes || ""),
+    vendorIds: Array.isArray(record.vendorIds) ? record.vendorIds.map(String) : [],
   };
 }
 
-function blankCalendarItem(date = todayISO()): CalendarItem {
-  const category: CalendarCategory = "Maintenance";
+function normalizeVendor(record: Partial<VendorRecord>): VendorRecord {
+  const name = String(record.name || "Unnamed Vendor");
   return {
-    id: "",
-    date,
-    title: "",
-    area: "2000",
-    category,
-    color: categoryMeta(category).color,
-    time: "",
-    notes: "",
+    id: String(record.id || slugify(name)),
+    name,
+    category: String(record.category || "General"),
+    phone: record.phone || "",
+    email: record.email || "",
+    website: record.website || "",
+    notes: String(record.notes || ""),
   };
 }
 
-function badgeStyle(value: Status | ServiceStatus | WorkOrderPriority | PartStatus | Priority): React.CSSProperties {
+function normalizeService(record: Partial<ServiceRecord>): ServiceRecord {
+  const title = String(record.title || "Untitled Work Order");
+  return {
+    id: String(record.id || slugify(title)),
+    assetId: String(record.assetId || ""),
+    vendorId: record.vendorId || "",
+    procedureId: record.procedureId || "",
+    date: String(record.date || todayISO()),
+    title,
+    status: isServiceStatus(record.status) ? record.status : "Open",
+    priority: isPriority(record.priority) ? record.priority : "Medium",
+    notes: String(record.notes || ""),
+    followUpDate: record.followUpDate || "",
+    photos: Array.isArray(record.photos) ? record.photos : [],
+    documents: Array.isArray(record.documents) ? record.documents : [],
+  };
+}
+
+function normalizeProcedure(record: Partial<ProcedureRecord>): ProcedureRecord {
+  const title = String(record.title || "Untitled Procedure");
+  return {
+    id: String(record.id || slugify(title)),
+    title,
+    area: String(record.area || "2000"),
+    priority: isProcedurePriority(record.priority) ? record.priority : "Normal",
+    steps: Array.isArray(record.steps) ? record.steps.map(String) : [],
+  };
+}
+
+function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
+  const title = String(record.title || "Untitled Calendar Item");
+  const rawColorId = String(record.colorId || "");
+  return {
+    id: String(record.id || slugify(title)),
+    date: String(record.date || todayISO()),
+    time: String(record.time || ""),
+    title,
+    area: String(record.area || "2000"),
+    status: isServiceStatus(record.status) ? record.status : "Scheduled",
+    colorId: rawColorId || categoryToColorId(String(record.area || "")),
+  };
+}
+
+function normalizePart(record: Partial<PartRecord>): PartRecord {
+  const name = String(record.name || "Unnamed Part");
+  return {
+    id: String(record.id || slugify(name)),
+    name,
+    category: String(record.category || "General"),
+    locationId: String(record.locationId || "general"),
+    assetId: record.assetId || "",
+    vendorId: record.vendorId || "",
+    quantity: Number(record.quantity || 0),
+    minQuantity: Number(record.minQuantity || 1),
+    status: isPartStatus(record.status) ? record.status : "In Stock",
+    notes: String(record.notes || ""),
+  };
+}
+
+function byName<T extends { name: string }>(records: T[]) {
+  return [...records].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function byTitle<T extends { title: string }>(records: T[]) {
+  return [...records].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function badgeStyle(value: string): React.CSSProperties {
   const palette: Record<string, { bg: string; color: string; border: string }> = {
-    Online: { bg: "#EAF7F1", color: "#087443", border: "#BDE7D2" },
-    Completed: { bg: "#EAF7F1", color: "#087443", border: "#BDE7D2" },
+    Online: { bg: "#EAF7F1", color: colors.green, border: "#BDE7D2" },
+    Completed: { bg: "#EAF7F1", color: colors.green, border: "#BDE7D2" },
+    "In Stock": { bg: "#EAF7F1", color: colors.green, border: "#BDE7D2" },
     Offline: { bg: "#FEECEC", color: colors.red, border: "#FACACA" },
     Out: { bg: "#FEECEC", color: colors.red, border: "#FACACA" },
     High: { bg: "#FEECEC", color: colors.red, border: "#FACACA" },
@@ -376,7 +461,6 @@ function badgeStyle(value: Status | ServiceStatus | WorkOrderPriority | PartStat
     Scheduled: { bg: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
     Medium: { bg: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
     Normal: { bg: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
-    "In Stock": { bg: "#EAF7F1", color: "#087443", border: "#BDE7D2" },
   };
 
   const item = palette[value] ?? palette.Monitor;
@@ -384,6 +468,7 @@ function badgeStyle(value: Status | ServiceStatus | WorkOrderPriority | PartStat
   return {
     display: "inline-flex",
     alignItems: "center",
+    justifyContent: "center",
     borderRadius: 999,
     border: `1px solid ${item.border}`,
     background: item.bg,
@@ -395,268 +480,429 @@ function badgeStyle(value: Status | ServiceStatus | WorkOrderPriority | PartStat
   };
 }
 
-function calendarPillStyle(color: string): React.CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    width: "100%",
-    border: `1px solid ${color}`,
-    background: `${color}18`,
-    color,
-    borderRadius: 10,
-    padding: "5px 7px",
-    fontSize: 11,
-    fontWeight: 900,
-    textAlign: "left",
-    cursor: "pointer",
-    minHeight: 26,
-  };
+function weatherText(code: number) {
+  if ([0].includes(code)) return "Clear";
+  if ([1, 2, 3].includes(code)) return "Partly cloudy";
+  if ([45, 48].includes(code)) return "Fog";
+  if ([51, 53, 55, 56, 57].includes(code)) return "Drizzle";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "Rain";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "Snow";
+  if ([95, 96, 99].includes(code)) return "Thunder";
+  return "Weather";
 }
 
-const defaultLocations: LocationRecord[] = [
-  { id: "general", name: "General", type: "Property", zone: "2000", notes: "Whole-estate default location for records not tied to one room or asset." },
-  { id: "original-house", name: "Original House", type: "Building", zone: "Main House", notes: "Original/main house structure." },
-  { id: "addition", name: "Addition", type: "Building", zone: "Main House", notes: "Addition wing including the indoor pool area." },
-  { id: "mechanical-room", name: "Mechanical Room", type: "Systems", zone: "Main House", notes: "Boilers, DHW tanks, hydronic controls, pumps, pool heat, and HVAC equipment." },
-  { id: "pool-equipment", name: "Pool Equipment Room", type: "Pool Systems", zone: "Addition", notes: "Pool filtration, pumps, UV/ozone, Desert Aire, and hydronic pool heat equipment." },
-  { id: "standalone-spa", name: "Hot Tub / Sundance", type: "Spa", zone: "Outdoor", notes: "Standalone Sundance 880 Optima spa. Separate from pool equipment." },
+function weatherIcon(code: number) {
+  if ([0].includes(code)) return "☀️";
+  if ([1, 2].includes(code)) return "🌤️";
+  if ([3].includes(code)) return "☁️";
+  if ([45, 48].includes(code)) return "🌫️";
+  if ([51, 53, 55, 56, 57].includes(code)) return "🌦️";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "🌧️";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "❄️";
+  if ([95, 96, 99].includes(code)) return "⛈️";
+  return "🌡️";
+}
+
+function irrigationAdvice(day: WeatherDay) {
+  if (day.precipAmount >= 0.25 || day.precipChance >= 75) return "Rain likely — skip irrigation unless pots are dry.";
+  if (day.precipAmount >= 0.1 || day.precipChance >= 45) return "Possible rain — check beds before watering.";
+  if (day.high >= 82 || day.et0 >= 0.18) return "Hot/dry day — prioritize pots, new plantings, and exposed beds.";
+  if (day.windMax >= 18) return "Windy — avoid spray irrigation during peak wind.";
+  return "Good yard-work window — normal irrigation check.";
+}
+
+function categoryToColorId(value: string) {
+  const lower = value.toLowerCase();
+  if (lower.includes("landscape") || lower.includes("irrigation") || lower.includes("grounds")) return "landscaping";
+  if (lower.includes("boat") || lower.includes("dock") || lower.includes("marine")) return "boat-dock";
+  if (lower.includes("vendor")) return "vendor";
+  if (lower.includes("owner") || lower.includes("personal")) return "personal-owner";
+  if (lower.includes("maintenance") || lower.includes("work")) return "maintenance";
+  return "other";
+}
+
+const defaultCalendarColors: CalendarColor[] = [
+  { id: "personal-owner", label: "Personal / Owner", hex: "#C99A3D" },
+  { id: "landscaping", label: "Landscaping", hex: "#087443" },
+  { id: "boat-dock", label: "Boat / Dock", hex: "#0077B6" },
+  { id: "vendor", label: "Vendor", hex: "#7C3AED" },
+  { id: "maintenance", label: "Maintenance", hex: "#475467" },
+  { id: "other", label: "Other", hex: "#94A3B8" },
+];
+
+const locations: LocationRecord[] = [
+  { id: "general", name: "General", type: "Property", zone: "2000", notes: "Whole-property fallback location." },
+  { id: "addition", name: "Addition", type: "Building", zone: "Main House", notes: "Addition wing including indoor pool area." },
+  { id: "adu", name: "ADU", type: "Building", zone: "Left of Old Garage", notes: "ADU is a location, not an asset." },
+  { id: "cobalt-lift", name: "Cobalt Lift", type: "Dock Lift", zone: "Dock", notes: "Cobalt boat lift and newer Sunstream lift box." },
+  { id: "courtyard", name: "Courtyard", type: "Outdoor Living", zone: "Main House", notes: "Patio with chairs/fire pit between main house, addition, old garage, and covered hallway." },
   { id: "dock", name: "Dock", type: "Waterfront", zone: "Lake", notes: "Main dock, boat lift areas, dock power, Sea-Doo area, Cobalt, and lift control boxes." },
-  { id: "cobalt-lift", name: "Cobalt Lift", type: "Dock Lift", zone: "Dock", notes: "Cobalt boat lift and newer Sunstream lift control / battery / solar box." },
-  { id: "seadoo-lift", name: "SeaDoo Lift", type: "PWC Lift", zone: "Dock", notes: "Sea-Doo lift and older/smaller Sunstream box." },
-  { id: "dock-lift", name: "Dock Lift Box", type: "Lift Controls", zone: "Dock", notes: "Additional dock lift box. Keep separate from Cobalt and Sea-Doo lift boxes." },
-  { id: "water-trampoline", name: "Water Trampoline", type: "Waterfront", zone: "Lake", notes: "Seasonal floating water trampoline location." },
-  { id: "waterside-lawn-north", name: "Waterside Lawn (North)", type: "Grounds", zone: "Lake", notes: "North / lake-facing lawn and beds." },
+  { id: "dock-lift", name: "Dock Lift Box", type: "Lift Controls", zone: "Dock", notes: "Additional dock lift box." },
   { id: "east-lawn", name: "East Lawn", type: "Grounds", zone: "East", notes: "Large lawn east/south of the sport court." },
-  { id: "sport-court", name: "Sport Court", type: "Recreation", zone: "East", notes: "Outdoor sport court." },
-  { id: "veggie-boxes", name: "Veggie Boxes", type: "Grounds", zone: "East", notes: "Three vegetable boxes at the south end of East Lawn near New Garage." },
+  { id: "exterior", name: "Exterior", type: "Envelope", zone: "2000", notes: "Exterior paint/stain, siding, eaves, deck edges, windows, and envelope checks." },
+  { id: "house-managers-office", name: "House Managers Office", type: "Interior", zone: "Original House", notes: "Office appliance records and house manager operating area." },
+  { id: "irrigation", name: "Irrigation", type: "Landscape Systems", zone: "Grounds", notes: "Hunter Hydrawise / Advanced Irrigation records, zones, flow/rain/soil sensors." },
+  { id: "mechanical-room", name: "Mechanical Room", type: "Systems", zone: "Main House", notes: "Boilers, DHW tanks, hydronic controls, pumps, pool heat, and HVAC equipment." },
   { id: "new-garage", name: "New Garage", type: "Building", zone: "Exterior", notes: "New garage / auto court garage area." },
   { id: "old-garage", name: "Old Garage", type: "Building", zone: "Exterior", notes: "Old garage near ADU and covered connection areas." },
-  { id: "adu", name: "ADU", type: "Building", zone: "Left of Old Garage", notes: "ADU is a location/map label, not an asset." },
-  { id: "courtyard", name: "Courtyard", type: "Outdoor Living", zone: "Main House", notes: "Patio with chairs/fire pit between main house, addition, old garage, and covered hallway." },
-  { id: "trampoline-dog", name: "Trampoline / Dog", type: "Grounds", zone: "Exterior", notes: "Turf/trampoline/dog cleanup area east of the covered hallway." },
-  { id: "exterior", name: "Exterior", type: "Envelope", zone: "2000", notes: "Exterior paint/stain, siding, eaves, deck edges, windows, and envelope checks." },
-  { id: "irrigation", name: "Irrigation", type: "Landscape Systems", zone: "Grounds", notes: "Hunter Hydrawise / Advanced Irrigation records, zones, flow/rain/soil sensors." },
+  { id: "original-house", name: "Original House", type: "Building", zone: "Main House", notes: "Original/main house structure." },
+  { id: "pantry", name: "Pantry", type: "Interior", zone: "Original House", notes: "Pantry freezer, storage, and supplies." },
+  { id: "pool-changing-room", name: "Pool Changing Room", type: "Pool", zone: "Addition", notes: "Pool changing room and ClearRay UV-C ballast area." },
+  { id: "pool-equipment", name: "Pool Equipment Room", type: "Pool Systems", zone: "Addition", notes: "Pool filtration, pumps, sand filter, UV/ozone, Desert Aire, and hydronic pool heat equipment." },
+  { id: "seadoo-lift", name: "SeaDoo Lift", type: "PWC Lift", zone: "Dock", notes: "Sea-Doo lift and older/smaller Sunstream box." },
+  { id: "sport-court", name: "Sport Court", type: "Recreation", zone: "East", notes: "Outdoor sport court." },
+  { id: "standalone-spa", name: "Hot Tub / Sundance", type: "Spa", zone: "Outdoor", notes: "Standalone Sundance 880 Optima spa." },
+  { id: "trampoline-dog", name: "Trampoline / Dog", type: "Grounds", zone: "Exterior", notes: "Turf/trampoline/dog cleanup area east of covered hallway." },
+  { id: "upstairs-laundry", name: "Upstairs Laundry", type: "Interior", zone: "Original House", notes: "Upstairs laundry washer/dryer and related assets." },
+  { id: "veggie-boxes", name: "Veggie Boxes", type: "Grounds", zone: "East", notes: "Three vegetable boxes at south end of East Lawn near New Garage." },
+  { id: "water-trampoline", name: "Water Trampoline", type: "Waterfront", zone: "Lake", notes: "Seasonal floating water trampoline location." },
+  { id: "waterside-lawn-north", name: "Waterside Lawn (North)", type: "Grounds", zone: "Lake", notes: "North / lake-facing lawn and beds." },
+  { id: "wine-room", name: "Wine Room", type: "Interior", zone: "Original House", notes: "Wine room equipment and freezer record." },
 ];
 
 const defaultMapLabels: MapLabelRecord[] = [
-  { id: "map-dock", label: "Dock", category: "Waterfront", x: 58, y: 78, notes: "Main dock location with boat lifts, dock power, and waterfront service records.", photos: [] },
+  { id: "map-addition", label: "Addition", category: "Building", x: 61, y: 36, notes: "Addition wing including indoor pool area.", photos: [] },
+  { id: "map-adu", label: "ADU", category: "Location", x: 27, y: 42, notes: "Small square left of Old Garage. ADU is a location, not an asset.", photos: [] },
   { id: "map-cobalt", label: "Cobalt", category: "Watercraft", x: 63, y: 72, notes: "Cobalt R7 area near the dock.", photos: [] },
-  { id: "map-seadoo", label: "SeaDoo", category: "Watercraft", x: 64, y: 82, notes: "Sea-Doo / PWC area south of the small dock slip.", photos: [] },
-  { id: "map-water-trampoline", label: "Water Trampoline", category: "Waterfront", x: 47, y: 86, notes: "Seasonal water trampoline location west of the dock.", photos: [] },
-  { id: "map-waterside-lawn-north", label: "Waterside Lawn (North)", category: "Grounds", x: 50, y: 68, notes: "North waterside lawn and lake-facing beds.", photos: [] },
+  { id: "map-courtyard", label: "Courtyard", category: "Outdoor Living", x: 47, y: 44, notes: "Courtyard patio with chairs/fire pit. West of the gray covered hallway.", photos: [] },
+  { id: "map-dock", label: "Dock", category: "Waterfront", x: 58, y: 78, notes: "Main dock location with boat lifts, dock power, and waterfront service records.", photos: [] },
   { id: "map-east-lawn", label: "East Lawn", category: "Grounds", x: 74, y: 47, notes: "East lawn area and grounds records.", photos: [] },
-  { id: "map-sport-court", label: "Sport Court", category: "Recreation", x: 83, y: 26, notes: "Sport court north of East Lawn.", photos: [] },
-  { id: "map-veggie-boxes", label: "Veggie Boxes", category: "Grounds", x: 77, y: 62, notes: "Three veggie boxes at the south end of East Lawn next to New Garage.", photos: [] },
+  { id: "map-hot-tub", label: "Hot Tub (Sundance)", category: "Spa", x: 61, y: 51, notes: "Standalone Sundance 880 spa on patio east of furniture/stairs to lawn.", photos: [] },
   { id: "map-new-garage", label: "New Garage", category: "Building", x: 40, y: 31, notes: "New garage location.", photos: [] },
   { id: "map-old-garage", label: "Old Garage", category: "Building", x: 33, y: 35, notes: "Old garage location.", photos: [] },
-  { id: "map-adu", label: "ADU", category: "Location", x: 27, y: 42, notes: "Small square left of Old Garage. ADU is a location, not an asset.", photos: [] },
-  { id: "map-courtyard", label: "Courtyard", category: "Outdoor Living", x: 47, y: 44, notes: "Courtyard patio with chairs/fire pit. West of the gray covered hallway.", photos: [] },
-  { id: "map-trampoline-dog", label: "Trampoline / Dog", category: "Grounds", x: 42, y: 56, notes: "Green turf/trampoline/dog area east of the covered hallway.", photos: [] },
   { id: "map-original-house", label: "Original House", category: "Building", x: 49, y: 38, notes: "Original/main house structure.", photos: [] },
-  { id: "map-addition", label: "Addition", category: "Building", x: 61, y: 36, notes: "Addition wing including indoor pool area.", photos: [] },
-  { id: "map-hot-tub", label: "Hot Tub (Sundance)", category: "Spa", x: 61, y: 51, notes: "Standalone Sundance 880 spa on patio east of furniture/stairs to lawn.", photos: [] },
+  { id: "map-seadoo", label: "SeaDoo", category: "Watercraft", x: 64, y: 82, notes: "Sea-Doo / PWC area south of the small dock slip.", photos: [] },
+  { id: "map-sport-court", label: "Sport Court", category: "Recreation", x: 83, y: 26, notes: "Sport court north of East Lawn.", photos: [] },
+  { id: "map-trampoline-dog", label: "Trampoline / Dog", category: "Grounds", x: 42, y: 56, notes: "Green turf/trampoline/dog area east of covered hallway.", photos: [] },
+  { id: "map-veggie-boxes", label: "Veggie Boxes", category: "Grounds", x: 77, y: 62, notes: "Three veggie boxes at the south end of East Lawn next to New Garage.", photos: [] },
+  { id: "map-water-trampoline", label: "Water Trampoline", category: "Waterfront", x: 47, y: 86, notes: "Seasonal water trampoline location west of the dock.", photos: [] },
+  { id: "map-waterside-lawn-north", label: "Waterside Lawn (North)", category: "Grounds", x: 50, y: 68, notes: "North waterside lawn and lake-facing beds.", photos: [] },
 ];
 
-const defaultVendors: VendorRecord[] = [
-  { id: "elliottpaint", name: "Elliott Paint Company", category: "Paint / Stain", phone: "206-510-0688", email: "brandon@elliottpaintco.com", notes: "Exterior paint/stain vendor. Brandon Ness contact. Kurt Anderson involved in sample/scope walkthroughs." },
+const fallbackVendors: VendorRecord[] = [
   { id: "advancedirrigation", name: "Advanced Irrigation", category: "Irrigation", notes: "Hydrawise / Hunter HCC 24-zone irrigation controller, sensors, service, and current-year backflow testing." },
+  { id: "amazon", name: "Amazon", category: "Parts / Supplies", notes: "HVAC filters and general property supplies." },
+  { id: "elliottpaint", name: "Elliott Paint Company", category: "Paint / Stain", phone: "206-510-0688", email: "brandon@elliottpaintco.com", notes: "Exterior paint/stain vendor. Brandon Ness contact. Kurt Anderson involved in samples/scope walkthroughs." },
+  { id: "peterclark", name: "Peter Clark Designs", category: "Landscaping", notes: "Weekly landscaping/weeding crew approved by Steve and managed by Pat." },
   { id: "psf", name: "PSF Mechanical", category: "HVAC / Boiler / Pool Mechanical", notes: "Boilers, hydronic heating, HVAC, Desert Aire, pool mechanical, and related systems." },
   { id: "seattleboat", name: "Seattle Boat", category: "Boat Service", notes: "Cobalt R7 service and seasonal watercraft support." },
-  { id: "i90motorsports", name: "I-90 Motorsports", category: "PWC / Motorsports", notes: "Sea-Doo service / PWC support." },
-  { id: "sunstream", name: "Sunstream Boat Lifts", category: "Dock / Lifts", notes: "Sunstream lift boxes and boat/PWC lift records." },
-  { id: "penthousedrapery", name: "Penthouse Drapery", category: "Blinds / Drapery", phone: "206-292-8336", email: "accounting@penthousedrapery.com", notes: "Motorized roller shades. Invoice #176396 dated 06/16/2026." },
-  { id: "unrivaled", name: "Unrivaled", category: "Pest Control", notes: "Current pest-control vendor. Terminix was canceled." },
-  { id: "peterclark", name: "Peter Clark Designs", category: "Landscaping", notes: "Weekly landscaping/weeding crew approved by Steve and managed by Pat." },
-  { id: "applianceservice", name: "Appliance Service Station", category: "Appliances", notes: "Appliance service vendor." },
 ];
 
-const defaultAssets: AssetRecord[] = [
-  { id: "boiler-1", name: "Boiler B-1", locationId: "mechanical-room", category: "Hydronic Heating", status: "Online", make: "Viessmann", model: "Vitodens 200", serial: "758960502925", notes: "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE.", vendorIds: ["psf"] },
-  { id: "boiler-2", name: "Boiler B-2", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", serial: "758960507593", notes: "White wall-mounted Viessmann Vitodens 200. Year 2025 nameplate. Keep monitored after recall / heat exchanger work.", vendorIds: ["psf"] },
-  { id: "vitocell-tanks", name: "Twin Viessmann Vitocell 300-V DHW Tanks", locationId: "mechanical-room", category: "Domestic Hot Water", status: "Online", make: "Viessmann", model: "Vitocell 300-V EVIA 300", notes: "Two 79 USG / 300 L stainless indirect domestic hot water tanks.", vendorIds: ["psf"] },
-  { id: "desertaire-dhu1", name: "Desert Aire DHU-1 Pool Dehumidification", locationId: "pool-equipment", category: "Pool HVAC", status: "Monitor", make: "Desert Aire", notes: "Indoor pool dehumidification system with hydronic heat coil and controls.", vendorIds: ["psf"] },
-  { id: "pool-pump-pentair", name: "Pentair 3.0 HP Pool Pump", locationId: "pool-equipment", category: "Pool Equipment", status: "Online", make: "Pentair", notes: "Pool source → pump → Triton II sand filter → UV/ozone → return to pool.", vendorIds: ["psf"] },
-  { id: "sundance-optima", name: "Sundance 880 Optima Spa", locationId: "standalone-spa", category: "Spa", status: "Monitor", make: "Sundance", model: "OPTIMA", serial: "00P3LCD-100528521-0315", notes: "Standalone Sundance 880 Optima spa. Separate from pool equipment.", vendorIds: [] },
-  { id: "sunstream-cobalt", name: "Sunstream Lift Box — Cobalt", locationId: "cobalt-lift", category: "Dock / Boat Lift", status: "Online", make: "Sunstream", notes: "Larger/newer Sunstream lift control, battery, and solar box. Belongs to Cobalt boat lift.", vendorIds: ["sunstream"] },
-  { id: "sunstream-seadoo", name: "Sunstream Lift Box — SeaDoo", locationId: "seadoo-lift", category: "Dock / PWC Lift", status: "Monitor", make: "Sunstream", notes: "Sea-Doo lift box. Smaller/older Sunstream box.", vendorIds: ["sunstream"] },
-  { id: "sunstream-dock", name: "Sunstream Lift Box — Dock", locationId: "dock-lift", category: "Dock Lift Controls", status: "Monitor", make: "Sunstream", notes: "Additional smaller/older dock lift control box.", vendorIds: ["sunstream"] },
-  { id: "craft-cobalt", name: "Craft — Cobalt R7", locationId: "dock", category: "Watercraft", status: "Seasonal", make: "Cobalt", model: "R7", notes: "Cobalt R7 watercraft record connected to dock and newer Sunstream Cobalt lift box.", vendorIds: ["seattleboat", "sunstream"] },
-  { id: "craft-seadoo", name: "Craft — SeaDoo 2024 GTI SE 170", locationId: "dock", category: "Watercraft", status: "Seasonal", make: "Sea-Doo", model: "GTI SE 170", notes: "2024 Sea-Doo record connected to dock and Sea-Doo lift records.", vendorIds: ["i90motorsports", "sunstream"] },
-  { id: "irrigation-controller", name: "Hunter HCC 24-Zone Irrigation Controller", locationId: "irrigation", category: "Irrigation", status: "Online", make: "Hunter", model: "HCC 24 Zones", serial: "06d050377d", notes: "Hydrawise controller name Faben2000. Installed 04/16/2026. Flow/rain/soil sensors captured.", vendorIds: ["advancedirrigation"] },
-  { id: "blinds-lutron", name: "Blinds Lutron", locationId: "general", category: "Motorized Shades", status: "Monitor", make: "Lutron", notes: "Motorized roller shade asset. Penthouse Drapery invoice #176396 belongs here.", vendorIds: ["penthousedrapery"] },
-  { id: "dishwasher-dw3", name: "Dishwasher DW-3 Right", locationId: "general", category: "Appliance", status: "Online", make: "Bosch", notes: "Kitchen right Bosch dishwasher.", vendorIds: ["applianceservice"] },
-  { id: "exterior-stain", name: "Exterior Stain Scope", locationId: "exterior", category: "Exterior", status: "Monitor", notes: "Waterside verticals semi-transparent, eaves semi-solid; BBQ area semi-solid; East siding semi-solid/windows semi-transparent; garages solid.", vendorIds: ["elliottpaint"] },
+const fallbackAssets: AssetRecord[] = [
+  { id: "boiler-1", name: "Boiler B-1", locationId: "mechanical-room", category: "Hydronic Heating", status: "Online", make: "Viessmann", model: "Vitodens 200 / 200-W", serial: "758960502925", notes: "Wall-mounted Viessmann Vitodens 200.", vendorIds: ["psf"] },
+  { id: "boiler-2", name: "Boiler B-2", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200 / 200-W", serial: "758960507593", notes: "Monitor after recall / heat exchanger / igniter issue.", vendorIds: ["psf"] },
+  { id: "craft-cobalt", name: "Craft — Cobalt R7", locationId: "dock", category: "Watercraft", status: "Seasonal", make: "Cobalt", model: "R7", serial: "HIN FGE7S0561920", notes: "2020 Cobalt R7. WA WN4528SW.", vendorIds: ["seattleboat"] },
+  { id: "irrigation-controller", name: "Hunter HCC 24-Zone Irrigation Controller", locationId: "irrigation", category: "Irrigation", status: "Online", make: "Hunter", model: "HCC 24 Zones", serial: "06d050377d", notes: "Hydrawise controller name Faben2000.", vendorIds: ["advancedirrigation"] },
 ];
 
-const defaultWorkOrders: ServiceRecord[] = [
-  { id: "wo-weekly-dock", assetId: "craft-cobalt", vendorId: "seattleboat", date: todayISO(), title: "Weekly dock / boat / Sea-Doo check", status: "Open", priority: "Medium", notes: "Check Cobalt, Sea-Doo, lifts, dock power, water trampoline, and waterfront equipment." },
-  { id: "wo-pool-weekly", assetId: "pool-pump-pentair", vendorId: "psf", date: todayISO(), title: "Weekly pool / spa water and equipment check", status: "Open", priority: "High", notes: "Record pool/spa readings, filter pressure, equipment status, and any issues." },
-  { id: "wo-exterior-stain", assetId: "exterior-stain", vendorId: "elliottpaint", date: "2026-07-08", title: "Exterior stain scope tracking", status: "Monitor", priority: "High", notes: "Track semi-transparent vs semi-solid scope, Jessica approval items, and progress photos." },
-  { id: "wo-landscape-weeding", assetId: "irrigation-controller", vendorId: "peterclark", date: "2026-07-08", title: "Weekly landscaping crew — waterside beds first", status: "Scheduled", priority: "Medium", notes: "Pat manages crew. Priority: waterside beds first, then patio, courtyard, driveway, dock path, lawn edges, and other beds." },
+const fallbackWorkOrders: ServiceRecord[] = [
+  { id: "wo-pool-weekly", assetId: "boiler-2", vendorId: "psf", date: todayISO(), title: "Boiler 2 recalled heat exchanger / igniter issue", status: "Monitor", priority: "Medium", notes: "Track Boiler B-2 issue." },
+  { id: "wo-landscape-weeding", assetId: "irrigation-controller", vendorId: "peterclark", date: todayISO(), title: "Weekly landscaping crew — waterside beds first", status: "Scheduled", priority: "Medium", notes: "Pat manages crew. Priority: waterside beds first." },
 ];
 
-const defaultProcedures: ProcedureRecord[] = [
-  { id: "pool-backwash", title: "Pool Sand Filter Backwash", area: "Pool Equipment Room", priority: "High", steps: ["Record current filter pressure.", "Confirm valves are set safely for backwash.", "Backwash until water runs clear.", "Rinse after backwash.", "Return valves to normal filter operation.", "Record final pressure and issues."] },
-  { id: "spa-weekly", title: "Sundance Spa Weekly Check", area: "Hot Tub / Sundance", priority: "Normal", steps: ["Check water level and temperature.", "Test sanitizer, pH, alkalinity.", "Confirm ClearRay / heater / circulation status.", "Clean cover and surrounding area.", "Log readings and follow-up items."] },
-  { id: "out-of-town", title: "Out-of-Town Property Check", area: "2000", priority: "High", steps: ["Confirm doors, windows, alarms, and leak-prone areas.", "Check mechanical rooms for abnormal readings/noise.", "Check pool/spa/fountain/dock areas.", "Confirm vendor access and deliveries.", "Send summary to Steve if needed."] },
+const fallbackProcedures: ProcedureRecord[] = [
+  { id: "weekly-routine", title: "Weekly 5-Day Routine", area: "2000", priority: "High", steps: ["Monday: trash/recycle/yard waste and clean cans.", "Tuesday: grounds/lawn/irrigation and 10 AM meeting.", "Wednesday: pool/spa/fountain/courtyard.", "Thursday: vehicles/dock/boat/Sea-Doo/recreation.", "Friday: final walkthrough/testing/updates and 9 AM meeting."] },
 ];
 
-const defaultDocuments: DocumentRecord[] = [
+const fallbackCalendar: CalendarItem[] = [
+  { id: "cal-friday-meeting", date: todayISO(), time: "9:00 AM", title: "Friday 9 AM Steve meeting", area: "2000", status: "Scheduled", colorId: "personal-owner" },
+  { id: "cal-tuesday-meeting", date: todayISO(), time: "10:00 AM", title: "Tuesday 10 AM Steve / Patrick meeting", area: "Landscaping", status: "Scheduled", colorId: "landscaping" },
+  { id: "cal-sunstream", date: "2026-07-10", time: "", title: "Sunstream Boat Cover", area: "Boat / Dock", status: "Scheduled", colorId: "boat-dock" },
+  { id: "cal-seaborne", date: "2026-07-13", time: "", title: "SeaBorne Dock Work", area: "Boat / Dock", status: "Scheduled", colorId: "boat-dock" },
+  { id: "cal-carpet-prep", date: "2026-07-21", time: "", title: "Prep Evis Room for Carpet", area: "Other", status: "Scheduled", colorId: "other" },
+  { id: "cal-flooring", date: "2026-07-22", time: "", title: "5 Star Flooring / Eric — Evi's room", area: "Vendor", status: "Scheduled", colorId: "vendor" },
+];
+
+const fallbackParts: PartRecord[] = [
+  { id: "filters-aprilaire-210", name: "Aprilaire #210 4x20x25 Filter", category: "HVAC Filters", locationId: "mechanical-room", vendorId: "amazon", quantity: 1, minQuantity: 1, status: "Low", notes: "Amazon filter record." },
+];
+
+const documents: DocumentRecord[] = [
+  { id: "elliott-invoice-15159", title: "Elliott Paint Invoice #15159", area: "Exterior", type: "Invoice", linkedAssetId: "exterior-stain", linkedVendorId: "elliottpaint", notes: "Invoice dated 06/16/2026. Amount due $17,210.05." },
   { id: "property-map", title: "Locked Atlas Property Map", area: "Map", type: "Image", href: "/atlas-property-map.png", notes: "Fixed original property map image used by Atlas labels." },
-  { id: "stain-plan", title: "2000 Exterior Stain Plan — Photo-Based Scope Summary", area: "Exterior", type: "Scope", linkedAssetId: "exterior-stain", notes: "Client-facing stain scope summary for Jessica approval." },
-  { id: "penthouse-invoice", title: "Penthouse Drapery Invoice #176396", area: "Blinds", type: "Invoice", linkedAssetId: "blinds-lutron", notes: "Repair one motorized roller shade; two trips and replacement drive." },
 ];
 
-const defaultParts: PartRecord[] = [
-  { id: "filters-mr1-16x16", name: "MR1 1x16x16 Columbia Filters", category: "HVAC Filters", locationId: "mechanical-room", quantity: 2, minQuantity: 2, status: "In Stock", notes: "Amazon filter record." },
-  { id: "filters-aprilaire-210", name: "Aprilaire #210 4x20x25 Filter", category: "HVAC Filters", locationId: "mechanical-room", quantity: 1, minQuantity: 1, status: "Low", notes: "Amazon filter record." },
-  { id: "pool-test-reagents", name: "Taylor Pool Test Reagents", category: "Pool Testing", locationId: "pool-equipment", quantity: 1, minQuantity: 1, status: "In Stock", notes: "Keep pool testing supplies stocked." },
-];
+function Field(props: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  multiline?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+      <span style={fieldLabelStyle}>{props.label}</span>
+      {props.multiline ? (
+        <textarea value={props.value} onChange={(event) => props.onChange(event.currentTarget.value)} placeholder={props.placeholder} style={{ ...inputStyle, minHeight: 110, resize: "vertical" }} />
+      ) : (
+        <input value={props.value} onChange={(event) => props.onChange(event.currentTarget.value)} placeholder={props.placeholder} style={inputStyle} />
+      )}
+    </label>
+  );
+}
 
-const defaultCalendar: CalendarItem[] = [
-  normalizeCalendarItem({ id: "cal-tuesday-meeting", date: todayISO(), title: "Tuesday Steve / Patrick meeting", area: "2000", category: "Personal / Owner", time: "10:00", notes: "Summer Tuesday meeting." }),
-  normalizeCalendarItem({ id: "cal-friday-meeting", date: todayISO(), title: "Friday Steve meeting", area: "2000", category: "Personal / Owner", time: "09:00", notes: "Friday property meeting." }),
-  normalizeCalendarItem({ id: "cal-flooring", date: "2026-07-22", title: "5 Star Flooring / Eric — Evi's room", area: "Interior", category: "Vendor", time: "08:30", notes: "Arrival window 8:30–9:30." }),
-];
+function SelectField<T extends string>(props: {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  options: readonly T[];
+}) {
+  return (
+    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+      <span style={fieldLabelStyle}>{props.label}</span>
+      <select value={props.value} onChange={(event) => props.onChange(event.currentTarget.value as T)} style={inputStyle}>
+        {props.options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
-const defaultWeatherPlan = [
-  { day: "Today", icon: "☀️", title: "Exterior / stain", note: "Good for sanding, staining, and dry exterior work if wind stays calm." },
-  { day: "Thu", icon: "🌤️", title: "Grounds", note: "Check irrigation, beds, pots, and lake-water use." },
-  { day: "Fri", icon: "🌦️", title: "Pool / spa", note: "Watch for rain before balancing outdoor spa or fountain." },
-  { day: "Sat", icon: "💨", title: "Dock", note: "Check wind before Cobalt, Sea-Doo, lift, and water trampoline work." },
-  { day: "Sun", icon: "🌧️", title: "Interior", note: "Use wet weather for indoor inspections, mechanical rooms, and records." },
-  { day: "Mon", icon: "⛅", title: "Trash / reset", note: "Garage garbage, cans, deliveries, and property reset." },
-  { day: "Tue", icon: "🌲", title: "Landscape", note: "Waterside beds first, then patio, courtyard, driveway, and dock path edges." },
-];
+function StatCard(props: { label: string; value: string | number; onClick?: () => void }) {
+  return (
+    <button type="button" onClick={props.onClick} style={modernStatStyle}>
+      <div style={statValueStyle}>{props.value}</div>
+      <div style={statLabelStyle}>{props.label}</div>
+    </button>
+  );
+}
 
-const blankMapLabel: MapLabelRecord = { id: "", label: "", category: "Location", x: 50, y: 50, notes: "", photos: [] };
+function SectionHeader(props: { eyebrow: string; title: string; detail?: string; right?: React.ReactNode }) {
+  return (
+    <div style={sectionHeaderStyle}>
+      <div style={{ minWidth: 0 }}>
+        <div style={eyebrowStyle}>{props.eyebrow}</div>
+        <h2 style={sectionTitleStyle}>{props.title}</h2>
+        {props.detail ? <p style={mutedSmallStyle}>{props.detail}</p> : null}
+      </div>
+      {props.right ? <div style={buttonRowStyle}>{props.right}</div> : null}
+    </div>
+  );
+}
+
+function ListDrawerLayout(props: {
+  eyebrow: string;
+  title: string;
+  detail?: string;
+  right?: React.ReactNode;
+  list: React.ReactNode;
+  drawer: React.ReactNode;
+  isMobile: boolean;
+}) {
+  return (
+    <section style={sectionStyle}>
+      <SectionHeader eyebrow={props.eyebrow} title={props.title} detail={props.detail} right={props.right} />
+      <div style={{ ...drawerGridStyle, gridTemplateColumns: props.isMobile ? "1fr" : "minmax(0, 1fr) minmax(330px, 430px)" }}>
+        <div style={listPanelStyle}>{props.list}</div>
+        <div style={drawerStyle}>{props.drawer}</div>
+      </div>
+    </section>
+  );
+}
 
 export default function AtlasPage() {
   const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const [databaseStatus, setDatabaseStatus] = useState("Loading Atlas records...");
+  const [logoIndex, setLogoIndex] = useState(0);
+  const [mapImageOk, setMapImageOk] = useState(true);
 
   const [mapLabels, setMapLabels] = useState<MapLabelRecord[]>(defaultMapLabels);
   const [selectedMapLabelId, setSelectedMapLabelId] = useState(defaultMapLabels[0].id);
-  const [mapLabelForm, setMapLabelForm] = useState<MapLabelRecord>(defaultMapLabels[0]);
-  const [mapLabelMode, setMapLabelMode] = useState<"edit" | "new">("edit");
 
-  const [assetRecords, setAssetRecords] = useState<AssetRecord[]>(defaultAssets);
-  const [vendorRecords, setVendorRecords] = useState<VendorRecord[]>(defaultVendors);
-  const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>(defaultWorkOrders);
-  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>(defaultCalendar);
-  const [partRecords, setPartRecords] = useState<PartRecord[]>(defaultParts);
+  const [assetRecords, setAssetRecords] = useState<AssetRecord[]>(fallbackAssets);
+  const [vendorRecords, setVendorRecords] = useState<VendorRecord[]>(fallbackVendors);
+  const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>(fallbackWorkOrders);
+  const [procedureRecords, setProcedureRecords] = useState<ProcedureRecord[]>(fallbackProcedures);
+  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>(fallbackCalendar);
+  const [calendarColors, setCalendarColors] = useState<CalendarColor[]>(defaultCalendarColors);
+  const [partRecords, setPartRecords] = useState<PartRecord[]>(fallbackParts);
+  const [photos, setPhotos] = useState<PhotoRecord[]>([]);
 
-  const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
-  const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
-  const [selectedServiceId, setSelectedServiceId] = useState(defaultWorkOrders[0].id);
+  const [selectedAssetId, setSelectedAssetId] = useState(fallbackAssets[0]?.id || "");
+  const [selectedVendorId, setSelectedVendorId] = useState(fallbackVendors[0]?.id || "");
+  const [selectedServiceId, setSelectedServiceId] = useState(fallbackWorkOrders[0]?.id || "");
+  const [selectedProcedureId, setSelectedProcedureId] = useState(fallbackProcedures[0]?.id || "");
+  const [selectedPartId, setSelectedPartId] = useState(fallbackParts[0]?.id || "");
 
-  const [selectedCalendarId, setSelectedCalendarId] = useState(defaultCalendar[0]?.id ?? "");
+  const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
-  const [calendarCursor, setCalendarCursor] = useState(() => dateFromKey(todayISO()));
-  const [calendarForm, setCalendarForm] = useState<CalendarItem>(defaultCalendar[0] ?? blankCalendarItem(todayISO()));
-  const [calendarMode, setCalendarMode] = useState<"edit" | "new">("edit");
+  const [selectedCalendarId, setSelectedCalendarId] = useState("");
+  const [calendarDraft, setCalendarDraft] = useState<CalendarItem>(() => blankCalendarItem(todayISO()));
 
+  const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([]);
+  const [selectedWeatherDate, setSelectedWeatherDate] = useState("");
+  const [weatherStatus, setWeatherStatus] = useState("Loading 7-day irrigation weather...");
   const [assistantQuestion, setAssistantQuestion] = useState("");
-  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about assets, vendors, map labels, work orders, calendar, procedures, documents, or parts.");
+  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about assets, vendors, map labels, work orders, calendar, weather, procedures, documents, or parts.");
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setIsMobile(window.innerWidth < 760);
-    const onResize = () => setIsMobile(window.innerWidth < 760);
+    setIsMobile(window.innerWidth < 820);
+    const onResize = () => setIsMobile(window.innerWidth < 820);
     window.addEventListener("resize", onResize);
 
-    const storedMapLabels = readStoredArray<MapLabelRecord>(mapLocalStorageKey, defaultMapLabels).map((label) => ({
-      ...blankMapLabel,
-      ...label,
+    const storedMapLabels = readStoredArray<MapLabelRecord>(storageKeys.mapLabels, defaultMapLabels).map((label) => ({
       id: label.id || uid("map"),
       label: label.label || "Map Label",
       category: label.category || "Location",
       x: clampPercent(Number(label.x)),
       y: clampPercent(Number(label.y)),
+      notes: label.notes || "",
       photos: Array.isArray(label.photos) ? label.photos : [],
     }));
 
-    const storedCalendar = readStoredArray<LegacyCalendarItem>(storageKeys.calendar, defaultCalendar).map((item) => normalizeCalendarItem(item));
+    const storedAssets = readStoredArray<AssetRecord>(storageKeys.assets, fallbackAssets).map(normalizeAsset);
+    const storedVendors = readStoredArray<VendorRecord>(storageKeys.vendors, fallbackVendors).map(normalizeVendor);
+    const storedServices = readStoredArray<ServiceRecord>(storageKeys.workOrders, fallbackWorkOrders).map(normalizeService);
+    const storedProcedures = readStoredArray<ProcedureRecord>(storageKeys.procedures, fallbackProcedures).map(normalizeProcedure);
+    const storedCalendar = readStoredArray<CalendarItem>(storageKeys.calendar, fallbackCalendar).map(normalizeCalendar);
+    const storedCalendarColors = readStoredArray<CalendarColor>(storageKeys.calendarColors, defaultCalendarColors);
+    const storedParts = readStoredArray<PartRecord>(storageKeys.parts, fallbackParts).map(normalizePart);
+    const storedPhotos = readStoredArray<PhotoRecord>(storageKeys.photos, []);
 
-    setMapLabels(storedMapLabels.length ? storedMapLabels : defaultMapLabels);
+    setMapLabels(byLabel(storedMapLabels.length ? storedMapLabels : defaultMapLabels));
     setSelectedMapLabelId((storedMapLabels[0] ?? defaultMapLabels[0]).id);
-    setMapLabelForm(storedMapLabels[0] ?? defaultMapLabels[0]);
-
-    setAssetRecords(readStoredArray<AssetRecord>(storageKeys.assets, defaultAssets));
-    setVendorRecords(readStoredArray<VendorRecord>(storageKeys.vendors, defaultVendors));
-    setServiceRecords(readStoredArray<ServiceRecord>(storageKeys.workOrders, defaultWorkOrders));
-    setCalendarItems(storedCalendar.length ? storedCalendar : defaultCalendar);
-    setSelectedCalendarId((storedCalendar[0] ?? defaultCalendar[0])?.id ?? "");
-    setCalendarForm(storedCalendar[0] ?? defaultCalendar[0] ?? blankCalendarItem(todayISO()));
-    setPartRecords(readStoredArray<PartRecord>(storageKeys.parts, defaultParts));
-
+    setAssetRecords(storedAssets.length ? byName(storedAssets) : fallbackAssets);
+    setVendorRecords(storedVendors.length ? byName(storedVendors) : fallbackVendors);
+    setServiceRecords(storedServices.length ? byTitle(storedServices) : fallbackWorkOrders);
+    setProcedureRecords(storedProcedures.length ? byTitle(storedProcedures) : fallbackProcedures);
+    setCalendarItems(storedCalendar.length ? byTitle(storedCalendar) : fallbackCalendar);
+    setCalendarColors(storedCalendarColors.length ? storedCalendarColors : defaultCalendarColors);
+    setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
+    setPhotos(storedPhotos);
+    setSelectedCalendarId("");
+    setCalendarDraft(blankCalendarItem(todayISO()));
     setReady(true);
+
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
   useEffect(() => {
-    if (ready) window.localStorage.setItem(mapLocalStorageKey, JSON.stringify(mapLabels));
+    let cancelled = false;
+
+    async function loadAtlasApi() {
+      try {
+        const response = await fetch("/api/atlas", { cache: "no-store" });
+        if (!response.ok) throw new Error(`API returned ${response.status}`);
+
+        const payload = (await response.json()) as AtlasApiPayload;
+        if (cancelled) return;
+
+        const apiAssets = Array.isArray(payload.assetRecords) ? payload.assetRecords : Array.isArray(payload.assets) ? payload.assets : [];
+        const apiVendors = Array.isArray(payload.vendorRecords) ? payload.vendorRecords : Array.isArray(payload.vendors) ? payload.vendors : [];
+        const apiServices = Array.isArray(payload.serviceRecords) ? payload.serviceRecords : Array.isArray(payload.workOrders) ? payload.workOrders : [];
+        const apiProcedures = Array.isArray(payload.procedureRecords) ? payload.procedureRecords : Array.isArray(payload.procedures) ? payload.procedures : [];
+        const apiCalendar = Array.isArray(payload.calendarItems) ? payload.calendarItems : Array.isArray(payload.calendar) ? payload.calendar : [];
+        const apiParts = Array.isArray(payload.partRecords) ? payload.partRecords : Array.isArray(payload.parts) ? payload.parts : [];
+        const apiPhotos = Array.isArray(payload.photos) ? payload.photos : Array.isArray(payload.assetPhotos) ? payload.assetPhotos : [];
+
+        if (apiAssets.length) {
+          const next = byName(apiAssets.map(normalizeAsset));
+          setAssetRecords(next);
+          setSelectedAssetId((current) => next.find((item) => item.id === current)?.id ?? next[0].id);
+        }
+
+        if (apiVendors.length) {
+          const next = byName(apiVendors.map(normalizeVendor));
+          setVendorRecords(next);
+          setSelectedVendorId((current) => next.find((item) => item.id === current)?.id ?? next[0].id);
+        }
+
+        if (apiServices.length) {
+          const next = byTitle(apiServices.map(normalizeService));
+          setServiceRecords(next);
+          setSelectedServiceId((current) => next.find((item) => item.id === current)?.id ?? next[0].id);
+        }
+
+        if (apiProcedures.length) {
+          const next = byTitle(apiProcedures.map(normalizeProcedure));
+          setProcedureRecords(next);
+          setSelectedProcedureId((current) => next.find((item) => item.id === current)?.id ?? next[0].id);
+        }
+
+        if (apiCalendar.length) {
+          const next = byTitle(apiCalendar.map(normalizeCalendar));
+          setCalendarItems(next);
+        }
+
+        if (apiParts.length) {
+          const next = byName(apiParts.map(normalizePart));
+          setPartRecords(next);
+        }
+
+        if (apiPhotos.length) setPhotos(apiPhotos);
+
+        setDatabaseStatus(`Atlas loaded: ${apiAssets.length || assetRecords.length} assets, ${apiVendors.length || vendorRecords.length} vendors, ${apiServices.length || serviceRecords.length} work orders.`);
+      } catch {
+        if (!cancelled) setDatabaseStatus("Using saved browser records / fallback records. /api/atlas did not load.");
+      }
+    }
+
+    void loadAtlasApi();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    void loadWeather();
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    saveStoredArray(storageKeys.mapLabels[0], mapLabels);
   }, [ready, mapLabels]);
 
   useEffect(() => {
-    if (ready) window.localStorage.setItem(storageKeys.assets, JSON.stringify(assetRecords));
+    if (!ready) return;
+    saveStoredArray(storageKeys.assets[0], assetRecords);
   }, [ready, assetRecords]);
 
   useEffect(() => {
-    if (ready) window.localStorage.setItem(storageKeys.vendors, JSON.stringify(vendorRecords));
+    if (!ready) return;
+    saveStoredArray(storageKeys.vendors[0], vendorRecords);
   }, [ready, vendorRecords]);
 
   useEffect(() => {
-    if (ready) window.localStorage.setItem(storageKeys.workOrders, JSON.stringify(serviceRecords));
+    if (!ready) return;
+    saveStoredArray(storageKeys.workOrders[0], serviceRecords);
   }, [ready, serviceRecords]);
 
   useEffect(() => {
-    if (ready) window.localStorage.setItem(storageKeys.calendar, JSON.stringify(calendarItems));
+    if (!ready) return;
+    saveStoredArray(storageKeys.procedures[0], procedureRecords);
+  }, [ready, procedureRecords]);
+
+  useEffect(() => {
+    if (!ready) return;
+    saveStoredArray(storageKeys.calendar[0], calendarItems);
   }, [ready, calendarItems]);
 
   useEffect(() => {
-    if (ready) window.localStorage.setItem(storageKeys.parts, JSON.stringify(partRecords));
+    if (!ready) return;
+    saveStoredArray(storageKeys.calendarColors[0], calendarColors);
+  }, [ready, calendarColors]);
+
+  useEffect(() => {
+    if (!ready) return;
+    saveStoredArray(storageKeys.parts[0], partRecords);
   }, [ready, partRecords]);
 
-  const selectedMapLabel = mapLabels.find((label) => label.id === selectedMapLabelId) ?? mapLabels[0] ?? defaultMapLabels[0];
-  const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? defaultAssets[0];
-  const selectedVendor = vendorRecords.find((vendor) => vendor.id === selectedVendorId) ?? vendorRecords[0] ?? defaultVendors[0];
-  const selectedService = serviceRecords.find((service) => service.id === selectedServiceId) ?? serviceRecords[0] ?? defaultWorkOrders[0];
-
-  const searchText = query.trim().toLowerCase();
-
-  const sortedLocations = useMemo(() => [...defaultLocations].sort((a, b) => a.name.localeCompare(b.name)), []);
-  const sortedAssets = useMemo(() => [...assetRecords].sort((a, b) => a.name.localeCompare(b.name)), [assetRecords]);
-  const sortedVendors = useMemo(() => [...vendorRecords].sort((a, b) => a.name.localeCompare(b.name)), [vendorRecords]);
-  const sortedWorkOrders = useMemo(
-    () => [...serviceRecords].sort((a, b) => (a.status === "Completed" ? 1 : 0) - (b.status === "Completed" ? 1 : 0) || a.date.localeCompare(b.date)),
-    [serviceRecords],
-  );
-
-  const sortedCalendar = useMemo(
-    () => [...calendarItems].sort((a, b) => a.date.localeCompare(b.date) || (a.time || "99:99").localeCompare(b.time || "99:99") || a.title.localeCompare(b.title)),
-    [calendarItems],
-  );
-
-  const todayKey = todayISO();
-  const todayCalendarItems = sortedCalendar.filter((item) => item.date === todayKey);
-  const selectedDateItems = sortedCalendar.filter((item) => item.date === selectedCalendarDate);
-
-  const searchResults = useMemo(
-    () =>
-      buildSearchIndex()
-        .filter((item) => !searchText || `${item.type} ${item.title} ${item.subtitle} ${item.detail}`.toLowerCase().includes(searchText))
-        .slice(0, 12),
-    [searchText, mapLabels, assetRecords, vendorRecords, serviceRecords, calendarItems, partRecords],
-  );
+  function byLabel(records: MapLabelRecord[]) {
+    return [...records].sort((a, b) => a.label.localeCompare(b.label));
+  }
 
   function locationName(id?: string) {
-    return sortedLocations.find((location) => location.id === id)?.name ?? "General";
+    return locations.find((location) => location.id === id)?.name ?? "General";
   }
 
   function vendorName(id?: string) {
@@ -667,69 +913,130 @@ export default function AtlasPage() {
     return assetRecords.find((asset) => asset.id === id)?.name ?? "No asset";
   }
 
+  function colorForEvent(event: CalendarItem) {
+    return calendarColors.find((color) => color.id === event.colorId) ?? calendarColors[0] ?? defaultCalendarColors[0];
+  }
+
+  function selectedColor() {
+    return calendarColors.find((color) => color.id === calendarDraft.colorId) ?? calendarColors[0] ?? defaultCalendarColors[0];
+  }
+
+  const selectedMapLabel = mapLabels.find((label) => label.id === selectedMapLabelId) ?? mapLabels[0] ?? defaultMapLabels[0];
+  const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? normalizeAsset({});
+  const selectedVendor = vendorRecords.find((vendor) => vendor.id === selectedVendorId) ?? vendorRecords[0] ?? normalizeVendor({});
+  const selectedService = serviceRecords.find((service) => service.id === selectedServiceId) ?? serviceRecords[0] ?? normalizeService({});
+  const selectedProcedure = procedureRecords.find((procedure) => procedure.id === selectedProcedureId) ?? procedureRecords[0] ?? normalizeProcedure({});
+  const selectedPart = partRecords.find((part) => part.id === selectedPartId) ?? partRecords[0] ?? normalizePart({});
+  const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
+  const selectedWeather = weatherDays.find((day) => day.date === selectedWeatherDate) ?? weatherDays[0];
+  const selectedCalendar = calendarDraft;
+
+  const todayEvents = useMemo(() => byTitle(calendarItems.filter((item) => item.date === todayISO())), [calendarItems]);
+
+  const selectedDayEvents = useMemo(
+    () => byTitle(calendarItems.filter((item) => item.date === selectedCalendarDate)),
+    [calendarItems, selectedCalendarDate]
+  );
+
+  const weatherByDate = useMemo(() => {
+    const map = new Map<string, WeatherDay>();
+    weatherDays.forEach((day) => map.set(day.date, day));
+    return map;
+  }, [weatherDays]);
+
+  const upcomingEvents = useMemo(() => {
+    const today = todayISO();
+    return [...calendarItems]
+      .filter((item) => item.date >= today)
+      .sort((a, b) => `${a.date} ${a.time || ""}`.localeCompare(`${b.date} ${b.time || ""}`))
+      .slice(0, 6);
+  }, [calendarItems]);
+
+  const q = query.trim().toLowerCase();
+
+  const filteredLocations = useMemo(() => {
+    const sorted = [...locations].sort((a, b) => a.name.localeCompare(b.name));
+    if (!q) return sorted;
+    return sorted.filter((item) => [item.name, item.type, item.zone, item.notes].join(" ").toLowerCase().includes(q));
+  }, [q]);
+
+  const filteredMapLabels = useMemo(() => {
+    const sorted = byLabel(mapLabels);
+    if (!q) return sorted;
+    return sorted.filter((item) => [item.label, item.category, item.notes].join(" ").toLowerCase().includes(q));
+  }, [q, mapLabels]);
+
+  const filteredAssets = useMemo(() => {
+    const sorted = byName(assetRecords);
+    if (!q) return sorted;
+    return sorted.filter((item) => [item.name, item.category, item.status, item.make, item.model, item.serial, item.notes, locationName(item.locationId), item.vendorIds.map(vendorName).join(" ")].join(" ").toLowerCase().includes(q));
+  }, [q, assetRecords, vendorRecords]);
+
+  const filteredVendors = useMemo(() => {
+    const sorted = byName(vendorRecords);
+    if (!q) return sorted;
+    return sorted.filter((item) => [item.name, item.category, item.phone, item.email, item.website, item.notes].join(" ").toLowerCase().includes(q));
+  }, [q, vendorRecords]);
+
+  const filteredServices = useMemo(() => {
+    const sorted = byTitle(serviceRecords);
+    if (!q) return sorted;
+    return sorted.filter((item) => [item.title, item.status, item.priority, item.date, item.followUpDate, item.notes, assetName(item.assetId), vendorName(item.vendorId)].join(" ").toLowerCase().includes(q));
+  }, [q, serviceRecords, assetRecords, vendorRecords]);
+
+  const filteredProcedures = useMemo(() => {
+    const sorted = byTitle(procedureRecords);
+    if (!q) return sorted;
+    return sorted.filter((item) => [item.title, item.area, item.priority, item.steps.join(" ")].join(" ").toLowerCase().includes(q));
+  }, [q, procedureRecords]);
+
+  const filteredCalendar = useMemo(() => {
+    const sorted = byTitle(calendarItems);
+    if (!q) return sorted;
+    return sorted.filter((item) => [item.title, item.area, item.status, item.date, item.time, colorForEvent(item).label].join(" ").toLowerCase().includes(q));
+  }, [q, calendarItems, calendarColors]);
+
+  const filteredParts = useMemo(() => {
+    const sorted = byName(partRecords);
+    if (!q) return sorted;
+    return sorted.filter((item) => [item.name, item.category, item.status, item.notes, locationName(item.locationId), assetName(item.assetId), vendorName(item.vendorId)].join(" ").toLowerCase().includes(q));
+  }, [q, partRecords, assetRecords, vendorRecords]);
+
+  const searchResults = useMemo(() => {
+    if (!q) return [];
+    return buildSearchIndex().filter((item) => [item.type, item.title, item.subtitle, item.detail].join(" ").toLowerCase().includes(q)).slice(0, 12);
+  }, [q, mapLabels, assetRecords, vendorRecords, serviceRecords, procedureRecords, calendarItems, partRecords, calendarColors]);
+
+  const monthCells = useMemo(() => {
+    const year = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+    const first = new Date(year, month, 1);
+    const startDay = first.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: { key: string; date?: string; day?: number; outside?: boolean }[] = [];
+
+    for (let i = 0; i < startDay; i += 1) cells.push({ key: `blank-${i}`, outside: true });
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(year, month, day);
+      const iso = localISODate(date);
+      cells.push({ key: iso, date: iso, day });
+    }
+
+    while (cells.length % 7 !== 0) cells.push({ key: `end-${cells.length}`, outside: true });
+    return cells;
+  }, [calendarCursor]);
+
   function buildSearchIndex(): SearchResult[] {
     return [
-      ...sortedLocations.map((location) => ({
-        id: `location-${location.id}`,
-        type: "Location",
-        title: location.name,
-        subtitle: `${location.type} · ${location.zone}`,
-        detail: location.notes,
-        screen: "locations" as Screen,
-      })),
-      ...mapLabels.map((label) => ({
-        id: `map-${label.id}`,
-        type: "Map Label",
-        title: label.label,
-        subtitle: `${label.category} · ${Math.round(label.x)}/${Math.round(label.y)}`,
-        detail: label.notes,
-        screen: "map" as Screen,
-        mapLabelId: label.id,
-      })),
-      ...assetRecords.map((asset) => ({
-        id: `asset-${asset.id}`,
-        type: "Asset",
-        title: asset.name,
-        subtitle: `${asset.category} · ${locationName(asset.locationId)} · ${asset.status}`,
-        detail: `${asset.make ?? ""} ${asset.model ?? ""} ${asset.serial ?? ""} ${asset.notes}`,
-        screen: "assets" as Screen,
-        assetId: asset.id,
-      })),
-      ...vendorRecords.map((vendor) => ({
-        id: `vendor-${vendor.id}`,
-        type: "Vendor",
-        title: vendor.name,
-        subtitle: vendor.category,
-        detail: `${vendor.phone ?? ""} ${vendor.email ?? ""} ${vendor.notes}`,
-        screen: "vendors" as Screen,
-        vendorId: vendor.id,
-      })),
-      ...serviceRecords.map((service) => ({
-        id: `service-${service.id}`,
-        type: "Work Order",
-        title: service.title,
-        subtitle: `${formatDate(service.date)} · ${service.status} · ${service.priority}`,
-        detail: `${assetName(service.assetId)} ${vendorName(service.vendorId)} ${service.notes}`,
-        screen: "history" as Screen,
-        serviceId: service.id,
-      })),
-      ...calendarItems.map((item) => ({
-        id: `calendar-${item.id}`,
-        type: "Calendar",
-        title: item.title,
-        subtitle: `${formatDate(item.date)} · ${item.time ? formatCalendarTime(item.time) : "No time"} · ${item.category}`,
-        detail: `${item.area} ${item.notes ?? ""}`,
-        screen: "calendar" as Screen,
-        calendarId: item.id,
-      })),
-      ...partRecords.map((part) => ({
-        id: `part-${part.id}`,
-        type: "Part",
-        title: part.name,
-        subtitle: `${part.category} · ${part.status}`,
-        detail: `${locationName(part.locationId)} quantity ${part.quantity} minimum ${part.minQuantity} ${part.notes}`,
-        screen: "parts" as Screen,
-      })),
+      ...locations.map((item) => ({ id: `location-${item.id}`, type: "Location", title: item.name, subtitle: `${item.type} · ${item.zone}`, detail: item.notes, screen: "locations" as Screen })),
+      ...mapLabels.map((item) => ({ id: `map-${item.id}`, type: "Map Label", title: item.label, subtitle: item.category, detail: item.notes, screen: "map" as Screen, mapLabelId: item.id })),
+      ...assetRecords.map((item) => ({ id: `asset-${item.id}`, type: "Asset", title: item.name, subtitle: `${item.category} · ${locationName(item.locationId)} · ${item.status}`, detail: [item.make, item.model, item.serial, item.notes].join(" "), screen: "assets" as Screen, assetId: item.id })),
+      ...vendorRecords.map((item) => ({ id: `vendor-${item.id}`, type: "Vendor", title: item.name, subtitle: item.category, detail: [item.phone, item.email, item.website, item.notes].join(" "), screen: "vendors" as Screen, vendorId: item.id })),
+      ...serviceRecords.map((item) => ({ id: `wo-${item.id}`, type: "Work Order", title: item.title, subtitle: `${formatDate(item.date)} · ${item.status} · ${item.priority ?? "Medium"}`, detail: `${assetName(item.assetId)} ${vendorName(item.vendorId)} ${item.notes}`, screen: "history" as Screen, serviceId: item.id })),
+      ...procedureRecords.map((item) => ({ id: `procedure-${item.id}`, type: "Procedure", title: item.title, subtitle: `${item.area} · ${item.priority}`, detail: item.steps.join(" "), screen: "procedures" as Screen, procedureId: item.id })),
+      ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar", title: item.title, subtitle: `${formatDate(item.date)} · ${item.time || "No time"} · ${colorForEvent(item).label}`, detail: `${item.area} ${item.status}`, screen: "calendar" as Screen, calendarId: item.id })),
+      ...partRecords.map((item) => ({ id: `part-${item.id}`, type: "Part", title: item.name, subtitle: `${item.category} · Qty ${item.quantity}`, detail: item.notes, screen: "parts" as Screen, partId: item.id })),
     ];
   }
 
@@ -737,1432 +1044,1736 @@ export default function AtlasPage() {
     if (result.assetId) setSelectedAssetId(result.assetId);
     if (result.vendorId) setSelectedVendorId(result.vendorId);
     if (result.serviceId) setSelectedServiceId(result.serviceId);
-    if (result.mapLabelId) {
-      const label = mapLabels.find((item) => item.id === result.mapLabelId);
-      if (label) {
-        setSelectedMapLabelId(label.id);
-        setMapLabelForm(label);
-        setMapLabelMode("edit");
-      }
-    }
-    if (result.calendarId) {
-      const item = calendarItems.find((calendarItem) => calendarItem.id === result.calendarId);
-      if (item) selectCalendarItem(item);
-    }
-    setQuery("");
+    if (result.mapLabelId) setSelectedMapLabelId(result.mapLabelId);
+    if (result.procedureId) setSelectedProcedureId(result.procedureId);
+    if (result.calendarId) startEditCalendarItem(result.calendarId);
+    if (result.partId) setSelectedPartId(result.partId);
     setScreen(result.screen);
+    setQuery("");
   }
 
-  function updateAsset(id: string, changes: Partial<AssetRecord>) {
-    setAssetRecords((current) => current.map((asset) => (asset.id === id ? { ...asset, ...changes } : asset)));
+  async function loadWeather() {
+    try {
+      setWeatherStatus("Loading 7-day irrigation weather...");
+      const url =
+        "https://api.open-meteo.com/v1/forecast?latitude=47.60&longitude=-122.20&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,et0_fao_evapotranspiration&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&forecast_days=7";
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error("Weather failed");
+      const data = await response.json();
+
+      const days: WeatherDay[] = data.daily.time.map((date: string, index: number) => ({
+        date,
+        code: Number(data.daily.weather_code[index] ?? 0),
+        high: Math.round(Number(data.daily.temperature_2m_max[index] ?? 0)),
+        low: Math.round(Number(data.daily.temperature_2m_min[index] ?? 0)),
+        precipChance: Math.round(Number(data.daily.precipitation_probability_max[index] ?? 0)),
+        precipAmount: Number(Number(data.daily.precipitation_sum[index] ?? 0).toFixed(2)),
+        windMax: Math.round(Number(data.daily.wind_speed_10m_max[index] ?? 0)),
+        et0: Number(Number(data.daily.et0_fao_evapotranspiration[index] ?? 0).toFixed(2)),
+      }));
+
+      setWeatherDays(days);
+      setSelectedWeatherDate((current) => current || days[0]?.date || "");
+      setWeatherStatus("7-day weather loaded for irrigation and yard planning.");
+    } catch {
+      setWeatherStatus("Weather did not load. Check internet access from the deployed site.");
+    }
   }
 
-  function updateVendor(id: string, changes: Partial<VendorRecord>) {
-    setVendorRecords((current) => current.map((vendor) => (vendor.id === id ? { ...vendor, ...changes } : vendor)));
+  async function postAtlasRecord(table: AtlasTable, record: unknown) {
+    try {
+      await fetch("/api/atlas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table, record }),
+      });
+      setDatabaseStatus("Saved to Atlas API.");
+    } catch {
+      setDatabaseStatus("Saved in browser. Atlas API save did not complete.");
+    }
   }
 
-  function updateService(id: string, changes: Partial<ServiceRecord>) {
-    setServiceRecords((current) => current.map((service) => (service.id === id ? { ...service, ...changes } : service)));
+  function addAsset() {
+    const record = normalizeAsset({ id: uid("asset"), name: "New Asset", locationId: "general", category: "General", status: "Monitor", notes: "" });
+    setAssetRecords((current) => byName([record, ...current]));
+    setSelectedAssetId(record.id);
+    setScreen("assets");
   }
 
-  function saveCalendarItem() {
-    const title = calendarForm.title.trim();
-    if (!title) return;
-
-    const cleanItem = normalizeCalendarItem({
-      ...calendarForm,
-      id: calendarMode === "edit" && calendarForm.id ? calendarForm.id : uid("cal"),
-      title,
-      date: calendarForm.date || selectedCalendarDate || todayISO(),
-      area: calendarForm.area.trim() || "2000",
-      notes: calendarForm.notes?.trim() || "",
-      time: calendarForm.time || "",
-    });
-
-    setCalendarItems((current) => {
-      const exists = current.some((item) => item.id === cleanItem.id);
-      return exists ? current.map((item) => (item.id === cleanItem.id ? cleanItem : item)) : [...current, cleanItem];
-    });
-
-    setCalendarForm(cleanItem);
-    setSelectedCalendarId(cleanItem.id);
-    setSelectedCalendarDate(cleanItem.date);
-    setCalendarCursor(dateFromKey(cleanItem.date));
-    setCalendarMode("edit");
+  function updateAsset(patch: Partial<AssetRecord>) {
+    setAssetRecords((current) => byName(current.map((item) => (item.id === selectedAsset.id ? normalizeAsset({ ...item, ...patch }) : item))));
   }
 
-  function deleteCalendarItem() {
-    if (!calendarForm.id) return;
-    const confirmed = window.confirm(`Delete calendar item: ${calendarForm.title}?`);
-    if (!confirmed) return;
-
-    const remaining = calendarItems.filter((item) => item.id !== calendarForm.id);
-    setCalendarItems(remaining);
-
-    const nextItem = remaining.find((item) => item.date === selectedCalendarDate) ?? remaining[0];
-    setSelectedCalendarId(nextItem?.id ?? "");
-    setCalendarForm(nextItem ?? blankCalendarItem(selectedCalendarDate || todayISO()));
-    setCalendarMode(nextItem ? "edit" : "new");
+  function addVendor() {
+    const record = normalizeVendor({ id: uid("vendor"), name: "New Vendor", category: "General", notes: "" });
+    setVendorRecords((current) => byName([record, ...current]));
+    setSelectedVendorId(record.id);
+    setScreen("vendors");
   }
 
-  function startNewCalendarItem(date = selectedCalendarDate || todayISO()) {
-    const next = blankCalendarItem(date);
-    setCalendarForm(next);
-    setSelectedCalendarId("");
-    setSelectedCalendarDate(date);
-    setCalendarCursor(dateFromKey(date));
-    setCalendarMode("new");
+  function updateVendor(patch: Partial<VendorRecord>) {
+    setVendorRecords((current) => byName(current.map((item) => (item.id === selectedVendor.id ? normalizeVendor({ ...item, ...patch }) : item))));
   }
 
-  function selectCalendarItem(item: CalendarItem) {
-    const cleanItem = normalizeCalendarItem(item);
-    setSelectedCalendarId(cleanItem.id);
-    setCalendarForm(cleanItem);
-    setSelectedCalendarDate(cleanItem.date);
-    setCalendarCursor(dateFromKey(cleanItem.date));
-    setCalendarMode("edit");
-  }
-
-  function changeCalendarCategory(category: CalendarCategory) {
-    const color = categoryMeta(category).color;
-    setCalendarForm((current) => ({ ...current, category, color }));
-  }
-
-  function createWorkOrderFromCalendarItem(item?: CalendarItem) {
-    const source = item ?? calendarForm;
-    if (!source.title.trim()) return;
-
-    const matchingAsset =
-      assetRecords.find((asset) => source.area.toLowerCase().includes(locationName(asset.locationId).toLowerCase())) ??
-      assetRecords.find((asset) => source.title.toLowerCase().includes(asset.name.toLowerCase())) ??
-      assetRecords[0];
-
-    const workOrder: ServiceRecord = {
-      id: uid("service-cal"),
-      assetId: matchingAsset?.id ?? "",
-      vendorId: "",
-      date: source.date || todayISO(),
-      title: source.title,
-      status: "Open",
-      priority: source.category === "Pool / Spa" || source.category === "Boat / Dock" ? "High" : "Medium",
-      notes: `Created from calendar item. Area: ${source.area || "2000"}. Category: ${source.category}. Time: ${source.time ? formatCalendarTime(source.time) : "No time"}. ${source.notes ?? ""}`.trim(),
-    };
-
-    setServiceRecords((current) => [workOrder, ...current]);
-    setSelectedServiceId(workOrder.id);
+  function addWorkOrder() {
+    const record = normalizeService({ id: uid("wo"), title: "New Work Order", date: todayISO(), status: "Open", priority: "Medium", notes: "", assetId: selectedAsset.id });
+    setServiceRecords((current) => byTitle([record, ...current]));
+    setSelectedServiceId(record.id);
     setScreen("history");
   }
 
-  function scheduleProcedure(procedure: ProcedureRecord) {
-    const category: CalendarCategory = procedure.area.toLowerCase().includes("spa") || procedure.area.toLowerCase().includes("pool") ? "Pool / Spa" : "Maintenance";
-    const item = normalizeCalendarItem({
-      id: uid("cal-procedure"),
-      date: selectedCalendarDate || todayISO(),
-      title: procedure.title,
-      area: procedure.area || "2000",
-      category,
-      color: categoryMeta(category).color,
-      notes: "Scheduled from Procedures.",
-    });
+  function updateWorkOrder(patch: Partial<ServiceRecord>) {
+    setServiceRecords((current) => byTitle(current.map((item) => (item.id === selectedService.id ? normalizeService({ ...item, ...patch }) : item))));
+  }
 
-    setCalendarItems((current) => [...current, item]);
-    selectCalendarItem(item);
+  function startNewCalendarDraft(date?: string) {
+    const targetDate = date || selectedCalendarDate || todayISO();
+    setSelectedCalendarDate(targetDate);
+    setSelectedCalendarId("");
+    setCalendarDraft(blankCalendarItem(targetDate, calendarColors[0]?.id || "personal-owner"));
     setScreen("calendar");
   }
 
-  function schedulePartRestock(part: PartRecord) {
-    const item = normalizeCalendarItem({
-      id: uid("cal-part"),
-      date: todayISO(),
-      title: `Restock: ${part.name}`,
-      area: locationName(part.locationId),
-      category: "Maintenance",
-      color: categoryMeta("Maintenance").color,
-      notes: `Inventory request. Current quantity: ${part.quantity}. Minimum: ${part.minQuantity}.`,
+  function startEditCalendarItem(id: string) {
+    const event = calendarItems.find((item) => item.id === id);
+    if (!event) return;
+    setSelectedCalendarId(event.id);
+    setSelectedCalendarDate(event.date);
+    setCalendarDraft({ ...event });
+  }
+
+  function addCalendarItem(date?: string) {
+    startNewCalendarDraft(date);
+  }
+
+  function updateCalendarItem(patch: Partial<CalendarItem>) {
+    setCalendarDraft((current) => {
+      const next: CalendarItem = {
+        ...current,
+        ...patch,
+        id: selectedCalendarId || current.id || "",
+        title: patch.title ?? current.title,
+        area: patch.area ?? current.area,
+        date: patch.date ?? current.date,
+        time: patch.time ?? current.time ?? "",
+        status: isServiceStatus(patch.status) ? patch.status : current.status,
+        colorId: patch.colorId ?? current.colorId ?? calendarColors[0]?.id,
+      };
+
+      if (patch.date) setSelectedCalendarDate(patch.date);
+
+      return next;
+    });
+  }
+
+  function saveCalendarItem() {
+    const record: CalendarItem = normalizeCalendar({
+      ...calendarDraft,
+      id: selectedCalendarId || uid("cal"),
+      title: calendarDraft.title.trim() || "Untitled Calendar Item",
+      area: calendarDraft.area.trim() || "2000",
+      date: calendarDraft.date || selectedCalendarDate || todayISO(),
+      time: calendarDraft.time || "",
+      status: calendarDraft.status || "Scheduled",
+      colorId: calendarDraft.colorId || calendarColors[0]?.id || "personal-owner",
     });
 
-    setCalendarItems((current) => [...current, item]);
-    selectCalendarItem(item);
-    setScreen("calendar");
+    setCalendarItems((current) => {
+      const exists = current.some((item) => item.id === record.id);
+      if (exists) return byTitle(current.map((item) => (item.id === record.id ? record : item)));
+      return byTitle([record, ...current]);
+    });
+
+    setSelectedCalendarId(record.id);
+    setSelectedCalendarDate(record.date);
+    setCalendarDraft(record);
+    void postAtlasRecord("calendar", record);
+  }
+
+  function deleteCalendarItem(id: string) {
+    if (!id) {
+      setSelectedCalendarId("");
+      setCalendarDraft(blankCalendarItem(selectedCalendarDate, calendarColors[0]?.id || "personal-owner"));
+      return;
+    }
+
+    const remaining = calendarItems.filter((item) => item.id !== id);
+    setCalendarItems(byTitle(remaining));
+    setSelectedCalendarId("");
+    setCalendarDraft(blankCalendarItem(selectedCalendarDate, calendarColors[0]?.id || "personal-owner"));
+  }
+
+  function updateCalendarColor(id: string, patch: Partial<CalendarColor>) {
+    setCalendarColors((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              ...patch,
+              label: patch.label ?? item.label,
+              hex: patch.hex ?? item.hex,
+            }
+          : item
+      )
+    );
+  }
+
+  function addCalendarColor() {
+    const newColor: CalendarColor = {
+      id: uid("color"),
+      label: "New Color",
+      hex: "#C99A3D",
+    };
+    setCalendarColors((current) => [...current, newColor]);
+    setCalendarDraft((current) => ({ ...current, colorId: newColor.id }));
+  }
+
+  function updateProcedure(patch: Partial<ProcedureRecord>) {
+    setProcedureRecords((current) => byTitle(current.map((item) => (item.id === selectedProcedure.id ? normalizeProcedure({ ...item, ...patch }) : item))));
+  }
+
+  function updatePart(patch: Partial<PartRecord>) {
+    setPartRecords((current) => byName(current.map((item) => (item.id === selectedPart.id ? normalizePart({ ...item, ...patch }) : item))));
   }
 
   function addMapLabel() {
-    const label = { ...blankMapLabel, id: uid("map"), label: "New Label" };
-    setMapLabels((current) => [...current, label]);
-    setSelectedMapLabelId(label.id);
-    setMapLabelForm(label);
-    setMapLabelMode("edit");
+    const record: MapLabelRecord = { id: uid("map"), label: "New Label", category: "Location", x: 50, y: 50, notes: "", photos: [] };
+    setMapLabels((current) => byLabel([...current, record]));
+    setSelectedMapLabelId(record.id);
   }
 
-  function saveMapLabel() {
-    const clean = {
-      ...mapLabelForm,
-      id: mapLabelForm.id || uid("map"),
-      label: mapLabelForm.label.trim() || "Map Label",
-      category: mapLabelForm.category.trim() || "Location",
-      x: clampPercent(Number(mapLabelForm.x)),
-      y: clampPercent(Number(mapLabelForm.y)),
-      notes: mapLabelForm.notes.trim(),
-      photos: mapLabelForm.photos ?? [],
-    };
+  function resetMapLabels() {
+    setMapLabels(defaultMapLabels);
+    setSelectedMapLabelId(defaultMapLabels[0].id);
+  }
 
-    setMapLabels((current) => (current.some((label) => label.id === clean.id) ? current.map((label) => (label.id === clean.id ? clean : label)) : [...current, clean]));
-    setSelectedMapLabelId(clean.id);
-    setMapLabelForm(clean);
-    setMapLabelMode("edit");
+  function updateSelectedMapLabel(patch: Partial<MapLabelRecord>) {
+    setMapLabels((current) =>
+      byLabel(
+        current.map((label) =>
+          label.id === selectedMapLabel.id
+            ? {
+                ...label,
+                ...patch,
+                x: patch.x === undefined ? label.x : clampPercent(Number(patch.x)),
+                y: patch.y === undefined ? label.y : clampPercent(Number(patch.y)),
+                photos: patch.photos ?? label.photos ?? [],
+              }
+            : label
+        )
+      )
+    );
+  }
+
+  function handleMapLabelPointerDown(event: React.PointerEvent<HTMLButtonElement>, labelId: string) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingLabelRef.current = labelId;
+    setSelectedMapLabelId(labelId);
   }
 
   function handleMapPointerMove(event: React.PointerEvent<HTMLDivElement>) {
     if (!draggingLabelRef.current || !mapRef.current) return;
-
     const rect = mapRef.current.getBoundingClientRect();
     const x = clampPercent(((event.clientX - rect.left) / rect.width) * 100);
     const y = clampPercent(((event.clientY - rect.top) / rect.height) * 100);
     const id = draggingLabelRef.current;
-
     setMapLabels((current) => current.map((label) => (label.id === id ? { ...label, x, y } : label)));
-    setMapLabelForm((current) => (current.id === id ? { ...current, x, y } : current));
   }
 
-  function stopDraggingLabel() {
+  function stopMapDrag() {
     draggingLabelRef.current = null;
   }
 
-  function selectMapLabel(label: MapLabelRecord) {
-    setSelectedMapLabelId(label.id);
-    setMapLabelForm(label);
-    setMapLabelMode("edit");
-  }
-
-  function handleMapLabelPhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    if (!files.length) return;
-
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const photo: UploadedFileRecord = {
-          id: uid("photo"),
-          name: file.name,
-          type: file.type,
-          dataUrl: String(reader.result),
-          createdAt: new Date().toISOString(),
-        };
-
-        setMapLabelForm((current) => ({ ...current, photos: [...(current.photos ?? []), photo] }));
-        setMapLabels((current) => current.map((label) => (label.id === selectedMapLabelId ? { ...label, photos: [...(label.photos ?? []), photo] } : label)));
-      };
-      reader.readAsDataURL(file);
-    });
-
-    event.target.value = "";
-  }
-
-  function deleteMapPhoto(photoId: string) {
-    setMapLabelForm((current) => ({ ...current, photos: (current.photos ?? []).filter((photo) => photo.id !== photoId) }));
-    setMapLabels((current) => current.map((label) => (label.id === selectedMapLabelId ? { ...label, photos: (label.photos ?? []).filter((photo) => photo.id !== photoId) } : label)));
+  function moveCalendarMonth(delta: number) {
+    setCalendarCursor((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
   }
 
   function askAtlas() {
-    const question = assistantQuestion.trim().toLowerCase();
-    if (!question) return;
+    const text = assistantQuestion.trim().toLowerCase();
 
-    const matches = buildSearchIndex()
-      .filter((item) => `${item.type} ${item.title} ${item.subtitle} ${item.detail}`.toLowerCase().includes(question))
-      .slice(0, 8);
-
-    if (!matches.length) {
-      setAssistantAnswer("I did not find an exact Atlas record match. Try asking about an asset, vendor, map label, work order, calendar item, procedure, document, or part.");
+    if (!text) {
+      setAssistantAnswer("Type a question first.");
       return;
     }
 
-    setAssistantAnswer(
-      matches
-        .map((item, index) => `${index + 1}. ${item.type}: ${item.title}\n${item.subtitle}\n${item.detail}`)
-        .join("\n\n"),
-    );
-  }
-
-  function monthCells() {
-    const first = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth(), 1, 12);
-    const start = new Date(first);
-    start.setDate(first.getDate() - first.getDay());
-
-    return Array.from({ length: 42 }, (_, index) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + index);
-      return date;
-    });
-  }
-
-  function screenContent() {
-    switch (screen) {
-      case "dashboard":
-        return renderDashboard();
-      case "map":
-        return renderMap();
-      case "locations":
-        return renderLocations();
-      case "assets":
-        return renderAssets();
-      case "history":
-        return renderWorkOrders();
-      case "vendors":
-        return renderVendors();
-      case "calendar":
-        return renderCalendar();
-      case "weather":
-        return renderWeather();
-      case "documents":
-        return renderDocuments();
-      case "procedures":
-        return renderProcedures();
-      case "parts":
-        return renderParts();
-      case "assistant":
-        return renderAssistant();
-      default:
-        return renderDashboard();
+    if (text.includes("weather") || text.includes("irrigation")) {
+      setAssistantAnswer(weatherStatus);
+      return;
     }
+
+    if (text.includes("map")) {
+      setAssistantAnswer(`The map is locked to /atlas-property-map.png and has ${mapLabels.length} movable labels. Use Reset Map to restore the saved label layout.`);
+      return;
+    }
+
+    if (text.includes("asset") || text.includes("equipment")) {
+      setAssistantAnswer(`Atlas currently has ${assetRecords.length} asset records loaded. Open Assets to review/edit them in A–Z list form.`);
+      return;
+    }
+
+    if (text.includes("vendor")) {
+      setAssistantAnswer(`Atlas currently has ${vendorRecords.length} vendors loaded. Open Vendors to review/edit them in A–Z list form.`);
+      return;
+    }
+
+    if (text.includes("work") || text.includes("order") || text.includes("service")) {
+      setAssistantAnswer(`Atlas currently has ${serviceRecords.length} work orders/service records loaded. Open Work Orders to review them.`);
+      return;
+    }
+
+    setAssistantAnswer(`Loaded now: ${assetRecords.length} assets, ${vendorRecords.length} vendors, ${serviceRecords.length} work orders, ${procedureRecords.length} procedures, ${calendarItems.length} calendar items, ${partRecords.length} parts, and ${mapLabels.length} map labels.`);
   }
 
-  if (!ready) {
+  function renderDashboardWeather() {
     return (
-      <main style={loadingStyle}>
-        <div style={logoMarkStyle}>A</div>
-        <p>Loading Atlas...</p>
-      </main>
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Weather / Irrigation"
+          title="7-Day Planning Window"
+          detail="Placed between Today and Work Orders for irrigation and yard-work planning."
+          right={<button type="button" onClick={() => setScreen("weather")} style={secondaryButtonStyle}>Open Weather</button>}
+        />
+
+        <div style={dashboardWeatherStripStyle}>
+          {weatherDays.length ? (
+            weatherDays.map((day) => (
+              <button key={day.date} type="button" onClick={() => setScreen("weather")} style={dashboardWeatherDayStyle}>
+                <div style={dashboardWeatherTopStyle}>
+                  <strong>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</strong>
+                  <span style={calendarWeatherIconStyle}>{weatherIcon(day.code)}</span>
+                </div>
+                <div style={dashboardWeatherTempStyle}>{day.high}° / {day.low}°</div>
+                <div style={dashboardWeatherMiniStyle}>Rain {day.precipChance}% · ET0 {day.et0}"</div>
+                <p style={dashboardAdviceStyle}>{irrigationAdvice(day)}</p>
+              </button>
+            ))
+          ) : (
+            <div style={noticeStyle}>{weatherStatus}</div>
+          )}
+        </div>
+      </section>
     );
   }
-
-  return (
-    <main style={shellStyle}>
-      <aside style={sidebarStyle}>
-        <div style={brandBlockStyle}>
-          <div style={logoMarkStyle}>A</div>
-          <div>
-            <div style={brandTitleStyle}>ATLAS</div>
-            <div style={brandSubStyle}>2000 Estate Systems</div>
-          </div>
-        </div>
-
-        <nav style={navStyle}>
-          {screens.map((item) => (
-            <button key={item.id} type="button" onClick={() => setScreen(item.id)} style={screen === item.id ? activeNavButtonStyle : navButtonStyle}>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      <section style={mainStyle}>
-        <header style={topbarStyle}>
-          <div>
-            <div style={eyebrowStyle}>Private property command center</div>
-            <h1 style={pageTitleStyle}>Atlas / 2000</h1>
-          </div>
-
-          <div style={searchWrapStyle}>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Atlas..." style={searchInputStyle} />
-            {query.trim() ? (
-              <div style={searchResultsStyle}>
-                {searchResults.length ? (
-                  searchResults.map((result) => (
-                    <button key={result.id} type="button" onClick={() => openSearchResult(result)} style={searchResultButtonStyle}>
-                      <strong>{result.title}</strong>
-                      <span>{result.type} · {result.subtitle}</span>
-                    </button>
-                  ))
-                ) : (
-                  <div style={emptyStateStyle}>No matching Atlas records.</div>
-                )}
-              </div>
-            ) : null}
-          </div>
-        </header>
-
-        {screenContent()}
-      </section>
-    </main>
-  );
 
   function renderDashboard() {
-    const openWorkOrders = serviceRecords.filter((item) => item.status !== "Completed").length;
-    const highPriority = serviceRecords.filter((item) => item.priority === "High" && item.status !== "Completed").length;
-    const upcomingCalendar = sortedCalendar.filter((item) => item.date >= todayKey).slice(0, 6);
+    const openWorkOrders = serviceRecords.filter((record) => record.status !== "Completed");
+    const highPriority = serviceRecords.filter((record) => record.priority === "High" && record.status !== "Completed");
 
     return (
-      <div style={stackStyle}>
+      <div style={dashboardStackStyle}>
         <div style={statGridStyle}>
-          <Stat label="Assets" value={`${assetRecords.length}`} />
-          <Stat label="Vendors" value={`${vendorRecords.length}`} />
-          <Stat label="Open Work Orders" value={`${openWorkOrders}`} />
-          <Stat label="High Priority" value={`${highPriority}`} />
+          <StatCard label="Assets" value={assetRecords.length} onClick={() => setScreen("assets")} />
+          <StatCard label="Vendors" value={vendorRecords.length} onClick={() => setScreen("vendors")} />
+          <StatCard label="Open Work Orders" value={openWorkOrders.length} onClick={() => setScreen("history")} />
+          <StatCard label="High Priority" value={highPriority.length} onClick={() => setScreen("history")} />
         </div>
 
-        <div style={gridTwoStyle}>
-          <Section title="Today" eyebrow="Calendar / property focus">
-            <div style={stackStyle}>
-              {todayCalendarItems.length ? (
-                todayCalendarItems.map((item) => <CalendarEventCard key={item.id} item={item} compact={false} />)
+        <div style={{ ...dashboardTopGridStyle, gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr" }}>
+          <section style={sectionStyle}>
+            <SectionHeader eyebrow="Calendar / Property Focus" title="Today" />
+            <div style={listStyle}>
+              {todayEvents.length ? (
+                todayEvents.map((event) => {
+                  const eventColor = colorForEvent(event);
+                  return (
+                    <button key={event.id} type="button" onClick={() => { startEditCalendarItem(event.id); setScreen("calendar"); }} style={{ ...todayEventStyle, borderLeftColor: eventColor.hex }}>
+                      <div>
+                        <strong>{event.title}</strong>
+                        <p style={mutedSmallStyle}>{formatDate(event.date)} · {event.time || "No time"} · {event.area}</p>
+                      </div>
+                      <span style={{ ...eventColorPillStyle, borderColor: eventColor.hex, color: eventColor.hex }}>{eventColor.label}</span>
+                    </button>
+                  );
+                })
               ) : (
-                <div style={emptyStateStyle}>No calendar items scheduled for today.</div>
+                <div style={noticeStyle}>No calendar items listed for today.</div>
               )}
-              <button type="button" onClick={() => { startNewCalendarItem(todayKey); setScreen("calendar"); }} style={goldButtonStyle}>
-                Add today event
-              </button>
-            </div>
-          </Section>
 
-          <Section title="Upcoming" eyebrow="Next scheduled items">
-            <div style={stackStyle}>
-              {upcomingCalendar.map((item) => (
-                <button key={item.id} type="button" onClick={() => { selectCalendarItem(item); setScreen("calendar"); }} style={rowButtonStyle}>
-                  <span style={{ ...dotStyle, background: item.color }} />
-                  <div>
-                    <strong>{item.title}</strong>
-                    <p style={mutedSmallStyle}>{formatDate(item.date)} · {item.time ? formatCalendarTime(item.time) : "No time"} · {item.category}</p>
-                  </div>
-                </button>
-              ))}
+              <button type="button" onClick={() => addCalendarItem(todayISO())} style={{ ...goldButtonStyle, width: "100%" }}>Add today event</button>
             </div>
-          </Section>
+          </section>
+
+          <section style={sectionStyle}>
+            <SectionHeader eyebrow="Next Scheduled Items" title="Upcoming" />
+            <div style={upcomingListStyle}>
+              {upcomingEvents.map((event) => {
+                const eventColor = colorForEvent(event);
+                return (
+                  <button key={event.id} type="button" onClick={() => { startEditCalendarItem(event.id); setScreen("calendar"); }} style={upcomingItemStyle}>
+                    <span style={{ ...upcomingDotStyle, background: eventColor.hex }} />
+                    <div style={upcomingInfoStyle}>
+                      <strong>{event.title}</strong>
+                      <p style={mutedSmallStyle}>{formatDate(event.date)} · {event.time || "No time"} · {eventColor.label}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         </div>
 
-        <Section title="Work Orders" eyebrow="Open / monitor">
-          <div style={listGridStyle}>
-            {sortedWorkOrders.slice(0, 6).map((service) => (
-              <button key={service.id} type="button" onClick={() => { setSelectedServiceId(service.id); setScreen("history"); }} style={recordCardButtonStyle}>
-                <h3 style={cardTitleStyle}>{service.title}</h3>
-                <p style={mutedSmallStyle}>{formatDate(service.date)} · {assetName(service.assetId)}</p>
+        {renderDashboardWeather()}
+
+        <section style={sectionStyle}>
+          <SectionHeader eyebrow="Open / Monitor" title="Work Orders" right={<button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>Open Work Orders</button>} />
+          <div style={workOrderStripStyle}>
+            {filteredServices.slice(0, 6).map((record) => (
+              <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={workOrderCardStyle}>
+                <strong>{record.title}</strong>
+                <p style={mutedSmallStyle}>{formatDate(record.date)} · {assetName(record.assetId)}</p>
                 <div style={buttonRowStyle}>
-                  <span style={badgeStyle(service.status)}>{service.status}</span>
-                  <span style={badgeStyle(service.priority)}>{service.priority}</span>
+                  <span style={badgeStyle(record.status)}>{record.status}</span>
+                  <span style={badgeStyle(record.priority ?? "Medium")}>{record.priority ?? "Medium"}</span>
                 </div>
               </button>
             ))}
           </div>
-        </Section>
+        </section>
       </div>
     );
   }
 
   function renderMap() {
     return (
-      <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "1.45fr 0.75fr" }}>
-        <Section title="Property Map" eyebrow="Movable labels" right={<button type="button" onClick={addMapLabel} style={goldButtonStyle}>Add Label</button>}>
-          <div
-            ref={mapRef}
-            onPointerMove={handleMapPointerMove}
-            onPointerUp={stopDraggingLabel}
-            onPointerLeave={stopDraggingLabel}
-            style={mapFrameStyle}
-          >
-            <img src="/atlas-property-map.png" alt="Atlas property map" style={mapImageStyle} />
-            {mapLabels.map((label) => (
-              <button
-                key={label.id}
-                type="button"
-                onClick={() => selectMapLabel(label)}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  draggingLabelRef.current = label.id;
-                  selectMapLabel(label);
-                }}
-                style={{
-                  ...mapLabelStyle,
-                  left: `${label.x}%`,
-                  top: `${label.y}%`,
-                  borderColor: selectedMapLabelId === label.id ? colors.gold : "rgba(255,255,255,0.9)",
-                  background: selectedMapLabelId === label.id ? colors.gold : "rgba(11,30,51,0.88)",
-                  color: selectedMapLabelId === label.id ? colors.navy : "#FFFFFF",
-                }}
-              >
-                {label.label}
-              </button>
-            ))}
-          </div>
-        </Section>
-
-        <Section title={selectedMapLabel?.label ?? "Map Label"} eyebrow={mapLabelMode === "new" ? "New label" : "Label detail"}>
-          <div style={formGridStyle}>
-            <label style={labelStyle}>Label<input value={mapLabelForm.label} onChange={(event) => setMapLabelForm((current) => ({ ...current, label: event.target.value }))} style={inputStyle} /></label>
-            <label style={labelStyle}>Category<input value={mapLabelForm.category} onChange={(event) => setMapLabelForm((current) => ({ ...current, category: event.target.value }))} style={inputStyle} /></label>
-            <div style={gridTwoSmallStyle}>
-              <label style={labelStyle}>X<input type="number" value={mapLabelForm.x} onChange={(event) => setMapLabelForm((current) => ({ ...current, x: clampPercent(Number(event.target.value)) }))} style={inputStyle} /></label>
-              <label style={labelStyle}>Y<input type="number" value={mapLabelForm.y} onChange={(event) => setMapLabelForm((current) => ({ ...current, y: clampPercent(Number(event.target.value)) }))} style={inputStyle} /></label>
-            </div>
-            <label style={labelStyle}>Notes<textarea value={mapLabelForm.notes} onChange={(event) => setMapLabelForm((current) => ({ ...current, notes: event.target.value }))} style={textareaStyle} /></label>
-            <label style={labelStyle}>Map Photos<input type="file" accept="image/*" multiple onChange={handleMapLabelPhotoUpload} style={inputStyle} /></label>
-
-            {(mapLabelForm.photos ?? []).length ? (
-              <div style={photoGridStyle}>
-                {mapLabelForm.photos.map((photo) => (
-                  <div key={photo.id} style={photoCardStyle}>
-                    <img src={photo.dataUrl} alt={photo.name} style={photoImageStyle} />
-                    <button type="button" onClick={() => deleteMapPhoto(photo.id)} style={dangerButtonStyle}>Delete</button>
-                  </div>
-                ))}
+      <ListDrawerLayout
+        eyebrow="Locked Original Map"
+        title="Property Map"
+        detail="Drag labels to adjust placement. Use Reset Map to return to the saved label layout."
+        isMobile={isMobile}
+        right={
+          <>
+            <button type="button" onClick={addMapLabel} style={goldButtonStyle}>Add Label</button>
+            <button type="button" onClick={resetMapLabels} style={dangerButtonStyle}>Reset Map</button>
+          </>
+        }
+        list={
+          <div>
+            {!mapImageOk ? (
+              <div style={{ ...noticeStyle, borderColor: "#FACACA", background: "#FEECEC", color: colors.red }}>
+                Map image did not load. Confirm this file exists: <strong>public/atlas-property-map.png</strong>
               </div>
-            ) : (
-              <div style={emptyStateStyle}>No photos on this label yet.</div>
-            )}
+            ) : null}
 
-            <button type="button" onClick={saveMapLabel} style={goldButtonStyle}>Save Label</button>
+            <div
+              ref={mapRef}
+              onPointerMove={handleMapPointerMove}
+              onPointerUp={stopMapDrag}
+              onPointerLeave={stopMapDrag}
+              onPointerCancel={stopMapDrag}
+              style={mapShellStyle}
+            >
+              <img
+                src="/atlas-property-map.png"
+                alt="Atlas property map"
+                draggable={false}
+                onError={() => setMapImageOk(false)}
+                onLoad={() => setMapImageOk(true)}
+                style={mapImageStyle}
+              />
+
+              {mapLabels.map((label) => {
+                const selected = label.id === selectedMapLabel.id;
+                return (
+                  <button
+                    key={label.id}
+                    type="button"
+                    onPointerDown={(event) => handleMapLabelPointerDown(event, label.id)}
+                    style={{
+                      ...mapPinStyle,
+                      left: `${label.x}%`,
+                      top: `${label.y}%`,
+                      background: selected ? colors.gold : colors.navy,
+                      color: selected ? colors.navy : "#FFFFFF",
+                      borderColor: selected ? colors.navy : colors.gold2,
+                      zIndex: selected ? 5 : 4,
+                    }}
+                  >
+                    {label.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ ...listStyle, marginTop: 14 }}>
+              {filteredMapLabels.map((label) => (
+                <button key={label.id} type="button" onClick={() => setSelectedMapLabelId(label.id)} style={{ ...rowButtonStyle, borderColor: label.id === selectedMapLabel.id ? colors.gold : colors.line }}>
+                  <div>
+                    <strong>{label.label}</strong>
+                    <p style={mutedSmallStyle}>{label.category}</p>
+                  </div>
+                  <span style={badgeStyle("Monitor")}>{label.x}% / {label.y}%</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </Section>
-      </div>
+        }
+        drawer={
+          <>
+            <div style={eyebrowStyle}>Selected Label</div>
+            <h3 style={detailTitleStyle}>{selectedMapLabel.label}</h3>
+            <div style={formGridStyle}>
+              <Field label="Label" value={selectedMapLabel.label} onChange={(value) => updateSelectedMapLabel({ label: value })} />
+              <Field label="Category" value={selectedMapLabel.category} onChange={(value) => updateSelectedMapLabel({ category: value })} />
+              <Field label="X %" value={String(selectedMapLabel.x)} onChange={(value) => updateSelectedMapLabel({ x: Number(value) })} />
+              <Field label="Y %" value={String(selectedMapLabel.y)} onChange={(value) => updateSelectedMapLabel({ y: Number(value) })} />
+              <Field label="Notes" value={selectedMapLabel.notes} onChange={(value) => updateSelectedMapLabel({ notes: value })} multiline />
+            </div>
+          </>
+        }
+      />
     );
   }
 
   function renderLocations() {
-    const visible = sortedLocations.filter((location) => !searchText || `${location.name} ${location.type} ${location.zone} ${location.notes}`.toLowerCase().includes(searchText));
-
     return (
-      <Section title="Locations" eyebrow="Alphabetized / related assets">
-        <div style={listGridStyle}>
-          {visible.map((location) => {
-            const relatedAssets = assetRecords.filter((asset) => asset.locationId === location.id);
-            return (
-              <div key={location.id} style={recordCardStyle}>
-                <h3 style={cardTitleStyle}>{location.name}</h3>
-                <p style={mutedSmallStyle}>{location.type} · {location.zone}</p>
-                <p style={bodyTextStyle}>{location.notes}</p>
-                <div style={buttonRowStyle}>
-                  {relatedAssets.length ? (
-                    relatedAssets.map((asset) => (
-                      <button key={asset.id} type="button" onClick={() => { setSelectedAssetId(asset.id); setScreen("assets"); }} style={chipButtonStyle}>
-                        {asset.name}
-                      </button>
-                    ))
-                  ) : (
-                    <span style={badgeStyle("Monitor")}>No linked assets</span>
-                  )}
+      <ListDrawerLayout
+        eyebrow="A–Z List"
+        title="Locations"
+        detail="All locations are sorted alphabetically with detail on the right."
+        isMobile={isMobile}
+        list={
+          <div style={listStyle}>
+            {filteredLocations.map((location) => (
+              <button key={location.id} type="button" onClick={() => setQuery(location.name)} style={rowButtonStyle}>
+                <div>
+                  <strong>{location.name}</strong>
+                  <p style={mutedSmallStyle}>{location.type} · {location.zone}</p>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </Section>
+                <span style={badgeStyle("Monitor")}>{assetRecords.filter((asset) => asset.locationId === location.id).length} assets</span>
+              </button>
+            ))}
+          </div>
+        }
+        drawer={
+          <div>
+            <div style={eyebrowStyle}>Location Info</div>
+            <h3 style={detailTitleStyle}>A–Z Location List</h3>
+            <p style={mutedSmallStyle}>Click any location to filter/search related Atlas records. Assets, work orders, vendors, and map labels stay in the main sections.</p>
+            <div style={noticeStyle}>
+              <strong>{filteredLocations.length} locations shown</strong>
+              <p style={mutedSmallStyle}>Use search at the top to narrow by area, type, zone, or notes.</p>
+            </div>
+          </div>
+        }
+      />
     );
   }
 
   function renderAssets() {
-    const visible = sortedAssets.filter((asset) => !searchText || `${asset.name} ${asset.category} ${locationName(asset.locationId)} ${asset.notes}`.toLowerCase().includes(searchText));
-
     return (
-      <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "0.9fr 1.1fr" }}>
-        <Section
-          title="Assets"
-          eyebrow="Equipment / property records"
-          right={
-            <button
-              type="button"
-              onClick={() => {
-                const record: AssetRecord = { id: uid("asset"), name: "New Asset", locationId: "general", category: "General", status: "Monitor", notes: "", vendorIds: [] };
-                setAssetRecords((current) => [record, ...current]);
-                setSelectedAssetId(record.id);
-              }}
-              style={goldButtonStyle}
-            >
-              Add Asset
-            </button>
-          }
-        >
-          <div style={stackStyle}>
-            {visible.map((asset) => (
-              <button key={asset.id} type="button" onClick={() => setSelectedAssetId(asset.id)} style={selectedAssetId === asset.id ? { ...rowButtonStyle, borderColor: colors.gold, background: "#FFF9EA" } : rowButtonStyle}>
+      <ListDrawerLayout
+        eyebrow="A–Z List"
+        title="Assets"
+        detail="Alphabetical asset list with editable detail drawer."
+        isMobile={isMobile}
+        right={<button type="button" onClick={addAsset} style={goldButtonStyle}>Add Asset</button>}
+        list={
+          <div style={listStyle}>
+            {filteredAssets.map((asset) => (
+              <button key={asset.id} type="button" onClick={() => setSelectedAssetId(asset.id)} style={{ ...rowButtonStyle, borderColor: asset.id === selectedAsset.id ? colors.gold : colors.line }}>
                 <div>
                   <strong>{asset.name}</strong>
                   <p style={mutedSmallStyle}>{asset.category} · {locationName(asset.locationId)}</p>
+                  <p style={mutedSmallStyle}>{[asset.make, asset.model, asset.serial].filter(Boolean).join(" · ")}</p>
                 </div>
                 <span style={badgeStyle(asset.status)}>{asset.status}</span>
               </button>
             ))}
           </div>
-        </Section>
-
-        <Section title={selectedAsset.name} eyebrow="Asset Detail">
-          <div style={formGridStyle}>
-            <label style={labelStyle}>Name<input value={selectedAsset.name} onChange={(event) => updateAsset(selectedAsset.id, { name: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Category<input value={selectedAsset.category} onChange={(event) => updateAsset(selectedAsset.id, { category: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Location<select value={selectedAsset.locationId} onChange={(event) => updateAsset(selectedAsset.id, { locationId: event.target.value })} style={inputStyle}>{sortedLocations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-            <label style={labelStyle}>Status<select value={selectedAsset.status} onChange={(event) => updateAsset(selectedAsset.id, { status: event.target.value as Status })} style={inputStyle}><option>Online</option><option>Offline</option><option>Seasonal</option><option>Monitor</option></select></label>
-            <div style={gridTwoSmallStyle}>
-              <label style={labelStyle}>Make<input value={selectedAsset.make ?? ""} onChange={(event) => updateAsset(selectedAsset.id, { make: event.target.value })} style={inputStyle} /></label>
-              <label style={labelStyle}>Model<input value={selectedAsset.model ?? ""} onChange={(event) => updateAsset(selectedAsset.id, { model: event.target.value })} style={inputStyle} /></label>
+        }
+        drawer={
+          <>
+            <div style={eyebrowStyle}>Selected Asset</div>
+            <h3 style={detailTitleStyle}>{selectedAsset.name}</h3>
+            <div style={formGridStyle}>
+              <Field label="Name" value={selectedAsset.name} onChange={(value) => updateAsset({ name: value })} />
+              <Field label="Category" value={selectedAsset.category} onChange={(value) => updateAsset({ category: value })} />
+              <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                <span style={fieldLabelStyle}>Location</span>
+                <select value={selectedAsset.locationId} onChange={(event) => updateAsset({ locationId: event.currentTarget.value })} style={inputStyle}>
+                  {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                </select>
+              </label>
+              <SelectField label="Status" value={selectedAsset.status} onChange={(value) => updateAsset({ status: value })} options={["Online", "Offline", "Seasonal", "Monitor"] as const} />
+              <Field label="Make" value={selectedAsset.make ?? ""} onChange={(value) => updateAsset({ make: value })} />
+              <Field label="Model" value={selectedAsset.model ?? ""} onChange={(value) => updateAsset({ model: value })} />
+              <Field label="Serial / VIN / HIN" value={selectedAsset.serial ?? ""} onChange={(value) => updateAsset({ serial: value })} />
+              <Field label="Vendor IDs" value={selectedAsset.vendorIds.join(", ")} onChange={(value) => updateAsset({ vendorIds: value.split(",").map((item) => item.trim()).filter(Boolean) })} />
+              <Field label="Notes" value={selectedAsset.notes} onChange={(value) => updateAsset({ notes: value })} multiline />
             </div>
-            <label style={labelStyle}>Serial / ID<input value={selectedAsset.serial ?? ""} onChange={(event) => updateAsset(selectedAsset.id, { serial: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Notes<textarea value={selectedAsset.notes} onChange={(event) => updateAsset(selectedAsset.id, { notes: event.target.value })} style={textareaStyle} /></label>
-          </div>
-        </Section>
-      </div>
-    );
-  }
 
-  function renderWorkOrders() {
-    return (
-      <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "0.9fr 1.1fr" }}>
-        <Section
-          title="Work Orders"
-          eyebrow="Service history"
-          right={
-            <button
-              type="button"
-              onClick={() => {
-                const record: ServiceRecord = { id: uid("service"), assetId: assetRecords[0]?.id ?? "", vendorId: "", date: todayISO(), title: "New Work Order", status: "Open", priority: "Medium", notes: "" };
-                setServiceRecords((current) => [record, ...current]);
-                setSelectedServiceId(record.id);
-              }}
-              style={goldButtonStyle}
-            >
-              Add Work Order
-            </button>
-          }
-        >
-          <div style={stackStyle}>
-            {sortedWorkOrders.map((service) => (
-              <button key={service.id} type="button" onClick={() => setSelectedServiceId(service.id)} style={selectedServiceId === service.id ? { ...rowButtonStyle, borderColor: colors.gold, background: "#FFF9EA" } : rowButtonStyle}>
-                <div>
-                  <strong>{service.title}</strong>
-                  <p style={mutedSmallStyle}>{formatDate(service.date)} · {assetName(service.assetId)}</p>
-                </div>
-                <div style={buttonRowStyle}>
-                  <span style={badgeStyle(service.status)}>{service.status}</span>
-                  <span style={badgeStyle(service.priority)}>{service.priority}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </Section>
-
-        <Section title={selectedService.title} eyebrow="Work Order Detail">
-          <div style={formGridStyle}>
-            <label style={labelStyle}>Title<input value={selectedService.title} onChange={(event) => updateService(selectedService.id, { title: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Date<input type="date" value={selectedService.date} onChange={(event) => updateService(selectedService.id, { date: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Asset<select value={selectedService.assetId} onChange={(event) => updateService(selectedService.id, { assetId: event.target.value })} style={inputStyle}>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
-            <label style={labelStyle}>Vendor<select value={selectedService.vendorId ?? ""} onChange={(event) => updateService(selectedService.id, { vendorId: event.target.value })} style={inputStyle}><option value="">Internal</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
-            <div style={gridTwoSmallStyle}>
-              <label style={labelStyle}>Status<select value={selectedService.status} onChange={(event) => updateService(selectedService.id, { status: event.target.value as ServiceStatus })} style={inputStyle}><option>Open</option><option>Scheduled</option><option>Completed</option><option>Monitor</option></select></label>
-              <label style={labelStyle}>Priority<select value={selectedService.priority} onChange={(event) => updateService(selectedService.id, { priority: event.target.value as WorkOrderPriority })} style={inputStyle}><option>Low</option><option>Medium</option><option>High</option></select></label>
+            <div style={buttonRowStyle}>
+              <button type="button" onClick={() => void postAtlasRecord("assets", selectedAsset)} style={goldButtonStyle}>Save Asset</button>
+              <button type="button" onClick={addWorkOrder} style={secondaryButtonStyle}>Create WO</button>
             </div>
-            <label style={labelStyle}>Notes<textarea value={selectedService.notes} onChange={(event) => updateService(selectedService.id, { notes: event.target.value })} style={textareaStyle} /></label>
-          </div>
-        </Section>
-      </div>
+
+            <div style={{ marginTop: 16 }}>
+              <div style={eyebrowStyle}>Photos</div>
+              {selectedAssetPhotos.length ? (
+                <div style={photoGridStyle}>
+                  {selectedAssetPhotos.map((photo) => (
+                    <div key={photo.id} style={photoCardStyle}>
+                      {photo.dataUrl || photo.url ? <img src={photo.dataUrl || photo.url} alt={photo.name} style={photoStyle} /> : null}
+                      <strong>{photo.name}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={mutedSmallStyle}>No photos attached to this asset in the loaded records.</p>
+              )}
+            </div>
+          </>
+        }
+      />
     );
   }
 
   function renderVendors() {
     return (
-      <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "0.9fr 1.1fr" }}>
-        <Section
-          title="Vendors"
-          eyebrow="Contacts / notes"
-          right={
-            <button
-              type="button"
-              onClick={() => {
-                const vendor: VendorRecord = { id: uid("vendor"), name: "New Vendor", category: "General", notes: "" };
-                setVendorRecords((current) => [vendor, ...current]);
-                setSelectedVendorId(vendor.id);
-              }}
-              style={goldButtonStyle}
-            >
-              Add Vendor
-            </button>
-          }
-        >
-          <div style={stackStyle}>
-            {sortedVendors.map((vendor) => (
-              <button key={vendor.id} type="button" onClick={() => setSelectedVendorId(vendor.id)} style={selectedVendorId === vendor.id ? { ...rowButtonStyle, borderColor: colors.gold, background: "#FFF9EA" } : rowButtonStyle}>
+      <ListDrawerLayout
+        eyebrow="A–Z List"
+        title="Vendors"
+        detail="Alphabetical vendor directory with editable right-side detail."
+        isMobile={isMobile}
+        right={<button type="button" onClick={addVendor} style={goldButtonStyle}>Add Vendor</button>}
+        list={
+          <div style={listStyle}>
+            {filteredVendors.map((vendor) => (
+              <button key={vendor.id} type="button" onClick={() => setSelectedVendorId(vendor.id)} style={{ ...rowButtonStyle, borderColor: vendor.id === selectedVendor.id ? colors.gold : colors.line }}>
                 <div>
                   <strong>{vendor.name}</strong>
                   <p style={mutedSmallStyle}>{vendor.category}</p>
+                  <p style={mutedSmallStyle}>{[vendor.phone, vendor.email].filter(Boolean).join(" · ")}</p>
                 </div>
               </button>
             ))}
           </div>
-        </Section>
+        }
+        drawer={
+          <>
+            <div style={eyebrowStyle}>Selected Vendor</div>
+            <h3 style={detailTitleStyle}>{selectedVendor.name}</h3>
+            <div style={formGridStyle}>
+              <Field label="Name" value={selectedVendor.name} onChange={(value) => setVendorRecords((current) => byName(current.map((item) => item.id === selectedVendor.id ? normalizeVendor({ ...item, name: value }) : item)))} />
+              <Field label="Category" value={selectedVendor.category} onChange={(value) => setVendorRecords((current) => byName(current.map((item) => item.id === selectedVendor.id ? normalizeVendor({ ...item, category: value }) : item)))} />
+              <Field label="Phone" value={selectedVendor.phone ?? ""} onChange={(value) => updateVendor({ phone: value })} />
+              <Field label="Email" value={selectedVendor.email ?? ""} onChange={(value) => updateVendor({ email: value })} />
+              <Field label="Website" value={selectedVendor.website ?? ""} onChange={(value) => updateVendor({ website: value })} />
+              <Field label="Notes" value={selectedVendor.notes} onChange={(value) => updateVendor({ notes: value })} multiline />
+            </div>
+            <button type="button" onClick={() => void postAtlasRecord("vendors", selectedVendor)} style={goldButtonStyle}>Save Vendor</button>
+          </>
+        }
+      />
+    );
+  }
 
-        <Section title={selectedVendor.name} eyebrow="Vendor Detail">
-          <div style={formGridStyle}>
-            <label style={labelStyle}>Name<input value={selectedVendor.name} onChange={(event) => updateVendor(selectedVendor.id, { name: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Category<input value={selectedVendor.category} onChange={(event) => updateVendor(selectedVendor.id, { category: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Phone<input value={selectedVendor.phone ?? ""} onChange={(event) => updateVendor(selectedVendor.id, { phone: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Email<input value={selectedVendor.email ?? ""} onChange={(event) => updateVendor(selectedVendor.id, { email: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Website<input value={selectedVendor.website ?? ""} onChange={(event) => updateVendor(selectedVendor.id, { website: event.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Notes<textarea value={selectedVendor.notes} onChange={(event) => updateVendor(selectedVendor.id, { notes: event.target.value })} style={textareaStyle} /></label>
+  function renderWorkOrders() {
+    return (
+      <ListDrawerLayout
+        eyebrow="A–Z List"
+        title="Work Orders"
+        detail="Work orders are listed alphabetically with editable status, date, asset, vendor, and notes."
+        isMobile={isMobile}
+        right={<button type="button" onClick={addWorkOrder} style={goldButtonStyle}>Add Work Order</button>}
+        list={
+          <div style={listStyle}>
+            {filteredServices.map((record) => (
+              <button key={record.id} type="button" onClick={() => setSelectedServiceId(record.id)} style={{ ...rowButtonStyle, borderColor: record.id === selectedService.id ? colors.gold : colors.line }}>
+                <div>
+                  <strong>{record.title}</strong>
+                  <p style={mutedSmallStyle}>{formatDate(record.date)} · {assetName(record.assetId)} · {vendorName(record.vendorId)}</p>
+                </div>
+                <span style={badgeStyle(record.status)}>{record.status}</span>
+              </button>
+            ))}
           </div>
-        </Section>
-      </div>
+        }
+        drawer={
+          <>
+            <div style={eyebrowStyle}>Selected Work Order</div>
+            <h3 style={detailTitleStyle}>{selectedService.title}</h3>
+            <div style={formGridStyle}>
+              <Field label="Title" value={selectedService.title} onChange={(value) => updateWorkOrder({ title: value })} />
+              <Field label="Date" value={selectedService.date} onChange={(value) => updateWorkOrder({ date: value })} />
+              <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                <span style={fieldLabelStyle}>Asset</span>
+                <select value={selectedService.assetId} onChange={(event) => updateWorkOrder({ assetId: event.currentTarget.value })} style={inputStyle}>
+                  <option value="">No asset</option>
+                  {byName(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                <span style={fieldLabelStyle}>Vendor</span>
+                <select value={selectedService.vendorId ?? ""} onChange={(event) => updateWorkOrder({ vendorId: event.currentTarget.value })} style={inputStyle}>
+                  <option value="">No vendor</option>
+                  {byName(vendorRecords).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+                </select>
+              </label>
+              <SelectField label="Status" value={selectedService.status} onChange={(value) => updateWorkOrder({ status: value })} options={["Open", "Scheduled", "Completed", "Monitor"] as const} />
+              <SelectField label="Priority" value={selectedService.priority ?? "Medium"} onChange={(value) => updateWorkOrder({ priority: value })} options={["Low", "Medium", "High"] as const} />
+              <Field label="Follow-up Date" value={selectedService.followUpDate ?? ""} onChange={(value) => updateWorkOrder({ followUpDate: value })} />
+              <Field label="Notes" value={selectedService.notes} onChange={(value) => updateWorkOrder({ notes: value })} multiline />
+            </div>
+            <button type="button" onClick={() => void postAtlasRecord("work_orders", selectedService)} style={goldButtonStyle}>Save Work Order</button>
+          </>
+        }
+      />
     );
   }
 
   function renderCalendar() {
-    const cells = monthCells();
+    const hasSelectedEvent = Boolean(selectedCalendarId);
 
     return (
-      <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "1.35fr 0.75fr" }}>
-        <Section
-          title="Calendar"
-          eyebrow="Category color / optional time"
-          right={
-            <div style={buttonRowStyle}>
-              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, -1))} style={secondaryButtonStyle}>Back</button>
-              <button type="button" onClick={() => { setCalendarCursor(dateFromKey(todayISO())); setSelectedCalendarDate(todayISO()); }} style={secondaryButtonStyle}>Today</button>
-              <button type="button" onClick={() => setCalendarCursor((current) => addMonthsToDate(current, 1))} style={secondaryButtonStyle}>Next</button>
+      <ListDrawerLayout
+        eyebrow="Editable Month View"
+        title="Calendar"
+        detail="Click a day to see what is scheduled. Add, edit, save, or delete events from the right box."
+        isMobile={isMobile}
+        right={
+          <>
+            <button type="button" onClick={() => moveCalendarMonth(-1)} style={secondaryButtonStyle}>
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCalendarCursor(new Date());
+                setSelectedCalendarDate(todayISO());
+                setSelectedCalendarId("");
+                setCalendarDraft(blankCalendarItem(todayISO(), calendarColors[0]?.id || "personal-owner"));
+              }}
+              style={secondaryButtonStyle}
+            >
+              Today
+            </button>
+            <button type="button" onClick={() => moveCalendarMonth(1)} style={secondaryButtonStyle}>
+              Next
+            </button>
+          </>
+        }
+        list={
+          <div style={stackStyle}>
+            <div style={calendarHeaderStyle}>{monthName(calendarCursor)}</div>
+
+            <div style={calendarWeekStyle}>
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                <div key={day} style={calendarDayNameStyle}>
+                  {day}
+                </div>
+              ))}
             </div>
-          }
-        >
-          <div style={calendarHeaderStyle}>
-            <h3 style={{ ...cardTitleStyle, fontSize: 24 }}>{formatMonth(calendarCursor)}</h3>
-            <button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={goldButtonStyle}>Add Event</button>
+
+            <div style={calendarGridStyle}>
+              {monthCells.map((cell) => {
+                const events = cell.date ? calendarItems.filter((item) => item.date === cell.date) : [];
+                const isToday = cell.date === todayISO();
+                const isSelected = cell.date === selectedCalendarDate;
+                const dayWeather = cell.date ? weatherByDate.get(cell.date) : undefined;
+
+                return (
+                  <button
+                    key={cell.key}
+                    type="button"
+                    disabled={!cell.date}
+                    onClick={() => {
+                      if (!cell.date) return;
+                      setSelectedCalendarDate(cell.date);
+                      setSelectedCalendarId("");
+                      setCalendarDraft(blankCalendarItem(cell.date, calendarColors[0]?.id || "personal-owner"));
+                    }}
+                    style={{
+                      ...calendarCellStyle,
+                      opacity: cell.outside ? 0.25 : 1,
+                      borderColor: isSelected ? colors.gold : isToday ? colors.gold2 : colors.line,
+                      background: isSelected ? "#FFFAEB" : isToday ? "#FFFDF3" : "#FFFFFF",
+                      boxShadow: isSelected ? "0 12px 28px rgba(201,154,61,0.18)" : "none",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                      <strong>{cell.day ?? ""}</strong>
+                      {dayWeather ? (
+                        <span title={weatherText(dayWeather.code)} style={calendarWeatherIconStyle}>
+                          {weatherIcon(dayWeather.code)}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
+                      {events.slice(0, 3).map((event) => {
+                        const eventColor = colorForEvent(event);
+                        return (
+                          <span
+                            key={event.id}
+                            onClick={(mouseEvent) => {
+                              mouseEvent.stopPropagation();
+                              startEditCalendarItem(event.id);
+                            }}
+                            style={{
+                              ...calendarPillStyle,
+                              borderLeft: `5px solid ${eventColor.hex}`,
+                            }}
+                          >
+                            {event.title}
+                          </span>
+                        );
+                      })}
+
+                      {events.length > 3 ? <span style={calendarMoreStyle}>+{events.length - 3} more</span> : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
+        }
+        drawer={
+          <>
+            <div style={eyebrowStyle}>Selected Day</div>
+            <h3 style={detailTitleStyle}>{formatDate(selectedCalendarDate)}</h3>
 
-          <div style={calendarGridStyle}>
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-              <div key={day} style={calendarWeekdayStyle}>{day}</div>
-            ))}
+            <div style={calendarTodayBoxStyle}>
+              <div style={eyebrowStyle}>Scheduled</div>
 
-            {cells.map((date) => {
-              const key = dateKeyFromDate(date);
-              const isCurrentMonth = date.getMonth() === calendarCursor.getMonth();
-              const isToday = key === todayKey;
-              const isSelected = key === selectedCalendarDate;
-              const items = sortedCalendar.filter((item) => item.date === key);
-
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setSelectedCalendarDate(key);
-                    const first = items[0];
-                    if (first) selectCalendarItem(first);
-                    else startNewCalendarItem(key);
-                  }}
-                  style={{
-                    ...calendarDayStyle,
-                    opacity: isCurrentMonth ? 1 : 0.45,
-                    borderColor: isSelected ? colors.gold : isToday ? colors.navy : colors.line,
-                    background: isSelected ? "#FFF9EA" : colors.card,
-                  }}
-                >
-                  <div style={calendarDayNumberStyle}>{date.getDate()}</div>
-                  <div style={calendarDayEventsStyle}>
-                    {items.slice(0, 3).map((item) => (
-                      <span key={item.id} style={calendarPillStyle(item.color)}>
-                        <span style={{ ...dotStyle, background: item.color }} />
-                        <span style={truncateStyle}>{item.time ? `${formatCalendarTime(item.time)} · ` : ""}{item.title}</span>
-                      </span>
-                    ))}
-                    {items.length > 3 ? <span style={moreEventsStyle}>+{items.length - 3} more</span> : null}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </Section>
-
-        <div style={stackStyle}>
-          <Section title="Today" eyebrow="What is scheduled">
-            <div style={rightScrollBoxStyle}>
-              {todayCalendarItems.length ? (
-                todayCalendarItems.map((item) => <CalendarEventCard key={item.id} item={item} compact />)
+              {selectedDayEvents.length ? (
+                selectedDayEvents.map((event) => {
+                  const eventColor = colorForEvent(event);
+                  return (
+                    <button
+                      key={event.id}
+                      type="button"
+                      onClick={() => startEditCalendarItem(event.id)}
+                      style={{
+                        ...calendarTodayItemStyle,
+                        borderColor: event.id === selectedCalendarId ? eventColor.hex : colors.line,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ ...calendarColorDotStyle, background: eventColor.hex }} />
+                        <div>
+                          <strong>{event.title}</strong>
+                          <span>
+                            {event.time || "No time"} · {eventColor.label}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
               ) : (
-                <div style={emptyStateStyle}>Nothing scheduled today.</div>
+                <p style={mutedSmallStyle}>Nothing scheduled for this day.</p>
               )}
             </div>
-          </Section>
 
-          <Section title={calendarMode === "new" ? "Add Event" : "Edit Event"} eyebrow="No status section">
-            <div style={formGridStyle}>
-              <label style={labelStyle}>Title<input value={calendarForm.title} onChange={(event) => setCalendarForm((current) => ({ ...current, title: event.target.value }))} placeholder="Event title" style={inputStyle} /></label>
-              <label style={labelStyle}>Date<input type="date" value={calendarForm.date} onChange={(event) => setCalendarForm((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
+            <div style={compactAddBoxStyle}>
+              <button
+                type="button"
+                onClick={() => addCalendarItem(selectedCalendarDate)}
+                style={{ ...goldButtonStyle, width: "100%" }}
+              >
+                Add Event
+              </button>
+            </div>
 
-              <div style={gridTwoSmallStyle}>
-                <label style={labelStyle}>
-                  Time optional
-                  <input
-                    type="time"
-                    value={calendarForm.time ?? ""}
-                    onChange={(event) => setCalendarForm((current) => ({ ...current, time: event.target.value }))}
-                    style={inputStyle}
-                  />
-                </label>
-                <label style={labelStyle}>
-                  Category
-                  <select value={calendarForm.category} onChange={(event) => changeCalendarCategory(event.target.value as CalendarCategory)} style={inputStyle}>
-                    {calendarCategories.map((category) => (
-                      <option key={category.name} value={category.name}>{category.name}</option>
+            <div style={{ marginTop: 16 }}>
+              <div style={eyebrowStyle}>{hasSelectedEvent ? "Edit Event" : "New Event"}</div>
+              <h3 style={detailTitleStyle}>{hasSelectedEvent ? selectedCalendar.title : "Ready to add event"}</h3>
+
+              <div style={formGridStyle}>
+                <Field label="Title" value={selectedCalendar.title} onChange={(value) => updateCalendarItem({ title: value })} placeholder="Type event title..." />
+                <Field
+                  label="Date"
+                  value={selectedCalendar.date}
+                  onChange={(value) => {
+                    updateCalendarItem({ date: value });
+                    setSelectedCalendarDate(value);
+                  }}
+                />
+                <Field label="Time" value={selectedCalendar.time || ""} onChange={(value) => updateCalendarItem({ time: value })} placeholder="Example: 9:00 AM" />
+                <Field label="Area" value={selectedCalendar.area} onChange={(value) => updateCalendarItem({ area: value })} placeholder="Type area..." />
+
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Color</span>
+                  <select value={selectedCalendar.colorId || selectedColor().id} onChange={(event) => updateCalendarItem({ colorId: event.currentTarget.value })} style={inputStyle}>
+                    {calendarColors.map((color) => (
+                      <option key={color.id} value={color.id}>
+                        {color.label}
+                      </option>
                     ))}
                   </select>
                 </label>
+
+                <SelectField
+                  label="Status"
+                  value={selectedCalendar.status}
+                  onChange={(value) => updateCalendarItem({ status: value })}
+                  options={["Open", "Scheduled", "Completed", "Monitor"] as const}
+                />
               </div>
 
-              <label style={labelStyle}>
-                Category color
-                <select value={calendarForm.color} onChange={(event) => setCalendarForm((current) => ({ ...current, color: event.target.value }))} style={inputStyle}>
-                  {calendarColorOptions.map((colorOption) => (
-                    <option key={colorOption} value={colorOption}>{colorOption}</option>
-                  ))}
-                </select>
-              </label>
+              <div style={buttonRowStyle}>
+                <button type="button" onClick={saveCalendarItem} style={goldButtonStyle}>
+                  Save
+                </button>
 
-              <div style={colorPreviewRowStyle}>
-                {calendarColorOptions.map((colorOption) => (
-                  <button
-                    key={colorOption}
-                    type="button"
-                    onClick={() => setCalendarForm((current) => ({ ...current, color: colorOption }))}
-                    title={colorOption}
-                    style={{
-                      ...colorDotButtonStyle,
-                      background: colorOption,
-                      outline: calendarForm.color === colorOption ? `3px solid ${colors.gold}` : "none",
-                    }}
-                  />
+                {hasSelectedEvent ? (
+                  <button type="button" onClick={() => deleteCalendarItem(selectedCalendarId)} style={dangerButtonStyle}>
+                    Delete
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div style={calendarColorsBoxStyle}>
+              <div style={eyebrowStyle}>Colors</div>
+              <p style={mutedSmallStyle}>Use actual colors and label them how you want.</p>
+
+              <div style={calendarColorListStyle}>
+                {calendarColors.map((color) => (
+                  <div key={color.id} style={calendarColorRowStyle}>
+                    <input
+                      aria-label={`${color.label} color`}
+                      type="color"
+                      value={color.hex}
+                      onChange={(event) => updateCalendarColor(color.id, { hex: event.currentTarget.value })}
+                      style={actualColorInputStyle}
+                    />
+                    <input
+                      value={color.label}
+                      onChange={(event) => updateCalendarColor(color.id, { label: event.currentTarget.value })}
+                      style={{ ...inputStyle, padding: "9px 10px" }}
+                    />
+                  </div>
                 ))}
               </div>
 
-              <label style={labelStyle}>Area / Location<input value={calendarForm.area} onChange={(event) => setCalendarForm((current) => ({ ...current, area: event.target.value }))} placeholder="2000, Dock, Pool, Interior..." style={inputStyle} /></label>
-              <label style={labelStyle}>Notes<textarea value={calendarForm.notes ?? ""} onChange={(event) => setCalendarForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Optional notes" style={textareaStyle} /></label>
-
-              <div style={buttonRowStyle}>
-                <button type="button" onClick={saveCalendarItem} style={goldButtonStyle}>Save Event</button>
-                <button type="button" onClick={() => setCalendarForm((current) => ({ ...current, time: "" }))} style={secondaryButtonStyle}>Clear Time</button>
-                <button type="button" onClick={() => startNewCalendarItem(selectedCalendarDate)} style={secondaryButtonStyle}>New</button>
-                {calendarMode === "edit" && calendarForm.id ? <button type="button" onClick={deleteCalendarItem} style={dangerButtonStyle}>Delete</button> : null}
-              </div>
-
-              <button type="button" onClick={() => createWorkOrderFromCalendarItem()} style={secondaryButtonStyle}>Create Work Order From Event</button>
+              <button type="button" onClick={addCalendarColor} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 10 }}>
+                Add Color
+              </button>
             </div>
-          </Section>
-
-          <Section title={formatDate(selectedCalendarDate)} eyebrow="Selected day">
-            <div style={rightScrollBoxStyle}>
-              {selectedDateItems.length ? (
-                selectedDateItems.map((item) => <CalendarEventCard key={item.id} item={item} compact />)
-              ) : (
-                <div style={emptyStateStyle}>No saved events for this day.</div>
-              )}
-            </div>
-          </Section>
-        </div>
-      </div>
-    );
-  }
-
-  function CalendarEventCard({ item, compact }: { item: CalendarItem; compact: boolean }) {
-    return (
-      <button key={item.id} type="button" onClick={() => selectCalendarItem(item)} style={{ ...recordCardButtonStyle, borderLeft: `6px solid ${item.color}`, padding: compact ? 12 : 16 }}>
-        <div style={buttonRowBetweenStyle}>
-          <h3 style={{ ...cardTitleStyle, marginBottom: 4 }}>{item.title}</h3>
-          <span style={{ ...categoryBadgeStyle, borderColor: item.color, color: item.color, background: `${item.color}14` }}>{item.category}</span>
-        </div>
-        <p style={mutedSmallStyle}>{formatDate(item.date)} · {item.time ? formatCalendarTime(item.time) : "No time"} · {item.area}</p>
-        {item.notes ? <p style={bodyTextStyle}>{item.notes}</p> : null}
-      </button>
+          </>
+        }
+      />
     );
   }
 
   function renderWeather() {
     return (
-      <Section title="Weather" eyebrow="7-day property planning">
-        <div style={weatherGridStyle}>
-          {defaultWeatherPlan.map((day) => (
-            <div key={day.day} style={weatherCardStyle}>
-              <div style={weatherIconStyle}>{day.icon}</div>
-              <strong>{day.day}</strong>
-              <p style={mutedSmallStyle}>{day.title}</p>
-              <p style={bodyTextStyle}>{day.note}</p>
-            </div>
-          ))}
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="7-Day Forecast"
+          title="Weather / Irrigation Planning"
+          detail="Real 7-day forecast with irrigation recommendations."
+          right={<button type="button" onClick={() => void loadWeather()} style={goldButtonStyle}>Refresh Weather</button>}
+        />
+
+        <div style={stackStyle}>
+          <div style={noticeStyle}>
+            <strong>{weatherStatus}</strong>
+            <p style={mutedSmallStyle}>
+              Forecast location is the 2000 area. Uses rain chance, rain amount, wind, and ET0 for irrigation planning.
+            </p>
+          </div>
+
+          <div style={weatherStripStyle}>
+            {weatherDays.map((day) => (
+              <button
+                key={day.date}
+                type="button"
+                onClick={() => setSelectedWeatherDate(day.date)}
+                style={{
+                  ...weatherCardStyle,
+                  borderColor: day.date === selectedWeather?.date ? colors.gold : colors.line,
+                  boxShadow:
+                    day.date === selectedWeather?.date
+                      ? "0 18px 38px rgba(201,154,61,0.24)"
+                      : "0 12px 26px rgba(15,23,42,0.06)",
+                }}
+              >
+                <div style={weatherCardTopStyle}>
+                  <div>
+                    <strong>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</strong>
+                    <p style={mutedSmallStyle}>
+                      {new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </p>
+                  </div>
+                  <div style={weatherIconStyle}>{weatherIcon(day.code)}</div>
+                </div>
+
+                <div style={weatherTempStyle}>{day.high}°</div>
+                <div style={weatherLowStyle}>{day.low}° low</div>
+
+                <div style={weatherBarTrackStyle}>
+                  <div style={{ ...weatherBarFillStyle, width: `${Math.max(12, Math.min(100, day.precipChance))}%` }} />
+                </div>
+
+                <div style={weatherMiniGridStyle}>
+                  <span>Rain {day.precipChance}%</span>
+                  <span>{day.precipAmount}"</span>
+                  <span>Wind {day.windMax}</span>
+                  <span>ET0 {day.et0}"</span>
+                </div>
+
+                <p style={weatherAdviceSmallStyle}>{irrigationAdvice(day)}</p>
+              </button>
+            ))}
+          </div>
         </div>
-      </Section>
+      </section>
     );
   }
 
   function renderDocuments() {
     return (
-      <Section title="Documents" eyebrow="Linked records">
-        <div style={listGridStyle}>
-          {defaultDocuments.map((doc) => (
-            <div key={doc.id} style={recordCardStyle}>
-              <h3 style={cardTitleStyle}>{doc.title}</h3>
-              <p style={mutedSmallStyle}>{doc.type} · {doc.area}</p>
-              <p style={bodyTextStyle}>{doc.notes}</p>
-              {doc.href ? <a href={doc.href} style={linkStyle}>Open</a> : null}
+      <ListDrawerLayout
+        eyebrow="A–Z List"
+        title="Documents / Photos"
+        detail="Document records and loaded photos sorted for review."
+        isMobile={isMobile}
+        list={
+          <div style={listStyle}>
+            {[...documents].sort((a, b) => a.title.localeCompare(b.title)).map((document) => (
+              <div key={document.id} style={rowStaticStyle}>
+                <div>
+                  <strong>{document.title}</strong>
+                  <p style={mutedSmallStyle}>{document.type} · {document.area}</p>
+                  <p style={mutedSmallStyle}>{document.notes}</p>
+                  {document.href ? <a href={document.href} style={linkStyle}>Open</a> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        }
+        drawer={
+          <div>
+            <div style={eyebrowStyle}>Document Info</div>
+            <h3 style={detailTitleStyle}>Photos / Documents</h3>
+            <p style={mutedSmallStyle}>{documents.length} document records and {photos.length} loaded photo records.</p>
+            <div style={photoGridStyle}>
+              {photos.slice(0, 8).map((photo) => (
+                <div key={photo.id} style={photoCardStyle}>
+                  {photo.dataUrl || photo.url ? <img src={photo.dataUrl || photo.url} alt={photo.name} style={photoStyle} /> : null}
+                  <strong>{photo.name}</strong>
+                  <p style={mutedSmallStyle}>{assetName(photo.assetId)}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </Section>
+          </div>
+        }
+      />
     );
   }
 
   function renderProcedures() {
     return (
-      <Section title="Procedures" eyebrow="Checklists">
-        <div style={listGridStyle}>
-          {defaultProcedures.map((procedure) => (
-            <div key={procedure.id} style={recordCardStyle}>
-              <div style={buttonRowBetweenStyle}>
-                <h3 style={cardTitleStyle}>{procedure.title}</h3>
-                <button type="button" onClick={() => scheduleProcedure(procedure)} style={secondaryButtonStyle}>Schedule</button>
-              </div>
-              <p style={mutedSmallStyle}>{procedure.area}</p>
-              <ol style={{ margin: "10px 0 0", paddingLeft: 20 }}>
-                {procedure.steps.map((step, index) => (
-                  <li key={`${procedure.id}-${index}`} style={bodyTextStyle}>{step}</li>
-                ))}
-              </ol>
+      <ListDrawerLayout
+        eyebrow="A–Z List"
+        title="Procedures"
+        detail="Procedure list with editable steps in the right drawer."
+        isMobile={isMobile}
+        list={
+          <div style={listStyle}>
+            {filteredProcedures.map((procedure) => (
+              <button key={procedure.id} type="button" onClick={() => setSelectedProcedureId(procedure.id)} style={{ ...rowButtonStyle, borderColor: procedure.id === selectedProcedure.id ? colors.gold : colors.line }}>
+                <div>
+                  <strong>{procedure.title}</strong>
+                  <p style={mutedSmallStyle}>{procedure.area} · {procedure.steps.length} steps</p>
+                </div>
+                <span style={badgeStyle(procedure.priority)}>{procedure.priority}</span>
+              </button>
+            ))}
+          </div>
+        }
+        drawer={
+          <>
+            <div style={eyebrowStyle}>Selected Procedure</div>
+            <h3 style={detailTitleStyle}>{selectedProcedure.title}</h3>
+            <div style={formGridStyle}>
+              <Field label="Title" value={selectedProcedure.title} onChange={(value) => updateProcedure({ title: value })} />
+              <Field label="Area" value={selectedProcedure.area} onChange={(value) => updateProcedure({ area: value })} />
+              <SelectField label="Priority" value={selectedProcedure.priority} onChange={(value) => updateProcedure({ priority: value })} options={["High", "Normal", "Seasonal"] as const} />
+              <Field label="Steps, one per line" value={selectedProcedure.steps.join("\n")} onChange={(value) => updateProcedure({ steps: value.split("\n").map((item) => item.trim()).filter(Boolean) })} multiline />
             </div>
-          ))}
-        </div>
-      </Section>
+            <button type="button" onClick={() => void postAtlasRecord("procedures", selectedProcedure)} style={goldButtonStyle}>Save Procedure</button>
+          </>
+        }
+      />
     );
   }
 
   function renderParts() {
     return (
-      <Section title="Parts" eyebrow="Inventory">
-        <div style={listGridStyle}>
-          {partRecords.map((part) => (
-            <div key={part.id} style={recordCardStyle}>
-              <div style={buttonRowBetweenStyle}>
-                <h3 style={cardTitleStyle}>{part.name}</h3>
+      <ListDrawerLayout
+        eyebrow="A–Z List"
+        title="Parts"
+        detail="Alphabetical inventory list with quantity and reorder status."
+        isMobile={isMobile}
+        list={
+          <div style={listStyle}>
+            {filteredParts.map((part) => (
+              <button key={part.id} type="button" onClick={() => setSelectedPartId(part.id)} style={{ ...rowButtonStyle, borderColor: part.id === selectedPart.id ? colors.gold : colors.line }}>
+                <div>
+                  <strong>{part.name}</strong>
+                  <p style={mutedSmallStyle}>{part.category} · Qty {part.quantity} / Min {part.minQuantity}</p>
+                </div>
                 <span style={badgeStyle(part.status)}>{part.status}</span>
-              </div>
-              <p style={mutedSmallStyle}>{part.category} · {locationName(part.locationId)}</p>
-              <p style={bodyTextStyle}>Qty {part.quantity} / min {part.minQuantity}</p>
-              <p style={bodyTextStyle}>{part.notes}</p>
-              <button type="button" onClick={() => schedulePartRestock(part)} style={secondaryButtonStyle}>Schedule Restock</button>
+              </button>
+            ))}
+          </div>
+        }
+        drawer={
+          <>
+            <div style={eyebrowStyle}>Selected Part</div>
+            <h3 style={detailTitleStyle}>{selectedPart.name}</h3>
+            <div style={formGridStyle}>
+              <Field label="Name" value={selectedPart.name} onChange={(value) => updatePart({ name: value })} />
+              <Field label="Category" value={selectedPart.category} onChange={(value) => updatePart({ category: value })} />
+              <Field label="Quantity" value={String(selectedPart.quantity)} onChange={(value) => updatePart({ quantity: Number(value) })} />
+              <Field label="Minimum Quantity" value={String(selectedPart.minQuantity)} onChange={(value) => updatePart({ minQuantity: Number(value) })} />
+              <SelectField label="Status" value={selectedPart.status} onChange={(value) => updatePart({ status: value })} options={["In Stock", "Low", "Out", "Order"] as const} />
+              <Field label="Notes" value={selectedPart.notes} onChange={(value) => updatePart({ notes: value })} multiline />
             </div>
-          ))}
-        </div>
-      </Section>
+          </>
+        }
+      />
     );
   }
 
   function renderAssistant() {
     return (
-      <Section title="Ask Atlas Property Assistant" eyebrow="Local Atlas records">
-        <div style={formGridStyle}>
-          <label style={labelStyle}>
-            Question
-            <textarea
-              value={assistantQuestion}
-              onChange={(event) => setAssistantQuestion(event.target.value)}
-              placeholder="Example: what is on the calendar today, where is the ADU, who handles irrigation..."
-              style={textareaStyle}
-            />
-          </label>
+      <section style={sectionStyle}>
+        <SectionHeader eyebrow="Ask Atlas" title="Property Assistant" detail="Quick local assistant tied to loaded Atlas records." />
+        <div style={stackStyle}>
+          <textarea
+            value={assistantQuestion}
+            onChange={(event) => setAssistantQuestion(event.currentTarget.value)}
+            placeholder="Ask about assets, vendors, work orders, map, weather, database, or records..."
+            style={{ ...inputStyle, minHeight: 130, resize: "vertical" }}
+          />
           <button type="button" onClick={askAtlas} style={goldButtonStyle}>Ask Atlas</button>
-          <pre style={answerBoxStyle}>{assistantAnswer}</pre>
+          <div style={noticeStyle}>{assistantAnswer}</div>
         </div>
-      </Section>
+      </section>
     );
   }
-}
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={statCardStyle}>
-      <div style={statValueStyle}>{value}</div>
-      <div style={statLabelStyle}>{label}</div>
-    </div>
-  );
-}
+  function renderScreen() {
+    if (screen === "dashboard") return renderDashboard();
+    if (screen === "map") return renderMap();
+    if (screen === "locations") return renderLocations();
+    if (screen === "assets") return renderAssets();
+    if (screen === "history") return renderWorkOrders();
+    if (screen === "vendors") return renderVendors();
+    if (screen === "calendar") return renderCalendar();
+    if (screen === "weather") return renderWeather();
+    if (screen === "documents") return renderDocuments();
+    if (screen === "procedures") return renderProcedures();
+    if (screen === "parts") return renderParts();
+    return renderAssistant();
+  }
 
-function Section({ title, eyebrow, right, children }: { title: string; eyebrow: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section style={sectionStyle}>
-      <div style={sectionHeaderStyle}>
-        <div>
-          <div style={eyebrowStyle}>{eyebrow}</div>
-          <h2 style={sectionTitleStyle}>{title}</h2>
-        </div>
-        {right}
+    <main style={appStyle}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "260px 1fr", minHeight: "100vh" }}>
+        <aside style={{ ...sidebarStyle, position: isMobile ? "static" : "sticky", height: isMobile ? "auto" : "100vh" }}>
+          <div style={brandStyle}>
+            <div style={logoBoxStyle}>
+              {logoIndex < logoCandidates.length ? (
+                <img
+                  src={logoCandidates[logoIndex]}
+                  alt="Atlas logo"
+                  onError={() => setLogoIndex((index) => index + 1)}
+                  style={logoImageStyle}
+                />
+              ) : (
+                <span style={logoFallbackStyle}>A</span>
+              )}
+            </div>
+            <div>
+              <div style={brandTitleStyle}>ATLAS</div>
+              <div style={brandSubStyle}>2000 Estate Systems</div>
+            </div>
+          </div>
+
+          <nav style={{ display: "grid", gap: 8, gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "1fr" }}>
+            {screens.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setScreen(item.id)}
+                style={{
+                  ...navButtonStyle,
+                  borderColor: screen === item.id ? colors.gold : "rgba(255,255,255,0.12)",
+                  background: screen === item.id ? colors.gold : "rgba(255,255,255,0.04)",
+                  color: screen === item.id ? colors.navy : "#FFFFFF",
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <section style={{ minWidth: 0 }}>
+          <header style={topbarStyle}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 14, justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={eyebrowStyle}>Private Property Command Center</div>
+                <h1 style={pageTitleStyle}>{screen === "dashboard" ? "Atlas / 2000" : screens.find((item) => item.id === screen)?.label}</h1>
+                {screen === "dashboard" ? <p style={headerSubStyle}>{databaseStatus}</p> : null}
+              </div>
+
+              <div style={{ position: "relative", width: isMobile ? "100%" : 480, maxWidth: "100%" }}>
+                <input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Search Atlas..." style={{ ...inputStyle, width: "100%" }} />
+                {searchResults.length ? (
+                  <div style={searchDropStyle}>
+                    {searchResults.map((result) => (
+                      <button key={result.id} type="button" onClick={() => openSearchResult(result)} style={searchResultStyle}>
+                        <strong>{result.title}</strong>
+                        <span style={mutedSmallStyle}>{result.type} · {result.subtitle}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </header>
+
+          <div style={{ padding: isMobile ? 14 : 24 }}>{renderScreen()}</div>
+        </section>
       </div>
-      {children}
-    </section>
+    </main>
   );
 }
 
-const shellStyle: React.CSSProperties = {
+const appStyle: React.CSSProperties = {
   minHeight: "100vh",
-  display: "grid",
-  gridTemplateColumns: "250px 1fr",
   background: colors.bg,
   color: colors.text,
-  fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
-};
-
-const loadingStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  display: "grid",
-  placeItems: "center",
-  background: colors.bg,
-  color: colors.navy,
-  fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
+  fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
 };
 
 const sidebarStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  position: "sticky",
-  top: 0,
-  alignSelf: "start",
   background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
   color: "#FFFFFF",
   padding: 22,
-  boxSizing: "border-box",
+  top: 0,
+  overflow: "auto",
 };
 
-const brandBlockStyle: React.CSSProperties = {
+const brandStyle: React.CSSProperties = {
   display: "flex",
-  gap: 12,
   alignItems: "center",
-  marginBottom: 26,
+  gap: 12,
+  marginBottom: 24,
 };
 
-const logoMarkStyle: React.CSSProperties = {
-  width: 44,
-  height: 44,
+const logoBoxStyle: React.CSSProperties = {
+  width: 46,
+  height: 46,
   borderRadius: 14,
-  background: `linear-gradient(135deg, ${colors.gold}, ${colors.gold2})`,
-  color: colors.navy,
+  background: colors.gold,
+  border: `1px solid ${colors.gold}`,
   display: "grid",
   placeItems: "center",
-  fontWeight: 1000,
-  fontSize: 26,
-  boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+  overflow: "hidden",
+  boxShadow: "0 14px 30px rgba(0,0,0,0.22)",
+};
+
+const logoImageStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "contain",
+  padding: 5,
+};
+
+const logoFallbackStyle: React.CSSProperties = {
+  fontWeight: 950,
+  fontSize: 21,
+  color: colors.navy,
 };
 
 const brandTitleStyle: React.CSSProperties = {
-  fontWeight: 1000,
-  letterSpacing: 2,
-  fontSize: 18,
+  fontWeight: 950,
+  fontSize: 23,
+  letterSpacing: 1.4,
 };
 
 const brandSubStyle: React.CSSProperties = {
-  color: "rgba(255,255,255,0.72)",
+  color: "#D6E2EE",
   fontSize: 12,
-  fontWeight: 700,
-};
-
-const navStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 8,
+  fontWeight: 850,
 };
 
 const navButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.05)",
-  color: "#FFFFFF",
-  borderRadius: 12,
-  padding: "11px 12px",
+  borderRadius: 13,
+  padding: "13px 14px",
   textAlign: "left",
-  fontWeight: 850,
   cursor: "pointer",
-};
-
-const activeNavButtonStyle: React.CSSProperties = {
-  ...navButtonStyle,
-  background: colors.gold,
-  color: colors.navy,
-  borderColor: colors.gold,
-};
-
-const mainStyle: React.CSSProperties = {
-  padding: 24,
-  minWidth: 0,
+  fontWeight: 950,
 };
 
 const topbarStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 18,
-  alignItems: "flex-start",
-  marginBottom: 22,
-  flexWrap: "wrap",
+  background: "transparent",
+  padding: "26px 24px 6px",
 };
 
 const pageTitleStyle: React.CSSProperties = {
   margin: 0,
   color: colors.navy,
-  fontSize: 34,
-  letterSpacing: -1,
+  fontSize: 32,
+  fontWeight: 950,
+  letterSpacing: "-0.04em",
 };
 
-const searchWrapStyle: React.CSSProperties = {
-  position: "relative",
-  width: "min(460px, 100%)",
+const headerSubStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 13,
+  margin: "5px 0 0",
+  lineHeight: 1.4,
 };
 
-const searchInputStyle: React.CSSProperties = {
-  width: "100%",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 14,
-  padding: "13px 14px",
-  fontSize: 14,
-  fontWeight: 750,
-  outline: "none",
-  background: colors.card,
-  color: colors.text,
-  boxShadow: "0 8px 24px rgba(16,42,68,0.08)",
-};
-
-const searchResultsStyle: React.CSSProperties = {
-  position: "absolute",
-  zIndex: 50,
-  top: 52,
-  left: 0,
-  right: 0,
-  background: colors.card,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 14,
-  padding: 10,
-  boxShadow: "0 18px 36px rgba(16,42,68,0.18)",
-  display: "grid",
-  gap: 8,
-  maxHeight: 420,
-  overflowY: "auto",
-};
-
-const searchResultButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  color: colors.text,
-  borderRadius: 12,
-  padding: 10,
-  textAlign: "left",
-  cursor: "pointer",
-  display: "grid",
-  gap: 4,
-};
+const dashboardStackStyle: React.CSSProperties = { display: "grid", gap: 14 };
+const stackStyle: React.CSSProperties = { display: "grid", gap: 16 };
+const listStyle: React.CSSProperties = { display: "grid", gap: 10 };
+const buttonRowStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" };
 
 const sectionStyle: React.CSSProperties = {
   background: colors.card,
   border: `1px solid ${colors.line}`,
   borderRadius: 20,
   padding: 18,
-  boxShadow: "0 12px 30px rgba(16,42,68,0.08)",
-  minWidth: 0,
+  boxShadow: "0 18px 45px rgba(15, 23, 42, 0.06)",
 };
 
 const sectionHeaderStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: 12,
+  gap: 14,
   alignItems: "flex-start",
-  flexWrap: "wrap",
   marginBottom: 14,
 };
 
-const eyebrowStyle: React.CSSProperties = {
-  textTransform: "uppercase",
-  letterSpacing: 1.5,
-  fontSize: 11,
-  color: colors.gold,
-  fontWeight: 1000,
-};
-
 const sectionTitleStyle: React.CSSProperties = {
-  margin: "3px 0 0",
+  margin: 0,
   color: colors.navy,
   fontSize: 24,
-  letterSpacing: -0.4,
+  fontWeight: 950,
+  letterSpacing: "-0.03em",
 };
 
 const statGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
   gap: 14,
 };
 
-const statCardStyle: React.CSSProperties = {
+const modernStatStyle: React.CSSProperties = {
   background: colors.card,
   border: `1px solid ${colors.line}`,
   borderRadius: 18,
   padding: 18,
-  boxShadow: "0 10px 26px rgba(16,42,68,0.08)",
-};
-
-const statValueStyle: React.CSSProperties = {
-  color: colors.navy,
-  fontSize: 34,
-  fontWeight: 1000,
-  letterSpacing: -1,
+  textAlign: "left",
+  cursor: "pointer",
+  boxShadow: "0 16px 38px rgba(15,23,42,0.05)",
 };
 
 const statLabelStyle: React.CSSProperties = {
   color: colors.muted,
   fontSize: 12,
-  fontWeight: 850,
+  fontWeight: 950,
   textTransform: "uppercase",
-  letterSpacing: 1,
+  letterSpacing: 0.8,
 };
 
-const gridTwoStyle: React.CSSProperties = {
+const statValueStyle: React.CSSProperties = {
+  color: colors.navy,
+  fontSize: 31,
+  fontWeight: 950,
+  lineHeight: 1.05,
+  letterSpacing: "-0.04em",
+};
+
+const dashboardTopGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 14,
+  alignItems: "start",
+};
+
+const drawerGridStyle: React.CSSProperties = {
+  display: "grid",
   gap: 16,
   alignItems: "start",
 };
 
-const gridTwoSmallStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 12,
-};
-
-const listGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 12,
-};
-
-const stackStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 12,
-};
-
-const recordCardStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  borderRadius: 16,
-  padding: 14,
+const listPanelStyle: React.CSSProperties = {
   minWidth: 0,
 };
 
-const recordCardButtonStyle: React.CSSProperties = {
-  ...recordCardStyle,
-  textAlign: "left",
-  cursor: "pointer",
-  color: colors.text,
-  width: "100%",
+const drawerStyle: React.CSSProperties = {
+  background: colors.panel,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 24,
+  padding: 18,
+  position: "sticky",
+  top: 18,
+  maxHeight: "calc(100vh - 40px)",
+  overflowY: "auto",
+  overflowX: "hidden",
+  boxShadow: "0 16px 35px rgba(15,23,42,0.06)",
+  minWidth: 0,
+  wordBreak: "break-word",
 };
 
-const cardTitleStyle: React.CSSProperties = {
-  margin: 0,
+const detailTitleStyle: React.CSSProperties = {
+  margin: "4px 0 14px",
   color: colors.navy,
-  fontSize: 16,
-  fontWeight: 1000,
+  fontSize: 23,
+  fontWeight: 950,
+  letterSpacing: "-0.03em",
+  wordBreak: "break-word",
+};
+
+const eyebrowStyle: React.CSSProperties = {
+  color: colors.gold,
+  fontSize: 12,
+  fontWeight: 950,
+  letterSpacing: 1.8,
+  textTransform: "uppercase",
 };
 
 const mutedSmallStyle: React.CSSProperties = {
-  margin: "5px 0 0",
   color: colors.muted,
+  fontSize: 13,
+  margin: "4px 0 0",
+  lineHeight: 1.45,
+  wordBreak: "break-word",
+};
+
+const fieldLabelStyle: React.CSSProperties = {
+  color: colors.navy,
   fontSize: 12,
+  fontWeight: 950,
+};
+
+const inputStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 14,
+  padding: "12px 13px",
+  fontSize: 14,
+  color: colors.text,
+  background: "#FFFFFF",
+  outline: "none",
+  fontFamily: "inherit",
+  minWidth: 0,
   fontWeight: 750,
 };
 
-const bodyTextStyle: React.CSSProperties = {
-  margin: "8px 0 0",
-  color: colors.text,
-  fontSize: 13,
-  lineHeight: 1.45,
-};
-
-const buttonRowStyle: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 8,
-  alignItems: "center",
-};
-
-const buttonRowBetweenStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 10,
-  alignItems: "flex-start",
+const formGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 11,
+  marginBottom: 14,
+  minWidth: 0,
 };
 
 const rowButtonStyle: React.CSSProperties = {
   width: "100%",
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  color: colors.text,
-  borderRadius: 14,
-  padding: 12,
-  cursor: "pointer",
-  textAlign: "left",
   display: "flex",
   justifyContent: "space-between",
-  gap: 10,
+  gap: 12,
   alignItems: "flex-start",
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 16,
+  padding: 14,
+  textAlign: "left",
+  cursor: "pointer",
+  color: colors.text,
+  boxShadow: "0 10px 26px rgba(15,23,42,0.035)",
+  minWidth: 0,
+  overflow: "hidden",
+  wordBreak: "break-word",
 };
 
-const chipButtonStyle: React.CSSProperties = {
+const rowStaticStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
-  background: "#F8FAFC",
-  color: colors.navy,
-  borderRadius: 999,
-  padding: "6px 9px",
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 850,
+  background: "#FFFFFF",
+  borderRadius: 16,
+  padding: 14,
+  color: colors.text,
+  boxShadow: "0 10px 26px rgba(15,23,42,0.035)",
+  minWidth: 0,
+  wordBreak: "break-word",
 };
 
 const goldButtonStyle: React.CSSProperties = {
   border: `1px solid ${colors.gold}`,
   background: colors.gold,
   color: colors.navy,
-  borderRadius: 12,
+  borderRadius: 13,
   padding: "10px 13px",
-  fontSize: 13,
-  fontWeight: 1000,
+  fontWeight: 950,
   cursor: "pointer",
-  whiteSpace: "nowrap",
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
   background: "#FFFFFF",
   color: colors.navy,
-  borderRadius: 12,
-  padding: "9px 12px",
-  fontSize: 13,
-  fontWeight: 900,
+  borderRadius: 13,
+  padding: "10px 13px",
+  fontWeight: 950,
   cursor: "pointer",
-  whiteSpace: "nowrap",
 };
 
 const dangerButtonStyle: React.CSSProperties = {
-  ...secondaryButtonStyle,
-  borderColor: "#FACACA",
+  border: "1px solid #FACACA",
+  background: "#FEECEC",
   color: colors.red,
+  borderRadius: 13,
+  padding: "10px 13px",
+  fontWeight: 950,
+  cursor: "pointer",
 };
 
-const formGridStyle: React.CSSProperties = {
+const noticeStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 16,
+  padding: 14,
+  color: colors.text,
+  lineHeight: 1.5,
+  minWidth: 0,
+  wordBreak: "break-word",
+};
+
+const todayEventStyle: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "flex-start",
+  border: `1px solid ${colors.line}`,
+  borderLeft: "5px solid",
+  background: "#FFFFFF",
+  borderRadius: 15,
+  padding: 14,
+  textAlign: "left",
+  cursor: "pointer",
+  color: colors.text,
+  minWidth: 0,
+};
+
+const eventColorPillStyle: React.CSSProperties = {
+  border: "1px solid",
+  borderRadius: 999,
+  padding: "4px 8px",
+  fontSize: 11,
+  fontWeight: 950,
+  background: "#FFFFFF",
+  whiteSpace: "nowrap",
+};
+
+const upcomingListStyle: React.CSSProperties = {
   display: "grid",
+  gap: 10,
+};
+
+const upcomingItemStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.text,
+  borderRadius: 15,
+  padding: 13,
+  cursor: "pointer",
+  textAlign: "left",
+  width: "100%",
+  fontFamily: "inherit",
+};
+
+const upcomingDotStyle: React.CSSProperties = {
+  width: 9,
+  height: 9,
+  borderRadius: 999,
+  flex: "0 0 auto",
+};
+
+const upcomingInfoStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 2,
+  minWidth: 0,
+  width: "100%",
+};
+
+const dashboardWeatherStripStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(7, minmax(145px, 1fr))",
+  gap: 10,
+  overflowX: "auto",
+  paddingBottom: 4,
+};
+
+const dashboardWeatherDayStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 7,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 15,
+  padding: 12,
+  textAlign: "left",
+  cursor: "pointer",
+  color: colors.text,
+  fontFamily: "inherit",
+};
+
+const dashboardWeatherTopStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+};
+
+const dashboardWeatherTempStyle: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 950,
+  color: colors.navy,
+};
+
+const dashboardWeatherMiniStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 850,
+  color: colors.muted,
+};
+
+const dashboardAdviceStyle: React.CSSProperties = {
+  fontSize: 11,
+  lineHeight: 1.3,
+  margin: 0,
+  color: colors.text,
+};
+
+const workOrderStripStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
   gap: 12,
 };
 
-const labelStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 6,
-  color: colors.navy,
-  fontSize: 12,
-  fontWeight: 1000,
-  textTransform: "uppercase",
-  letterSpacing: 0.8,
-};
-
-const inputStyle: React.CSSProperties = {
+const workOrderCardStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
-  borderRadius: 12,
-  padding: "11px 12px",
-  fontSize: 14,
-  color: colors.text,
   background: "#FFFFFF",
-  outline: "none",
-  textTransform: "none",
-  letterSpacing: 0,
-  fontWeight: 700,
-  width: "100%",
-  boxSizing: "border-box",
-};
-
-const textareaStyle: React.CSSProperties = {
-  ...inputStyle,
-  minHeight: 100,
-  resize: "vertical",
-  lineHeight: 1.45,
-};
-
-const answerBoxStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  background: "#F8FAFC",
   color: colors.text,
-  borderRadius: 14,
+  borderRadius: 15,
   padding: 14,
-  whiteSpace: "pre-wrap",
-  fontSize: 13,
-  lineHeight: 1.45,
-  minHeight: 180,
-  overflow: "auto",
+  cursor: "pointer",
+  textAlign: "left",
+  fontFamily: "inherit",
+  display: "grid",
+  gap: 8,
 };
 
-const emptyStateStyle: React.CSSProperties = {
-  border: `1px dashed ${colors.line}`,
-  background: "#F8FAFC",
-  color: colors.muted,
-  borderRadius: 14,
-  padding: 14,
-  fontSize: 13,
-  fontWeight: 750,
+const dashboardWeatherBoxStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 14,
+  alignItems: "center",
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 18,
+  padding: 16,
 };
 
-const linkStyle: React.CSSProperties = {
-  color: colors.blue,
-  fontWeight: 900,
-  textDecoration: "none",
+const dashboardWeatherIconStyle: React.CSSProperties = {
+  fontSize: 42,
+  width: 62,
+  height: 62,
+  borderRadius: 18,
+  background: "#FFFAEB",
+  display: "grid",
+  placeItems: "center",
+  flex: "0 0 auto",
 };
 
-const mapFrameStyle: React.CSSProperties = {
+const mapShellStyle: React.CSSProperties = {
   position: "relative",
   overflow: "hidden",
-  borderRadius: 18,
   border: `1px solid ${colors.line}`,
-  background: colors.navy,
-  minHeight: 430,
+  borderRadius: 20,
+  background: "#E6ECF2",
+  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.45)",
   touchAction: "none",
 };
 
 const mapImageStyle: React.CSSProperties = {
-  width: "100%",
-  height: "100%",
-  minHeight: 430,
-  objectFit: "cover",
   display: "block",
+  width: "100%",
+  height: "auto",
   userSelect: "none",
   pointerEvents: "none",
 };
 
-const mapLabelStyle: React.CSSProperties = {
+const mapPinStyle: React.CSSProperties = {
   position: "absolute",
   transform: "translate(-50%, -50%)",
-  border: "2px solid rgba(255,255,255,0.9)",
+  border: "2px solid",
   borderRadius: 999,
-  padding: "6px 10px",
-  fontSize: 11,
-  fontWeight: 1000,
+  boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
+  fontWeight: 950,
   cursor: "grab",
-  boxShadow: "0 10px 20px rgba(0,0,0,0.25)",
   whiteSpace: "nowrap",
+  fontSize: 12,
+  padding: "7px 9px",
 };
 
-const photoGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
-  gap: 10,
-};
-
-const photoCardStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  borderRadius: 14,
-  padding: 8,
+const searchDropStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 8px)",
+  left: 0,
+  right: 0,
   background: "#FFFFFF",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  boxShadow: "0 20px 45px rgba(11,30,51,0.18)",
+  overflow: "hidden",
+  zIndex: 50,
 };
 
-const photoImageStyle: React.CSSProperties = {
+const searchResultStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 2,
   width: "100%",
-  height: 100,
-  objectFit: "cover",
-  borderRadius: 10,
-  display: "block",
-  marginBottom: 8,
+  padding: 12,
+  border: 0,
+  borderBottom: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  textAlign: "left",
+  cursor: "pointer",
+  color: colors.text,
 };
 
 const calendarHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-  marginBottom: 12,
+  color: colors.navy,
+  fontSize: 24,
+  fontWeight: 950,
+  letterSpacing: "-0.03em",
+};
+
+const calendarWeekStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(7, 1fr)",
+  gap: 8,
+};
+
+const calendarDayNameStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 12,
+  fontWeight: 950,
+  textTransform: "uppercase",
+  textAlign: "center",
 };
 
 const calendarGridStyle: React.CSSProperties = {
@@ -2171,111 +2782,224 @@ const calendarGridStyle: React.CSSProperties = {
   gap: 8,
 };
 
-const calendarWeekdayStyle: React.CSSProperties = {
-  color: colors.muted,
-  fontSize: 11,
-  fontWeight: 1000,
-  textTransform: "uppercase",
-  letterSpacing: 1,
-  textAlign: "center",
-  padding: "4px 0",
-};
-
-const calendarDayStyle: React.CSSProperties = {
+const calendarCellStyle: React.CSSProperties = {
+  minHeight: 120,
   border: `1px solid ${colors.line}`,
+  borderRadius: 16,
   background: "#FFFFFF",
-  borderRadius: 14,
-  minHeight: 112,
-  padding: 8,
+  padding: 9,
   textAlign: "left",
   cursor: "pointer",
-  display: "grid",
-  alignContent: "start",
-  gap: 6,
+  color: colors.text,
   overflow: "hidden",
 };
 
-const calendarDayNumberStyle: React.CSSProperties = {
-  color: colors.navy,
-  fontSize: 13,
-  fontWeight: 1000,
-};
-
-const calendarDayEventsStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 4,
-  minWidth: 0,
-};
-
-const truncateStyle: React.CSSProperties = {
+const calendarPillStyle: React.CSSProperties = {
+  display: "block",
+  background: "#EDF3FF",
+  color: "#175CD3",
+  borderRadius: 999,
+  padding: "3px 7px",
+  fontSize: 11,
+  fontWeight: 850,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  minWidth: 0,
 };
 
-const moreEventsStyle: React.CSSProperties = {
+const calendarMoreStyle: React.CSSProperties = {
   color: colors.muted,
   fontSize: 11,
-  fontWeight: 900,
+  fontWeight: 850,
 };
 
-const categoryBadgeStyle: React.CSSProperties = {
-  border: "1px solid",
+const calendarWeatherIconStyle: React.CSSProperties = {
+  width: 24,
+  height: 24,
   borderRadius: 999,
-  padding: "4px 8px",
-  fontSize: 11,
-  fontWeight: 1000,
-  whiteSpace: "nowrap",
+  background: "#FFFAEB",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 14,
+  flex: "0 0 auto",
 };
 
-const dotStyle: React.CSSProperties = {
-  width: 8,
-  height: 8,
+const calendarTodayBoxStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 16,
+  padding: 12,
+  marginBottom: 14,
+};
+
+const calendarTodayItemStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 3,
+  border: `1px solid ${colors.line}`,
+  background: "#F8FAFC",
+  color: colors.text,
+  borderRadius: 14,
+  padding: 10,
+  textAlign: "left",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const calendarColorDotStyle: React.CSSProperties = {
+  width: 12,
+  height: 12,
   borderRadius: 999,
   flex: "0 0 auto",
 };
 
-const rightScrollBoxStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 10,
-  maxHeight: 275,
-  overflowY: "auto",
-  paddingRight: 4,
+const compactAddBoxStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 16,
+  padding: 12,
 };
 
-const colorPreviewRowStyle: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
+const calendarColorsBoxStyle: React.CSSProperties = {
+  marginTop: 18,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 16,
+  padding: 12,
+};
+
+const calendarColorListStyle: React.CSSProperties = {
+  display: "grid",
   gap: 8,
+  marginTop: 10,
 };
 
-const colorDotButtonStyle: React.CSSProperties = {
-  width: 28,
-  height: 28,
-  borderRadius: 999,
-  border: "2px solid #FFFFFF",
-  cursor: "pointer",
-  boxShadow: "0 0 0 1px rgba(0,0,0,0.12)",
-};
-
-const weatherGridStyle: React.CSSProperties = {
+const calendarColorRowStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(7, minmax(140px, 1fr))",
+  gridTemplateColumns: "46px 1fr",
+  gap: 8,
+  alignItems: "center",
+};
+
+const actualColorInputStyle: React.CSSProperties = {
+  width: 46,
+  height: 40,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 12,
+  padding: 3,
+  background: "#FFFFFF",
+  cursor: "pointer",
+};
+
+const weatherStripStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(7, minmax(165px, 1fr))",
   gap: 12,
   overflowX: "auto",
-  paddingBottom: 4,
+  paddingBottom: 8,
 };
 
 const weatherCardStyle: React.CSSProperties = {
-  minWidth: 140,
   border: `1px solid ${colors.line}`,
-  borderRadius: 16,
   background: "#FFFFFF",
-  padding: 14,
+  borderRadius: 20,
+  padding: 15,
+  minHeight: 250,
+  textAlign: "left",
+  cursor: "pointer",
+  color: colors.text,
+  fontFamily: "inherit",
+  display: "grid",
+  gap: 10,
+  minWidth: 0,
+};
+
+const weatherCardTopStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 10,
 };
 
 const weatherIconStyle: React.CSSProperties = {
-  fontSize: 30,
+  width: 50,
+  height: 50,
+  borderRadius: 18,
+  background: "#FFFAEB",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 28,
+};
+
+const weatherTempStyle: React.CSSProperties = {
+  color: colors.navy,
+  fontSize: 38,
+  fontWeight: 950,
+  lineHeight: 1,
+  letterSpacing: "-0.04em",
+};
+
+const weatherLowStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 13,
+  fontWeight: 800,
+};
+
+const weatherBarTrackStyle: React.CSSProperties = {
+  height: 9,
+  borderRadius: 999,
+  background: "#EAF0F7",
+  overflow: "hidden",
+};
+
+const weatherBarFillStyle: React.CSSProperties = {
+  height: "100%",
+  borderRadius: 999,
+  background: colors.gold,
+};
+
+const weatherMiniGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 6,
+  color: colors.muted,
+  fontSize: 12,
+  fontWeight: 800,
+};
+
+const weatherAdviceSmallStyle: React.CSSProperties = {
+  color: colors.text,
+  fontSize: 12,
+  lineHeight: 1.35,
+  margin: 0,
+  wordBreak: "break-word",
+};
+
+const photoGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 10,
+};
+
+const photoCardStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 14,
+  padding: 10,
+  background: "#FFFFFF",
+};
+
+const photoStyle: React.CSSProperties = {
+  width: "100%",
+  maxHeight: 160,
+  objectFit: "cover",
+  borderRadius: 12,
+  border: `1px solid ${colors.line}`,
   marginBottom: 8,
+};
+
+const linkStyle: React.CSSProperties = {
+  color: colors.navy,
+  fontWeight: 950,
+  textDecoration: "underline",
 };
