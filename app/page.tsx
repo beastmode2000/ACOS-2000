@@ -1,1834 +1,1032 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Screen =
   | "dashboard"
   | "map"
   | "locations"
   | "assets"
-  | "work-orders"
+  | "history"
   | "vendors"
   | "calendar"
   | "weather"
   | "documents"
   | "procedures"
-  | "logs"
-  | "assistant"
-  | "team";
+  | "parts"
+  | "assistant";
 
-type AnyRecord = Record<string, unknown>;
+type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
+type ServiceStatus = "Open" | "Scheduled" | "Completed" | "Monitor";
+type WorkOrderPriority = "Low" | "Medium" | "High";
+type Priority = "High" | "Normal" | "Seasonal";
+type PartStatus = "In Stock" | "Low" | "Out" | "Order";
 
-type AtlasPayload = {
-  ok?: boolean;
-  source?: string;
-  apiVersion?: string;
-  error?: string;
-  assetRecords?: AnyRecord[];
-  vendorRecords?: AnyRecord[];
-  serviceRecords?: AnyRecord[];
-  calendarItems?: AnyRecord[];
-  locationRecords?: AnyRecord[];
-  documentRecords?: AnyRecord[];
-  procedureRecords?: AnyRecord[];
-  photoRecords?: AnyRecord[];
+type UploadedFileRecord = {
+  id: string;
+  name: string;
+  type: string;
+  dataUrl: string;
+  createdAt: string;
 };
 
-type WorkOrderForm = {
+type LocationRecord = {
+  id: string;
+  name: string;
+  type: string;
+  zone: string;
+  notes: string;
+};
+
+type MapLabelRecord = {
+  id: string;
+  label: string;
+  category: string;
+  x: number;
+  y: number;
+  notes: string;
+  photos: UploadedFileRecord[];
+};
+
+type VendorRecord = {
+  id: string;
+  name: string;
+  category: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  notes: string;
+};
+
+type AssetRecord = {
+  id: string;
+  name: string;
+  locationId: string;
+  category: string;
+  status: Status;
+  make?: string;
+  model?: string;
+  serial?: string;
+  notes: string;
+  vendorIds: string[];
+};
+
+type ServiceRecord = {
+  id: string;
+  assetId: string;
+  vendorId?: string;
+  date: string;
+  title: string;
+  status: ServiceStatus;
+  priority: WorkOrderPriority;
+  notes: string;
+  followUpDate?: string;
+};
+
+type ProcedureRecord = {
   id: string;
   title: string;
-  assetId: string;
-  vendorId: string;
-  date: string;
-  status: string;
-  priority: string;
+  area: string;
+  priority: Priority;
+  steps: string[];
+};
+
+type DocumentRecord = {
+  id: string;
+  title: string;
+  area: string;
+  type: string;
+  linkedAssetId?: string;
   notes: string;
-  followUpDate: string;
+  href?: string;
+};
 
-  isRecurring: boolean;
-  recurrenceFrequency: string;
-  recurrenceInterval: string;
-  recurrenceDays: string;
-  recurrenceNextDue: string;
-  recurrenceEndType: string;
-  recurrenceEndDate: string;
+type PartRecord = {
+  id: string;
+  name: string;
+  category: string;
+  locationId: string;
+  assetId?: string;
+  vendorId?: string;
+  quantity: number;
+  minQuantity: number;
+  status: PartStatus;
+  notes: string;
+};
 
-  invoiceNumber: string;
-  invoiceDate: string;
-  invoiceAmount: string;
-  invoiceStatus: string;
-  paymentStatus: string;
-  costCategory: string;
-  approvedBy: string;
-  approvedDate: string;
-  costNotes: string;
+type CalendarItem = {
+  id: string;
+  date: string;
+  title: string;
+  area: string;
+  status: ServiceStatus;
+};
+
+type SearchResult = {
+  id: string;
+  type: string;
+  title: string;
+  subtitle: string;
+  detail: string;
+  screen: Screen;
+  assetId?: string;
+  vendorId?: string;
+  serviceId?: string;
+  mapLabelId?: string;
 };
 
 const colors = {
   navy: "#0B1E33",
-  navy2: "#12385C",
+  navy2: "#102A44",
+  navy3: "#163B5C",
   gold: "#C99A3D",
-  gold2: "#E7C46C",
+  gold2: "#E6C16A",
   bg: "#F5F7FA",
   card: "#FFFFFF",
-  ink: "#1B2533",
-  muted: "#667085",
-  border: "#D8DEE8",
-  green: "#067647",
+  line: "#DCE4EC",
+  text: "#172331",
+  muted: "#607086",
   red: "#B42318",
-  blue: "#175CD3",
 };
 
-const navItems: { key: Screen; label: string }[] = [
-  { key: "dashboard", label: "Dashboard" },
-  { key: "map", label: "Map" },
-  { key: "locations", label: "Locations" },
-  { key: "assets", label: "Assets" },
-  { key: "work-orders", label: "Work Orders" },
-  { key: "vendors", label: "Vendors" },
-  { key: "calendar", label: "Calendar" },
-  { key: "weather", label: "Weather" },
-  { key: "documents", label: "Documents / Photos" },
-  { key: "procedures", label: "Procedures" },
-  { key: "logs", label: "Logs" },
-  { key: "assistant", label: "AI Assistant" },
-  { key: "team", label: "Team" },
+const screens: { id: Screen; label: string }[] = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "map", label: "Map" },
+  { id: "locations", label: "Locations" },
+  { id: "assets", label: "Assets" },
+  { id: "history", label: "Work Orders" },
+  { id: "vendors", label: "Vendors" },
+  { id: "calendar", label: "Calendar" },
+  { id: "weather", label: "Weather" },
+  { id: "documents", label: "Documents" },
+  { id: "procedures", label: "Procedures" },
+  { id: "parts", label: "Parts" },
+  { id: "assistant", label: "Ask Atlas" },
 ];
 
-const defaultLocations = [
-  "Dock",
-  "Waterside Lawn (North)",
-  "East Lawn",
-  "Sport Court",
-  "Veggie Boxes",
-  "New Garage",
-  "Old Garage",
-  "ADU",
-  "Courtyard",
-  "Trampoline / Dog",
-  "Original House",
-  "Addition",
-  "Hot Tub",
-  "Mechanical Room",
-  "Pool",
-  "Pool Changing Room",
-  "Pool Equipment Room",
-];
+const mapLocalStorageKey = "atlas-map-labels-v2";
+const storageKeys = {
+  assets: "atlas-asset-records-v3",
+  vendors: "atlas-vendor-records-v3",
+  workOrders: "atlas-service-records-v11",
+  calendar: "atlas-calendar-v11",
+  parts: "atlas-part-records-v2",
+};
 
-const mapLabels = [
-  { id: "dock", label: "Dock", x: 34, y: 83 },
-  { id: "cobalt", label: "Cobalt", x: 26, y: 89 },
-  { id: "seadoo", label: "SeaDoo", x: 39, y: 88 },
-  { id: "water-trampoline", label: "Water Trampoline", x: 17, y: 72 },
-  { id: "waterside-lawn", label: "Waterside Lawn", x: 49, y: 66 },
-  { id: "east-lawn", label: "East Lawn", x: 70, y: 45 },
-  { id: "sport-court", label: "Sport Court", x: 83, y: 30 },
-  { id: "veggie-boxes", label: "Veggie Boxes", x: 79, y: 20 },
-  { id: "new-garage", label: "New Garage", x: 41, y: 28 },
-  { id: "old-garage", label: "Old Garage", x: 51, y: 31 },
-  { id: "adu", label: "ADU", x: 60, y: 24 },
-  { id: "courtyard", label: "Courtyard", x: 52, y: 43 },
-  { id: "trampoline-dog", label: "Trampoline / Dog", x: 70, y: 60 },
-  { id: "original-house", label: "Original House", x: 45, y: 48 },
-  { id: "addition", label: "Addition", x: 37, y: 54 },
-  { id: "hot-tub", label: "Hot Tub", x: 41, y: 61 },
-];
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
 
-const workOrderStatusOptions = ["Open", "Scheduled", "Monitor", "Completed"];
-const workOrderPriorityOptions = ["Low", "Medium", "High"];
-const recurrenceOptions = ["Daily", "Weekly", "Every 2 Weeks", "Monthly", "Seasonal", "Custom"];
-const invoiceStatusOptions = ["not added", "received", "approved", "question", "rejected"];
-const paymentStatusOptions = ["unknown", "unpaid", "paid", "hold"];
+function uid(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
 
-function value(record: AnyRecord | undefined, ...keys: string[]) {
-  if (!record) return "";
-  for (const key of keys) {
-    const item = record[key];
-    if (item === null || item === undefined) continue;
-    const text = String(item).trim();
-    if (text) return text;
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "record";
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return 50;
+  return Math.max(1, Math.min(99, Math.round(value * 10) / 10));
+}
+
+function formatDate(date: string) {
+  if (!date) return "No date";
+  const parsed = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function readStoredArray<T>(key: string, fallback: T[]): T[] {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
   }
-  return "";
 }
 
-function firstText(...items: unknown[]) {
-  for (const item of items) {
-    if (item === null || item === undefined) continue;
-    const text = String(item).trim();
-    if (text) return text;
-  }
-  return "";
-}
-
-function localDateKey() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function dateInputValue(raw: unknown) {
-  const text = firstText(raw);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  return "";
-}
-
-function safeDate(raw: unknown) {
-  const text = firstText(raw);
-  if (!text) return "No date";
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-    const parsed = new Date(`${text}T12:00:00`);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-    }
-  }
-
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) return text;
-  return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
-function safeMoney(raw: unknown) {
-  const text = firstText(raw);
-  if (!text) return "";
-  const amount = Number(text);
-  if (Number.isNaN(amount)) return text;
-  return amount.toLocaleString(undefined, { style: "currency", currency: "USD" });
-}
-
-function hasSearch(record: AnyRecord, terms: string[]) {
-  if (!terms.length) return true;
-  const haystack = Object.values(record).map((item) => firstText(item).toLowerCase()).join(" ");
-  return terms.every((term) => haystack.includes(term));
-}
-
-function priorityRank(priority: string) {
-  const lower = priority.toLowerCase();
-  if (lower === "high") return 1;
-  if (lower === "medium") return 2;
-  if (lower === "low") return 3;
-  return 4;
-}
-
-function statusStyle(text: string): React.CSSProperties {
-  const lower = text.toLowerCase();
-  let color = colors.navy;
-  let background = "rgba(201,154,61,0.12)";
-  let border = "rgba(201,154,61,0.28)";
-
-  if (lower.includes("complete") || lower.includes("paid") || lower.includes("online") || lower.includes("active")) {
-    color = colors.green;
-    background = "rgba(6,118,71,0.10)";
-    border = "rgba(6,118,71,0.22)";
-  }
-
-  if (lower.includes("open") || lower.includes("high") || lower.includes("urgent") || lower.includes("overdue") || lower.includes("unpaid")) {
-    color = colors.red;
-    background = "rgba(180,35,24,0.10)";
-    border = "rgba(180,35,24,0.22)";
-  }
-
+function badgeStyle(value: Status | ServiceStatus | WorkOrderPriority | PartStatus | Priority): React.CSSProperties {
+  const palette: Record<string, { bg: string; color: string; border: string }> = {
+    Online: { bg: "#EAF7F1", color: "#087443", border: "#BDE7D2" },
+    Completed: { bg: "#EAF7F1", color: "#087443", border: "#BDE7D2" },
+    Offline: { bg: "#FEECEC", color: colors.red, border: "#FACACA" },
+    Out: { bg: "#FEECEC", color: colors.red, border: "#FACACA" },
+    High: { bg: "#FEECEC", color: colors.red, border: "#FACACA" },
+    Seasonal: { bg: "#FFF4E5", color: "#B54708", border: "#FFD8A8" },
+    Open: { bg: "#FFF4E5", color: "#B54708", border: "#FFD8A8" },
+    Order: { bg: "#FFF4E5", color: "#B54708", border: "#FFD8A8" },
+    Monitor: { bg: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
+    Scheduled: { bg: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
+    Low: { bg: "#F2F4F7", color: "#475467", border: "#EAECF0" },
+    Medium: { bg: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
+    Normal: { bg: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
+    "In Stock": { bg: "#EAF7F1", color: "#087443", border: "#BDE7D2" },
+    LowStock: { bg: "#FFF4E5", color: "#B54708", border: "#FFD8A8" },
+    Low: { bg: "#FFF4E5", color: "#B54708", border: "#FFD8A8" },
+  };
+  const item = palette[value] ?? palette.Monitor;
   return {
     display: "inline-flex",
     alignItems: "center",
-    justifyContent: "center",
     borderRadius: 999,
-    padding: "6px 10px",
+    border: `1px solid ${item.border}`,
+    background: item.bg,
+    color: item.color,
+    padding: "4px 9px",
     fontSize: 12,
     fontWeight: 900,
-    color,
-    background,
-    border: `1px solid ${border}`,
     whiteSpace: "nowrap",
-    maxWidth: "100%",
   };
 }
 
-function blankWorkOrder(date = localDateKey()): WorkOrderForm {
-  return {
-    id: "",
-    title: "",
-    assetId: "",
-    vendorId: "",
-    date,
-    status: "Open",
-    priority: "Medium",
-    notes: "",
-    followUpDate: "",
+const defaultLocations: LocationRecord[] = [
+  { id: "general", name: "General", type: "Property", zone: "2000", notes: "Whole-estate default location for records not tied to one room or asset." },
+  { id: "original-house", name: "Original House", type: "Building", zone: "Main House", notes: "Original/main house structure." },
+  { id: "addition", name: "Addition", type: "Building", zone: "Main House", notes: "Addition wing including the indoor pool area." },
+  { id: "mechanical-room", name: "Mechanical Room", type: "Systems", zone: "Main House", notes: "Boilers, DHW tanks, hydronic controls, pumps, pool heat, and HVAC equipment." },
+  { id: "pool-equipment", name: "Pool Equipment Room", type: "Pool Systems", zone: "Addition", notes: "Pool filtration, pumps, UV/ozone, Desert Aire, and hydronic pool heat equipment." },
+  { id: "standalone-spa", name: "Hot Tub / Sundance", type: "Spa", zone: "Outdoor", notes: "Standalone Sundance 880 Optima spa. Separate from pool equipment." },
+  { id: "dock", name: "Dock", type: "Waterfront", zone: "Lake", notes: "Main dock, boat lift areas, dock power, Sea-Doo area, Cobalt, and lift control boxes." },
+  { id: "cobalt-lift", name: "Cobalt Lift", type: "Dock Lift", zone: "Dock", notes: "Cobalt boat lift and newer Sunstream lift control / battery / solar box." },
+  { id: "seadoo-lift", name: "SeaDoo Lift", type: "PWC Lift", zone: "Dock", notes: "Sea-Doo lift and older/smaller Sunstream box." },
+  { id: "dock-lift", name: "Dock Lift Box", type: "Lift Controls", zone: "Dock", notes: "Additional dock lift box. Keep separate from Cobalt and Sea-Doo lift boxes." },
+  { id: "water-trampoline", name: "Water Trampoline", type: "Waterfront", zone: "Lake", notes: "Seasonal floating water trampoline location." },
+  { id: "waterside-lawn-north", name: "Waterside Lawn (North)", type: "Grounds", zone: "Lake", notes: "North / lake-facing lawn and beds." },
+  { id: "east-lawn", name: "East Lawn", type: "Grounds", zone: "East", notes: "Large lawn east/south of the sport court." },
+  { id: "sport-court", name: "Sport Court", type: "Recreation", zone: "East", notes: "Outdoor sport court." },
+  { id: "veggie-boxes", name: "Veggie Boxes", type: "Grounds", zone: "East", notes: "Three vegetable boxes at the south end of East Lawn near New Garage." },
+  { id: "new-garage", name: "New Garage", type: "Building", zone: "Exterior", notes: "New garage / auto court garage area." },
+  { id: "old-garage", name: "Old Garage", type: "Building", zone: "Exterior", notes: "Old garage near ADU and covered connection areas." },
+  { id: "adu", name: "ADU", type: "Building", zone: "Left of Old Garage", notes: "ADU is a location/map label, not an asset." },
+  { id: "courtyard", name: "Courtyard", type: "Outdoor Living", zone: "Main House", notes: "Patio with chairs/fire pit between main house, addition, old garage, and covered hallway. Do not label the gray covered hallway itself." },
+  { id: "trampoline-dog", name: "Trampoline / Dog", type: "Grounds", zone: "Exterior", notes: "Turf/trampoline/dog cleanup area east of the covered hallway." },
+  { id: "exterior", name: "Exterior", type: "Envelope", zone: "2000", notes: "Exterior paint/stain, siding, eaves, deck edges, windows, and envelope checks." },
+  { id: "irrigation", name: "Irrigation", type: "Landscape Systems", zone: "Grounds", notes: "Hunter Hydrawise / Advanced Irrigation records, zones, flow/rain/soil sensors." },
+];
 
-    isRecurring: false,
-    recurrenceFrequency: "Weekly",
-    recurrenceInterval: "1",
-    recurrenceDays: "",
-    recurrenceNextDue: date,
-    recurrenceEndType: "never",
-    recurrenceEndDate: "",
+const defaultMapLabels: MapLabelRecord[] = [
+  { id: "map-dock", label: "Dock", category: "Waterfront", x: 58, y: 78, notes: "Main dock location with boat lifts, dock power, and waterfront service records.", photos: [] },
+  { id: "map-cobalt", label: "Cobalt", category: "Watercraft", x: 63, y: 72, notes: "Cobalt R7 area near the dock. Keep separate from the Cobalt Sunstream lift box asset.", photos: [] },
+  { id: "map-seadoo", label: "SeaDoo", category: "Watercraft", x: 64, y: 82, notes: "Sea-Doo / PWC area south of the small dock slip.", photos: [] },
+  { id: "map-water-trampoline", label: "Water Trampoline", category: "Waterfront", x: 47, y: 86, notes: "Seasonal water trampoline location west of the dock.", photos: [] },
+  { id: "map-waterside-lawn-north", label: "Waterside Lawn (North)", category: "Grounds", x: 50, y: 68, notes: "North waterside lawn and lake-facing beds.", photos: [] },
+  { id: "map-east-lawn", label: "East Lawn", category: "Grounds", x: 74, y: 47, notes: "East lawn area and grounds records.", photos: [] },
+  { id: "map-sport-court", label: "Sport Court", category: "Recreation", x: 83, y: 26, notes: "Sport court north of East Lawn.", photos: [] },
+  { id: "map-veggie-boxes", label: "Veggie Boxes", category: "Grounds", x: 77, y: 62, notes: "Three veggie boxes at the south end of East Lawn next to New Garage.", photos: [] },
+  { id: "map-new-garage", label: "New Garage", category: "Building", x: 40, y: 31, notes: "New garage location.", photos: [] },
+  { id: "map-old-garage", label: "Old Garage", category: "Building", x: 33, y: 35, notes: "Old garage location.", photos: [] },
+  { id: "map-adu", label: "ADU", category: "Location", x: 27, y: 42, notes: "Small square left of Old Garage. ADU is a location, not an asset.", photos: [] },
+  { id: "map-courtyard", label: "Courtyard", category: "Outdoor Living", x: 47, y: 44, notes: "Courtyard patio with chairs/fire pit. West of the gray covered hallway.", photos: [] },
+  { id: "map-trampoline-dog", label: "Trampoline / Dog", category: "Grounds", x: 42, y: 56, notes: "Green turf/trampoline/dog area east of the covered hallway.", photos: [] },
+  { id: "map-original-house", label: "Original House", category: "Building", x: 49, y: 38, notes: "Original/main house structure.", photos: [] },
+  { id: "map-addition", label: "Addition", category: "Building", x: 61, y: 36, notes: "Addition wing including indoor pool area.", photos: [] },
+  { id: "map-hot-tub", label: "Hot Tub (Sundance)", category: "Spa", x: 61, y: 51, notes: "Standalone Sundance 880 spa on patio east of furniture/stairs to lawn.", photos: [] },
+];
 
-    invoiceNumber: "",
-    invoiceDate: "",
-    invoiceAmount: "",
-    invoiceStatus: "not added",
-    paymentStatus: "unknown",
-    costCategory: "",
-    approvedBy: "",
-    approvedDate: "",
-    costNotes: "",
-  };
-}
+const defaultVendors: VendorRecord[] = [
+  { id: "elliottpaint", name: "Elliott Paint Company", category: "Paint / Stain", phone: "206-510-0688", email: "brandon@elliottpaintco.com", notes: "Exterior paint/stain vendor. Brandon Ness contact. Kurt Anderson involved in sample/scope walkthroughs." },
+  { id: "advancedirrigation", name: "Advanced Irrigation", category: "Irrigation", notes: "Hydrawise / Hunter HCC 24-zone irrigation controller, sensors, service, and current-year backflow testing." },
+  { id: "psf", name: "PSF Mechanical", category: "HVAC / Boiler / Pool Mechanical", notes: "Boilers, hydronic heating, HVAC, Desert Aire, pool mechanical, and related systems." },
+  { id: "seattleboat", name: "Seattle Boat", category: "Boat Service", notes: "Cobalt R7 service and seasonal watercraft support." },
+  { id: "i90motorsports", name: "I-90 Motorsports", category: "PWC / Motorsports", notes: "Sea-Doo service / PWC support." },
+  { id: "sunstream", name: "Sunstream Boat Lifts", category: "Dock / Lifts", notes: "Sunstream lift boxes and boat/PWC lift records." },
+  { id: "penthousedrapery", name: "Penthouse Drapery", category: "Blinds / Drapery", phone: "206-292-8336", email: "accounting@penthousedrapery.com", notes: "Motorized roller shades. Invoice #176396 dated 06/16/2026." },
+  { id: "unrivaled", name: "Unrivaled", category: "Pest Control", notes: "Current pest-control vendor. Terminix was canceled." },
+  { id: "peterclark", name: "Peter Clark Designs", category: "Landscaping", notes: "Weekly landscaping/weeding crew approved by Steve and managed by Pat." },
+  { id: "applianceservice", name: "Appliance Service Station", category: "Appliances", notes: "Appliance service vendor." },
+];
 
-function workOrderToForm(record?: AnyRecord): WorkOrderForm {
-  if (!record) return blankWorkOrder();
+const defaultAssets: AssetRecord[] = [
+  { id: "boiler-1", name: "Boiler B-1", locationId: "mechanical-room", category: "Hydronic Heating", status: "Online", make: "Viessmann", model: "Vitodens 200", serial: "758960502925", notes: "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Year 2018 from prior nameplate view.", vendorIds: ["psf", "viessmann"] },
+  { id: "boiler-2", name: "Boiler B-2", locationId: "mechanical-room", category: "Hydronic Heating", status: "Monitor", make: "Viessmann", model: "Vitodens 200", serial: "758960507593", notes: "White wall-mounted Viessmann Vitodens 200. Year 2025 nameplate. Keep monitored after recall / heat exchanger work.", vendorIds: ["psf", "viessmann"] },
+  { id: "vitocell-tanks", name: "Twin Viessmann Vitocell 300-V DHW Tanks", locationId: "mechanical-room", category: "Domestic Hot Water", status: "Online", make: "Viessmann", model: "Vitocell 300-V EVIA 300", notes: "Two 79 USG / 300 L stainless indirect domestic hot water tanks.", vendorIds: ["psf"] },
+  { id: "desertaire-dhu1", name: "Desert Aire DHU-1 Pool Dehumidification", locationId: "pool-equipment", category: "Pool HVAC", status: "Monitor", make: "Desert Aire", notes: "Indoor pool dehumidification system with hydronic heat coil and controls.", vendorIds: ["psf"] },
+  { id: "pool-pump-pentair", name: "Pentair 3.0 HP Pool Pump", locationId: "pool-equipment", category: "Pool Equipment", status: "Online", make: "Pentair", notes: "Pool source → pump → Triton II sand filter → UV/ozone → return to pool.", vendorIds: ["psf"] },
+  { id: "sundance-optima", name: "Sundance 880 Optima Spa", locationId: "standalone-spa", category: "Spa", status: "Monitor", make: "Sundance", model: "OPTIMA", serial: "00P3LCD-100528521-0315", notes: "Standalone Sundance 880 Optima spa. Separate from pool equipment.", vendorIds: [] },
+  { id: "sunstream-cobalt", name: "Sunstream Lift Box — Cobalt", locationId: "cobalt-lift", category: "Dock / Boat Lift", status: "Online", make: "Sunstream", notes: "Larger/newer Sunstream lift control, battery, and solar box from last summer. Belongs to Cobalt boat lift.", vendorIds: ["sunstream"] },
+  { id: "sunstream-seadoo", name: "Sunstream Lift Box — SeaDoo", locationId: "seadoo-lift", category: "Dock / PWC Lift", status: "Monitor", make: "Sunstream", notes: "Sea-Doo lift box. Smaller/older Sunstream box. Keep separate from Cobalt lift box.", vendorIds: ["sunstream"] },
+  { id: "sunstream-dock", name: "Sunstream Lift Box — Dock", locationId: "dock-lift", category: "Dock Lift Controls", status: "Monitor", make: "Sunstream", notes: "Additional smaller/older dock lift control box.", vendorIds: ["sunstream"] },
+  { id: "craft-cobalt", name: "Craft — Cobalt R7", locationId: "dock", category: "Watercraft", status: "Seasonal", make: "Cobalt", model: "R7", notes: "Cobalt R7 watercraft record connected to dock and newer Sunstream Cobalt lift box.", vendorIds: ["seattleboat", "sunstream"] },
+  { id: "craft-seadoo", name: "Craft — SeaDoo 2024 GTI SE 170", locationId: "dock", category: "Watercraft", status: "Seasonal", make: "Sea-Doo", model: "GTI SE 170", notes: "2024 Sea-Doo record connected to dock and Sea-Doo lift records.", vendorIds: ["i90motorsports", "sunstream"] },
+  { id: "irrigation-controller", name: "Hunter HCC 24-Zone Irrigation Controller", locationId: "irrigation", category: "Irrigation", status: "Online", make: "Hunter", model: "HCC 24 Zones", serial: "06d050377d", notes: "Hydrawise controller name Faben2000. Installed 04/16/2026. Flow/rain/soil sensors captured.", vendorIds: ["advancedirrigation"] },
+  { id: "blinds-lutron", name: "Blinds Lutron", locationId: "general", category: "Motorized Shades", status: "Monitor", make: "Lutron", notes: "Motorized roller shade asset. Penthouse Drapery invoice #176396 belongs here.", vendorIds: ["penthousedrapery"] },
+  { id: "dishwasher-dw3", name: "Dishwasher DW-3 Right", locationId: "general", category: "Appliance", status: "Online", make: "Bosch", notes: "Kitchen right Bosch dishwasher.", vendorIds: ["applianceservice"] },
+  { id: "exterior-stain", name: "Exterior Stain Scope", locationId: "exterior", category: "Exterior", status: "Monitor", notes: "Waterside verticals semi-transparent, eaves semi-solid; BBQ area semi-solid; East siding semi-solid/windows semi-transparent; garages solid.", vendorIds: ["elliottpaint"] },
+];
 
-  const date = dateInputValue(value(record, "date", "workDate", "work_date")) || localDateKey();
+const defaultWorkOrders: ServiceRecord[] = [
+  { id: "wo-weekly-dock", assetId: "craft-cobalt", vendorId: "seattleboat", date: todayISO(), title: "Weekly dock / boat / Sea-Doo check", status: "Open", priority: "Medium", notes: "Check Cobalt, Sea-Doo, lifts, dock power, water trampoline, and waterfront equipment." },
+  { id: "wo-pool-weekly", assetId: "pool-pump-pentair", vendorId: "psf", date: todayISO(), title: "Weekly pool / spa water and equipment check", status: "Open", priority: "High", notes: "Record pool/spa readings, filter pressure, equipment status, and any issues." },
+  { id: "wo-exterior-stain", assetId: "exterior-stain", vendorId: "elliottpaint", date: "2026-07-08", title: "Exterior stain scope tracking", status: "Monitor", priority: "High", notes: "Track semi-transparent vs semi-solid scope, Jessica approval items, and progress photos." },
+  { id: "wo-landscape-weeding", assetId: "irrigation-controller", vendorId: "peterclark", date: "2026-07-08", title: "Weekly landscaping crew — waterside beds first", status: "Scheduled", priority: "Medium", notes: "Pat manages crew. Priority: waterside beds first, then patio, courtyard, driveway, dock path, lawn edges, and other beds." },
+];
 
-  return {
-    id: value(record, "id"),
-    title: value(record, "title", "summary", "name"),
-    assetId: value(record, "assetId", "asset_id"),
-    vendorId: value(record, "vendorId", "vendor_id"),
-    date,
-    status: value(record, "status") || "Open",
-    priority: value(record, "priority") || "Medium",
-    notes: value(record, "notes", "description"),
-    followUpDate: dateInputValue(value(record, "followUpDate", "follow_up_date")),
+const defaultProcedures: ProcedureRecord[] = [
+  { id: "pool-backwash", title: "Pool Sand Filter Backwash", area: "Pool Equipment Room", priority: "High", steps: ["Record current filter pressure.", "Confirm valves are set safely for backwash.", "Backwash until water runs clear.", "Rinse after backwash.", "Return valves to normal filter operation.", "Record final pressure and issues."] },
+  { id: "spa-weekly", title: "Sundance Spa Weekly Check", area: "Hot Tub / Sundance", priority: "Normal", steps: ["Check water level and temperature.", "Test sanitizer, pH, alkalinity.", "Confirm ClearRay / heater / circulation status.", "Clean cover and surrounding area.", "Log readings and follow-up items."] },
+  { id: "out-of-town", title: "Out-of-Town Property Check", area: "2000", priority: "High", steps: ["Confirm doors, windows, alarms, and leak-prone areas.", "Check mechanical rooms for abnormal readings/noise.", "Check pool/spa/fountain/dock areas.", "Confirm vendor access and deliveries.", "Send summary to Steve if needed."] },
+];
 
-    isRecurring: value(record, "isRecurring", "is_recurring") === "true" || value(record, "isRecurring", "is_recurring") === "1",
-    recurrenceFrequency: value(record, "recurrenceFrequency", "recurrence_frequency") || "Weekly",
-    recurrenceInterval: value(record, "recurrenceInterval", "recurrence_interval") || "1",
-    recurrenceDays: value(record, "recurrenceDays", "recurrence_days"),
-    recurrenceNextDue: dateInputValue(value(record, "recurrenceNextDue", "recurrence_next_due")) || date,
-    recurrenceEndType: value(record, "recurrenceEndType", "recurrence_end_type") || "never",
-    recurrenceEndDate: dateInputValue(value(record, "recurrenceEndDate", "recurrence_end_date")),
+const defaultDocuments: DocumentRecord[] = [
+  { id: "property-map", title: "Locked Atlas Property Map", area: "Map", type: "Image", href: "/atlas-property-map.png", notes: "Fixed original property map image used by Atlas labels." },
+  { id: "stain-plan", title: "2000 Exterior Stain Plan — Photo-Based Scope Summary", area: "Exterior", type: "Scope", linkedAssetId: "exterior-stain", notes: "Client-facing stain scope summary for Jessica approval." },
+  { id: "penthouse-invoice", title: "Penthouse Drapery Invoice #176396", area: "Blinds", type: "Invoice", linkedAssetId: "blinds-lutron", notes: "Repair one motorized roller shade; two trips and replacement drive." },
+];
 
-    invoiceNumber: value(record, "invoiceNumber", "invoice_number"),
-    invoiceDate: dateInputValue(value(record, "invoiceDate", "invoice_date")),
-    invoiceAmount: value(record, "invoiceAmount", "invoice_amount"),
-    invoiceStatus: value(record, "invoiceStatus", "invoice_status") || "not added",
-    paymentStatus: value(record, "paymentStatus", "payment_status") || "unknown",
-    costCategory: value(record, "costCategory", "cost_category"),
-    approvedBy: value(record, "approvedBy", "approved_by"),
-    approvedDate: dateInputValue(value(record, "approvedDate", "approved_date")),
-    costNotes: value(record, "costNotes", "cost_notes"),
-  };
-}
+const defaultParts: PartRecord[] = [
+  { id: "filters-mr1-16x16", name: "MR1 1x16x16 Columbia Filters", category: "HVAC Filters", locationId: "mechanical-room", quantity: 2, minQuantity: 2, status: "In Stock", notes: "Amazon filter record." },
+  { id: "filters-aprilaire-210", name: "Aprilaire #210 4x20x25 Filter", category: "HVAC Filters", locationId: "mechanical-room", quantity: 1, minQuantity: 1, status: "Low", notes: "Amazon filter record." },
+  { id: "pool-test-reagents", name: "Taylor Pool Test Reagents", category: "Pool Testing", locationId: "pool-equipment", quantity: 1, minQuantity: 1, status: "In Stock", notes: "Keep pool testing supplies stocked." },
+];
 
-function formToWorkOrder(form: WorkOrderForm): AnyRecord {
-  const title = form.title.trim();
-  const id = form.id || `wo-${Date.now()}`;
+const defaultCalendar: CalendarItem[] = [
+  { id: "cal-tuesday-meeting", date: todayISO(), title: "Tuesday 10 AM Steve / Patrick meeting", area: "2000", status: "Scheduled" },
+  { id: "cal-friday-meeting", date: todayISO(), title: "Friday 9 AM Steve meeting", area: "2000", status: "Scheduled" },
+  { id: "cal-flooring", date: "2026-07-22", title: "5 Star Flooring / Eric — Evi's room", area: "Interior", status: "Scheduled" },
+];
 
-  return {
-    id,
-    title,
-    assetId: form.assetId,
-    vendorId: form.vendorId,
-    date: form.date || localDateKey(),
-    workDate: form.date || localDateKey(),
-    status: form.status || "Open",
-    priority: form.priority || "Medium",
-    notes: form.notes.trim(),
-    followUpDate: form.followUpDate,
-
-    isRecurring: form.isRecurring,
-    recurrenceFrequency: form.recurrenceFrequency || "Weekly",
-    recurrenceInterval: Math.max(1, Number(form.recurrenceInterval || 1)),
-    recurrenceDays: form.recurrenceDays,
-    recurrenceNextDue: form.recurrenceNextDue || form.followUpDate || form.date,
-    recurrenceEndType: form.recurrenceEndType || "never",
-    recurrenceEndDate: form.recurrenceEndDate,
-    recurrenceStatus: form.isRecurring ? "active" : "inactive",
-
-    invoiceNumber: form.invoiceNumber.trim(),
-    invoiceDate: form.invoiceDate,
-    invoiceAmount: form.invoiceAmount.trim(),
-    invoiceStatus: form.invoiceStatus || "not added",
-    paymentStatus: form.paymentStatus || "unknown",
-    costCategory: form.costCategory.trim(),
-    approvedBy: form.approvedBy.trim(),
-    approvedDate: form.approvedDate,
-    costNotes: form.costNotes.trim(),
-  };
-}
+const blankMapLabel: MapLabelRecord = { id: "", label: "", category: "Location", x: 50, y: 50, notes: "", photos: [] };
 
 export default function AtlasPage() {
+  const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
-  const [payload, setPayload] = useState<AtlasPayload>({});
-  const [loading, setLoading] = useState(true);
-  const [apiError, setApiError] = useState("");
-  const [databaseStatus, setDatabaseStatus] = useState("Connecting to Atlas...");
   const [isMobile, setIsMobile] = useState(false);
 
-  const [selectedAssetId, setSelectedAssetId] = useState("");
-  const [selectedVendorId, setSelectedVendorId] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState("");
+  const [mapLabels, setMapLabels] = useState<MapLabelRecord[]>(defaultMapLabels);
+  const [selectedMapLabelId, setSelectedMapLabelId] = useState(defaultMapLabels[0].id);
+  const [mapLabelForm, setMapLabelForm] = useState<MapLabelRecord>(defaultMapLabels[0]);
+  const [mapLabelMode, setMapLabelMode] = useState<"edit" | "new">("edit");
 
-  const [workOrderRecords, setWorkOrderRecords] = useState<AnyRecord[]>([]);
-  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
-  const [workOrderForm, setWorkOrderForm] = useState<WorkOrderForm>(() => blankWorkOrder());
-  const [workOrderMode, setWorkOrderMode] = useState<"edit" | "new">("new");
-  const [workOrderTab, setWorkOrderTab] = useState<"todo" | "done" | "all">("todo");
-  const [workOrderStatusFilter, setWorkOrderStatusFilter] = useState("all");
-  const [workOrderPriorityFilter, setWorkOrderPriorityFilter] = useState("all");
-  const [workOrderSort, setWorkOrderSort] = useState<"priority" | "due" | "newest" | "asset">("priority");
+  const [assetRecords, setAssetRecords] = useState<AssetRecord[]>(defaultAssets);
+  const [vendorRecords, setVendorRecords] = useState<VendorRecord[]>(defaultVendors);
+  const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>(defaultWorkOrders);
+  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>(defaultCalendar);
+  const [partRecords, setPartRecords] = useState<PartRecord[]>(defaultParts);
+
+  const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
+  const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
+  const [selectedServiceId, setSelectedServiceId] = useState(defaultWorkOrders[0].id);
+  const [assistantQuestion, setAssistantQuestion] = useState("");
+  const [assistantAnswer, setAssistantAnswer] = useState("Ask Atlas about assets, vendors, map labels, work orders, calendar, procedures, documents, or parts.");
+
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const draggingLabelRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const update = () => setIsMobile(window.innerWidth <= 900);
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    setIsMobile(window.innerWidth < 760);
+    const onResize = () => setIsMobile(window.innerWidth < 760);
+    window.addEventListener("resize", onResize);
+
+    const storedMapLabels = readStoredArray<MapLabelRecord>(mapLocalStorageKey, defaultMapLabels).map((label) => ({
+      ...blankMapLabel,
+      ...label,
+      id: label.id || uid("map"),
+      label: label.label || "Map Label",
+      category: label.category || "Location",
+      x: clampPercent(Number(label.x)),
+      y: clampPercent(Number(label.y)),
+      photos: Array.isArray(label.photos) ? label.photos : [],
+    }));
+
+    setMapLabels(storedMapLabels.length ? storedMapLabels : defaultMapLabels);
+    setSelectedMapLabelId((storedMapLabels[0] ?? defaultMapLabels[0]).id);
+    setMapLabelForm(storedMapLabels[0] ?? defaultMapLabels[0]);
+
+    setAssetRecords(readStoredArray<AssetRecord>(storageKeys.assets, defaultAssets));
+    setVendorRecords(readStoredArray<VendorRecord>(storageKeys.vendors, defaultVendors));
+    setServiceRecords(readStoredArray<ServiceRecord>(storageKeys.workOrders, defaultWorkOrders));
+    setCalendarItems(readStoredArray<CalendarItem>(storageKeys.calendar, defaultCalendar));
+    setPartRecords(readStoredArray<PartRecord>(storageKeys.parts, defaultParts));
+
+    setReady(true);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        setLoading(true);
-        setApiError("");
-        setDatabaseStatus("Loading Atlas records...");
-        const response = await fetch("/api/atlas", { cache: "no-store" });
-        const data = (await response.json()) as AtlasPayload;
-        if (cancelled) return;
-        setPayload(data);
-        setDatabaseStatus(response.ok && !data.error ? "Atlas records loaded" : "Atlas API needs attention");
-        if (!response.ok || data.error) setApiError(data.error || `Atlas API returned ${response.status}`);
-      } catch (error) {
-        if (!cancelled) {
-          const message = error instanceof Error ? error.message : "Atlas API failed to load";
-          setApiError(message);
-          setDatabaseStatus(`Load failed: ${message}`);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const assets = useMemo(() => payload.assetRecords ?? [], [payload.assetRecords]);
-  const vendors = useMemo(() => payload.vendorRecords ?? [], [payload.vendorRecords]);
-  const calendarItems = useMemo(() => payload.calendarItems ?? [], [payload.calendarItems]);
-  const documents = useMemo(() => [...(payload.documentRecords ?? []), ...(payload.photoRecords ?? [])], [payload.documentRecords, payload.photoRecords]);
-  const procedures = useMemo(() => payload.procedureRecords ?? [], [payload.procedureRecords]);
+    if (!ready) return;
+    window.localStorage.setItem(mapLocalStorageKey, JSON.stringify(mapLabels));
+  }, [ready, mapLabels]);
 
   useEffect(() => {
-    const incoming = payload.serviceRecords ?? [];
-    setWorkOrderRecords(incoming);
+    if (!ready) return;
+    window.localStorage.setItem(storageKeys.assets, JSON.stringify(assetRecords));
+  }, [ready, assetRecords]);
 
-    if (incoming.length && !selectedWorkOrderId) {
-      setSelectedWorkOrderId(value(incoming[0], "id"));
-      setWorkOrderForm(workOrderToForm(incoming[0]));
-      setWorkOrderMode("edit");
-    }
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem(storageKeys.vendors, JSON.stringify(vendorRecords));
+  }, [ready, vendorRecords]);
 
-    if (!incoming.length && !selectedWorkOrderId) {
-      setWorkOrderForm(blankWorkOrder());
-      setWorkOrderMode("new");
-    }
-  }, [payload.serviceRecords, selectedWorkOrderId]);
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem(storageKeys.workOrders, JSON.stringify(serviceRecords));
+  }, [ready, serviceRecords]);
 
-  const assetById = useMemo(() => {
-    const map = new Map<string, AnyRecord>();
-    assets.forEach((asset) => {
-      const id = value(asset, "id");
-      if (id) map.set(id, asset);
-    });
-    return map;
-  }, [assets]);
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem(storageKeys.calendar, JSON.stringify(calendarItems));
+  }, [ready, calendarItems]);
 
-  const vendorById = useMemo(() => {
-    const map = new Map<string, AnyRecord>();
-    vendors.forEach((vendor) => {
-      const id = value(vendor, "id");
-      if (id) map.set(id, vendor);
-    });
-    return map;
-  }, [vendors]);
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem(storageKeys.parts, JSON.stringify(partRecords));
+  }, [ready, partRecords]);
 
-  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const selectedMapLabel = mapLabels.find((label) => label.id === selectedMapLabelId) ?? mapLabels[0] ?? defaultMapLabels[0];
+  const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? defaultAssets[0];
+  const selectedVendor = vendorRecords.find((vendor) => vendor.id === selectedVendorId) ?? vendorRecords[0] ?? defaultVendors[0];
+  const selectedService = serviceRecords.find((service) => service.id === selectedServiceId) ?? serviceRecords[0] ?? defaultWorkOrders[0];
 
-  const locationNames = useMemo(() => {
-    const names = new Set(defaultLocations);
-    payload.locationRecords?.forEach((location) => {
-      const name = value(location, "name", "location", "title");
-      if (name) names.add(name);
-    });
-    assets.forEach((asset) => {
-      const location = value(asset, "location", "locationName", "location_name", "locationId", "location_id");
-      if (location) names.add(location);
-    });
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [assets, payload.locationRecords]);
+  const searchText = query.trim().toLowerCase();
 
-  const filteredAssets = useMemo(() => assets.filter((asset) => hasSearch(asset, terms)), [assets, terms]);
-  const filteredVendors = useMemo(() => vendors.filter((vendor) => hasSearch(vendor, terms)), [vendors, terms]);
+  const sortedLocations = useMemo(() => [...defaultLocations].sort((a, b) => a.name.localeCompare(b.name)), []);
+  const sortedAssets = useMemo(() => [...assetRecords].sort((a, b) => a.name.localeCompare(b.name)), [assetRecords]);
+  const sortedVendors = useMemo(() => [...vendorRecords].sort((a, b) => a.name.localeCompare(b.name)), [vendorRecords]);
+  const sortedWorkOrders = useMemo(() => [...serviceRecords].sort((a, b) => (a.status === "Completed" ? 1 : 0) - (b.status === "Completed" ? 1 : 0) || a.date.localeCompare(b.date)), [serviceRecords]);
 
-  const filteredWorkOrders = useMemo(() => {
-    return workOrderRecords
-      .filter((wo) => {
-        const linkedAsset = assetById.get(value(wo, "assetId", "asset_id"));
-        const linkedVendor = vendorById.get(value(wo, "vendorId", "vendor_id"));
+  const searchResults = useMemo(() => buildSearchIndex().filter((item) => !searchText || `${item.type} ${item.title} ${item.subtitle} ${item.detail}`.toLowerCase().includes(searchText)).slice(0, 12), [searchText, mapLabels, assetRecords, vendorRecords, serviceRecords, calendarItems, partRecords]);
 
-        const status = value(wo, "status") || "Open";
-        const priority = value(wo, "priority") || "Medium";
-
-        const matchesTab =
-          workOrderTab === "all" ||
-          (workOrderTab === "done" ? status === "Completed" : status !== "Completed");
-
-        const matchesStatus = workOrderStatusFilter === "all" || status === workOrderStatusFilter;
-        const matchesPriority = workOrderPriorityFilter === "all" || priority === workOrderPriorityFilter;
-
-        const searchRecord: AnyRecord = {
-          ...wo,
-          linkedAsset: value(linkedAsset, "name"),
-          linkedVendor: value(linkedVendor, "name"),
-        };
-
-        return matchesTab && matchesStatus && matchesPriority && hasSearch(searchRecord, terms);
-      })
-      .sort((a, b) => {
-        if (workOrderSort === "priority") {
-          return priorityRank(value(a, "priority") || "Medium") - priorityRank(value(b, "priority") || "Medium");
-        }
-
-        if (workOrderSort === "due") {
-          return value(a, "followUpDate", "follow_up_date", "date", "workDate", "work_date").localeCompare(
-            value(b, "followUpDate", "follow_up_date", "date", "workDate", "work_date"),
-          );
-        }
-
-        if (workOrderSort === "asset") {
-          const assetA = assetById.get(value(a, "assetId", "asset_id"));
-          const assetB = assetById.get(value(b, "assetId", "asset_id"));
-          return value(assetA, "name").localeCompare(value(assetB, "name"));
-        }
-
-        return value(b, "date", "workDate", "work_date").localeCompare(value(a, "date", "workDate", "work_date"));
-      });
-  }, [
-    workOrderRecords,
-    assetById,
-    vendorById,
-    terms,
-    workOrderTab,
-    workOrderStatusFilter,
-    workOrderPriorityFilter,
-    workOrderSort,
-  ]);
-
-  const selectedAsset = useMemo(() => {
-    if (selectedAssetId && assetById.has(selectedAssetId)) return assetById.get(selectedAssetId);
-    return filteredAssets[0];
-  }, [selectedAssetId, assetById, filteredAssets]);
-
-  const selectedVendor = useMemo(() => {
-    if (selectedVendorId && vendorById.has(selectedVendorId)) return vendorById.get(selectedVendorId);
-    return filteredVendors[0];
-  }, [selectedVendorId, vendorById, filteredVendors]);
-
-  async function postAtlasRecord(table: string, record: unknown) {
-    try {
-      setDatabaseStatus("Saving to Neon...");
-      const response = await fetch("/api/atlas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ table, record }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Database save failed");
-      }
-
-      setDatabaseStatus("Saved to Neon");
-      return true;
-    } catch (error) {
-      setDatabaseStatus(error instanceof Error ? `Neon save failed: ${error.message}` : "Neon save failed");
-      return false;
-    }
+  function locationName(id?: string) {
+    return sortedLocations.find((location) => location.id === id)?.name ?? "General";
   }
 
-  async function deleteAtlasRecord(table: string, id: string) {
-    try {
-      setDatabaseStatus("Deleting from Neon...");
-      const response = await fetch("/api/atlas", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ table, id }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Database delete failed");
-      }
-
-      setDatabaseStatus("Deleted from Neon");
-      return true;
-    } catch (error) {
-      setDatabaseStatus(error instanceof Error ? `Neon delete failed: ${error.message}` : "Neon delete failed");
-      return false;
-    }
+  function vendorName(id?: string) {
+    return vendorRecords.find((vendor) => vendor.id === id)?.name ?? "No vendor";
   }
 
-  function openSearch(nextScreen: Screen, search: string) {
-    setQuery(search);
-    setScreen(nextScreen);
+  function assetName(id?: string) {
+    return assetRecords.find((asset) => asset.id === id)?.name ?? "No asset";
   }
 
-  function clearSearchAndOpen(nextScreen: Screen) {
+  function buildSearchIndex(): SearchResult[] {
+    return [
+      ...sortedLocations.map((location) => ({ id: `location-${location.id}`, type: "Location", title: location.name, subtitle: `${location.type} · ${location.zone}`, detail: location.notes, screen: "locations" as Screen })),
+      ...mapLabels.map((label) => ({ id: `map-${label.id}`, type: "Map Label", title: label.label, subtitle: `${label.category} · ${Math.round(label.x)}/${Math.round(label.y)}`, detail: label.notes, screen: "map" as Screen, mapLabelId: label.id })),
+      ...assetRecords.map((asset) => ({ id: `asset-${asset.id}`, type: "Asset", title: asset.name, subtitle: `${asset.category} · ${locationName(asset.locationId)} · ${asset.status}`, detail: `${asset.make ?? ""} ${asset.model ?? ""} ${asset.serial ?? ""} ${asset.notes}`, screen: "assets" as Screen, assetId: asset.id })),
+      ...vendorRecords.map((vendor) => ({ id: `vendor-${vendor.id}`, type: "Vendor", title: vendor.name, subtitle: vendor.category, detail: `${vendor.phone ?? ""} ${vendor.email ?? ""} ${vendor.notes}`, screen: "vendors" as Screen, vendorId: vendor.id })),
+      ...serviceRecords.map((service) => ({ id: `wo-${service.id}`, type: "Work Order", title: service.title, subtitle: `${formatDate(service.date)} · ${service.status} · ${service.priority}`, detail: `${assetName(service.assetId)} · ${vendorName(service.vendorId)} · ${service.notes}`, screen: "history" as Screen, serviceId: service.id })),
+      ...defaultDocuments.map((doc) => ({ id: `doc-${doc.id}`, type: "Document", title: doc.title, subtitle: `${doc.type} · ${doc.area}`, detail: doc.notes, screen: "documents" as Screen, assetId: doc.linkedAssetId })),
+      ...defaultProcedures.map((procedure) => ({ id: `procedure-${procedure.id}`, type: "Procedure", title: procedure.title, subtitle: `${procedure.area} · ${procedure.priority}`, detail: procedure.steps.join(" "), screen: "procedures" as Screen })),
+      ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar", title: item.title, subtitle: `${formatDate(item.date)} · ${item.area}`, detail: item.status, screen: "calendar" as Screen })),
+      ...partRecords.map((part) => ({ id: `part-${part.id}`, type: "Part", title: part.name, subtitle: `${part.category} · ${part.status}`, detail: `${locationName(part.locationId)} · Qty ${part.quantity} / min ${part.minQuantity}. ${part.notes}`, screen: "parts" as Screen, assetId: part.assetId, vendorId: part.vendorId })),
+    ];
+  }
+
+  function openSearchResult(result: SearchResult) {
+    if (result.assetId) setSelectedAssetId(result.assetId);
+    if (result.vendorId) setSelectedVendorId(result.vendorId);
+    if (result.serviceId) setSelectedServiceId(result.serviceId);
+    if (result.mapLabelId) openMapLabel(result.mapLabelId);
+    setScreen(result.screen);
     setQuery("");
-    setScreen(nextScreen);
   }
 
-  function selectWorkOrder(record: AnyRecord) {
-    setSelectedWorkOrderId(value(record, "id"));
-    setWorkOrderForm(workOrderToForm(record));
-    setWorkOrderMode("edit");
+  function openMapLabel(id: string) {
+    const label = mapLabels.find((item) => item.id === id);
+    if (!label) return;
+    setSelectedMapLabelId(id);
+    setMapLabelForm(label);
+    setMapLabelMode("edit");
   }
 
-  function startNewWorkOrder() {
-    setSelectedWorkOrderId("");
-    setWorkOrderForm(blankWorkOrder());
-    setWorkOrderMode("new");
+  function updateMapLabelPosition(id: string, clientX: number, clientY: number) {
+    const box = mapRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const nextX = clampPercent(((clientX - box.left) / box.width) * 100);
+    const nextY = clampPercent(((clientY - box.top) / box.height) * 100);
+    setMapLabels((current) => current.map((label) => (label.id === id ? { ...label, x: nextX, y: nextY } : label)));
+    setMapLabelForm((current) => (current.id === id ? { ...current, x: nextX, y: nextY } : current));
   }
 
-  function saveWorkOrder(nextForm = workOrderForm) {
-    const title = nextForm.title.trim();
-    if (!title) {
-      setDatabaseStatus("Work order needs a title before saving");
+  function handleMapLabelPointerDown(event: React.PointerEvent<HTMLButtonElement>, id: string) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingLabelRef.current = id;
+    openMapLabel(id);
+  }
+
+  function handleMapPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const id = draggingLabelRef.current;
+    if (!id) return;
+    updateMapLabelPosition(id, event.clientX, event.clientY);
+  }
+
+  function stopMapDrag() {
+    draggingLabelRef.current = null;
+  }
+
+  function startNewMapLabel() {
+    const nextLabel: MapLabelRecord = { ...blankMapLabel, id: uid("map"), label: "New Label", x: 50, y: 50 };
+    setMapLabelMode("new");
+    setSelectedMapLabelId(nextLabel.id);
+    setMapLabelForm(nextLabel);
+  }
+
+  function saveMapLabel() {
+    const labelText = mapLabelForm.label.trim() || "Map Label";
+    const id = mapLabelForm.id || slugify(`map-${labelText}`);
+    const cleanLabel: MapLabelRecord = {
+      ...mapLabelForm,
+      id,
+      label: labelText,
+      category: mapLabelForm.category.trim() || "Location",
+      x: clampPercent(Number(mapLabelForm.x)),
+      y: clampPercent(Number(mapLabelForm.y)),
+      notes: mapLabelForm.notes.trim(),
+      photos: mapLabelForm.photos ?? [],
+    };
+
+    setMapLabels((current) => (current.some((label) => label.id === id) ? current.map((label) => (label.id === id ? cleanLabel : label)) : [...current, cleanLabel]));
+    setSelectedMapLabelId(id);
+    setMapLabelForm(cleanLabel);
+    setMapLabelMode("edit");
+  }
+
+  function deleteMapLabel() {
+    if (!mapLabelForm.id) return;
+    const remaining = mapLabels.filter((label) => label.id !== mapLabelForm.id);
+    const next = remaining[0] ?? defaultMapLabels[0];
+    setMapLabels(remaining.length ? remaining : defaultMapLabels);
+    setSelectedMapLabelId(next.id);
+    setMapLabelForm(next);
+    setMapLabelMode("edit");
+  }
+
+  function resetMapLabels() {
+    setMapLabels(defaultMapLabels);
+    setSelectedMapLabelId(defaultMapLabels[0].id);
+    setMapLabelForm(defaultMapLabels[0]);
+    setMapLabelMode("edit");
+  }
+
+  function handleMapLabelPhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const labelId = mapLabelForm.id || selectedMapLabelId;
+    const files = Array.from(event.target.files ?? []);
+    if (!labelId || files.length === 0) return;
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const photo: UploadedFileRecord = {
+          id: uid("map-photo"),
+          name: file.name,
+          type: file.type || "photo",
+          dataUrl: String(reader.result),
+          createdAt: new Date().toISOString(),
+        };
+        setMapLabels((current) => current.map((label) => (label.id === labelId ? { ...label, photos: [photo, ...(label.photos ?? [])] } : label)));
+        setMapLabelForm((current) => (current.id === labelId ? { ...current, photos: [photo, ...(current.photos ?? [])] } : current));
+      };
+      reader.readAsDataURL(file);
+    });
+    event.target.value = "";
+  }
+
+  function deleteMapPhoto(photoId: string) {
+    const labelId = mapLabelForm.id || selectedMapLabelId;
+    setMapLabels((current) => current.map((label) => (label.id === labelId ? { ...label, photos: (label.photos ?? []).filter((photo) => photo.id !== photoId) } : label)));
+    setMapLabelForm((current) => ({ ...current, photos: (current.photos ?? []).filter((photo) => photo.id !== photoId) }));
+  }
+
+  function addWorkOrderFromMapLabel(label: MapLabelRecord) {
+    const matchingAsset = assetRecords.find((asset) => asset.locationId === label.id.replace("map-", "")) ?? assetRecords[0];
+    const record: ServiceRecord = {
+      id: uid("wo"),
+      assetId: matchingAsset.id,
+      date: todayISO(),
+      title: `Map follow-up — ${label.label}`,
+      status: "Open",
+      priority: "Medium",
+      notes: label.notes ? `Created from map label. ${label.notes}` : "Created from map label.",
+    };
+    setServiceRecords((current) => [record, ...current]);
+    setSelectedServiceId(record.id);
+    setScreen("history");
+  }
+
+  function askAtlas() {
+    const text = assistantQuestion.trim();
+    if (!text) {
+      setAssistantAnswer("Type a question first, then Ask Atlas.");
       return;
     }
+    const terms = text.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 2 && !["atlas", "what", "where", "when", "show", "about", "with", "that", "this", "does", "have"].includes(word));
+    const matches = buildSearchIndex()
+      .map((item) => {
+        const haystack = `${item.type} ${item.title} ${item.subtitle} ${item.detail}`.toLowerCase();
+        const score = terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0);
+        return { item, score };
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title))
+      .slice(0, 8)
+      .map(({ item }) => `${item.type}: ${item.title}\n${item.subtitle}\n${item.detail}`);
 
-    const clean = formToWorkOrder({ ...nextForm, title });
-    const id = value(clean, "id");
-
-    setWorkOrderRecords((current) => {
-      const exists = current.some((record) => value(record, "id") === id);
-      const next = exists ? current.map((record) => (value(record, "id") === id ? clean : record)) : [clean, ...current];
-      return next;
-    });
-
-    setSelectedWorkOrderId(id);
-    setWorkOrderForm(workOrderToForm(clean));
-    setWorkOrderMode("edit");
-    void postAtlasRecord("work_orders", clean);
+    setAssistantAnswer(matches.length ? matches.join("\n\n") : "I did not find that in the local Atlas records yet.");
   }
 
-  function deleteWorkOrder() {
-    if (!workOrderForm.id) return;
-    const confirmed = window.confirm(`Delete work order: ${workOrderForm.title || "Untitled Work Order"}?`);
-    if (!confirmed) return;
+  const openWorkOrders = serviceRecords.filter((record) => record.status !== "Completed");
+  const highPriority = serviceRecords.filter((record) => record.priority === "High" && record.status !== "Completed");
 
-    const idToDelete = workOrderForm.id;
-    const remaining = workOrderRecords.filter((record) => value(record, "id") !== idToDelete);
-    setWorkOrderRecords(remaining);
-
-    const nextRecord = remaining[0];
-    setSelectedWorkOrderId(nextRecord ? value(nextRecord, "id") : "");
-    setWorkOrderForm(nextRecord ? workOrderToForm(nextRecord) : blankWorkOrder());
-    setWorkOrderMode(nextRecord ? "edit" : "new");
-
-    void deleteAtlasRecord("work_orders", idToDelete);
-  }
-
-  function markWorkOrderDone() {
-    saveWorkOrder({ ...workOrderForm, status: "Completed" });
-    setWorkOrderTab("done");
-  }
-
-  function reopenWorkOrder() {
-    saveWorkOrder({ ...workOrderForm, status: "Open" });
-    setWorkOrderTab("todo");
-  }
-
-  function Shell({ children }: { children: React.ReactNode }) {
-    return (
-      <main style={pageStyle}>
-        <div style={{ ...appGridStyle, gridTemplateColumns: isMobile ? "1fr" : "270px minmax(0, 1fr)" }}>
-          <aside style={{ ...sidebarStyle, position: isMobile ? "relative" : "sticky", height: isMobile ? "auto" : "calc(100vh - 40px)" }}>
-            <div style={brandRowStyle}>
-              <div style={brandMarkStyle}>A</div>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 1000 }}>ATLAS</div>
-                <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12 }}>2000</div>
-              </div>
-            </div>
-
-            <nav style={{ ...navGridStyle, gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr" }}>
-              {navItems.map((item) => {
-                const active = screen === item.key;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => clearSearchAndOpen(item.key)}
-                    style={{ ...navButtonStyle, ...(active ? navButtonActiveStyle : {}) }}
-                  >
-                    {item.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </aside>
-
-          <section style={{ display: "grid", gap: 16, minWidth: 0 }}>
-            <header style={{ ...heroStyle, padding: isMobile ? 18 : 24 }}>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 16, alignItems: "center" }}>
-                <div>
-                  <div style={eyebrowStyle}>ATLAS / 2000</div>
-                  <h1 style={{ margin: "8px 0 6px", fontSize: isMobile ? 42 : 60, lineHeight: 0.95, letterSpacing: -2 }}>
-                    Estate Operations
-                  </h1>
-                  <div style={{ color: "rgba(255,255,255,0.76)", fontSize: 15 }}>
-                    Mobile-safe Atlas command center with improved Work Orders.
-                  </div>
-                </div>
-                <div style={{ display: "grid", gap: 8, justifyItems: isMobile ? "start" : "end" }}>
-                  <span style={statusStyle(apiError ? "API Error" : loading ? "Loading" : "Online")}>{apiError ? "API Error" : loading ? "Loading" : "Online"}</span>
-                  <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 12 }}>Source: {payload.source || "Atlas API"}</div>
-                  <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 12 }}>{databaseStatus}</div>
-                </div>
-              </div>
-            </header>
-
-            <div style={searchCardStyle}>
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Atlas records..." style={inputStyle} />
-              {query ? (
-                <button type="button" onClick={() => setQuery("")} style={secondaryButtonStyle}>
-                  Clear Search
-                </button>
-              ) : null}
-            </div>
-
-            {apiError ? <div style={errorBoxStyle}>Atlas API warning: {apiError}</div> : null}
-            {children}
-          </section>
-        </div>
-      </main>
-    );
-  }
-
-  function Title({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }) {
-    return (
-      <div style={{ marginBottom: 14 }}>
-        <div style={goldEyebrowStyle}>{eyebrow}</div>
-        <h2 style={{ margin: "6px 0 4px", color: colors.navy, fontSize: isMobile ? 30 : 42, lineHeight: 1.03 }}>{title}</h2>
-        {subtitle ? <div style={{ color: colors.muted, lineHeight: 1.45 }}>{subtitle}</div> : null}
-      </div>
-    );
-  }
-
-  function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-    return <div style={{ ...cardStyle, padding: isMobile ? 14 : 18, ...style }}>{children}</div>;
-  }
-
-  function MetricCard({ label, count, next }: { label: string; count: number; next: Screen }) {
-    return (
-      <button type="button" onClick={() => clearSearchAndOpen(next)} style={metricCardStyle}>
-        <div style={{ color: colors.muted, fontSize: 12, fontWeight: 950 }}>{label}</div>
-        <div style={{ color: colors.navy, fontSize: 36, fontWeight: 1000, marginTop: 6 }}>{count}</div>
-      </button>
-    );
-  }
-
-  function Detail({ label, children }: { label: string; children: React.ReactNode }) {
-    return (
-      <div style={detailCellStyle}>
-        <div style={labelStyle}>{label}</div>
-        <div style={{ color: colors.navy, fontWeight: 900, marginTop: 5, wordBreak: "break-word" }}>{children || "—"}</div>
-      </div>
-    );
-  }
-
-  function Field({ label, children }: { label: string; children: React.ReactNode }) {
-    return (
-      <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-        <div style={labelStyle}>{label}</div>
-        {children}
-      </label>
-    );
-  }
-
-  function RowButton({ active, children, onClick }: { active?: boolean; children: React.ReactNode; onClick: () => void }) {
-    return (
-      <button type="button" onClick={onClick} style={{ ...rowButtonStyle, border: active ? `2px solid ${colors.gold}` : `1px solid ${colors.border}` }}>
-        {children}
-      </button>
-    );
-  }
-
-  function Empty({ children }: { children: React.ReactNode }) {
-    return <div style={emptyStyle}>{children}</div>;
-  }
-
-  function Dashboard() {
-    const openWorkOrders = workOrderRecords.filter((wo) => value(wo, "status") !== "Completed");
-    const doneWorkOrders = workOrderRecords.filter((wo) => value(wo, "status") === "Completed");
-    const unassignedAssets = assets.filter((asset) => !value(asset, "location", "locationName", "location_name", "locationId", "location_id"));
-
-    return (
-      <Card>
-        <Title eyebrow="Dashboard" title="Atlas Overview" subtitle="All core departments are mobile-safe and connected to the existing Atlas API." />
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12 }}>
-          <MetricCard label="Assets" count={assets.length} next="assets" />
-          <MetricCard label="To Do" count={openWorkOrders.length} next="work-orders" />
-          <MetricCard label="Done" count={doneWorkOrders.length} next="work-orders" />
-          <MetricCard label="Vendors" count={vendors.length} next="vendors" />
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginTop: 16 }}>
-          <Card style={{ boxShadow: "none" }}>
-            <h3 style={h3Style}>Open Work Orders</h3>
-            <div style={{ display: "grid", gap: 10 }}>
-              {openWorkOrders.slice(0, 6).map((wo, index) => {
-                const asset = assetById.get(value(wo, "assetId", "asset_id"));
-                return (
-                  <div key={value(wo, "id") || index} style={compactRowStyle}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={rowTitleStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</div>
-                      <div style={rowSubStyle}>{safeDate(value(wo, "followUpDate", "follow_up_date", "date", "workDate", "work_date"))} · {value(asset, "name") || "No linked asset"}</div>
-                    </div>
-                    <span style={statusStyle(value(wo, "priority") || "Medium")}>{value(wo, "priority") || "Medium"}</span>
-                  </div>
-                );
-              })}
-              {!openWorkOrders.length ? <Empty>No open work orders found.</Empty> : null}
-            </div>
-          </Card>
-
-          <Card style={{ boxShadow: "none" }}>
-            <h3 style={h3Style}>Data Health</h3>
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={compactRowStyle}>
-                <div>
-                  <div style={rowTitleStyle}>Unassigned Assets</div>
-                  <div style={rowSubStyle}>Location cleanup check</div>
-                </div>
-                <span style={statusStyle(unassignedAssets.length ? "Review" : "Complete")}>{unassignedAssets.length}</span>
-              </div>
-              <div style={compactRowStyle}>
-                <div>
-                  <div style={rowTitleStyle}>Database Status</div>
-                  <div style={rowSubStyle}>{databaseStatus}</div>
-                </div>
-                <span style={statusStyle(apiError ? "Error" : "Online")}>{apiError ? "Error" : "Online"}</span>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </Card>
-    );
-  }
-
-  function MapScreen() {
-    return (
-      <Card>
-        <Title eyebrow="Property Map" title="2000 Map" subtitle={isMobile ? "Swipe left and right inside the map box. Labels stay readable on iPhone." : "Locked property map with Atlas labels."} />
-        <div style={mapViewportStyle}>
-          <div style={{ ...mapCanvasStyle, width: isMobile ? 820 : "100%", minWidth: isMobile ? 820 : 0 }}>
-            <img src="/atlas-property-map.png" alt="Atlas property map" draggable={false} style={mapImageStyle} />
-            {mapLabels.map((label) => (
-              <button
-                key={label.id}
-                type="button"
-                onClick={() => openSearch("assets", label.label)}
-                style={{
-                  ...mapPinStyle,
-                  top: `${label.y}%`,
-                  left: `${label.x}%`,
-                  fontSize: isMobile ? 11 : 12,
-                  padding: isMobile ? "6px 8px" : "8px 10px",
-                }}
-              >
-                {label.label}
-              </button>
-            ))}
+  return (
+    <main style={{ ...shellStyle, gridTemplateColumns: isMobile ? "1fr" : "270px 1fr" }}>
+      <aside style={{ ...sidebarStyle, position: isMobile ? "static" : "sticky", height: isMobile ? "auto" : "100vh" }}>
+        <div style={brandBoxStyle}>
+          <div style={logoCircleStyle}>A</div>
+          <div>
+            <div style={brandTitleStyle}>ATLAS</div>
+            <div style={brandSubtitleStyle}>2000 Estate Operations</div>
           </div>
         </div>
-      </Card>
-    );
-  }
 
-  function Locations() {
-    const activeLocation = selectedLocation || locationNames[0] || "";
-    const relatedAssets = assets.filter((asset) => value(asset, "location", "locationName", "location_name", "locationId", "location_id").toLowerCase() === activeLocation.toLowerCase());
-    const relatedWorkOrders = workOrderRecords.filter((wo) => {
-      const asset = assetById.get(value(wo, "assetId", "asset_id"));
-      return value(asset, "location", "locationName", "location_name", "locationId", "location_id").toLowerCase() === activeLocation.toLowerCase();
-    });
-
-    return (
-      <Card>
-        <Title eyebrow="Locations" title={`${locationNames.length} Locations`} subtitle="Alphabetical location hub with related assets and work orders." />
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "0.8fr 1.2fr", gap: 14 }}>
-          <div style={{ display: "grid", gap: 8 }}>
-            {locationNames.map((name) => (
-              <RowButton key={name} active={name === activeLocation} onClick={() => setSelectedLocation(name)}>
-                <div style={rowTitleStyle}>{name}</div>
-                <div style={rowSubStyle}>{assets.filter((asset) => value(asset, "location", "locationName", "location_name", "locationId", "location_id").toLowerCase() === name.toLowerCase()).length} assets</div>
-              </RowButton>
-            ))}
-          </div>
-          <Card style={{ boxShadow: "none" }}>
-            <h3 style={h3Style}>{activeLocation || "Location"}</h3>
-            <div style={detailGridStyle}>
-              <Detail label="Assets">{relatedAssets.length}</Detail>
-              <Detail label="Work Orders">{relatedWorkOrders.length}</Detail>
-            </div>
-            <h4 style={h4Style}>Related Assets</h4>
-            <div style={{ display: "grid", gap: 8 }}>
-              {relatedAssets.slice(0, 10).map((asset, index) => (
-                <button key={value(asset, "id") || index} type="button" onClick={() => { setSelectedAssetId(value(asset, "id")); setScreen("assets"); }} style={miniButtonStyle}>{value(asset, "name") || "Unnamed Asset"}</button>
-              ))}
-              {!relatedAssets.length ? <Empty>No assets found for this location.</Empty> : null}
-            </div>
-          </Card>
-        </div>
-      </Card>
-    );
-  }
-
-  function Assets() {
-    return (
-      <Card>
-        <Title eyebrow="Assets" title={`${filteredAssets.length} Assets`} subtitle="Mobile-safe asset list with make, model, serial, location, notes, and linked records." />
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "0.9fr 1.1fr", gap: 14 }}>
-          <div style={{ display: "grid", gap: 10 }}>
-            {filteredAssets.map((asset, index) => {
-              const id = value(asset, "id") || String(index);
-              return (
-                <RowButton key={id} active={value(selectedAsset, "id") === value(asset, "id")} onClick={() => setSelectedAssetId(value(asset, "id"))}>
-                  <div style={rowTitleStyle}>{value(asset, "name") || "Unnamed Asset"}</div>
-                  <div style={rowSubStyle}>{value(asset, "location", "locationName", "location_name", "locationId", "location_id") || "No location"} · {value(asset, "make", "manufacturer") || "No make"} {value(asset, "model")}</div>
-                  <div style={{ marginTop: 8 }}><span style={statusStyle(value(asset, "status", "category") || "Asset")}>{value(asset, "status", "category") || "Asset"}</span></div>
-                </RowButton>
-              );
-            })}
-            {!filteredAssets.length ? <Empty>No matching assets.</Empty> : null}
-          </div>
-          <AssetDetail asset={selectedAsset} />
-        </div>
-      </Card>
-    );
-  }
-
-  function AssetDetail({ asset }: { asset?: AnyRecord }) {
-    const assetId = value(asset, "id");
-    const relatedWorkOrders = workOrderRecords.filter((wo) => value(wo, "assetId", "asset_id") === assetId);
-    if (!asset) return <Empty>Select an asset.</Empty>;
-    return (
-      <Card style={{ boxShadow: "none" }}>
-        <div style={goldEyebrowStyle}>Asset Detail</div>
-        <h3 style={detailTitleStyle}>{value(asset, "name") || "Unnamed Asset"}</h3>
-        <div style={detailGridStyle}>
-          <Detail label="Location">{value(asset, "location", "locationName", "location_name", "locationId", "location_id")}</Detail>
-          <Detail label="Category">{value(asset, "category")}</Detail>
-          <Detail label="Status">{value(asset, "status")}</Detail>
-          <Detail label="Make">{value(asset, "make", "manufacturer")}</Detail>
-          <Detail label="Model">{value(asset, "model")}</Detail>
-          <Detail label="Serial">{value(asset, "serial", "serialNumber", "serial_number")}</Detail>
-        </div>
-        <h4 style={h4Style}>Notes</h4>
-        <div style={notesStyle}>{value(asset, "notes", "description") || "No notes saved."}</div>
-        <h4 style={h4Style}>Related Work Orders</h4>
-        <div style={{ display: "grid", gap: 8 }}>
-          {relatedWorkOrders.slice(0, 8).map((wo, index) => (
-            <button key={value(wo, "id") || index} type="button" onClick={() => { selectWorkOrder(wo); setScreen("work-orders"); }} style={miniButtonStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</button>
+        <nav style={{ ...navStyle, gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "1fr" }}>
+          {screens.map((item) => (
+            <button key={item.id} type="button" onClick={() => setScreen(item.id)} style={screen === item.id ? { ...navButtonStyle, ...navButtonActiveStyle } : navButtonStyle}>
+              {item.label}
+            </button>
           ))}
-          {!relatedWorkOrders.length ? <Empty>No linked work orders.</Empty> : null}
+        </nav>
+      </aside>
+
+      <section style={contentStyle}>
+        <div style={{ ...topbarStyle, flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center" }}>
+          <div>
+            <div style={eyebrowStyle}>Private Estate System</div>
+            <h1 style={pageTitleStyle}>Atlas / 2000</h1>
+          </div>
+          <div style={{ position: "relative", width: isMobile ? "100%" : 420 }}>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Atlas records..." style={searchInputStyle} />
+            {query.trim() && (
+              <div style={searchPanelStyle}>
+                {searchResults.length ? searchResults.map((result) => (
+                  <button key={result.id} type="button" onClick={() => openSearchResult(result)} style={searchResultStyle}>
+                    <strong>{result.type}: {result.title}</strong>
+                    <span>{result.subtitle}</span>
+                  </button>
+                )) : <div style={emptyStateStyle}>No matching Atlas records.</div>}
+              </div>
+            )}
+          </div>
         </div>
-      </Card>
+
+        {screen === "dashboard" && renderDashboard()}
+        {screen === "map" && renderMap()}
+        {screen === "locations" && renderLocations()}
+        {screen === "assets" && renderAssets()}
+        {screen === "history" && renderHistory()}
+        {screen === "vendors" && renderVendors()}
+        {screen === "calendar" && renderCalendar()}
+        {screen === "weather" && renderWeather()}
+        {screen === "documents" && renderDocuments()}
+        {screen === "procedures" && renderProcedures()}
+        {screen === "parts" && renderParts()}
+        {screen === "assistant" && renderAssistant()}
+      </section>
+    </main>
+  );
+
+  function renderDashboard() {
+    return (
+      <div style={stackStyle}>
+        <div style={statGridStyle}>
+          <Stat label="Locations" value={String(defaultLocations.length)} />
+          <Stat label="Assets" value={String(assetRecords.length)} />
+          <Stat label="Open WOs" value={String(openWorkOrders.length)} />
+          <Stat label="High Priority" value={String(highPriority.length)} />
+        </div>
+
+        <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.8fr" }}>
+          <Section title="Property Map" eyebrow="Fixed image / movable labels" right={<button type="button" onClick={() => setScreen("map")} style={goldButtonStyle}>Open Map</button>}>
+            <div style={mapPreviewStyle}>
+              <img src="/atlas-property-map.png" alt="Atlas property map" style={mapImageStyle} draggable={false} />
+              {mapLabels.slice(0, 8).map((label) => (
+                <span key={label.id} style={{ ...miniMapPinStyle, left: `${label.x}%`, top: `${label.y}%` }}>{label.label}</span>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Priority Work" eyebrow="To Do / Monitor">
+            <div style={stackStyle}>
+              {sortedWorkOrders.filter((record) => record.status !== "Completed").slice(0, 6).map((record) => (
+                <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={rowButtonStyle}>
+                  <div>
+                    <strong>{record.title}</strong>
+                    <p style={mutedSmallStyle}>{formatDate(record.date)} · {assetName(record.assetId)} · {vendorName(record.vendorId)}</p>
+                  </div>
+                  <span style={badgeStyle(record.priority)}>{record.priority}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+        </div>
+      </div>
     );
   }
 
-  function WorkOrders() {
-    const todoCount = workOrderRecords.filter((record) => value(record, "status") !== "Completed").length;
-    const doneCount = workOrderRecords.filter((record) => value(record, "status") === "Completed").length;
-
+  function renderMap() {
     return (
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-          <Title eyebrow="Work Orders" title={`${filteredWorkOrders.length} Work Orders`} subtitle="To Do / Done split, filters, add/edit form, priority, recurring, invoice, cost, and Neon save." />
-          <button type="button" onClick={startNewWorkOrder} style={primaryButtonStyle}>+ New Work Order</button>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "390px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
-          <section style={workOrderBoardStyle}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: `1px solid ${colors.border}` }}>
-              <button type="button" onClick={() => setWorkOrderTab("todo")} style={tabButtonStyle(workOrderTab === "todo")}>To Do {todoCount}</button>
-              <button type="button" onClick={() => setWorkOrderTab("done")} style={tabButtonStyle(workOrderTab === "done")}>Done {doneCount}</button>
-              <button type="button" onClick={() => setWorkOrderTab("all")} style={tabButtonStyle(workOrderTab === "all")}>All {workOrderRecords.length}</button>
+      <Section
+        title="Locked Map with Movable Atlas Labels"
+        eyebrow="Property Map"
+        right={
+          <div style={buttonRowStyle}>
+            <span style={badgeStyle("Online")}>{mapLabels.length} Labels</span>
+            <button type="button" onClick={startNewMapLabel} style={goldButtonStyle}>Add Label</button>
+            <button type="button" onClick={resetMapLabels} style={dangerButtonStyle}>Reset Map</button>
+          </div>
+        }
+      >
+        <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "1.35fr 0.65fr" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...emptyStateStyle, marginBottom: 12 }}>
+              {isMobile ? "Mobile map: drag sideways to view the full property. Tap or drag labels to select and place them." : "The original map image stays locked. Drag labels to adjust placement, then edit details on the right."}
             </div>
 
-            <div style={{ padding: 12, display: "grid", gap: 10 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <select value={workOrderStatusFilter} onChange={(event) => setWorkOrderStatusFilter(event.target.value)} style={filterStyle}>
-                  <option value="all">All status</option>
-                  {workOrderStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
-                </select>
-
-                <select value={workOrderPriorityFilter} onChange={(event) => setWorkOrderPriorityFilter(event.target.value)} style={filterStyle}>
-                  <option value="all">All priority</option>
-                  {workOrderPriorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
-                </select>
-              </div>
-
-              <select value={workOrderSort} onChange={(event) => setWorkOrderSort(event.target.value as "priority" | "due" | "newest" | "asset")} style={filterStyle}>
-                <option value="priority">Sort: Priority</option>
-                <option value="due">Sort: Due Date</option>
-                <option value="newest">Sort: Newest</option>
-                <option value="asset">Sort: Asset</option>
-              </select>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setWorkOrderStatusFilter("all");
-                  setWorkOrderPriorityFilter("all");
-                  setWorkOrderSort("priority");
-                }}
-                style={secondaryButtonStyle}
+            <div style={isMobile ? mobileMapViewportStyle : undefined}>
+              <div
+                ref={mapRef}
+                onPointerMove={handleMapPointerMove}
+                onPointerUp={stopMapDrag}
+                onPointerLeave={stopMapDrag}
+                style={{ ...mapShellStyle, ...(isMobile ? mobileMapShellStyle : {}) }}
               >
-                Clear Work Order Filters
-              </button>
-
-              <div style={{ display: "grid", gap: 10 }}>
-                {filteredWorkOrders.map((wo, index) => {
-                  const id = value(wo, "id") || String(index);
-                  const asset = assetById.get(value(wo, "assetId", "asset_id"));
-                  const active = selectedWorkOrderId === value(wo, "id");
-
+                <img src="/atlas-property-map.png" alt="Atlas property map" style={mapImageStyle} draggable={false} />
+                {mapLabels.map((label) => {
+                  const selected = label.id === selectedMapLabelId;
                   return (
                     <button
-                      key={id}
+                      key={label.id}
                       type="button"
-                      onClick={() => selectWorkOrder(wo)}
-                      style={{ ...workOrderCardButtonStyle, border: active ? `2px solid ${colors.gold}` : `1px solid ${colors.border}` }}
+                      onPointerDown={(event) => handleMapLabelPointerDown(event, label.id)}
+                      style={{
+                        ...mapPinStyle,
+                        ...(isMobile ? mobileMapPinStyle : {}),
+                        left: `${label.x}%`,
+                        top: `${label.y}%`,
+                        background: selected ? colors.gold : colors.navy,
+                        color: selected ? colors.navy : "#FFFFFF",
+                        borderColor: selected ? colors.navy : colors.gold2,
+                        zIndex: selected ? 4 : 3,
+                      }}
+                      title="Drag to move. Details open in the panel."
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={rowTitleStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</div>
-                          <div style={rowSubStyle}>
-                            {safeDate(value(wo, "followUpDate", "follow_up_date", "date", "workDate", "work_date"))} · {value(asset, "name") || "No linked asset"}
-                          </div>
-                        </div>
-                        <span style={statusStyle(value(wo, "priority") || "Medium")}>{value(wo, "priority") || "Medium"}</span>
-                      </div>
-
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                        <span style={statusStyle(value(wo, "status") || "Open")}>{value(wo, "status") || "Open"}</span>
-                        {value(wo, "isRecurring", "is_recurring") === "true" || value(wo, "recurrenceFrequency", "recurrence_frequency") ? <span style={statusStyle("Recurring")}>Recurring</span> : null}
-                        {value(wo, "invoiceAmount", "invoice_amount") ? <span style={statusStyle(value(wo, "paymentStatus", "payment_status") || "Invoice")}>{safeMoney(value(wo, "invoiceAmount", "invoice_amount"))}</span> : null}
-                      </div>
+                      <span style={pinDotStyle}>{Math.round(label.x)}/{Math.round(label.y)}</span>
+                      {label.label}
                     </button>
                   );
                 })}
-
-                {!filteredWorkOrders.length ? <Empty>No work orders match this view.</Empty> : null}
               </div>
             </div>
-          </section>
-
-          <WorkOrderEditor />
-        </div>
-      </Card>
-    );
-  }
-
-  function WorkOrderEditor() {
-    const selectedAsset = assetById.get(workOrderForm.assetId);
-    const selectedVendor = vendorById.get(workOrderForm.vendorId);
-    const editorKey = workOrderForm.id || "new";
-
-    return (
-      <section style={workOrderEditorStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 12 }}>
-          <div>
-            <div style={goldEyebrowStyle}>{workOrderMode === "new" ? "New Work Order" : "Edit Work Order"}</div>
-            <h3 style={detailTitleStyle}>{workOrderForm.title || "Untitled Work Order"}</h3>
           </div>
-          <span style={statusStyle(databaseStatus.includes("failed") ? "Save issue" : workOrderMode === "new" ? "New" : "Editing")}>
-            {workOrderMode === "new" ? "New" : "Editing"}
-          </span>
-        </div>
 
-        <div style={{ display: "grid", gap: 16 }}>
-          <Card style={{ boxShadow: "none" }}>
-            <h4 style={h4Style}>Main Work Order</h4>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              <Field label="Title">
-                <input
-                  key={`title-${editorKey}`}
-                  defaultValue={workOrderForm.title}
-                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, title: event.target.value }))}
-                  style={inputStyle}
-                  placeholder="Example: Check pool pump leak"
-                />
-              </Field>
-
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
-                <Field label="Date">
-                  <input
-                    type="date"
-                    value={workOrderForm.date}
-                    onChange={(event) => setWorkOrderForm((current) => ({ ...current, date: event.target.value }))}
-                    style={inputStyle}
-                  />
-                </Field>
-
-                <Field label="Status">
-                  <select value={workOrderForm.status} onChange={(event) => setWorkOrderForm((current) => ({ ...current, status: event.target.value }))} style={inputStyle}>
-                    {workOrderStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
-                  </select>
-                </Field>
-
-                <Field label="Priority">
-                  <select value={workOrderForm.priority} onChange={(event) => setWorkOrderForm((current) => ({ ...current, priority: event.target.value }))} style={inputStyle}>
-                    {workOrderPriorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
-                  </select>
-                </Field>
+          <div style={recordCardStyle}>
+            <div style={eyebrowStyle}>{mapLabelMode === "new" ? "New Map Label" : "Selected Map Label"}</div>
+            <h3 style={cardTitleStyle}>{mapLabelForm.label || selectedMapLabel.label}</h3>
+            <div style={formGridStyle}>
+              <label style={labelStyle}>Label Name<input value={mapLabelForm.label} onChange={(event) => setMapLabelForm((current) => ({ ...current, label: event.target.value }))} style={inputStyle} /></label>
+              <label style={labelStyle}>Type / Category<input value={mapLabelForm.category} onChange={(event) => setMapLabelForm((current) => ({ ...current, category: event.target.value }))} style={inputStyle} /></label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <label style={labelStyle}>X %<input type="number" value={mapLabelForm.x} onChange={(event) => setMapLabelForm((current) => ({ ...current, x: clampPercent(Number(event.target.value)) }))} style={inputStyle} /></label>
+                <label style={labelStyle}>Y %<input type="number" value={mapLabelForm.y} onChange={(event) => setMapLabelForm((current) => ({ ...current, y: clampPercent(Number(event.target.value)) }))} style={inputStyle} /></label>
+              </div>
+              <label style={labelStyle}>Notes<textarea value={mapLabelForm.notes} onChange={(event) => setMapLabelForm((current) => ({ ...current, notes: event.target.value }))} style={textareaStyle} /></label>
+              <div style={buttonRowStyle}>
+                <button type="button" onClick={saveMapLabel} style={goldButtonStyle}>Save Label</button>
+                <button type="button" onClick={() => addWorkOrderFromMapLabel(mapLabelForm)} style={secondaryButtonStyle}>Create WO</button>
+                <button type="button" onClick={deleteMapLabel} style={dangerButtonStyle}>Delete</button>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-                <Field label="Asset">
-                  <select value={workOrderForm.assetId} onChange={(event) => setWorkOrderForm((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>
-                    <option value="">No linked asset</option>
-                    {assets.map((asset) => (
-                      <option key={value(asset, "id")} value={value(asset, "id")}>
-                        {value(asset, "name") || "Unnamed Asset"}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="Vendor">
-                  <select value={workOrderForm.vendorId} onChange={(event) => setWorkOrderForm((current) => ({ ...current, vendorId: event.target.value }))} style={inputStyle}>
-                    <option value="">Internal / no vendor</option>
-                    {vendors.map((vendor) => (
-                      <option key={value(vendor, "id")} value={value(vendor, "id")}>
-                        {value(vendor, "name") || "Unnamed Vendor"}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-
-              <Field label="Notes">
-                <textarea
-                  key={`notes-${editorKey}`}
-                  defaultValue={workOrderForm.notes}
-                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, notes: event.target.value }))}
-                  style={textareaStyle}
-                  placeholder="Work notes, scope, findings, approvals, next steps..."
-                />
-              </Field>
-
-              <div style={detailGridStyle}>
-                <Detail label="Linked Asset">{value(selectedAsset, "name") || "No linked asset"}</Detail>
-                <Detail label="Linked Vendor">{value(selectedVendor, "name") || "Internal / no vendor"}</Detail>
-              </div>
+              <label style={labelStyle}>Map Photos<input type="file" accept="image/*" multiple onChange={handleMapLabelPhotoUpload} style={inputStyle} /></label>
+              {(mapLabelForm.photos ?? []).length ? (
+                <div style={photoGridStyle}>
+                  {mapLabelForm.photos.map((photo) => (
+                    <div key={photo.id} style={photoCardStyle}>
+                      <img src={photo.dataUrl} alt={photo.name} style={photoImageStyle} />
+                      <button type="button" onClick={() => deleteMapPhoto(photo.id)} style={dangerButtonStyle}>Delete</button>
+                    </div>
+                  ))}
+                </div>
+              ) : <div style={emptyStateStyle}>No photos on this label yet.</div>}
             </div>
-          </Card>
-
-          <Card style={{ boxShadow: "none" }}>
-            <h4 style={h4Style}>Recurring</h4>
-
-            <label style={checkboxRowStyle}>
-              <input
-                type="checkbox"
-                checked={workOrderForm.isRecurring}
-                onChange={(event) => setWorkOrderForm((current) => ({ ...current, isRecurring: event.target.checked }))}
-              />
-              <span>Recurring work order</span>
-            </label>
-
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
-              <Field label="Frequency">
-                <select value={workOrderForm.recurrenceFrequency} onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceFrequency: event.target.value }))} style={inputStyle}>
-                  {recurrenceOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-              </Field>
-
-              <Field label="Interval">
-                <input
-                  key={`interval-${editorKey}`}
-                  type="number"
-                  min="1"
-                  defaultValue={workOrderForm.recurrenceInterval}
-                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceInterval: event.target.value }))}
-                  style={inputStyle}
-                />
-              </Field>
-
-              <Field label="Next Due">
-                <input
-                  type="date"
-                  value={workOrderForm.recurrenceNextDue}
-                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceNextDue: event.target.value }))}
-                  style={inputStyle}
-                />
-              </Field>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 10 }}>
-              <Field label="Days / Custom Rule">
-                <input
-                  key={`days-${editorKey}`}
-                  defaultValue={workOrderForm.recurrenceDays}
-                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceDays: event.target.value }))}
-                  style={inputStyle}
-                  placeholder="Example: Mon, Wed, Fri"
-                />
-              </Field>
-
-              <Field label="End Date">
-                <input
-                  type="date"
-                  value={workOrderForm.recurrenceEndDate}
-                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceEndDate: event.target.value }))}
-                  style={inputStyle}
-                />
-              </Field>
-            </div>
-          </Card>
-
-          <Card style={{ boxShadow: "none" }}>
-            <h4 style={h4Style}>Invoice / Cost</h4>
-
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
-              <Field label="Invoice #">
-                <input
-                  key={`invoice-number-${editorKey}`}
-                  defaultValue={workOrderForm.invoiceNumber}
-                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, invoiceNumber: event.target.value }))}
-                  style={inputStyle}
-                />
-              </Field>
-
-              <Field label="Invoice Date">
-                <input type="date" value={workOrderForm.invoiceDate} onChange={(event) => setWorkOrderForm((current) => ({ ...current, invoiceDate: event.target.value }))} style={inputStyle} />
-              </Field>
-
-              <Field label="Invoice Amount">
-                <input
-                  key={`invoice-amount-${editorKey}`}
-                  inputMode="decimal"
-                  defaultValue={workOrderForm.invoiceAmount}
-                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, invoiceAmount: event.target.value }))}
-                  style={inputStyle}
-                  placeholder="17210.05"
-                />
-              </Field>
-
-              <Field label="Invoice Status">
-                <select value={workOrderForm.invoiceStatus} onChange={(event) => setWorkOrderForm((current) => ({ ...current, invoiceStatus: event.target.value }))} style={inputStyle}>
-                  {invoiceStatusOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-              </Field>
-
-              <Field label="Payment Status">
-                <select value={workOrderForm.paymentStatus} onChange={(event) => setWorkOrderForm((current) => ({ ...current, paymentStatus: event.target.value }))} style={inputStyle}>
-                  {paymentStatusOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-              </Field>
-
-              <Field label="Cost Category">
-                <input
-                  key={`cost-category-${editorKey}`}
-                  defaultValue={workOrderForm.costCategory}
-                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, costCategory: event.target.value }))}
-                  style={inputStyle}
-                  placeholder="Paint, HVAC, Landscape..."
-                />
-              </Field>
-
-              <Field label="Approved By">
-                <input
-                  key={`approved-by-${editorKey}`}
-                  defaultValue={workOrderForm.approvedBy}
-                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, approvedBy: event.target.value }))}
-                  style={inputStyle}
-                />
-              </Field>
-
-              <Field label="Approved Date">
-                <input type="date" value={workOrderForm.approvedDate} onChange={(event) => setWorkOrderForm((current) => ({ ...current, approvedDate: event.target.value }))} style={inputStyle} />
-              </Field>
-            </div>
-
-            <Field label="Cost Notes">
-              <textarea
-                key={`cost-notes-${editorKey}`}
-                defaultValue={workOrderForm.costNotes}
-                onBlur={(event) => setWorkOrderForm((current) => ({ ...current, costNotes: event.target.value }))}
-                style={{ ...textareaStyle, minHeight: 90 }}
-              />
-            </Field>
-          </Card>
-
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
-            <button type="button" onClick={() => saveWorkOrder()} style={primaryButtonStyle}>
-              {workOrderMode === "new" ? "Save New Work Order" : "Save Work Order"}
-            </button>
-
-            {workOrderForm.status === "Completed" ? (
-              <button type="button" onClick={reopenWorkOrder} style={secondaryButtonStyle}>Reopen</button>
-            ) : (
-              <button type="button" onClick={markWorkOrderDone} style={secondaryButtonStyle}>Mark Done</button>
-            )}
-
-            <button type="button" onClick={deleteWorkOrder} style={dangerButtonStyle} disabled={!workOrderForm.id}>
-              Delete
-            </button>
           </div>
         </div>
-      </section>
+      </Section>
     );
   }
 
-  function Vendors() {
+  function renderLocations() {
+    const visible = sortedLocations.filter((location) => !searchText || `${location.name} ${location.type} ${location.zone} ${location.notes}`.toLowerCase().includes(searchText));
     return (
-      <Card>
-        <Title eyebrow="Vendors" title={`${filteredVendors.length} Vendors`} subtitle="Vendor contacts and service history reference." />
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "0.9fr 1.1fr", gap: 14 }}>
-          <div style={{ display: "grid", gap: 10 }}>
-            {filteredVendors.map((vendor, index) => (
-              <RowButton key={value(vendor, "id") || index} active={value(selectedVendor, "id") === value(vendor, "id")} onClick={() => setSelectedVendorId(value(vendor, "id"))}>
-                <div style={rowTitleStyle}>{value(vendor, "name") || "Unnamed Vendor"}</div>
-                <div style={rowSubStyle}>{value(vendor, "category") || "Vendor"} · {value(vendor, "phone", "email") || "No contact"}</div>
-              </RowButton>
-            ))}
-            {!filteredVendors.length ? <Empty>No matching vendors.</Empty> : null}
-          </div>
-          <VendorDetail vendor={selectedVendor} />
-        </div>
-      </Card>
-    );
-  }
-
-  function VendorDetail({ vendor }: { vendor?: AnyRecord }) {
-    if (!vendor) return <Empty>Select a vendor.</Empty>;
-    const vendorId = value(vendor, "id");
-    const relatedWorkOrders = workOrderRecords.filter((wo) => value(wo, "vendorId", "vendor_id") === vendorId);
-    return (
-      <Card style={{ boxShadow: "none" }}>
-        <div style={goldEyebrowStyle}>Vendor Detail</div>
-        <h3 style={detailTitleStyle}>{value(vendor, "name") || "Unnamed Vendor"}</h3>
-        <div style={detailGridStyle}>
-          <Detail label="Category">{value(vendor, "category")}</Detail>
-          <Detail label="Phone">{value(vendor, "phone")}</Detail>
-          <Detail label="Email">{value(vendor, "email")}</Detail>
-          <Detail label="Website">{value(vendor, "website")}</Detail>
-        </div>
-        <h4 style={h4Style}>Notes</h4>
-        <div style={notesStyle}>{value(vendor, "notes", "description") || "No notes saved."}</div>
-        <h4 style={h4Style}>Related Work Orders</h4>
-        <div style={{ display: "grid", gap: 8 }}>
-          {relatedWorkOrders.slice(0, 8).map((wo, index) => <button key={value(wo, "id") || index} type="button" onClick={() => { selectWorkOrder(wo); setScreen("work-orders"); }} style={miniButtonStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</button>)}
-          {!relatedWorkOrders.length ? <Empty>No linked work orders.</Empty> : null}
-        </div>
-      </Card>
-    );
-  }
-
-  function Calendar() {
-    const sorted = [...calendarItems].sort((a, b) => value(a, "date", "start", "startDate", "start_date").localeCompare(value(b, "date", "start", "startDate", "start_date")));
-    return (
-      <Card>
-        <Title eyebrow="Calendar" title={`${sorted.length} Calendar Items`} subtitle="Simple mobile-safe calendar list from Atlas records." />
-        <div style={{ display: "grid", gap: 10 }}>
-          {sorted.map((item, index) => (
-            <div key={value(item, "id") || index} style={compactRowStyle}>
-              <div style={{ minWidth: 0 }}>
-                <div style={rowTitleStyle}>{value(item, "title", "name") || "Calendar Item"}</div>
-                <div style={rowSubStyle}>{safeDate(value(item, "date", "start", "startDate", "start_date"))} {value(item, "area", "location") ? `· ${value(item, "area", "location")}` : ""}</div>
+      <Section title="Locations" eyebrow="Alphabetized / related assets">
+        <div style={listGridStyle}>
+          {visible.map((location) => {
+            const relatedAssets = assetRecords.filter((asset) => asset.locationId === location.id);
+            return (
+              <div key={location.id} style={recordCardStyle}>
+                <h3 style={cardTitleStyle}>{location.name}</h3>
+                <p style={mutedSmallStyle}>{location.type} · {location.zone}</p>
+                <p style={bodyTextStyle}>{location.notes}</p>
+                <div style={buttonRowStyle}>{relatedAssets.length ? relatedAssets.map((asset) => <button key={asset.id} type="button" onClick={() => { setSelectedAssetId(asset.id); setScreen("assets"); }} style={chipButtonStyle}>{asset.name}</button>) : <span style={badgeStyle("Monitor")}>No linked assets</span>}</div>
               </div>
-              <span style={statusStyle(value(item, "status") || "Scheduled")}>{value(item, "status") || "Scheduled"}</span>
-            </div>
-          ))}
-          {!sorted.length ? <Empty>No calendar records found.</Empty> : null}
+            );
+          })}
         </div>
-      </Card>
+      </Section>
     );
   }
 
-  function Weather() {
+  function renderAssets() {
+    const visible = sortedAssets.filter((asset) => !searchText || `${asset.name} ${asset.category} ${locationName(asset.locationId)} ${asset.notes}`.toLowerCase().includes(searchText));
     return (
-      <Card>
-        <Title eyebrow="Weather" title="Weather" subtitle="Weather module placeholder kept stable so the app builds." />
-        <div style={emptyStyle}>Weather panel is available as a department.</div>
-      </Card>
-    );
-  }
-
-  function Documents() {
-    return (
-      <Card>
-        <Title eyebrow="Documents / Photos" title={`${documents.length} Records`} subtitle="Visible document/photo records from the Atlas API if present." />
-        <RecordGrid records={documents} empty="No document or photo records found." />
-      </Card>
-    );
-  }
-
-  function Procedures() {
-    return (
-      <Card>
-        <Title eyebrow="Procedures" title={`${procedures.length} Procedures`} subtitle="Procedure records from Atlas API if present." />
-        <RecordGrid records={procedures} empty="No procedure records found." />
-      </Card>
-    );
-  }
-
-  function Logs() {
-    return (
-      <Card>
-        <Title eyebrow="Logs" title="Operations Logs" subtitle="Recent work order notes and history records." />
-        <RecordGrid records={workOrderRecords.slice(0, 30)} empty="No log records found." />
-      </Card>
-    );
-  }
-
-  function AssistantPanel() {
-    return (
-      <Card>
-        <Title eyebrow="AI Assistant" title="Ask Atlas" subtitle="Recovery-safe assistant screen. Search above to find saved Atlas records." />
-        <div style={emptyStyle}>Ask Atlas can be reconnected after the Work Orders page is confirmed stable.</div>
-      </Card>
-    );
-  }
-
-  function Team() {
-    return (
-      <Card>
-        <Title eyebrow="Team" title="Team" subtitle="Private estate team screen kept stable." />
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12 }}>
-          <Card style={{ boxShadow: "none" }}><h3 style={h3Style}>Nick</h3><div style={rowSubStyle}>Operations / Maintenance</div></Card>
-          <Card style={{ boxShadow: "none" }}><h3 style={h3Style}>Steve</h3><div style={rowSubStyle}>President</div></Card>
-          <Card style={{ boxShadow: "none" }}><h3 style={h3Style}>Pat</h3><div style={rowSubStyle}>Landscaping Manager</div></Card>
-        </div>
-      </Card>
-    );
-  }
-
-  function RecordGrid({ records, empty }: { records: AnyRecord[]; empty: string }) {
-    if (!records.length) return <Empty>{empty}</Empty>;
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12 }}>
-        {records.map((record, index) => (
-          <Card key={value(record, "id") || index} style={{ boxShadow: "none" }}>
-            <div style={rowTitleStyle}>{value(record, "title", "name", "summary") || `Record ${index + 1}`}</div>
-            <div style={{ ...rowSubStyle, marginTop: 6 }}>{safeDate(value(record, "date", "createdAt", "created_at", "workDate", "work_date"))}</div>
-            <div style={{ ...notesStyle, marginTop: 10 }}>{value(record, "notes", "description", "body") || "No notes saved."}</div>
-          </Card>
-        ))}
+      <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "0.9fr 1.1fr" }}>
+        <Section title="Assets" eyebrow="Equipment / property records" right={<button type="button" onClick={() => {
+          const record: AssetRecord = { id: uid("asset"), name: "New Asset", locationId: "general", category: "General", status: "Monitor", notes: "", vendorIds: [] };
+          setAssetRecords((current) => [record, ...current]); setSelectedAssetId(record.id);
+        }} style={goldButtonStyle}>Add Asset</button>}>
+          <div style={stackStyle}>{visible.map((asset) => <button key={asset.id} type="button" onClick={() => setSelectedAssetId(asset.id)} style={selectedAssetId === asset.id ? { ...rowButtonStyle, borderColor: colors.gold, background: "#FFF9EA" } : rowButtonStyle}><div><strong>{asset.name}</strong><p style={mutedSmallStyle}>{asset.category} · {locationName(asset.locationId)}</p></div><span style={badgeStyle(asset.status)}>{asset.status}</span></button>)}</div>
+        </Section>
+        <Section title={selectedAsset.name} eyebrow="Asset Detail">
+          <div style={formGridStyle}>
+            <label style={labelStyle}>Name<input value={selectedAsset.name} onChange={(event) => updateAsset(selectedAsset.id, { name: event.target.value })} style={inputStyle} /></label>
+            <label style={labelStyle}>Location<select value={selectedAsset.locationId} onChange={(event) => updateAsset(selectedAsset.id, { locationId: event.target.value })} style={inputStyle}>{sortedLocations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+            <label style={labelStyle}>Category<input value={selectedAsset.category} onChange={(event) => updateAsset(selectedAsset.id, { category: event.target.value })} style={inputStyle} /></label>
+            <label style={labelStyle}>Status<select value={selectedAsset.status} onChange={(event) => updateAsset(selectedAsset.id, { status: event.target.value as Status })} style={inputStyle}>{["Online", "Offline", "Seasonal", "Monitor"].map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+            <label style={labelStyle}>Notes<textarea value={selectedAsset.notes} onChange={(event) => updateAsset(selectedAsset.id, { notes: event.target.value })} style={textareaStyle} /></label>
+          </div>
+        </Section>
       </div>
     );
   }
 
-  let content: React.ReactNode = null;
-  if (screen === "dashboard") content = <Dashboard />;
-  if (screen === "map") content = <MapScreen />;
-  if (screen === "locations") content = <Locations />;
-  if (screen === "assets") content = <Assets />;
-  if (screen === "work-orders") content = <WorkOrders />;
-  if (screen === "vendors") content = <Vendors />;
-  if (screen === "calendar") content = <Calendar />;
-  if (screen === "weather") content = <Weather />;
-  if (screen === "documents") content = <Documents />;
-  if (screen === "procedures") content = <Procedures />;
-  if (screen === "logs") content = <Logs />;
-  if (screen === "assistant") content = <AssistantPanel />;
-  if (screen === "team") content = <Team />;
+  function updateAsset(id: string, changes: Partial<AssetRecord>) {
+    setAssetRecords((current) => current.map((asset) => (asset.id === id ? { ...asset, ...changes } : asset)));
+  }
 
-  return <Shell>{content}</Shell>;
+  function renderHistory() {
+    return (
+      <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "0.95fr 1.05fr" }}>
+        <Section title="Work Orders" eyebrow="To Do / Done" right={<button type="button" onClick={() => {
+          const record: ServiceRecord = { id: uid("wo"), assetId: assetRecords[0]?.id ?? "", date: todayISO(), title: "New Work Order", status: "Open", priority: "Medium", notes: "" };
+          setServiceRecords((current) => [record, ...current]); setSelectedServiceId(record.id);
+        }} style={goldButtonStyle}>Add Work Order</button>}>
+          <div style={stackStyle}>{sortedWorkOrders.map((record) => <button key={record.id} type="button" onClick={() => setSelectedServiceId(record.id)} style={selectedServiceId === record.id ? { ...rowButtonStyle, borderColor: colors.gold, background: "#FFF9EA" } : rowButtonStyle}><div><strong>{record.title}</strong><p style={mutedSmallStyle}>{formatDate(record.date)} · {assetName(record.assetId)} · {vendorName(record.vendorId)}</p></div><span style={badgeStyle(record.status)}>{record.status}</span></button>)}</div>
+        </Section>
+        <Section title={selectedService.title} eyebrow="Work Order Detail">
+          <div style={formGridStyle}>
+            <label style={labelStyle}>Title<input value={selectedService.title} onChange={(event) => updateWorkOrder(selectedService.id, { title: event.target.value })} style={inputStyle} /></label>
+            <label style={labelStyle}>Asset<select value={selectedService.assetId} onChange={(event) => updateWorkOrder(selectedService.id, { assetId: event.target.value })} style={inputStyle}>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+            <label style={labelStyle}>Vendor<select value={selectedService.vendorId ?? ""} onChange={(event) => updateWorkOrder(selectedService.id, { vendorId: event.target.value })} style={inputStyle}><option value="">No vendor</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <label style={labelStyle}>Status<select value={selectedService.status} onChange={(event) => updateWorkOrder(selectedService.id, { status: event.target.value as ServiceStatus })} style={inputStyle}>{["Open", "Scheduled", "Completed", "Monitor"].map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+              <label style={labelStyle}>Priority<select value={selectedService.priority} onChange={(event) => updateWorkOrder(selectedService.id, { priority: event.target.value as WorkOrderPriority })} style={inputStyle}>{["Low", "Medium", "High"].map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select></label>
+            </div>
+            <label style={labelStyle}>Date<input type="date" value={selectedService.date} onChange={(event) => updateWorkOrder(selectedService.id, { date: event.target.value })} style={inputStyle} /></label>
+            <label style={labelStyle}>Notes<textarea value={selectedService.notes} onChange={(event) => updateWorkOrder(selectedService.id, { notes: event.target.value })} style={textareaStyle} /></label>
+          </div>
+        </Section>
+      </div>
+    );
+  }
+
+  function updateWorkOrder(id: string, changes: Partial<ServiceRecord>) {
+    setServiceRecords((current) => current.map((record) => (record.id === id ? { ...record, ...changes } : record)));
+  }
+
+  function renderVendors() {
+    return (
+      <div style={{ ...gridTwoStyle, gridTemplateColumns: isMobile ? "1fr" : "0.9fr 1.1fr" }}>
+        <Section title="Vendors" eyebrow="Contacts / notes" right={<button type="button" onClick={() => { const vendor: VendorRecord = { id: uid("vendor"), name: "New Vendor", category: "General", notes: "" }; setVendorRecords((current) => [vendor, ...current]); setSelectedVendorId(vendor.id); }} style={goldButtonStyle}>Add Vendor</button>}>
+          <div style={stackStyle}>{sortedVendors.map((vendor) => <button key={vendor.id} type="button" onClick={() => setSelectedVendorId(vendor.id)} style={selectedVendorId === vendor.id ? { ...rowButtonStyle, borderColor: colors.gold, background: "#FFF9EA" } : rowButtonStyle}><div><strong>{vendor.name}</strong><p style={mutedSmallStyle}>{vendor.category}</p></div></button>)}</div>
+        </Section>
+        <Section title={selectedVendor.name} eyebrow="Vendor Detail">
+          <div style={formGridStyle}>
+            <label style={labelStyle}>Name<input value={selectedVendor.name} onChange={(event) => updateVendor(selectedVendor.id, { name: event.target.value })} style={inputStyle} /></label>
+            <label style={labelStyle}>Category<input value={selectedVendor.category} onChange={(event) => updateVendor(selectedVendor.id, { category: event.target.value })} style={inputStyle} /></label>
+            <label style={labelStyle}>Phone<input value={selectedVendor.phone ?? ""} onChange={(event) => updateVendor(selectedVendor.id, { phone: event.target.value })} style={inputStyle} /></label>
+            <label style={labelStyle}>Email<input value={selectedVendor.email ?? ""} onChange={(event) => updateVendor(selectedVendor.id, { email: event.target.value })} style={inputStyle} /></label>
+            <label style={labelStyle}>Notes<textarea value={selectedVendor.notes} onChange={(event) => updateVendor(selectedVendor.id, { notes: event.target.value })} style={textareaStyle} /></label>
+          </div>
+        </Section>
+      </div>
+    );
+  }
+
+  function updateVendor(id: string, changes: Partial<VendorRecord>) {
+    setVendorRecords((current) => current.map((vendor) => (vendor.id === id ? { ...vendor, ...changes } : vendor)));
+  }
+
+  function renderCalendar() {
+    return <Section title="Calendar" eyebrow="Scheduled items"><div style={listGridStyle}>{calendarItems.map((item) => <div key={item.id} style={recordCardStyle}><h3 style={cardTitleStyle}>{item.title}</h3><p style={mutedSmallStyle}>{formatDate(item.date)} · {item.area}</p><span style={badgeStyle(item.status)}>{item.status}</span></div>)}</div></Section>;
+  }
+
+  function renderWeather() {
+    return <Section title="Weather" eyebrow="Property planning"><div style={emptyStateStyle}>Weather planning placeholder. Keep using this tab for rain, wind, lake, exterior stain, irrigation, and dock planning notes.</div></Section>;
+  }
+
+  function renderDocuments() {
+    return <Section title="Documents" eyebrow="Linked records"><div style={listGridStyle}>{defaultDocuments.map((doc) => <div key={doc.id} style={recordCardStyle}><h3 style={cardTitleStyle}>{doc.title}</h3><p style={mutedSmallStyle}>{doc.type} · {doc.area}</p><p style={bodyTextStyle}>{doc.notes}</p>{doc.href ? <a href={doc.href} style={linkStyle}>Open</a> : null}</div>)}</div></Section>;
+  }
+
+  function renderProcedures() {
+    return <Section title="Procedures" eyebrow="Checklists"><div style={listGridStyle}>{defaultProcedures.map((procedure) => <div key={procedure.id} style={recordCardStyle}><h3 style={cardTitleStyle}>{procedure.title}</h3><p style={mutedSmallStyle}>{procedure.area}</p><ol style={{ margin: "10px 0 0", paddingLeft: 20 }}>{procedure.steps.map((step, index) => <li key={`${procedure.id}-${index}`} style={bodyTextStyle}>{step}</li>)}</ol></div>)}</div></Section>;
+  }
+
+  function renderParts() {
+    return <Section title="Parts" eyebrow="Inventory"><div style={listGridStyle}>{partRecords.map((part) => <div key={part.id} style={recordCardStyle}><h3 style={cardTitleStyle}>{part.name}</h3><p style={mutedSmallStyle}>{part.category} · {locationName(part.locationId)}</p><p style={bodyTextStyle}>Qty {part.quantity} / min {part.minQuantity}</p><span style={badgeStyle(part.status)}>{part.status}</span></div>)}</div></Section>;
+  }
+
+  function renderAssistant() {
+    return (
+      <Section title="Ask Atlas Property Assistant" eyebrow="Local Atlas records">
+        <div style={formGridStyle}>
+          <label style={labelStyle}>Question<textarea value={assistantQuestion} onChange={(event) => setAssistantQuestion(event.target.value)} placeholder="Example: where is the ADU, what is high priority, who handles irrigation..." style={textareaStyle} /></label>
+          <button type="button" onClick={askAtlas} style={goldButtonStyle}>Ask Atlas</button>
+          <pre style={answerBoxStyle}>{assistantAnswer}</pre>
+        </div>
+      </Section>
+    );
+  }
 }
 
-const pageStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  background: colors.bg,
-  padding: 12,
-  fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  color: colors.ink,
-};
-
-const appGridStyle: React.CSSProperties = {
-  maxWidth: 1440,
-  margin: "0 auto",
-  display: "grid",
-  gap: 16,
-  minWidth: 0,
-};
-
-const sidebarStyle: React.CSSProperties = {
-  top: 20,
-  alignSelf: "start",
-  background: colors.navy,
-  color: "white",
-  borderRadius: 28,
-  padding: 16,
-  display: "grid",
-  alignContent: "start",
-  gap: 14,
-  boxShadow: "0 20px 50px rgba(11,30,51,0.18)",
-};
-
-const brandRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  padding: "8px 6px 14px",
-  borderBottom: "1px solid rgba(255,255,255,0.14)",
-};
-
-const brandMarkStyle: React.CSSProperties = {
-  width: 42,
-  height: 42,
-  borderRadius: 14,
-  background: colors.gold,
-  color: colors.navy,
-  display: "grid",
-  placeItems: "center",
-  fontWeight: 1000,
-  fontSize: 22,
-};
-
-const navGridStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 8,
-};
-
-const navButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.16)",
-  background: "rgba(255,255,255,0.07)",
-  color: "white",
-  borderRadius: 14,
-  padding: "11px 12px",
-  fontWeight: 900,
-  textAlign: "left",
-  cursor: "pointer",
-};
-
-const navButtonActiveStyle: React.CSSProperties = {
-  border: `1px solid ${colors.gold}`,
-  background: "rgba(201,154,61,0.18)",
-};
-
-const heroStyle: React.CSSProperties = {
-  background: `linear-gradient(135deg, ${colors.navy}, ${colors.navy2})`,
-  color: "white",
-  borderRadius: 28,
-  boxShadow: "0 20px 50px rgba(11,30,51,0.18)",
-};
-
-const eyebrowStyle: React.CSSProperties = {
-  color: colors.gold2,
-  fontWeight: 950,
-  letterSpacing: 1.8,
-  fontSize: 12,
-};
-
-const goldEyebrowStyle: React.CSSProperties = {
-  color: colors.gold,
-  fontSize: 12,
-  fontWeight: 1000,
-  letterSpacing: 1.5,
-  textTransform: "uppercase",
-};
-
-const searchCardStyle: React.CSSProperties = {
-  background: colors.card,
-  borderRadius: 24,
-  padding: 14,
-  border: `1px solid ${colors.border}`,
-  boxShadow: "0 16px 42px rgba(11,30,51,0.08)",
-  display: "grid",
-  gap: 10,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  border: `1px solid ${colors.border}`,
-  borderRadius: 16,
-  padding: "13px 14px",
-  fontSize: 16,
-  outline: "none",
-  background: "#FFFFFF",
-  color: colors.ink,
-};
-
-const textareaStyle: React.CSSProperties = {
-  ...inputStyle,
-  minHeight: 130,
-  resize: "vertical",
-  lineHeight: 1.45,
-};
-
-const filterStyle: React.CSSProperties = {
-  ...inputStyle,
-  minHeight: 40,
-  padding: "9px 10px",
-  fontSize: 14,
-  borderRadius: 12,
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.border}`,
-  background: "#fff",
-  color: colors.navy,
-  borderRadius: 14,
-  padding: "10px 12px",
-  fontWeight: 900,
-  cursor: "pointer",
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.gold}`,
-  background: colors.gold,
-  color: colors.navy,
-  borderRadius: 14,
-  padding: "11px 14px",
-  fontWeight: 1000,
-  cursor: "pointer",
-};
-
-const dangerButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(180,35,24,0.28)",
-  background: "rgba(180,35,24,0.08)",
-  color: colors.red,
-  borderRadius: 14,
-  padding: "11px 14px",
-  fontWeight: 1000,
-  cursor: "pointer",
-};
-
-const errorBoxStyle: React.CSSProperties = {
-  background: "rgba(180,35,24,0.08)",
-  color: colors.red,
-  border: "1px solid rgba(180,35,24,0.22)",
-  borderRadius: 18,
-  padding: 14,
-  fontWeight: 850,
-};
-
-const cardStyle: React.CSSProperties = {
-  background: colors.card,
-  border: `1px solid ${colors.border}`,
-  borderRadius: 24,
-  boxShadow: "0 14px 36px rgba(11,30,51,0.07)",
-  minWidth: 0,
-};
-
-const metricCardStyle: React.CSSProperties = {
-  border: `1px solid ${colors.border}`,
-  background: "#FBFCFE",
-  borderRadius: 20,
-  padding: 16,
-  textAlign: "left",
-  cursor: "pointer",
-  minWidth: 0,
-};
-
-const compactRowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
-  gap: 10,
-  alignItems: "center",
-  border: `1px solid ${colors.border}`,
-  background: "#FBFCFE",
-  borderRadius: 18,
-  padding: 12,
-  minWidth: 0,
-};
-
-const rowButtonStyle: React.CSSProperties = {
-  background: "#FBFCFE",
-  borderRadius: 18,
-  padding: 14,
-  textAlign: "left",
-  cursor: "pointer",
-  minWidth: 0,
-};
-
-const workOrderBoardStyle: React.CSSProperties = {
-  background: colors.card,
-  border: `1px solid ${colors.border}`,
-  borderRadius: 22,
-  boxShadow: "0 14px 35px rgba(11,30,51,0.06)",
-  overflow: "hidden",
-  minWidth: 0,
-};
-
-const workOrderEditorStyle: React.CSSProperties = {
-  background: colors.card,
-  border: `1px solid ${colors.border}`,
-  borderRadius: 22,
-  boxShadow: "0 14px 35px rgba(11,30,51,0.06)",
-  padding: 14,
-  minWidth: 0,
-};
-
-const workOrderCardButtonStyle: React.CSSProperties = {
-  background: "#FBFCFE",
-  borderRadius: 18,
-  padding: 12,
-  textAlign: "left",
-  cursor: "pointer",
-  minWidth: 0,
-};
-
-const rowTitleStyle: React.CSSProperties = {
-  color: colors.navy,
-  fontWeight: 1000,
-  overflowWrap: "anywhere",
-};
-
-const rowSubStyle: React.CSSProperties = {
-  color: colors.muted,
-  fontSize: 13,
-  marginTop: 4,
-  overflowWrap: "anywhere",
-  lineHeight: 1.4,
-};
-
-const h3Style: React.CSSProperties = {
-  margin: "0 0 10px",
-  color: colors.navy,
-  fontSize: 22,
-};
-
-const h4Style: React.CSSProperties = {
-  margin: "0 0 10px",
-  color: colors.navy,
-  fontSize: 16,
-};
-
-const emptyStyle: React.CSSProperties = {
-  color: colors.muted,
-  background: "#FBFCFE",
-  border: `1px dashed ${colors.border}`,
-  borderRadius: 16,
-  padding: 14,
-  fontWeight: 800,
-};
-
-const detailTitleStyle: React.CSSProperties = {
-  margin: "8px 0 12px",
-  color: colors.navy,
-  fontSize: 28,
-  lineHeight: 1.08,
-  overflowWrap: "anywhere",
-};
-
-const detailGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 10,
-};
-
-const detailCellStyle: React.CSSProperties = {
-  border: `1px solid ${colors.border}`,
-  borderRadius: 16,
-  padding: 12,
-  background: "#FBFCFE",
-  minWidth: 0,
-};
-
-const labelStyle: React.CSSProperties = {
-  color: colors.muted,
-  fontSize: 12,
-  fontWeight: 950,
-  textTransform: "uppercase",
-  letterSpacing: 0.8,
-};
-
-const notesStyle: React.CSSProperties = {
-  border: `1px solid ${colors.border}`,
-  borderRadius: 16,
-  background: "#FBFCFE",
-  padding: 12,
-  color: colors.ink,
-  whiteSpace: "pre-wrap",
-  lineHeight: 1.55,
-  overflowWrap: "anywhere",
-};
-
-const miniButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.border}`,
-  background: "#fff",
-  borderRadius: 14,
-  padding: "10px 12px",
-  textAlign: "left",
-  fontWeight: 850,
-  color: colors.navy,
-  cursor: "pointer",
-};
-
-const checkboxRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  color: colors.navy,
-  fontWeight: 900,
-};
-
-const mapViewportStyle: React.CSSProperties = {
-  width: "100%",
-  overflowX: "auto",
-  overflowY: "hidden",
-  WebkitOverflowScrolling: "touch",
-  borderRadius: 22,
-  border: `1px solid ${colors.border}`,
-  background: "#E9EEF5",
-  padding: 8,
-};
-
-const mapCanvasStyle: React.CSSProperties = {
-  position: "relative",
-  borderRadius: 18,
-  overflow: "hidden",
-  background: "#DDE6EF",
-};
-
-const mapImageStyle: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  height: "auto",
-  userSelect: "none",
-};
-
-const mapPinStyle: React.CSSProperties = {
-  position: "absolute",
-  transform: "translate(-50%, -50%)",
-  border: `1px solid ${colors.gold2}`,
-  background: colors.navy,
-  color: "white",
-  borderRadius: 999,
-  fontWeight: 1000,
-  boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-  maxWidth: 190,
-};
-
-function tabButtonStyle(active: boolean): React.CSSProperties {
-  return {
-    border: "none",
-    borderBottom: active ? `3px solid ${colors.gold}` : `1px solid ${colors.border}`,
-    background: active ? "#FFFFFF" : "#F7FAFD",
-    color: active ? colors.navy : colors.muted,
-    padding: "13px 8px",
-    fontSize: 14,
-    fontWeight: 950,
-    cursor: "pointer",
-  };
+function Stat({ label, value }: { label: string; value: string }) {
+  return <div style={statCardStyle}><div style={statValueStyle}>{value}</div><div style={statLabelStyle}>{label}</div></div>;
 }
+
+function Section({ title, eyebrow, right, children }: { title: string; eyebrow: string; right?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section style={sectionStyle}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
+        <div>
+          <div style={eyebrowStyle}>{eyebrow}</div>
+          <h2 style={sectionTitleStyle}>{title}</h2>
+        </div>
+        {right}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const shellStyle: React.CSSProperties = { minHeight: "100vh", display: "grid", background: colors.bg, color: colors.text, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" };
+const sidebarStyle: React.CSSProperties = { top: 0, alignSelf: "start", background: `linear-gradient(180deg, ${colors.navy}, ${colors.navy2})`, padding: 18, color: "white", overflowY: "auto" };
+const brandBoxStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 12, padding: "8px 4px 20px" };
+const logoCircleStyle: React.CSSProperties = { width: 44, height: 44, borderRadius: 16, display: "grid", placeItems: "center", background: colors.gold, color: colors.navy, fontWeight: 1000, fontSize: 24, boxShadow: "0 12px 28px rgba(0,0,0,.25)" };
+const brandTitleStyle: React.CSSProperties = { fontWeight: 1000, letterSpacing: 2, fontSize: 21 };
+const brandSubtitleStyle: React.CSSProperties = { fontSize: 12, color: "rgba(255,255,255,.72)", fontWeight: 800 };
+const navStyle: React.CSSProperties = { display: "grid", gap: 8 };
+const navButtonStyle: React.CSSProperties = { border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.82)", padding: "11px 12px", borderRadius: 12, textAlign: "left", cursor: "pointer", fontWeight: 850 };
+const navButtonActiveStyle: React.CSSProperties = { background: "rgba(201,154,61,.20)", borderColor: colors.gold, color: "white" };
+const contentStyle: React.CSSProperties = { padding: 18, minWidth: 0 };
+const topbarStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 14, marginBottom: 18 };
+const pageTitleStyle: React.CSSProperties = { margin: "3px 0 0", color: colors.navy, fontSize: 34, lineHeight: 1.05, letterSpacing: -0.8 };
+const eyebrowStyle: React.CSSProperties = { color: colors.gold, textTransform: "uppercase", fontSize: 11, letterSpacing: 1.5, fontWeight: 1000 };
+const searchInputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", border: `1px solid ${colors.line}`, background: "white", borderRadius: 14, padding: "13px 14px", fontWeight: 750, outline: "none" };
+const searchPanelStyle: React.CSSProperties = { position: "absolute", top: "calc(100% + 8px)", left: 0, right: 0, background: "white", border: `1px solid ${colors.line}`, borderRadius: 14, boxShadow: "0 18px 40px rgba(11,30,51,.18)", padding: 8, zIndex: 30, maxHeight: 420, overflowY: "auto" };
+const searchResultStyle: React.CSSProperties = { display: "grid", gap: 3, width: "100%", textAlign: "left", border: "none", background: "transparent", padding: 10, borderRadius: 10, cursor: "pointer", color: colors.text };
+const sectionStyle: React.CSSProperties = { background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 18, padding: 16, boxShadow: "0 10px 24px rgba(11,30,51,.06)" };
+const sectionTitleStyle: React.CSSProperties = { color: colors.navy, margin: "4px 0 0", fontSize: 22, letterSpacing: -0.3 };
+const statGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 };
+const statCardStyle: React.CSSProperties = { background: "white", border: `1px solid ${colors.line}`, borderRadius: 16, padding: 16 };
+const statValueStyle: React.CSSProperties = { fontSize: 31, color: colors.navy, fontWeight: 1000 };
+const statLabelStyle: React.CSSProperties = { color: colors.muted, fontWeight: 850, fontSize: 13 };
+const stackStyle: React.CSSProperties = { display: "grid", gap: 12 };
+const gridTwoStyle: React.CSSProperties = { display: "grid", gap: 16, alignItems: "start" };
+const mapPreviewStyle: React.CSSProperties = { position: "relative", overflow: "hidden", borderRadius: 16, border: `1px solid ${colors.line}`, background: "#D7E0EA", minHeight: 260 };
+const mapShellStyle: React.CSSProperties = { position: "relative", width: "100%", aspectRatio: "4 / 3", overflow: "hidden", borderRadius: 18, border: `1px solid ${colors.line}`, background: "#D7E0EA", touchAction: "none", userSelect: "none" };
+const mobileMapViewportStyle: React.CSSProperties = { width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", borderRadius: 18 };
+const mobileMapShellStyle: React.CSSProperties = { width: 920, maxWidth: "none" };
+const mapImageStyle: React.CSSProperties = { width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" };
+const mapPinStyle: React.CSSProperties = { position: "absolute", transform: "translate(-50%, -50%)", border: "2px solid", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 950, cursor: "grab", boxShadow: "0 8px 20px rgba(0,0,0,.25)", whiteSpace: "nowrap", touchAction: "none" };
+const mobileMapPinStyle: React.CSSProperties = { fontSize: 12, padding: "8px 11px" };
+const miniMapPinStyle: React.CSSProperties = { position: "absolute", transform: "translate(-50%, -50%)", background: colors.navy, color: "white", border: `1px solid ${colors.gold2}`, borderRadius: 999, padding: "3px 7px", fontSize: 10, fontWeight: 900, whiteSpace: "nowrap" };
+const pinDotStyle: React.CSSProperties = { display: "inline-flex", marginRight: 6, opacity: 0.7, fontSize: 10 };
+const recordCardStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, background: "white", borderRadius: 16, padding: 14 };
+const cardTitleStyle: React.CSSProperties = { color: colors.navy, margin: "4px 0 6px", fontSize: 18 };
+const rowButtonStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, width: "100%", textAlign: "left", border: `1px solid ${colors.line}`, background: "white", borderRadius: 14, padding: 12, cursor: "pointer", color: colors.text };
+const mutedSmallStyle: React.CSSProperties = { color: colors.muted, margin: "4px 0 0", fontSize: 13, lineHeight: 1.35 };
+const bodyTextStyle: React.CSSProperties = { color: colors.text, margin: "8px 0 0", lineHeight: 1.45 };
+const emptyStateStyle: React.CSSProperties = { border: `1px dashed ${colors.line}`, background: "#F8FAFC", borderRadius: 14, padding: 12, color: colors.muted, fontWeight: 750, fontSize: 13 };
+const buttonRowStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" };
+const goldButtonStyle: React.CSSProperties = { border: "none", background: colors.gold, color: colors.navy, borderRadius: 12, padding: "10px 13px", fontWeight: 1000, cursor: "pointer" };
+const secondaryButtonStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, background: "white", color: colors.navy, borderRadius: 12, padding: "10px 13px", fontWeight: 900, cursor: "pointer" };
+const dangerButtonStyle: React.CSSProperties = { border: "none", background: "#FEECEC", color: colors.red, borderRadius: 12, padding: "10px 13px", fontWeight: 1000, cursor: "pointer" };
+const formGridStyle: React.CSSProperties = { display: "grid", gap: 10 };
+const labelStyle: React.CSSProperties = { display: "grid", gap: 6, fontSize: 12, color: colors.muted, fontWeight: 900 };
+const inputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", border: `1px solid ${colors.line}`, background: "white", color: colors.text, borderRadius: 12, padding: "10px 11px", fontWeight: 750, outline: "none" };
+const textareaStyle: React.CSSProperties = { ...inputStyle, minHeight: 110, resize: "vertical", lineHeight: 1.4 };
+const photoGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 };
+const photoCardStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, borderRadius: 14, overflow: "hidden", background: "white", padding: 8 };
+const photoImageStyle: React.CSSProperties = { width: "100%", height: 110, objectFit: "cover", borderRadius: 10, marginBottom: 8 };
+const listGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 12 };
+const chipButtonStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, background: "#F8FAFC", color: colors.navy, borderRadius: 999, padding: "6px 10px", fontWeight: 850, cursor: "pointer" };
+const linkStyle: React.CSSProperties = { color: colors.navy, fontWeight: 1000 };
+const answerBoxStyle: React.CSSProperties = { whiteSpace: "pre-wrap", border: `1px solid ${colors.line}`, background: "#F8FAFC", borderRadius: 14, padding: 14, color: colors.text, lineHeight: 1.45, minHeight: 180 };
