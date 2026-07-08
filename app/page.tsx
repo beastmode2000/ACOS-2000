@@ -301,6 +301,7 @@ function isPartStatus(value: unknown): value is PartStatus {
 
 function readStoredArray<T>(keys: string[], fallback: T[]): T[] {
   if (typeof window === "undefined") return fallback;
+
   for (const key of keys) {
     try {
       const raw = window.localStorage.getItem(key);
@@ -311,6 +312,7 @@ function readStoredArray<T>(keys: string[], fallback: T[]): T[] {
       continue;
     }
   }
+
   return fallback;
 }
 
@@ -429,7 +431,9 @@ function badgeStyle(value: string): React.CSSProperties {
     Medium: { bg: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
     Normal: { bg: "#EDF3FF", color: "#175CD3", border: "#C8D9FF" },
   };
+
   const item = palette[value] ?? palette.Monitor;
+
   return {
     display: "inline-flex",
     alignItems: "center",
@@ -681,7 +685,7 @@ function ListDrawerLayout(props: {
   return (
     <section style={sectionStyle}>
       <SectionHeader eyebrow={props.eyebrow} title={props.title} detail={props.detail} right={props.right} />
-      <div style={{ ...drawerGridStyle, gridTemplateColumns: props.isMobile ? "1fr" : "minmax(320px, 430px) minmax(0, 1fr)" }}>
+      <div style={{ ...drawerGridStyle, gridTemplateColumns: props.isMobile ? "1fr" : "minmax(0, 1fr) minmax(330px, 430px)" }}>
         <div style={listPanelStyle}>{props.list}</div>
         <div style={drawerStyle}>{props.drawer}</div>
       </div>
@@ -717,6 +721,7 @@ export default function AtlasPage() {
   const [selectedPartId, setSelectedPartId] = useState(fallbackParts[0].id);
 
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
   const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([]);
   const [selectedWeatherDate, setSelectedWeatherDate] = useState("");
   const [weatherStatus, setWeatherStatus] = useState("Loading 7-day irrigation weather...");
@@ -892,6 +897,18 @@ export default function AtlasPage() {
   const selectedWeather = weatherDays.find((day) => day.date === selectedWeatherDate) ?? weatherDays[0];
 
   const todayEvents = useMemo(() => byTitle(calendarItems.filter((item) => item.date === todayISO())), [calendarItems]);
+
+  const selectedDayEvents = useMemo(
+    () => byTitle(calendarItems.filter((item) => item.date === selectedCalendarDate)),
+    [calendarItems, selectedCalendarDate]
+  );
+
+  const weatherByDate = useMemo(() => {
+    const map = new Map<string, WeatherDay>();
+    weatherDays.forEach((day) => map.set(day.date, day));
+    return map;
+  }, [weatherDays]);
+
   const q = query.trim().toLowerCase();
 
   const filteredLocations = useMemo(() => {
@@ -986,7 +1003,11 @@ export default function AtlasPage() {
     if (result.serviceId) setSelectedServiceId(result.serviceId);
     if (result.mapLabelId) setSelectedMapLabelId(result.mapLabelId);
     if (result.procedureId) setSelectedProcedureId(result.procedureId);
-    if (result.calendarId) setSelectedCalendarId(result.calendarId);
+    if (result.calendarId) {
+      setSelectedCalendarId(result.calendarId);
+      const event = calendarItems.find((item) => item.id === result.calendarId);
+      if (event) setSelectedCalendarDate(event.date);
+    }
     if (result.partId) setSelectedPartId(result.partId);
     setScreen(result.screen);
     setQuery("");
@@ -1067,10 +1088,32 @@ export default function AtlasPage() {
   }
 
   function addCalendarItem(date?: string) {
-    const record = normalizeCalendar({ id: uid("cal"), title: "New Calendar Item", date: date || todayISO(), area: "2000", status: "Scheduled" });
+    const targetDate = date || selectedCalendarDate || todayISO();
+
+    const record = normalizeCalendar({
+      id: uid("cal"),
+      title: "New Calendar Item",
+      date: targetDate,
+      area: "2000",
+      status: "Scheduled",
+    });
+
     setCalendarItems((current) => byTitle([record, ...current]));
     setSelectedCalendarId(record.id);
+    setSelectedCalendarDate(targetDate);
     setScreen("calendar");
+  }
+
+  function deleteCalendarItem(id: string) {
+    const remaining = calendarItems.filter((item) => item.id !== id);
+    const nextForSelectedDay = remaining.find((item) => item.date === selectedCalendarDate) ?? remaining[0];
+
+    setCalendarItems(byTitle(remaining));
+
+    if (nextForSelectedDay) {
+      setSelectedCalendarId(nextForSelectedDay.id);
+      setSelectedCalendarDate(nextForSelectedDay.date);
+    }
   }
 
   function updateCalendarItem(patch: Partial<CalendarItem>) {
@@ -1212,7 +1255,7 @@ export default function AtlasPage() {
             <div style={listStyle}>
               {todayEvents.length ? (
                 todayEvents.slice(0, 5).map((event) => (
-                  <button key={event.id} type="button" onClick={() => { setSelectedCalendarId(event.id); setScreen("calendar"); }} style={rowButtonStyle}>
+                  <button key={event.id} type="button" onClick={() => { setSelectedCalendarId(event.id); setSelectedCalendarDate(event.date); setScreen("calendar"); }} style={rowButtonStyle}>
                     <div>
                       <strong>{event.title}</strong>
                       <p style={mutedSmallStyle}>{event.area}</p>
@@ -1524,101 +1567,174 @@ export default function AtlasPage() {
       <ListDrawerLayout
         eyebrow="Editable Month View"
         title="Calendar"
-        detail="Click a date to add an item. Today and add/edit controls are in the right box."
+        detail="Click a day to see what is scheduled. Add, edit, save, or delete events from the right box."
         isMobile={isMobile}
         right={
           <>
-            <button type="button" onClick={() => moveCalendarMonth(-1)} style={secondaryButtonStyle}>Previous</button>
-            <button type="button" onClick={() => setCalendarCursor(new Date())} style={secondaryButtonStyle}>Today</button>
-            <button type="button" onClick={() => moveCalendarMonth(1)} style={secondaryButtonStyle}>Next</button>
+            <button type="button" onClick={() => moveCalendarMonth(-1)} style={secondaryButtonStyle}>
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCalendarCursor(new Date());
+                setSelectedCalendarDate(todayISO());
+              }}
+              style={secondaryButtonStyle}
+            >
+              Today
+            </button>
+            <button type="button" onClick={() => moveCalendarMonth(1)} style={secondaryButtonStyle}>
+              Next
+            </button>
           </>
         }
         list={
           <div style={stackStyle}>
             <div style={calendarHeaderStyle}>{monthName(calendarCursor)}</div>
+
             <div style={calendarWeekStyle}>
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                <div key={day} style={calendarDayNameStyle}>{day}</div>
+                <div key={day} style={calendarDayNameStyle}>
+                  {day}
+                </div>
               ))}
             </div>
+
             <div style={calendarGridStyle}>
               {monthCells.map((cell) => {
                 const events = cell.date ? calendarItems.filter((item) => item.date === cell.date) : [];
                 const isToday = cell.date === todayISO();
+                const isSelected = cell.date === selectedCalendarDate;
+                const dayWeather = cell.date ? weatherByDate.get(cell.date) : undefined;
+
                 return (
                   <button
                     key={cell.key}
                     type="button"
                     disabled={!cell.date}
-                    onClick={() => cell.date && addCalendarItem(cell.date)}
+                    onClick={() => {
+                      if (!cell.date) return;
+                      setSelectedCalendarDate(cell.date);
+
+                      const firstEvent = calendarItems.find((item) => item.date === cell.date);
+                      if (firstEvent) setSelectedCalendarId(firstEvent.id);
+                    }}
                     style={{
                       ...calendarCellStyle,
                       opacity: cell.outside ? 0.25 : 1,
-                      borderColor: isToday ? colors.gold : colors.line,
-                      background: isToday ? "#FFFAEB" : "#FFFFFF",
+                      borderColor: isSelected ? colors.gold : isToday ? colors.gold2 : colors.line,
+                      background: isSelected ? "#FFFAEB" : isToday ? "#FFFDF3" : "#FFFFFF",
+                      boxShadow: isSelected ? "0 12px 28px rgba(201,154,61,0.18)" : "none",
                     }}
                   >
-                    <strong>{cell.day ?? ""}</strong>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                      <strong>{cell.day ?? ""}</strong>
+                      {dayWeather ? (
+                        <span title={weatherText(dayWeather.code)} style={calendarWeatherIconStyle}>
+                          {weatherIcon(dayWeather.code)}
+                        </span>
+                      ) : null}
+                    </div>
+
                     <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
                       {events.slice(0, 3).map((event) => (
-                        <span key={event.id} onClick={(mouseEvent) => { mouseEvent.stopPropagation(); setSelectedCalendarId(event.id); }} style={calendarPillStyle}>
+                        <span
+                          key={event.id}
+                          onClick={(mouseEvent) => {
+                            mouseEvent.stopPropagation();
+                            setSelectedCalendarDate(event.date);
+                            setSelectedCalendarId(event.id);
+                          }}
+                          style={calendarPillStyle}
+                        >
                           {event.title}
                         </span>
                       ))}
+
                       {events.length > 3 ? <span style={calendarMoreStyle}>+{events.length - 3} more</span> : null}
                     </div>
                   </button>
                 );
               })}
             </div>
-
-            <div style={listStyle}>
-              <div style={eyebrowStyle}>A–Z Event List</div>
-              {filteredCalendar.map((item) => (
-                <button key={item.id} type="button" onClick={() => setSelectedCalendarId(item.id)} style={{ ...rowButtonStyle, borderColor: item.id === selectedCalendar.id ? colors.gold : colors.line }}>
-                  <div>
-                    <strong>{item.title}</strong>
-                    <p style={mutedSmallStyle}>{formatDate(item.date)} · {item.area}</p>
-                  </div>
-                  <span style={badgeStyle(item.status)}>{item.status}</span>
-                </button>
-              ))}
-            </div>
           </div>
         }
         drawer={
           <>
-            <div style={eyebrowStyle}>Today</div>
-            <h3 style={detailTitleStyle}>{formatDate(todayISO())}</h3>
+            <div style={eyebrowStyle}>Selected Day</div>
+            <h3 style={detailTitleStyle}>{formatDate(selectedCalendarDate)}</h3>
+
             <div style={calendarTodayBoxStyle}>
-              {todayEvents.length ? (
-                todayEvents.map((event) => (
-                  <button key={event.id} type="button" onClick={() => setSelectedCalendarId(event.id)} style={calendarTodayItemStyle}>
+              <div style={eyebrowStyle}>Scheduled</div>
+
+              {selectedDayEvents.length ? (
+                selectedDayEvents.map((event) => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCalendarDate(event.date);
+                      setSelectedCalendarId(event.id);
+                    }}
+                    style={{
+                      ...calendarTodayItemStyle,
+                      borderColor: event.id === selectedCalendar.id ? colors.gold : colors.line,
+                    }}
+                  >
                     <strong>{event.title}</strong>
-                    <span>{event.area} · {event.status}</span>
+                    <span>
+                      {event.area} · {event.status}
+                    </span>
                   </button>
                 ))
               ) : (
-                <p style={mutedSmallStyle}>No events listed for today.</p>
+                <p style={mutedSmallStyle}>Nothing scheduled for this day.</p>
               )}
             </div>
 
             <div style={compactAddBoxStyle}>
-              <div style={eyebrowStyle}>Add Event</div>
-              <button type="button" onClick={() => addCalendarItem(todayISO())} style={{ ...goldButtonStyle, width: "100%", marginTop: 8 }}>Add Event Today</button>
-              <button type="button" onClick={() => addCalendarItem()} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 8 }}>Add Event</button>
+              <button
+                type="button"
+                onClick={() => addCalendarItem(selectedCalendarDate)}
+                style={{ ...goldButtonStyle, width: "100%" }}
+              >
+                Add Event
+              </button>
             </div>
 
             <div style={{ marginTop: 16 }}>
-              <div style={eyebrowStyle}>Selected / Edit Event</div>
+              <div style={eyebrowStyle}>Edit Event</div>
               <h3 style={detailTitleStyle}>{selectedCalendar.title}</h3>
+
               <div style={formGridStyle}>
                 <Field label="Title" value={selectedCalendar.title} onChange={(value) => updateCalendarItem({ title: value })} />
-                <Field label="Date" value={selectedCalendar.date} onChange={(value) => updateCalendarItem({ date: value })} />
+                <Field
+                  label="Date"
+                  value={selectedCalendar.date}
+                  onChange={(value) => {
+                    updateCalendarItem({ date: value });
+                    setSelectedCalendarDate(value);
+                  }}
+                />
                 <Field label="Area" value={selectedCalendar.area} onChange={(value) => updateCalendarItem({ area: value })} />
-                <SelectField label="Status" value={selectedCalendar.status} onChange={(value) => updateCalendarItem({ status: value })} options={["Open", "Scheduled", "Completed", "Monitor"] as const} />
+                <SelectField
+                  label="Status"
+                  value={selectedCalendar.status}
+                  onChange={(value) => updateCalendarItem({ status: value })}
+                  options={["Open", "Scheduled", "Completed", "Monitor"] as const}
+                />
               </div>
-              <button type="button" onClick={() => void postAtlasRecord("calendar", selectedCalendar)} style={goldButtonStyle}>Save Calendar Item</button>
+
+              <div style={buttonRowStyle}>
+                <button type="button" onClick={() => void postAtlasRecord("calendar", selectedCalendar)} style={goldButtonStyle}>
+                  Save
+                </button>
+
+                <button type="button" onClick={() => deleteCalendarItem(selectedCalendar.id)} style={dangerButtonStyle}>
+                  Delete
+                </button>
+              </div>
             </div>
           </>
         }
@@ -1628,90 +1744,67 @@ export default function AtlasPage() {
 
   function renderWeather() {
     return (
-      <ListDrawerLayout
-        eyebrow="7-Day Forecast"
-        title="Weather / Irrigation Planning"
-        detail="Real 7-day forecast with irrigation recommendations."
-        isMobile={isMobile}
-        right={<button type="button" onClick={() => void loadWeather()} style={goldButtonStyle}>Refresh Weather</button>}
-        list={
-          <div style={stackStyle}>
-            <div style={noticeStyle}>
-              <strong>{weatherStatus}</strong>
-              <p style={mutedSmallStyle}>Forecast location is the 2000 area. Uses rain chance, rain amount, wind, and ET0 for irrigation planning.</p>
-            </div>
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="7-Day Forecast"
+          title="Weather / Irrigation Planning"
+          detail="Real 7-day forecast with irrigation recommendations."
+          right={<button type="button" onClick={() => void loadWeather()} style={goldButtonStyle}>Refresh Weather</button>}
+        />
 
-            <div style={weatherStripStyle}>
-              {weatherDays.map((day) => (
-                <button
-                  key={day.date}
-                  type="button"
-                  onClick={() => setSelectedWeatherDate(day.date)}
-                  style={{
-                    ...weatherCardStyle,
-                    borderColor: day.date === selectedWeather?.date ? colors.gold : colors.line,
-                    boxShadow: day.date === selectedWeather?.date ? "0 18px 38px rgba(201,154,61,0.24)" : "0 12px 26px rgba(15,23,42,0.06)",
-                  }}
-                >
-                  <div style={weatherCardTopStyle}>
-                    <div>
-                      <strong>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</strong>
-                      <p style={mutedSmallStyle}>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</p>
-                    </div>
-                    <div style={weatherIconStyle}>{weatherIcon(day.code)}</div>
-                  </div>
-
-                  <div style={weatherTempStyle}>{day.high}°</div>
-                  <div style={weatherLowStyle}>{day.low}° low</div>
-
-                  <div style={weatherBarTrackStyle}>
-                    <div style={{ ...weatherBarFillStyle, width: `${Math.max(12, Math.min(100, day.precipChance))}%` }} />
-                  </div>
-
-                  <div style={weatherMiniGridStyle}>
-                    <span>Rain {day.precipChance}%</span>
-                    <span>{day.precipAmount}"</span>
-                    <span>Wind {day.windMax}</span>
-                    <span>ET0 {day.et0}"</span>
-                  </div>
-
-                  <p style={weatherAdviceSmallStyle}>{irrigationAdvice(day)}</p>
-                </button>
-              ))}
-            </div>
+        <div style={stackStyle}>
+          <div style={noticeStyle}>
+            <strong>{weatherStatus}</strong>
+            <p style={mutedSmallStyle}>
+              Forecast location is the 2000 area. Uses rain chance, rain amount, wind, and ET0 for irrigation planning.
+            </p>
           </div>
-        }
-        drawer={
-          selectedWeather ? (
-            <>
-              <div style={eyebrowStyle}>Selected Forecast</div>
-              <div style={weatherDrawerHeaderStyle}>
-                <div>
-                  <h3 style={detailTitleStyle}>{shortDay(selectedWeather.date)}</h3>
-                  <p style={mutedSmallStyle}>{weatherText(selectedWeather.code)}</p>
+
+          <div style={weatherStripStyle}>
+            {weatherDays.map((day) => (
+              <button
+                key={day.date}
+                type="button"
+                onClick={() => setSelectedWeatherDate(day.date)}
+                style={{
+                  ...weatherCardStyle,
+                  borderColor: day.date === selectedWeather?.date ? colors.gold : colors.line,
+                  boxShadow:
+                    day.date === selectedWeather?.date
+                      ? "0 18px 38px rgba(201,154,61,0.24)"
+                      : "0 12px 26px rgba(15,23,42,0.06)",
+                }}
+              >
+                <div style={weatherCardTopStyle}>
+                  <div>
+                    <strong>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</strong>
+                    <p style={mutedSmallStyle}>
+                      {new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </p>
+                  </div>
+                  <div style={weatherIconStyle}>{weatherIcon(day.code)}</div>
                 </div>
-                <div style={weatherDrawerIconStyle}>{weatherIcon(selectedWeather.code)}</div>
-              </div>
 
-              <div style={weatherMetricGridStyle}>
-                <div style={weatherMetricStyle}><span>High</span><strong>{selectedWeather.high}°</strong></div>
-                <div style={weatherMetricStyle}><span>Low</span><strong>{selectedWeather.low}°</strong></div>
-                <div style={weatherMetricStyle}><span>Rain</span><strong>{selectedWeather.precipChance}%</strong></div>
-                <div style={weatherMetricStyle}><span>Amount</span><strong>{selectedWeather.precipAmount}"</strong></div>
-                <div style={weatherMetricStyle}><span>Wind</span><strong>{selectedWeather.windMax} mph</strong></div>
-                <div style={weatherMetricStyle}><span>ET0</span><strong>{selectedWeather.et0}"</strong></div>
-              </div>
+                <div style={weatherTempStyle}>{day.high}°</div>
+                <div style={weatherLowStyle}>{day.low}° low</div>
 
-              <div style={{ ...noticeStyle, marginTop: 14 }}>
-                <strong>Irrigation / Yard Work Recommendation</strong>
-                <p style={mutedSmallStyle}>{irrigationAdvice(selectedWeather)}</p>
-              </div>
-            </>
-          ) : (
-            <div style={noticeStyle}>Weather is loading.</div>
-          )
-        }
-      />
+                <div style={weatherBarTrackStyle}>
+                  <div style={{ ...weatherBarFillStyle, width: `${Math.max(12, Math.min(100, day.precipChance))}%` }} />
+                </div>
+
+                <div style={weatherMiniGridStyle}>
+                  <span>Rain {day.precipChance}%</span>
+                  <span>{day.precipAmount}"</span>
+                  <span>Wind {day.windMax}</span>
+                  <span>ET0 {day.et0}"</span>
+                </div>
+
+                <p style={weatherAdviceSmallStyle}>{irrigationAdvice(day)}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -2342,7 +2435,7 @@ const calendarGridStyle: React.CSSProperties = {
 };
 
 const calendarCellStyle: React.CSSProperties = {
-  minHeight: 110,
+  minHeight: 120,
   border: `1px solid ${colors.line}`,
   borderRadius: 16,
   background: "#FFFFFF",
@@ -2370,6 +2463,17 @@ const calendarMoreStyle: React.CSSProperties = {
   color: colors.muted,
   fontSize: 11,
   fontWeight: 850,
+};
+
+const calendarWeatherIconStyle: React.CSSProperties = {
+  width: 24,
+  height: 24,
+  borderRadius: 999,
+  background: "#FFFAEB",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 14,
+  flex: "0 0 auto",
 };
 
 const calendarTodayBoxStyle: React.CSSProperties = {
@@ -2404,8 +2508,7 @@ const compactAddBoxStyle: React.CSSProperties = {
 
 const weatherStripStyle: React.CSSProperties = {
   display: "grid",
-  gridAutoFlow: "column",
-  gridAutoColumns: "minmax(190px, 1fr)",
+  gridTemplateColumns: "repeat(7, minmax(165px, 1fr))",
   gap: 12,
   overflowX: "auto",
   paddingBottom: 8,
@@ -2485,40 +2588,6 @@ const weatherAdviceSmallStyle: React.CSSProperties = {
   lineHeight: 1.35,
   margin: 0,
   wordBreak: "break-word",
-};
-
-const weatherDrawerHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  marginBottom: 14,
-};
-
-const weatherDrawerIconStyle: React.CSSProperties = {
-  width: 72,
-  height: 72,
-  borderRadius: 24,
-  background: "#FFFAEB",
-  display: "grid",
-  placeItems: "center",
-  fontSize: 42,
-  flex: "0 0 auto",
-};
-
-const weatherMetricGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 10,
-};
-
-const weatherMetricStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  borderRadius: 18,
-  padding: 13,
-  display: "grid",
-  gap: 4,
 };
 
 const photoGridStyle: React.CSSProperties = {
