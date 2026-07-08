@@ -769,9 +769,29 @@ function normalizeService(record: ServiceRecord): ServiceRecord {
   };
 }
 
-function formatDate(value: string) {
-  const date = new Date(`${value}T12:00:00`);
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+function dateInputValue(value?: string) {
+  const clean = (value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  return "";
+}
+
+function formatDate(value?: string) {
+  const clean = (value || "").trim();
+  if (!clean) return "No date";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+    const date = new Date(`${clean}T12:00:00`);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    }
+  }
+
+  const parsed = new Date(clean);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  return clean;
 }
 
 function getLocationName(locationId: string) {
@@ -974,7 +994,7 @@ export default function AtlasPage() {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const updateMobileLayout = () => setIsMobile(window.innerWidth < 820);
+    const updateMobileLayout = () => setIsMobile(window.innerWidth < 1024);
     updateMobileLayout();
     window.addEventListener("resize", updateMobileLayout);
     return () => window.removeEventListener("resize", updateMobileLayout);
@@ -3400,7 +3420,7 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
     const noResultsTitle = workOrderTab === "todo" ? "No To Do work orders match this view." : "No Done work orders match this view.";
     const noResultsDetail = workOrderTab === "todo" ? "Switch to Done, clear filters, or create a new work order." : "Clear filters or switch back to To Do.";
 
-    const boardHeight = "calc(100vh - 190px)";
+    const boardHeight = isMobile ? "auto" : "calc(100vh - 190px)";
 
     const tabStyle = (active: boolean): React.CSSProperties => ({
       border: "none",
@@ -3508,7 +3528,7 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
             </div>
           </div>
 
-          <div style={{ maxHeight: "calc(100vh - 405px)", overflowY: "auto", background: "#FFFFFF" }}>
+          <div style={{ maxHeight: isMobile ? "none" : "calc(100vh - 405px)", overflowY: isMobile ? "visible" : "auto", background: "#FFFFFF" }}>
             {visibleWorkOrders.length ? visibleWorkOrders.map((record) => {
               const priority = getWorkOrderPriority(record);
               const isSelected = selectedServiceId === record.id && serviceMode === "edit";
@@ -3527,14 +3547,14 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
                     background: isSelected ? "#FFF9EA" : "#FFFFFF",
                     padding: "12px 12px 12px 9px",
                     display: "grid",
-                    gridTemplateColumns: "46px 1fr auto",
+                    gridTemplateColumns: isMobile ? "38px 1fr" : "46px 1fr auto",
                     gap: 10,
                     alignItems: "start",
                     cursor: "pointer",
                     textAlign: "left",
                   }}
                 >
-                  <div style={{ width: 46, height: 46, borderRadius: 10, overflow: "hidden", background: "#EDF3FF", border: `1px solid ${colors.line}`, display: "flex", alignItems: "center", justifyContent: "center", color: colors.navy, fontWeight: 950, fontSize: 12 }}>
+                  <div style={{ width: isMobile ? 38 : 46, height: isMobile ? 38 : 46, borderRadius: 10, overflow: "hidden", background: "#EDF3FF", border: `1px solid ${colors.line}`, display: "flex", alignItems: "center", justifyContent: "center", color: colors.navy, fontWeight: 950, fontSize: 12 }}>
                     {firstPhoto ? <img src={firstPhoto.dataUrl} alt={firstPhoto.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "WO"}
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -3546,7 +3566,7 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
                       {record.isRecurring ? <span style={{ ...badgeStyle("Scheduled"), padding: "3px 7px", fontSize: 11 }}>Recurring</span> : null}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right", color: colors.muted, fontSize: 11, fontWeight: 850, whiteSpace: "nowrap" }}>
+                  <div style={{ display: isMobile ? "none" : "block", textAlign: "right", color: colors.muted, fontSize: 11, fontWeight: 850, whiteSpace: "nowrap" }}>
                     <div style={{ color: colors.gold }}>{getWorkOrderNumber(record)}</div>
                     <div style={{ marginTop: 6 }}>{formatDate(getWorkOrderDueDate(record))}</div>
                     <div style={{ marginTop: 6 }}>{record.photos?.length ?? 0} pics</div>
@@ -3565,10 +3585,10 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
         </section>
 
         <section style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 22, boxShadow: "0 14px 35px rgba(11, 30, 51, 0.06)", overflow: "hidden", minHeight: boardHeight, position: isMobile ? "relative" : "sticky", top: isMobile ? 0 : 18 }}>
-          <div style={{ padding: "18px 20px", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start" }}>
+          <div style={{ padding: isMobile ? 16 : "18px 20px", borderBottom: `1px solid ${colors.line}`, display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: isMobile ? 12 : 14, alignItems: isMobile ? "stretch" : "flex-start" }}>
             <div>
               <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.1, textTransform: "uppercase" }}>{hasSelectedWorkOrder ? `Work Order ${selectedWorkOrderNumber}` : "New Work Order"}</div>
-              <h2 style={{ margin: "6px 0 0", color: colors.navy, fontSize: 26, lineHeight: 1.12 }}>{hasSelectedWorkOrder ? serviceForm.title || "Work Order Details" : "Create a Work Order"}</h2>
+              <h2 style={{ margin: "6px 0 0", color: colors.navy, fontSize: isMobile ? 23 : 26, lineHeight: 1.12 }}>{hasSelectedWorkOrder ? serviceForm.title || "Work Order Details" : "Create a Work Order"}</h2>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                 <span style={hasSelectedWorkOrder ? badgeStyle(serviceForm.status) : badgeStyle("Open")}>{hasSelectedWorkOrder ? serviceForm.status : "Open"}</span>
                 <span style={workOrderPriorityBadgeStyle(selectedWorkOrderPriority)}>{selectedWorkOrderPriority} Priority</span>
@@ -3579,20 +3599,20 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
                 {serviceForm.invoiceNumber || serviceForm.invoiceAmount ? <span style={badgeStyle("Monitor")}>Invoice / Cost</span> : null}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <div style={{ display: isMobile ? "grid" : "flex", gridTemplateColumns: isMobile ? "1fr" : undefined, width: isMobile ? "100%" : undefined, gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
               {hasSelectedWorkOrder ? <button type="button" onClick={runPrimaryWorkOrderAction} style={serviceForm.status === "Completed" ? widePrimaryButtonStyle : goldButtonStyle}>{selectedActionText()}</button> : null}
               <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>{hasSelectedWorkOrder ? "Save" : "Save New"}</button>
               {hasSelectedWorkOrder ? <button type="button" onClick={deleteService} style={deleteButtonStyle}>Delete</button> : null}
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 0 }}>
-            <div style={{ padding: 20, display: "grid", gap: 16, borderRight: `1px solid ${colors.line}` }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.1fr 0.9fr", gap: 0 }}>
+            <div style={{ padding: isMobile ? 16 : 20, display: "grid", gap: 16, borderRight: isMobile ? "none" : `1px solid ${colors.line}`, borderBottom: isMobile ? `1px solid ${colors.line}` : "none" }}>
               <label style={labelStyle}>Title<input value={serviceForm.title} onChange={(event) => setServiceForm((current) => ({ ...current, title: event.target.value }))} placeholder="Example: Clean dryer vent" style={inputStyle} /></label>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <label style={labelStyle}>Work / Created Date<input type="date" value={serviceForm.date || todayKey} onChange={(event) => setServiceForm((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
-                <label style={labelStyle}>Due / Follow-Up Date<input type="date" value={serviceForm.followUpDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, followUpDate: event.target.value }))} style={inputStyle} /></label>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+                <label style={labelStyle}>Work / Created Date<input type="date" value={dateInputValue(serviceForm.date)} onChange={(event) => setServiceForm((current) => ({ ...current, date: event.target.value }))} style={inputStyle} /></label>
+                <label style={labelStyle}>Due / Follow-Up Date<input type="date" value={dateInputValue(serviceForm.followUpDate)} onChange={(event) => setServiceForm((current) => ({ ...current, followUpDate: event.target.value }))} style={inputStyle} /></label>
               </div>
 
               <label style={labelStyle}>Comments / Notes<textarea value={serviceForm.notes} onChange={(event) => setServiceForm((current) => ({ ...current, notes: event.target.value }))} rows={8} placeholder="Write updates, sign-off notes, vendor findings, parts used, costs, and next steps." style={{ ...inputStyle, resize: "vertical" }} /></label>
@@ -3604,13 +3624,13 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
                   <label style={labelStyle}>Invoice #<input value={serviceForm.invoiceNumber ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, invoiceNumber: event.target.value }))} placeholder="Invoice number" style={inputStyle} /></label>
-                  <label style={labelStyle}>Invoice Date<input type="date" value={serviceForm.invoiceDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, invoiceDate: event.target.value }))} style={inputStyle} /></label>
+                  <label style={labelStyle}>Invoice Date<input type="date" value={dateInputValue(serviceForm.invoiceDate)} onChange={(event) => setServiceForm((current) => ({ ...current, invoiceDate: event.target.value }))} style={inputStyle} /></label>
                   <label style={labelStyle}>Amount<input value={serviceForm.invoiceAmount ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, invoiceAmount: event.target.value }))} placeholder="0.00" style={inputStyle} /></label>
                   <label style={labelStyle}>Invoice Status<select value={serviceForm.invoiceStatus ?? "not added"} onChange={(event) => setServiceForm((current) => ({ ...current, invoiceStatus: event.target.value }))} style={inputStyle}><option value="not added">Not Added</option><option value="received">Received</option><option value="needs review">Needs Review</option><option value="approved">Approved</option><option value="paid">Paid</option></select></label>
                   <label style={labelStyle}>Payment Status<select value={serviceForm.paymentStatus ?? "unknown"} onChange={(event) => setServiceForm((current) => ({ ...current, paymentStatus: event.target.value }))} style={inputStyle}><option value="unknown">Unknown</option><option value="unpaid">Unpaid</option><option value="approved">Approved</option><option value="paid">Paid</option><option value="do not pay yet">Do Not Pay Yet</option></select></label>
                   <label style={labelStyle}>Cost Category<input value={serviceForm.costCategory ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, costCategory: event.target.value }))} placeholder="Painting, pool, landscaping..." style={inputStyle} /></label>
                   <label style={labelStyle}>Approved By<input value={serviceForm.approvedBy ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, approvedBy: event.target.value }))} placeholder="Name" style={inputStyle} /></label>
-                  <label style={labelStyle}>Approved Date<input type="date" value={serviceForm.approvedDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, approvedDate: event.target.value }))} style={inputStyle} /></label>
+                  <label style={labelStyle}>Approved Date<input type="date" value={dateInputValue(serviceForm.approvedDate)} onChange={(event) => setServiceForm((current) => ({ ...current, approvedDate: event.target.value }))} style={inputStyle} /></label>
                 </div>
                 <label style={labelStyle}>Cost Notes<textarea value={serviceForm.costNotes ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, costNotes: event.target.value }))} rows={3} placeholder="Payment notes, approval notes, what the cost covered, questions for vendor, etc." style={{ ...inputStyle, resize: "vertical" }} /></label>
               </div>
@@ -3653,7 +3673,7 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
               </div>
             </div>
 
-            <aside style={{ padding: 20, display: "grid", gap: 14, alignContent: "start", background: "#FBFCFE" }}>
+            <aside style={{ padding: isMobile ? 16 : 20, display: "grid", gap: 14, alignContent: "start", background: "#FBFCFE" }}>
               <div style={inlineCardStyle}>
                 <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8 }}>Assignment</div>
                 <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
@@ -3734,7 +3754,7 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       <label style={labelStyle}>Interval<input type="number" min="1" value={serviceForm.recurrenceInterval ?? 1} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceInterval: positiveInteger(event.target.value, 1) }))} style={inputStyle} /></label>
-                      <label style={labelStyle}>Next Due<input type="date" value={serviceForm.recurrenceNextDue ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceNextDue: event.target.value }))} style={inputStyle} /></label>
+                      <label style={labelStyle}>Next Due<input type="date" value={dateInputValue(serviceForm.recurrenceNextDue)} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceNextDue: event.target.value }))} style={inputStyle} /></label>
                     </div>
 
                     <label style={labelStyle}>Days / Custom Notes<input value={serviceForm.recurrenceDays ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceDays: event.target.value }))} placeholder="Example: Mondays, or every 10 days" style={inputStyle} /></label>
@@ -3759,7 +3779,7 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
                     </div>
 
                     {serviceForm.recurrenceEndType === "after_count" ? <label style={labelStyle}>Stop After<input type="number" min="1" value={serviceForm.recurrenceCountLimit ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceCountLimit: event.target.value }))} placeholder="Number of completions" style={inputStyle} /></label> : null}
-                    {serviceForm.recurrenceEndType === "on_date" ? <label style={labelStyle}>End Date<input type="date" value={serviceForm.recurrenceEndDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceEndDate: event.target.value }))} style={inputStyle} /></label> : null}
+                    {serviceForm.recurrenceEndType === "on_date" ? <label style={labelStyle}>End Date<input type="date" value={dateInputValue(serviceForm.recurrenceEndDate)} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceEndDate: event.target.value }))} style={inputStyle} /></label> : null}
 
                     <div style={{ color: colors.muted, fontSize: 12, lineHeight: 1.45 }}>
                       When you mark this done, Atlas creates the next open work order using the next due date and saves both records to Neon.
@@ -4640,7 +4660,7 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
         </div>
       </aside>
 
-      <section style={{ padding: isMobile ? 12 : 24, minWidth: 0 }}>
+      <section style={{ padding: isMobile ? 8 : 24, minWidth: 0 }}>
         <header style={isMobile ? { ...topHeaderStyle, gridTemplateColumns: "1fr", gap: 12, padding: 14, borderRadius: 18 } : topHeaderStyle}>
           <div style={{ display: "flex", gap: 14, alignItems: "center", minWidth: 0 }}>
             <img src="/atlas-logo.png" alt="Atlas logo" style={headerLogoStyle} />
@@ -4660,16 +4680,18 @@ ${baseRecord.notes?.trim() || "No notes added yet."}`,
 
         {query ? (
           <div style={{ display: "grid", gap: 18, marginBottom: 18 }}>
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(8, minmax(0, 1fr))", gap: 12 }}>
-              <SearchCount label="locations" value={filteredLocations.length} />
-              <SearchCount label="assets" value={filteredAssets.length} />
-              <SearchCount label="vendors" value={filteredVendors.length} />
-              <SearchCount label="work orders" value={filteredServices.length} />
-              <SearchCount label="calendar" value={filteredCalendar.length} />
-              <SearchCount label="procedures" value={filteredProcedures.length} />
-              <SearchCount label="parts" value={filteredParts.length} />
-              <SearchCount label="docs" value={filteredDocuments.length} />
-            </div>
+            {!isMobile ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", gap: 12 }}>
+                <SearchCount label="locations" value={filteredLocations.length} />
+                <SearchCount label="assets" value={filteredAssets.length} />
+                <SearchCount label="vendors" value={filteredVendors.length} />
+                <SearchCount label="work orders" value={filteredServices.length} />
+                <SearchCount label="calendar" value={filteredCalendar.length} />
+                <SearchCount label="procedures" value={filteredProcedures.length} />
+                <SearchCount label="parts" value={filteredParts.length} />
+                <SearchCount label="docs" value={filteredDocuments.length} />
+              </div>
+            ) : null}
             {renderGlobalSearchResults()}
           </div>
         ) : null}
@@ -4707,7 +4729,7 @@ const inputStyle: React.CSSProperties = {
   color: colors.navy,
   borderRadius: 13,
   padding: "11px 12px",
-  fontSize: 14,
+  fontSize: 16,
   fontWeight: 750,
   outline: "none",
   boxSizing: "border-box",
@@ -4817,7 +4839,7 @@ const searchInputStyle: React.CSSProperties = {
   background: "transparent",
   color: colors.navy,
   fontWeight: 800,
-  fontSize: 15,
+  fontSize: 16,
   width: "100%",
 };
 
