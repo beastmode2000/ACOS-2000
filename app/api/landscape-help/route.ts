@@ -35,6 +35,57 @@ function getSql() {
   return neon(databaseUrl);
 }
 
+function getAdminAuth(request: NextRequest) {
+  const header = request.headers.get("authorization") || "";
+
+  if (!header.startsWith("Basic ")) return null;
+
+  try {
+    const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
+    const separatorIndex = decoded.indexOf(":");
+
+    if (separatorIndex === -1) return null;
+
+    return {
+      username: decoded.slice(0, separatorIndex),
+      password: decoded.slice(separatorIndex + 1),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function adminBlockResponse(request: NextRequest) {
+  const expectedUsername = process.env.ATLAS_ACCESS_USERNAME || "";
+  const expectedPassword = process.env.ATLAS_ACCESS_PASSWORD || "";
+
+  if (!expectedUsername || !expectedPassword) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Atlas access is not configured. Add ATLAS_ACCESS_USERNAME and ATLAS_ACCESS_PASSWORD in Vercel.",
+      },
+      { status: 500 }
+    );
+  }
+
+  const auth = getAdminAuth(request);
+
+  if (!auth || auth.username !== expectedUsername || auth.password !== expectedPassword) {
+    return NextResponse.json(
+      { ok: false, error: "Atlas login required." },
+      {
+        status: 401,
+        headers: {
+          "WWW-Authenticate": 'Basic realm="Atlas 2000", charset="UTF-8"',
+        },
+      }
+    );
+  }
+
+  return null;
+}
+
 function getPacificWeekStartISO(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Los_Angeles",
@@ -163,6 +214,7 @@ async function ensureWeek(weekStart: string) {
   if (Number(itemCount[0]?.count ?? 0) === 0) {
     for (let index = 0; index < DEFAULT_ITEMS.length; index += 1) {
       const item = DEFAULT_ITEMS[index];
+
       await sql`
         INSERT INTO landscape_help_items (week_id, sort_order, label, category, priority)
         VALUES (${week.id}, ${index + 1}, ${item.label}, ${item.category}, ${item.priority})
@@ -229,6 +281,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: true, ...tokenWeek });
     }
 
+    const blocked = adminBlockResponse(request);
+    if (blocked) return blocked;
+
     if (weekId) {
       const selectedWeek = await loadWeekById(weekId);
       if (!selectedWeek) return NextResponse.json({ ok: false, error: "Landscape Help week not found." }, { status: 404 });
@@ -272,6 +327,9 @@ export async function POST(request: NextRequest) {
   try {
     await ensureSchema();
 
+    const blocked = adminBlockResponse(request);
+    if (blocked) return blocked;
+
     const body = await request.json().catch(() => ({}));
     const weekStart = body.weekStart || getPacificWeekStartISO();
 
@@ -290,10 +348,20 @@ export async function PATCH(request: NextRequest) {
     await ensureSchema();
 
     const sql = getSql();
+    const url = new URL(request.url);
+    const queryToken = url.searchParams.get("token") || "";
     const body = await request.json();
 
-    const token = typeof body.token === "string" ? body.token : "";
+    const bodyToken = typeof body.token === "string" ? body.token : "";
+    const token = queryToken || bodyToken;
     const weekId = typeof body.weekId === "string" ? body.weekId : "";
+
+    const isPublicCrewUpdate = Boolean(token);
+
+    if (!isPublicCrewUpdate) {
+      const blocked = adminBlockResponse(request);
+      if (blocked) return blocked;
+    }
 
     let targetWeekId = weekId;
 
@@ -321,7 +389,7 @@ export async function PATCH(request: NextRequest) {
       SET
         status = ${status},
         crew_name = ${crewName},
-        manager_notes = ${managerNotes},
+        manager_notes = CASE WHEN ${isPublicCrewUpdate} THEN manager_notes ELSE ${managerNotes} END,
         crew_notes = ${crewNotes},
         completed_at = CASE WHEN ${status} = 'Complete' THEN COALESCE(completed_at, now()) ELSE NULL END,
         updated_at = now()
