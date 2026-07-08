@@ -259,6 +259,16 @@ function slugify(value: string) {
   );
 }
 
+function blankCalendarItem(date = todayISO()): CalendarItem {
+  return {
+    id: "",
+    date,
+    title: "",
+    area: "",
+    status: "Scheduled",
+  };
+}
+
 function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 50;
   return Math.max(1, Math.min(99, Math.round(value * 10) / 10));
@@ -717,11 +727,13 @@ export default function AtlasPage() {
   const [selectedVendorId, setSelectedVendorId] = useState(fallbackVendors[0].id);
   const [selectedServiceId, setSelectedServiceId] = useState(fallbackWorkOrders[0].id);
   const [selectedProcedureId, setSelectedProcedureId] = useState(fallbackProcedures[0].id);
-  const [selectedCalendarId, setSelectedCalendarId] = useState(fallbackCalendar[0].id);
   const [selectedPartId, setSelectedPartId] = useState(fallbackParts[0].id);
 
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
+  const [selectedCalendarId, setSelectedCalendarId] = useState("");
+  const [calendarDraft, setCalendarDraft] = useState<CalendarItem>(() => blankCalendarItem(todayISO()));
+
   const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([]);
   const [selectedWeatherDate, setSelectedWeatherDate] = useState("");
   const [weatherStatus, setWeatherStatus] = useState("Loading 7-day irrigation weather...");
@@ -763,6 +775,8 @@ export default function AtlasPage() {
     setCalendarItems(storedCalendar.length ? byTitle(storedCalendar) : fallbackCalendar);
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
     setPhotos(storedPhotos);
+    setSelectedCalendarId("");
+    setCalendarDraft(blankCalendarItem(todayISO()));
     setReady(true);
 
     return () => window.removeEventListener("resize", onResize);
@@ -813,7 +827,6 @@ export default function AtlasPage() {
         if (apiCalendar.length) {
           const next = byTitle(apiCalendar.map(normalizeCalendar));
           setCalendarItems(next);
-          setSelectedCalendarId((current) => next.find((item) => item.id === current)?.id ?? next[0].id);
         }
 
         if (apiPhotos.length) setPhotos(apiPhotos);
@@ -891,10 +904,10 @@ export default function AtlasPage() {
   const selectedVendor = vendorRecords.find((vendor) => vendor.id === selectedVendorId) ?? vendorRecords[0] ?? normalizeVendor({});
   const selectedService = serviceRecords.find((service) => service.id === selectedServiceId) ?? serviceRecords[0] ?? normalizeService({});
   const selectedProcedure = procedureRecords.find((procedure) => procedure.id === selectedProcedureId) ?? procedureRecords[0] ?? normalizeProcedure({});
-  const selectedCalendar = calendarItems.find((item) => item.id === selectedCalendarId) ?? calendarItems[0] ?? normalizeCalendar({});
   const selectedPart = partRecords.find((part) => part.id === selectedPartId) ?? partRecords[0] ?? normalizePart({});
   const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
   const selectedWeather = weatherDays.find((day) => day.date === selectedWeatherDate) ?? weatherDays[0];
+  const selectedCalendar = calendarDraft;
 
   const todayEvents = useMemo(() => byTitle(calendarItems.filter((item) => item.date === todayISO())), [calendarItems]);
 
@@ -1003,11 +1016,7 @@ export default function AtlasPage() {
     if (result.serviceId) setSelectedServiceId(result.serviceId);
     if (result.mapLabelId) setSelectedMapLabelId(result.mapLabelId);
     if (result.procedureId) setSelectedProcedureId(result.procedureId);
-    if (result.calendarId) {
-      setSelectedCalendarId(result.calendarId);
-      const event = calendarItems.find((item) => item.id === result.calendarId);
-      if (event) setSelectedCalendarDate(event.date);
-    }
+    if (result.calendarId) startEditCalendarItem(result.calendarId);
     if (result.partId) setSelectedPartId(result.partId);
     setScreen(result.screen);
     setQuery("");
@@ -1087,37 +1096,77 @@ export default function AtlasPage() {
     setServiceRecords((current) => byTitle(current.map((item) => (item.id === selectedService.id ? normalizeService({ ...item, ...patch }) : item))));
   }
 
-  function addCalendarItem(date?: string) {
+  function startNewCalendarDraft(date?: string) {
     const targetDate = date || selectedCalendarDate || todayISO();
-
-    const record = normalizeCalendar({
-      id: uid("cal"),
-      title: "New Calendar Item",
-      date: targetDate,
-      area: "2000",
-      status: "Scheduled",
-    });
-
-    setCalendarItems((current) => byTitle([record, ...current]));
-    setSelectedCalendarId(record.id);
     setSelectedCalendarDate(targetDate);
+    setSelectedCalendarId("");
+    setCalendarDraft(blankCalendarItem(targetDate));
     setScreen("calendar");
   }
 
-  function deleteCalendarItem(id: string) {
-    const remaining = calendarItems.filter((item) => item.id !== id);
-    const nextForSelectedDay = remaining.find((item) => item.date === selectedCalendarDate) ?? remaining[0];
+  function startEditCalendarItem(id: string) {
+    const event = calendarItems.find((item) => item.id === id);
+    if (!event) return;
+    setSelectedCalendarId(event.id);
+    setSelectedCalendarDate(event.date);
+    setCalendarDraft({ ...event });
+  }
 
-    setCalendarItems(byTitle(remaining));
-
-    if (nextForSelectedDay) {
-      setSelectedCalendarId(nextForSelectedDay.id);
-      setSelectedCalendarDate(nextForSelectedDay.date);
-    }
+  function addCalendarItem(date?: string) {
+    startNewCalendarDraft(date);
   }
 
   function updateCalendarItem(patch: Partial<CalendarItem>) {
-    setCalendarItems((current) => byTitle(current.map((item) => (item.id === selectedCalendar.id ? normalizeCalendar({ ...item, ...patch }) : item))));
+    setCalendarDraft((current) => {
+      const next: CalendarItem = {
+        ...current,
+        ...patch,
+        id: selectedCalendarId || current.id || "",
+        title: patch.title ?? current.title,
+        area: patch.area ?? current.area,
+        date: patch.date ?? current.date,
+        status: isServiceStatus(patch.status) ? patch.status : current.status,
+      };
+
+      if (patch.date) setSelectedCalendarDate(patch.date);
+
+      return next;
+    });
+  }
+
+  function saveCalendarItem() {
+    const record: CalendarItem = normalizeCalendar({
+      ...calendarDraft,
+      id: selectedCalendarId || uid("cal"),
+      title: calendarDraft.title.trim() || "Untitled Calendar Item",
+      area: calendarDraft.area.trim() || "2000",
+      date: calendarDraft.date || selectedCalendarDate || todayISO(),
+      status: calendarDraft.status || "Scheduled",
+    });
+
+    setCalendarItems((current) => {
+      const exists = current.some((item) => item.id === record.id);
+      if (exists) return byTitle(current.map((item) => (item.id === record.id ? record : item)));
+      return byTitle([record, ...current]);
+    });
+
+    setSelectedCalendarId(record.id);
+    setSelectedCalendarDate(record.date);
+    setCalendarDraft(record);
+    void postAtlasRecord("calendar", record);
+  }
+
+  function deleteCalendarItem(id: string) {
+    if (!id) {
+      setSelectedCalendarId("");
+      setCalendarDraft(blankCalendarItem(selectedCalendarDate));
+      return;
+    }
+
+    const remaining = calendarItems.filter((item) => item.id !== id);
+    setCalendarItems(byTitle(remaining));
+    setSelectedCalendarId("");
+    setCalendarDraft(blankCalendarItem(selectedCalendarDate));
   }
 
   function updateProcedure(patch: Partial<ProcedureRecord>) {
@@ -1255,7 +1304,7 @@ export default function AtlasPage() {
             <div style={listStyle}>
               {todayEvents.length ? (
                 todayEvents.slice(0, 5).map((event) => (
-                  <button key={event.id} type="button" onClick={() => { setSelectedCalendarId(event.id); setSelectedCalendarDate(event.date); setScreen("calendar"); }} style={rowButtonStyle}>
+                  <button key={event.id} type="button" onClick={() => { startEditCalendarItem(event.id); setScreen("calendar"); }} style={rowButtonStyle}>
                     <div>
                       <strong>{event.title}</strong>
                       <p style={mutedSmallStyle}>{event.area}</p>
@@ -1563,6 +1612,8 @@ export default function AtlasPage() {
   }
 
   function renderCalendar() {
+    const hasSelectedEvent = Boolean(selectedCalendarId);
+
     return (
       <ListDrawerLayout
         eyebrow="Editable Month View"
@@ -1579,6 +1630,8 @@ export default function AtlasPage() {
               onClick={() => {
                 setCalendarCursor(new Date());
                 setSelectedCalendarDate(todayISO());
+                setSelectedCalendarId("");
+                setCalendarDraft(blankCalendarItem(todayISO()));
               }}
               style={secondaryButtonStyle}
             >
@@ -1616,9 +1669,8 @@ export default function AtlasPage() {
                     onClick={() => {
                       if (!cell.date) return;
                       setSelectedCalendarDate(cell.date);
-
-                      const firstEvent = calendarItems.find((item) => item.date === cell.date);
-                      if (firstEvent) setSelectedCalendarId(firstEvent.id);
+                      setSelectedCalendarId("");
+                      setCalendarDraft(blankCalendarItem(cell.date));
                     }}
                     style={{
                       ...calendarCellStyle,
@@ -1643,8 +1695,7 @@ export default function AtlasPage() {
                           key={event.id}
                           onClick={(mouseEvent) => {
                             mouseEvent.stopPropagation();
-                            setSelectedCalendarDate(event.date);
-                            setSelectedCalendarId(event.id);
+                            startEditCalendarItem(event.id);
                           }}
                           style={calendarPillStyle}
                         >
@@ -1673,13 +1724,10 @@ export default function AtlasPage() {
                   <button
                     key={event.id}
                     type="button"
-                    onClick={() => {
-                      setSelectedCalendarDate(event.date);
-                      setSelectedCalendarId(event.id);
-                    }}
+                    onClick={() => startEditCalendarItem(event.id)}
                     style={{
                       ...calendarTodayItemStyle,
-                      borderColor: event.id === selectedCalendar.id ? colors.gold : colors.line,
+                      borderColor: event.id === selectedCalendarId ? colors.gold : colors.line,
                     }}
                   >
                     <strong>{event.title}</strong>
@@ -1704,11 +1752,11 @@ export default function AtlasPage() {
             </div>
 
             <div style={{ marginTop: 16 }}>
-              <div style={eyebrowStyle}>Edit Event</div>
-              <h3 style={detailTitleStyle}>{selectedCalendar.title}</h3>
+              <div style={eyebrowStyle}>{hasSelectedEvent ? "Edit Event" : "New Event"}</div>
+              <h3 style={detailTitleStyle}>{hasSelectedEvent ? selectedCalendar.title : "Ready to add event"}</h3>
 
               <div style={formGridStyle}>
-                <Field label="Title" value={selectedCalendar.title} onChange={(value) => updateCalendarItem({ title: value })} />
+                <Field label="Title" value={selectedCalendar.title} onChange={(value) => updateCalendarItem({ title: value })} placeholder="Type event title..." />
                 <Field
                   label="Date"
                   value={selectedCalendar.date}
@@ -1717,7 +1765,7 @@ export default function AtlasPage() {
                     setSelectedCalendarDate(value);
                   }}
                 />
-                <Field label="Area" value={selectedCalendar.area} onChange={(value) => updateCalendarItem({ area: value })} />
+                <Field label="Area" value={selectedCalendar.area} onChange={(value) => updateCalendarItem({ area: value })} placeholder="Type area..." />
                 <SelectField
                   label="Status"
                   value={selectedCalendar.status}
@@ -1727,13 +1775,15 @@ export default function AtlasPage() {
               </div>
 
               <div style={buttonRowStyle}>
-                <button type="button" onClick={() => void postAtlasRecord("calendar", selectedCalendar)} style={goldButtonStyle}>
+                <button type="button" onClick={saveCalendarItem} style={goldButtonStyle}>
                   Save
                 </button>
 
-                <button type="button" onClick={() => deleteCalendarItem(selectedCalendar.id)} style={dangerButtonStyle}>
-                  Delete
-                </button>
+                {hasSelectedEvent ? (
+                  <button type="button" onClick={() => deleteCalendarItem(selectedCalendarId)} style={dangerButtonStyle}>
+                    Delete
+                  </button>
+                ) : null}
               </div>
             </div>
           </>
