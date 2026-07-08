@@ -456,6 +456,18 @@ function weatherText(code: number) {
   return "Weather";
 }
 
+function weatherIcon(code: number) {
+  if ([0].includes(code)) return "☀️";
+  if ([1, 2].includes(code)) return "🌤️";
+  if ([3].includes(code)) return "☁️";
+  if ([45, 48].includes(code)) return "🌫️";
+  if ([51, 53, 55, 56, 57].includes(code)) return "🌦️";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "🌧️";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "❄️";
+  if ([95, 96, 99].includes(code)) return "⛈️";
+  return "🌡️";
+}
+
 function irrigationAdvice(day: WeatherDay) {
   if (day.precipAmount >= 0.25 || day.precipChance >= 75) return "Rain likely — skip irrigation unless pots are dry.";
   if (day.precipAmount >= 0.1 || day.precipChance >= 45) return "Possible rain — check beds before watering.";
@@ -603,7 +615,7 @@ function Field(props: {
   placeholder?: string;
 }) {
   return (
-    <label style={{ display: "grid", gap: 6 }}>
+    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
       <span style={fieldLabelStyle}>{props.label}</span>
       {props.multiline ? (
         <textarea value={props.value} onChange={(event) => props.onChange(event.currentTarget.value)} placeholder={props.placeholder} style={{ ...inputStyle, minHeight: 110, resize: "vertical" }} />
@@ -621,7 +633,7 @@ function SelectField<T extends string>(props: {
   options: readonly T[];
 }) {
   return (
-    <label style={{ display: "grid", gap: 6 }}>
+    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
       <span style={fieldLabelStyle}>{props.label}</span>
       <select value={props.value} onChange={(event) => props.onChange(event.currentTarget.value as T)} style={inputStyle}>
         {props.options.map((option) => (
@@ -647,7 +659,7 @@ function StatCard(props: { label: string; value: string | number; detail: string
 function SectionHeader(props: { eyebrow: string; title: string; detail?: string; right?: React.ReactNode }) {
   return (
     <div style={sectionHeaderStyle}>
-      <div>
+      <div style={{ minWidth: 0 }}>
         <div style={eyebrowStyle}>{props.eyebrow}</div>
         <h2 style={sectionTitleStyle}>{props.title}</h2>
         {props.detail ? <p style={mutedSmallStyle}>{props.detail}</p> : null}
@@ -879,6 +891,7 @@ export default function AtlasPage() {
   const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
   const selectedWeather = weatherDays.find((day) => day.date === selectedWeatherDate) ?? weatherDays[0];
 
+  const todayEvents = useMemo(() => byTitle(calendarItems.filter((item) => item.date === todayISO())), [calendarItems]);
   const q = query.trim().toLowerCase();
 
   const filteredLocations = useMemo(() => {
@@ -1170,19 +1183,6 @@ export default function AtlasPage() {
 
     return (
       <div style={stackStyle}>
-        <section style={heroStyle}>
-          <div>
-            <div style={eyebrowLightStyle}>Atlas / 2000</div>
-            <h1 style={heroTitleStyle}>Estate Operations Dashboard</h1>
-            <p style={heroTextStyle}>Modern overview for weather, irrigation, work orders, assets, vendors, calendar, and map records.</p>
-          </div>
-          <div style={heroPanelStyle}>
-            <div style={eyebrowStyle}>System</div>
-            <strong>{databaseStatus}</strong>
-            <p style={mutedSmallStyle}>Logo, map, A–Z lists, right detail drawers, weather, and month calendar are restored here.</p>
-          </div>
-        </section>
-
         <div style={statGridStyle}>
           <StatCard label="Assets" value={assetRecords.length} detail={`${monitoredAssets.length} monitor/offline`} onClick={() => setScreen("assets")} />
           <StatCard label="Open Work Orders" value={openWorkOrders.length} detail={`${highPriority.length} high priority`} onClick={() => setScreen("history")} />
@@ -1194,10 +1194,13 @@ export default function AtlasPage() {
           <section style={sectionStyle}>
             <SectionHeader eyebrow="Weather Planning" title="Irrigation / Yard Work" right={<button type="button" onClick={() => setScreen("weather")} style={goldButtonStyle}>Open Weather</button>} />
             {nextWeather ? (
-              <div style={noticeStyle}>
-                <strong>{shortDay(nextWeather.date)} · {weatherText(nextWeather.code)}</strong>
-                <p style={mutedSmallStyle}>{nextWeather.high}° high / {nextWeather.low}° low · {nextWeather.precipChance}% rain · {nextWeather.precipAmount}" expected · ET0 {nextWeather.et0}"</p>
-                <p style={mutedSmallStyle}>{irrigationAdvice(nextWeather)}</p>
+              <div style={dashboardWeatherBoxStyle}>
+                <div style={dashboardWeatherIconStyle}>{weatherIcon(nextWeather.code)}</div>
+                <div>
+                  <strong>{shortDay(nextWeather.date)} · {weatherText(nextWeather.code)}</strong>
+                  <p style={mutedSmallStyle}>{nextWeather.high}° high / {nextWeather.low}° low · {nextWeather.precipChance}% rain · {nextWeather.precipAmount}" expected · ET0 {nextWeather.et0}"</p>
+                  <p style={mutedSmallStyle}>{irrigationAdvice(nextWeather)}</p>
+                </div>
               </div>
             ) : (
               <div style={noticeStyle}>{weatherStatus}</div>
@@ -1205,17 +1208,21 @@ export default function AtlasPage() {
           </section>
 
           <section style={sectionStyle}>
-            <SectionHeader eyebrow="Priority Work" title="Open Work Orders" right={<button type="button" onClick={addWorkOrder} style={goldButtonStyle}>Add WO</button>} />
+            <SectionHeader eyebrow="Today" title="Calendar / Work" right={<button type="button" onClick={() => addCalendarItem(todayISO())} style={goldButtonStyle}>Add Today</button>} />
             <div style={listStyle}>
-              {byTitle(openWorkOrders).slice(0, 6).map((record) => (
-                <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={rowButtonStyle}>
-                  <div>
-                    <strong>{record.title}</strong>
-                    <p style={mutedSmallStyle}>{formatDate(record.date)} · {assetName(record.assetId)}</p>
-                  </div>
-                  <span style={badgeStyle(record.priority ?? "Medium")}>{record.priority ?? "Medium"}</span>
-                </button>
-              ))}
+              {todayEvents.length ? (
+                todayEvents.slice(0, 5).map((event) => (
+                  <button key={event.id} type="button" onClick={() => { setSelectedCalendarId(event.id); setScreen("calendar"); }} style={rowButtonStyle}>
+                    <div>
+                      <strong>{event.title}</strong>
+                      <p style={mutedSmallStyle}>{event.area}</p>
+                    </div>
+                    <span style={badgeStyle(event.status)}>{event.status}</span>
+                  </button>
+                ))
+              ) : (
+                <div style={noticeStyle}>No calendar items listed for today.</div>
+              )}
             </div>
           </section>
         </div>
@@ -1378,7 +1385,7 @@ export default function AtlasPage() {
             <div style={formGridStyle}>
               <Field label="Name" value={selectedAsset.name} onChange={(value) => updateAsset({ name: value })} />
               <Field label="Category" value={selectedAsset.category} onChange={(value) => updateAsset({ category: value })} />
-              <label style={{ display: "grid", gap: 6 }}>
+              <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                 <span style={fieldLabelStyle}>Location</span>
                 <select value={selectedAsset.locationId} onChange={(event) => updateAsset({ locationId: event.currentTarget.value })} style={inputStyle}>
                   {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
@@ -1486,14 +1493,14 @@ export default function AtlasPage() {
             <div style={formGridStyle}>
               <Field label="Title" value={selectedService.title} onChange={(value) => updateWorkOrder({ title: value })} />
               <Field label="Date" value={selectedService.date} onChange={(value) => updateWorkOrder({ date: value })} />
-              <label style={{ display: "grid", gap: 6 }}>
+              <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                 <span style={fieldLabelStyle}>Asset</span>
                 <select value={selectedService.assetId} onChange={(event) => updateWorkOrder({ assetId: event.currentTarget.value })} style={inputStyle}>
                   <option value="">No asset</option>
                   {byName(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
                 </select>
               </label>
-              <label style={{ display: "grid", gap: 6 }}>
+              <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                 <span style={fieldLabelStyle}>Vendor</span>
                 <select value={selectedService.vendorId ?? ""} onChange={(event) => updateWorkOrder({ vendorId: event.currentTarget.value })} style={inputStyle}>
                   <option value="">No vendor</option>
@@ -1517,14 +1524,13 @@ export default function AtlasPage() {
       <ListDrawerLayout
         eyebrow="Editable Month View"
         title="Calendar"
-        detail="Click a date to add an item. Edit the selected item in the right drawer."
+        detail="Click a date to add an item. Today and add/edit controls are in the right box."
         isMobile={isMobile}
         right={
           <>
             <button type="button" onClick={() => moveCalendarMonth(-1)} style={secondaryButtonStyle}>Previous</button>
             <button type="button" onClick={() => setCalendarCursor(new Date())} style={secondaryButtonStyle}>Today</button>
             <button type="button" onClick={() => moveCalendarMonth(1)} style={secondaryButtonStyle}>Next</button>
-            <button type="button" onClick={() => addCalendarItem()} style={goldButtonStyle}>Add Event</button>
           </>
         }
         list={
@@ -1582,15 +1588,38 @@ export default function AtlasPage() {
         }
         drawer={
           <>
-            <div style={eyebrowStyle}>Selected Calendar Item</div>
-            <h3 style={detailTitleStyle}>{selectedCalendar.title}</h3>
-            <div style={formGridStyle}>
-              <Field label="Title" value={selectedCalendar.title} onChange={(value) => updateCalendarItem({ title: value })} />
-              <Field label="Date" value={selectedCalendar.date} onChange={(value) => updateCalendarItem({ date: value })} />
-              <Field label="Area" value={selectedCalendar.area} onChange={(value) => updateCalendarItem({ area: value })} />
-              <SelectField label="Status" value={selectedCalendar.status} onChange={(value) => updateCalendarItem({ status: value })} options={["Open", "Scheduled", "Completed", "Monitor"] as const} />
+            <div style={eyebrowStyle}>Today</div>
+            <h3 style={detailTitleStyle}>{formatDate(todayISO())}</h3>
+            <div style={calendarTodayBoxStyle}>
+              {todayEvents.length ? (
+                todayEvents.map((event) => (
+                  <button key={event.id} type="button" onClick={() => setSelectedCalendarId(event.id)} style={calendarTodayItemStyle}>
+                    <strong>{event.title}</strong>
+                    <span>{event.area} · {event.status}</span>
+                  </button>
+                ))
+              ) : (
+                <p style={mutedSmallStyle}>No events listed for today.</p>
+              )}
             </div>
-            <button type="button" onClick={() => void postAtlasRecord("calendar", selectedCalendar)} style={goldButtonStyle}>Save Calendar Item</button>
+
+            <div style={compactAddBoxStyle}>
+              <div style={eyebrowStyle}>Add Event</div>
+              <button type="button" onClick={() => addCalendarItem(todayISO())} style={{ ...goldButtonStyle, width: "100%", marginTop: 8 }}>Add Event Today</button>
+              <button type="button" onClick={() => addCalendarItem()} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 8 }}>Add Event</button>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <div style={eyebrowStyle}>Selected / Edit Event</div>
+              <h3 style={detailTitleStyle}>{selectedCalendar.title}</h3>
+              <div style={formGridStyle}>
+                <Field label="Title" value={selectedCalendar.title} onChange={(value) => updateCalendarItem({ title: value })} />
+                <Field label="Date" value={selectedCalendar.date} onChange={(value) => updateCalendarItem({ date: value })} />
+                <Field label="Area" value={selectedCalendar.area} onChange={(value) => updateCalendarItem({ area: value })} />
+                <SelectField label="Status" value={selectedCalendar.status} onChange={(value) => updateCalendarItem({ status: value })} options={["Open", "Scheduled", "Completed", "Monitor"] as const} />
+              </div>
+              <button type="button" onClick={() => void postAtlasRecord("calendar", selectedCalendar)} style={goldButtonStyle}>Save Calendar Item</button>
+            </div>
           </>
         }
       />
@@ -1602,33 +1631,68 @@ export default function AtlasPage() {
       <ListDrawerLayout
         eyebrow="7-Day Forecast"
         title="Weather / Irrigation Planning"
-        detail="Built for irrigation decisions, yard work, rain risk, ET0, wind, and planning."
+        detail="Real 7-day forecast with irrigation recommendations."
         isMobile={isMobile}
         right={<button type="button" onClick={() => void loadWeather()} style={goldButtonStyle}>Refresh Weather</button>}
         list={
-          <div style={listStyle}>
+          <div style={stackStyle}>
             <div style={noticeStyle}>
               <strong>{weatherStatus}</strong>
               <p style={mutedSmallStyle}>Forecast location is the 2000 area. Uses rain chance, rain amount, wind, and ET0 for irrigation planning.</p>
             </div>
 
-            {weatherDays.map((day) => (
-              <button key={day.date} type="button" onClick={() => setSelectedWeatherDate(day.date)} style={{ ...rowButtonStyle, borderColor: day.date === selectedWeather?.date ? colors.gold : colors.line }}>
-                <div>
-                  <strong>{shortDay(day.date)} · {weatherText(day.code)}</strong>
-                  <p style={mutedSmallStyle}>{day.high}° / {day.low}° · Rain {day.precipChance}% · {day.precipAmount}" · Wind {day.windMax} mph</p>
-                  <p style={mutedSmallStyle}>{irrigationAdvice(day)}</p>
-                </div>
-                <span style={badgeStyle(day.precipChance >= 45 ? "Monitor" : "Online")}>{day.precipChance}%</span>
-              </button>
-            ))}
+            <div style={weatherStripStyle}>
+              {weatherDays.map((day) => (
+                <button
+                  key={day.date}
+                  type="button"
+                  onClick={() => setSelectedWeatherDate(day.date)}
+                  style={{
+                    ...weatherCardStyle,
+                    borderColor: day.date === selectedWeather?.date ? colors.gold : colors.line,
+                    boxShadow: day.date === selectedWeather?.date ? "0 18px 38px rgba(201,154,61,0.24)" : "0 12px 26px rgba(15,23,42,0.06)",
+                  }}
+                >
+                  <div style={weatherCardTopStyle}>
+                    <div>
+                      <strong>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</strong>
+                      <p style={mutedSmallStyle}>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</p>
+                    </div>
+                    <div style={weatherIconStyle}>{weatherIcon(day.code)}</div>
+                  </div>
+
+                  <div style={weatherTempStyle}>{day.high}°</div>
+                  <div style={weatherLowStyle}>{day.low}° low</div>
+
+                  <div style={weatherBarTrackStyle}>
+                    <div style={{ ...weatherBarFillStyle, width: `${Math.max(12, Math.min(100, day.precipChance))}%` }} />
+                  </div>
+
+                  <div style={weatherMiniGridStyle}>
+                    <span>Rain {day.precipChance}%</span>
+                    <span>{day.precipAmount}"</span>
+                    <span>Wind {day.windMax}</span>
+                    <span>ET0 {day.et0}"</span>
+                  </div>
+
+                  <p style={weatherAdviceSmallStyle}>{irrigationAdvice(day)}</p>
+                </button>
+              ))}
+            </div>
           </div>
         }
         drawer={
           selectedWeather ? (
             <>
               <div style={eyebrowStyle}>Selected Forecast</div>
-              <h3 style={detailTitleStyle}>{shortDay(selectedWeather.date)}</h3>
+              <div style={weatherDrawerHeaderStyle}>
+                <div>
+                  <h3 style={detailTitleStyle}>{shortDay(selectedWeather.date)}</h3>
+                  <p style={mutedSmallStyle}>{weatherText(selectedWeather.code)}</p>
+                </div>
+                <div style={weatherDrawerIconStyle}>{weatherIcon(selectedWeather.code)}</div>
+              </div>
+
               <div style={weatherMetricGridStyle}>
                 <div style={weatherMetricStyle}><span>High</span><strong>{selectedWeather.high}°</strong></div>
                 <div style={weatherMetricStyle}><span>Low</span><strong>{selectedWeather.low}°</strong></div>
@@ -1637,6 +1701,7 @@ export default function AtlasPage() {
                 <div style={weatherMetricStyle}><span>Wind</span><strong>{selectedWeather.windMax} mph</strong></div>
                 <div style={weatherMetricStyle}><span>ET0</span><strong>{selectedWeather.et0}"</strong></div>
               </div>
+
               <div style={{ ...noticeStyle, marginTop: 14 }}>
                 <strong>Irrigation / Yard Work Recommendation</strong>
                 <p style={mutedSmallStyle}>{irrigationAdvice(selectedWeather)}</p>
@@ -1802,7 +1867,7 @@ export default function AtlasPage() {
   return (
     <main style={appStyle}>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "280px 1fr", minHeight: "100vh" }}>
-        <aside style={sidebarStyle}>
+        <aside style={{ ...sidebarStyle, position: isMobile ? "static" : "sticky", height: isMobile ? "auto" : "100vh" }}>
           <div style={brandStyle}>
             <div style={logoBoxStyle}>
               {logoIndex < logoCandidates.length ? (
@@ -1843,9 +1908,10 @@ export default function AtlasPage() {
         <section style={{ minWidth: 0 }}>
           <header style={topbarStyle}>
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 14, justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center" }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={eyebrowStyle}>Atlas / 2000</div>
-                <h1 style={pageTitleStyle}>{screens.find((item) => item.id === screen)?.label}</h1>
+                <h1 style={pageTitleStyle}>{screen === "dashboard" ? "Estate Operations Dashboard" : screens.find((item) => item.id === screen)?.label}</h1>
+                {screen === "dashboard" ? <p style={headerSubStyle}>{databaseStatus}</p> : null}
               </div>
 
               <div style={{ position: "relative", width: isMobile ? "100%" : 460, maxWidth: "100%" }}>
@@ -1882,9 +1948,7 @@ const sidebarStyle: React.CSSProperties = {
   background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
   color: "#FFFFFF",
   padding: 20,
-  position: "sticky",
   top: 0,
-  height: "100vh",
   overflow: "auto",
 };
 
@@ -1960,6 +2024,13 @@ const pageTitleStyle: React.CSSProperties = {
   letterSpacing: "-0.04em",
 };
 
+const headerSubStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 13,
+  margin: "5px 0 0",
+  lineHeight: 1.4,
+};
+
 const stackStyle: React.CSSProperties = { display: "grid", gap: 16 };
 const listStyle: React.CSSProperties = { display: "grid", gap: 10 };
 const buttonRowStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" };
@@ -1986,41 +2057,6 @@ const sectionTitleStyle: React.CSSProperties = {
   fontSize: 25,
   fontWeight: 950,
   letterSpacing: "-0.03em",
-};
-
-const heroStyle: React.CSSProperties = {
-  background: `linear-gradient(135deg, ${colors.navy} 0%, ${colors.navy3} 62%, #1C537A 100%)`,
-  color: "#FFFFFF",
-  borderRadius: 32,
-  padding: 26,
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 18,
-  alignItems: "center",
-  boxShadow: "0 24px 55px rgba(7,27,47,0.25)",
-};
-
-const heroTitleStyle: React.CSSProperties = {
-  margin: "6px 0 8px",
-  fontSize: 38,
-  lineHeight: 1,
-  letterSpacing: "-0.05em",
-  fontWeight: 950,
-};
-
-const heroTextStyle: React.CSSProperties = {
-  margin: 0,
-  color: "#CFE0EE",
-  fontSize: 15,
-  lineHeight: 1.55,
-};
-
-const heroPanelStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.95)",
-  color: colors.text,
-  border: "1px solid rgba(255,255,255,0.4)",
-  borderRadius: 24,
-  padding: 18,
 };
 
 const statGridStyle: React.CSSProperties = {
@@ -2071,7 +2107,12 @@ const drawerStyle: React.CSSProperties = {
   padding: 18,
   position: "sticky",
   top: 106,
+  maxHeight: "calc(100vh - 130px)",
+  overflowY: "auto",
+  overflowX: "hidden",
   boxShadow: "0 16px 35px rgba(15,23,42,0.06)",
+  minWidth: 0,
+  wordBreak: "break-word",
 };
 
 const detailTitleStyle: React.CSSProperties = {
@@ -2080,18 +2121,11 @@ const detailTitleStyle: React.CSSProperties = {
   fontSize: 23,
   fontWeight: 950,
   letterSpacing: "-0.03em",
+  wordBreak: "break-word",
 };
 
 const eyebrowStyle: React.CSSProperties = {
   color: colors.gold,
-  fontSize: 12,
-  fontWeight: 950,
-  letterSpacing: 1,
-  textTransform: "uppercase",
-};
-
-const eyebrowLightStyle: React.CSSProperties = {
-  color: colors.gold2,
   fontSize: 12,
   fontWeight: 950,
   letterSpacing: 1,
@@ -2103,6 +2137,7 @@ const mutedSmallStyle: React.CSSProperties = {
   fontSize: 13,
   margin: "4px 0 0",
   lineHeight: 1.45,
+  wordBreak: "break-word",
 };
 
 const fieldLabelStyle: React.CSSProperties = {
@@ -2120,12 +2155,14 @@ const inputStyle: React.CSSProperties = {
   background: "#FFFFFF",
   outline: "none",
   fontFamily: "inherit",
+  minWidth: 0,
 };
 
 const formGridStyle: React.CSSProperties = {
   display: "grid",
   gap: 11,
   marginBottom: 14,
+  minWidth: 0,
 };
 
 const rowButtonStyle: React.CSSProperties = {
@@ -2142,6 +2179,9 @@ const rowButtonStyle: React.CSSProperties = {
   cursor: "pointer",
   color: colors.text,
   boxShadow: "0 10px 26px rgba(15,23,42,0.04)",
+  minWidth: 0,
+  overflow: "hidden",
+  wordBreak: "break-word",
 };
 
 const rowStaticStyle: React.CSSProperties = {
@@ -2151,6 +2191,8 @@ const rowStaticStyle: React.CSSProperties = {
   padding: 14,
   color: colors.text,
   boxShadow: "0 10px 26px rgba(15,23,42,0.04)",
+  minWidth: 0,
+  wordBreak: "break-word",
 };
 
 const goldButtonStyle: React.CSSProperties = {
@@ -2190,6 +2232,29 @@ const noticeStyle: React.CSSProperties = {
   padding: 14,
   color: colors.text,
   lineHeight: 1.5,
+  minWidth: 0,
+  wordBreak: "break-word",
+};
+
+const dashboardWeatherBoxStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 14,
+  alignItems: "center",
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 20,
+  padding: 16,
+};
+
+const dashboardWeatherIconStyle: React.CSSProperties = {
+  fontSize: 42,
+  width: 62,
+  height: 62,
+  borderRadius: 20,
+  background: "#FFFAEB",
+  display: "grid",
+  placeItems: "center",
+  flex: "0 0 auto",
 };
 
 const mapShellStyle: React.CSSProperties = {
@@ -2305,6 +2370,140 @@ const calendarMoreStyle: React.CSSProperties = {
   color: colors.muted,
   fontSize: 11,
   fontWeight: 850,
+};
+
+const calendarTodayBoxStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 18,
+  padding: 12,
+  marginBottom: 14,
+};
+
+const calendarTodayItemStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 3,
+  border: `1px solid ${colors.line}`,
+  background: "#F8FAFC",
+  color: colors.text,
+  borderRadius: 14,
+  padding: 10,
+  textAlign: "left",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const compactAddBoxStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 18,
+  padding: 12,
+};
+
+const weatherStripStyle: React.CSSProperties = {
+  display: "grid",
+  gridAutoFlow: "column",
+  gridAutoColumns: "minmax(190px, 1fr)",
+  gap: 12,
+  overflowX: "auto",
+  paddingBottom: 8,
+};
+
+const weatherCardStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 24,
+  padding: 15,
+  minHeight: 250,
+  textAlign: "left",
+  cursor: "pointer",
+  color: colors.text,
+  fontFamily: "inherit",
+  display: "grid",
+  gap: 10,
+  minWidth: 0,
+};
+
+const weatherCardTopStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 10,
+};
+
+const weatherIconStyle: React.CSSProperties = {
+  width: 50,
+  height: 50,
+  borderRadius: 18,
+  background: "#FFFAEB",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 28,
+};
+
+const weatherTempStyle: React.CSSProperties = {
+  color: colors.navy,
+  fontSize: 38,
+  fontWeight: 950,
+  lineHeight: 1,
+  letterSpacing: "-0.04em",
+};
+
+const weatherLowStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 13,
+  fontWeight: 800,
+};
+
+const weatherBarTrackStyle: React.CSSProperties = {
+  height: 9,
+  borderRadius: 999,
+  background: "#EAF0F7",
+  overflow: "hidden",
+};
+
+const weatherBarFillStyle: React.CSSProperties = {
+  height: "100%",
+  borderRadius: 999,
+  background: colors.gold,
+};
+
+const weatherMiniGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 6,
+  color: colors.muted,
+  fontSize: 12,
+  fontWeight: 800,
+};
+
+const weatherAdviceSmallStyle: React.CSSProperties = {
+  color: colors.text,
+  fontSize: 12,
+  lineHeight: 1.35,
+  margin: 0,
+  wordBreak: "break-word",
+};
+
+const weatherDrawerHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  marginBottom: 14,
+};
+
+const weatherDrawerIconStyle: React.CSSProperties = {
+  width: 72,
+  height: 72,
+  borderRadius: 24,
+  background: "#FFFAEB",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 42,
+  flex: "0 0 auto",
 };
 
 const weatherMetricGridStyle: React.CSSProperties = {
