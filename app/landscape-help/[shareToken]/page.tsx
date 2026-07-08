@@ -34,7 +34,6 @@ type LandscapeItem = {
 
 const colors = {
   navy: "#0B1E33",
-  navy2: "#102A44",
   navy3: "#163B5C",
   gold: "#C99A3D",
   bg: "#F5F7FA",
@@ -42,7 +41,6 @@ const colors = {
   line: "#DCE4EC",
   text: "#172331",
   muted: "#607086",
-  red: "#B42318",
 };
 
 const statusOptions: LandscapeStatus[] = ["Not Started", "In Progress", "Needs Review", "Complete"];
@@ -103,15 +101,13 @@ export default function LandscapeHelpSharePage() {
     setMessage("");
 
     try {
-      const response = await fetch("/api/landscape-help", {
+      const response = await fetch(`/api/landscape-help?token=${encodeURIComponent(shareToken)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: shareToken,
           status: nextStatus || week.status,
           crewName: week.crewName,
           crewNotes: week.crewNotes,
-          managerNotes: week.managerNotes,
           items,
         }),
       });
