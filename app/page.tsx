@@ -34,6 +34,36 @@ type AtlasPayload = {
   photoRecords?: AnyRecord[];
 };
 
+type WorkOrderForm = {
+  id: string;
+  title: string;
+  assetId: string;
+  vendorId: string;
+  date: string;
+  status: string;
+  priority: string;
+  notes: string;
+  followUpDate: string;
+
+  isRecurring: boolean;
+  recurrenceFrequency: string;
+  recurrenceInterval: string;
+  recurrenceDays: string;
+  recurrenceNextDue: string;
+  recurrenceEndType: string;
+  recurrenceEndDate: string;
+
+  invoiceNumber: string;
+  invoiceDate: string;
+  invoiceAmount: string;
+  invoiceStatus: string;
+  paymentStatus: string;
+  costCategory: string;
+  approvedBy: string;
+  approvedDate: string;
+  costNotes: string;
+};
+
 const colors = {
   navy: "#0B1E33",
   navy2: "#12385C",
@@ -104,6 +134,12 @@ const mapLabels = [
   { id: "hot-tub", label: "Hot Tub", x: 41, y: 61 },
 ];
 
+const workOrderStatusOptions = ["Open", "Scheduled", "Monitor", "Completed"];
+const workOrderPriorityOptions = ["Low", "Medium", "High"];
+const recurrenceOptions = ["Daily", "Weekly", "Every 2 Weeks", "Monthly", "Seasonal", "Custom"];
+const invoiceStatusOptions = ["not added", "received", "approved", "question", "rejected"];
+const paymentStatusOptions = ["unknown", "unpaid", "paid", "hold"];
+
 function value(record: AnyRecord | undefined, ...keys: string[]) {
   if (!record) return "";
   for (const key of keys) {
@@ -124,9 +160,31 @@ function firstText(...items: unknown[]) {
   return "";
 }
 
+function localDateKey() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateInputValue(raw: unknown) {
+  const text = firstText(raw);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  return "";
+}
+
 function safeDate(raw: unknown) {
   const text = firstText(raw);
   if (!text) return "No date";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const parsed = new Date(`${text}T12:00:00`);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    }
+  }
+
   const parsed = new Date(text);
   if (Number.isNaN(parsed.getTime())) return text;
   return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -144,6 +202,14 @@ function hasSearch(record: AnyRecord, terms: string[]) {
   if (!terms.length) return true;
   const haystack = Object.values(record).map((item) => firstText(item).toLowerCase()).join(" ");
   return terms.every((term) => haystack.includes(term));
+}
+
+function priorityRank(priority: string) {
+  const lower = priority.toLowerCase();
+  if (lower === "high") return 1;
+  if (lower === "medium") return 2;
+  if (lower === "low") return 3;
+  return 4;
 }
 
 function statusStyle(text: string): React.CSSProperties {
@@ -180,17 +246,132 @@ function statusStyle(text: string): React.CSSProperties {
   };
 }
 
+function blankWorkOrder(date = localDateKey()): WorkOrderForm {
+  return {
+    id: "",
+    title: "",
+    assetId: "",
+    vendorId: "",
+    date,
+    status: "Open",
+    priority: "Medium",
+    notes: "",
+    followUpDate: "",
+
+    isRecurring: false,
+    recurrenceFrequency: "Weekly",
+    recurrenceInterval: "1",
+    recurrenceDays: "",
+    recurrenceNextDue: date,
+    recurrenceEndType: "never",
+    recurrenceEndDate: "",
+
+    invoiceNumber: "",
+    invoiceDate: "",
+    invoiceAmount: "",
+    invoiceStatus: "not added",
+    paymentStatus: "unknown",
+    costCategory: "",
+    approvedBy: "",
+    approvedDate: "",
+    costNotes: "",
+  };
+}
+
+function workOrderToForm(record?: AnyRecord): WorkOrderForm {
+  if (!record) return blankWorkOrder();
+
+  const date = dateInputValue(value(record, "date", "workDate", "work_date")) || localDateKey();
+
+  return {
+    id: value(record, "id"),
+    title: value(record, "title", "summary", "name"),
+    assetId: value(record, "assetId", "asset_id"),
+    vendorId: value(record, "vendorId", "vendor_id"),
+    date,
+    status: value(record, "status") || "Open",
+    priority: value(record, "priority") || "Medium",
+    notes: value(record, "notes", "description"),
+    followUpDate: dateInputValue(value(record, "followUpDate", "follow_up_date")),
+
+    isRecurring: value(record, "isRecurring", "is_recurring") === "true" || value(record, "isRecurring", "is_recurring") === "1",
+    recurrenceFrequency: value(record, "recurrenceFrequency", "recurrence_frequency") || "Weekly",
+    recurrenceInterval: value(record, "recurrenceInterval", "recurrence_interval") || "1",
+    recurrenceDays: value(record, "recurrenceDays", "recurrence_days"),
+    recurrenceNextDue: dateInputValue(value(record, "recurrenceNextDue", "recurrence_next_due")) || date,
+    recurrenceEndType: value(record, "recurrenceEndType", "recurrence_end_type") || "never",
+    recurrenceEndDate: dateInputValue(value(record, "recurrenceEndDate", "recurrence_end_date")),
+
+    invoiceNumber: value(record, "invoiceNumber", "invoice_number"),
+    invoiceDate: dateInputValue(value(record, "invoiceDate", "invoice_date")),
+    invoiceAmount: value(record, "invoiceAmount", "invoice_amount"),
+    invoiceStatus: value(record, "invoiceStatus", "invoice_status") || "not added",
+    paymentStatus: value(record, "paymentStatus", "payment_status") || "unknown",
+    costCategory: value(record, "costCategory", "cost_category"),
+    approvedBy: value(record, "approvedBy", "approved_by"),
+    approvedDate: dateInputValue(value(record, "approvedDate", "approved_date")),
+    costNotes: value(record, "costNotes", "cost_notes"),
+  };
+}
+
+function formToWorkOrder(form: WorkOrderForm): AnyRecord {
+  const title = form.title.trim();
+  const id = form.id || `wo-${Date.now()}`;
+
+  return {
+    id,
+    title,
+    assetId: form.assetId,
+    vendorId: form.vendorId,
+    date: form.date || localDateKey(),
+    workDate: form.date || localDateKey(),
+    status: form.status || "Open",
+    priority: form.priority || "Medium",
+    notes: form.notes.trim(),
+    followUpDate: form.followUpDate,
+
+    isRecurring: form.isRecurring,
+    recurrenceFrequency: form.recurrenceFrequency || "Weekly",
+    recurrenceInterval: Math.max(1, Number(form.recurrenceInterval || 1)),
+    recurrenceDays: form.recurrenceDays,
+    recurrenceNextDue: form.recurrenceNextDue || form.followUpDate || form.date,
+    recurrenceEndType: form.recurrenceEndType || "never",
+    recurrenceEndDate: form.recurrenceEndDate,
+    recurrenceStatus: form.isRecurring ? "active" : "inactive",
+
+    invoiceNumber: form.invoiceNumber.trim(),
+    invoiceDate: form.invoiceDate,
+    invoiceAmount: form.invoiceAmount.trim(),
+    invoiceStatus: form.invoiceStatus || "not added",
+    paymentStatus: form.paymentStatus || "unknown",
+    costCategory: form.costCategory.trim(),
+    approvedBy: form.approvedBy.trim(),
+    approvedDate: form.approvedDate,
+    costNotes: form.costNotes.trim(),
+  };
+}
+
 export default function AtlasPage() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
   const [payload, setPayload] = useState<AtlasPayload>({});
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState("");
+  const [databaseStatus, setDatabaseStatus] = useState("Connecting to Atlas...");
   const [isMobile, setIsMobile] = useState(false);
+
   const [selectedAssetId, setSelectedAssetId] = useState("");
-  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState("");
   const [selectedLocation, setSelectedLocation] = useState("");
+
+  const [workOrderRecords, setWorkOrderRecords] = useState<AnyRecord[]>([]);
+  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
+  const [workOrderForm, setWorkOrderForm] = useState<WorkOrderForm>(() => blankWorkOrder());
+  const [workOrderMode, setWorkOrderMode] = useState<"edit" | "new">("new");
+  const [workOrderTab, setWorkOrderTab] = useState<"todo" | "done" | "all">("todo");
+  const [workOrderStatusFilter, setWorkOrderStatusFilter] = useState("all");
+  const [workOrderPriorityFilter, setWorkOrderPriorityFilter] = useState("all");
+  const [workOrderSort, setWorkOrderSort] = useState<"priority" | "due" | "newest" | "asset">("priority");
 
   useEffect(() => {
     const update = () => setIsMobile(window.innerWidth <= 900);
@@ -206,13 +387,19 @@ export default function AtlasPage() {
       try {
         setLoading(true);
         setApiError("");
+        setDatabaseStatus("Loading Atlas records...");
         const response = await fetch("/api/atlas", { cache: "no-store" });
         const data = (await response.json()) as AtlasPayload;
         if (cancelled) return;
         setPayload(data);
+        setDatabaseStatus(response.ok && !data.error ? "Atlas records loaded" : "Atlas API needs attention");
         if (!response.ok || data.error) setApiError(data.error || `Atlas API returned ${response.status}`);
       } catch (error) {
-        if (!cancelled) setApiError(error instanceof Error ? error.message : "Atlas API failed to load");
+        if (!cancelled) {
+          const message = error instanceof Error ? error.message : "Atlas API failed to load";
+          setApiError(message);
+          setDatabaseStatus(`Load failed: ${message}`);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -226,10 +413,25 @@ export default function AtlasPage() {
 
   const assets = useMemo(() => payload.assetRecords ?? [], [payload.assetRecords]);
   const vendors = useMemo(() => payload.vendorRecords ?? [], [payload.vendorRecords]);
-  const workOrders = useMemo(() => payload.serviceRecords ?? [], [payload.serviceRecords]);
   const calendarItems = useMemo(() => payload.calendarItems ?? [], [payload.calendarItems]);
   const documents = useMemo(() => [...(payload.documentRecords ?? []), ...(payload.photoRecords ?? [])], [payload.documentRecords, payload.photoRecords]);
   const procedures = useMemo(() => payload.procedureRecords ?? [], [payload.procedureRecords]);
+
+  useEffect(() => {
+    const incoming = payload.serviceRecords ?? [];
+    setWorkOrderRecords(incoming);
+
+    if (incoming.length && !selectedWorkOrderId) {
+      setSelectedWorkOrderId(value(incoming[0], "id"));
+      setWorkOrderForm(workOrderToForm(incoming[0]));
+      setWorkOrderMode("edit");
+    }
+
+    if (!incoming.length && !selectedWorkOrderId) {
+      setWorkOrderForm(blankWorkOrder());
+      setWorkOrderMode("new");
+    }
+  }, [payload.serviceRecords, selectedWorkOrderId]);
 
   const assetById = useMemo(() => {
     const map = new Map<string, AnyRecord>();
@@ -268,18 +470,58 @@ export default function AtlasPage() {
   const filteredVendors = useMemo(() => vendors.filter((vendor) => hasSearch(vendor, terms)), [vendors, terms]);
 
   const filteredWorkOrders = useMemo(() => {
-    if (!terms.length) return workOrders;
-    return workOrders.filter((wo) => {
-      const linkedAsset = assetById.get(value(wo, "assetId", "asset_id"));
-      const linkedVendor = vendorById.get(value(wo, "vendorId", "vendor_id"));
-      const combined: AnyRecord = {
-        ...wo,
-        linkedAsset: value(linkedAsset, "name"),
-        linkedVendor: value(linkedVendor, "name"),
-      };
-      return hasSearch(combined, terms);
-    });
-  }, [workOrders, terms, assetById, vendorById]);
+    return workOrderRecords
+      .filter((wo) => {
+        const linkedAsset = assetById.get(value(wo, "assetId", "asset_id"));
+        const linkedVendor = vendorById.get(value(wo, "vendorId", "vendor_id"));
+
+        const status = value(wo, "status") || "Open";
+        const priority = value(wo, "priority") || "Medium";
+
+        const matchesTab =
+          workOrderTab === "all" ||
+          (workOrderTab === "done" ? status === "Completed" : status !== "Completed");
+
+        const matchesStatus = workOrderStatusFilter === "all" || status === workOrderStatusFilter;
+        const matchesPriority = workOrderPriorityFilter === "all" || priority === workOrderPriorityFilter;
+
+        const searchRecord: AnyRecord = {
+          ...wo,
+          linkedAsset: value(linkedAsset, "name"),
+          linkedVendor: value(linkedVendor, "name"),
+        };
+
+        return matchesTab && matchesStatus && matchesPriority && hasSearch(searchRecord, terms);
+      })
+      .sort((a, b) => {
+        if (workOrderSort === "priority") {
+          return priorityRank(value(a, "priority") || "Medium") - priorityRank(value(b, "priority") || "Medium");
+        }
+
+        if (workOrderSort === "due") {
+          return value(a, "followUpDate", "follow_up_date", "date", "workDate", "work_date").localeCompare(
+            value(b, "followUpDate", "follow_up_date", "date", "workDate", "work_date"),
+          );
+        }
+
+        if (workOrderSort === "asset") {
+          const assetA = assetById.get(value(a, "assetId", "asset_id"));
+          const assetB = assetById.get(value(b, "assetId", "asset_id"));
+          return value(assetA, "name").localeCompare(value(assetB, "name"));
+        }
+
+        return value(b, "date", "workDate", "work_date").localeCompare(value(a, "date", "workDate", "work_date"));
+      });
+  }, [
+    workOrderRecords,
+    assetById,
+    vendorById,
+    terms,
+    workOrderTab,
+    workOrderStatusFilter,
+    workOrderPriorityFilter,
+    workOrderSort,
+  ]);
 
   const selectedAsset = useMemo(() => {
     if (selectedAssetId && assetById.has(selectedAssetId)) return assetById.get(selectedAssetId);
@@ -291,13 +533,51 @@ export default function AtlasPage() {
     return filteredVendors[0];
   }, [selectedVendorId, vendorById, filteredVendors]);
 
-  const selectedWorkOrder = useMemo(() => {
-    if (selectedWorkOrderId) {
-      const found = filteredWorkOrders.find((wo) => value(wo, "id") === selectedWorkOrderId);
-      if (found) return found;
+  async function postAtlasRecord(table: string, record: unknown) {
+    try {
+      setDatabaseStatus("Saving to Neon...");
+      const response = await fetch("/api/atlas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table, record }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Database save failed");
+      }
+
+      setDatabaseStatus("Saved to Neon");
+      return true;
+    } catch (error) {
+      setDatabaseStatus(error instanceof Error ? `Neon save failed: ${error.message}` : "Neon save failed");
+      return false;
     }
-    return filteredWorkOrders[0];
-  }, [selectedWorkOrderId, filteredWorkOrders]);
+  }
+
+  async function deleteAtlasRecord(table: string, id: string) {
+    try {
+      setDatabaseStatus("Deleting from Neon...");
+      const response = await fetch("/api/atlas", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table, id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Database delete failed");
+      }
+
+      setDatabaseStatus("Deleted from Neon");
+      return true;
+    } catch (error) {
+      setDatabaseStatus(error instanceof Error ? `Neon delete failed: ${error.message}` : "Neon delete failed");
+      return false;
+    }
+  }
 
   function openSearch(nextScreen: Screen, search: string) {
     setQuery(search);
@@ -307,6 +587,67 @@ export default function AtlasPage() {
   function clearSearchAndOpen(nextScreen: Screen) {
     setQuery("");
     setScreen(nextScreen);
+  }
+
+  function selectWorkOrder(record: AnyRecord) {
+    setSelectedWorkOrderId(value(record, "id"));
+    setWorkOrderForm(workOrderToForm(record));
+    setWorkOrderMode("edit");
+  }
+
+  function startNewWorkOrder() {
+    setSelectedWorkOrderId("");
+    setWorkOrderForm(blankWorkOrder());
+    setWorkOrderMode("new");
+  }
+
+  function saveWorkOrder(nextForm = workOrderForm) {
+    const title = nextForm.title.trim();
+    if (!title) {
+      setDatabaseStatus("Work order needs a title before saving");
+      return;
+    }
+
+    const clean = formToWorkOrder({ ...nextForm, title });
+    const id = value(clean, "id");
+
+    setWorkOrderRecords((current) => {
+      const exists = current.some((record) => value(record, "id") === id);
+      const next = exists ? current.map((record) => (value(record, "id") === id ? clean : record)) : [clean, ...current];
+      return next;
+    });
+
+    setSelectedWorkOrderId(id);
+    setWorkOrderForm(workOrderToForm(clean));
+    setWorkOrderMode("edit");
+    void postAtlasRecord("work_orders", clean);
+  }
+
+  function deleteWorkOrder() {
+    if (!workOrderForm.id) return;
+    const confirmed = window.confirm(`Delete work order: ${workOrderForm.title || "Untitled Work Order"}?`);
+    if (!confirmed) return;
+
+    const idToDelete = workOrderForm.id;
+    const remaining = workOrderRecords.filter((record) => value(record, "id") !== idToDelete);
+    setWorkOrderRecords(remaining);
+
+    const nextRecord = remaining[0];
+    setSelectedWorkOrderId(nextRecord ? value(nextRecord, "id") : "");
+    setWorkOrderForm(nextRecord ? workOrderToForm(nextRecord) : blankWorkOrder());
+    setWorkOrderMode(nextRecord ? "edit" : "new");
+
+    void deleteAtlasRecord("work_orders", idToDelete);
+  }
+
+  function markWorkOrderDone() {
+    saveWorkOrder({ ...workOrderForm, status: "Completed" });
+    setWorkOrderTab("done");
+  }
+
+  function reopenWorkOrder() {
+    saveWorkOrder({ ...workOrderForm, status: "Open" });
+    setWorkOrderTab("todo");
   }
 
   function Shell({ children }: { children: React.ReactNode }) {
@@ -348,12 +689,13 @@ export default function AtlasPage() {
                     Estate Operations
                   </h1>
                   <div style={{ color: "rgba(255,255,255,0.76)", fontSize: 15 }}>
-                    Clean recovery build for iPhone, desktop, Atlas data, map, and work orders.
+                    Mobile-safe Atlas command center with improved Work Orders.
                   </div>
                 </div>
                 <div style={{ display: "grid", gap: 8, justifyItems: isMobile ? "start" : "end" }}>
                   <span style={statusStyle(apiError ? "API Error" : loading ? "Loading" : "Online")}>{apiError ? "API Error" : loading ? "Loading" : "Online"}</span>
                   <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 12 }}>Source: {payload.source || "Atlas API"}</div>
+                  <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 12 }}>{databaseStatus}</div>
                 </div>
               </div>
             </header>
@@ -407,6 +749,15 @@ export default function AtlasPage() {
     );
   }
 
+  function Field({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+      <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+        <div style={labelStyle}>{label}</div>
+        {children}
+      </label>
+    );
+  }
+
   function RowButton({ active, children, onClick }: { active?: boolean; children: React.ReactNode; onClick: () => void }) {
     return (
       <button type="button" onClick={onClick} style={{ ...rowButtonStyle, border: active ? `2px solid ${colors.gold}` : `1px solid ${colors.border}` }}>
@@ -420,7 +771,8 @@ export default function AtlasPage() {
   }
 
   function Dashboard() {
-    const openWorkOrders = workOrders.filter((wo) => !value(wo, "status").toLowerCase().includes("complete"));
+    const openWorkOrders = workOrderRecords.filter((wo) => value(wo, "status") !== "Completed");
+    const doneWorkOrders = workOrderRecords.filter((wo) => value(wo, "status") === "Completed");
     const unassignedAssets = assets.filter((asset) => !value(asset, "location", "locationName", "location_name", "locationId", "location_id"));
 
     return (
@@ -428,9 +780,9 @@ export default function AtlasPage() {
         <Title eyebrow="Dashboard" title="Atlas Overview" subtitle="All core departments are mobile-safe and connected to the existing Atlas API." />
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12 }}>
           <MetricCard label="Assets" count={assets.length} next="assets" />
-          <MetricCard label="Work Orders" count={workOrders.length} next="work-orders" />
+          <MetricCard label="To Do" count={openWorkOrders.length} next="work-orders" />
+          <MetricCard label="Done" count={doneWorkOrders.length} next="work-orders" />
           <MetricCard label="Vendors" count={vendors.length} next="vendors" />
-          <MetricCard label="Calendar" count={calendarItems.length} next="calendar" />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginTop: 16 }}>
@@ -443,9 +795,9 @@ export default function AtlasPage() {
                   <div key={value(wo, "id") || index} style={compactRowStyle}>
                     <div style={{ minWidth: 0 }}>
                       <div style={rowTitleStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</div>
-                      <div style={rowSubStyle}>{safeDate(value(wo, "workDate", "work_date", "date"))} · {value(asset, "name") || "No linked asset"}</div>
+                      <div style={rowSubStyle}>{safeDate(value(wo, "followUpDate", "follow_up_date", "date", "workDate", "work_date"))} · {value(asset, "name") || "No linked asset"}</div>
                     </div>
-                    <span style={statusStyle(value(wo, "status") || "Open")}>{value(wo, "status") || "Open"}</span>
+                    <span style={statusStyle(value(wo, "priority") || "Medium")}>{value(wo, "priority") || "Medium"}</span>
                   </div>
                 );
               })}
@@ -465,8 +817,8 @@ export default function AtlasPage() {
               </div>
               <div style={compactRowStyle}>
                 <div>
-                  <div style={rowTitleStyle}>API Version</div>
-                  <div style={rowSubStyle}>{payload.apiVersion || "Atlas route"}</div>
+                  <div style={rowTitleStyle}>Database Status</div>
+                  <div style={rowSubStyle}>{databaseStatus}</div>
                 </div>
                 <span style={statusStyle(apiError ? "Error" : "Online")}>{apiError ? "Error" : "Online"}</span>
               </div>
@@ -509,7 +861,7 @@ export default function AtlasPage() {
   function Locations() {
     const activeLocation = selectedLocation || locationNames[0] || "";
     const relatedAssets = assets.filter((asset) => value(asset, "location", "locationName", "location_name", "locationId", "location_id").toLowerCase() === activeLocation.toLowerCase());
-    const relatedWorkOrders = workOrders.filter((wo) => {
+    const relatedWorkOrders = workOrderRecords.filter((wo) => {
       const asset = assetById.get(value(wo, "assetId", "asset_id"));
       return value(asset, "location", "locationName", "location_name", "locationId", "location_id").toLowerCase() === activeLocation.toLowerCase();
     });
@@ -571,7 +923,7 @@ export default function AtlasPage() {
 
   function AssetDetail({ asset }: { asset?: AnyRecord }) {
     const assetId = value(asset, "id");
-    const relatedWorkOrders = workOrders.filter((wo) => value(wo, "assetId", "asset_id") === assetId);
+    const relatedWorkOrders = workOrderRecords.filter((wo) => value(wo, "assetId", "asset_id") === assetId);
     if (!asset) return <Empty>Select an asset.</Empty>;
     return (
       <Card style={{ boxShadow: "none" }}>
@@ -590,7 +942,7 @@ export default function AtlasPage() {
         <h4 style={h4Style}>Related Work Orders</h4>
         <div style={{ display: "grid", gap: 8 }}>
           {relatedWorkOrders.slice(0, 8).map((wo, index) => (
-            <button key={value(wo, "id") || index} type="button" onClick={() => { setSelectedWorkOrderId(value(wo, "id")); setScreen("work-orders"); }} style={miniButtonStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</button>
+            <button key={value(wo, "id") || index} type="button" onClick={() => { selectWorkOrder(wo); setScreen("work-orders"); }} style={miniButtonStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</button>
           ))}
           {!relatedWorkOrders.length ? <Empty>No linked work orders.</Empty> : null}
         </div>
@@ -599,60 +951,315 @@ export default function AtlasPage() {
   }
 
   function WorkOrders() {
+    const todoCount = workOrderRecords.filter((record) => value(record, "status") !== "Completed").length;
+    const doneCount = workOrderRecords.filter((record) => value(record, "status") === "Completed").length;
+
     return (
       <Card>
-        <Title eyebrow="Work Orders" title={`${filteredWorkOrders.length} Work Orders`} subtitle="Includes priority, recurring fields, invoice fields, linked asset, vendor, and notes." />
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "0.9fr 1.1fr", gap: 14 }}>
-          <div style={{ display: "grid", gap: 10 }}>
-            {filteredWorkOrders.map((wo, index) => {
-              const id = value(wo, "id") || String(index);
-              const asset = assetById.get(value(wo, "assetId", "asset_id"));
-              return (
-                <RowButton key={id} active={value(selectedWorkOrder, "id") === value(wo, "id")} onClick={() => setSelectedWorkOrderId(value(wo, "id"))}>
-                  <div style={rowTitleStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</div>
-                  <div style={rowSubStyle}>{safeDate(value(wo, "workDate", "work_date", "date"))} · {value(asset, "name") || "No linked asset"}</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                    <span style={statusStyle(value(wo, "status") || "Open")}>{value(wo, "status") || "Open"}</span>
-                    {value(wo, "priority") ? <span style={statusStyle(value(wo, "priority"))}>{value(wo, "priority")}</span> : null}
-                    {value(wo, "isRecurring", "is_recurring") === "true" || value(wo, "recurrenceFrequency", "recurrence_frequency") ? <span style={statusStyle("Recurring")}>Recurring</span> : null}
-                  </div>
-                </RowButton>
-              );
-            })}
-            {!filteredWorkOrders.length ? <Empty>No matching work orders.</Empty> : null}
-          </div>
-          <WorkOrderDetail wo={selectedWorkOrder} />
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <Title eyebrow="Work Orders" title={`${filteredWorkOrders.length} Work Orders`} subtitle="To Do / Done split, filters, add/edit form, priority, recurring, invoice, cost, and Neon save." />
+          <button type="button" onClick={startNewWorkOrder} style={primaryButtonStyle}>+ New Work Order</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "390px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
+          <section style={workOrderBoardStyle}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: `1px solid ${colors.border}` }}>
+              <button type="button" onClick={() => setWorkOrderTab("todo")} style={tabButtonStyle(workOrderTab === "todo")}>To Do {todoCount}</button>
+              <button type="button" onClick={() => setWorkOrderTab("done")} style={tabButtonStyle(workOrderTab === "done")}>Done {doneCount}</button>
+              <button type="button" onClick={() => setWorkOrderTab("all")} style={tabButtonStyle(workOrderTab === "all")}>All {workOrderRecords.length}</button>
+            </div>
+
+            <div style={{ padding: 12, display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <select value={workOrderStatusFilter} onChange={(event) => setWorkOrderStatusFilter(event.target.value)} style={filterStyle}>
+                  <option value="all">All status</option>
+                  {workOrderStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+
+                <select value={workOrderPriorityFilter} onChange={(event) => setWorkOrderPriorityFilter(event.target.value)} style={filterStyle}>
+                  <option value="all">All priority</option>
+                  {workOrderPriorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+                </select>
+              </div>
+
+              <select value={workOrderSort} onChange={(event) => setWorkOrderSort(event.target.value as "priority" | "due" | "newest" | "asset")} style={filterStyle}>
+                <option value="priority">Sort: Priority</option>
+                <option value="due">Sort: Due Date</option>
+                <option value="newest">Sort: Newest</option>
+                <option value="asset">Sort: Asset</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setWorkOrderStatusFilter("all");
+                  setWorkOrderPriorityFilter("all");
+                  setWorkOrderSort("priority");
+                }}
+                style={secondaryButtonStyle}
+              >
+                Clear Work Order Filters
+              </button>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                {filteredWorkOrders.map((wo, index) => {
+                  const id = value(wo, "id") || String(index);
+                  const asset = assetById.get(value(wo, "assetId", "asset_id"));
+                  const active = selectedWorkOrderId === value(wo, "id");
+
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => selectWorkOrder(wo)}
+                      style={{ ...workOrderCardButtonStyle, border: active ? `2px solid ${colors.gold}` : `1px solid ${colors.border}` }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={rowTitleStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</div>
+                          <div style={rowSubStyle}>
+                            {safeDate(value(wo, "followUpDate", "follow_up_date", "date", "workDate", "work_date"))} · {value(asset, "name") || "No linked asset"}
+                          </div>
+                        </div>
+                        <span style={statusStyle(value(wo, "priority") || "Medium")}>{value(wo, "priority") || "Medium"}</span>
+                      </div>
+
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                        <span style={statusStyle(value(wo, "status") || "Open")}>{value(wo, "status") || "Open"}</span>
+                        {value(wo, "isRecurring", "is_recurring") === "true" || value(wo, "recurrenceFrequency", "recurrence_frequency") ? <span style={statusStyle("Recurring")}>Recurring</span> : null}
+                        {value(wo, "invoiceAmount", "invoice_amount") ? <span style={statusStyle(value(wo, "paymentStatus", "payment_status") || "Invoice")}>{safeMoney(value(wo, "invoiceAmount", "invoice_amount"))}</span> : null}
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {!filteredWorkOrders.length ? <Empty>No work orders match this view.</Empty> : null}
+              </div>
+            </div>
+          </section>
+
+          <WorkOrderEditor />
         </div>
       </Card>
     );
   }
 
-  function WorkOrderDetail({ wo }: { wo?: AnyRecord }) {
-    if (!wo) return <Empty>Select a work order.</Empty>;
-    const asset = assetById.get(value(wo, "assetId", "asset_id"));
-    const vendor = vendorById.get(value(wo, "vendorId", "vendor_id"));
-    const recurring = value(wo, "isRecurring", "is_recurring") === "true" || value(wo, "recurrenceFrequency", "recurrence_frequency") ? "Yes" : "No";
+  function WorkOrderEditor() {
+    const selectedAsset = assetById.get(workOrderForm.assetId);
+    const selectedVendor = vendorById.get(workOrderForm.vendorId);
+
     return (
-      <Card style={{ boxShadow: "none" }}>
-        <div style={goldEyebrowStyle}>Work Order Detail</div>
-        <h3 style={detailTitleStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</h3>
-        <div style={detailGridStyle}>
-          <Detail label="Date">{safeDate(value(wo, "workDate", "work_date", "date"))}</Detail>
-          <Detail label="Status">{value(wo, "status")}</Detail>
-          <Detail label="Priority">{value(wo, "priority")}</Detail>
-          <Detail label="Asset">{value(asset, "name") || "No linked asset"}</Detail>
-          <Detail label="Vendor">{value(vendor, "name")}</Detail>
-          <Detail label="Recurring">{recurring}</Detail>
-          <Detail label="Frequency">{value(wo, "recurrenceFrequency", "recurrence_frequency")}</Detail>
-          <Detail label="Next Due">{safeDate(value(wo, "recurrenceNextDue", "recurrence_next_due"))}</Detail>
-          <Detail label="Invoice #">{value(wo, "invoiceNumber", "invoice_number")}</Detail>
-          <Detail label="Invoice Amount">{safeMoney(value(wo, "invoiceAmount", "invoice_amount"))}</Detail>
-          <Detail label="Invoice Status">{value(wo, "invoiceStatus", "invoice_status")}</Detail>
-          <Detail label="Payment Status">{value(wo, "paymentStatus", "payment_status")}</Detail>
+      <section style={workOrderEditorStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 12 }}>
+          <div>
+            <div style={goldEyebrowStyle}>{workOrderMode === "new" ? "New Work Order" : "Edit Work Order"}</div>
+            <h3 style={detailTitleStyle}>{workOrderForm.title || "Untitled Work Order"}</h3>
+          </div>
+          <span style={statusStyle(databaseStatus.includes("failed") ? "Save issue" : workOrderMode === "new" ? "New" : "Editing")}>
+            {workOrderMode === "new" ? "New" : "Editing"}
+          </span>
         </div>
-        <h4 style={h4Style}>Notes</h4>
-        <div style={notesStyle}>{value(wo, "notes", "description", "costNotes", "cost_notes") || "No notes saved."}</div>
-      </Card>
+
+        <div style={{ display: "grid", gap: 16 }}>
+          <Card style={{ boxShadow: "none" }}>
+            <h4 style={h4Style}>Main Work Order</h4>
+
+            <div style={{ display: "grid", gap: 10 }}>
+              <Field label="Title">
+                <input
+                  value={workOrderForm.title}
+                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, title: event.target.value }))}
+                  style={inputStyle}
+                  placeholder="Example: Check pool pump leak"
+                />
+              </Field>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
+                <Field label="Date">
+                  <input
+                    type="date"
+                    value={workOrderForm.date}
+                    onChange={(event) => setWorkOrderForm((current) => ({ ...current, date: event.target.value }))}
+                    style={inputStyle}
+                  />
+                </Field>
+
+                <Field label="Status">
+                  <select value={workOrderForm.status} onChange={(event) => setWorkOrderForm((current) => ({ ...current, status: event.target.value }))} style={inputStyle}>
+                    {workOrderStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                </Field>
+
+                <Field label="Priority">
+                  <select value={workOrderForm.priority} onChange={(event) => setWorkOrderForm((current) => ({ ...current, priority: event.target.value }))} style={inputStyle}>
+                    {workOrderPriorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+                  </select>
+                </Field>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+                <Field label="Asset">
+                  <select value={workOrderForm.assetId} onChange={(event) => setWorkOrderForm((current) => ({ ...current, assetId: event.target.value }))} style={inputStyle}>
+                    <option value="">No linked asset</option>
+                    {assets.map((asset) => (
+                      <option key={value(asset, "id")} value={value(asset, "id")}>
+                        {value(asset, "name") || "Unnamed Asset"}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="Vendor">
+                  <select value={workOrderForm.vendorId} onChange={(event) => setWorkOrderForm((current) => ({ ...current, vendorId: event.target.value }))} style={inputStyle}>
+                    <option value="">Internal / no vendor</option>
+                    {vendors.map((vendor) => (
+                      <option key={value(vendor, "id")} value={value(vendor, "id")}>
+                        {value(vendor, "name") || "Unnamed Vendor"}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              <Field label="Notes">
+                <textarea
+                  value={workOrderForm.notes}
+                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, notes: event.target.value }))}
+                  style={textareaStyle}
+                  placeholder="Work notes, scope, findings, approvals, next steps..."
+                />
+              </Field>
+
+              <div style={detailGridStyle}>
+                <Detail label="Linked Asset">{value(selectedAsset, "name") || "No linked asset"}</Detail>
+                <Detail label="Linked Vendor">{value(selectedVendor, "name") || "Internal / no vendor"}</Detail>
+              </div>
+            </div>
+          </Card>
+
+          <Card style={{ boxShadow: "none" }}>
+            <h4 style={h4Style}>Recurring</h4>
+
+            <label style={checkboxRowStyle}>
+              <input
+                type="checkbox"
+                checked={workOrderForm.isRecurring}
+                onChange={(event) => setWorkOrderForm((current) => ({ ...current, isRecurring: event.target.checked }))}
+              />
+              <span>Recurring work order</span>
+            </label>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
+              <Field label="Frequency">
+                <select value={workOrderForm.recurrenceFrequency} onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceFrequency: event.target.value }))} style={inputStyle}>
+                  {recurrenceOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Interval">
+                <input
+                  type="number"
+                  min="1"
+                  value={workOrderForm.recurrenceInterval}
+                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceInterval: event.target.value }))}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Next Due">
+                <input
+                  type="date"
+                  value={workOrderForm.recurrenceNextDue}
+                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceNextDue: event.target.value }))}
+                  style={inputStyle}
+                />
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 10 }}>
+              <Field label="Days / Custom Rule">
+                <input
+                  value={workOrderForm.recurrenceDays}
+                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceDays: event.target.value }))}
+                  style={inputStyle}
+                  placeholder="Example: Mon, Wed, Fri"
+                />
+              </Field>
+
+              <Field label="End Date">
+                <input
+                  type="date"
+                  value={workOrderForm.recurrenceEndDate}
+                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceEndDate: event.target.value }))}
+                  style={inputStyle}
+                />
+              </Field>
+            </div>
+          </Card>
+
+          <Card style={{ boxShadow: "none" }}>
+            <h4 style={h4Style}>Invoice / Cost</h4>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
+              <Field label="Invoice #">
+                <input value={workOrderForm.invoiceNumber} onChange={(event) => setWorkOrderForm((current) => ({ ...current, invoiceNumber: event.target.value }))} style={inputStyle} />
+              </Field>
+
+              <Field label="Invoice Date">
+                <input type="date" value={workOrderForm.invoiceDate} onChange={(event) => setWorkOrderForm((current) => ({ ...current, invoiceDate: event.target.value }))} style={inputStyle} />
+              </Field>
+
+              <Field label="Invoice Amount">
+                <input inputMode="decimal" value={workOrderForm.invoiceAmount} onChange={(event) => setWorkOrderForm((current) => ({ ...current, invoiceAmount: event.target.value }))} style={inputStyle} placeholder="17210.05" />
+              </Field>
+
+              <Field label="Invoice Status">
+                <select value={workOrderForm.invoiceStatus} onChange={(event) => setWorkOrderForm((current) => ({ ...current, invoiceStatus: event.target.value }))} style={inputStyle}>
+                  {invoiceStatusOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Payment Status">
+                <select value={workOrderForm.paymentStatus} onChange={(event) => setWorkOrderForm((current) => ({ ...current, paymentStatus: event.target.value }))} style={inputStyle}>
+                  {paymentStatusOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Cost Category">
+                <input value={workOrderForm.costCategory} onChange={(event) => setWorkOrderForm((current) => ({ ...current, costCategory: event.target.value }))} style={inputStyle} placeholder="Paint, HVAC, Landscape..." />
+              </Field>
+
+              <Field label="Approved By">
+                <input value={workOrderForm.approvedBy} onChange={(event) => setWorkOrderForm((current) => ({ ...current, approvedBy: event.target.value }))} style={inputStyle} />
+              </Field>
+
+              <Field label="Approved Date">
+                <input type="date" value={workOrderForm.approvedDate} onChange={(event) => setWorkOrderForm((current) => ({ ...current, approvedDate: event.target.value }))} style={inputStyle} />
+              </Field>
+            </div>
+
+            <Field label="Cost Notes">
+              <textarea value={workOrderForm.costNotes} onChange={(event) => setWorkOrderForm((current) => ({ ...current, costNotes: event.target.value }))} style={{ ...textareaStyle, minHeight: 90 }} />
+            </Field>
+          </Card>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
+            <button type="button" onClick={() => saveWorkOrder()} style={primaryButtonStyle}>
+              {workOrderMode === "new" ? "Save New Work Order" : "Save Work Order"}
+            </button>
+
+            {workOrderForm.status === "Completed" ? (
+              <button type="button" onClick={reopenWorkOrder} style={secondaryButtonStyle}>Reopen</button>
+            ) : (
+              <button type="button" onClick={markWorkOrderDone} style={secondaryButtonStyle}>Mark Done</button>
+            )}
+
+            <button type="button" onClick={deleteWorkOrder} style={dangerButtonStyle} disabled={!workOrderForm.id}>
+              Delete
+            </button>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -679,7 +1286,7 @@ export default function AtlasPage() {
   function VendorDetail({ vendor }: { vendor?: AnyRecord }) {
     if (!vendor) return <Empty>Select a vendor.</Empty>;
     const vendorId = value(vendor, "id");
-    const relatedWorkOrders = workOrders.filter((wo) => value(wo, "vendorId", "vendor_id") === vendorId);
+    const relatedWorkOrders = workOrderRecords.filter((wo) => value(wo, "vendorId", "vendor_id") === vendorId);
     return (
       <Card style={{ boxShadow: "none" }}>
         <div style={goldEyebrowStyle}>Vendor Detail</div>
@@ -694,7 +1301,7 @@ export default function AtlasPage() {
         <div style={notesStyle}>{value(vendor, "notes", "description") || "No notes saved."}</div>
         <h4 style={h4Style}>Related Work Orders</h4>
         <div style={{ display: "grid", gap: 8 }}>
-          {relatedWorkOrders.slice(0, 8).map((wo, index) => <div key={value(wo, "id") || index} style={miniRowStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</div>)}
+          {relatedWorkOrders.slice(0, 8).map((wo, index) => <button key={value(wo, "id") || index} type="button" onClick={() => { selectWorkOrder(wo); setScreen("work-orders"); }} style={miniButtonStyle}>{value(wo, "title", "summary", "name") || "Untitled Work Order"}</button>)}
           {!relatedWorkOrders.length ? <Empty>No linked work orders.</Empty> : null}
         </div>
       </Card>
@@ -725,8 +1332,8 @@ export default function AtlasPage() {
   function Weather() {
     return (
       <Card>
-        <Title eyebrow="Weather" title="Weather" subtitle="Weather module placeholder kept stable so the app builds. Use Atlas notes or the existing weather workflow after the recovery deploy is green." />
-        <div style={emptyStyle}>Weather panel is available as a department. No build-breaking imports.</div>
+        <Title eyebrow="Weather" title="Weather" subtitle="Weather module placeholder kept stable so the app builds." />
+        <div style={emptyStyle}>Weather panel is available as a department.</div>
       </Card>
     );
   }
@@ -753,7 +1360,7 @@ export default function AtlasPage() {
     return (
       <Card>
         <Title eyebrow="Logs" title="Operations Logs" subtitle="Recent work order notes and history records." />
-        <RecordGrid records={workOrders.slice(0, 30)} empty="No log records found." />
+        <RecordGrid records={workOrderRecords.slice(0, 30)} empty="No log records found." />
       </Card>
     );
   }
@@ -762,7 +1369,7 @@ export default function AtlasPage() {
     return (
       <Card>
         <Title eyebrow="AI Assistant" title="Ask Atlas" subtitle="Recovery-safe assistant screen. Search above to find saved Atlas records." />
-        <div style={emptyStyle}>Ask Atlas can be reconnected after the page is green. Current search works across loaded Atlas records.</div>
+        <div style={emptyStyle}>Ask Atlas can be reconnected after the Work Orders page is confirmed stable.</div>
       </Card>
     );
   }
@@ -770,7 +1377,7 @@ export default function AtlasPage() {
   function Team() {
     return (
       <Card>
-        <Title eyebrow="Team" title="Team" subtitle="Private estate team screen kept stable during recovery." />
+        <Title eyebrow="Team" title="Team" subtitle="Private estate team screen kept stable." />
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12 }}>
           <Card style={{ boxShadow: "none" }}><h3 style={h3Style}>Nick</h3><div style={rowSubStyle}>Operations / Maintenance</div></Card>
           <Card style={{ boxShadow: "none" }}><h3 style={h3Style}>Steve</h3><div style={rowSubStyle}>President</div></Card>
@@ -922,16 +1529,52 @@ const inputStyle: React.CSSProperties = {
   padding: "13px 14px",
   fontSize: 16,
   outline: "none",
+  background: "#FFFFFF",
+  color: colors.ink,
+};
+
+const textareaStyle: React.CSSProperties = {
+  ...inputStyle,
+  minHeight: 130,
+  resize: "vertical",
+  lineHeight: 1.45,
+};
+
+const filterStyle: React.CSSProperties = {
+  ...inputStyle,
+  minHeight: 40,
+  padding: "9px 10px",
+  fontSize: 14,
+  borderRadius: 12,
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  width: "fit-content",
   border: `1px solid ${colors.border}`,
   background: "#fff",
   color: colors.navy,
   borderRadius: 14,
   padding: "10px 12px",
   fontWeight: 900,
+  cursor: "pointer",
+};
+
+const primaryButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.gold}`,
+  background: colors.gold,
+  color: colors.navy,
+  borderRadius: 14,
+  padding: "11px 14px",
+  fontWeight: 1000,
+  cursor: "pointer",
+};
+
+const dangerButtonStyle: React.CSSProperties = {
+  border: "1px solid rgba(180,35,24,0.28)",
+  background: "rgba(180,35,24,0.08)",
+  color: colors.red,
+  borderRadius: 14,
+  padding: "11px 14px",
+  fontWeight: 1000,
   cursor: "pointer",
 };
 
@@ -983,6 +1626,33 @@ const rowButtonStyle: React.CSSProperties = {
   minWidth: 0,
 };
 
+const workOrderBoardStyle: React.CSSProperties = {
+  background: colors.card,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 22,
+  boxShadow: "0 14px 35px rgba(11,30,51,0.06)",
+  overflow: "hidden",
+  minWidth: 0,
+};
+
+const workOrderEditorStyle: React.CSSProperties = {
+  background: colors.card,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 22,
+  boxShadow: "0 14px 35px rgba(11,30,51,0.06)",
+  padding: 14,
+  minWidth: 0,
+};
+
+const workOrderCardButtonStyle: React.CSSProperties = {
+  background: "#FBFCFE",
+  borderRadius: 18,
+  padding: 12,
+  textAlign: "left",
+  cursor: "pointer",
+  minWidth: 0,
+};
+
 const rowTitleStyle: React.CSSProperties = {
   color: colors.navy,
   fontWeight: 1000,
@@ -1004,7 +1674,7 @@ const h3Style: React.CSSProperties = {
 };
 
 const h4Style: React.CSSProperties = {
-  margin: "16px 0 8px",
+  margin: "0 0 10px",
   color: colors.navy,
   fontSize: 16,
 };
@@ -1070,13 +1740,12 @@ const miniButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const miniRowStyle: React.CSSProperties = {
-  border: `1px solid ${colors.border}`,
-  background: "#fff",
-  borderRadius: 14,
-  padding: "10px 12px",
-  fontWeight: 850,
+const checkboxRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
   color: colors.navy,
+  fontWeight: 900,
 };
 
 const mapViewportStyle: React.CSSProperties = {
@@ -1117,3 +1786,16 @@ const mapPinStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
   maxWidth: 190,
 };
+
+function tabButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    border: "none",
+    borderBottom: active ? `3px solid ${colors.gold}` : `1px solid ${colors.border}`,
+    background: active ? "#FFFFFF" : "#F7FAFD",
+    color: active ? colors.navy : colors.muted,
+    padding: "13px 8px",
+    fontSize: 14,
+    fontWeight: 950,
+    cursor: "pointer",
+  };
+}
