@@ -165,6 +165,7 @@ const screens: { id: Screen; label: string }[] = [
 ];
 
 const mapLocalStorageKey = "atlas-map-labels-v2";
+
 const storageKeys = {
   assets: "atlas-asset-records-v3",
   vendors: "atlas-vendor-records-v3",
@@ -209,9 +210,11 @@ function formatDate(date: string) {
 
 function readStoredArray<T>(key: string, fallback: T[]): T[] {
   if (typeof window === "undefined") return fallback;
+
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return fallback;
+
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : fallback;
   } catch {
@@ -387,7 +390,8 @@ const defaultLocations: LocationRecord[] = [
     name: "Courtyard",
     type: "Outdoor Living",
     zone: "Main House",
-    notes: "Patio with chairs/fire pit between main house, addition, old garage, and covered hallway. Do not label the gray covered hallway itself.",
+    notes:
+      "Patio with chairs/fire pit between main house, addition, old garage, and covered hallway. Do not label the gray covered hallway itself.",
   },
   {
     id: "trampoline-dog",
@@ -566,13 +570,15 @@ const defaultVendors: VendorRecord[] = [
     category: "Paint / Stain",
     phone: "206-510-0688",
     email: "brandon@elliottpaintco.com",
-    notes: "Exterior paint/stain vendor. Brandon Ness contact. Kurt Anderson involved in sample/scope walkthroughs.",
+    notes:
+      "Exterior paint/stain vendor. Brandon Ness contact. Kurt Anderson involved in sample/scope walkthroughs.",
   },
   {
     id: "advancedirrigation",
     name: "Advanced Irrigation",
     category: "Irrigation",
-    notes: "Hydrawise / Hunter HCC 24-zone irrigation controller, sensors, service, and current-year backflow testing.",
+    notes:
+      "Hydrawise / Hunter HCC 24-zone irrigation controller, sensors, service, and current-year backflow testing.",
   },
   {
     id: "psf",
@@ -636,7 +642,8 @@ const defaultAssets: AssetRecord[] = [
     make: "Viessmann",
     model: "Vitodens 200",
     serial: "758960502925",
-    notes: "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Year 2018 from prior nameplate view.",
+    notes:
+      "White wall-mounted Viessmann Vitodens 200. Label: BOILER 1 — SECONDARY HIGH LIMIT INSIDE. Year 2018 from prior nameplate view.",
     vendorIds: ["psf", "viessmann"],
   },
   {
@@ -648,7 +655,8 @@ const defaultAssets: AssetRecord[] = [
     make: "Viessmann",
     model: "Vitodens 200",
     serial: "758960507593",
-    notes: "White wall-mounted Viessmann Vitodens 200. Year 2025 nameplate. Keep monitored after recall / heat exchanger work.",
+    notes:
+      "White wall-mounted Viessmann Vitodens 200. Year 2025 nameplate. Keep monitored after recall / heat exchanger work.",
     vendorIds: ["psf", "viessmann"],
   },
   {
@@ -701,7 +709,8 @@ const defaultAssets: AssetRecord[] = [
     category: "Dock / Boat Lift",
     status: "Online",
     make: "Sunstream",
-    notes: "Larger/newer Sunstream lift control, battery, and solar box from last summer. Belongs to Cobalt boat lift.",
+    notes:
+      "Larger/newer Sunstream lift control, battery, and solar box from last summer. Belongs to Cobalt boat lift.",
     vendorIds: ["sunstream"],
   },
   {
@@ -755,7 +764,8 @@ const defaultAssets: AssetRecord[] = [
     make: "Hunter",
     model: "HCC 24 Zones",
     serial: "06d050377d",
-    notes: "Hydrawise controller name Faben2000. Installed 04/16/2026. Flow/rain/soil sensors captured.",
+    notes:
+      "Hydrawise controller name Faben2000. Installed 04/16/2026. Flow/rain/soil sensors captured.",
     vendorIds: ["advancedirrigation"],
   },
   {
@@ -784,7 +794,8 @@ const defaultAssets: AssetRecord[] = [
     locationId: "exterior",
     category: "Exterior",
     status: "Monitor",
-    notes: "Waterside verticals semi-transparent, eaves semi-solid; BBQ area semi-solid; East siding semi-solid/windows semi-transparent; garages solid.",
+    notes:
+      "Waterside verticals semi-transparent, eaves semi-solid; BBQ area semi-solid; East siding semi-solid/windows semi-transparent; garages solid.",
     vendorIds: ["elliottpaint"],
   },
 ];
@@ -828,7 +839,8 @@ const defaultWorkOrders: ServiceRecord[] = [
     title: "Weekly landscaping crew — waterside beds first",
     status: "Scheduled",
     priority: "Medium",
-    notes: "Pat manages crew. Priority: waterside beds first, then patio, courtyard, driveway, dock path, lawn edges, and other beds.",
+    notes:
+      "Pat manages crew. Priority: waterside beds first, then patio, courtyard, driveway, dock path, lawn edges, and other beds.",
   },
 ];
 
@@ -989,6 +1001,7 @@ export default function AtlasPage() {
   const [selectedAssetId, setSelectedAssetId] = useState(defaultAssets[0].id);
   const [selectedVendorId, setSelectedVendorId] = useState(defaultVendors[0].id);
   const [selectedServiceId, setSelectedServiceId] = useState(defaultWorkOrders[0].id);
+
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(
     "Ask Atlas about assets, vendors, map labels, work orders, calendar, procedures, documents, or parts."
@@ -999,6 +1012,7 @@ export default function AtlasPage() {
 
   useEffect(() => {
     setIsMobile(window.innerWidth < 760);
+
     const onResize = () => setIsMobile(window.innerWidth < 760);
     window.addEventListener("resize", onResize);
 
@@ -1029,6 +1043,7 @@ export default function AtlasPage() {
     setPartRecords(readStoredArray<PartRecord>(storageKeys.parts, defaultParts));
 
     setReady(true);
+
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
@@ -1129,8 +1144,6 @@ export default function AtlasPage() {
       calendarItems,
       partRecords,
       sortedLocations,
-      sortedAssets,
-      sortedVendors,
     ]
   );
 
@@ -1237,6 +1250,7 @@ export default function AtlasPage() {
     if (result.vendorId) setSelectedVendorId(result.vendorId);
     if (result.serviceId) setSelectedServiceId(result.serviceId);
     if (result.mapLabelId) openMapLabel(result.mapLabelId);
+
     setScreen(result.screen);
     setQuery("");
   }
@@ -1244,6 +1258,7 @@ export default function AtlasPage() {
   function openMapLabel(id: string) {
     const label = mapLabels.find((item) => item.id === id);
     if (!label) return;
+
     setSelectedMapLabelId(id);
     setMapLabelForm(label);
     setMapLabelMode("edit");
@@ -1295,6 +1310,7 @@ export default function AtlasPage() {
       x: 50,
       y: 50,
     };
+
     setMapLabelMode("new");
     setSelectedMapLabelId(nextLabel.id);
     setMapLabelForm(nextLabel);
@@ -1348,6 +1364,7 @@ export default function AtlasPage() {
   function handleMapLabelPhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const labelId = mapLabelForm.id || selectedMapLabelId;
     const files = Array.from(event.target.files ?? []);
+
     if (!labelId || files.length === 0) return;
 
     files.forEach((file) => {
@@ -1472,7 +1489,9 @@ export default function AtlasPage() {
       );
 
     setAssistantAnswer(
-      matches.length ? matches.join("\n\n") : "I did not find that in the local Atlas records yet."
+      matches.length
+        ? matches.join("\n\n")
+        : "I did not find that in the local Atlas records yet."
     );
   }
 
@@ -1615,71 +1634,33 @@ export default function AtlasPage() {
           <Stat label="High Priority" value={String(highPriority.length)} />
         </div>
 
-        <div
-          style={{
-            ...gridTwoStyle,
-            gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.8fr",
-          }}
-        >
-          <Section
-            title="Property Map"
-            eyebrow="Fixed image / movable labels"
-            right={
-              <button type="button" onClick={() => setScreen("map")} style={goldButtonStyle}>
-                Open Map
-              </button>
-            }
-          >
-            <div style={mapPreviewStyle}>
-              <img
-                src="/atlas-property-map.png"
-                alt="Atlas property map"
-                style={mapImageStyle}
-                draggable={false}
-              />
-              {mapLabels.slice(0, 8).map((label) => (
-                <span
-                  key={label.id}
-                  style={{
-                    ...miniMapPinStyle,
-                    left: `${label.x}%`,
-                    top: `${label.y}%`,
+        <Section title="Priority Work" eyebrow="To Do / Monitor">
+          <div style={stackStyle}>
+            {sortedWorkOrders
+              .filter((record) => record.status !== "Completed")
+              .slice(0, 8)
+              .map((record) => (
+                <button
+                  key={record.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedServiceId(record.id);
+                    setScreen("history");
                   }}
+                  style={rowButtonStyle}
                 >
-                  {label.label}
-                </span>
+                  <div>
+                    <strong>{record.title}</strong>
+                    <p style={mutedSmallStyle}>
+                      {formatDate(record.date)} · {assetName(record.assetId)} ·{" "}
+                      {vendorName(record.vendorId)}
+                    </p>
+                  </div>
+                  <span style={badgeStyle(record.priority)}>{record.priority}</span>
+                </button>
               ))}
-            </div>
-          </Section>
-
-          <Section title="Priority Work" eyebrow="To Do / Monitor">
-            <div style={stackStyle}>
-              {sortedWorkOrders
-                .filter((record) => record.status !== "Completed")
-                .slice(0, 6)
-                .map((record) => (
-                  <button
-                    key={record.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedServiceId(record.id);
-                      setScreen("history");
-                    }}
-                    style={rowButtonStyle}
-                  >
-                    <div>
-                      <strong>{record.title}</strong>
-                      <p style={mutedSmallStyle}>
-                        {formatDate(record.date)} · {assetName(record.assetId)} ·{" "}
-                        {vendorName(record.vendorId)}
-                      </p>
-                    </div>
-                    <span style={badgeStyle(record.priority)}>{record.priority}</span>
-                  </button>
-                ))}
-            </div>
-          </Section>
-        </div>
+          </div>
+        </Section>
       </div>
     );
   }
@@ -1687,8 +1668,8 @@ export default function AtlasPage() {
   function renderMap() {
     return (
       <Section
-        title="Locked Map with Movable Atlas Labels"
-        eyebrow="Property Map"
+        title="Atlas Property Map"
+        eyebrow="Map"
         right={
           <div style={buttonRowStyle}>
             <span style={badgeStyle("Online")}>{mapLabels.length} Labels</span>
@@ -1709,59 +1690,51 @@ export default function AtlasPage() {
         >
           <div style={{ minWidth: 0 }}>
             <div style={{ ...emptyStateStyle, marginBottom: 12 }}>
-              {isMobile
-                ? "Mobile map: drag sideways to view the full property. Tap or drag labels to select and place them."
-                : "The original map image stays locked. Drag labels to adjust placement, then edit details on the right."}
+              The full property map stays visible. Drag labels to adjust placement. Tap a
+              label to edit its details.
             </div>
 
-            <div style={isMobile ? mobileMapViewportStyle : undefined}>
-              <div
-                ref={mapRef}
-                onPointerMove={handleMapPointerMove}
-                onPointerUp={stopMapDrag}
-                onPointerLeave={stopMapDrag}
-                style={{
-                  ...mapShellStyle,
-                  ...(isMobile ? mobileMapShellStyle : {}),
-                }}
-              >
-                <img
-                  src="/atlas-property-map.png"
-                  alt="Atlas property map"
-                  style={mapImageStyle}
-                  draggable={false}
-                />
+            <div
+              ref={mapRef}
+              onPointerMove={handleMapPointerMove}
+              onPointerUp={stopMapDrag}
+              onPointerLeave={stopMapDrag}
+              onPointerCancel={stopMapDrag}
+              style={mapShellStyle}
+            >
+              <img
+                src="/atlas-property-map.png"
+                alt="Atlas property map"
+                style={mapImageStyle}
+                draggable={false}
+              />
 
-                {mapLabels.map((label) => {
-                  const selected = label.id === selectedMapLabelId;
+              {mapLabels.map((label) => {
+                const selected = label.id === selectedMapLabelId;
 
-                  return (
-                    <button
-                      key={label.id}
-                      type="button"
-                      onPointerDown={(event) =>
-                        handleMapLabelPointerDown(event, label.id)
-                      }
-                      style={{
-                        ...mapPinStyle,
-                        ...(isMobile ? mobileMapPinStyle : {}),
-                        left: `${label.x}%`,
-                        top: `${label.y}%`,
-                        background: selected ? colors.gold : colors.navy,
-                        color: selected ? colors.navy : "#FFFFFF",
-                        borderColor: selected ? colors.navy : colors.gold2,
-                        zIndex: selected ? 4 : 3,
-                      }}
-                      title="Drag to move. Details open in the panel."
-                    >
-                      <span style={pinDotStyle}>
-                        {Math.round(label.x)}/{Math.round(label.y)}
-                      </span>
-                      {label.label}
-                    </button>
-                  );
-                })}
-              </div>
+                return (
+                  <button
+                    key={label.id}
+                    type="button"
+                    onPointerDown={(event) =>
+                      handleMapLabelPointerDown(event, label.id)
+                    }
+                    style={{
+                      ...mapPinStyle,
+                      ...(isMobile ? mobileMapPinStyle : {}),
+                      left: `${label.x}%`,
+                      top: `${label.y}%`,
+                      background: selected ? colors.gold : colors.navy,
+                      color: selected ? colors.navy : "#FFFFFF",
+                      borderColor: selected ? colors.navy : colors.gold2,
+                      zIndex: selected ? 4 : 3,
+                    }}
+                    title="Drag to move. Details open in the panel."
+                  >
+                    {label.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1769,6 +1742,7 @@ export default function AtlasPage() {
             <div style={eyebrowStyle}>
               {mapLabelMode === "new" ? "New Map Label" : "Selected Map Label"}
             </div>
+
             <h3 style={cardTitleStyle}>{mapLabelForm.label || selectedMapLabel.label}</h3>
 
             <div style={formGridStyle}>
@@ -2730,43 +2704,21 @@ const gridTwoStyle: React.CSSProperties = {
   alignItems: "start",
 };
 
-const mapPreviewStyle: React.CSSProperties = {
-  position: "relative",
-  overflow: "hidden",
-  borderRadius: 16,
-  border: `1px solid ${colors.line}`,
-  background: "#D7E0EA",
-  minHeight: 260,
-};
-
 const mapShellStyle: React.CSSProperties = {
   position: "relative",
   width: "100%",
-  aspectRatio: "4 / 3",
   overflow: "hidden",
   borderRadius: 18,
   border: `1px solid ${colors.line}`,
   background: "#D7E0EA",
-  touchAction: "none",
   userSelect: "none",
-};
-
-const mobileMapViewportStyle: React.CSSProperties = {
-  width: "100%",
-  overflowX: "auto",
-  WebkitOverflowScrolling: "touch",
-  borderRadius: 18,
-};
-
-const mobileMapShellStyle: React.CSSProperties = {
-  width: 920,
-  maxWidth: "none",
+  touchAction: "pan-y",
 };
 
 const mapImageStyle: React.CSSProperties = {
   width: "100%",
-  height: "100%",
-  objectFit: "cover",
+  height: "auto",
+  objectFit: "contain",
   display: "block",
   pointerEvents: "none",
 };
@@ -2786,28 +2738,8 @@ const mapPinStyle: React.CSSProperties = {
 };
 
 const mobileMapPinStyle: React.CSSProperties = {
-  fontSize: 12,
-  padding: "8px 11px",
-};
-
-const miniMapPinStyle: React.CSSProperties = {
-  position: "absolute",
-  transform: "translate(-50%, -50%)",
-  background: colors.navy,
-  color: "white",
-  border: `1px solid ${colors.gold2}`,
-  borderRadius: 999,
-  padding: "3px 7px",
   fontSize: 10,
-  fontWeight: 900,
-  whiteSpace: "nowrap",
-};
-
-const pinDotStyle: React.CSSProperties = {
-  display: "inline-flex",
-  marginRight: 6,
-  opacity: 0.7,
-  fontSize: 10,
+  padding: "5px 7px",
 };
 
 const recordCardStyle: React.CSSProperties = {
