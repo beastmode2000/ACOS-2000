@@ -117,7 +117,7 @@ function renderMap() {
               <div style={{ ...emptyStateStyle, marginTop: 12 }}>No photos added to this map label yet.</div>
             )}
           </div>
-        </div>dk
+        </div>
       </div>
     </SectionShell>
   );
