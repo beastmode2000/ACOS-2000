@@ -21,6 +21,8 @@ type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
 type ServiceStatus = "Open" | "Scheduled" | "Completed" | "Monitor";
 type Priority = "High" | "Normal" | "Seasonal";
 type WorkOrderPriority = "Low" | "Medium" | "High";
+type RecurrenceEndType = "never" | "after_count" | "on_date";
+type RecurrenceStatus = "inactive" | "active" | "paused";
 type PartStatus = "In Stock" | "Low" | "Out" | "Order";
 
 type LocationRecord = {
@@ -92,6 +94,29 @@ type ServiceRecord = {
   followUpDate?: string;
   photos?: UploadedFileRecord[];
   documents?: UploadedFileRecord[];
+
+  isRecurring?: boolean;
+  recurrenceFrequency?: string;
+  recurrenceInterval?: number;
+  recurrenceDays?: string;
+  recurrenceNextDue?: string;
+  recurrenceEndType?: RecurrenceEndType | string;
+  recurrenceEndDate?: string;
+  recurrenceCountLimit?: number | string;
+  recurrenceCompletedCount?: number;
+  recurrenceStatus?: RecurrenceStatus | string;
+  parentWorkOrderId?: string;
+
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  invoiceAmount?: string;
+  invoiceStatus?: string;
+  paymentStatus?: string;
+  costCategory?: string;
+  approvedBy?: string;
+  approvedDate?: string;
+  costNotes?: string;
+  invoiceDocumentIds?: string;
 };
 
 type ProcedureRecord = {
@@ -561,6 +586,67 @@ function dateKeyFromDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function cleanDateKey(value?: string) {
+  return (value || "").trim().slice(0, 10);
+}
+
+function positiveInteger(value: unknown, fallback = 1) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function addDaysToKey(key: string, days: number) {
+  const date = dateFromKey(key || dateKeyFromDate(new Date()));
+  date.setDate(date.getDate() + days);
+  return dateKeyFromDate(date);
+}
+
+function addMonthsToKey(key: string, months: number) {
+  const date = dateFromKey(key || dateKeyFromDate(new Date()));
+  date.setMonth(date.getMonth() + months);
+  return dateKeyFromDate(date);
+}
+
+function addYearsToKey(key: string, years: number) {
+  const date = dateFromKey(key || dateKeyFromDate(new Date()));
+  date.setFullYear(date.getFullYear() + years);
+  return dateKeyFromDate(date);
+}
+
+function getNextRecurringDate(record: ServiceRecord) {
+  const interval = positiveInteger(record.recurrenceInterval, 1);
+  const baseDate = cleanDateKey(record.recurrenceNextDue || record.followUpDate || record.date) || dateKeyFromDate(new Date());
+  const frequency = (record.recurrenceFrequency || "Weekly").toLowerCase();
+
+  if (frequency.includes("daily")) return addDaysToKey(baseDate, interval);
+  if (frequency.includes("2") && frequency.includes("week")) return addDaysToKey(baseDate, 14 * interval);
+  if (frequency.includes("week")) return addDaysToKey(baseDate, 7 * interval);
+  if (frequency.includes("quarter")) return addMonthsToKey(baseDate, 3 * interval);
+  if (frequency.includes("month")) return addMonthsToKey(baseDate, interval);
+  if (frequency.includes("year")) return addYearsToKey(baseDate, interval);
+
+  return addDaysToKey(baseDate, interval);
+}
+
+function shouldContinueRecurring(record: ServiceRecord, nextDate: string, completedCount: number) {
+  if (!record.isRecurring) return false;
+  if ((record.recurrenceStatus || "active") !== "active") return false;
+
+  const endType = record.recurrenceEndType || "never";
+
+  if (endType === "after_count") {
+    const limit = positiveInteger(record.recurrenceCountLimit, 0);
+    return !limit || completedCount < limit;
+  }
+
+  if (endType === "on_date") {
+    const endDate = cleanDateKey(record.recurrenceEndDate);
+    return !endDate || nextDate <= endDate;
+  }
+
+  return true;
+}
+
 function dateFromKey(key: string) {
   return new Date(`${key}T12:00:00`);
 }
@@ -620,10 +706,35 @@ function blankService(date?: string): ServiceRecord {
     followUpDate: "",
     photos: [],
     documents: [],
+
+    isRecurring: false,
+    recurrenceFrequency: "Weekly",
+    recurrenceInterval: 1,
+    recurrenceDays: "",
+    recurrenceNextDue: date || dateKeyFromDate(new Date()),
+    recurrenceEndType: "never",
+    recurrenceEndDate: "",
+    recurrenceCountLimit: "",
+    recurrenceCompletedCount: 0,
+    recurrenceStatus: "inactive",
+    parentWorkOrderId: "",
+
+    invoiceNumber: "",
+    invoiceDate: "",
+    invoiceAmount: "",
+    invoiceStatus: "not added",
+    paymentStatus: "unknown",
+    costCategory: "",
+    approvedBy: "",
+    approvedDate: "",
+    costNotes: "",
+    invoiceDocumentIds: "",
   };
 }
 
 function normalizeService(record: ServiceRecord): ServiceRecord {
+  const isRecurring = Boolean(record.isRecurring);
+
   return {
     ...record,
     vendorId: record.vendorId ?? "",
@@ -632,6 +743,29 @@ function normalizeService(record: ServiceRecord): ServiceRecord {
     followUpDate: record.followUpDate ?? "",
     photos: record.photos ?? [],
     documents: record.documents ?? [],
+
+    isRecurring,
+    recurrenceFrequency: record.recurrenceFrequency || "Weekly",
+    recurrenceInterval: Math.max(1, Number(record.recurrenceInterval || 1)),
+    recurrenceDays: record.recurrenceDays ?? "",
+    recurrenceNextDue: record.recurrenceNextDue || record.followUpDate || record.date || "",
+    recurrenceEndType: record.recurrenceEndType || "never",
+    recurrenceEndDate: record.recurrenceEndDate ?? "",
+    recurrenceCountLimit: record.recurrenceCountLimit ?? "",
+    recurrenceCompletedCount: Number(record.recurrenceCompletedCount || 0),
+    recurrenceStatus: record.recurrenceStatus || (isRecurring ? "active" : "inactive"),
+    parentWorkOrderId: record.parentWorkOrderId ?? "",
+
+    invoiceNumber: record.invoiceNumber ?? "",
+    invoiceDate: record.invoiceDate ?? "",
+    invoiceAmount: record.invoiceAmount ?? "",
+    invoiceStatus: record.invoiceStatus || "not added",
+    paymentStatus: record.paymentStatus || "unknown",
+    costCategory: record.costCategory ?? "",
+    approvedBy: record.approvedBy ?? "",
+    approvedDate: record.approvedDate ?? "",
+    costNotes: record.costNotes ?? "",
+    invoiceDocumentIds: record.invoiceDocumentIds ?? "",
   };
 }
 
@@ -833,6 +967,7 @@ export default function AtlasPage() {
   const todayKey = dateKeyFromDate(new Date());
   const bootstrappedRef = useRef(false);
   const mapRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
@@ -1277,6 +1412,16 @@ export default function AtlasPage() {
         record.notes,
         record.date,
         record.followUpDate,
+        record.isRecurring ? "recurring" : "",
+        record.recurrenceFrequency,
+        record.recurrenceNextDue,
+        record.recurrenceStatus,
+        record.invoiceNumber,
+        record.invoiceAmount,
+        record.invoiceStatus,
+        record.paymentStatus,
+        record.costCategory,
+        record.costNotes,
         assetName(record.assetId),
         vendorName(record.vendorId),
         procedureName(record.procedureId),
@@ -1417,6 +1562,8 @@ export default function AtlasPage() {
     }
 
     setScreen(result.screen);
+    setQuery("");
+    window.setTimeout(() => searchInputRef.current?.focus(), 0);
   }
 
   function openAssistantFile(result: SearchResult) {
@@ -1949,7 +2096,9 @@ export default function AtlasPage() {
     let id = existingId || slugify(title);
     if (serviceMode === "new" && serviceRecords.some((service) => service.id === id)) id = `${id}-${Date.now()}`;
 
-    const cleanService: ServiceRecord = {
+    const isRecurring = Boolean(serviceForm.isRecurring);
+
+    const cleanService: ServiceRecord = normalizeService({
       ...serviceForm,
       id,
       title,
@@ -1963,7 +2112,30 @@ export default function AtlasPage() {
       followUpDate: serviceForm.followUpDate || "",
       photos: serviceForm.photos ?? [],
       documents: serviceForm.documents ?? [],
-    };
+
+      isRecurring,
+      recurrenceFrequency: serviceForm.recurrenceFrequency || "Weekly",
+      recurrenceInterval: positiveInteger(serviceForm.recurrenceInterval, 1),
+      recurrenceDays: serviceForm.recurrenceDays || "",
+      recurrenceNextDue: serviceForm.recurrenceNextDue || serviceForm.followUpDate || serviceForm.date || todayKey,
+      recurrenceEndType: serviceForm.recurrenceEndType || "never",
+      recurrenceEndDate: serviceForm.recurrenceEndDate || "",
+      recurrenceCountLimit: serviceForm.recurrenceCountLimit || "",
+      recurrenceCompletedCount: Number(serviceForm.recurrenceCompletedCount || 0),
+      recurrenceStatus: isRecurring ? serviceForm.recurrenceStatus || "active" : "inactive",
+      parentWorkOrderId: serviceForm.parentWorkOrderId || "",
+
+      invoiceNumber: serviceForm.invoiceNumber?.trim() || "",
+      invoiceDate: serviceForm.invoiceDate || "",
+      invoiceAmount: serviceForm.invoiceAmount?.trim() || "",
+      invoiceStatus: serviceForm.invoiceStatus || "not added",
+      paymentStatus: serviceForm.paymentStatus || "unknown",
+      costCategory: serviceForm.costCategory?.trim() || "",
+      approvedBy: serviceForm.approvedBy?.trim() || "",
+      approvedDate: serviceForm.approvedDate || "",
+      costNotes: serviceForm.costNotes?.trim() || "",
+      invoiceDocumentIds: serviceForm.invoiceDocumentIds || "",
+    });
 
     setServiceRecords((current) => sortServices(current.some((service) => service.id === id) ? current.map((service) => (service.id === id ? cleanService : service)) : [cleanService, ...current]));
     setServiceMode("edit");
@@ -2116,16 +2288,66 @@ export default function AtlasPage() {
   }
 
   function markServiceDoneAndSave(record?: ServiceRecord) {
-    const baseRecord = record ?? serviceForm;
+    const baseRecord = normalizeService(record ?? serviceForm);
     if (!baseRecord.id && !baseRecord.title.trim()) return;
+
+    const nextRecurringDate = getNextRecurringDate(baseRecord);
+    const completedCount = Number(baseRecord.recurrenceCompletedCount || 0) + 1;
+    const shouldCreateNext = shouldContinueRecurring(baseRecord, nextRecurringDate, completedCount);
 
     const completedRecord: ServiceRecord = normalizeService({
       ...baseRecord,
       status: "Completed",
       notes: baseRecord.notes?.trim() || "Completed.",
+      recurrenceCompletedCount: completedCount,
+      recurrenceNextDue: shouldCreateNext ? nextRecurringDate : baseRecord.recurrenceNextDue || "",
+      recurrenceStatus: baseRecord.isRecurring ? (shouldCreateNext ? "active" : "inactive") : "inactive",
     });
 
-    setServiceRecords((current) => sortServices(current.map((service) => (service.id === completedRecord.id ? completedRecord : service))));
+    const nextRecord: ServiceRecord | null = shouldCreateNext
+      ? normalizeService({
+          ...baseRecord,
+          id: uid("service-recurring"),
+          status: "Open",
+          date: nextRecurringDate,
+          followUpDate: nextRecurringDate,
+          notes: `Recurring follow-up generated after completing ${getWorkOrderNumber(baseRecord)}.
+
+${baseRecord.notes?.trim() || "No notes added yet."}`,
+          photos: [],
+          documents: [],
+          parentWorkOrderId: baseRecord.parentWorkOrderId || baseRecord.id,
+          recurrenceNextDue: nextRecurringDate,
+          recurrenceCompletedCount: completedCount,
+          recurrenceStatus: "active",
+          invoiceNumber: "",
+          invoiceDate: "",
+          invoiceAmount: "",
+          invoiceStatus: "not added",
+          paymentStatus: "unknown",
+          costCategory: "",
+          approvedBy: "",
+          approvedDate: "",
+          costNotes: "",
+          invoiceDocumentIds: "",
+        })
+      : null;
+
+    setServiceRecords((current) => {
+      const updated = current.map((service) => (service.id === completedRecord.id ? completedRecord : service));
+      return sortServices(nextRecord ? [nextRecord, ...updated] : updated);
+    });
+
+    if (nextRecord) {
+      setServiceForm(nextRecord);
+      setSelectedServiceId(nextRecord.id);
+      setServiceMode("edit");
+      setWorkOrderTab("todo");
+      setDatabaseStatus(`Marked done and created next recurring work order: ${nextRecord.title}`);
+      void postAtlasRecord("work_orders", completedRecord);
+      void postAtlasRecord("work_orders", nextRecord);
+      return;
+    }
 
     setServiceForm(completedRecord);
     setSelectedServiceId(completedRecord.id);
@@ -3321,6 +3543,7 @@ export default function AtlasPage() {
                     <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 7 }}>
                       <span style={{ ...badgeStyle(record.status), padding: "3px 7px", fontSize: 11 }}>{record.status}</span>
                       <span style={{ ...workOrderPriorityBadgeStyle(priority), padding: "3px 7px", fontSize: 11 }}>{priority}</span>
+                      {record.isRecurring ? <span style={{ ...badgeStyle("Scheduled"), padding: "3px 7px", fontSize: 11 }}>Recurring</span> : null}
                     </div>
                   </div>
                   <div style={{ textAlign: "right", color: colors.muted, fontSize: 11, fontWeight: 850, whiteSpace: "nowrap" }}>
@@ -3341,7 +3564,7 @@ export default function AtlasPage() {
           </div>
         </section>
 
-        <section style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 22, boxShadow: "0 14px 35px rgba(11, 30, 51, 0.06)", overflow: "hidden", minHeight: boardHeight }}>
+        <section style={{ background: colors.card, border: `1px solid ${colors.line}`, borderRadius: 22, boxShadow: "0 14px 35px rgba(11, 30, 51, 0.06)", overflow: "hidden", minHeight: boardHeight, position: isMobile ? "relative" : "sticky", top: isMobile ? 0 : 18 }}>
           <div style={{ padding: "18px 20px", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start" }}>
             <div>
               <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, letterSpacing: 1.1, textTransform: "uppercase" }}>{hasSelectedWorkOrder ? `Work Order ${selectedWorkOrderNumber}` : "New Work Order"}</div>
@@ -3352,6 +3575,8 @@ export default function AtlasPage() {
                 <span style={openPillStyle}>Due/work date: {formatDate(serviceForm.date || todayKey)}</span>
                 <span style={openPillStyle}>{serviceForm.photos?.length ?? 0} photos</span>
                 <span style={openPillStyle}>{serviceForm.documents?.length ?? 0} docs</span>
+                {serviceForm.isRecurring ? <span style={badgeStyle("Scheduled")}>Recurring</span> : null}
+                {serviceForm.invoiceNumber || serviceForm.invoiceAmount ? <span style={badgeStyle("Monitor")}>Invoice / Cost</span> : null}
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -3371,6 +3596,24 @@ export default function AtlasPage() {
               </div>
 
               <label style={labelStyle}>Comments / Notes<textarea value={serviceForm.notes} onChange={(event) => setServiceForm((current) => ({ ...current, notes: event.target.value }))} rows={8} placeholder="Write updates, sign-off notes, vendor findings, parts used, costs, and next steps." style={{ ...inputStyle, resize: "vertical" }} /></label>
+
+              <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
+                <div>
+                  <div style={goldEyebrowStyle}>Invoice / Cost</div>
+                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>Attach invoice details directly to this work order. Documents can still be uploaded below.</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
+                  <label style={labelStyle}>Invoice #<input value={serviceForm.invoiceNumber ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, invoiceNumber: event.target.value }))} placeholder="Invoice number" style={inputStyle} /></label>
+                  <label style={labelStyle}>Invoice Date<input type="date" value={serviceForm.invoiceDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, invoiceDate: event.target.value }))} style={inputStyle} /></label>
+                  <label style={labelStyle}>Amount<input value={serviceForm.invoiceAmount ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, invoiceAmount: event.target.value }))} placeholder="0.00" style={inputStyle} /></label>
+                  <label style={labelStyle}>Invoice Status<select value={serviceForm.invoiceStatus ?? "not added"} onChange={(event) => setServiceForm((current) => ({ ...current, invoiceStatus: event.target.value }))} style={inputStyle}><option value="not added">Not Added</option><option value="received">Received</option><option value="needs review">Needs Review</option><option value="approved">Approved</option><option value="paid">Paid</option></select></label>
+                  <label style={labelStyle}>Payment Status<select value={serviceForm.paymentStatus ?? "unknown"} onChange={(event) => setServiceForm((current) => ({ ...current, paymentStatus: event.target.value }))} style={inputStyle}><option value="unknown">Unknown</option><option value="unpaid">Unpaid</option><option value="approved">Approved</option><option value="paid">Paid</option><option value="do not pay yet">Do Not Pay Yet</option></select></label>
+                  <label style={labelStyle}>Cost Category<input value={serviceForm.costCategory ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, costCategory: event.target.value }))} placeholder="Painting, pool, landscaping..." style={inputStyle} /></label>
+                  <label style={labelStyle}>Approved By<input value={serviceForm.approvedBy ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, approvedBy: event.target.value }))} placeholder="Name" style={inputStyle} /></label>
+                  <label style={labelStyle}>Approved Date<input type="date" value={serviceForm.approvedDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, approvedDate: event.target.value }))} style={inputStyle} /></label>
+                </div>
+                <label style={labelStyle}>Cost Notes<textarea value={serviceForm.costNotes ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, costNotes: event.target.value }))} rows={3} placeholder="Payment notes, approval notes, what the cost covered, questions for vendor, etc." style={{ ...inputStyle, resize: "vertical" }} /></label>
+              </div>
 
               <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 16, display: "grid", gap: 12 }}>
                 <div style={uploadBoxStyle}>
@@ -3457,6 +3700,77 @@ export default function AtlasPage() {
               </div>
 
               <div style={inlineCardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8 }}>Recurring Work</div>
+                  <label style={{ display: "inline-flex", gap: 8, alignItems: "center", color: colors.navy, fontWeight: 950, fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(serviceForm.isRecurring)}
+                      onChange={(event) => setServiceForm((current) => ({
+                        ...current,
+                        isRecurring: event.target.checked,
+                        recurrenceStatus: event.target.checked ? current.recurrenceStatus || "active" : "inactive",
+                        recurrenceNextDue: current.recurrenceNextDue || current.followUpDate || current.date || todayKey,
+                      }))}
+                    />
+                    Make recurring
+                  </label>
+                </div>
+
+                {serviceForm.isRecurring ? (
+                  <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+                    <label style={labelStyle}>
+                      Frequency
+                      <select value={serviceForm.recurrenceFrequency ?? "Weekly"} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceFrequency: event.target.value }))} style={inputStyle}>
+                        <option value="Daily">Daily</option>
+                        <option value="Weekly">Weekly</option>
+                        <option value="Every 2 weeks">Every 2 weeks</option>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Quarterly">Quarterly</option>
+                        <option value="Yearly">Yearly</option>
+                        <option value="Custom">Custom</option>
+                      </select>
+                    </label>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <label style={labelStyle}>Interval<input type="number" min="1" value={serviceForm.recurrenceInterval ?? 1} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceInterval: positiveInteger(event.target.value, 1) }))} style={inputStyle} /></label>
+                      <label style={labelStyle}>Next Due<input type="date" value={serviceForm.recurrenceNextDue ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceNextDue: event.target.value }))} style={inputStyle} /></label>
+                    </div>
+
+                    <label style={labelStyle}>Days / Custom Notes<input value={serviceForm.recurrenceDays ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceDays: event.target.value }))} placeholder="Example: Mondays, or every 10 days" style={inputStyle} /></label>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <label style={labelStyle}>
+                        Ends
+                        <select value={serviceForm.recurrenceEndType ?? "never"} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceEndType: event.target.value }))} style={inputStyle}>
+                          <option value="never">Never</option>
+                          <option value="after_count">After Count</option>
+                          <option value="on_date">On Date</option>
+                        </select>
+                      </label>
+                      <label style={labelStyle}>
+                        Status
+                        <select value={serviceForm.recurrenceStatus ?? "active"} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceStatus: event.target.value }))} style={inputStyle}>
+                          <option value="active">Active</option>
+                          <option value="paused">Paused</option>
+                          <option value="inactive">Inactive</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    {serviceForm.recurrenceEndType === "after_count" ? <label style={labelStyle}>Stop After<input type="number" min="1" value={serviceForm.recurrenceCountLimit ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceCountLimit: event.target.value }))} placeholder="Number of completions" style={inputStyle} /></label> : null}
+                    {serviceForm.recurrenceEndType === "on_date" ? <label style={labelStyle}>End Date<input type="date" value={serviceForm.recurrenceEndDate ?? ""} onChange={(event) => setServiceForm((current) => ({ ...current, recurrenceEndDate: event.target.value }))} style={inputStyle} /></label> : null}
+
+                    <div style={{ color: colors.muted, fontSize: 12, lineHeight: 1.45 }}>
+                      When you mark this done, Atlas creates the next open work order using the next due date and saves both records to Neon.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: colors.muted, fontSize: 13, marginTop: 10 }}>Turn this on for weekly, monthly, seasonal, or custom repeat work.</div>
+                )}
+              </div>
+
+              <div style={inlineCardStyle}>
                 <div style={{ color: colors.gold, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8 }}>Quick Actions</div>
                 <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                   <button type="button" onClick={saveService} style={widePrimaryButtonStyle}>{hasSelectedWorkOrder ? "Save Work Order" : "Save New Work Order"}</button>
@@ -3475,6 +3789,8 @@ export default function AtlasPage() {
                   <div><strong style={{ color: colors.navy }}>Vendor:</strong> {vendorName(serviceForm.vendorId)}</div>
                   <div><strong style={{ color: colors.navy }}>Priority:</strong> {serviceForm.priority ?? "Medium"}</div>
                   <div><strong style={{ color: colors.navy }}>Procedure:</strong> {procedureName(serviceForm.procedureId)}</div>
+                  <div><strong style={{ color: colors.navy }}>Recurring:</strong> {serviceForm.isRecurring ? `${serviceForm.recurrenceFrequency || "Weekly"} · next ${serviceForm.recurrenceNextDue || "not set"}` : "No"}</div>
+                  <div><strong style={{ color: colors.navy }}>Invoice:</strong> {serviceForm.invoiceNumber || serviceForm.invoiceAmount ? `${serviceForm.invoiceNumber || "No #"} · $${serviceForm.invoiceAmount || "0.00"} · ${serviceForm.paymentStatus || "unknown"}` : "Not added"}</div>
                 </div>
               </div>
             </aside>
@@ -4337,7 +4653,7 @@ export default function AtlasPage() {
 
           <div style={searchBoxStyle}>
             <img src="/atlas-logo.png" alt="Atlas logo" style={{ width: 30, height: 30, objectFit: "contain" }} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Atlas records..." style={searchInputStyle} />
+            <input ref={searchInputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Atlas records..." style={searchInputStyle} />
             {query ? <button type="button" onClick={() => setQuery("")} style={smallPrimaryButtonStyle}>Clear</button> : null}
           </div>
         </header>
