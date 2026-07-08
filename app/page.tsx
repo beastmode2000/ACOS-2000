@@ -1047,6 +1047,7 @@ export default function AtlasPage() {
   function WorkOrderEditor() {
     const selectedAsset = assetById.get(workOrderForm.assetId);
     const selectedVendor = vendorById.get(workOrderForm.vendorId);
+    const editorKey = workOrderForm.id || "new";
 
     return (
       <section style={workOrderEditorStyle}>
@@ -1067,8 +1068,9 @@ export default function AtlasPage() {
             <div style={{ display: "grid", gap: 10 }}>
               <Field label="Title">
                 <input
-                  value={workOrderForm.title}
-                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, title: event.target.value }))}
+                  key={`title-${editorKey}`}
+                  defaultValue={workOrderForm.title}
+                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, title: event.target.value }))}
                   style={inputStyle}
                   placeholder="Example: Check pool pump leak"
                 />
@@ -1123,8 +1125,9 @@ export default function AtlasPage() {
 
               <Field label="Notes">
                 <textarea
-                  value={workOrderForm.notes}
-                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, notes: event.target.value }))}
+                  key={`notes-${editorKey}`}
+                  defaultValue={workOrderForm.notes}
+                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, notes: event.target.value }))}
                   style={textareaStyle}
                   placeholder="Work notes, scope, findings, approvals, next steps..."
                 />
@@ -1158,10 +1161,11 @@ export default function AtlasPage() {
 
               <Field label="Interval">
                 <input
+                  key={`interval-${editorKey}`}
                   type="number"
                   min="1"
-                  value={workOrderForm.recurrenceInterval}
-                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceInterval: event.target.value }))}
+                  defaultValue={workOrderForm.recurrenceInterval}
+                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceInterval: event.target.value }))}
                   style={inputStyle}
                 />
               </Field>
@@ -1179,8 +1183,9 @@ export default function AtlasPage() {
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 10 }}>
               <Field label="Days / Custom Rule">
                 <input
-                  value={workOrderForm.recurrenceDays}
-                  onChange={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceDays: event.target.value }))}
+                  key={`days-${editorKey}`}
+                  defaultValue={workOrderForm.recurrenceDays}
+                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, recurrenceDays: event.target.value }))}
                   style={inputStyle}
                   placeholder="Example: Mon, Wed, Fri"
                 />
@@ -1202,7 +1207,12 @@ export default function AtlasPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
               <Field label="Invoice #">
-                <input value={workOrderForm.invoiceNumber} onChange={(event) => setWorkOrderForm((current) => ({ ...current, invoiceNumber: event.target.value }))} style={inputStyle} />
+                <input
+                  key={`invoice-number-${editorKey}`}
+                  defaultValue={workOrderForm.invoiceNumber}
+                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, invoiceNumber: event.target.value }))}
+                  style={inputStyle}
+                />
               </Field>
 
               <Field label="Invoice Date">
@@ -1210,7 +1220,14 @@ export default function AtlasPage() {
               </Field>
 
               <Field label="Invoice Amount">
-                <input inputMode="decimal" value={workOrderForm.invoiceAmount} onChange={(event) => setWorkOrderForm((current) => ({ ...current, invoiceAmount: event.target.value }))} style={inputStyle} placeholder="17210.05" />
+                <input
+                  key={`invoice-amount-${editorKey}`}
+                  inputMode="decimal"
+                  defaultValue={workOrderForm.invoiceAmount}
+                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, invoiceAmount: event.target.value }))}
+                  style={inputStyle}
+                  placeholder="17210.05"
+                />
               </Field>
 
               <Field label="Invoice Status">
@@ -1226,11 +1243,22 @@ export default function AtlasPage() {
               </Field>
 
               <Field label="Cost Category">
-                <input value={workOrderForm.costCategory} onChange={(event) => setWorkOrderForm((current) => ({ ...current, costCategory: event.target.value }))} style={inputStyle} placeholder="Paint, HVAC, Landscape..." />
+                <input
+                  key={`cost-category-${editorKey}`}
+                  defaultValue={workOrderForm.costCategory}
+                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, costCategory: event.target.value }))}
+                  style={inputStyle}
+                  placeholder="Paint, HVAC, Landscape..."
+                />
               </Field>
 
               <Field label="Approved By">
-                <input value={workOrderForm.approvedBy} onChange={(event) => setWorkOrderForm((current) => ({ ...current, approvedBy: event.target.value }))} style={inputStyle} />
+                <input
+                  key={`approved-by-${editorKey}`}
+                  defaultValue={workOrderForm.approvedBy}
+                  onBlur={(event) => setWorkOrderForm((current) => ({ ...current, approvedBy: event.target.value }))}
+                  style={inputStyle}
+                />
               </Field>
 
               <Field label="Approved Date">
@@ -1239,7 +1267,12 @@ export default function AtlasPage() {
             </div>
 
             <Field label="Cost Notes">
-              <textarea value={workOrderForm.costNotes} onChange={(event) => setWorkOrderForm((current) => ({ ...current, costNotes: event.target.value }))} style={{ ...textareaStyle, minHeight: 90 }} />
+              <textarea
+                key={`cost-notes-${editorKey}`}
+                defaultValue={workOrderForm.costNotes}
+                onBlur={(event) => setWorkOrderForm((current) => ({ ...current, costNotes: event.target.value }))}
+                style={{ ...textareaStyle, minHeight: 90 }}
+              />
             </Field>
           </Card>
 
