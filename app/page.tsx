@@ -589,6 +589,48 @@ function normalizePart(record: Partial<PartRecord>): PartRecord {
   };
 }
 
+function normalizeDocument(record: Partial<DocumentRecord>): DocumentRecord {
+  const title = String(record.title || record.files?.[0]?.name || "Untitled Document");
+  const targetType = (record.targetType || "General") as IntakeTargetKind;
+
+  return {
+    id: String(record.id || uid("doc")),
+    title,
+    area: String(record.area || record.targetName || "General"),
+    type: String(record.type || "Paperwork / Scan"),
+    linkedAssetId: record.linkedAssetId || (targetType === "Asset" ? record.targetId : undefined),
+    linkedVendorId: record.linkedVendorId || (targetType === "Vendor" ? record.targetId : undefined),
+    targetType,
+    targetId: String(record.targetId || ""),
+    targetName: String(record.targetName || record.area || "General"),
+    notes: String(record.notes || ""),
+    pastedText: String(record.pastedText || ""),
+    files: Array.isArray(record.files)
+      ? record.files.map((file) => ({
+          id: String(file.id || uid("file")),
+          name: String(file.name || "File"),
+          type: file.type || "",
+          dataUrl: file.dataUrl || "",
+          url: file.url || "",
+          createdAt: file.createdAt || record.createdAt || new Date().toISOString(),
+        }))
+      : [],
+    href: record.href || "",
+    createdAt: record.createdAt || new Date().toISOString(),
+  };
+}
+
+function mergeDocuments(primary: DocumentRecord[], secondary: DocumentRecord[]) {
+  const merged = new Map<string, DocumentRecord>();
+
+  [...primary, ...secondary].forEach((doc) => {
+    const normalized = normalizeDocument(doc);
+    if (!merged.has(normalized.id)) merged.set(normalized.id, normalized);
+  });
+
+  return Array.from(merged.values()).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
 function byName<T extends { name: string }>(records: T[]): T[] {
   return [...records].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -1412,6 +1454,7 @@ export default function AtlasPage() {
   const [intakePastedText, setIntakePastedText] = useState("");
   const [intakeFiles, setIntakeFiles] = useState<UploadedFileRecord[]>([]);
   const [intakeMessage, setIntakeMessage] = useState("Ready to add paperwork, scans, screenshots, receipts, or pasted notes into Atlas.");
+  const [documentSyncStatus, setDocumentSyncStatus] = useState("Document vault is loading from this browser. Atlas sync starts when /api/atlas-documents is installed.");
   const [previewFile, setPreviewFile] = useState<UploadedFileRecord | null>(null);
   const [previewZoom, setPreviewZoom] = useState(100);
   const [documentSearch, setDocumentSearch] = useState("");
@@ -1450,6 +1493,7 @@ export default function AtlasPage() {
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
+  const previewTouchRef = useRef<{ distance: number; zoom: number } | null>(null);
   const qrScannerRef = useRef<any>(null);
   const qrScannerElementId = "atlas-qr-reader";
   const atlasScreenHistoryReadyRef = useRef(false);
@@ -1570,7 +1614,7 @@ export default function AtlasPage() {
     setCalendarColors(mergeCalendarColors(storedCalendarColors));
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
     setPhotos(storedPhotos);
-    setIntakeDocs(storedIntakeDocs);
+    setIntakeDocs(storedIntakeDocs.map(normalizeDocument));
     setSelectedCalendarId("");
     setCalendarDraft(blankCalendarItem(todayISO()));
     setReady(true);
@@ -1648,6 +1692,10 @@ export default function AtlasPage() {
 
   useEffect(() => {
     void loadWeather();
+  }, []);
+
+  useEffect(() => {
+    void refreshDocumentVault();
   }, []);
 
 
@@ -2367,6 +2415,63 @@ export default function AtlasPage() {
     });
   }
 
+  async function refreshDocumentVault() {
+    try {
+      setDocumentSyncStatus("Loading synced documents from Atlas...");
+      const response = await fetch("/api/atlas-documents", { cache: "no-store" });
+      if (!response.ok) throw new Error(`Document API returned ${response.status}`);
+
+      const payload = (await response.json()) as { documents?: DocumentRecord[] };
+      const apiDocs = Array.isArray(payload.documents) ? payload.documents.map(normalizeDocument) : [];
+
+      setIntakeDocs((current) => {
+        const localDocs = current.length ? current : readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(normalizeDocument);
+        const merged = mergeDocuments(apiDocs, localDocs);
+        saveStoredArray(storageKeys.intakeDocs[0], merged);
+        return merged;
+      });
+
+      setSelectedDocumentId((current) => current || apiDocs[0]?.id || "");
+      setDocumentSyncStatus(`Synced ${apiDocs.length} document(s) from Atlas. Phone uploads should show on desktop after Refresh Vault.`);
+    } catch {
+      const localDocs = readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(normalizeDocument);
+      setIntakeDocs((current) => (current.length ? current : localDocs));
+      setDocumentSyncStatus("Document sync API is not installed yet, so this browser is showing only its local vault. Add the atlas-documents API route + Neon table to sync phone and desktop.");
+    }
+  }
+
+  async function postDocumentToAtlasVault(record: DocumentRecord) {
+    const response = await fetch("/api/atlas-documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ record }),
+    });
+
+    if (!response.ok) throw new Error(`Document API returned ${response.status}`);
+    return response.json();
+  }
+
+  function handlePreviewTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    if (event.touches.length !== 2) return;
+    const [first, second] = [event.touches[0], event.touches[1]];
+    const distance = Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+    previewTouchRef.current = { distance, zoom: previewZoom };
+  }
+
+  function handlePreviewTouchMove(event: React.TouchEvent<HTMLDivElement>) {
+    if (event.touches.length !== 2 || !previewTouchRef.current) return;
+    event.preventDefault();
+
+    const [first, second] = [event.touches[0], event.touches[1]];
+    const distance = Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+    const nextZoom = Math.round(previewTouchRef.current.zoom * (distance / previewTouchRef.current.distance));
+    setPreviewZoom(Math.max(50, Math.min(500, nextZoom)));
+  }
+
+  function handlePreviewTouchEnd() {
+    previewTouchRef.current = null;
+  }
+
   async function saveIntakeDocument() {
     const targetName = targetNameFor(intakeTargetKind, intakeTargetId);
     const title = intakeTitle.trim() || intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") || intakePastedText.trim().slice(0, 48) || "New Atlas Document";
@@ -2386,9 +2491,19 @@ export default function AtlasPage() {
       createdAt: new Date().toISOString(),
     };
 
-    const nextDocs = [record, ...intakeDocs];
+    const nextDocs = mergeDocuments([record], intakeDocs);
     setIntakeDocs(nextDocs);
+    setSelectedDocumentId(record.id);
     saveStoredArray(storageKeys.intakeDocs[0], nextDocs);
+
+    let syncedToVault = false;
+    try {
+      await postDocumentToAtlasVault(record);
+      syncedToVault = true;
+      setDocumentSyncStatus("Document synced to Atlas. It should show on your other devices after Refresh Vault or page reload.");
+    } catch {
+      setDocumentSyncStatus("Saved on this browser only. The document sync API/table still needs to be added for phone-to-desktop vault sync.");
+    }
 
     if (record.targetType === "Asset" && record.targetId) {
       const imagePhotos: PhotoRecord[] = (record.files || [])
@@ -2413,8 +2528,9 @@ export default function AtlasPage() {
       }
     }
 
-    setIntakeMessage(record.targetType === "Asset" ? `Saved to ${targetName}. Asset photos were also sent to Atlas so other browsers can load them after refresh.` : `Saved to ${targetName}.`);
+    setIntakeMessage(syncedToVault ? `Saved to ${targetName} and synced to the Atlas Document Vault.` : `Saved to ${targetName} on this browser. Add the document sync API/table so it appears on every device.`);
     resetIntakeDraft();
+    setScreen("documents");
   }
 
   function renderLinkedDocuments(kind: IntakeTargetKind, id?: string) {
@@ -4213,7 +4329,7 @@ export default function AtlasPage() {
       <ListDrawerLayout
         eyebrow="Document Vault"
         title="Documents / Photos"
-        detail="Search, view, zoom, and add paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots."
+        detail="Search, view, zoom, and add paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots. Synced vault works across phone and desktop once the atlas-documents API/table is added."
         isMobile={isMobile}
         right={<button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>}
         list={
@@ -4226,7 +4342,12 @@ export default function AtlasPage() {
                 placeholder="Search title, vendor, asset, notes, file name..."
                 style={inputStyle}
               />
+              <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+                <button type="button" onClick={() => void refreshDocumentVault()} style={secondaryButtonStyle}>Refresh Vault</button>
+                <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>
+              </div>
               <p style={mutedSmallStyle}>{searchableDocuments.length} matching document(s)</p>
+              <p style={mutedSmallStyle}>{documentSyncStatus}</p>
             </div>
 
             {!searchableDocuments.length ? (
@@ -4827,9 +4948,14 @@ export default function AtlasPage() {
             </div>
           </div>
 
-          <div style={previewBodyStyle}>
+          <div
+            style={previewBodyStyle}
+            onTouchStart={handlePreviewTouchStart}
+            onTouchMove={handlePreviewTouchMove}
+            onTouchEnd={handlePreviewTouchEnd}
+          >
             {isImage && source ? (
-              <img src={source} alt={previewFile.name} style={{ ...previewImageStyle, width: `${previewZoom}%`, maxWidth: "none", maxHeight: "none" }} />
+              <img src={source} alt={previewFile.name} style={{ ...previewImageStyle, width: `${previewZoom}%`, maxWidth: "none", maxHeight: "none", display: "block", margin: "0 auto" }} />
             ) : isPdf && source ? (
               <div style={previewPdfZoomShellStyle}>
                 <iframe src={source} title={previewFile.name} style={zoomedFrameStyle} />
@@ -5143,8 +5269,11 @@ const previewBodyStyle: React.CSSProperties = {
   overflow: "auto",
   background: colors.panel,
   padding: 16,
-  display: "grid",
-  placeItems: "center",
+  display: "block",
+  textAlign: "center",
+  WebkitOverflowScrolling: "touch",
+  overscrollBehavior: "contain",
+  touchAction: "pan-x pan-y",
 };
 
 const previewImageStyle: React.CSSProperties = {
