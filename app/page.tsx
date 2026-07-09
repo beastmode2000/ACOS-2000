@@ -3827,7 +3827,25 @@ export default function AtlasPage() {
 
   return (
     <main style={appStyle}>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "260px minmax(0, 1fr)", minHeight: "100vh" }}>
+      <style>{`
+        html, body {
+          max-width: 100%;
+          overflow-x: hidden;
+        }
+        * {
+          box-sizing: border-box;
+        }
+        @media (max-width: 819px) {
+          body {
+            width: 100%;
+            position: relative;
+          }
+          input, select, textarea, button, a {
+            max-width: 100%;
+          }
+        }
+      `}</style>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "260px minmax(0, 1fr)", minHeight: "100vh", width: "100%", maxWidth: "100vw", overflowX: "hidden" }}>
         <aside
           style={
             isMobile
@@ -3892,7 +3910,7 @@ export default function AtlasPage() {
           )}
         </aside>
 
-        <section style={{ minWidth: 0, paddingBottom: isMobile ? 84 : 0 }}>
+        <section style={{ minWidth: 0, width: "100%", maxWidth: "100vw", overflowX: "hidden", paddingBottom: isMobile ? 84 : 0 }}>
           <header style={isMobile ? mobileTopbarStyle : topbarStyle}>
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 10 : 14, justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center" }}>
               <div style={{ minWidth: 0 }}>
@@ -3987,6 +4005,10 @@ const mobileHeaderShellStyle: React.CSSProperties = {
   background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
   color: "#FFFFFF",
   padding: "12px 14px",
+  width: "100%",
+  maxWidth: "100vw",
+  overflowX: "hidden",
+  boxSizing: "border-box",
   position: "sticky",
   top: 0,
   zIndex: 40,
@@ -4039,7 +4061,11 @@ const mobileMenuSelectStyle: React.CSSProperties = {
 
 const mobileTopbarStyle: React.CSSProperties = {
   background: "transparent",
-  padding: "14px 14px 4px",
+  padding: "14px 12px 4px",
+  width: "100%",
+  maxWidth: "100vw",
+  overflowX: "hidden",
+  boxSizing: "border-box",
 };
 
 const mobilePageTitleStyle: React.CSSProperties = {
@@ -4051,14 +4077,20 @@ const mobilePageTitleStyle: React.CSSProperties = {
 };
 
 const mobileContentStyle: React.CSSProperties = {
-  padding: "12px 12px 94px",
+  padding: "12px 10px 94px",
+  width: "100%",
+  maxWidth: "100vw",
+  overflowX: "hidden",
+  boxSizing: "border-box",
 };
 
 const mobileBottomNavStyle: React.CSSProperties = {
   position: "fixed",
-  left: 10,
-  right: 10,
+  left: 8,
+  right: 8,
   bottom: 10,
+  maxWidth: "calc(100vw - 16px)",
+  boxSizing: "border-box",
   zIndex: 60,
   background: "rgba(255,255,255,0.96)",
   border: `1px solid ${colors.line}`,
@@ -4083,6 +4115,9 @@ const mobileBottomButtonStyle: React.CSSProperties = {
 
 const appStyle: React.CSSProperties = {
   minHeight: "100vh",
+  width: "100%",
+  maxWidth: "100vw",
+  overflowX: "hidden",
   background: colors.bg,
   color: colors.text,
   fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -4303,6 +4338,11 @@ const calendarWhiteDrawerStyle: React.CSSProperties = {
 
 const sectionStyle: React.CSSProperties = {
   background: colors.card,
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
+  overflowWrap: "break-word",
   border: `1px solid ${colors.line}`,
   borderRadius: 20,
   padding: 18,
@@ -4315,6 +4355,8 @@ const sectionHeaderStyle: React.CSSProperties = {
   gap: 14,
   alignItems: "flex-start",
   marginBottom: 14,
+  flexWrap: "wrap",
+  minWidth: 0,
 };
 
 const sectionTitleStyle: React.CSSProperties = {
@@ -4327,7 +4369,7 @@ const sectionTitleStyle: React.CSSProperties = {
 
 const statGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
   gap: 14,
 };
 
@@ -4421,6 +4463,9 @@ const fieldLabelStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
+  width: "100%",
+  maxWidth: "100%",
+  boxSizing: "border-box",
   borderRadius: 14,
   padding: "12px 13px",
   fontSize: 14,
@@ -4441,6 +4486,9 @@ const formGridStyle: React.CSSProperties = {
 
 const rowButtonStyle: React.CSSProperties = {
   width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   display: "flex",
   justifyContent: "space-between",
   gap: 12,
@@ -4576,6 +4624,7 @@ const dashboardWeatherStripStyle: React.CSSProperties = {
   gridTemplateColumns: "repeat(7, minmax(145px, 1fr))",
   gap: 10,
   overflowX: "auto",
+  maxWidth: "100%",
   paddingBottom: 4,
 };
 
@@ -4620,7 +4669,7 @@ const dashboardAdviceStyle: React.CSSProperties = {
 
 const workOrderStripStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(190px, 100%), 1fr))",
   gap: 12,
 };
 
@@ -4639,13 +4688,13 @@ const workOrderCardStyle: React.CSSProperties = {
 
 const quickLinksGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
   gap: 10,
 };
 
 const quickLinkCardStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "42px minmax(0, 1fr) auto",
+  gridTemplateColumns: "42px minmax(0, 1fr)",
   alignItems: "center",
   gap: 12,
   border: `1px solid ${colors.line}`,
@@ -4656,6 +4705,8 @@ const quickLinkCardStyle: React.CSSProperties = {
   textDecoration: "none",
   boxShadow: "0 10px 26px rgba(15,23,42,0.035)",
   minWidth: 0,
+  maxWidth: "100%",
+  boxSizing: "border-box",
 };
 
 const workLinkLogoStyle: React.CSSProperties = {
@@ -4703,13 +4754,13 @@ const workLinkOpenStyle: React.CSSProperties = {
 
 const workLinksPageGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))",
   gap: 12,
 };
 
 const workLinkPageCardStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "56px minmax(0, 1fr) auto",
+  gridTemplateColumns: "48px minmax(0, 1fr)",
   alignItems: "center",
   gap: 14,
   border: `1px solid ${colors.line}`,
@@ -4723,8 +4774,8 @@ const workLinkPageCardStyle: React.CSSProperties = {
 };
 
 const workLinkLogoLargeStyle: React.CSSProperties = {
-  width: 56,
-  height: 56,
+  width: 48,
+  height: 48,
   borderRadius: 16,
   display: "grid",
   placeItems: "center",
@@ -4752,7 +4803,7 @@ const workLinkPageBodyStyle: React.CSSProperties = {
 const workLinkOpenLargeStyle: React.CSSProperties = {
   border: `1px solid ${colors.gold}`,
   borderRadius: 999,
-  padding: "8px 12px",
+  padding: "7px 10px",
   color: colors.navy,
   background: "#FFFAEB",
   fontSize: 12,
@@ -4818,6 +4869,9 @@ const mapDetailStackStyle: React.CSSProperties = {
 };
 
 const mapDetailCardStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   border: `1px solid ${colors.line}`,
   borderRadius: 18,
   background: "#FFFFFF",
@@ -4919,6 +4973,9 @@ const mapVendorChipStyle: React.CSSProperties = {
 
 
 const mapInfoPanelStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   border: `1px solid ${colors.line}`,
   borderRadius: 18,
   background: "#FFFFFF",
@@ -5065,7 +5122,7 @@ const mapAddTabButtonStyle: React.CSSProperties = {
 
 const mapSmallPhotoGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(120px, 100%), 1fr))",
   gap: 10,
 };
 
@@ -5137,6 +5194,9 @@ const searchResultStyle: React.CSSProperties = {
 };
 
 const calendarControlPanelStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   border: `1px solid ${colors.line}`,
   background: "#FFFFFF",
   borderRadius: 16,
@@ -5286,6 +5346,9 @@ const calendarWeatherIconStyle: React.CSSProperties = {
 };
 
 const calendarTodayBoxStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   display: "grid",
   gap: 8,
   border: `1px solid ${colors.line}`,
@@ -5316,6 +5379,9 @@ const calendarColorDotStyle: React.CSSProperties = {
 };
 
 const compactAddBoxStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   border: `1px solid ${colors.line}`,
   background: "#FFFFFF",
   borderRadius: 16,
@@ -5358,6 +5424,7 @@ const weatherStripStyle: React.CSSProperties = {
   gridTemplateColumns: "repeat(7, minmax(165px, 1fr))",
   gap: 12,
   overflowX: "auto",
+  maxWidth: "100%",
   paddingBottom: 8,
 };
 
@@ -5439,7 +5506,7 @@ const weatherAdviceSmallStyle: React.CSSProperties = {
 
 const photoGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))",
   gap: 10,
 };
 
