@@ -1386,7 +1386,7 @@ function ListDrawerLayout(props: {
 
 export default function AtlasPage() {
   const [ready, setReady] = useState(false);
-  const [screen, setScreen] = useState<Screen>("dashboard");
+  const [screen, setScreenState] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -1416,6 +1416,7 @@ export default function AtlasPage() {
   const [intakePastedText, setIntakePastedText] = useState("");
   const [intakeFiles, setIntakeFiles] = useState<UploadedFileRecord[]>([]);
   const [intakeMessage, setIntakeMessage] = useState("Ready to add paperwork, scans, screenshots, receipts, or pasted notes into Atlas.");
+  const [previewFile, setPreviewFile] = useState<UploadedFileRecord | null>(null);
 
   const [selectedAssetId, setSelectedAssetId] = useState(fallbackAssets[0]?.id || "");
   const [selectedVendorId, setSelectedVendorId] = useState(fallbackVendors[0]?.id || "");
@@ -1452,6 +1453,65 @@ export default function AtlasPage() {
   const draggingLabelRef = useRef<string | null>(null);
   const qrScannerRef = useRef<any>(null);
   const qrScannerElementId = "atlas-qr-reader";
+  const atlasScreenHistoryReadyRef = useRef(false);
+
+  function isAtlasScreen(value: string | null): value is Screen {
+    return Boolean(value && screens.some((item) => item.id === value));
+  }
+
+  function screenFromUrl(): Screen | null {
+    if (typeof window === "undefined") return null;
+    const hash = decodeURIComponent(window.location.hash.replace(/^#\/?/, "")).trim();
+    if (isAtlasScreen(hash)) return hash;
+    const queryScreen = new URLSearchParams(window.location.search).get("screen");
+    if (isAtlasScreen(queryScreen)) return queryScreen;
+    return null;
+  }
+
+  function urlForScreen(next: Screen) {
+    if (typeof window === "undefined") return "";
+    const params = new URLSearchParams(window.location.search);
+    const query = params.toString();
+    return `${window.location.pathname}${query ? `?${query}` : ""}#${next}`;
+  }
+
+  function setScreen(next: Screen, options?: { replace?: boolean }) {
+    setScreenState(next);
+
+    if (typeof window === "undefined") return;
+
+    const nextUrl = urlForScreen(next);
+    const currentHash = decodeURIComponent(window.location.hash.replace(/^#\/?/, "")).trim();
+    const state = { atlasScreen: next };
+
+    if (!atlasScreenHistoryReadyRef.current || options?.replace) {
+      window.history.replaceState(state, "", nextUrl);
+      atlasScreenHistoryReadyRef.current = true;
+      return;
+    }
+
+    if (currentHash !== next || window.history.state?.atlasScreen !== next) {
+      window.history.pushState(state, "", nextUrl);
+    }
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const initialScreen = screenFromUrl() || "dashboard";
+    setScreenState(initialScreen);
+    window.history.replaceState({ atlasScreen: initialScreen }, "", urlForScreen(initialScreen));
+    atlasScreenHistoryReadyRef.current = true;
+
+    const onPopState = () => {
+      setScreenState(screenFromUrl() || "dashboard");
+      setQuery("");
+      setSearchOpen(false);
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     if ("serviceWorker" in navigator && window.location.protocol === "https:") {
@@ -2287,6 +2347,25 @@ export default function AtlasPage() {
     setIntakeFiles((current) => current.filter((file) => file.id !== id));
   }
 
+  function openUploadedFile(file: UploadedFileRecord) {
+    if (!file.dataUrl && !file.url) {
+      setIntakeMessage("That file does not have a preview URL saved in this browser.");
+      return;
+    }
+    setPreviewFile(file);
+  }
+
+  function openPhotoPreview(photo: PhotoRecord) {
+    setPreviewFile({
+      id: photo.id,
+      name: photo.name,
+      type: "image/*",
+      dataUrl: photo.dataUrl,
+      url: photo.url,
+      createdAt: photo.createdAt,
+    });
+  }
+
   async function saveIntakeDocument() {
     const targetName = targetNameFor(intakeTargetKind, intakeTargetId);
     const title = intakeTitle.trim() || intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") || intakePastedText.trim().slice(0, 48) || "New Atlas Document";
@@ -2327,10 +2406,13 @@ export default function AtlasPage() {
           saveStoredArray(storageKeys.photos[0], nextPhotos);
           return nextPhotos;
         });
+        imagePhotos.forEach((photo) => {
+          void postAtlasRecord("asset_photos", photo);
+        });
       }
     }
 
-    setIntakeMessage(`Saved to ${targetName}.`);
+    setIntakeMessage(record.targetType === "Asset" ? `Saved to ${targetName}. Asset photos were also sent to Atlas so other browsers can load them after refresh.` : `Saved to ${targetName}.`);
     resetIntakeDraft();
   }
 
@@ -4140,10 +4222,11 @@ export default function AtlasPage() {
                   {document.files?.length ? (
                     <div style={{ ...photoGridStyle, marginTop: 10 }}>
                       {document.files.map((file) => (
-                        <a key={file.id} href={file.dataUrl || file.url || "#"} target="_blank" rel="noreferrer" style={photoCardStyle}>
+                        <button key={file.id} type="button" onClick={() => openUploadedFile(file)} style={{ ...photoCardStyle, textAlign: "left", cursor: "pointer" }}>
                           {file.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt={file.name} style={photoStyle} /> : <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>}
                           <strong>{file.name}</strong>
-                        </a>
+                          <span style={mutedSmallStyle}>Open preview</span>
+                        </button>
                       ))}
                     </div>
                   ) : null}
@@ -4164,11 +4247,11 @@ export default function AtlasPage() {
             </div>
             <div style={photoGridStyle}>
               {photos.slice(0, 8).map((photo) => (
-                <div key={photo.id} style={photoCardStyle}>
+                <button key={photo.id} type="button" onClick={() => openPhotoPreview(photo)} style={{ ...photoCardStyle, textAlign: "left", cursor: "pointer" }}>
                   {photo.dataUrl || photo.url ? <img src={photo.dataUrl || photo.url} alt={photo.name} style={photoStyle} /> : null}
                   <strong>{photo.name}</strong>
                   <p style={mutedSmallStyle}>{assetName(photo.assetId)}</p>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -4228,7 +4311,10 @@ export default function AtlasPage() {
                   <div key={file.id} style={photoCardStyle}>
                     {file.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt={file.name} style={photoStyle} /> : <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>}
                     <strong>{file.name}</strong>
-                    <button type="button" onClick={() => removeIntakeFile(file.id)} style={tinyDangerButtonStyle}>Remove</button>
+                    <div style={buttonRowStyle}>
+                      <button type="button" onClick={() => openUploadedFile(file)} style={tinyButtonStyle}>Preview</button>
+                      <button type="button" onClick={() => removeIntakeFile(file.id)} style={tinyDangerButtonStyle}>Remove</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -4613,7 +4699,7 @@ export default function AtlasPage() {
             <button type="button" onClick={() => addCalendarItem(todayISO())} style={commandActionButtonStyle}>+ Event</button>
             <button type="button" onClick={addWorkOrder} style={commandActionButtonStyle}>+ Work Order</button>
             <button type="button" onClick={() => setScreen("assistant")} style={commandActionButtonStyle}>+ Note</button>
-            <button type="button" onClick={() => setScreen("intake")} style={commandActionButtonStyle}>+ Document</button>
+            <button type="button" onClick={() => setScreen("documents")} style={commandActionButtonStyle}>+ Document</button>
           </div>
         </div>
 
@@ -4633,6 +4719,46 @@ export default function AtlasPage() {
           <div style={commandEyebrowStyle}>Watch</div>
           <button type="button" onClick={() => setScreen("weather")} style={commandWatchStyle}>Weather / irrigation check</button>
           <a href="/landscape-help" style={commandWatchStyle}>Landscape Help admin</a>
+        </div>
+      </div>
+    );
+  }
+
+  function renderFilePreviewOverlay() {
+    if (!previewFile) return null;
+
+    const source = previewFile.dataUrl || previewFile.url || "";
+    const isImage = source.startsWith("data:image/") || (previewFile.type || "").startsWith("image/");
+    const isPdf = source.startsWith("data:application/pdf") || (previewFile.type || "").includes("pdf");
+
+    return (
+      <div style={previewOverlayStyle} onMouseDown={() => setPreviewFile(null)}>
+        <div style={previewPanelStyle} onMouseDown={(event) => event.stopPropagation()}>
+          <div style={previewHeaderStyle}>
+            <div style={{ minWidth: 0 }}>
+              <div style={eyebrowStyle}>Document Preview</div>
+              <h3 style={detailTitleStyle}>{previewFile.name}</h3>
+            </div>
+            <div style={buttonRowStyle}>
+              {source ? <a href={source} target="_blank" rel="noreferrer" style={secondaryButtonStyle}>Open New Tab</a> : null}
+              <button type="button" onClick={() => setPreviewFile(null)} style={goldButtonStyle}>Close</button>
+            </div>
+          </div>
+
+          <div style={previewBodyStyle}>
+            {isImage && source ? (
+              <img src={source} alt={previewFile.name} style={previewImageStyle} />
+            ) : isPdf && source ? (
+              <iframe src={source} title={previewFile.name} style={previewFrameStyle} />
+            ) : source ? (
+              <div style={noticeStyle}>
+                <strong>Preview not available for this file type.</strong>
+                <p style={mutedSmallStyle}>Use Open New Tab to view or download it.</p>
+              </div>
+            ) : (
+              <div style={noticeStyle}>No preview URL is saved for this file.</div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -4765,7 +4891,7 @@ export default function AtlasPage() {
                 style={mobileMenuSelectStyle}
                 aria-label="Open Atlas section"
               >
-                {screens.map((item) => (
+                {screens.filter((item) => item.id !== "intake").map((item) => (
                   <option key={item.id} value={item.id}>{item.label}</option>
                 ))}
               </select>
@@ -4773,7 +4899,7 @@ export default function AtlasPage() {
           ) : (
             <>
               <nav style={{ display: "grid", gap: 5, gridTemplateColumns: "1fr 1fr" }}>
-                {screens.map((item) => (
+                {screens.filter((item) => item.id !== "intake").map((item) => (
                   <button
                     key={item.id}
                     type="button"
@@ -4865,6 +4991,8 @@ export default function AtlasPage() {
         </section>
       </div>
 
+      {previewFile ? renderFilePreviewOverlay() : null}
+
       {isMobile ? (
         <nav style={mobileBottomNavStyle} aria-label="Mobile Atlas navigation">
           {[
@@ -4894,6 +5022,63 @@ export default function AtlasPage() {
   );
 }
 
+
+const previewOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 200,
+  background: "rgba(7,27,47,0.72)",
+  padding: 18,
+  display: "grid",
+  placeItems: "center",
+};
+
+const previewPanelStyle: React.CSSProperties = {
+  width: "min(1040px, 96vw)",
+  height: "min(860px, 92vh)",
+  background: colors.card,
+  borderRadius: 22,
+  border: `1px solid ${colors.line}`,
+  boxShadow: "0 30px 80px rgba(0,0,0,0.34)",
+  overflow: "hidden",
+  display: "grid",
+  gridTemplateRows: "auto minmax(0, 1fr)",
+};
+
+const previewHeaderStyle: React.CSSProperties = {
+  padding: 16,
+  borderBottom: `1px solid ${colors.line}`,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+};
+
+const previewBodyStyle: React.CSSProperties = {
+  minHeight: 0,
+  overflow: "auto",
+  background: colors.panel,
+  padding: 16,
+  display: "grid",
+  placeItems: "center",
+};
+
+const previewImageStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  maxHeight: "100%",
+  objectFit: "contain",
+  borderRadius: 14,
+  background: "#FFFFFF",
+};
+
+const previewFrameStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  minHeight: 620,
+  border: 0,
+  borderRadius: 14,
+  background: "#FFFFFF",
+};
 
 const mobileHeaderShellStyle: React.CSSProperties = {
   background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
