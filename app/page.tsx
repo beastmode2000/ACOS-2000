@@ -1026,8 +1026,9 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     vendor: "Peter Clark Designs / Landscaping Help",
     url: "/landscape-help",
     logoText: "LH",
-    logoBg: "#FFF8E6",
-    logoColor: colors.navy,
+    logoBg: "#EAF7F1",
+    logoUrl: "/worklink-landscape-help-admin.png",
+    logoColor: colors.green,
     notes: "Your private Landscape Help admin page. Use this to review the weekly checklist and copy the current crew link.",
   },
   {
@@ -1084,9 +1085,9 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     vendor: "High Tech Living",
     url: "https://customer.control4.com/",
     logoText: "C4",
-    logoBg: "#F3F0FF",
-    logoUrl: "https://customer.control4.com/favicon.ico",
-    logoColor: "#5B21B6",
+    logoBg: "#EAF7F1",
+    logoUrl: "/worklink-control4.png",
+    logoColor: colors.green,
     notes: "Control4 customer portal. Learn more later before relying on it for daily operations.",
   },
   {
@@ -1097,7 +1098,7 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     url: "https://mytotalconnectcomfort.com/portal/7560987/Zones",
     logoText: "TCC",
     logoBg: "#FEECEC",
-    logoUrl: "https://mytotalconnectcomfort.com/favicon.ico",
+    logoUrl: "/worklink-tcc-honeywell.png",
     logoColor: colors.red,
     notes: "Main zone control page for the Carrier / Honeywell HVAC zoning system.",
   },
@@ -1183,8 +1184,8 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     vendor: "MetaFile Solutions",
     url: "https://arc.metafilesolutions.com/Metaviewer/Account/LogOn?ReturnUrl=%2fMetaViewer%2fIp%3fname%3dMyApprovals&name=MyApprovals",
     logoText: "MV",
-    logoBg: "#F1F5F9",
-    logoUrl: "https://arc.metafilesolutions.com/favicon.ico",
+    logoBg: "#F8FAFC",
+    logoUrl: "/worklink-metaviewer.png",
     logoColor: colors.navy3,
     notes: "Invoice search and My Approvals portal.",
   },
@@ -4847,10 +4848,11 @@ const workLinkLogoFallbackStyle: React.CSSProperties = {
 
 const workLinkLogoImageStyle: React.CSSProperties = {
   gridArea: "1 / 1",
-  width: 28,
-  height: 28,
+  width: "100%",
+  height: "100%",
   objectFit: "contain",
   background: "transparent",
+  borderRadius: 13,
 };
 
 const workLinkTextStyle: React.CSSProperties = {
@@ -4906,10 +4908,11 @@ const workLinkLogoLargeStyle: React.CSSProperties = {
 
 const workLinkLogoImageLargeStyle: React.CSSProperties = {
   gridArea: "1 / 1",
-  width: 36,
-  height: 36,
+  width: "100%",
+  height: "100%",
   objectFit: "contain",
   background: "transparent",
+  borderRadius: 16,
 };
 
 const workLinkPageBodyStyle: React.CSSProperties = {
