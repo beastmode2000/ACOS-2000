@@ -15,6 +15,7 @@ type Screen =
   | "procedures"
   | "parts"
   | "links"
+  | "qr"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -148,6 +149,16 @@ type WorkLinkRecord = {
   notes: string;
 };
 
+type QrKind = "asset" | "location" | "vendor" | "map";
+
+type QrRecord = {
+  kind: QrKind;
+  id: string;
+  title: string;
+  subtitle: string;
+  detail: string;
+};
+
 type CalendarColorName = "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "gray";
 type CalendarRepeat = "None" | "Daily" | "Weekly" | "Monthly" | "Yearly" | "Custom";
 type CalendarReminder = "None" | "Morning of" | "Day before" | "Week before";
@@ -270,6 +281,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "procedures", label: "Procedures" },
   { id: "parts", label: "Parts" },
   { id: "links", label: "Work Links" },
+  { id: "qr", label: "QR Codes" },
   { id: "map", label: "Map" },
   { id: "assistant", label: "Ask Atlas" },
 ];
@@ -1372,6 +1384,8 @@ export default function AtlasPage() {
   const [selectedProcedureId, setSelectedProcedureId] = useState(fallbackProcedures[0]?.id || "");
   const [selectedPartId, setSelectedPartId] = useState(fallbackParts[0]?.id || "");
   const [dirtyRecords, setDirtyRecords] = useState<Record<string, boolean>>({});
+  const [qrKind, setQrKind] = useState<QrKind>("asset");
+  const [qrSearch, setQrSearch] = useState("");
 
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
@@ -1530,6 +1544,48 @@ export default function AtlasPage() {
     void loadWeather();
   }, []);
 
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const rawQr = params.get("qr");
+    if (!rawQr) return;
+
+    const [rawKind, ...idParts] = rawQr.split(":");
+    const kind = rawKind as QrKind;
+    const id = decodeURIComponent(idParts.join(":"));
+    if (!id || !["asset", "location", "vendor", "map"].includes(kind)) return;
+
+    setQuery("");
+
+    if (kind === "asset") {
+      setSelectedAssetId(id);
+      setScreen("assets");
+    }
+
+    if (kind === "vendor") {
+      setSelectedVendorId(id);
+      setScreen("vendors");
+    }
+
+    if (kind === "location") {
+      const location = locations.find((item) => item.id === id);
+      setQuery(location?.name || "");
+      setScreen("locations");
+    }
+
+    if (kind === "map") {
+      setSelectedMapLabelId(id);
+      setScreen("map");
+    }
+
+    params.delete("qr");
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", nextUrl);
+  }, []);
+
   useEffect(() => {
     if (!ready) return;
     saveStoredArray(storageKeys.mapLabels[0], mapLabels);
@@ -1584,6 +1640,19 @@ export default function AtlasPage() {
 
   function assetName(id?: string) {
     return assetRecords.find((asset) => asset.id === id)?.name ?? "No asset";
+  }
+
+  function atlasBaseUrl() {
+    if (typeof window !== "undefined" && window.location.origin) return window.location.origin;
+    return "https://www.atlas2000.com";
+  }
+
+  function recordQrUrl(kind: QrKind, id: string) {
+    return `${atlasBaseUrl()}/?qr=${kind}:${encodeURIComponent(id)}`;
+  }
+
+  function qrImageUrl(value: string, size = 230) {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=12&data=${encodeURIComponent(value)}`;
   }
 
   function colorForEvent(event: CalendarItem) {
@@ -1816,6 +1885,46 @@ export default function AtlasPage() {
     if (!q) return sorted;
     return sorted.filter((item) => [item.name, item.category, item.vendor, item.notes, item.url].join(" ").toLowerCase().includes(q));
   }, [q]);
+
+
+  const qrRecords = useMemo<QrRecord[]>(() => {
+    const localSearch = qrSearch.trim().toLowerCase();
+    const records: QrRecord[] =
+      qrKind === "asset"
+        ? byName(assetRecords).map((asset) => ({
+            kind: "asset",
+            id: asset.id,
+            title: asset.name,
+            subtitle: `${asset.category} · ${locationName(asset.locationId)}`,
+            detail: [asset.make, asset.model, asset.serial, asset.status, asset.notes].filter(Boolean).join(" · "),
+          }))
+        : qrKind === "location"
+        ? [...locations].sort((a, b) => a.name.localeCompare(b.name)).map((location) => ({
+            kind: "location",
+            id: location.id,
+            title: location.name,
+            subtitle: `${location.type} · ${location.zone}`,
+            detail: location.notes,
+          }))
+        : qrKind === "vendor"
+        ? byName(vendorRecords).map((vendor) => ({
+            kind: "vendor",
+            id: vendor.id,
+            title: vendor.name,
+            subtitle: vendor.category,
+            detail: [vendor.phone, vendor.email, vendor.website, vendor.notes].filter(Boolean).join(" · "),
+          }))
+        : byLabel(mapLabels).map((label) => ({
+            kind: "map",
+            id: label.id,
+            title: label.label,
+            subtitle: label.category,
+            detail: label.notes,
+          }));
+
+    if (!localSearch) return records;
+    return records.filter((record) => [record.title, record.subtitle, record.detail].join(" ").toLowerCase().includes(localSearch));
+  }, [qrKind, qrSearch, assetRecords, vendorRecords, mapLabels]);
 
   const searchResults = useMemo(() => {
     if (!q) return [];
@@ -3796,6 +3905,109 @@ export default function AtlasPage() {
     );
   }
 
+  function renderQRCodes() {
+    const qrCounts: Record<QrKind, number> = {
+      asset: assetRecords.length,
+      location: locations.length,
+      vendor: vendorRecords.length,
+      map: mapLabels.length,
+    };
+
+    const qrKindLabel: Record<QrKind, string> = {
+      asset: "Assets",
+      location: "Locations",
+      vendor: "Vendors",
+      map: "Map Labels",
+    };
+
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="QR Labels"
+          title="QR Codes"
+          detail="Create printable QR labels for Atlas records. Scanning a code opens Atlas directly to the matching asset, location, vendor, or map label."
+          right={
+            <button type="button" className="atlas-no-print" onClick={() => window.print()} style={goldButtonStyle}>
+              Print QR Labels
+            </button>
+          }
+        />
+
+        <div className="atlas-no-print" style={qrControlPanelStyle}>
+          <div style={qrTypeGridStyle}>
+            {(["asset", "location", "vendor", "map"] as QrKind[]).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setQrKind(kind)}
+                style={{
+                  ...qrTypeButtonStyle,
+                  borderColor: qrKind === kind ? colors.gold : colors.line,
+                  background: qrKind === kind ? "#FFF8E6" : "#FFFFFF",
+                  color: qrKind === kind ? colors.navy : colors.text,
+                }}
+              >
+                <strong>{qrKindLabel[kind]}</strong>
+                <span>{qrCounts[kind]} records</span>
+              </button>
+            ))}
+          </div>
+
+          <input
+            value={qrSearch}
+            onChange={(event) => setQrSearch(event.currentTarget.value)}
+            placeholder={`Search ${qrKindLabel[qrKind].toLowerCase()} for QR labels...`}
+            style={{ ...inputStyle, width: "100%" }}
+          />
+        </div>
+
+        <div style={qrSummaryStyle}>
+          <strong>{qrRecords.length} {qrKindLabel[qrKind].toLowerCase()} ready to print</strong>
+          <p style={mutedSmallStyle}>Labels are private to Atlas because the scanned links still require your normal Atlas login. The next phase can add phone-camera scanning inside Atlas.</p>
+        </div>
+
+        <div style={qrGridStyle}>
+          {qrRecords.map((record) => {
+            const targetUrl = recordQrUrl(record.kind, record.id);
+
+            return (
+              <article key={`${record.kind}-${record.id}`} className="atlas-qr-print-card" style={qrCardStyle}>
+                <div style={qrImageShellStyle}>
+                  <img src={qrImageUrl(targetUrl)} alt={`QR code for ${record.title}`} style={qrImageStyle} />
+                </div>
+
+                <div style={qrCardBodyStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>{qrKindLabel[record.kind].slice(0, -1)}</div>
+                    <h3 style={qrCardTitleStyle}>{record.title}</h3>
+                    <p style={mutedSmallStyle}>{record.subtitle}</p>
+                  </div>
+
+                  {record.detail ? <p style={qrDetailStyle}>{record.detail}</p> : null}
+
+                  <div className="atlas-no-print" style={buttonRowStyle}>
+                    <a href={targetUrl} target="_blank" rel="noreferrer" style={secondaryButtonStyle}>Open</a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(targetUrl);
+                      }}
+                      style={secondaryButtonStyle}
+                    >
+                      Copy Link
+                    </button>
+                  </div>
+
+                  <small style={qrUrlStyle}>{targetUrl}</small>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   function renderCommandStrip() {
     const openWorkOrders = serviceRecords.filter((record) => record.status !== "Completed");
     const highPriority = serviceRecords.filter((record) => record.priority === "High" && record.status !== "Completed");
@@ -3895,6 +4107,7 @@ export default function AtlasPage() {
     if (screen === "procedures") return renderProcedures();
     if (screen === "parts") return renderParts();
     if (screen === "links") return renderWorkLinks();
+    if (screen === "qr") return renderQRCodes();
     return renderAssistant();
   }
 
@@ -3907,6 +4120,18 @@ export default function AtlasPage() {
         }
         * {
           box-sizing: border-box;
+        }
+        @media print {
+          aside, header, .atlas-no-print {
+            display: none !important;
+          }
+          body {
+            background: #ffffff !important;
+          }
+          .atlas-qr-print-card {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
         }
         @media (max-width: 819px) {
           body {
@@ -4881,6 +5106,97 @@ const workLinkOpenStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 950,
   whiteSpace: "nowrap",
+};
+
+const qrControlPanelStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 12,
+  marginBottom: 14,
+};
+
+const qrTypeGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(170px, 100%), 1fr))",
+  gap: 10,
+};
+
+const qrTypeButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  padding: "12px 14px",
+  display: "grid",
+  gap: 3,
+  textAlign: "left",
+  cursor: "pointer",
+  boxShadow: "0 12px 28px rgba(15, 23, 42, 0.05)",
+};
+
+const qrSummaryStyle: React.CSSProperties = {
+  ...noticeStyle,
+  marginBottom: 14,
+};
+
+const qrGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(360px, 100%), 1fr))",
+  gap: 14,
+};
+
+const qrCardStyle: React.CSSProperties = {
+  background: "#FFFFFF",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 20,
+  padding: 14,
+  display: "grid",
+  gridTemplateColumns: "150px minmax(0, 1fr)",
+  gap: 14,
+  alignItems: "start",
+  boxShadow: "0 16px 38px rgba(15, 23, 42, 0.05)",
+};
+
+const qrImageShellStyle: React.CSSProperties = {
+  width: 150,
+  height: 150,
+  background: "#FFFFFF",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 18,
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+};
+
+const qrImageStyle: React.CSSProperties = {
+  width: 136,
+  height: 136,
+  objectFit: "contain",
+};
+
+const qrCardBodyStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 9,
+};
+
+const qrCardTitleStyle: React.CSSProperties = {
+  margin: "2px 0 0",
+  color: colors.navy,
+  fontSize: 18,
+  fontWeight: 950,
+  lineHeight: 1.12,
+};
+
+const qrDetailStyle: React.CSSProperties = {
+  margin: 0,
+  color: colors.text,
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
+const qrUrlStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 10,
+  lineHeight: 1.25,
+  wordBreak: "break-all",
 };
 
 const workLinksPageGridStyle: React.CSSProperties = {
