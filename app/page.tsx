@@ -119,10 +119,17 @@ type PartRecord = {
   notes: string;
 };
 
+type CalendarColorName = "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "gray";
+type CalendarRepeat = "None" | "Daily" | "Weekly" | "Monthly" | "Yearly" | "Custom";
+type CalendarReminder = "None" | "Morning of" | "Day before" | "Week before";
+type CalendarLinkType = "None" | "Asset" | "Location" | "Vendor" | "Work Order";
+type CalendarSource = "manual" | "us-holiday" | "jewish-holiday" | "work-order";
+
 type CalendarColor = {
   id: string;
   label: string;
   hex: string;
+  colorName?: CalendarColorName;
 };
 
 type CalendarItem = {
@@ -131,8 +138,21 @@ type CalendarItem = {
   time?: string;
   title: string;
   area: string;
-  status: ServiceStatus;
+  categoryLabel?: string;
   colorId?: string;
+  colorName?: CalendarColorName;
+  allDay?: boolean;
+  repeat?: CalendarRepeat;
+  reminder?: CalendarReminder;
+  notes?: string;
+  linkedType?: CalendarLinkType;
+  linkedId?: string;
+  linkedName?: string;
+  completed?: boolean;
+  source?: CalendarSource;
+  originalId?: string;
+  instanceId?: string;
+  status?: ServiceStatus;
 };
 
 type PhotoRecord = {
@@ -245,8 +265,8 @@ const storageKeys = {
     "atlas-service-records-v7",
     "atlas-service-records-v6",
   ],
-  calendar: ["atlas-calendar-v12", "atlas-calendar-v11", "atlas-calendar-v10", "atlas-calendar-v9", "atlas-calendar-v8", "atlas-calendar-v7", "atlas-calendar-v6", "atlas_2000_calendar_safe_v1"],
-  calendarColors: ["atlas-calendar-colors-v1"],
+  calendar: ["atlas-calendar-v13", "atlas-calendar-v12", "atlas-calendar-v11", "atlas-calendar-v10", "atlas-calendar-v9", "atlas-calendar-v8", "atlas-calendar-v7", "atlas-calendar-v6", "atlas_2000_calendar_safe_v1"],
+  calendarColors: ["atlas-calendar-colors-v2", "atlas-calendar-colors-v1"],
   parts: ["atlas-part-records-v2"],
   procedures: ["atlas-procedure-records-v1", "atlas_2000_procedures_safe_v1"],
   photos: ["atlas-photo-records-v10", "atlas-photo-records-v9", "atlas-photo-records-v8", "atlas-photo-records-v7", "atlas-photo-records-v6"],
@@ -275,15 +295,27 @@ function slugify(value: string) {
   );
 }
 
-function blankCalendarItem(date = todayISO(), defaultColorId = "personal-owner"): CalendarItem {
+function blankCalendarItem(date = todayISO(), defaultColorId = "maintenance"): CalendarItem {
+  const defaultColor = defaultCalendarColors.find((color) => color.id === defaultColorId) ?? defaultCalendarColors[0];
+
   return {
     id: "",
     date,
     time: "",
     title: "",
-    area: "",
-    status: "Scheduled",
-    colorId: defaultColorId,
+    area: defaultColor?.label || "Maintenance",
+    categoryLabel: defaultColor?.label || "Maintenance",
+    colorId: defaultColor?.id || "maintenance",
+    colorName: defaultColor?.colorName || "blue",
+    allDay: false,
+    repeat: "None",
+    reminder: "None",
+    notes: "",
+    linkedType: "None",
+    linkedId: "",
+    linkedName: "",
+    completed: false,
+    source: "manual",
   };
 }
 
@@ -409,15 +441,28 @@ function normalizeProcedure(record: Partial<ProcedureRecord>): ProcedureRecord {
 
 function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
   const title = String(record.title || "Untitled Calendar Item");
-  const rawColorId = String(record.colorId || "");
+  const rawColorId = String(record.colorId || "") || categoryToColorId(String(record.area || record.categoryLabel || ""));
+  const categoryLabel = String(record.categoryLabel || record.area || colorLabelFromColorId(rawColorId) || "Maintenance");
+  const colorName = (record.colorName || colorNameFromLegacyColorId(rawColorId)) as CalendarColorName;
+
   return {
     id: String(record.id || slugify(title)),
     date: String(record.date || todayISO()),
     time: String(record.time || ""),
     title,
-    area: String(record.area || "2000"),
-    status: isServiceStatus(record.status) ? record.status : "Scheduled",
-    colorId: rawColorId || categoryToColorId(String(record.area || "")),
+    area: categoryLabel,
+    categoryLabel,
+    colorId: rawColorId || "maintenance",
+    colorName,
+    allDay: Boolean(record.allDay),
+    repeat: record.repeat || "None",
+    reminder: record.reminder || "None",
+    notes: String(record.notes || ""),
+    linkedType: record.linkedType || "None",
+    linkedId: String(record.linkedId || ""),
+    linkedName: String(record.linkedName || ""),
+    completed: Boolean(record.completed || record.status === "Completed"),
+    source: record.source || "manual",
   };
 }
 
@@ -437,11 +482,11 @@ function normalizePart(record: Partial<PartRecord>): PartRecord {
   };
 }
 
-function byName<T extends { name: string }>(records: T[]) {
+function byName<T extends { name: string }>(records: T[]): T[] {
   return [...records].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function byTitle<T extends { title: string }>(records: T[]) {
+function byTitle<T extends { title: string }>(records: T[]): T[] {
   return [...records].sort((a, b) => a.title.localeCompare(b.title));
 }
 
@@ -521,14 +566,234 @@ function categoryToColorId(value: string) {
   return "other";
 }
 
-const defaultCalendarColors: CalendarColor[] = [
-  { id: "personal-owner", label: "Personal / Owner", hex: "#C99A3D" },
-  { id: "landscaping", label: "Landscaping", hex: "#087443" },
-  { id: "boat-dock", label: "Boat / Dock", hex: "#0077B6" },
-  { id: "vendor", label: "Vendor", hex: "#7C3AED" },
-  { id: "maintenance", label: "Maintenance", hex: "#475467" },
-  { id: "other", label: "Other", hex: "#94A3B8" },
+const calendarPlainColors: { id: CalendarColorName; label: string; hex: string }[] = [
+  { id: "red", label: "Red", hex: "#B42318" },
+  { id: "orange", label: "Orange", hex: "#B54708" },
+  { id: "yellow", label: "Yellow", hex: "#C99A3D" },
+  { id: "green", label: "Green", hex: "#087443" },
+  { id: "blue", label: "Blue", hex: "#175CD3" },
+  { id: "purple", label: "Purple", hex: "#7C3AED" },
+  { id: "gray", label: "Gray", hex: "#475467" },
 ];
+
+const repeatOptions: CalendarRepeat[] = ["None", "Daily", "Weekly", "Monthly", "Yearly", "Custom"];
+const reminderOptions: CalendarReminder[] = ["None", "Morning of", "Day before", "Week before"];
+const linkTypeOptions: CalendarLinkType[] = ["None", "Asset", "Location", "Vendor", "Work Order"];
+
+function plainColor(value?: string) {
+  return calendarPlainColors.find((color) => color.id === value) ?? calendarPlainColors.find((color) => color.id === "blue") ?? calendarPlainColors[0];
+}
+
+function colorNameFromLegacyColorId(colorId?: string): CalendarColorName {
+  if (colorId === "personal-owner") return "yellow";
+  if (colorId === "landscaping") return "green";
+  if (colorId === "boat-dock") return "blue";
+  if (colorId === "vendor") return "purple";
+  if (colorId === "maintenance") return "gray";
+  return "gray";
+}
+
+function colorLabelFromColorId(colorId?: string) {
+  return defaultCalendarColors.find((color) => color.id === colorId)?.label || "Other";
+}
+
+const defaultCalendarColors: CalendarColor[] = [
+  { id: "personal-owner", label: "Personal / Owner", hex: "#C99A3D", colorName: "yellow" },
+  { id: "landscaping", label: "Landscaping", hex: "#087443", colorName: "green" },
+  { id: "boat-dock", label: "Boat / Dock", hex: "#175CD3", colorName: "blue" },
+  { id: "vendor", label: "Vendor", hex: "#7C3AED", colorName: "purple" },
+  { id: "maintenance", label: "Maintenance", hex: "#475467", colorName: "gray" },
+  { id: "holiday", label: "Holiday", hex: "#7C3AED", colorName: "purple" },
+  { id: "work-order", label: "Work Order", hex: "#175CD3", colorName: "blue" },
+  { id: "other", label: "Other", hex: "#94A3B8", colorName: "gray" },
+];
+
+function normalizeCalendarColor(record: Partial<CalendarColor>): CalendarColor {
+  const id = String(record.id || uid("color"));
+  const colorName = record.colorName || colorNameFromLegacyColorId(id);
+  const plain = plainColor(colorName);
+
+  return {
+    id,
+    label: String(record.label || colorLabelFromColorId(id) || plain.label),
+    colorName,
+    hex: record.hex || plain.hex,
+  };
+}
+
+function getNthWeekdayOfMonth(year: number, monthIndex: number, weekday: number, nth: number) {
+  const date = new Date(year, monthIndex, 1);
+  let count = 0;
+
+  while (date.getMonth() === monthIndex) {
+    if (date.getDay() === weekday) {
+      count += 1;
+      if (count === nth) return new Date(date);
+    }
+    date.setDate(date.getDate() + 1);
+  }
+
+  return new Date(year, monthIndex, 1);
+}
+
+function getLastWeekdayOfMonth(year: number, monthIndex: number, weekday: number) {
+  const date = new Date(year, monthIndex + 1, 0);
+
+  while (date.getDay() !== weekday) {
+    date.setDate(date.getDate() - 1);
+  }
+
+  return date;
+}
+
+function getObservedFixedHoliday(year: number, monthIndex: number, day: number) {
+  const actual = new Date(year, monthIndex, day);
+  const observed = new Date(actual);
+
+  if (actual.getDay() === 6) observed.setDate(actual.getDate() - 1);
+  if (actual.getDay() === 0) observed.setDate(actual.getDate() + 1);
+
+  return observed;
+}
+
+function makeHolidayEvent(id: string, title: string, date: Date | string, source: CalendarSource, colorName: CalendarColorName): CalendarItem {
+  const dateKey = typeof date === "string" ? date : localISODate(date);
+
+  return {
+    id,
+    date: dateKey,
+    time: "",
+    title,
+    area: "Holiday",
+    categoryLabel: "Holiday",
+    colorId: "holiday",
+    colorName,
+    allDay: true,
+    repeat: "Yearly",
+    reminder: "None",
+    notes: source === "jewish-holiday" ? "Jewish holiday shown as an all-day calendar layer." : "US holiday shown as an all-day calendar layer.",
+    linkedType: "None",
+    completed: false,
+    source,
+  };
+}
+
+function getUsHolidays(year: number): CalendarItem[] {
+  const holidays = [
+    { title: "New Year’s Day", date: getObservedFixedHoliday(year, 0, 1) },
+    { title: "Martin Luther King Jr. Day", date: getNthWeekdayOfMonth(year, 0, 1, 3) },
+    { title: "Washington’s Birthday", date: getNthWeekdayOfMonth(year, 1, 1, 3) },
+    { title: "Memorial Day", date: getLastWeekdayOfMonth(year, 4, 1) },
+    { title: "Juneteenth", date: getObservedFixedHoliday(year, 5, 19) },
+    { title: "Independence Day", date: getObservedFixedHoliday(year, 6, 4) },
+    { title: "Labor Day", date: getNthWeekdayOfMonth(year, 8, 1, 1) },
+    { title: "Columbus Day", date: getNthWeekdayOfMonth(year, 9, 1, 2) },
+    { title: "Veterans Day", date: getObservedFixedHoliday(year, 10, 11) },
+    { title: "Thanksgiving Day", date: getNthWeekdayOfMonth(year, 10, 4, 4) },
+    { title: "Christmas Day", date: getObservedFixedHoliday(year, 11, 25) },
+  ];
+
+  return holidays.map((holiday) => makeHolidayEvent(`us-holiday-${year}-${slugify(holiday.title)}`, holiday.title, holiday.date, "us-holiday", "red"));
+}
+
+function getHebrewMonthName(date: Date) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US-u-ca-hebrew", { day: "numeric", month: "long" }).formatToParts(date);
+    return String(parts.find((part) => part.type === "month")?.value || "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function getHebrewDay(date: Date) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US-u-ca-hebrew", { day: "numeric", month: "long" }).formatToParts(date);
+    return Number(parts.find((part) => part.type === "day")?.value || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function jewishHolidayTitleForDate(date: Date) {
+  const month = getHebrewMonthName(date);
+  const day = getHebrewDay(date);
+
+  if (!month || !day) return "";
+  if (month.includes("tish") && day === 1) return "Rosh Hashanah I";
+  if (month.includes("tish") && day === 2) return "Rosh Hashanah II";
+  if (month.includes("tish") && day === 10) return "Yom Kippur";
+  if (month.includes("tish") && day >= 15 && day <= 21) return day === 15 ? "Sukkot I" : "Sukkot";
+  if (month.includes("tish") && day === 22) return "Shemini Atzeret";
+  if (month.includes("tish") && day === 23) return "Simchat Torah";
+  if (month.includes("kislev") && day >= 25) return "Chanukah";
+  if (month.includes("tevet") && day <= 3) return "Chanukah";
+  if ((month.includes("shevat") || month.includes("shvat")) && day === 15) return "Tu BiShvat";
+  if (month.includes("adar ii") && day === 14) return "Purim";
+  if (month === "adar" && day === 14) return "Purim";
+  if (month.includes("nisan") && day >= 15 && day <= 22) return day === 15 ? "Pesach I" : "Pesach";
+  if (month.includes("sivan") && (day === 6 || day === 7)) return day === 6 ? "Shavuot I" : "Shavuot II";
+  if (month.includes("av") && day === 9) return "Tisha B’Av";
+
+  return "";
+}
+
+function getJewishHolidays(year: number): CalendarItem[] {
+  const holidays: CalendarItem[] = [];
+  const date = new Date(year, 0, 1, 12);
+
+  while (date.getFullYear() === year) {
+    const title = jewishHolidayTitleForDate(date);
+    if (title) {
+      const dateKey = localISODate(date);
+      holidays.push(makeHolidayEvent(`jewish-holiday-${dateKey}-${slugify(title)}`, title, dateKey, "jewish-holiday", "purple"));
+    }
+    date.setDate(date.getDate() + 1);
+  }
+
+  return holidays;
+}
+
+function calendarDateValue(date: string) {
+  return new Date(`${date}T12:00:00`);
+}
+
+function daysBetween(start: string, end: string) {
+  const oneDay = 24 * 60 * 60 * 1000;
+  return Math.round((calendarDateValue(end).getTime() - calendarDateValue(start).getTime()) / oneDay);
+}
+
+function isRecurringInstanceOnDate(event: CalendarItem, date: string) {
+  if (!event.repeat || event.repeat === "None") return event.date === date;
+  if (event.date > date) return false;
+
+  const distance = daysBetween(event.date, date);
+  if (distance < 0) return false;
+  if (event.repeat === "Daily") return true;
+  if (event.repeat === "Weekly" || event.repeat === "Custom") return distance % 7 === 0;
+
+  const original = calendarDateValue(event.date);
+  const current = calendarDateValue(date);
+  if (event.repeat === "Monthly") return current.getDate() === original.getDate();
+  if (event.repeat === "Yearly") return current.getMonth() === original.getMonth() && current.getDate() === original.getDate();
+
+  return event.date === date;
+}
+
+function startOfWeek(date: Date) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() - copy.getDay());
+  return copy;
+}
+
+function getWeekCells(cursor: Date) {
+  const start = startOfWeek(cursor);
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const iso = localISODate(date);
+    return { key: iso, date: iso, day: date.getDate(), outside: date.getMonth() !== cursor.getMonth() };
+  });
+}
 
 const locations: LocationRecord[] = [
   { id: "general", name: "General", type: "Property", zone: "2000", notes: "Whole-property fallback location." },
@@ -605,12 +870,12 @@ const fallbackProcedures: ProcedureRecord[] = [
 ];
 
 const fallbackCalendar: CalendarItem[] = [
-  { id: "cal-friday-meeting", date: todayISO(), time: "9:00 AM", title: "Friday 9 AM Steve meeting", area: "2000", status: "Scheduled", colorId: "personal-owner" },
-  { id: "cal-tuesday-meeting", date: todayISO(), time: "10:00 AM", title: "Tuesday 10 AM Steve / Patrick meeting", area: "Landscaping", status: "Scheduled", colorId: "landscaping" },
-  { id: "cal-sunstream", date: "2026-07-10", time: "", title: "Sunstream Boat Cover", area: "Boat / Dock", status: "Scheduled", colorId: "boat-dock" },
-  { id: "cal-seaborne", date: "2026-07-13", time: "", title: "SeaBorne Dock Work", area: "Boat / Dock", status: "Scheduled", colorId: "boat-dock" },
-  { id: "cal-carpet-prep", date: "2026-07-21", time: "", title: "Prep Evis Room for Carpet", area: "Other", status: "Scheduled", colorId: "other" },
-  { id: "cal-flooring", date: "2026-07-22", time: "", title: "5 Star Flooring / Eric — Evi's room", area: "Vendor", status: "Scheduled", colorId: "vendor" },
+  { id: "cal-friday-meeting", date: todayISO(), time: "9:00 AM", title: "Friday 9 AM Steve meeting", area: "Personal / Owner", categoryLabel: "Personal / Owner", colorId: "personal-owner", colorName: "yellow", reminder: "Morning of", repeat: "Weekly", source: "manual" },
+  { id: "cal-tuesday-meeting", date: todayISO(), time: "10:00 AM", title: "Tuesday 10 AM Steve / Patrick meeting", area: "Landscaping", categoryLabel: "Landscaping", colorId: "landscaping", colorName: "green", reminder: "Morning of", repeat: "Weekly", source: "manual" },
+  { id: "cal-sunstream", date: "2026-07-10", time: "", title: "Sunstream Boat Cover", area: "Boat / Dock", categoryLabel: "Boat / Dock", colorId: "boat-dock", colorName: "blue", allDay: true, repeat: "None", source: "manual" },
+  { id: "cal-seaborne", date: "2026-07-13", time: "", title: "SeaBorne Dock Work", area: "Boat / Dock", categoryLabel: "Boat / Dock", colorId: "boat-dock", colorName: "blue", allDay: true, repeat: "None", source: "manual" },
+  { id: "cal-carpet-prep", date: "2026-07-21", time: "", title: "Prep Evis Room for Carpet", area: "Other", categoryLabel: "Other", colorId: "other", colorName: "gray", allDay: true, repeat: "None", source: "manual" },
+  { id: "cal-flooring", date: "2026-07-22", time: "", title: "5 Star Flooring / Eric — Evi's room", area: "Vendor", categoryLabel: "Vendor", colorId: "vendor", colorName: "purple", allDay: true, repeat: "None", source: "manual" },
 ];
 
 const fallbackParts: PartRecord[] = [
@@ -734,6 +999,10 @@ export default function AtlasPage() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
   const [selectedCalendarId, setSelectedCalendarId] = useState("");
   const [calendarDraft, setCalendarDraft] = useState<CalendarItem>(() => blankCalendarItem(todayISO()));
+  const [calendarView, setCalendarView] = useState<"month" | "week">("month");
+  const [showUsHolidays, setShowUsHolidays] = useState(true);
+  const [showJewishHolidays, setShowJewishHolidays] = useState(true);
+  const [calendarCategoryFilters, setCalendarCategoryFilters] = useState<Record<string, boolean>>({});
 
   const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([]);
   const [selectedWeatherDate, setSelectedWeatherDate] = useState("");
@@ -775,7 +1044,7 @@ export default function AtlasPage() {
     setServiceRecords(storedServices.length ? byTitle(storedServices) : fallbackWorkOrders);
     setProcedureRecords(storedProcedures.length ? byTitle(storedProcedures) : fallbackProcedures);
     setCalendarItems(storedCalendar.length ? byTitle(storedCalendar) : fallbackCalendar);
-    setCalendarColors(storedCalendarColors.length ? storedCalendarColors : defaultCalendarColors);
+    setCalendarColors(storedCalendarColors.length ? storedCalendarColors.map(normalizeCalendarColor) : defaultCalendarColors);
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
     setPhotos(storedPhotos);
     setSelectedCalendarId("");
@@ -914,11 +1183,29 @@ export default function AtlasPage() {
   }
 
   function colorForEvent(event: CalendarItem) {
-    return calendarColors.find((color) => color.id === event.colorId) ?? calendarColors[0] ?? defaultCalendarColors[0];
+    const labelRecord = calendarColors.find((color) => color.id === event.colorId);
+    const colorName = event.colorName || labelRecord?.colorName || colorNameFromLegacyColorId(event.colorId);
+    const plain = plainColor(colorName);
+
+    return {
+      id: colorName,
+      label: event.categoryLabel || event.area || labelRecord?.label || plain.label,
+      hex: plain.hex,
+      colorName,
+    };
   }
 
   function selectedColor() {
-    return calendarColors.find((color) => color.id === calendarDraft.colorId) ?? calendarColors[0] ?? defaultCalendarColors[0];
+    const plain = plainColor(calendarDraft.colorName || colorNameFromLegacyColorId(calendarDraft.colorId));
+    return { id: plain.id, label: plain.label, hex: plain.hex, colorName: plain.id };
+  }
+
+  function categoryForEvent(event: CalendarItem) {
+    return event.categoryLabel || event.area || colorForEvent(event).label || "Other";
+  }
+
+  function isCategoryVisible(category: string) {
+    return calendarCategoryFilters[category] !== false;
   }
 
   const selectedMapLabel = mapLabels.find((label) => label.id === selectedMapLabelId) ?? mapLabels[0] ?? defaultMapLabels[0];
@@ -931,11 +1218,91 @@ export default function AtlasPage() {
   const selectedWeather = weatherDays.find((day) => day.date === selectedWeatherDate) ?? weatherDays[0];
   const selectedCalendar = calendarDraft;
 
-  const todayEvents = useMemo(() => byTitle(calendarItems.filter((item) => item.date === todayISO())), [calendarItems]);
+  const holidayYears = useMemo(() => {
+    const year = calendarCursor.getFullYear();
+    return [year - 1, year, year + 1];
+  }, [calendarCursor]);
+
+  const usHolidayItems = useMemo(() => (showUsHolidays ? holidayYears.flatMap(getUsHolidays) : []), [showUsHolidays, holidayYears]);
+  const jewishHolidayItems = useMemo(() => (showJewishHolidays ? holidayYears.flatMap(getJewishHolidays) : []), [showJewishHolidays, holidayYears]);
+
+  const workOrderCalendarItems = useMemo(
+    () =>
+      serviceRecords
+        .filter((record) => record.date)
+        .map((record) =>
+          normalizeCalendar({
+            id: `work-order-${record.id}`,
+            date: record.date,
+            time: "",
+            title: `WO: ${record.title}`,
+            area: "Work Order",
+            categoryLabel: "Work Order",
+            colorId: "work-order",
+            colorName: "blue",
+            allDay: true,
+            repeat: "None",
+            reminder: "None",
+            notes: record.notes,
+            linkedType: "Work Order",
+            linkedId: record.id,
+            linkedName: record.title,
+            completed: record.status === "Completed",
+            source: "work-order",
+          })
+        ),
+    [serviceRecords]
+  );
+
+  const baseCalendarItems = useMemo(
+    () => [...calendarItems, ...workOrderCalendarItems, ...usHolidayItems, ...jewishHolidayItems],
+    [calendarItems, workOrderCalendarItems, usHolidayItems, jewishHolidayItems]
+  );
+
+  const visibleCalendarItems = useMemo(
+    () => baseCalendarItems.filter((item) => isCategoryVisible(categoryForEvent(item))),
+    [baseCalendarItems, calendarCategoryFilters, calendarColors]
+  );
+
+  const expandedCalendarItems = useMemo(() => {
+    const year = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+    const start = localISODate(new Date(year, month - 1, 1));
+    const end = localISODate(new Date(year, month + 2, 0));
+    const expanded: CalendarItem[] = [];
+
+    visibleCalendarItems.forEach((item) => {
+      if (!item.repeat || item.repeat === "None" || item.source !== "manual") {
+        expanded.push(item);
+        return;
+      }
+
+      const date = calendarDateValue(start);
+      const finalDate = calendarDateValue(end);
+      while (date <= finalDate) {
+        const dateKey = localISODate(date);
+        if (isRecurringInstanceOnDate(item, dateKey)) {
+          expanded.push({ ...item, date: dateKey, originalId: item.id, instanceId: `${item.id}-${dateKey}` });
+        }
+        date.setDate(date.getDate() + 1);
+      }
+    });
+
+    return expanded;
+  }, [visibleCalendarItems, calendarCursor]);
+
+  const calendarFilterLabels = useMemo(() => {
+    const labels = new Set<string>();
+    [...defaultCalendarColors, ...calendarColors].forEach((item) => labels.add(item.label));
+    baseCalendarItems.forEach((item) => labels.add(categoryForEvent(item)));
+    return Array.from(labels).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }, [baseCalendarItems, calendarColors]);
+
+  const todayEvents = useMemo(() => byTitle(expandedCalendarItems.filter((item) => item.date === todayISO())), [expandedCalendarItems]);
 
   const selectedDayEvents = useMemo(
-    () => byTitle(calendarItems.filter((item) => item.date === selectedCalendarDate)),
-    [calendarItems, selectedCalendarDate]
+    () => byTitle(expandedCalendarItems.filter((item) => item.date === selectedCalendarDate)),
+    [expandedCalendarItems, selectedCalendarDate]
   );
 
   const weatherByDate = useMemo(() => {
@@ -946,11 +1313,11 @@ export default function AtlasPage() {
 
   const upcomingEvents = useMemo(() => {
     const today = todayISO();
-    return [...calendarItems]
+    return [...expandedCalendarItems]
       .filter((item) => item.date >= today)
       .sort((a, b) => `${a.date} ${a.time || ""}`.localeCompare(`${b.date} ${b.time || ""}`))
       .slice(0, 6);
-  }, [calendarItems]);
+  }, [expandedCalendarItems]);
 
   const q = query.trim().toLowerCase();
 
@@ -993,7 +1360,7 @@ export default function AtlasPage() {
   const filteredCalendar = useMemo(() => {
     const sorted = byTitle(calendarItems);
     if (!q) return sorted;
-    return sorted.filter((item) => [item.title, item.area, item.status, item.date, item.time, colorForEvent(item).label].join(" ").toLowerCase().includes(q));
+    return sorted.filter((item) => [item.title, item.area, item.categoryLabel, item.date, item.time, colorForEvent(item).label, item.notes, item.linkedName].join(" ").toLowerCase().includes(q));
   }, [q, calendarItems, calendarColors]);
 
   const filteredParts = useMemo(() => {
@@ -1027,6 +1394,8 @@ export default function AtlasPage() {
     return cells;
   }, [calendarCursor]);
 
+  const weekCells = useMemo(() => getWeekCells(calendarCursor), [calendarCursor]);
+
   function buildSearchIndex(): SearchResult[] {
     return [
       ...locations.map((item) => ({ id: `location-${item.id}`, type: "Location", title: item.name, subtitle: `${item.type} · ${item.zone}`, detail: item.notes, screen: "locations" as Screen })),
@@ -1035,7 +1404,7 @@ export default function AtlasPage() {
       ...vendorRecords.map((item) => ({ id: `vendor-${item.id}`, type: "Vendor", title: item.name, subtitle: item.category, detail: [item.phone, item.email, item.website, item.notes].join(" "), screen: "vendors" as Screen, vendorId: item.id })),
       ...serviceRecords.map((item) => ({ id: `wo-${item.id}`, type: "Work Order", title: item.title, subtitle: `${formatDate(item.date)} · ${item.status} · ${item.priority ?? "Medium"}`, detail: `${assetName(item.assetId)} ${vendorName(item.vendorId)} ${item.notes}`, screen: "history" as Screen, serviceId: item.id })),
       ...procedureRecords.map((item) => ({ id: `procedure-${item.id}`, type: "Procedure", title: item.title, subtitle: `${item.area} · ${item.priority}`, detail: item.steps.join(" "), screen: "procedures" as Screen, procedureId: item.id })),
-      ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar", title: item.title, subtitle: `${formatDate(item.date)} · ${item.time || "No time"} · ${colorForEvent(item).label}`, detail: `${item.area} ${item.status}`, screen: "calendar" as Screen, calendarId: item.id })),
+      ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar", title: item.title, subtitle: `${formatDate(item.date)} · ${item.allDay ? "All day" : item.time || "No time"} · ${colorForEvent(item).label}`, detail: `${item.area} ${item.notes || ""} ${item.linkedName || ""}`, screen: "calendar" as Screen, calendarId: item.id })),
       ...partRecords.map((item) => ({ id: `part-${item.id}`, type: "Part", title: item.name, subtitle: `${item.category} · Qty ${item.quantity}`, detail: item.notes, screen: "parts" as Screen, partId: item.id })),
     ];
   }
@@ -1128,18 +1497,37 @@ export default function AtlasPage() {
 
   function startNewCalendarDraft(date?: string) {
     const targetDate = date || selectedCalendarDate || todayISO();
+    const defaultLabel = calendarColors.find((color) => color.id === "maintenance") ?? calendarColors[0] ?? defaultCalendarColors[0];
     setSelectedCalendarDate(targetDate);
     setSelectedCalendarId("");
-    setCalendarDraft(blankCalendarItem(targetDate, calendarColors[0]?.id || "personal-owner"));
+    setCalendarDraft(blankCalendarItem(targetDate, defaultLabel.id));
     setScreen("calendar");
   }
 
   function startEditCalendarItem(id: string) {
     const event = calendarItems.find((item) => item.id === id);
     if (!event) return;
-    setSelectedCalendarId(event.id);
-    setSelectedCalendarDate(event.date);
-    setCalendarDraft({ ...event });
+    const normalized = normalizeCalendar(event);
+    setSelectedCalendarId(normalized.id);
+    setSelectedCalendarDate(normalized.date);
+    setCalendarDraft({ ...normalized });
+  }
+
+  function openCalendarItem(event: CalendarItem) {
+    if (event.source === "work-order" && event.linkedId) {
+      setSelectedServiceId(event.linkedId);
+      setScreen("history");
+      return;
+    }
+
+    if (event.source === "us-holiday" || event.source === "jewish-holiday") {
+      setSelectedCalendarDate(event.date);
+      setSelectedCalendarId("");
+      setCalendarDraft(blankCalendarItem(event.date, "holiday"));
+      return;
+    }
+
+    startEditCalendarItem(event.originalId || event.id);
   }
 
   function addCalendarItem(date?: string) {
@@ -1148,16 +1536,31 @@ export default function AtlasPage() {
 
   function updateCalendarItem(patch: Partial<CalendarItem>) {
     setCalendarDraft((current) => {
+      const nextColorId = patch.colorId ?? current.colorId ?? calendarColors[0]?.id ?? "maintenance";
+      const nextColorName = (patch.colorName ?? current.colorName ?? colorNameFromLegacyColorId(nextColorId)) as CalendarColorName;
+      const nextCategory = patch.categoryLabel ?? patch.area ?? current.categoryLabel ?? current.area ?? colorLabelFromColorId(nextColorId) ?? "Maintenance";
+      const nextAllDay = patch.allDay ?? current.allDay ?? false;
+
       const next: CalendarItem = {
         ...current,
         ...patch,
         id: selectedCalendarId || current.id || "",
         title: patch.title ?? current.title,
-        area: patch.area ?? current.area,
+        area: nextCategory,
+        categoryLabel: nextCategory,
         date: patch.date ?? current.date,
-        time: patch.time ?? current.time ?? "",
-        status: isServiceStatus(patch.status) ? patch.status : current.status,
-        colorId: patch.colorId ?? current.colorId ?? calendarColors[0]?.id,
+        time: nextAllDay ? "" : patch.time ?? current.time ?? "",
+        colorId: nextColorId,
+        colorName: nextColorName,
+        allDay: nextAllDay,
+        repeat: patch.repeat ?? current.repeat ?? "None",
+        reminder: patch.reminder ?? current.reminder ?? "None",
+        notes: patch.notes ?? current.notes ?? "",
+        linkedType: patch.linkedType ?? current.linkedType ?? "None",
+        linkedId: patch.linkedId ?? current.linkedId ?? "",
+        linkedName: patch.linkedName ?? current.linkedName ?? "",
+        completed: patch.completed ?? current.completed ?? false,
+        source: "manual",
       };
 
       if (patch.date) setSelectedCalendarDate(patch.date);
@@ -1171,11 +1574,21 @@ export default function AtlasPage() {
       ...calendarDraft,
       id: selectedCalendarId || uid("cal"),
       title: calendarDraft.title.trim() || "Untitled Calendar Item",
-      area: calendarDraft.area.trim() || "2000",
+      area: (calendarDraft.categoryLabel || calendarDraft.area || "Maintenance").trim(),
+      categoryLabel: (calendarDraft.categoryLabel || calendarDraft.area || "Maintenance").trim(),
       date: calendarDraft.date || selectedCalendarDate || todayISO(),
-      time: calendarDraft.time || "",
-      status: calendarDraft.status || "Scheduled",
-      colorId: calendarDraft.colorId || calendarColors[0]?.id || "personal-owner",
+      time: calendarDraft.allDay ? "" : calendarDraft.time || "",
+      colorId: calendarDraft.colorId || "maintenance",
+      colorName: calendarDraft.colorName || selectedColor().colorName,
+      allDay: !!calendarDraft.allDay,
+      repeat: calendarDraft.repeat || "None",
+      reminder: calendarDraft.reminder || "None",
+      notes: calendarDraft.notes || "",
+      linkedType: calendarDraft.linkedType || "None",
+      linkedId: calendarDraft.linkedId || "",
+      linkedName: calendarDraft.linkedName || "",
+      completed: !!calendarDraft.completed,
+      source: "manual",
     });
 
     setCalendarItems((current) => {
@@ -1183,6 +1596,15 @@ export default function AtlasPage() {
       if (exists) return byTitle(current.map((item) => (item.id === record.id ? record : item)));
       return byTitle([record, ...current]);
     });
+
+    const labelExists = calendarColors.some((item) => item.label.toLowerCase() === record.area.toLowerCase());
+    if (!labelExists) {
+      const plain = plainColor(record.colorName);
+      setCalendarColors((current) => [
+        ...current,
+        { id: slugify(record.area), label: record.area, colorName: record.colorName, hex: plain.hex },
+      ]);
+    }
 
     setSelectedCalendarId(record.id);
     setSelectedCalendarDate(record.date);
@@ -1193,39 +1615,42 @@ export default function AtlasPage() {
   function deleteCalendarItem(id: string) {
     if (!id) {
       setSelectedCalendarId("");
-      setCalendarDraft(blankCalendarItem(selectedCalendarDate, calendarColors[0]?.id || "personal-owner"));
+      setCalendarDraft(blankCalendarItem(selectedCalendarDate, "maintenance"));
       return;
     }
 
     const remaining = calendarItems.filter((item) => item.id !== id);
     setCalendarItems(byTitle(remaining));
     setSelectedCalendarId("");
-    setCalendarDraft(blankCalendarItem(selectedCalendarDate, calendarColors[0]?.id || "personal-owner"));
+    setCalendarDraft(blankCalendarItem(selectedCalendarDate, "maintenance"));
   }
 
   function updateCalendarColor(id: string, patch: Partial<CalendarColor>) {
     setCalendarColors((current) =>
-      current.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              ...patch,
-              label: patch.label ?? item.label,
-              hex: patch.hex ?? item.hex,
-            }
-          : item
-      )
+      current.map((item) => {
+        if (item.id !== id) return item;
+        const colorName = patch.colorName ?? item.colorName ?? colorNameFromLegacyColorId(item.id);
+        const plain = plainColor(colorName);
+        return {
+          ...item,
+          ...patch,
+          label: patch.label ?? item.label,
+          colorName,
+          hex: plain.hex,
+        };
+      })
     );
   }
 
   function addCalendarColor() {
     const newColor: CalendarColor = {
-      id: uid("color"),
-      label: "New Color",
-      hex: "#C99A3D",
+      id: uid("label"),
+      label: "New Label",
+      colorName: "blue",
+      hex: plainColor("blue").hex,
     };
     setCalendarColors((current) => [...current, newColor]);
-    setCalendarDraft((current) => ({ ...current, colorId: newColor.id }));
+    setCalendarDraft((current) => ({ ...current, colorId: newColor.id, categoryLabel: newColor.label, area: newColor.label, colorName: newColor.colorName }));
   }
 
   function updateProcedure(patch: Partial<ProcedureRecord>) {
@@ -1287,6 +1712,19 @@ export default function AtlasPage() {
 
   function moveCalendarMonth(delta: number) {
     setCalendarCursor((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
+  }
+
+  function moveCalendarPeriod(delta: number) {
+    if (calendarView === "week") {
+      setCalendarCursor((current) => {
+        const next = new Date(current);
+        next.setDate(current.getDate() + delta * 7);
+        return next;
+      });
+      return;
+    }
+
+    moveCalendarMonth(delta);
   }
 
   function askAtlas() {
@@ -1377,10 +1815,10 @@ export default function AtlasPage() {
                 todayEvents.map((event) => {
                   const eventColor = colorForEvent(event);
                   return (
-                    <button key={event.id} type="button" onClick={() => { startEditCalendarItem(event.id); setScreen("calendar"); }} style={{ ...todayEventStyle, borderLeftColor: eventColor.hex }}>
+                    <button key={event.instanceId || event.id} type="button" onClick={() => { openCalendarItem(event); if (event.source !== "work-order") setScreen("calendar"); }} style={{ ...todayEventStyle, borderLeftColor: eventColor.hex }}>
                       <div>
                         <strong>{event.title}</strong>
-                        <p style={mutedSmallStyle}>{formatDate(event.date)} · {event.time || "No time"} · {event.area}</p>
+                        <p style={mutedSmallStyle}>{formatDate(event.date)} · {event.allDay ? "All day" : event.time || "No time"} · {categoryForEvent(event)}</p>
                       </div>
                       <span style={{ ...eventColorPillStyle, borderColor: eventColor.hex, color: eventColor.hex }}>{eventColor.label}</span>
                     </button>
@@ -1400,11 +1838,11 @@ export default function AtlasPage() {
               {upcomingEvents.map((event) => {
                 const eventColor = colorForEvent(event);
                 return (
-                  <button key={event.id} type="button" onClick={() => { startEditCalendarItem(event.id); setScreen("calendar"); }} style={upcomingItemStyle}>
+                  <button key={event.instanceId || event.id} type="button" onClick={() => { openCalendarItem(event); if (event.source !== "work-order") setScreen("calendar"); }} style={upcomingItemStyle}>
                     <span style={{ ...upcomingDotStyle, background: eventColor.hex }} />
                     <div style={upcomingInfoStyle}>
                       <strong>{event.title}</strong>
-                      <p style={mutedSmallStyle}>{formatDate(event.date)} · {event.time || "No time"} · {eventColor.label}</p>
+                      <p style={mutedSmallStyle}>{formatDate(event.date)} · {event.allDay ? "All day" : event.time || "No time"} · {eventColor.label}</p>
                     </div>
                   </button>
                 );
@@ -1725,16 +2163,26 @@ export default function AtlasPage() {
 
   function renderCalendar() {
     const hasSelectedEvent = Boolean(selectedCalendarId);
+    const cells = calendarView === "week" ? weekCells : monthCells;
+    const calendarTitle = calendarView === "week" ? `Week of ${formatDate(weekCells[0]?.date || selectedCalendarDate)}` : monthName(calendarCursor);
+
+    const linkedOptions = (() => {
+      if (selectedCalendar.linkedType === "Asset") return byName(assetRecords).map((item) => ({ id: item.id, name: item.name }));
+      if (selectedCalendar.linkedType === "Location") return [...locations].sort((a, b) => a.name.localeCompare(b.name)).map((item) => ({ id: item.id, name: item.name }));
+      if (selectedCalendar.linkedType === "Vendor") return byName(vendorRecords).map((item) => ({ id: item.id, name: item.name }));
+      if (selectedCalendar.linkedType === "Work Order") return byTitle(serviceRecords).map((item) => ({ id: item.id, name: item.title }));
+      return [];
+    })();
 
     return (
       <ListDrawerLayout
-        eyebrow="Editable Month View"
+        eyebrow="Clean Calendar"
         title="Calendar"
-        detail="Click a day to see what is scheduled. Add, edit, save, or delete events from the right box."
+        detail="Events, work orders, US holidays, Jewish holidays, filters, reminders, notes, and category colors."
         isMobile={isMobile}
         right={
           <>
-            <button type="button" onClick={() => moveCalendarMonth(-1)} style={secondaryButtonStyle}>
+            <button type="button" onClick={() => moveCalendarPeriod(-1)} style={secondaryButtonStyle}>
               Previous
             </button>
             <button
@@ -1743,20 +2191,54 @@ export default function AtlasPage() {
                 setCalendarCursor(new Date());
                 setSelectedCalendarDate(todayISO());
                 setSelectedCalendarId("");
-                setCalendarDraft(blankCalendarItem(todayISO(), calendarColors[0]?.id || "personal-owner"));
+                setCalendarDraft(blankCalendarItem(todayISO(), "maintenance"));
               }}
               style={secondaryButtonStyle}
             >
               Today
             </button>
-            <button type="button" onClick={() => moveCalendarMonth(1)} style={secondaryButtonStyle}>
+            <button type="button" onClick={() => moveCalendarPeriod(1)} style={secondaryButtonStyle}>
               Next
             </button>
           </>
         }
         list={
           <div style={stackStyle}>
-            <div style={calendarHeaderStyle}>{monthName(calendarCursor)}</div>
+            <div style={calendarControlPanelStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={calendarHeaderStyle}>{calendarTitle}</div>
+                <div style={buttonRowStyle}>
+                  <button type="button" onClick={() => setCalendarView("month")} style={calendarView === "month" ? goldButtonStyle : secondaryButtonStyle}>Month</button>
+                  <button type="button" onClick={() => setCalendarView("week")} style={calendarView === "week" ? goldButtonStyle : secondaryButtonStyle}>Week</button>
+                </div>
+              </div>
+
+              <div style={calendarFilterStripStyle}>
+                <label style={calendarToggleStyle}>
+                  <input type="checkbox" checked={showUsHolidays} onChange={(event) => setShowUsHolidays(event.currentTarget.checked)} />
+                  US Holidays
+                </label>
+                <label style={calendarToggleStyle}>
+                  <input type="checkbox" checked={showJewishHolidays} onChange={(event) => setShowJewishHolidays(event.currentTarget.checked)} />
+                  Jewish Holidays
+                </label>
+                {calendarFilterLabels.map((label) => (
+                  <label key={label} style={calendarToggleStyle}>
+                    <input
+                      type="checkbox"
+                      checked={calendarCategoryFilters[label] !== false}
+                      onChange={(event) =>
+                        setCalendarCategoryFilters((current) => ({
+                          ...current,
+                          [label]: event.currentTarget.checked,
+                        }))
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
 
             <div style={calendarWeekStyle}>
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
@@ -1767,8 +2249,8 @@ export default function AtlasPage() {
             </div>
 
             <div style={calendarGridStyle}>
-              {monthCells.map((cell) => {
-                const events = cell.date ? calendarItems.filter((item) => item.date === cell.date) : [];
+              {cells.map((cell) => {
+                const events = cell.date ? expandedCalendarItems.filter((item) => item.date === cell.date) : [];
                 const isToday = cell.date === todayISO();
                 const isSelected = cell.date === selectedCalendarDate;
                 const dayWeather = cell.date ? weatherByDate.get(cell.date) : undefined;
@@ -1782,11 +2264,11 @@ export default function AtlasPage() {
                       if (!cell.date) return;
                       setSelectedCalendarDate(cell.date);
                       setSelectedCalendarId("");
-                      setCalendarDraft(blankCalendarItem(cell.date, calendarColors[0]?.id || "personal-owner"));
+                      setCalendarDraft(blankCalendarItem(cell.date, "maintenance"));
                     }}
                     style={{
                       ...calendarCellStyle,
-                      opacity: cell.outside ? 0.25 : 1,
+                      opacity: cell.outside ? 0.55 : 1,
                       borderColor: isSelected ? colors.gold : isToday ? colors.gold2 : colors.line,
                       background: isSelected ? "#FFFAEB" : isToday ? "#FFFDF3" : "#FFFFFF",
                       boxShadow: isSelected ? "0 12px 28px rgba(201,154,61,0.18)" : "none",
@@ -1806,14 +2288,17 @@ export default function AtlasPage() {
                         const eventColor = colorForEvent(event);
                         return (
                           <span
-                            key={event.id}
+                            key={event.instanceId || event.id}
                             onClick={(mouseEvent) => {
                               mouseEvent.stopPropagation();
-                              startEditCalendarItem(event.id);
+                              openCalendarItem(event);
                             }}
                             style={{
                               ...calendarPillStyle,
                               borderLeft: `5px solid ${eventColor.hex}`,
+                              color: event.completed ? colors.muted : eventColor.hex,
+                              textDecoration: event.completed ? "line-through" : "none",
+                              background: "#F8FAFC",
                             }}
                           >
                             {event.title}
@@ -1842,21 +2327,24 @@ export default function AtlasPage() {
                   const eventColor = colorForEvent(event);
                   return (
                     <button
-                      key={event.id}
+                      key={event.instanceId || event.id}
                       type="button"
-                      onClick={() => startEditCalendarItem(event.id)}
+                      onClick={() => openCalendarItem(event)}
                       style={{
                         ...calendarTodayItemStyle,
-                        borderColor: event.id === selectedCalendarId ? eventColor.hex : colors.line,
+                        borderColor: (event.originalId || event.id) === selectedCalendarId ? eventColor.hex : colors.line,
+                        opacity: event.completed ? 0.65 : 1,
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <span style={{ ...calendarColorDotStyle, background: eventColor.hex }} />
                         <div>
-                          <strong>{event.title}</strong>
+                          <strong style={{ textDecoration: event.completed ? "line-through" : "none" }}>{event.title}</strong>
                           <span>
-                            {event.time || "No time"} · {eventColor.label}
+                            {event.allDay ? "All day" : event.time || "No time"} · {eventColor.label}
                           </span>
+                          {event.repeat && event.repeat !== "None" && event.source === "manual" ? <span>Repeats {event.repeat}</span> : null}
+                          {event.linkedType && event.linkedType !== "None" && event.linkedName ? <span>Linked: {event.linkedName}</span> : null}
                         </div>
                       </div>
                     </button>
@@ -1891,13 +2379,43 @@ export default function AtlasPage() {
                     setSelectedCalendarDate(value);
                   }}
                 />
-                <Field label="Time" value={selectedCalendar.time || ""} onChange={(value) => updateCalendarItem({ time: value })} placeholder="Example: 9:00 AM" />
-                <Field label="Area" value={selectedCalendar.area} onChange={(value) => updateCalendarItem({ area: value })} placeholder="Type area..." />
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Time</span>
+                  <input
+                    value={selectedCalendar.time || ""}
+                    disabled={!!selectedCalendar.allDay}
+                    onChange={(event) => updateCalendarItem({ time: event.currentTarget.value })}
+                    placeholder="Example: 9:00 AM"
+                    style={{ ...inputStyle, background: selectedCalendar.allDay ? "#EEF2F6" : "#FFFFFF" }}
+                  />
+                </label>
+                <label style={checkboxLineStyle}>
+                  <input
+                    type="checkbox"
+                    checked={!!selectedCalendar.allDay}
+                    onChange={(event) => updateCalendarItem({ allDay: event.currentTarget.checked })}
+                  />
+                  All-day event
+                </label>
+
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Category Label</span>
+                  <input
+                    list="calendar-category-labels"
+                    value={selectedCalendar.categoryLabel || selectedCalendar.area || ""}
+                    onChange={(event) => updateCalendarItem({ categoryLabel: event.currentTarget.value, area: event.currentTarget.value })}
+                    placeholder="Vendor, Family, Maintenance..."
+                    style={inputStyle}
+                  />
+                  <datalist id="calendar-category-labels">
+                    {calendarColors.map((color) => <option key={color.id} value={color.label} />)}
+                  </datalist>
+                </label>
 
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                   <span style={fieldLabelStyle}>Color</span>
-                  <select value={selectedCalendar.colorId || selectedColor().id} onChange={(event) => updateCalendarItem({ colorId: event.currentTarget.value })} style={inputStyle}>
-                    {calendarColors.map((color) => (
+                  <select value={selectedCalendar.colorName || selectedColor().colorName} onChange={(event) => updateCalendarItem({ colorName: event.currentTarget.value as CalendarColorName })} style={inputStyle}>
+                    {calendarPlainColors.map((color) => (
                       <option key={color.id} value={color.id}>
                         {color.label}
                       </option>
@@ -1905,12 +2423,42 @@ export default function AtlasPage() {
                   </select>
                 </label>
 
+                <SelectField label="Repeat" value={selectedCalendar.repeat || "None"} onChange={(value) => updateCalendarItem({ repeat: value })} options={repeatOptions} />
+                <SelectField label="Reminder" value={selectedCalendar.reminder || "None"} onChange={(value) => updateCalendarItem({ reminder: value })} options={reminderOptions} />
+
                 <SelectField
-                  label="Status"
-                  value={selectedCalendar.status}
-                  onChange={(value) => updateCalendarItem({ status: value })}
-                  options={["Open", "Scheduled", "Completed", "Monitor"] as const}
+                  label="Attach To"
+                  value={selectedCalendar.linkedType || "None"}
+                  onChange={(value) => updateCalendarItem({ linkedType: value, linkedId: "", linkedName: "" })}
+                  options={linkTypeOptions}
                 />
+
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Linked Record</span>
+                  <select
+                    value={selectedCalendar.linkedId || ""}
+                    disabled={!selectedCalendar.linkedType || selectedCalendar.linkedType === "None"}
+                    onChange={(event) => {
+                      const option = linkedOptions.find((item) => item.id === event.currentTarget.value);
+                      updateCalendarItem({ linkedId: event.currentTarget.value, linkedName: option?.name || "" });
+                    }}
+                    style={{ ...inputStyle, background: !selectedCalendar.linkedType || selectedCalendar.linkedType === "None" ? "#EEF2F6" : "#FFFFFF" }}
+                  >
+                    <option value="">No linked record</option>
+                    {linkedOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                  </select>
+                </label>
+
+                <Field label="Notes / Details" value={selectedCalendar.notes || ""} onChange={(value) => updateCalendarItem({ notes: value })} multiline placeholder="Add notes, vendor details, or instructions..." />
+
+                <label style={checkboxLineStyle}>
+                  <input
+                    type="checkbox"
+                    checked={!!selectedCalendar.completed}
+                    onChange={(event) => updateCalendarItem({ completed: event.currentTarget.checked })}
+                  />
+                  Completed
+                </label>
               </div>
 
               <div style={buttonRowStyle}>
@@ -1927,19 +2475,13 @@ export default function AtlasPage() {
             </div>
 
             <div style={calendarColorsBoxStyle}>
-              <div style={eyebrowStyle}>Colors</div>
-              <p style={mutedSmallStyle}>Use actual colors and label them how you want.</p>
+              <div style={eyebrowStyle}>Category Labels</div>
+              <p style={mutedSmallStyle}>Keep labels clean, then choose the plain event color from the event form.</p>
 
               <div style={calendarColorListStyle}>
                 {calendarColors.map((color) => (
                   <div key={color.id} style={calendarColorRowStyle}>
-                    <input
-                      aria-label={`${color.label} color`}
-                      type="color"
-                      value={color.hex}
-                      onChange={(event) => updateCalendarColor(color.id, { hex: event.currentTarget.value })}
-                      style={actualColorInputStyle}
-                    />
+                    <span style={{ ...calendarColorDotStyle, background: plainColor(color.colorName).hex }} />
                     <input
                       value={color.label}
                       onChange={(event) => updateCalendarColor(color.id, { label: event.currentTarget.value })}
@@ -1950,7 +2492,7 @@ export default function AtlasPage() {
               </div>
 
               <button type="button" onClick={addCalendarColor} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 10 }}>
-                Add Color
+                Add Label
               </button>
             </div>
           </>
@@ -2753,6 +3295,49 @@ const searchResultStyle: React.CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   color: colors.text,
+};
+
+const calendarControlPanelStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 16,
+  padding: 12,
+  display: "grid",
+  gap: 12,
+};
+
+const calendarFilterStripStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const calendarToggleStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 7,
+  border: `1px solid ${colors.line}`,
+  background: "#F8FAFC",
+  borderRadius: 999,
+  padding: "7px 10px",
+  color: colors.text,
+  fontSize: 12,
+  fontWeight: 850,
+  whiteSpace: "nowrap",
+};
+
+const checkboxLineStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  borderRadius: 13,
+  padding: "11px 12px",
+  color: colors.text,
+  fontSize: 13,
+  fontWeight: 850,
 };
 
 const calendarHeaderStyle: React.CSSProperties = {
