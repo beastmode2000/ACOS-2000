@@ -899,6 +899,17 @@ const fallbackParts: PartRecord[] = [
 
 const defaultWorkLinks: WorkLinkRecord[] = [
   {
+    id: "landscape-help",
+    name: "Landscape Help",
+    category: "Atlas / Crew Checklist",
+    vendor: "Peter Clark Designs / Landscaping Help",
+    url: "/landscape-help",
+    logoText: "LH",
+    logoBg: "#FFF8E6",
+    logoColor: colors.navy,
+    notes: "Open the Landscape Help admin page to manage the weekly checklist and copy the current crew share link.",
+  },
+  {
     id: "unifi-protect",
     name: "UniFi Protect / Ubiquiti Cameras",
     category: "Security / Cameras",
@@ -1853,7 +1864,7 @@ export default function AtlasPage() {
     }
 
     if (text.includes("link") || text.includes("portal") || text.includes("login")) {
-      setAssistantAnswer(`Atlas currently has ${defaultWorkLinks.length} work links loaded: UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`);
+      setAssistantAnswer(`Atlas currently has ${defaultWorkLinks.length} work links loaded: Landscape Help, UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`);
       return;
     }
 
@@ -1871,12 +1882,12 @@ export default function AtlasPage() {
         <SectionHeader
           eyebrow="Quick Access"
           title="Work Links"
-          detail="Regular work portals with clean logo badges and open buttons."
+          detail="Regular work portals with clean logo badges, including Landscape Help."
           right={<button type="button" onClick={() => setScreen("links")} style={secondaryButtonStyle}>Open All Links</button>}
         />
 
         <div style={quickLinksGridStyle}>
-          {defaultWorkLinks.slice(0, 6).map((link) => (
+          {defaultWorkLinks.slice(0, 7).map((link) => (
             <a key={link.id} href={link.url} target="_blank" rel="noreferrer" style={quickLinkCardStyle}>
               <span style={{ ...workLinkLogoStyle, background: link.logoBg, color: link.logoColor || colors.navy }}>
                 <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
@@ -2831,7 +2842,7 @@ export default function AtlasPage() {
         <SectionHeader
           eyebrow="Quick Access"
           title="Work Links"
-          detail="Regularly used work portals for cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
+          detail="Regularly used work portals for Landscape Help, cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
         />
 
         <div style={workLinksPageGridStyle}>
