@@ -1270,12 +1270,63 @@ function ListDrawerLayout(props: {
   listPanelStyleOverride?: React.CSSProperties;
   drawerStyleOverride?: React.CSSProperties;
 }) {
+  const desktopOuterStyle: React.CSSProperties = props.isMobile
+    ? sectionStyle
+    : {
+        ...sectionStyle,
+        height: "calc(100vh - 154px)",
+        minHeight: 560,
+        display: "grid",
+        gridTemplateRows: "auto minmax(0, 1fr)",
+        overflow: "hidden",
+      };
+
+  const outerStyle = props.outerStyle ? { ...desktopOuterStyle, ...props.outerStyle } : desktopOuterStyle;
+
+  const desktopGridStyle: React.CSSProperties = props.isMobile
+    ? {
+        ...drawerGridStyle,
+        gridTemplateColumns: "1fr",
+      }
+    : {
+        ...drawerGridStyle,
+        gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 440px)",
+        height: "100%",
+        minHeight: 0,
+        overflow: "hidden",
+      };
+
+  const desktopListStyle: React.CSSProperties = props.isMobile
+    ? listPanelStyle
+    : {
+        ...listPanelStyle,
+        height: "100%",
+        minHeight: 0,
+        overflowY: "auto",
+        overflowX: "hidden",
+        paddingRight: 6,
+        overscrollBehavior: "contain",
+      };
+
+  const desktopDrawerStyle: React.CSSProperties = props.isMobile
+    ? drawerStyle
+    : {
+        ...drawerStyle,
+        position: "relative",
+        top: "auto",
+        height: "100%",
+        maxHeight: "none",
+        minHeight: 0,
+        overflowY: "auto",
+        overflowX: "hidden",
+      };
+
   return (
-    <section style={props.outerStyle ? { ...sectionStyle, ...props.outerStyle } : sectionStyle}>
+    <section style={outerStyle}>
       <SectionHeader eyebrow={props.eyebrow} title={props.title} detail={props.detail} right={props.right} />
-      <div style={{ ...drawerGridStyle, gridTemplateColumns: props.isMobile ? "1fr" : "minmax(0, 1fr) minmax(330px, 430px)" }}>
-        <div style={props.listPanelStyleOverride ? { ...listPanelStyle, ...props.listPanelStyleOverride } : listPanelStyle}>{props.list}</div>
-        <div style={props.drawerStyleOverride ? { ...drawerStyle, ...props.drawerStyleOverride } : drawerStyle}>{props.drawer}</div>
+      <div style={desktopGridStyle}>
+        <div style={props.listPanelStyleOverride ? { ...desktopListStyle, ...props.listPanelStyleOverride } : desktopListStyle}>{props.list}</div>
+        <div style={props.drawerStyleOverride ? { ...desktopDrawerStyle, ...props.drawerStyleOverride } : desktopDrawerStyle}>{props.drawer}</div>
       </div>
     </section>
   );
@@ -4178,7 +4229,7 @@ const desktopContentStyle: React.CSSProperties = {
 const sidebarStyle: React.CSSProperties = {
   background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
   color: "#FFFFFF",
-  padding: 18,
+  padding: "12px 12px 14px",
   top: 0,
   display: "flex",
   flexDirection: "column",
@@ -4189,20 +4240,20 @@ const sidebarStyle: React.CSSProperties = {
 const brandStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 12,
-  marginBottom: 16,
+  gap: 10,
+  marginBottom: 10,
 };
 
 const logoBoxStyle: React.CSSProperties = {
-  width: 46,
-  height: 46,
-  borderRadius: 14,
+  width: 40,
+  height: 40,
+  borderRadius: 13,
   background: colors.gold,
   border: `1px solid ${colors.gold}`,
   display: "grid",
   placeItems: "center",
   overflow: "hidden",
-  boxShadow: "0 14px 30px rgba(0,0,0,0.22)",
+  boxShadow: "0 12px 26px rgba(0,0,0,0.22)",
 };
 
 const logoImageStyle: React.CSSProperties = {
@@ -4220,41 +4271,43 @@ const logoFallbackStyle: React.CSSProperties = {
 
 const brandTitleStyle: React.CSSProperties = {
   fontWeight: 950,
-  fontSize: 23,
-  letterSpacing: 1.4,
+  fontSize: 20,
+  letterSpacing: 1.3,
+  lineHeight: 1,
 };
 
 const brandSubStyle: React.CSSProperties = {
   color: "#D6E2EE",
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 850,
 };
 
 const navButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 13,
-  padding: "10px 12px",
+  borderRadius: 11,
+  padding: "8px 10px",
   textAlign: "left",
   cursor: "pointer",
   fontWeight: 950,
-  fontSize: 13,
+  fontSize: 12,
+  lineHeight: 1.15,
 };
 
 const commandStripStyle: React.CSSProperties = {
-  marginTop: 14,
-  paddingTop: 12,
+  marginTop: 10,
+  paddingTop: 10,
   borderTop: "1px solid rgba(255,255,255,0.12)",
   display: "grid",
-  gap: 12,
+  gap: 8,
 };
 
 const commandSectionStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.055)",
   border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 16,
-  padding: 10,
+  borderRadius: 14,
+  padding: 8,
   display: "grid",
-  gap: 7,
+  gap: 6,
 };
 
 const commandEyebrowStyle: React.CSSProperties = {
@@ -4269,10 +4322,10 @@ const commandMainButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
   background: "rgba(255,255,255,0.06)",
   color: "#FFFFFF",
-  borderRadius: 13,
-  padding: "10px 11px",
+  borderRadius: 12,
+  padding: "8px 9px",
   display: "grid",
-  gap: 3,
+  gap: 2,
   textAlign: "left",
   cursor: "pointer",
 };
@@ -4287,8 +4340,8 @@ const commandMetricStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
   background: "rgba(255,255,255,0.05)",
   color: "#FFFFFF",
-  borderRadius: 12,
-  padding: "9px 10px",
+  borderRadius: 11,
+  padding: "7px 8px",
   display: "grid",
   gap: 2,
   textAlign: "left",
@@ -4305,9 +4358,9 @@ const commandActionButtonStyle: React.CSSProperties = {
   border: `1px solid ${colors.gold}`,
   background: "rgba(201,154,61,0.13)",
   color: "#FFFFFF",
-  borderRadius: 12,
-  padding: "9px 8px",
-  fontSize: 12,
+  borderRadius: 11,
+  padding: "7px 7px",
+  fontSize: 11,
   fontWeight: 900,
   cursor: "pointer",
 };
@@ -4321,24 +4374,24 @@ const commandPinnedLinkStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.10)",
   background: "rgba(255,255,255,0.05)",
   color: "#FFFFFF",
-  borderRadius: 12,
-  padding: "8px 9px",
+  borderRadius: 11,
+  padding: "6px 8px",
   textDecoration: "none",
   display: "grid",
-  gridTemplateColumns: "30px 1fr",
-  gap: 8,
+  gridTemplateColumns: "26px 1fr",
+  gap: 7,
   alignItems: "center",
-  fontSize: 12,
+  fontSize: 11,
 };
 
 const commandWatchStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.10)",
   background: "rgba(255,255,255,0.045)",
   color: "#FFFFFF",
-  borderRadius: 12,
-  padding: "9px 10px",
+  borderRadius: 11,
+  padding: "7px 8px",
   textDecoration: "none",
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 850,
   textAlign: "left",
   cursor: "pointer",
