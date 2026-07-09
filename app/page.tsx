@@ -3910,7 +3910,7 @@ export default function AtlasPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "260px minmax(0, 1fr)",
+          gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "300px minmax(0, 1fr)",
           minHeight: "100vh",
           width: "100%",
           maxWidth: isMobile ? "100vw" : "none",
@@ -3929,9 +3929,8 @@ export default function AtlasPage() {
                   alignSelf: "start",
                   height: "100vh",
                   maxHeight: "100vh",
-                  overflowY: "auto",
+                  overflowY: "hidden",
                   overflowX: "hidden",
-                  overscrollBehavior: "contain",
                 }
           }
         >
@@ -3969,7 +3968,7 @@ export default function AtlasPage() {
             </div>
           ) : (
             <>
-              <nav style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr" }}>
+              <nav style={{ display: "grid", gap: 5, gridTemplateColumns: "1fr 1fr" }}>
                 {screens.map((item) => (
                   <button
                     key={item.id}
@@ -4109,7 +4108,7 @@ const mobileBrandStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 10,
-  marginBottom: 10,
+  marginBottom: 8,
 };
 
 const mobileLogoBoxStyle: React.CSSProperties = {
@@ -4126,7 +4125,7 @@ const mobileLogoBoxStyle: React.CSSProperties = {
 
 const mobileBrandTitleStyle: React.CSSProperties = {
   fontWeight: 950,
-  fontSize: 20,
+  fontSize: 18,
   letterSpacing: 1.1,
   lineHeight: 1,
 };
@@ -4229,7 +4228,7 @@ const desktopContentStyle: React.CSSProperties = {
 const sidebarStyle: React.CSSProperties = {
   background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
   color: "#FFFFFF",
-  padding: "12px 12px 14px",
+  padding: "10px 10px 10px",
   top: 0,
   display: "flex",
   flexDirection: "column",
@@ -4241,13 +4240,13 @@ const brandStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 10,
-  marginBottom: 10,
+  marginBottom: 8,
 };
 
 const logoBoxStyle: React.CSSProperties = {
-  width: 40,
-  height: 40,
-  borderRadius: 13,
+  width: 36,
+  height: 36,
+  borderRadius: 12,
   background: colors.gold,
   border: `1px solid ${colors.gold}`,
   display: "grid",
@@ -4271,48 +4270,51 @@ const logoFallbackStyle: React.CSSProperties = {
 
 const brandTitleStyle: React.CSSProperties = {
   fontWeight: 950,
-  fontSize: 20,
+  fontSize: 18,
   letterSpacing: 1.3,
   lineHeight: 1,
 };
 
 const brandSubStyle: React.CSSProperties = {
   color: "#D6E2EE",
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 850,
 };
 
 const navButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 11,
-  padding: "8px 10px",
+  borderRadius: 9,
+  padding: "6px 7px",
   textAlign: "left",
   cursor: "pointer",
   fontWeight: 950,
-  fontSize: 12,
-  lineHeight: 1.15,
+  fontSize: 10.5,
+  lineHeight: 1.08,
+  minHeight: 30,
+  display: "flex",
+  alignItems: "center",
 };
 
 const commandStripStyle: React.CSSProperties = {
-  marginTop: 10,
-  paddingTop: 10,
+  marginTop: 8,
+  paddingTop: 8,
   borderTop: "1px solid rgba(255,255,255,0.12)",
   display: "grid",
-  gap: 8,
+  gap: 6,
 };
 
 const commandSectionStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.055)",
   border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 14,
-  padding: 8,
+  borderRadius: 12,
+  padding: 6,
   display: "grid",
-  gap: 6,
+  gap: 5,
 };
 
 const commandEyebrowStyle: React.CSSProperties = {
   color: colors.gold2,
-  fontSize: 10,
+  fontSize: 9,
   fontWeight: 950,
   letterSpacing: "0.14em",
   textTransform: "uppercase",
@@ -4322,8 +4324,8 @@ const commandMainButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
   background: "rgba(255,255,255,0.06)",
   color: "#FFFFFF",
-  borderRadius: 12,
-  padding: "8px 9px",
+  borderRadius: 10,
+  padding: "6px 7px",
   display: "grid",
   gap: 2,
   textAlign: "left",
@@ -4333,15 +4335,15 @@ const commandMainButtonStyle: React.CSSProperties = {
 const commandMiniGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
-  gap: 8,
+  gap: 6,
 };
 
 const commandMetricStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
   background: "rgba(255,255,255,0.05)",
   color: "#FFFFFF",
-  borderRadius: 11,
-  padding: "7px 8px",
+  borderRadius: 9,
+  padding: "5px 6px",
   display: "grid",
   gap: 2,
   textAlign: "left",
@@ -4351,47 +4353,48 @@ const commandMetricStyle: React.CSSProperties = {
 const commandActionGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
-  gap: 8,
+  gap: 6,
 };
 
 const commandActionButtonStyle: React.CSSProperties = {
   border: `1px solid ${colors.gold}`,
   background: "rgba(201,154,61,0.13)",
   color: "#FFFFFF",
-  borderRadius: 11,
-  padding: "7px 7px",
-  fontSize: 11,
+  borderRadius: 9,
+  padding: "6px 6px",
+  fontSize: 10,
   fontWeight: 900,
   cursor: "pointer",
 };
 
 const commandPinnedGridStyle: React.CSSProperties = {
   display: "grid",
-  gap: 7,
+  gridTemplateColumns: "1fr 1fr",
+  gap: 6,
 };
 
 const commandPinnedLinkStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.10)",
   background: "rgba(255,255,255,0.05)",
   color: "#FFFFFF",
-  borderRadius: 11,
-  padding: "6px 8px",
+  borderRadius: 9,
+  padding: "5px 6px",
   textDecoration: "none",
   display: "grid",
-  gridTemplateColumns: "26px 1fr",
-  gap: 7,
+  gridTemplateColumns: "22px 1fr",
+  gap: 5,
   alignItems: "center",
-  fontSize: 11,
+  fontSize: 10,
 };
 
 const commandWatchStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.10)",
   background: "rgba(255,255,255,0.045)",
   color: "#FFFFFF",
-  borderRadius: 11,
-  padding: "7px 8px",
+  borderRadius: 9,
+  padding: "5px 6px",
   textDecoration: "none",
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 850,
   textAlign: "left",
   cursor: "pointer",
@@ -4766,7 +4769,7 @@ const dashboardWeatherTempStyle: React.CSSProperties = {
 };
 
 const dashboardWeatherMiniStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 850,
   color: colors.muted,
 };
@@ -5049,7 +5052,7 @@ const mapBoxRemoveButtonStyle: React.CSSProperties = {
   background: "#FFFFFF",
   color: colors.muted,
   padding: "6px 8px",
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 850,
   cursor: "pointer",
 };
@@ -5125,7 +5128,7 @@ const mapIconButtonStyle: React.CSSProperties = {
   border: "none",
   background: "transparent",
   color: colors.navy,
-  fontSize: 20,
+  fontSize: 18,
   lineHeight: 1,
   cursor: "pointer",
   padding: 4,
@@ -5432,7 +5435,7 @@ const calendarPillStyle: React.CSSProperties = {
   color: "#175CD3",
   borderRadius: 999,
   padding: "3px 7px",
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 850,
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -5441,7 +5444,7 @@ const calendarPillStyle: React.CSSProperties = {
 
 const calendarMoreStyle: React.CSSProperties = {
   color: colors.muted,
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 850,
 };
 
