@@ -471,21 +471,67 @@ function saveStoredArray<T>(key: string, value: T[]) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-function fileToUploadedRecord(file: File): Promise<UploadedFileRecord> {
+function readFileDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      resolve({
-        id: uid("upload"),
-        name: file.name || "Uploaded file",
-        type: file.type || "file",
-        dataUrl: typeof reader.result === "string" ? reader.result : "",
-        createdAt: new Date().toISOString(),
-      });
-    };
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
     reader.onerror = () => reject(new Error("File read failed"));
     reader.readAsDataURL(file);
   });
+}
+
+function compressImageFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      try {
+        const maxSide = 1600;
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas unavailable");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(objectUrl);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      } catch (error) {
+        URL.revokeObjectURL(objectUrl);
+        reject(error);
+      }
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Image compression failed"));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
+async function fileToUploadedRecord(file: File): Promise<UploadedFileRecord> {
+  let dataUrl = "";
+
+  if (file.type.startsWith("image/") && !file.type.includes("svg") && !file.type.includes("gif")) {
+    try {
+      dataUrl = await compressImageFile(file);
+    } catch {
+      dataUrl = await readFileDataUrl(file);
+    }
+  } else {
+    dataUrl = await readFileDataUrl(file);
+  }
+
+  return {
+    id: uid("upload"),
+    name: file.name || "Uploaded file",
+    type: file.type || "file",
+    dataUrl,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
@@ -2192,14 +2238,16 @@ export default function AtlasPage() {
 
   const allDocuments = useMemo(() => [...documents, ...intakeDocs], [intakeDocs]);
 
-  const intakeTargetOptions = useMemo(() => {
-    if (intakeTargetKind === "Asset") return byName(assetRecords).map((asset) => ({ id: asset.id, name: asset.name, detail: `${asset.category} · ${locationName(asset.locationId)}` }));
-    if (intakeTargetKind === "Location") return [...locations].sort((a, b) => a.name.localeCompare(b.name)).map((location) => ({ id: location.id, name: location.name, detail: `${location.type} · ${location.zone}` }));
-    if (intakeTargetKind === "Vendor") return byName(vendorRecords).map((vendor) => ({ id: vendor.id, name: vendor.name, detail: vendor.category }));
-    if (intakeTargetKind === "Work Order") return byTitle(serviceRecords).map((record) => ({ id: record.id, name: record.title, detail: `${formatDate(record.date)} · ${record.status}` }));
-    if (intakeTargetKind === "Map Label") return byLabel(mapLabels).map((label) => ({ id: label.id, name: label.label, detail: label.category }));
+  function documentTargetOptionsFor(kind: IntakeTargetKind) {
+    if (kind === "Asset") return byName(assetRecords).map((asset) => ({ id: asset.id, name: asset.name, detail: `${asset.category} · ${locationName(asset.locationId)}` }));
+    if (kind === "Location") return [...locations].sort((a, b) => a.name.localeCompare(b.name)).map((location) => ({ id: location.id, name: location.name, detail: `${location.type} · ${location.zone}` }));
+    if (kind === "Vendor") return byName(vendorRecords).map((vendor) => ({ id: vendor.id, name: vendor.name, detail: vendor.category }));
+    if (kind === "Work Order") return byTitle(serviceRecords).map((record) => ({ id: record.id, name: record.title, detail: `${formatDate(record.date)} · ${record.status}` }));
+    if (kind === "Map Label") return byLabel(mapLabels).map((label) => ({ id: label.id, name: label.label, detail: label.category }));
     return [];
-  }, [intakeTargetKind, assetRecords, vendorRecords, serviceRecords, mapLabels]);
+  }
+
+  const intakeTargetOptions = useMemo(() => documentTargetOptionsFor(intakeTargetKind), [intakeTargetKind, assetRecords, vendorRecords, serviceRecords, mapLabels]);
 
   useEffect(() => {
     if (intakeTargetKind === "General") {
@@ -2423,20 +2471,33 @@ export default function AtlasPage() {
 
       const payload = (await response.json()) as { documents?: DocumentRecord[] };
       const apiDocs = Array.isArray(payload.documents) ? payload.documents.map(normalizeDocument) : [];
+      const localDocs = mergeDocuments(intakeDocs, readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(normalizeDocument));
+      const apiIds = new Set(apiDocs.map((doc) => doc.id));
+      const localOnlyDocs = localDocs.filter((doc) => !apiIds.has(doc.id));
 
-      setIntakeDocs((current) => {
-        const localDocs = current.length ? current : readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(normalizeDocument);
-        const merged = mergeDocuments(apiDocs, localDocs);
-        saveStoredArray(storageKeys.intakeDocs[0], merged);
-        return merged;
-      });
+      let uploadedLocalCount = 0;
+      for (const localDoc of localOnlyDocs) {
+        try {
+          await postDocumentToAtlasVault(localDoc);
+          uploadedLocalCount += 1;
+        } catch {
+          // Keep local copy. Large files may need to be re-saved after compression.
+        }
+      }
 
-      setSelectedDocumentId((current) => current || apiDocs[0]?.id || "");
-      setDocumentSyncStatus(`Synced ${apiDocs.length} document(s) from Atlas. Phone uploads should show on desktop after Refresh Vault.`);
+      const merged = mergeDocuments(apiDocs, localDocs);
+      setIntakeDocs(merged);
+      saveStoredArray(storageKeys.intakeDocs[0], merged);
+
+      setDocumentSyncStatus(
+        uploadedLocalCount
+          ? `Synced ${apiDocs.length} document(s) from Atlas and pushed ${uploadedLocalCount} phone/local document(s) up to the vault.`
+          : `Synced ${apiDocs.length} document(s) from Atlas. Phone uploads should show on desktop after Refresh Vault.`
+      );
     } catch {
       const localDocs = readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(normalizeDocument);
       setIntakeDocs((current) => (current.length ? current : localDocs));
-      setDocumentSyncStatus("Document sync API is not installed yet, so this browser is showing only its local vault. Add the atlas-documents API route + Neon table to sync phone and desktop.");
+      setDocumentSyncStatus("Document sync API is not installed or not reachable, so this browser is showing only its local vault.");
     }
   }
 
@@ -2447,8 +2508,72 @@ export default function AtlasPage() {
       body: JSON.stringify({ record }),
     });
 
-    if (!response.ok) throw new Error(`Document API returned ${response.status}`);
+    if (!response.ok) {
+      let message = `Document API returned ${response.status}`;
+      try {
+        const payload = await response.json();
+        if (payload?.error) message = String(payload.error);
+      } catch {
+        // Keep default message.
+      }
+      throw new Error(message);
+    }
+
     return response.json();
+  }
+
+  async function deleteDocumentFromAtlasVault(id: string) {
+    const response = await fetch(`/api/atlas-documents?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(`Document delete returned ${response.status}`);
+    return response.json();
+  }
+
+  function replaceDocumentInVault(record: DocumentRecord) {
+    const normalized = normalizeDocument(record);
+    setIntakeDocs((current) => {
+      const next = current.map((doc) => (doc.id === normalized.id ? normalized : doc));
+      const withRecord = next.some((doc) => doc.id === normalized.id) ? next : [normalized, ...next];
+      saveStoredArray(storageKeys.intakeDocs[0], withRecord);
+      return withRecord;
+    });
+  }
+
+  function updateSelectedDocument(id: string, patch: Partial<DocumentRecord>) {
+    setIntakeDocs((current) => {
+      const next = current.map((doc) => (doc.id === id ? normalizeDocument({ ...doc, ...patch }) : doc));
+      saveStoredArray(storageKeys.intakeDocs[0], next);
+      return next;
+    });
+  }
+
+  async function saveSelectedDocument(record: DocumentRecord) {
+    const normalized = normalizeDocument(record);
+    replaceDocumentInVault(normalized);
+    try {
+      await postDocumentToAtlasVault(normalized);
+      setDocumentSyncStatus(`Saved changes to ${normalized.title} and synced to Atlas.`);
+    } catch (error) {
+      setDocumentSyncStatus(error instanceof Error ? `Saved locally, but Atlas sync failed: ${error.message}` : "Saved locally, but Atlas sync failed.");
+    }
+  }
+
+  async function deleteSelectedDocument(record: DocumentRecord) {
+    const confirmed = window.confirm(`Delete ${record.title}? This removes it from the Atlas document vault.`);
+    if (!confirmed) return;
+
+    setIntakeDocs((current) => {
+      const next = current.filter((doc) => doc.id !== record.id);
+      saveStoredArray(storageKeys.intakeDocs[0], next);
+      return next;
+    });
+    setSelectedDocumentId("");
+
+    try {
+      await deleteDocumentFromAtlasVault(record.id);
+      setDocumentSyncStatus(`Deleted ${record.title} from Atlas.`);
+    } catch {
+      setDocumentSyncStatus(`Deleted ${record.title} from this browser. Refresh after the API update to confirm it is gone from Atlas.`);
+    }
   }
 
   function handlePreviewTouchStart(event: React.TouchEvent<HTMLDivElement>) {
@@ -2493,7 +2618,7 @@ export default function AtlasPage() {
 
     const nextDocs = mergeDocuments([record], intakeDocs);
     setIntakeDocs(nextDocs);
-    setSelectedDocumentId(record.id);
+    setSelectedDocumentId("");
     saveStoredArray(storageKeys.intakeDocs[0], nextDocs);
 
     let syncedToVault = false;
@@ -2528,8 +2653,9 @@ export default function AtlasPage() {
       }
     }
 
-    setIntakeMessage(syncedToVault ? `Saved to ${targetName} and synced to the Atlas Document Vault.` : `Saved to ${targetName} on this browser. Add the document sync API/table so it appears on every device.`);
+    setIntakeMessage(syncedToVault ? `Saved to ${targetName} and synced to the Atlas Document Vault.` : `Saved to ${targetName} on this browser. Atlas sync failed; check the vault status message.`);
     resetIntakeDraft();
+    setDocumentSearch("");
     setScreen("documents");
   }
 
@@ -4313,7 +4439,7 @@ export default function AtlasPage() {
 
   function renderDocuments() {
     const normalizedDocumentSearch = documentSearch.trim().toLowerCase();
-    const sortedDocuments = [...allDocuments].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "") || a.title.localeCompare(b.title));
+    const sortedDocuments = [...allDocuments].sort((a, b) => a.title.localeCompare(b.title) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
     const searchableDocuments = sortedDocuments.filter((doc) => {
       if (!normalizedDocumentSearch) return true;
       const fileNames = (doc.files || []).map((file) => file.name).join(" ");
@@ -4323,13 +4449,42 @@ export default function AtlasPage() {
         .includes(normalizedDocumentSearch);
     });
 
-    const selectedDocument = searchableDocuments.find((doc) => doc.id === selectedDocumentId) || searchableDocuments[0] || null;
+    const selectedDocument = searchableDocuments.find((doc) => doc.id === selectedDocumentId) || null;
+    const selectedTargetKind = (selectedDocument?.targetType || "General") as IntakeTargetKind;
+    const selectedTargetOptions = documentTargetOptionsFor(selectedTargetKind);
+
+    function retargetSelectedDocument(kind: IntakeTargetKind) {
+      if (!selectedDocument) return;
+      const options = documentTargetOptionsFor(kind);
+      const nextId = kind === "General" ? "" : options[0]?.id || "";
+      const nextName = targetNameFor(kind, nextId);
+      updateSelectedDocument(selectedDocument.id, {
+        targetType: kind,
+        targetId: nextId,
+        targetName: nextName,
+        area: nextName,
+        linkedAssetId: kind === "Asset" ? nextId : undefined,
+        linkedVendorId: kind === "Vendor" ? nextId : undefined,
+      });
+    }
+
+    function retargetSelectedRecord(id: string) {
+      if (!selectedDocument) return;
+      const nextName = targetNameFor(selectedTargetKind, id);
+      updateSelectedDocument(selectedDocument.id, {
+        targetId: id,
+        targetName: nextName,
+        area: nextName,
+        linkedAssetId: selectedTargetKind === "Asset" ? id : undefined,
+        linkedVendorId: selectedTargetKind === "Vendor" ? id : undefined,
+      });
+    }
 
     return (
       <ListDrawerLayout
         eyebrow="Document Vault"
         title="Documents / Photos"
-        detail="Search, view, zoom, and add paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots. Synced vault works across phone and desktop once the atlas-documents API/table is added."
+        detail="Search, open, edit, delete, zoom, and sync paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots between phone and desktop."
         isMobile={isMobile}
         right={<button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>}
         list={
@@ -4346,7 +4501,7 @@ export default function AtlasPage() {
                 <button type="button" onClick={() => void refreshDocumentVault()} style={secondaryButtonStyle}>Refresh Vault</button>
                 <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>
               </div>
-              <p style={mutedSmallStyle}>{searchableDocuments.length} matching document(s)</p>
+              <p style={mutedSmallStyle}>{searchableDocuments.length} matching document(s), sorted A–Z.</p>
               <p style={mutedSmallStyle}>{documentSyncStatus}</p>
             </div>
 
@@ -4376,8 +4531,7 @@ export default function AtlasPage() {
                         <strong>{document.title}</strong>
                         <p style={mutedSmallStyle}>{document.type} · {document.area}</p>
                         {document.targetType ? <p style={mutedSmallStyle}>Linked to {document.targetType}: {document.targetName || document.area}</p> : null}
-                        {document.notes ? <p style={mutedSmallStyle}>{document.notes}</p> : null}
-                        <p style={mutedSmallStyle}>{hasPreview ? `${fileCount} file(s) / preview available` : "No file attached"}</p>
+                        <p style={mutedSmallStyle}>{hasPreview ? `${fileCount} file(s) / preview available` : "Text-only record"}</p>
                       </div>
                     </button>
                   );
@@ -4390,60 +4544,81 @@ export default function AtlasPage() {
           <div>
             {selectedDocument ? (
               <div style={stackStyle}>
-                <div>
-                  <div style={eyebrowStyle}>Selected Document</div>
-                  <h3 style={detailTitleStyle}>{selectedDocument.title}</h3>
-                  <p style={mutedSmallStyle}>{selectedDocument.type} · {selectedDocument.area}</p>
-                  {selectedDocument.targetType ? <p style={mutedSmallStyle}>Linked to {selectedDocument.targetType}: {selectedDocument.targetName || selectedDocument.area}</p> : null}
-                  {selectedDocument.createdAt ? <p style={mutedSmallStyle}>Saved {new Date(selectedDocument.createdAt).toLocaleString()}</p> : null}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={eyebrowStyle}>Document Info</div>
+                    <h3 style={detailTitleStyle}>{selectedDocument.title}</h3>
+                    <p style={mutedSmallStyle}>{selectedDocument.createdAt ? `Saved ${new Date(selectedDocument.createdAt).toLocaleString()}` : "Saved document"}</p>
+                  </div>
+                  <button type="button" onClick={() => void deleteSelectedDocument(selectedDocument)} style={tinyDangerButtonStyle} title="Delete document">× Delete</button>
+                </div>
+
+                <div style={formGridStyle}>
+                  <Field label="Title" value={selectedDocument.title} onChange={(value) => updateSelectedDocument(selectedDocument.id, { title: value })} />
+                  <Field label="Type" value={selectedDocument.type} onChange={(value) => updateSelectedDocument(selectedDocument.id, { type: value })} placeholder="Invoice, Manual, Photo, Receipt, Estimate..." />
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Linked section</span>
+                    <select value={selectedTargetKind} onChange={(event) => retargetSelectedDocument(event.currentTarget.value as IntakeTargetKind)} style={inputStyle}>
+                      {(["Asset", "Location", "Vendor", "Work Order", "Map Label", "General"] as IntakeTargetKind[]).map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+                    </select>
+                  </label>
+                  {selectedTargetKind !== "General" ? (
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Linked record</span>
+                      <select value={selectedDocument.targetId || ""} onChange={(event) => retargetSelectedRecord(event.currentTarget.value)} style={inputStyle}>
+                        {selectedTargetOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                      </select>
+                    </label>
+                  ) : null}
+                  <Field label="Notes" value={selectedDocument.notes || ""} onChange={(value) => updateSelectedDocument(selectedDocument.id, { notes: value })} multiline placeholder="What is this, why it matters, follow-up needed..." />
+                  <Field label="Pasted text / copied paperwork" value={selectedDocument.pastedText || ""} onChange={(value) => updateSelectedDocument(selectedDocument.id, { pastedText: value })} multiline placeholder="Paste copied text, email content, invoice notes, serial info, etc." />
                 </div>
 
                 <div style={buttonRowStyle}>
-                  <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>
+                  <button type="button" onClick={() => void saveSelectedDocument(selectedDocument)} style={goldButtonStyle}>Save Changes</button>
                   {selectedDocument.targetType && selectedDocument.targetType !== "General" ? (
                     <button type="button" onClick={() => openDocumentTarget(selectedDocument)} style={secondaryButtonStyle}>Open Linked Record</button>
                   ) : null}
+                  <button type="button" onClick={() => setSelectedDocumentId("")} style={secondaryButtonStyle}>Close</button>
                 </div>
-
-                {selectedDocument.notes ? (
-                  <div style={noticeStyle}>
-                    <strong>Notes</strong>
-                    <p style={mutedSmallStyle}>{selectedDocument.notes}</p>
-                  </div>
-                ) : null}
-
-                {selectedDocument.pastedText ? (
-                  <div style={noticeStyle}>
-                    <strong>Pasted Text</strong>
-                    <pre style={documentTextPreviewStyle}>{selectedDocument.pastedText}</pre>
-                  </div>
-                ) : null}
 
                 {selectedDocument.files?.length ? (
                   <div>
                     <div style={eyebrowStyle}>Files</div>
                     <div style={photoGridStyle}>
                       {selectedDocument.files.map((file) => (
-                        <button key={file.id} type="button" onClick={() => openUploadedFile(file)} style={{ ...photoCardStyle, textAlign: "left", cursor: "pointer" }}>
-                          {file.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt={file.name} style={photoStyle} /> : <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>}
-                          <strong>{file.name}</strong>
-                          <span style={mutedSmallStyle}>Open zoom preview</span>
-                        </button>
+                        <div key={file.id} style={photoCardStyle}>
+                          <button type="button" onClick={() => openUploadedFile(file)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
+                            {file.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt={file.name} style={photoStyle} /> : <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>}
+                            <strong>{file.name}</strong>
+                            <span style={mutedSmallStyle}>Open zoom preview</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSelectedDocument(selectedDocument.id, { files: (selectedDocument.files || []).filter((item) => item.id !== file.id) })}
+                            style={tinyDangerButtonStyle}
+                          >
+                            Remove file
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </div>
                 ) : (
                   <div style={noticeStyle}>
                     <strong>No file attached.</strong>
-                    <p style={mutedSmallStyle}>This record only contains text/details. Add a new document with a file or photo to view it here.</p>
+                    <p style={mutedSmallStyle}>This record can still hold notes/pasted text. Add a new document if you need to attach a photo, PDF, or file.</p>
                   </div>
                 )}
               </div>
             ) : (
               <div style={noticeStyle}>
-                <strong>Document vault is empty.</strong>
-                <p style={mutedSmallStyle}>Add the first scan, photo, PDF, or pasted note from your phone or computer.</p>
-                <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>
+                <strong>Select a document from the list.</strong>
+                <p style={mutedSmallStyle}>After you save a new upload, this info area closes so it is ready for the next item. Click any document to view, edit, zoom, or delete it.</p>
+                <div style={buttonRowStyle}>
+                  <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>
+                  <button type="button" onClick={() => void refreshDocumentVault()} style={secondaryButtonStyle}>Refresh Vault</button>
+                </div>
               </div>
             )}
           </div>
