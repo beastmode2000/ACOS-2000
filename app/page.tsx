@@ -2241,7 +2241,7 @@ export default function AtlasPage() {
     }
 
     if (text.includes("map")) {
-      setAssistantAnswer(`The map is locked to /atlas-property-map.png and has ${mapLabels.length} movable labels. Use Reset Map to restore the saved label layout.`);
+      setAssistantAnswer(`The map is locked to /atlas-property-map.png and has ${mapLabels.length} movable labels. Click a label for details; click and hold to move it.`);
       return;
     }
 
@@ -2466,12 +2466,11 @@ export default function AtlasPage() {
       <ListDrawerLayout
         eyebrow="Map"
         title="Property Map"
-        detail="Click a label for details. Drag labels to move them."
+        detail="Click a label for details. Click and hold a label to move it."
         isMobile={isMobile}
         right={
           <>
             <button type="button" onClick={addMapLabel} style={goldButtonStyle}>Add Label</button>
-            <button type="button" onClick={resetMapLabels} style={dangerButtonStyle}>Reset Map</button>
           </>
         }
         list={
@@ -2535,8 +2534,6 @@ export default function AtlasPage() {
               <div style={formGridStyle}>
                 <Field label="Name" value={selectedMapLabel.label} onChange={(value) => updateSelectedMapLabel({ label: value })} />
                 <Field label="Category" value={selectedMapLabel.category} onChange={(value) => updateSelectedMapLabel({ category: value })} />
-                <Field label="X" value={String(selectedMapLabel.x)} onChange={(value) => updateSelectedMapLabel({ x: Number(value) })} />
-                <Field label="Y" value={String(selectedMapLabel.y)} onChange={(value) => updateSelectedMapLabel({ y: Number(value) })} />
               </div>
             </div>
 
