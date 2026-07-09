@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+function hasShareToken(request: NextRequest) {
+  return request.nextUrl.searchParams.has("token");
+}
+
 function isPublicPath(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
@@ -9,16 +13,31 @@ function isPublicPath(request: NextRequest) {
   if (pathname === "/robots.txt") return true;
   if (pathname === "/site.webmanifest") return true;
 
-  if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt)$/i.test(pathname)) return true;
+  if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt)$/i.test(pathname)) {
+    return true;
+  }
 
-  // Admin Landscape Help page stays private.
-  if (pathname === "/landscape-help") return false;
+  // Public crew checklist link option 1:
+  // /landscape-help?token=SHARE_TOKEN
+  if (pathname === "/landscape-help" && hasShareToken(request)) {
+    return true;
+  }
 
-  // Crew checklist links stay public.
-  if (pathname.startsWith("/landscape-help/")) return true;
+  // Admin Landscape Help page stays private when there is no token.
+  if (pathname === "/landscape-help") {
+    return false;
+  }
+
+  // Public crew checklist link option 2:
+  // /landscape-help/SHARE_TOKEN
+  if (pathname.startsWith("/landscape-help/")) {
+    return true;
+  }
 
   // Public crew API access is only allowed when the share token is in the URL.
-  if (pathname === "/api/landscape-help" && request.nextUrl.searchParams.has("token")) return true;
+  if (pathname === "/api/landscape-help" && hasShareToken(request)) {
+    return true;
+  }
 
   return false;
 }
