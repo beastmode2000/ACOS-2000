@@ -1832,8 +1832,7 @@ export default function AtlasPage() {
 
   function titleFromCalendarIntake(text: string) {
     const lines = text
-      .split(/
-+/)
+      .split(/\r?\n+/)
       .map((line) => line.trim())
       .filter(Boolean);
 
