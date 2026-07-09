@@ -1341,23 +1341,34 @@ export default function AtlasPage() {
     const onResize = () => setIsMobile(window.innerWidth < 820);
     window.addEventListener("resize", onResize);
 
-    const storedMapLabels = readStoredArray<MapLabelRecord>(storageKeys.mapLabels, defaultMapLabels).map((label) => ({
-      id: label.id || uid("map"),
-      label: label.label || "Map Label",
-      category: label.category || "Location",
-      x: clampPercent(Number(label.x)),
-      y: clampPercent(Number(label.y)),
-      notes: label.notes || "",
-      photos: Array.isArray(label.photos) ? label.photos : [],
-      vendorIds: Array.isArray(label.vendorIds) ? label.vendorIds.map(String) : [],
-      detailBoxes: normalizeMapDetailBoxes(label),
-      installer: label.installer || "",
-      paintColor: label.paintColor || "",
-      specs: label.specs || "",
-      documentNotes: label.documentNotes || "",
-      photoNotes: label.photoNotes || "",
-      maintenanceNotes: label.maintenanceNotes || "",
-    }));
+    const storedMapLabels = readStoredArray<MapLabelRecord>(storageKeys.mapLabels, defaultMapLabels).map((label) => {
+      const defaultLabel = defaultMapLabels.find((item) => item.id === label.id);
+      const rawLabel = String(
+        label.label ||
+          (label as unknown as { name?: string }).name ||
+          (label as unknown as { title?: string }).title ||
+          ""
+      ).trim();
+      const displayLabel = !rawLabel || rawLabel.toLowerCase() === "map label" ? defaultLabel?.label || "New Label" : rawLabel;
+
+      return {
+        id: label.id || uid("map"),
+        label: displayLabel,
+        category: label.category || defaultLabel?.category || "Location",
+        x: clampPercent(Number.isFinite(Number(label.x)) ? Number(label.x) : Number(defaultLabel?.x)),
+        y: clampPercent(Number.isFinite(Number(label.y)) ? Number(label.y) : Number(defaultLabel?.y)),
+        notes: label.notes || defaultLabel?.notes || "",
+        photos: Array.isArray(label.photos) ? label.photos : [],
+        vendorIds: Array.isArray(label.vendorIds) ? label.vendorIds.map(String) : [],
+        detailBoxes: normalizeMapDetailBoxes(label),
+        installer: label.installer || "",
+        paintColor: label.paintColor || "",
+        specs: label.specs || "",
+        documentNotes: label.documentNotes || "",
+        photoNotes: label.photoNotes || "",
+        maintenanceNotes: label.maintenanceNotes || "",
+      };
+    });
 
     const storedAssets = readStoredArray<AssetRecord>(storageKeys.assets, fallbackAssets).map(normalizeAsset);
     const storedVendors = readStoredArray<VendorRecord>(storageKeys.vendors, fallbackVendors).map(normalizeVendor);
