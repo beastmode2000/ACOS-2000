@@ -40,6 +40,12 @@ type LocationRecord = {
   notes: string;
 };
 
+type MapDetailBox = {
+  id: string;
+  title: string;
+  body: string;
+};
+
 type MapLabelRecord = {
   id: string;
   label: string;
@@ -49,6 +55,7 @@ type MapLabelRecord = {
   notes: string;
   photos: UploadedFileRecord[];
   vendorIds?: string[];
+  detailBoxes?: MapDetailBox[];
   installer?: string;
   paintColor?: string;
   specs?: string;
@@ -305,6 +312,36 @@ function todayISO() {
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeMapDetailBoxes(label: Partial<MapLabelRecord>): MapDetailBox[] {
+  const existing = Array.isArray(label.detailBoxes)
+    ? label.detailBoxes
+        .map((box) => ({
+          id: box.id || uid("mapbox"),
+          title: String(box.title || "Box").trim() || "Box",
+          body: String(box.body || ""),
+        }))
+        .filter((box) => box.title.trim() || box.body.trim())
+    : [];
+
+  if (existing.length) return existing;
+
+  const legacyBoxes = [
+    { title: "Notes", body: label.notes || "" },
+    { title: "Installer / Vendor", body: label.installer || "" },
+    { title: "Paint / Color / Finish", body: label.paintColor || "" },
+    { title: "Specs / Materials", body: label.specs || "" },
+    { title: "Docs / Links", body: label.documentNotes || "" },
+    { title: "Photo Notes", body: label.photoNotes || "" },
+    { title: "Maintenance", body: label.maintenanceNotes || "" },
+  ].filter((box) => String(box.body || "").trim());
+
+  if (legacyBoxes.length) {
+    return legacyBoxes.map((box) => ({ id: uid("mapbox"), title: box.title, body: String(box.body || "") }));
+  }
+
+  return [{ id: uid("mapbox"), title: "Notes", body: "" }];
 }
 
 function slugify(value: string) {
@@ -1230,6 +1267,7 @@ export default function AtlasPage() {
       notes: label.notes || "",
       photos: Array.isArray(label.photos) ? label.photos : [],
       vendorIds: Array.isArray(label.vendorIds) ? label.vendorIds.map(String) : [],
+      detailBoxes: normalizeMapDetailBoxes(label),
       installer: label.installer || "",
       paintColor: label.paintColor || "",
       specs: label.specs || "",
@@ -1544,12 +1582,7 @@ export default function AtlasPage() {
       item.label,
       item.category,
       item.notes,
-      item.installer,
-      item.paintColor,
-      item.specs,
-      item.documentNotes,
-      item.photoNotes,
-      item.maintenanceNotes,
+      (item.detailBoxes || []).map((box) => `${box.title} ${box.body}`).join(" "),
       (item.vendorIds || []).map(vendorName).join(" "),
     ].join(" ").toLowerCase().includes(q));
   }, [q, mapLabels]);
@@ -1633,12 +1666,7 @@ export default function AtlasPage() {
         subtitle: item.category,
         detail: [
           item.notes,
-          item.installer,
-          item.paintColor,
-          item.specs,
-          item.documentNotes,
-          item.photoNotes,
-          item.maintenanceNotes,
+          (item.detailBoxes || []).map((box) => `${box.title} ${box.body}`).join(" "),
           (item.vendorIds || []).map(vendorName).join(" "),
         ].join(" "),
         screen: "map" as Screen,
@@ -2105,6 +2133,7 @@ export default function AtlasPage() {
       notes: "",
       photos: [],
       vendorIds: [],
+      detailBoxes: [{ id: uid("mapbox"), title: "Notes", body: "" }],
       installer: "",
       paintColor: "",
       specs: "",
@@ -2133,6 +2162,7 @@ export default function AtlasPage() {
                 y: patch.y === undefined ? label.y : clampPercent(Number(patch.y)),
                 photos: patch.photos ?? label.photos ?? [],
                 vendorIds: patch.vendorIds ?? label.vendorIds ?? [],
+                detailBoxes: patch.detailBoxes ?? label.detailBoxes ?? normalizeMapDetailBoxes(label),
                 installer: patch.installer ?? label.installer ?? "",
                 paintColor: patch.paintColor ?? label.paintColor ?? "",
                 specs: patch.specs ?? label.specs ?? "",
@@ -2153,6 +2183,30 @@ export default function AtlasPage() {
       : [...currentVendorIds, vendorId];
 
     updateSelectedMapLabel({ vendorIds: nextVendorIds });
+  }
+
+  function addMapDetailBox() {
+    updateSelectedMapLabel({
+      detailBoxes: [
+        ...(selectedMapLabel.detailBoxes || []),
+        { id: uid("mapbox"), title: "New Box", body: "" },
+      ],
+    });
+  }
+
+  function updateMapDetailBox(boxId: string, patch: Partial<MapDetailBox>) {
+    updateSelectedMapLabel({
+      detailBoxes: (selectedMapLabel.detailBoxes || []).map((box) =>
+        box.id === boxId ? { ...box, ...patch } : box
+      ),
+    });
+  }
+
+  function removeMapDetailBox(boxId: string) {
+    const nextBoxes = (selectedMapLabel.detailBoxes || []).filter((box) => box.id !== boxId);
+    updateSelectedMapLabel({
+      detailBoxes: nextBoxes.length ? nextBoxes : [{ id: uid("mapbox"), title: "Notes", body: "" }],
+    });
   }
 
   function handleMapLabelPhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -2533,17 +2587,38 @@ export default function AtlasPage() {
               <div style={mapDetailSectionTitleStyle}>Label</div>
               <div style={formGridStyle}>
                 <Field label="Name" value={selectedMapLabel.label} onChange={(value) => updateSelectedMapLabel({ label: value })} />
-                <Field label="Category" value={selectedMapLabel.category} onChange={(value) => updateSelectedMapLabel({ category: value })} />
+                <Field label="Type" value={selectedMapLabel.category} onChange={(value) => updateSelectedMapLabel({ category: value })} />
               </div>
             </div>
 
             <div style={mapDetailCardStyle}>
-              <div style={mapDetailSectionTitleStyle}>Info</div>
-              <div style={formGridStyle}>
-                <Field label="Installer / Vendor" value={selectedMapLabel.installer || ""} onChange={(value) => updateSelectedMapLabel({ installer: value })} />
-                <Field label="Paint / Color / Finish" value={selectedMapLabel.paintColor || ""} onChange={(value) => updateSelectedMapLabel({ paintColor: value })} />
-                <Field label="Specs / Materials" value={selectedMapLabel.specs || ""} onChange={(value) => updateSelectedMapLabel({ specs: value })} multiline />
-                <Field label="Notes" value={selectedMapLabel.notes || ""} onChange={(value) => updateSelectedMapLabel({ notes: value })} multiline />
+              <div style={mapDetailHeaderRowStyle}>
+                <div style={mapDetailSectionTitleStyle}>Boxes</div>
+                <button type="button" onClick={addMapDetailBox} style={smallSubtleButtonStyle}>Add Box</button>
+              </div>
+
+              <div style={mapBoxListStyle}>
+                {(selectedMapLabel.detailBoxes || normalizeMapDetailBoxes(selectedMapLabel)).map((box) => (
+                  <div key={box.id} style={mapCustomBoxStyle}>
+                    <div style={mapBoxHeaderStyle}>
+                      <input
+                        aria-label="Box title"
+                        value={box.title}
+                        onChange={(event) => updateMapDetailBox(box.id, { title: event.currentTarget.value })}
+                        placeholder="Box name"
+                        style={mapBoxTitleInputStyle}
+                      />
+                      <button type="button" onClick={() => removeMapDetailBox(box.id)} style={mapBoxRemoveButtonStyle}>Remove</button>
+                    </div>
+                    <textarea
+                      aria-label={`${box.title || "Box"} details`}
+                      value={box.body}
+                      onChange={(event) => updateMapDetailBox(box.id, { body: event.currentTarget.value })}
+                      placeholder="Add details"
+                      style={mapBoxTextareaStyle}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -2582,18 +2657,11 @@ export default function AtlasPage() {
             </div>
 
             <div style={mapDetailCardStyle}>
-              <div style={mapDetailSectionTitleStyle}>Docs</div>
-              <Field label="Document Notes / Links" value={selectedMapLabel.documentNotes || ""} onChange={(value) => updateSelectedMapLabel({ documentNotes: value })} multiline />
-            </div>
-
-            <div style={mapDetailCardStyle}>
               <div style={mapDetailSectionTitleStyle}>Photos</div>
               <label style={{ ...secondaryButtonStyle, display: "inline-flex", cursor: "pointer" }}>
                 Add Photos
                 <input type="file" accept="image/*" multiple onChange={handleMapLabelPhotoUpload} style={{ display: "none" }} />
               </label>
-
-              <Field label="Photo Notes" value={selectedMapLabel.photoNotes || ""} onChange={(value) => updateSelectedMapLabel({ photoNotes: value })} multiline />
 
               {selectedMapLabel.photos?.length ? (
                 <div style={photoGridStyle}>
@@ -2608,11 +2676,6 @@ export default function AtlasPage() {
               ) : (
                 <p style={mutedSmallStyle}>No photos added.</p>
               )}
-            </div>
-
-            <div style={mapDetailCardStyle}>
-              <div style={mapDetailSectionTitleStyle}>Maintenance</div>
-              <Field label="Maintenance Notes" value={selectedMapLabel.maintenanceNotes || ""} onChange={(value) => updateSelectedMapLabel({ maintenanceNotes: value })} multiline />
             </div>
           </div>
         }
@@ -4208,6 +4271,74 @@ const mapDetailSectionTitleStyle: React.CSSProperties = {
   color: colors.navy,
   fontSize: 14,
   fontWeight: 950,
+};
+
+const mapDetailHeaderRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+};
+
+const mapBoxListStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+const mapCustomBoxStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 14,
+  background: colors.panel,
+  padding: 10,
+  display: "grid",
+  gap: 8,
+};
+
+const mapBoxHeaderStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: 8,
+  alignItems: "center",
+};
+
+const mapBoxTitleInputStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 10,
+  background: "#FFFFFF",
+  color: colors.navy,
+  padding: "7px 9px",
+  fontSize: 12,
+  fontWeight: 900,
+  outline: "none",
+};
+
+const mapBoxTextareaStyle: React.CSSProperties = {
+  ...inputStyle,
+  minHeight: 70,
+  resize: "vertical",
+  fontSize: 13,
+};
+
+const mapBoxRemoveButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 999,
+  background: "#FFFFFF",
+  color: colors.muted,
+  padding: "6px 8px",
+  fontSize: 11,
+  fontWeight: 850,
+  cursor: "pointer",
+};
+
+const smallSubtleButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 999,
+  background: "#FFFFFF",
+  color: colors.navy,
+  padding: "7px 10px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
 };
 
 const mapVendorChipListStyle: React.CSSProperties = {
