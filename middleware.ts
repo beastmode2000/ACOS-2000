@@ -17,24 +17,14 @@ function isPublicPath(request: NextRequest) {
     return true;
   }
 
-  // Public crew checklist link option 1:
-  // /landscape-help?token=SHARE_TOKEN
+  // Public crew page ONLY with token:
+  // /landscape-help?token=REAL_TOKEN
   if (pathname === "/landscape-help" && hasShareToken(request)) {
     return true;
   }
 
-  // Admin Landscape Help page stays private when there is no token.
-  if (pathname === "/landscape-help") {
-    return false;
-  }
-
-  // Public crew checklist link option 2:
-  // /landscape-help/SHARE_TOKEN
-  if (pathname.startsWith("/landscape-help/")) {
-    return true;
-  }
-
-  // Public crew API access is only allowed when the share token is in the URL.
+  // Public crew API ONLY with token:
+  // /api/landscape-help?token=REAL_TOKEN
   if (pathname === "/api/landscape-help" && hasShareToken(request)) {
     return true;
   }
