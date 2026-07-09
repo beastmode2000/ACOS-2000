@@ -2227,12 +2227,13 @@ export default function AtlasPage() {
                     <input
                       type="checkbox"
                       checked={calendarCategoryFilters[label] !== false}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const checked = event.currentTarget.checked;
                         setCalendarCategoryFilters((current) => ({
                           ...current,
-                          [label]: event.currentTarget.checked,
-                        }))
-                      }
+                          [label]: checked,
+                        }));
+                      }}
                     />
                     {label}
                   </label>
