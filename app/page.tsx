@@ -4204,14 +4204,14 @@ export default function AtlasPage() {
           </div>
 
           <div style={scannerSideStyle}>
-            <div style={cardStyle}>
-              <h3 style={cardTitleStyle}>How to use it</h3>
+            <div style={qrCardStyle}>
+              <h3 style={qrCardTitleStyle}>How to use it</h3>
               <p style={mutedSmallStyle}>Tap Start Camera, allow camera access, then point your phone at an Atlas QR label. Atlas will open the matching record automatically.</p>
               <p style={mutedSmallStyle}>The regular iPhone Camera app also works because each QR label is a normal Atlas link.</p>
             </div>
 
-            <div style={cardStyle}>
-              <h3 style={cardTitleStyle}>Manual QR link</h3>
+            <div style={qrCardStyle}>
+              <h3 style={qrCardTitleStyle}>Manual QR link</h3>
               <p style={mutedSmallStyle}>Paste a copied QR link here if camera permission is blocked.</p>
               <textarea
                 value={scannerManualValue}
