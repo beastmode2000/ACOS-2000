@@ -14,6 +14,7 @@ type Screen =
   | "documents"
   | "procedures"
   | "parts"
+  | "links"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -116,6 +117,19 @@ type PartRecord = {
   quantity: number;
   minQuantity: number;
   status: PartStatus;
+  notes: string;
+};
+
+type WorkLinkRecord = {
+  id: string;
+  name: string;
+  category: string;
+  vendor?: string;
+  url: string;
+  logoText: string;
+  logoBg: string;
+  logoUrl?: string;
+  logoColor?: string;
   notes: string;
 };
 
@@ -241,6 +255,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "documents", label: "Documents" },
   { id: "procedures", label: "Procedures" },
   { id: "parts", label: "Parts" },
+  { id: "links", label: "Work Links" },
   { id: "assistant", label: "Ask Atlas" },
 ];
 
@@ -882,6 +897,81 @@ const fallbackParts: PartRecord[] = [
   { id: "filters-aprilaire-210", name: "Aprilaire #210 4x20x25 Filter", category: "HVAC Filters", locationId: "mechanical-room", vendorId: "amazon", quantity: 1, minQuantity: 1, status: "Low", notes: "Amazon filter record." },
 ];
 
+const defaultWorkLinks: WorkLinkRecord[] = [
+  {
+    id: "unifi-protect",
+    name: "UniFi Protect / Ubiquiti Cameras",
+    category: "Security / Cameras",
+    vendor: "High Tech Living",
+    url: "https://unifi.ui.com/consoles/E438839B47DC00000000075DB1CB0000000007B7A01B00000000640C2817:1458354667/protect/dashboard/all",
+    logoText: "UI",
+    logoBg: "#EEF6FF",
+    logoUrl: "https://unifi.ui.com/favicon.ico",
+    logoColor: "#006FFF",
+    notes: "Main camera system portal for 2000.",
+  },
+  {
+    id: "hydrawise",
+    name: "Hydrawise / Irrigation",
+    category: "Irrigation / Grounds",
+    vendor: "Advanced Irrigation Inc.",
+    url: "https://app.hydrawise.com/config/dashboard",
+    logoText: "HW",
+    logoBg: "#EAF7F1",
+    logoUrl: "https://app.hydrawise.com/favicon.ico",
+    logoColor: colors.green,
+    notes: "Faben2000 Hunter HCC 24 Zones controller. Serial 06d050377d.",
+  },
+  {
+    id: "amazon",
+    name: "Amazon",
+    category: "Parts / Supplies",
+    vendor: "Amazon",
+    url: "https://www.amazon.com/",
+    logoText: "A",
+    logoBg: "#FFF4E5",
+    logoUrl: "https://www.amazon.com/favicon.ico",
+    logoColor: "#B54708",
+    notes: "Property supplies, HVAC filters, parts, tools, and recurring orders.",
+  },
+  {
+    id: "control4",
+    name: "Control4 Customer Portal",
+    category: "Smart Home / Controls",
+    vendor: "High Tech Living",
+    url: "https://customer.control4.com/",
+    logoText: "C4",
+    logoBg: "#F3F0FF",
+    logoUrl: "https://customer.control4.com/favicon.ico",
+    logoColor: "#5B21B6",
+    notes: "Control4 customer portal. Learn more later before relying on it for daily operations.",
+  },
+  {
+    id: "total-connect-comfort",
+    name: "Total Connect Comfort / HVAC Zones",
+    category: "HVAC / Thermostats / Zones",
+    vendor: "Honeywell / Carrier",
+    url: "https://mytotalconnectcomfort.com/portal/7560987/Zones",
+    logoText: "TCC",
+    logoBg: "#FEECEC",
+    logoUrl: "https://mytotalconnectcomfort.com/favicon.ico",
+    logoColor: colors.red,
+    notes: "Main zone control page for the Carrier / Honeywell HVAC zoning system.",
+  },
+  {
+    id: "metaviewer",
+    name: "MetaViewer Invoice Search / Approvals",
+    category: "Invoices / Approvals / Accounting",
+    vendor: "MetaFile Solutions",
+    url: "https://arc.metafilesolutions.com/Metaviewer/Account/LogOn?ReturnUrl=%2fMetaViewer%2fIp%3fname%3dMyApprovals&name=MyApprovals",
+    logoText: "MV",
+    logoBg: "#F1F5F9",
+    logoUrl: "https://arc.metafilesolutions.com/favicon.ico",
+    logoColor: colors.navy3,
+    notes: "Invoice search and My Approvals portal.",
+  },
+];
+
 const documents: DocumentRecord[] = [
   { id: "elliott-invoice-15159", title: "Elliott Paint Invoice #15159", area: "Exterior", type: "Invoice", linkedAssetId: "exterior-stain", linkedVendorId: "elliottpaint", notes: "Invoice dated 06/16/2026. Amount due $17,210.05." },
   { id: "property-map", title: "Locked Atlas Property Map", area: "Map", type: "Image", href: "/atlas-property-map.png", notes: "Fixed original property map image used by Atlas labels." },
@@ -1369,6 +1459,12 @@ export default function AtlasPage() {
     return sorted.filter((item) => [item.name, item.category, item.status, item.notes, locationName(item.locationId), assetName(item.assetId), vendorName(item.vendorId)].join(" ").toLowerCase().includes(q));
   }, [q, partRecords, assetRecords, vendorRecords]);
 
+  const filteredWorkLinks = useMemo(() => {
+    const sorted = [...defaultWorkLinks].sort((a, b) => a.name.localeCompare(b.name));
+    if (!q) return sorted;
+    return sorted.filter((item) => [item.name, item.category, item.vendor, item.notes, item.url].join(" ").toLowerCase().includes(q));
+  }, [q]);
+
   const searchResults = useMemo(() => {
     if (!q) return [];
     return buildSearchIndex().filter((item) => [item.type, item.title, item.subtitle, item.detail].join(" ").toLowerCase().includes(q)).slice(0, 12);
@@ -1406,6 +1502,7 @@ export default function AtlasPage() {
       ...procedureRecords.map((item) => ({ id: `procedure-${item.id}`, type: "Procedure", title: item.title, subtitle: `${item.area} · ${item.priority}`, detail: item.steps.join(" "), screen: "procedures" as Screen, procedureId: item.id })),
       ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar", title: item.title, subtitle: `${formatDate(item.date)} · ${item.allDay ? "All day" : item.time || "No time"} · ${colorForEvent(item).label}`, detail: `${item.area} ${item.notes || ""} ${item.linkedName || ""}`, screen: "calendar" as Screen, calendarId: item.id })),
       ...partRecords.map((item) => ({ id: `part-${item.id}`, type: "Part", title: item.name, subtitle: `${item.category} · Qty ${item.quantity}`, detail: item.notes, screen: "parts" as Screen, partId: item.id })),
+      ...defaultWorkLinks.map((item) => ({ id: `link-${item.id}`, type: "Work Link", title: item.name, subtitle: `${item.category}${item.vendor ? ` · ${item.vendor}` : ""}`, detail: `${item.notes} ${item.url}`, screen: "links" as Screen })),
     ];
   }
 
@@ -1755,12 +1852,55 @@ export default function AtlasPage() {
       return;
     }
 
+    if (text.includes("link") || text.includes("portal") || text.includes("login")) {
+      setAssistantAnswer(`Atlas currently has ${defaultWorkLinks.length} work links loaded: UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`);
+      return;
+    }
+
     if (text.includes("work") || text.includes("order") || text.includes("service")) {
       setAssistantAnswer(`Atlas currently has ${serviceRecords.length} work orders/service records loaded. Open Work Orders to review them.`);
       return;
     }
 
     setAssistantAnswer(`Loaded now: ${assetRecords.length} assets, ${vendorRecords.length} vendors, ${serviceRecords.length} work orders, ${procedureRecords.length} procedures, ${calendarItems.length} calendar items, ${partRecords.length} parts, and ${mapLabels.length} map labels.`);
+  }
+
+  function renderDashboardWorkLinks() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Quick Access"
+          title="Work Links"
+          detail="Regular work portals with clean logo badges and open buttons."
+          right={<button type="button" onClick={() => setScreen("links")} style={secondaryButtonStyle}>Open All Links</button>}
+        />
+
+        <div style={quickLinksGridStyle}>
+          {defaultWorkLinks.slice(0, 6).map((link) => (
+            <a key={link.id} href={link.url} target="_blank" rel="noreferrer" style={quickLinkCardStyle}>
+              <span style={{ ...workLinkLogoStyle, background: link.logoBg, color: link.logoColor || colors.navy }}>
+                <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
+                {link.logoUrl ? (
+                  <img
+                    src={link.logoUrl}
+                    alt=""
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                    style={workLinkLogoImageStyle}
+                  />
+                ) : null}
+              </span>
+              <span style={workLinkTextStyle}>
+                <strong>{link.name}</strong>
+                <span>{link.category}{link.vendor ? ` · ${link.vendor}` : ""}</span>
+              </span>
+              <span style={workLinkOpenStyle}>Open</span>
+            </a>
+          ))}
+        </div>
+      </section>
+    );
   }
 
   function renderDashboardWeather() {
@@ -1852,6 +1992,8 @@ export default function AtlasPage() {
         </div>
 
         {renderDashboardWeather()}
+
+        {renderDashboardWorkLinks()}
 
         <section style={sectionStyle}>
           <SectionHeader eyebrow="Open / Monitor" title="Work Orders" right={<button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>Open Work Orders</button>} />
@@ -2215,11 +2357,11 @@ export default function AtlasPage() {
 
               <div style={calendarFilterStripStyle}>
                 <label style={calendarToggleStyle}>
-                  <input type="checkbox" checked={showUsHolidays} onChange={(event) => setShowUsHolidays(event.currentTarget.checked)} />
+                  <input type="checkbox" checked={showUsHolidays} onChange={() => setShowUsHolidays((current) => !current)} />
                   US Holidays
                 </label>
                 <label style={calendarToggleStyle}>
-                  <input type="checkbox" checked={showJewishHolidays} onChange={(event) => setShowJewishHolidays(event.currentTarget.checked)} />
+                  <input type="checkbox" checked={showJewishHolidays} onChange={() => setShowJewishHolidays((current) => !current)} />
                   Jewish Holidays
                 </label>
                 {calendarFilterLabels.map((label) => (
@@ -2227,11 +2369,10 @@ export default function AtlasPage() {
                     <input
                       type="checkbox"
                       checked={calendarCategoryFilters[label] !== false}
-                      onChange={(event) => {
-                        const checked = event.currentTarget.checked;
+                      onChange={() => {
                         setCalendarCategoryFilters((current) => ({
                           ...current,
-                          [label]: checked,
+                          [label]: current[label] === false,
                         }));
                       }}
                     />
@@ -2684,6 +2825,51 @@ export default function AtlasPage() {
     );
   }
 
+  function renderWorkLinks() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Quick Access"
+          title="Work Links"
+          detail="Regularly used work portals for cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
+        />
+
+        <div style={workLinksPageGridStyle}>
+          {filteredWorkLinks.map((link) => (
+            <a key={link.id} href={link.url} target="_blank" rel="noreferrer" style={workLinkPageCardStyle}>
+              <span style={{ ...workLinkLogoLargeStyle, background: link.logoBg, color: link.logoColor || colors.navy }}>
+                <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
+                {link.logoUrl ? (
+                  <img
+                    src={link.logoUrl}
+                    alt=""
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                    style={workLinkLogoImageLargeStyle}
+                  />
+                ) : null}
+              </span>
+
+              <span style={workLinkPageBodyStyle}>
+                <strong>{link.name}</strong>
+                <span>{link.category}{link.vendor ? ` · ${link.vendor}` : ""}</span>
+                <small>{link.notes}</small>
+              </span>
+
+              <span style={workLinkOpenLargeStyle}>Open</span>
+            </a>
+          ))}
+        </div>
+
+        <div style={{ ...noticeStyle, marginTop: 14 }}>
+          <strong>Logo note:</strong>
+          <p style={mutedSmallStyle}>These use company favicon/logo images when available, with clean fallback badges if an image does not load. Real uploaded logos can replace them later without changing the link layout.</p>
+        </div>
+      </section>
+    );
+  }
+
   function renderAssistant() {
     return (
       <section style={sectionStyle}>
@@ -2714,6 +2900,7 @@ export default function AtlasPage() {
     if (screen === "documents") return renderDocuments();
     if (screen === "procedures") return renderProcedures();
     if (screen === "parts") return renderParts();
+    if (screen === "links") return renderWorkLinks();
     return renderAssistant();
   }
 
@@ -3218,6 +3405,129 @@ const workOrderCardStyle: React.CSSProperties = {
   fontFamily: "inherit",
   display: "grid",
   gap: 8,
+};
+
+const quickLinksGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: 10,
+};
+
+const quickLinkCardStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "42px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: 12,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.text,
+  borderRadius: 16,
+  padding: 12,
+  textDecoration: "none",
+  boxShadow: "0 10px 26px rgba(15,23,42,0.035)",
+  minWidth: 0,
+};
+
+const workLinkLogoStyle: React.CSSProperties = {
+  width: 42,
+  height: 42,
+  borderRadius: 13,
+  display: "grid",
+  placeItems: "center",
+  fontSize: 13,
+  fontWeight: 950,
+  letterSpacing: 0.4,
+  flex: "0 0 auto",
+  overflow: "hidden",
+};
+
+const workLinkLogoFallbackStyle: React.CSSProperties = {
+  gridArea: "1 / 1",
+};
+
+const workLinkLogoImageStyle: React.CSSProperties = {
+  gridArea: "1 / 1",
+  width: 28,
+  height: 28,
+  objectFit: "contain",
+  background: "transparent",
+};
+
+const workLinkTextStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 3,
+  minWidth: 0,
+  fontSize: 13,
+};
+
+const workLinkOpenStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 999,
+  padding: "6px 10px",
+  color: colors.navy,
+  background: colors.panel,
+  fontSize: 12,
+  fontWeight: 950,
+  whiteSpace: "nowrap",
+};
+
+const workLinksPageGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+  gap: 12,
+};
+
+const workLinkPageCardStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "56px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: 14,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.text,
+  borderRadius: 18,
+  padding: 15,
+  textDecoration: "none",
+  boxShadow: "0 12px 28px rgba(15,23,42,0.045)",
+  minWidth: 0,
+};
+
+const workLinkLogoLargeStyle: React.CSSProperties = {
+  width: 56,
+  height: 56,
+  borderRadius: 16,
+  display: "grid",
+  placeItems: "center",
+  fontSize: 15,
+  fontWeight: 950,
+  letterSpacing: 0.5,
+  overflow: "hidden",
+};
+
+const workLinkLogoImageLargeStyle: React.CSSProperties = {
+  gridArea: "1 / 1",
+  width: 36,
+  height: 36,
+  objectFit: "contain",
+  background: "transparent",
+};
+
+const workLinkPageBodyStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 4,
+  minWidth: 0,
+  fontSize: 14,
+};
+
+const workLinkOpenLargeStyle: React.CSSProperties = {
+  border: `1px solid ${colors.gold}`,
+  borderRadius: 999,
+  padding: "8px 12px",
+  color: colors.navy,
+  background: "#FFFAEB",
+  fontSize: 12,
+  fontWeight: 950,
+  whiteSpace: "nowrap",
 };
 
 const dashboardWeatherBoxStyle: React.CSSProperties = {
