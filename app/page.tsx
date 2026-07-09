@@ -2394,12 +2394,12 @@ export default function AtlasPage() {
     }
 
     if (text.includes("asset") || text.includes("equipment")) {
-      setAssistantAnswer(`Atlas currently has ${assetRecords.length} asset records loaded. Open Assets to review/edit them in A–Z list form.`);
+      setAssistantAnswer(`Atlas currently has ${assetRecords.length} asset records loaded. Open Assets to review or edit them.`);
       return;
     }
 
     if (text.includes("vendor")) {
-      setAssistantAnswer(`Atlas currently has ${vendorRecords.length} vendors loaded. Open Vendors to review/edit them in A–Z list form.`);
+      setAssistantAnswer(`Atlas currently has ${vendorRecords.length} vendors loaded. Open Vendors to review or edit them.`);
       return;
     }
 
@@ -2833,9 +2833,8 @@ export default function AtlasPage() {
   function renderLocations() {
     return (
       <ListDrawerLayout
-        eyebrow="A–Z List"
+        eyebrow="Property Areas"
         title="Locations"
-        detail="All locations are sorted alphabetically with detail on the right."
         isMobile={isMobile}
         list={
           <div style={listStyle}>
@@ -2853,7 +2852,7 @@ export default function AtlasPage() {
         drawer={
           <div>
             <div style={eyebrowStyle}>Location Info</div>
-            <h3 style={detailTitleStyle}>A–Z Location List</h3>
+            <h3 style={detailTitleStyle}>Location List</h3>
             <p style={mutedSmallStyle}>Click any location to filter/search related Atlas records. Assets, work orders, vendors, and map labels stay in the main sections.</p>
             <div style={noticeStyle}>
               <strong>{filteredLocations.length} locations shown</strong>
@@ -2868,9 +2867,8 @@ export default function AtlasPage() {
   function renderAssets() {
     return (
       <ListDrawerLayout
-        eyebrow="A–Z List"
+        eyebrow="Property Records"
         title="Assets"
-        detail="Alphabetical asset list with editable detail drawer."
         isMobile={isMobile}
         right={<button type="button" onClick={addAsset} style={goldButtonStyle}>Add Asset</button>}
         list={
@@ -2937,9 +2935,8 @@ export default function AtlasPage() {
   function renderVendors() {
     return (
       <ListDrawerLayout
-        eyebrow="A–Z List"
+        eyebrow="Property Records"
         title="Vendors"
-        detail="Alphabetical vendor directory with editable right-side detail."
         isMobile={isMobile}
         right={<button type="button" onClick={addVendor} style={goldButtonStyle}>Add Vendor</button>}
         list={
@@ -2977,9 +2974,8 @@ export default function AtlasPage() {
   function renderWorkOrders() {
     return (
       <ListDrawerLayout
-        eyebrow="A–Z List"
+        eyebrow="Open / Monitor"
         title="Work Orders"
-        detail="Work orders are listed alphabetically with editable status, date, asset, vendor, and notes."
         isMobile={isMobile}
         right={<button type="button" onClick={addWorkOrder} style={goldButtonStyle}>Add Work Order</button>}
         list={
@@ -3475,9 +3471,8 @@ export default function AtlasPage() {
   function renderDocuments() {
     return (
       <ListDrawerLayout
-        eyebrow="A–Z List"
+        eyebrow="Files"
         title="Documents / Photos"
-        detail="Document records and loaded photos sorted for review."
         isMobile={isMobile}
         list={
           <div style={listStyle}>
@@ -3516,9 +3511,8 @@ export default function AtlasPage() {
   function renderProcedures() {
     return (
       <ListDrawerLayout
-        eyebrow="A–Z List"
+        eyebrow="Procedures"
         title="Procedures"
-        detail="Procedure list with editable steps in the right drawer."
         isMobile={isMobile}
         list={
           <div style={listStyle}>
@@ -3553,9 +3547,8 @@ export default function AtlasPage() {
   function renderParts() {
     return (
       <ListDrawerLayout
-        eyebrow="A–Z List"
+        eyebrow="Inventory"
         title="Parts"
-        detail="Alphabetical inventory list with quantity and reorder status."
         isMobile={isMobile}
         list={
           <div style={listStyle}>
@@ -3630,27 +3623,6 @@ export default function AtlasPage() {
           <p style={mutedSmallStyle}>These use company favicon/logo images when available, with clean fallback badges if an image does not load. Real uploaded logos can replace them later without changing the link layout.</p>
         </div>
       </section>
-    );
-  }
-
-  function renderIdentityRail() {
-    return (
-      <div style={identityRailStyle}>
-        <div style={identityRailInnerStyle}>
-          <div style={identityMarkStyle}>A</div>
-          <div style={identityVerticalTextStyle}>
-            <span>ATLAS / 2000</span>
-            <strong>Property Command Center</strong>
-          </div>
-          <div style={identityDividerStyle} />
-          <div style={identitySmallTextStyle}>
-            <span>Private estate systems</span>
-            <span>Operations</span>
-            <span>Grounds</span>
-            <span>Assets</span>
-          </div>
-        </div>
-      </div>
     );
   }
 
@@ -3758,7 +3730,7 @@ export default function AtlasPage() {
 
   return (
     <main style={appStyle}>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "260px 138px minmax(0, 1fr)", minHeight: "100vh" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "260px minmax(0, 1fr)", minHeight: "100vh" }}>
         <aside style={{ ...sidebarStyle, position: isMobile ? "static" : "sticky", height: isMobile ? "auto" : "100vh" }}>
           <div style={brandStyle}>
             <div style={logoBoxStyle}>
@@ -3799,8 +3771,6 @@ export default function AtlasPage() {
 
           {!isMobile ? renderCommandStrip() : null}
         </aside>
-
-        {!isMobile ? renderIdentityRail() : null}
 
         <section style={{ minWidth: 0 }}>
           <header style={topbarStyle}>
@@ -3932,77 +3902,6 @@ const navButtonStyle: React.CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   fontWeight: 950,
-};
-
-const identityRailStyle: React.CSSProperties = {
-  background: colors.bg,
-  borderRight: `1px solid ${colors.line}`,
-  minHeight: "100vh",
-  position: "sticky",
-  top: 0,
-  display: "flex",
-  alignItems: "stretch",
-  justifyContent: "center",
-  padding: "28px 12px",
-  overflow: "hidden",
-};
-
-const identityRailInnerStyle: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 24,
-  border: "1px solid rgba(13, 39, 66, 0.08)",
-  background: "linear-gradient(180deg, rgba(255,255,255,0.50) 0%, rgba(255,255,255,0.16) 100%)",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "22px 10px",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
-};
-
-const identityMarkStyle: React.CSSProperties = {
-  width: 42,
-  height: 42,
-  borderRadius: 14,
-  border: `1px solid rgba(207, 157, 54, 0.32)`,
-  color: "rgba(207, 157, 54, 0.72)",
-  display: "grid",
-  placeItems: "center",
-  fontWeight: 950,
-  fontSize: 20,
-  letterSpacing: -1,
-  background: "rgba(255,255,255,0.45)",
-};
-
-const identityVerticalTextStyle: React.CSSProperties = {
-  writingMode: "vertical-rl",
-  transform: "rotate(180deg)",
-  display: "flex",
-  alignItems: "center",
-  gap: 14,
-  color: "rgba(13, 39, 66, 0.36)",
-  textTransform: "uppercase",
-  letterSpacing: 3.2,
-  fontSize: 11,
-  fontWeight: 900,
-  textAlign: "center",
-};
-
-const identityDividerStyle: React.CSSProperties = {
-  width: 1,
-  height: 72,
-  background: "linear-gradient(180deg, transparent, rgba(207,157,54,0.32), transparent)",
-};
-
-const identitySmallTextStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 8,
-  color: "rgba(13, 39, 66, 0.34)",
-  fontSize: 10,
-  fontWeight: 850,
-  textAlign: "center",
-  textTransform: "uppercase",
-  letterSpacing: 1.4,
 };
 
 const commandStripStyle: React.CSSProperties = {
