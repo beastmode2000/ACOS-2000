@@ -12,6 +12,7 @@ type Screen =
   | "calendar"
   | "weather"
   | "documents"
+  | "intake"
   | "procedures"
   | "parts"
   | "links"
@@ -113,6 +114,8 @@ type ProcedureRecord = {
   steps: string[];
 };
 
+type IntakeTargetKind = "General" | "Asset" | "Location" | "Vendor" | "Work Order" | "Map Label";
+
 type DocumentRecord = {
   id: string;
   title: string;
@@ -120,8 +123,14 @@ type DocumentRecord = {
   type: string;
   linkedAssetId?: string;
   linkedVendorId?: string;
+  targetType?: IntakeTargetKind;
+  targetId?: string;
+  targetName?: string;
   notes: string;
+  pastedText?: string;
+  files?: UploadedFileRecord[];
   href?: string;
+  createdAt?: string;
 };
 
 type PartRecord = {
@@ -279,6 +288,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
   { id: "documents", label: "Documents" },
+  { id: "intake", label: "Add Docs" },
   { id: "procedures", label: "Procedures" },
   { id: "parts", label: "Parts" },
   { id: "links", label: "Work Links" },
@@ -322,6 +332,7 @@ const storageKeys = {
   parts: ["atlas-part-records-v2"],
   procedures: ["atlas-procedure-records-v1", "atlas_2000_procedures_safe_v1"],
   photos: ["atlas-photo-records-v10", "atlas-photo-records-v9", "atlas-photo-records-v8", "atlas-photo-records-v7", "atlas-photo-records-v6"],
+  intakeDocs: ["atlas-intake-documents-v1"],
 };
 
 function localISODate(date = new Date()) {
@@ -459,6 +470,23 @@ function readStoredArray<T>(keys: string[], fallback: T[]): T[] {
 function saveStoredArray<T>(key: string, value: T[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function fileToUploadedRecord(file: File): Promise<UploadedFileRecord> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve({
+        id: uid("upload"),
+        name: file.name || "Uploaded file",
+        type: file.type || "file",
+        dataUrl: typeof reader.result === "string" ? reader.result : "",
+        createdAt: new Date().toISOString(),
+      });
+    };
+    reader.onerror = () => reject(new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
@@ -1378,6 +1406,16 @@ export default function AtlasPage() {
   const [calendarColors, setCalendarColors] = useState<CalendarColor[]>(defaultCalendarColors);
   const [partRecords, setPartRecords] = useState<PartRecord[]>(fallbackParts);
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
+  const [intakeDocs, setIntakeDocs] = useState<DocumentRecord[]>([]);
+
+  const [intakeTitle, setIntakeTitle] = useState("");
+  const [intakeType, setIntakeType] = useState("Paperwork / Scan");
+  const [intakeTargetKind, setIntakeTargetKind] = useState<IntakeTargetKind>("Asset");
+  const [intakeTargetId, setIntakeTargetId] = useState("");
+  const [intakeNotes, setIntakeNotes] = useState("");
+  const [intakePastedText, setIntakePastedText] = useState("");
+  const [intakeFiles, setIntakeFiles] = useState<UploadedFileRecord[]>([]);
+  const [intakeMessage, setIntakeMessage] = useState("Ready to add paperwork, scans, screenshots, receipts, or pasted notes into Atlas.");
 
   const [selectedAssetId, setSelectedAssetId] = useState(fallbackAssets[0]?.id || "");
   const [selectedVendorId, setSelectedVendorId] = useState(fallbackVendors[0]?.id || "");
@@ -1461,6 +1499,7 @@ export default function AtlasPage() {
     const storedCalendarColors = readStoredArray<CalendarColor>(storageKeys.calendarColors, defaultCalendarColors);
     const storedParts = readStoredArray<PartRecord>(storageKeys.parts, fallbackParts).map(normalizePart);
     const storedPhotos = readStoredArray<PhotoRecord>(storageKeys.photos, []);
+    const storedIntakeDocs = readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []);
 
     setMapLabels(byLabel(storedMapLabels.length ? storedMapLabels : defaultMapLabels));
     setSelectedMapLabelId((storedMapLabels[0] ?? defaultMapLabels[0]).id);
@@ -1472,6 +1511,7 @@ export default function AtlasPage() {
     setCalendarColors(mergeCalendarColors(storedCalendarColors));
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
     setPhotos(storedPhotos);
+    setIntakeDocs(storedIntakeDocs);
     setSelectedCalendarId("");
     setCalendarDraft(blankCalendarItem(todayISO()));
     setReady(true);
@@ -2043,6 +2083,33 @@ export default function AtlasPage() {
   }, [q]);
 
 
+  const allDocuments = useMemo(() => [...documents, ...intakeDocs], [intakeDocs]);
+
+  const intakeTargetOptions = useMemo(() => {
+    if (intakeTargetKind === "Asset") return byName(assetRecords).map((asset) => ({ id: asset.id, name: asset.name, detail: `${asset.category} · ${locationName(asset.locationId)}` }));
+    if (intakeTargetKind === "Location") return [...locations].sort((a, b) => a.name.localeCompare(b.name)).map((location) => ({ id: location.id, name: location.name, detail: `${location.type} · ${location.zone}` }));
+    if (intakeTargetKind === "Vendor") return byName(vendorRecords).map((vendor) => ({ id: vendor.id, name: vendor.name, detail: vendor.category }));
+    if (intakeTargetKind === "Work Order") return byTitle(serviceRecords).map((record) => ({ id: record.id, name: record.title, detail: `${formatDate(record.date)} · ${record.status}` }));
+    if (intakeTargetKind === "Map Label") return byLabel(mapLabels).map((label) => ({ id: label.id, name: label.label, detail: label.category }));
+    return [];
+  }, [intakeTargetKind, assetRecords, vendorRecords, serviceRecords, mapLabels]);
+
+  useEffect(() => {
+    if (intakeTargetKind === "General") {
+      if (intakeTargetId) setIntakeTargetId("");
+      return;
+    }
+
+    if (!intakeTargetOptions.length) {
+      if (intakeTargetId) setIntakeTargetId("");
+      return;
+    }
+
+    if (!intakeTargetOptions.some((option) => option.id === intakeTargetId)) {
+      setIntakeTargetId(intakeTargetOptions[0].id);
+    }
+  }, [intakeTargetKind, intakeTargetOptions, intakeTargetId]);
+
   const qrRecords = useMemo<QrRecord[]>(() => {
     const localSearch = qrSearch.trim().toLowerCase();
     const records: QrRecord[] =
@@ -2085,7 +2152,7 @@ export default function AtlasPage() {
   const searchResults = useMemo(() => {
     if (!q) return [];
     return buildSearchIndex().filter((item) => [item.type, item.title, item.subtitle, item.detail].join(" ").toLowerCase().includes(q)).slice(0, 12);
-  }, [q, mapLabels, assetRecords, vendorRecords, serviceRecords, procedureRecords, calendarItems, partRecords, calendarColors]);
+  }, [q, mapLabels, assetRecords, vendorRecords, serviceRecords, procedureRecords, calendarItems, partRecords, calendarColors, allDocuments]);
 
   const monthCells = useMemo(() => {
     const year = calendarCursor.getFullYear();
@@ -2131,6 +2198,7 @@ export default function AtlasPage() {
       ...procedureRecords.map((item) => ({ id: `procedure-${item.id}`, type: "Procedure", title: item.title, subtitle: `${item.area} · ${item.priority}`, detail: item.steps.join(" "), screen: "procedures" as Screen, procedureId: item.id })),
       ...calendarItems.map((item) => ({ id: `calendar-${item.id}`, type: "Calendar", title: item.title, subtitle: `${formatDate(item.date)} · ${item.allDay ? "All day" : item.time || "No time"} · ${colorForEvent(item).label}`, detail: `${item.area} ${item.notes || ""} ${item.linkedName || ""}`, screen: "calendar" as Screen, calendarId: item.id })),
       ...partRecords.map((item) => ({ id: `part-${item.id}`, type: "Part", title: item.name, subtitle: `${item.category} · Qty ${item.quantity}`, detail: item.notes, screen: "parts" as Screen, partId: item.id })),
+      ...allDocuments.map((item) => ({ id: `document-${item.id}`, type: "Document", title: item.title, subtitle: `${item.type} · ${item.area}`, detail: `${item.notes} ${item.pastedText || ""} ${item.targetName || ""}`, screen: "documents" as Screen })),
       ...defaultWorkLinks.map((item) => ({ id: `link-${item.id}`, type: "Work Link", title: item.name, subtitle: `${item.category}${item.vendor ? ` · ${item.vendor}` : ""}`, detail: `${item.notes} ${item.url}`, screen: "links" as Screen })),
     ];
   }
@@ -2146,6 +2214,145 @@ export default function AtlasPage() {
     setScreen(result.screen);
     setQuery("");
     setSearchOpen(false);
+  }
+
+  function linkedDocumentsFor(kind: IntakeTargetKind, id?: string) {
+    if (!id) return [];
+    return intakeDocs.filter((doc) => doc.targetType === kind && doc.targetId === id);
+  }
+
+  function targetNameFor(kind: IntakeTargetKind, id?: string) {
+    if (kind === "General") return "General";
+    if (!id) return kind;
+    if (kind === "Asset") return assetName(id);
+    if (kind === "Location") return locationName(id);
+    if (kind === "Vendor") return vendorName(id);
+    if (kind === "Work Order") return serviceRecords.find((record) => record.id === id)?.title || "Work Order";
+    if (kind === "Map Label") return mapLabels.find((label) => label.id === id)?.label || "Map Label";
+    return "General";
+  }
+
+  function openDocumentTarget(doc: DocumentRecord) {
+    if (doc.targetType === "Asset" && doc.targetId) {
+      setSelectedAssetId(doc.targetId);
+      setScreen("assets");
+      return;
+    }
+    if (doc.targetType === "Vendor" && doc.targetId) {
+      setSelectedVendorId(doc.targetId);
+      setScreen("vendors");
+      return;
+    }
+    if (doc.targetType === "Work Order" && doc.targetId) {
+      setSelectedServiceId(doc.targetId);
+      setScreen("history");
+      return;
+    }
+    if (doc.targetType === "Map Label" && doc.targetId) {
+      setSelectedMapLabelId(doc.targetId);
+      setScreen("map");
+      return;
+    }
+    if (doc.targetType === "Location" && doc.targetName) {
+      setQuery(doc.targetName);
+      setScreen("locations");
+    }
+  }
+
+  function resetIntakeDraft() {
+    setIntakeTitle("");
+    setIntakeType("Paperwork / Scan");
+    setIntakeNotes("");
+    setIntakePastedText("");
+    setIntakeFiles([]);
+    setIntakeMessage("Ready for the next scan, photo, upload, or pasted note.");
+  }
+
+  async function addIntakeFiles(fileList: FileList | File[] | null) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    try {
+      setIntakeMessage("Adding file(s) to intake...");
+      const uploaded = await Promise.all(files.map(fileToUploadedRecord));
+      setIntakeFiles((current) => [...current, ...uploaded]);
+      setIntakeTitle((current) => current || uploaded[0]?.name?.replace(/\.[^.]+$/, "") || "New Document");
+      setIntakeMessage(`${uploaded.length} file(s) ready to save into Atlas.`);
+    } catch {
+      setIntakeMessage("Atlas could not read that file. Try a photo, screenshot, PDF, or smaller file.");
+    }
+  }
+
+  function removeIntakeFile(id: string) {
+    setIntakeFiles((current) => current.filter((file) => file.id !== id));
+  }
+
+  async function saveIntakeDocument() {
+    const targetName = targetNameFor(intakeTargetKind, intakeTargetId);
+    const title = intakeTitle.trim() || intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") || intakePastedText.trim().slice(0, 48) || "New Atlas Document";
+    const record: DocumentRecord = {
+      id: uid("doc"),
+      title,
+      area: targetName,
+      type: intakeType.trim() || "Paperwork / Scan",
+      linkedAssetId: intakeTargetKind === "Asset" ? intakeTargetId : undefined,
+      linkedVendorId: intakeTargetKind === "Vendor" ? intakeTargetId : undefined,
+      targetType: intakeTargetKind,
+      targetId: intakeTargetKind === "General" ? "" : intakeTargetId,
+      targetName,
+      notes: intakeNotes.trim(),
+      pastedText: intakePastedText.trim(),
+      files: intakeFiles,
+      createdAt: new Date().toISOString(),
+    };
+
+    const nextDocs = [record, ...intakeDocs];
+    setIntakeDocs(nextDocs);
+    saveStoredArray(storageKeys.intakeDocs[0], nextDocs);
+
+    if (record.targetType === "Asset" && record.targetId) {
+      const imagePhotos: PhotoRecord[] = (record.files || [])
+        .filter((file) => (file.type || "").startsWith("image/") && file.dataUrl)
+        .map((file) => ({
+          id: uid("photo"),
+          assetId: record.targetId || "",
+          name: file.name,
+          dataUrl: file.dataUrl,
+          createdAt: file.createdAt || new Date().toISOString(),
+        }));
+
+      if (imagePhotos.length) {
+        setPhotos((current) => {
+          const nextPhotos = [...imagePhotos, ...current];
+          saveStoredArray(storageKeys.photos[0], nextPhotos);
+          return nextPhotos;
+        });
+      }
+    }
+
+    setIntakeMessage(`Saved to ${targetName}.`);
+    resetIntakeDraft();
+  }
+
+  function renderLinkedDocuments(kind: IntakeTargetKind, id?: string) {
+    const linked = linkedDocumentsFor(kind, id);
+    if (!linked.length) return null;
+
+    return (
+      <div style={{ marginTop: 16 }}>
+        <div style={eyebrowStyle}>Linked Documents</div>
+        <div style={listStyle}>
+          {linked.slice(0, 5).map((doc) => (
+            <button key={doc.id} type="button" onClick={() => setScreen("documents")} style={rowButtonStyle}>
+              <div>
+                <strong>{doc.title}</strong>
+                <p style={mutedSmallStyle}>{doc.type} · {(doc.files || []).length} file(s)</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   async function loadWeather() {
@@ -3337,6 +3544,8 @@ export default function AtlasPage() {
                 <p style={mutedSmallStyle}>No photos attached to this asset in the loaded records.</p>
               )}
             </div>
+
+            {renderLinkedDocuments("Asset", selectedAsset.id)}
           </>
         }
       />
@@ -3378,6 +3587,7 @@ export default function AtlasPage() {
             {isRecordDirty("vendor", selectedVendor.id) ? (
               <button type="button" onClick={() => void saveDirtyRecord("vendors", selectedVendor, "vendor", selectedVendor.id)} style={goldButtonStyle}>Save Vendor</button>
             ) : null}
+            {renderLinkedDocuments("Vendor", selectedVendor.id)}
           </>
         }
       />
@@ -3433,6 +3643,7 @@ export default function AtlasPage() {
             {isRecordDirty("work_order", selectedService.id) ? (
               <button type="button" onClick={() => void saveDirtyRecord("work_orders", selectedService, "work_order", selectedService.id)} style={goldButtonStyle}>Save Work Order</button>
             ) : null}
+            {renderLinkedDocuments("Work Order", selectedService.id)}
           </>
         }
       />
@@ -3902,20 +4113,40 @@ export default function AtlasPage() {
   }
 
   function renderDocuments() {
+    const sortedDocuments = [...allDocuments].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "") || a.title.localeCompare(b.title));
+
     return (
       <ListDrawerLayout
         eyebrow="Files"
         title="Documents / Photos"
         isMobile={isMobile}
+        right={<button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>}
         list={
           <div style={listStyle}>
-            {[...documents].sort((a, b) => a.title.localeCompare(b.title)).map((document) => (
+            {sortedDocuments.map((document) => (
               <div key={document.id} style={rowStaticStyle}>
                 <div>
                   <strong>{document.title}</strong>
                   <p style={mutedSmallStyle}>{document.type} · {document.area}</p>
-                  <p style={mutedSmallStyle}>{document.notes}</p>
-                  {document.href ? <a href={document.href} style={linkStyle}>Open</a> : null}
+                  {document.targetType ? <p style={mutedSmallStyle}>Linked to {document.targetType}: {document.targetName || document.area}</p> : null}
+                  {document.notes ? <p style={mutedSmallStyle}>{document.notes}</p> : null}
+                  {document.pastedText ? <p style={mutedSmallStyle}>{document.pastedText}</p> : null}
+                  <div style={buttonRowStyle}>
+                    {document.href ? <a href={document.href} style={linkStyle}>Open</a> : null}
+                    {document.targetType && document.targetType !== "General" ? (
+                      <button type="button" onClick={() => openDocumentTarget(document)} style={tinyButtonStyle}>Open Linked Record</button>
+                    ) : null}
+                  </div>
+                  {document.files?.length ? (
+                    <div style={{ ...photoGridStyle, marginTop: 10 }}>
+                      {document.files.map((file) => (
+                        <a key={file.id} href={file.dataUrl || file.url || "#"} target="_blank" rel="noreferrer" style={photoCardStyle}>
+                          {file.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt={file.name} style={photoStyle} /> : <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>}
+                          <strong>{file.name}</strong>
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -3925,7 +4156,12 @@ export default function AtlasPage() {
           <div>
             <div style={eyebrowStyle}>Document Info</div>
             <h3 style={detailTitleStyle}>Photos / Documents</h3>
-            <p style={mutedSmallStyle}>{documents.length} document records and {photos.length} loaded photo records.</p>
+            <p style={mutedSmallStyle}>{allDocuments.length} document records, {intakeDocs.length} intake records, and {photos.length} loaded photo records.</p>
+            <div style={noticeStyle}>
+              <strong>Fast phone intake</strong>
+              <p style={mutedSmallStyle}>Use Add Document to take a photo, upload a PDF/screenshot, paste notes, and link it to an Asset, Location, Vendor, Work Order, or Map Label.</p>
+              <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Open Add Document</button>
+            </div>
             <div style={photoGridStyle}>
               {photos.slice(0, 8).map((photo) => (
                 <div key={photo.id} style={photoCardStyle}>
@@ -3938,6 +4174,104 @@ export default function AtlasPage() {
           </div>
         }
       />
+    );
+  }
+
+  function renderIntake() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Phone Intake"
+          title="Add Document / Photo"
+          detail="Take a photo, upload paperwork, paste notes, and link it directly to the right Atlas section."
+          right={<button type="button" onClick={() => setScreen("documents")} style={secondaryButtonStyle}>Documents</button>}
+        />
+
+        <div style={isMobile ? { ...intakeLayoutStyle, gridTemplateColumns: "1fr" } : intakeLayoutStyle}>
+          <div style={cardStyle}>
+            <div style={eyebrowStyle}>1. Capture or upload</div>
+            <h3 style={detailTitleStyle}>Paperwork / Scan</h3>
+            <p style={mutedSmallStyle}>On your phone, Take Photo opens the camera. Upload handles PDFs, screenshots, photos, and other paperwork files.</p>
+
+            <div style={buttonRowStyle}>
+              <label style={uploadButtonStyle}>
+                Take Photo
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => {
+                    void addIntakeFiles(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                  style={{ display: "none" }}
+                />
+              </label>
+              <label style={secondaryUploadButtonStyle}>
+                Upload File(s)
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.txt,.doc,.docx"
+                  multiple
+                  onChange={(event) => {
+                    void addIntakeFiles(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                  style={{ display: "none" }}
+                />
+              </label>
+            </div>
+
+            {intakeFiles.length ? (
+              <div style={{ ...photoGridStyle, marginTop: 14 }}>
+                {intakeFiles.map((file) => (
+                  <div key={file.id} style={photoCardStyle}>
+                    {file.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt={file.name} style={photoStyle} /> : <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>}
+                    <strong>{file.name}</strong>
+                    <button type="button" onClick={() => removeIntakeFile(file.id)} style={tinyDangerButtonStyle}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={emptyStateStyle}>No file attached yet.</div>
+            )}
+          </div>
+
+          <div style={cardStyle}>
+            <div style={eyebrowStyle}>2. Link to Atlas</div>
+            <div style={formGridStyle}>
+              <Field label="Title" value={intakeTitle} onChange={setIntakeTitle} placeholder="Invoice, receipt, photo, estimate, note..." />
+              <Field label="Type" value={intakeType} onChange={setIntakeType} placeholder="Invoice, Manual, Photo, Receipt, Estimate..." />
+              <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                <span style={fieldLabelStyle}>Send to section</span>
+                <select value={intakeTargetKind} onChange={(event) => setIntakeTargetKind(event.currentTarget.value as IntakeTargetKind)} style={inputStyle}>
+                  {(["Asset", "Location", "Vendor", "Work Order", "Map Label", "General"] as IntakeTargetKind[]).map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+                </select>
+              </label>
+              {intakeTargetKind !== "General" ? (
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Record</span>
+                  <select value={intakeTargetId} onChange={(event) => setIntakeTargetId(event.currentTarget.value)} style={inputStyle}>
+                    {intakeTargetOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              <Field label="Notes" value={intakeNotes} onChange={setIntakeNotes} multiline placeholder="What is this, why it matters, follow-up needed..." />
+              <Field label="Paste text / email / copied paperwork" value={intakePastedText} onChange={setIntakePastedText} multiline placeholder="Paste copied text, email content, invoice notes, serial info, etc." />
+            </div>
+
+            <div style={noticeStyle}>
+              <strong>{intakeMessage}</strong>
+              <p style={mutedSmallStyle}>Saved intake appears in Documents and is linked back to the selected record.</p>
+            </div>
+
+            <div style={buttonRowStyle}>
+              <button type="button" onClick={() => void saveIntakeDocument()} style={goldButtonStyle}>Save to Atlas</button>
+              <button type="button" onClick={resetIntakeDraft} style={secondaryButtonStyle}>Clear</button>
+            </div>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -4279,7 +4613,7 @@ export default function AtlasPage() {
             <button type="button" onClick={() => addCalendarItem(todayISO())} style={commandActionButtonStyle}>+ Event</button>
             <button type="button" onClick={addWorkOrder} style={commandActionButtonStyle}>+ Work Order</button>
             <button type="button" onClick={() => setScreen("assistant")} style={commandActionButtonStyle}>+ Note</button>
-            <button type="button" onClick={() => setScreen("documents")} style={commandActionButtonStyle}>+ Photo</button>
+            <button type="button" onClick={() => setScreen("intake")} style={commandActionButtonStyle}>+ Document</button>
           </div>
         </div>
 
@@ -4332,6 +4666,7 @@ export default function AtlasPage() {
     if (screen === "calendar") return renderCalendar();
     if (screen === "weather") return renderWeather();
     if (screen === "documents") return renderDocuments();
+    if (screen === "intake") return renderIntake();
     if (screen === "procedures") return renderProcedures();
     if (screen === "parts") return renderParts();
     if (screen === "links") return renderWorkLinks();
@@ -4763,6 +5098,66 @@ const navButtonStyle: React.CSSProperties = {
   minHeight: 30,
   display: "flex",
   alignItems: "center",
+};
+
+const intakeLayoutStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 0.9fr) minmax(360px, 1.1fr)",
+  gap: 16,
+  alignItems: "start",
+};
+
+const uploadButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.gold}`,
+  background: `linear-gradient(135deg, ${colors.gold2}, ${colors.gold})`,
+  color: colors.navy,
+  borderRadius: 999,
+  padding: "10px 14px",
+  fontWeight: 950,
+  cursor: "pointer",
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+};
+
+const secondaryUploadButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.navy3,
+  borderRadius: 999,
+  padding: "10px 14px",
+  fontWeight: 900,
+  cursor: "pointer",
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+};
+
+const fileTileStyle: React.CSSProperties = {
+  height: 110,
+  borderRadius: 12,
+  border: `1px solid ${colors.line}`,
+  background: colors.panel,
+  display: "grid",
+  placeItems: "center",
+  color: colors.navy3,
+  fontWeight: 900,
+  letterSpacing: 1,
+};
+
+const tinyDangerButtonStyle: React.CSSProperties = {
+  border: `1px solid #FACACA`,
+  background: "#FEECEC",
+  color: colors.red,
+  borderRadius: 999,
+  padding: "5px 9px",
+  fontSize: 11,
+  fontWeight: 900,
+  cursor: "pointer",
 };
 
 const scannerLayoutStyle: React.CSSProperties = {
