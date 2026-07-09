@@ -899,15 +899,26 @@ const fallbackParts: PartRecord[] = [
 
 const defaultWorkLinks: WorkLinkRecord[] = [
   {
-    id: "landscape-help",
-    name: "Landscape Help",
-    category: "Atlas / Crew Checklist",
+    id: "landscape-help-admin",
+    name: "Landscape Help — Admin",
+    category: "Atlas / Admin Checklist",
     vendor: "Peter Clark Designs / Landscaping Help",
     url: "/landscape-help",
     logoText: "LH",
     logoBg: "#FFF8E6",
     logoColor: colors.navy,
-    notes: "Open the Landscape Help admin page to manage the weekly checklist and copy the current crew share link.",
+    notes: "Your private Landscape Help admin page. Use this to review the weekly checklist and copy the current crew link.",
+  },
+  {
+    id: "landscape-help-crew",
+    name: "Landscape Help — Crew Link",
+    category: "Send to Crew / Public Checklist",
+    vendor: "Peter Clark Designs / Landscaping Help",
+    url: "https://www.atlas2000.com/landscape-help?token=878c3fa681301e6bd6c8deeb6d3818eb9bb33e5125e02048",
+    logoText: "CREW",
+    logoBg: "#EAF7F1",
+    logoColor: colors.green,
+    notes: "Send this exact link to the landscaping crew so they can check off tasks and add notes without full Atlas access.",
   },
   {
     id: "unifi-protect",
@@ -1864,7 +1875,7 @@ export default function AtlasPage() {
     }
 
     if (text.includes("link") || text.includes("portal") || text.includes("login")) {
-      setAssistantAnswer(`Atlas currently has ${defaultWorkLinks.length} work links loaded: Landscape Help, UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`);
+      setAssistantAnswer(`Atlas currently has ${defaultWorkLinks.length} work links loaded: Landscape Help Admin, Landscape Help Crew Link, UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`);
       return;
     }
 
@@ -1882,12 +1893,12 @@ export default function AtlasPage() {
         <SectionHeader
           eyebrow="Quick Access"
           title="Work Links"
-          detail="Regular work portals with clean logo badges, including Landscape Help."
+          detail="Regular work portals with clean logo badges, including Landscape Help admin and the crew link."
           right={<button type="button" onClick={() => setScreen("links")} style={secondaryButtonStyle}>Open All Links</button>}
         />
 
         <div style={quickLinksGridStyle}>
-          {defaultWorkLinks.slice(0, 7).map((link) => (
+          {defaultWorkLinks.map((link) => (
             <a key={link.id} href={link.url} target="_blank" rel="noreferrer" style={quickLinkCardStyle}>
               <span style={{ ...workLinkLogoStyle, background: link.logoBg, color: link.logoColor || colors.navy }}>
                 <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
@@ -2842,7 +2853,7 @@ export default function AtlasPage() {
         <SectionHeader
           eyebrow="Quick Access"
           title="Work Links"
-          detail="Regularly used work portals for Landscape Help, cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
+          detail="Regularly used work portals for Landscape Help admin, the crew checklist link, cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
         />
 
         <div style={workLinksPageGridStyle}>
