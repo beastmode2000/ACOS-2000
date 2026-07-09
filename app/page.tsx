@@ -1085,9 +1085,8 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     vendor: "High Tech Living",
     url: "https://customer.control4.com/",
     logoText: "C4",
-    logoBg: "#EAF7F1",
-    logoUrl: "/worklink-control4.png",
-    logoColor: colors.green,
+    logoBg: "#F3F0FF",
+    logoColor: "#5B21B6",
     notes: "Control4 customer portal. Learn more later before relying on it for daily operations.",
   },
   {
