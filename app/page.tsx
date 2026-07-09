@@ -3837,7 +3837,7 @@ export default function AtlasPage() {
   }
 
   return (
-    <main style={appStyle}>
+    <main style={isMobile ? appStyle : desktopAppStyle}>
       <style>{`
         html, body {
           max-width: 100%;
@@ -3856,12 +3856,32 @@ export default function AtlasPage() {
           }
         }
       `}</style>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "260px minmax(0, 1fr)", minHeight: "100vh", width: "100%", maxWidth: "100vw", overflowX: "hidden" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "260px minmax(0, 1fr)",
+          minHeight: "100vh",
+          width: "100%",
+          maxWidth: isMobile ? "100vw" : "none",
+          overflowX: isMobile ? "hidden" : "visible",
+          alignItems: "start",
+        }}
+      >
         <aside
           style={
             isMobile
               ? mobileHeaderShellStyle
-              : { ...sidebarStyle, position: "sticky", height: "100vh" }
+              : {
+                  ...sidebarStyle,
+                  position: "sticky",
+                  top: 0,
+                  alignSelf: "start",
+                  height: "100vh",
+                  maxHeight: "100vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  overscrollBehavior: "contain",
+                }
           }
         >
           <div style={isMobile ? mobileBrandStyle : brandStyle}>
@@ -3921,7 +3941,15 @@ export default function AtlasPage() {
           )}
         </aside>
 
-        <section style={{ minWidth: 0, width: "100%", maxWidth: "100vw", overflowX: "hidden", paddingBottom: isMobile ? 84 : 0 }}>
+        <section
+          style={{
+            minWidth: 0,
+            width: "100%",
+            maxWidth: isMobile ? "100vw" : "none",
+            overflowX: isMobile ? "hidden" : "visible",
+            paddingBottom: isMobile ? 84 : 0,
+          }}
+        >
           <header style={isMobile ? mobileTopbarStyle : topbarStyle}>
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 10 : 14, justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center" }}>
               <div style={{ minWidth: 0 }}>
@@ -3978,7 +4006,7 @@ export default function AtlasPage() {
             </div>
           </header>
 
-          <div style={isMobile ? mobileContentStyle : { padding: 24 }}>{renderScreen()}</div>
+          <div style={isMobile ? mobileContentStyle : desktopContentStyle}>{renderScreen()}</div>
         </section>
       </div>
 
@@ -4134,19 +4162,35 @@ const appStyle: React.CSSProperties = {
   fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
 };
 
+const desktopAppStyle: React.CSSProperties = {
+  ...appStyle,
+  maxWidth: "none",
+  overflowX: "visible",
+};
+
+const desktopContentStyle: React.CSSProperties = {
+  padding: 24,
+  minWidth: 0,
+  width: "100%",
+  overflow: "visible",
+};
+
 const sidebarStyle: React.CSSProperties = {
   background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
   color: "#FFFFFF",
-  padding: 22,
+  padding: 18,
   top: 0,
-  overflow: "auto",
+  display: "flex",
+  flexDirection: "column",
+  overflowY: "auto",
+  overflowX: "hidden",
 };
 
 const brandStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 12,
-  marginBottom: 24,
+  marginBottom: 16,
 };
 
 const logoBoxStyle: React.CSSProperties = {
@@ -4189,15 +4233,16 @@ const brandSubStyle: React.CSSProperties = {
 const navButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
   borderRadius: 13,
-  padding: "13px 14px",
+  padding: "10px 12px",
   textAlign: "left",
   cursor: "pointer",
   fontWeight: 950,
+  fontSize: 13,
 };
 
 const commandStripStyle: React.CSSProperties = {
-  marginTop: 18,
-  paddingTop: 16,
+  marginTop: 14,
+  paddingTop: 12,
   borderTop: "1px solid rgba(255,255,255,0.12)",
   display: "grid",
   gap: 12,
@@ -4207,9 +4252,9 @@ const commandSectionStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.055)",
   border: "1px solid rgba(255,255,255,0.10)",
   borderRadius: 16,
-  padding: 12,
+  padding: 10,
   display: "grid",
-  gap: 9,
+  gap: 7,
 };
 
 const commandEyebrowStyle: React.CSSProperties = {
@@ -4420,6 +4465,7 @@ const drawerGridStyle: React.CSSProperties = {
   display: "grid",
   gap: 16,
   alignItems: "start",
+  overflow: "visible",
 };
 
 const listPanelStyle: React.CSSProperties = {
@@ -4432,10 +4478,12 @@ const drawerStyle: React.CSSProperties = {
   borderRadius: 24,
   padding: 18,
   position: "sticky",
-  top: 18,
-  maxHeight: "calc(100vh - 40px)",
+  top: 16,
+  alignSelf: "start",
+  maxHeight: "calc(100vh - 32px)",
   overflowY: "auto",
   overflowX: "hidden",
+  overscrollBehavior: "contain",
   boxShadow: "0 16px 35px rgba(15,23,42,0.06)",
   minWidth: 0,
   wordBreak: "break-word",
