@@ -31,6 +31,14 @@ type LandscapeItem = {
   updatedAt: string;
 };
 
+type LandscapeApiData = {
+  ok?: boolean;
+  error?: string;
+  week?: LandscapeWeek;
+  weeks?: LandscapeWeek[];
+  items?: LandscapeItem[];
+};
+
 const colors = {
   navy: "#0B1E33",
   navy2: "#102A44",
@@ -54,6 +62,55 @@ function formatDate(date: string) {
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+function getLandscapeShareTokenFromUrl() {
+  if (typeof window === "undefined") return "";
+
+  const currentUrl = new URL(window.location.href);
+  const tokenFromQuery = currentUrl.searchParams.get("token") || "";
+
+  if (tokenFromQuery.trim()) return tokenFromQuery.trim();
+
+  const pathParts = currentUrl.pathname.split("/").filter(Boolean);
+  if (pathParts[0] === "landscape-help" && pathParts[1]) {
+    return decodeURIComponent(pathParts[1]);
+  }
+
+  return "";
+}
+
+function landscapeApiUrl(token: string, params: Record<string, string> = {}) {
+  const searchParams = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) searchParams.set(key, value);
+  });
+
+  if (token) searchParams.set("token", token);
+
+  const query = searchParams.toString();
+  return query ? `/api/landscape-help?${query}` : "/api/landscape-help";
+}
+
+async function readLandscapeJson(response: Response, fallbackMessage: string): Promise<LandscapeApiData> {
+  const text = await response.text();
+
+  try {
+    const data = JSON.parse(text) as LandscapeApiData;
+    if (!response.ok) throw new Error(data.error || fallbackMessage);
+    return data;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      if (text.toLowerCase().includes("atlas login")) {
+        throw new Error("Landscape Help API is still asking for Atlas login. The share token is not reaching /api/landscape-help.");
+      }
+
+      throw new Error(text || fallbackMessage);
+    }
+
+    throw error;
+  }
+}
+
 function getStatusStyle(status: LandscapeStatus): React.CSSProperties {
   if (status === "Complete") return { background: "#EAF7F1", color: "#087443", border: "1px solid #BDE7D2" };
   if (status === "Needs Review") return { background: "#FEECEC", color: "#B42318", border: "1px solid #FACACA" };
@@ -69,10 +126,13 @@ export default function LandscapeHelpPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [origin, setOrigin] = useState("");
+  const [shareToken, setShareToken] = useState("");
 
   useEffect(() => {
+    const token = getLandscapeShareTokenFromUrl();
+    setShareToken(token);
     setOrigin(window.location.origin);
-    void loadCurrentWeek();
+    void loadCurrentWeek(token);
   }, []);
 
   const completedCount = items.filter((item) => item.isDone).length;
@@ -80,20 +140,20 @@ export default function LandscapeHelpPage() {
 
   const shareLink = useMemo(() => {
     if (!week || !origin) return "";
-    return `${origin}/landscape-help/${week.shareToken}`;
+    return `${origin}/landscape-help/${encodeURIComponent(week.shareToken)}`;
   }, [origin, week]);
 
-  async function loadCurrentWeek() {
+  async function loadCurrentWeek(tokenOverride = shareToken) {
     setLoading(true);
     setMessage("");
 
     try {
-      const response = await fetch("/api/landscape-help", { cache: "no-store" });
-      const data = await response.json();
+      const response = await fetch(landscapeApiUrl(tokenOverride), { cache: "no-store" });
+      const data = await readLandscapeJson(response, "Could not load Landscape Help.");
 
       if (!data.ok) throw new Error(data.error || "Could not load Landscape Help.");
 
-      setWeek(data.week);
+      setWeek(data.week || null);
       setItems(data.items || []);
       setWeeks(data.weeks || []);
     } catch (error) {
@@ -104,17 +164,17 @@ export default function LandscapeHelpPage() {
     }
   }
 
-  async function loadWeek(weekId: string) {
+  async function loadWeek(weekId: string, tokenOverride = shareToken) {
     setLoading(true);
     setMessage("");
 
     try {
-      const response = await fetch(`/api/landscape-help?weekId=${encodeURIComponent(weekId)}`, { cache: "no-store" });
-      const data = await response.json();
+      const response = await fetch(landscapeApiUrl(tokenOverride, { weekId }), { cache: "no-store" });
+      const data = await readLandscapeJson(response, "Could not load selected week.");
 
       if (!data.ok) throw new Error(data.error || "Could not load selected week.");
 
-      setWeek(data.week);
+      setWeek(data.week || null);
       setItems(data.items || []);
       setWeeks(data.weeks || []);
     } catch (error) {
@@ -136,7 +196,7 @@ export default function LandscapeHelpPage() {
     setMessage("");
 
     try {
-      const response = await fetch("/api/landscape-help", {
+      const response = await fetch(landscapeApiUrl(shareToken), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -149,11 +209,11 @@ export default function LandscapeHelpPage() {
         }),
       });
 
-      const data = await response.json();
+      const data = await readLandscapeJson(response, "Could not save Landscape Help.");
 
       if (!data.ok) throw new Error(data.error || "Could not save Landscape Help.");
 
-      setWeek(data.week);
+      setWeek(data.week || null);
       setItems(data.items || []);
       setMessage("Saved.");
     } catch (error) {
@@ -292,14 +352,14 @@ export default function LandscapeHelpPage() {
               {items.map((item) => (
                 <div key={item.id} style={item.isDone ? styles.itemDone : styles.item}>
                   <label style={styles.checkRow}>
-                    <input type="checkbox" checked={item.isDone} onChange={(event) => updateItem(item.id, { isDone: event.target.checked, updatedBy: "Atlas Admin" })} />
+                    <input type="checkbox" checked={item.isDone} onChange={(event) => updateItem(item.id, { isDone: event.target.checked, updatedBy: shareToken ? "Landscape Crew" : "Atlas Admin" })} />
                     <span>
                       <strong>{item.label}</strong>
                       <small>{item.category} · {item.priority}</small>
                     </span>
                   </label>
 
-                  <textarea value={item.notes} onChange={(event) => updateItem(item.id, { notes: event.target.value, updatedBy: "Atlas Admin" })} placeholder="Optional item note..." style={styles.itemNotes} />
+                  <textarea value={item.notes} onChange={(event) => updateItem(item.id, { notes: event.target.value, updatedBy: shareToken ? "Landscape Crew" : "Atlas Admin" })} placeholder="Optional item note..." style={styles.itemNotes} />
                 </div>
               ))}
             </div>
