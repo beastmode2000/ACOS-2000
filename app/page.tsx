@@ -5160,6 +5160,37 @@ const tinyDangerButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+
+const cardStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: colors.card,
+  borderRadius: 18,
+  padding: 16,
+  boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)",
+};
+
+const emptyStateStyle: React.CSSProperties = {
+  border: `1px dashed ${colors.line}`,
+  background: colors.panel,
+  borderRadius: 14,
+  padding: 18,
+  color: colors.muted,
+  fontSize: 13,
+  fontWeight: 800,
+  marginTop: 14,
+};
+
+const tinyButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.navy3,
+  borderRadius: 999,
+  padding: "5px 9px",
+  fontSize: 11,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
 const scannerLayoutStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1.2fr) minmax(300px, 0.8fr)",
