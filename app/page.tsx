@@ -3924,13 +3924,17 @@ export default function AtlasPage() {
               ? mobileHeaderShellStyle
               : {
                   ...sidebarStyle,
-                  position: "sticky",
+                  position: "fixed",
                   top: 0,
-                  alignSelf: "start",
+                  left: 0,
+                  bottom: 0,
+                  width: 300,
                   height: "100vh",
                   maxHeight: "100vh",
                   overflowY: "hidden",
                   overflowX: "hidden",
+                  zIndex: 30,
+                  boxShadow: "10px 0 35px rgba(7,27,47,0.16)",
                 }
           }
         >
@@ -3993,6 +3997,7 @@ export default function AtlasPage() {
 
         <section
           style={{
+            gridColumn: isMobile ? "1 / 2" : "2 / 3",
             minWidth: 0,
             width: "100%",
             maxWidth: isMobile ? "100vw" : "none",
