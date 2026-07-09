@@ -3633,6 +3633,74 @@ export default function AtlasPage() {
     );
   }
 
+  function renderCommandStrip() {
+    const openWorkOrders = serviceRecords.filter((record) => record.status !== "Completed");
+    const highPriority = serviceRecords.filter((record) => record.priority === "High" && record.status !== "Completed");
+    const nextEvent = upcomingEvents[0] || todayEvents[0];
+    const pinnedLinks = defaultWorkLinks.filter((link) => ["landscape-help-crew", "maintainx-work-order", "unifi-protect", "hydrawise", "chatgpt"].includes(link.id));
+
+    return (
+      <div style={commandStripStyle}>
+        <div style={commandSectionStyle}>
+          <div style={commandEyebrowStyle}>Today</div>
+          <button
+            type="button"
+            onClick={() => {
+              if (nextEvent) {
+                openCalendarItem(nextEvent);
+                if (nextEvent.source !== "work-order") setScreen("calendar");
+              } else {
+                addCalendarItem(todayISO());
+              }
+            }}
+            style={commandMainButtonStyle}
+          >
+            <span>{nextEvent ? "Next" : "No event"}</span>
+            <strong>{nextEvent ? nextEvent.title : "Add today event"}</strong>
+          </button>
+          <div style={commandMiniGridStyle}>
+            <button type="button" onClick={() => setScreen("history")} style={commandMetricStyle}>
+              <strong>{openWorkOrders.length}</strong>
+              <span>Open</span>
+            </button>
+            <button type="button" onClick={() => setScreen("history")} style={commandMetricStyle}>
+              <strong>{highPriority.length}</strong>
+              <span>High</span>
+            </button>
+          </div>
+        </div>
+
+        <div style={commandSectionStyle}>
+          <div style={commandEyebrowStyle}>Quick Add</div>
+          <div style={commandActionGridStyle}>
+            <button type="button" onClick={() => addCalendarItem(todayISO())} style={commandActionButtonStyle}>+ Event</button>
+            <button type="button" onClick={addWorkOrder} style={commandActionButtonStyle}>+ Work Order</button>
+            <button type="button" onClick={() => setScreen("assistant")} style={commandActionButtonStyle}>+ Note</button>
+            <button type="button" onClick={() => setScreen("documents")} style={commandActionButtonStyle}>+ Photo</button>
+          </div>
+        </div>
+
+        <div style={commandSectionStyle}>
+          <div style={commandEyebrowStyle}>Pinned</div>
+          <div style={commandPinnedGridStyle}>
+            {pinnedLinks.map((link) => (
+              <a key={link.id} href={link.url} target="_blank" rel="noreferrer" style={commandPinnedLinkStyle}>
+                <span>{link.logoText}</span>
+                <strong>{link.name.replace("Landscape Help — ", "Landscape ").replace("UniFi Protect / Ubiquiti Cameras", "Cameras").replace("Hydrawise / Irrigation", "Irrigation").replace("MaintainX Work Order", "MaintainX")}</strong>
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <div style={commandSectionStyle}>
+          <div style={commandEyebrowStyle}>Watch</div>
+          <button type="button" onClick={() => setScreen("weather")} style={commandWatchStyle}>Weather / irrigation check</button>
+          <a href="/landscape-help" style={commandWatchStyle}>Landscape Help admin</a>
+        </div>
+      </div>
+    );
+  }
+
   function renderAssistant() {
     return (
       <section style={sectionStyle}>
@@ -3707,6 +3775,8 @@ export default function AtlasPage() {
               </button>
             ))}
           </nav>
+
+          {!isMobile ? renderCommandStrip() : null}
         </aside>
 
         <section style={{ minWidth: 0 }}>
@@ -3839,6 +3909,110 @@ const navButtonStyle: React.CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   fontWeight: 950,
+};
+
+const commandStripStyle: React.CSSProperties = {
+  marginTop: 18,
+  paddingTop: 16,
+  borderTop: "1px solid rgba(255,255,255,0.12)",
+  display: "grid",
+  gap: 12,
+};
+
+const commandSectionStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.055)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 16,
+  padding: 12,
+  display: "grid",
+  gap: 9,
+};
+
+const commandEyebrowStyle: React.CSSProperties = {
+  color: colors.gold2,
+  fontSize: 10,
+  fontWeight: 950,
+  letterSpacing: "0.14em",
+  textTransform: "uppercase",
+};
+
+const commandMainButtonStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.06)",
+  color: "#FFFFFF",
+  borderRadius: 13,
+  padding: "10px 11px",
+  display: "grid",
+  gap: 3,
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const commandMiniGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 8,
+};
+
+const commandMetricStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.05)",
+  color: "#FFFFFF",
+  borderRadius: 12,
+  padding: "9px 10px",
+  display: "grid",
+  gap: 2,
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const commandActionGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 8,
+};
+
+const commandActionButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.gold}`,
+  background: "rgba(201,154,61,0.13)",
+  color: "#FFFFFF",
+  borderRadius: 12,
+  padding: "9px 8px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const commandPinnedGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 7,
+};
+
+const commandPinnedLinkStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.05)",
+  color: "#FFFFFF",
+  borderRadius: 12,
+  padding: "8px 9px",
+  textDecoration: "none",
+  display: "grid",
+  gridTemplateColumns: "30px 1fr",
+  gap: 8,
+  alignItems: "center",
+  fontSize: 12,
+};
+
+const commandWatchStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.045)",
+  color: "#FFFFFF",
+  borderRadius: 12,
+  padding: "9px 10px",
+  textDecoration: "none",
+  fontSize: 12,
+  fontWeight: 850,
+  textAlign: "left",
+  cursor: "pointer",
 };
 
 const topbarStyle: React.CSSProperties = {
