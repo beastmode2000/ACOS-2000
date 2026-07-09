@@ -1333,6 +1333,10 @@ export default function AtlasPage() {
   const draggingLabelRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if ("serviceWorker" in navigator && window.location.protocol === "https:") {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
+
     setIsMobile(window.innerWidth < 820);
     const onResize = () => setIsMobile(window.innerWidth < 820);
     window.addEventListener("resize", onResize);
@@ -3824,9 +3828,15 @@ export default function AtlasPage() {
   return (
     <main style={appStyle}>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "260px minmax(0, 1fr)", minHeight: "100vh" }}>
-        <aside style={{ ...sidebarStyle, position: isMobile ? "static" : "sticky", height: isMobile ? "auto" : "100vh" }}>
-          <div style={brandStyle}>
-            <div style={logoBoxStyle}>
+        <aside
+          style={
+            isMobile
+              ? mobileHeaderShellStyle
+              : { ...sidebarStyle, position: "sticky", height: "100vh" }
+          }
+        >
+          <div style={isMobile ? mobileBrandStyle : brandStyle}>
+            <div style={isMobile ? mobileLogoBoxStyle : logoBoxStyle}>
               {logoIndex < logoCandidates.length ? (
                 <img
                   src={logoCandidates[logoIndex]}
@@ -3838,40 +3848,57 @@ export default function AtlasPage() {
                 <span style={logoFallbackStyle}>A</span>
               )}
             </div>
-            <div>
-              <div style={brandTitleStyle}>ATLAS</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={isMobile ? mobileBrandTitleStyle : brandTitleStyle}>ATLAS</div>
               <div style={brandSubStyle}>2000 Estate Systems</div>
             </div>
           </div>
 
-          <nav style={{ display: "grid", gap: 8, gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "1fr" }}>
-            {screens.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setScreen(item.id)}
-                style={{
-                  ...navButtonStyle,
-                  borderColor: screen === item.id ? colors.gold : "rgba(255,255,255,0.12)",
-                  background: screen === item.id ? colors.gold : "rgba(255,255,255,0.04)",
-                  color: screen === item.id ? colors.navy : "#FFFFFF",
-                }}
+          {isMobile ? (
+            <div style={mobileMenuRowStyle}>
+              <select
+                value={screen}
+                onChange={(event) => setScreen(event.currentTarget.value as Screen)}
+                style={mobileMenuSelectStyle}
+                aria-label="Open Atlas section"
               >
-                {item.label}
-              </button>
-            ))}
-          </nav>
+                {screens.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <>
+              <nav style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr" }}>
+                {screens.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setScreen(item.id)}
+                    style={{
+                      ...navButtonStyle,
+                      borderColor: screen === item.id ? colors.gold : "rgba(255,255,255,0.12)",
+                      background: screen === item.id ? colors.gold : "rgba(255,255,255,0.04)",
+                      color: screen === item.id ? colors.navy : "#FFFFFF",
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
 
-          {!isMobile ? renderCommandStrip() : null}
+              {renderCommandStrip()}
+            </>
+          )}
         </aside>
 
-        <section style={{ minWidth: 0 }}>
-          <header style={topbarStyle}>
-            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 14, justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center" }}>
+        <section style={{ minWidth: 0, paddingBottom: isMobile ? 84 : 0 }}>
+          <header style={isMobile ? mobileTopbarStyle : topbarStyle}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 10 : 14, justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center" }}>
               <div style={{ minWidth: 0 }}>
-                <div style={eyebrowStyle}>Private Property Command Center</div>
-                <h1 style={pageTitleStyle}>{screen === "dashboard" ? "Atlas / 2000" : screens.find((item) => item.id === screen)?.label}</h1>
-                {screen === "dashboard" ? <p style={headerSubStyle}>{databaseStatus}</p> : null}
+                {!isMobile ? <div style={eyebrowStyle}>Private Property Command Center</div> : null}
+                <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>{screen === "dashboard" ? "Atlas / 2000" : screens.find((item) => item.id === screen)?.label}</h1>
+                {screen === "dashboard" && !isMobile ? <p style={headerSubStyle}>{databaseStatus}</p> : null}
               </div>
 
               <div
@@ -3897,7 +3924,7 @@ export default function AtlasPage() {
                     }
                   }}
                   placeholder="Search Atlas..."
-                  style={{ ...inputStyle, width: "100%" }}
+                  style={{ ...inputStyle, width: "100%", minHeight: isMobile ? 46 : undefined }}
                 />
                 {searchOpen && searchResults.length ? (
                   <div style={searchDropStyle}>
@@ -3922,12 +3949,137 @@ export default function AtlasPage() {
             </div>
           </header>
 
-          <div style={{ padding: isMobile ? 14 : 24 }}>{renderScreen()}</div>
+          <div style={isMobile ? mobileContentStyle : { padding: 24 }}>{renderScreen()}</div>
         </section>
       </div>
+
+      {isMobile ? (
+        <nav style={mobileBottomNavStyle} aria-label="Mobile Atlas navigation">
+          {[
+            { id: "dashboard" as Screen, label: "Home" },
+            { id: "calendar" as Screen, label: "Calendar" },
+            { id: "map" as Screen, label: "Map" },
+            { id: "links" as Screen, label: "Links" },
+            { id: "history" as Screen, label: "Work" },
+          ].map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setScreen(item.id)}
+              style={{
+                ...mobileBottomButtonStyle,
+                color: screen === item.id ? colors.navy : colors.muted,
+                background: screen === item.id ? colors.gold : "transparent",
+                borderColor: screen === item.id ? colors.gold : "transparent",
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
     </main>
   );
 }
+
+
+const mobileHeaderShellStyle: React.CSSProperties = {
+  background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
+  color: "#FFFFFF",
+  padding: "12px 14px",
+  position: "sticky",
+  top: 0,
+  zIndex: 40,
+  boxShadow: "0 14px 35px rgba(7,27,47,0.20)",
+};
+
+const mobileBrandStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 10,
+};
+
+const mobileLogoBoxStyle: React.CSSProperties = {
+  width: 38,
+  height: 38,
+  borderRadius: 12,
+  background: colors.gold,
+  border: `1px solid ${colors.gold}`,
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+  boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
+};
+
+const mobileBrandTitleStyle: React.CSSProperties = {
+  fontWeight: 950,
+  fontSize: 20,
+  letterSpacing: 1.1,
+  lineHeight: 1,
+};
+
+const mobileMenuRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 8,
+};
+
+const mobileMenuSelectStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "rgba(255,255,255,0.08)",
+  color: "#FFFFFF",
+  borderRadius: 14,
+  padding: "12px 13px",
+  fontSize: 15,
+  fontWeight: 900,
+  outline: "none",
+};
+
+const mobileTopbarStyle: React.CSSProperties = {
+  background: "transparent",
+  padding: "14px 14px 4px",
+};
+
+const mobilePageTitleStyle: React.CSSProperties = {
+  margin: 0,
+  color: colors.navy,
+  fontSize: 24,
+  fontWeight: 950,
+  letterSpacing: "-0.04em",
+};
+
+const mobileContentStyle: React.CSSProperties = {
+  padding: "12px 12px 94px",
+};
+
+const mobileBottomNavStyle: React.CSSProperties = {
+  position: "fixed",
+  left: 10,
+  right: 10,
+  bottom: 10,
+  zIndex: 60,
+  background: "rgba(255,255,255,0.96)",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 20,
+  boxShadow: "0 18px 45px rgba(15,23,42,0.22)",
+  padding: 8,
+  display: "grid",
+  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+  gap: 5,
+  backdropFilter: "blur(12px)",
+};
+
+const mobileBottomButtonStyle: React.CSSProperties = {
+  border: "1px solid transparent",
+  borderRadius: 15,
+  padding: "10px 4px",
+  fontSize: 11,
+  fontWeight: 950,
+  cursor: "pointer",
+  minHeight: 44,
+};
 
 const appStyle: React.CSSProperties = {
   minHeight: "100vh",
