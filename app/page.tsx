@@ -288,7 +288,6 @@ const screens: { id: Screen; label: string }[] = [
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
   { id: "documents", label: "Documents" },
-  { id: "intake", label: "Add Docs" },
   { id: "procedures", label: "Procedures" },
   { id: "parts", label: "Parts" },
   { id: "links", label: "Work Links" },
@@ -1242,10 +1241,7 @@ const defaultWorkLinks: WorkLinkRecord[] = [
   },
 ];
 
-const documents: DocumentRecord[] = [
-  { id: "elliott-invoice-15159", title: "Elliott Paint Invoice #15159", area: "Exterior", type: "Invoice", linkedAssetId: "exterior-stain", linkedVendorId: "elliottpaint", notes: "Invoice dated 06/16/2026. Amount due $17,210.05." },
-  { id: "property-map", title: "Locked Atlas Property Map", area: "Map", type: "Image", href: "/atlas-property-map.png", notes: "Fixed original property map image used by Atlas labels." },
-];
+const documents: DocumentRecord[] = [];
 
 function Field(props: {
   label: string;
@@ -1417,6 +1413,9 @@ export default function AtlasPage() {
   const [intakeFiles, setIntakeFiles] = useState<UploadedFileRecord[]>([]);
   const [intakeMessage, setIntakeMessage] = useState("Ready to add paperwork, scans, screenshots, receipts, or pasted notes into Atlas.");
   const [previewFile, setPreviewFile] = useState<UploadedFileRecord | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const [documentSearch, setDocumentSearch] = useState("");
+  const [selectedDocumentId, setSelectedDocumentId] = useState("");
 
   const [selectedAssetId, setSelectedAssetId] = useState(fallbackAssets[0]?.id || "");
   const [selectedVendorId, setSelectedVendorId] = useState(fallbackVendors[0]?.id || "");
@@ -2352,10 +2351,12 @@ export default function AtlasPage() {
       setIntakeMessage("That file does not have a preview URL saved in this browser.");
       return;
     }
+    setPreviewZoom(100);
     setPreviewFile(file);
   }
 
   function openPhotoPreview(photo: PhotoRecord) {
+    setPreviewZoom(100);
     setPreviewFile({
       id: photo.id,
       name: photo.name,
@@ -4195,65 +4196,135 @@ export default function AtlasPage() {
   }
 
   function renderDocuments() {
+    const normalizedDocumentSearch = documentSearch.trim().toLowerCase();
     const sortedDocuments = [...allDocuments].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "") || a.title.localeCompare(b.title));
+    const searchableDocuments = sortedDocuments.filter((doc) => {
+      if (!normalizedDocumentSearch) return true;
+      const fileNames = (doc.files || []).map((file) => file.name).join(" ");
+      return [doc.title, doc.type, doc.area, doc.targetType, doc.targetName, doc.notes, doc.pastedText, fileNames]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedDocumentSearch);
+    });
+
+    const selectedDocument = searchableDocuments.find((doc) => doc.id === selectedDocumentId) || searchableDocuments[0] || null;
 
     return (
       <ListDrawerLayout
-        eyebrow="Files"
+        eyebrow="Document Vault"
         title="Documents / Photos"
+        detail="Search, view, zoom, and add paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots."
         isMobile={isMobile}
         right={<button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>}
         list={
-          <div style={listStyle}>
-            {sortedDocuments.map((document) => (
-              <div key={document.id} style={rowStaticStyle}>
-                <div>
-                  <strong>{document.title}</strong>
-                  <p style={mutedSmallStyle}>{document.type} · {document.area}</p>
-                  {document.targetType ? <p style={mutedSmallStyle}>Linked to {document.targetType}: {document.targetName || document.area}</p> : null}
-                  {document.notes ? <p style={mutedSmallStyle}>{document.notes}</p> : null}
-                  {document.pastedText ? <p style={mutedSmallStyle}>{document.pastedText}</p> : null}
-                  <div style={buttonRowStyle}>
-                    {document.href ? <a href={document.href} style={linkStyle}>Open</a> : null}
-                    {document.targetType && document.targetType !== "General" ? (
-                      <button type="button" onClick={() => openDocumentTarget(document)} style={tinyButtonStyle}>Open Linked Record</button>
-                    ) : null}
-                  </div>
-                  {document.files?.length ? (
-                    <div style={{ ...photoGridStyle, marginTop: 10 }}>
-                      {document.files.map((file) => (
-                        <button key={file.id} type="button" onClick={() => openUploadedFile(file)} style={{ ...photoCardStyle, textAlign: "left", cursor: "pointer" }}>
-                          {file.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt={file.name} style={photoStyle} /> : <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>}
-                          <strong>{file.name}</strong>
-                          <span style={mutedSmallStyle}>Open preview</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+          <div style={stackStyle}>
+            <div style={cardStyle}>
+              <div style={eyebrowStyle}>Look Up Documents</div>
+              <input
+                value={documentSearch}
+                onChange={(event) => setDocumentSearch(event.currentTarget.value)}
+                placeholder="Search title, vendor, asset, notes, file name..."
+                style={inputStyle}
+              />
+              <p style={mutedSmallStyle}>{searchableDocuments.length} matching document(s)</p>
+            </div>
+
+            {!searchableDocuments.length ? (
+              <div style={noticeStyle}>
+                <strong>No saved documents found.</strong>
+                <p style={mutedSmallStyle}>Use Add Document to take a phone photo, upload a PDF/image, or paste notes and link them to an Atlas record.</p>
+                <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>
               </div>
-            ))}
+            ) : (
+              <div style={listStyle}>
+                {searchableDocuments.map((document) => {
+                  const fileCount = (document.files || []).length;
+                  const hasPreview = fileCount > 0 || Boolean(document.pastedText || document.href);
+                  return (
+                    <button
+                      key={document.id}
+                      type="button"
+                      onClick={() => setSelectedDocumentId(document.id)}
+                      style={{
+                        ...rowButtonStyle,
+                        borderColor: selectedDocument?.id === document.id ? colors.gold : colors.line,
+                        boxShadow: selectedDocument?.id === document.id ? "0 14px 30px rgba(201,154,61,0.18)" : rowButtonStyle.boxShadow,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <strong>{document.title}</strong>
+                        <p style={mutedSmallStyle}>{document.type} · {document.area}</p>
+                        {document.targetType ? <p style={mutedSmallStyle}>Linked to {document.targetType}: {document.targetName || document.area}</p> : null}
+                        {document.notes ? <p style={mutedSmallStyle}>{document.notes}</p> : null}
+                        <p style={mutedSmallStyle}>{hasPreview ? `${fileCount} file(s) / preview available` : "No file attached"}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         }
         drawer={
           <div>
-            <div style={eyebrowStyle}>Document Info</div>
-            <h3 style={detailTitleStyle}>Photos / Documents</h3>
-            <p style={mutedSmallStyle}>{allDocuments.length} document records, {intakeDocs.length} intake records, and {photos.length} loaded photo records.</p>
-            <div style={noticeStyle}>
-              <strong>Fast phone intake</strong>
-              <p style={mutedSmallStyle}>Use Add Document to take a photo, upload a PDF/screenshot, paste notes, and link it to an Asset, Location, Vendor, Work Order, or Map Label.</p>
-              <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Open Add Document</button>
-            </div>
-            <div style={photoGridStyle}>
-              {photos.slice(0, 8).map((photo) => (
-                <button key={photo.id} type="button" onClick={() => openPhotoPreview(photo)} style={{ ...photoCardStyle, textAlign: "left", cursor: "pointer" }}>
-                  {photo.dataUrl || photo.url ? <img src={photo.dataUrl || photo.url} alt={photo.name} style={photoStyle} /> : null}
-                  <strong>{photo.name}</strong>
-                  <p style={mutedSmallStyle}>{assetName(photo.assetId)}</p>
-                </button>
-              ))}
-            </div>
+            {selectedDocument ? (
+              <div style={stackStyle}>
+                <div>
+                  <div style={eyebrowStyle}>Selected Document</div>
+                  <h3 style={detailTitleStyle}>{selectedDocument.title}</h3>
+                  <p style={mutedSmallStyle}>{selectedDocument.type} · {selectedDocument.area}</p>
+                  {selectedDocument.targetType ? <p style={mutedSmallStyle}>Linked to {selectedDocument.targetType}: {selectedDocument.targetName || selectedDocument.area}</p> : null}
+                  {selectedDocument.createdAt ? <p style={mutedSmallStyle}>Saved {new Date(selectedDocument.createdAt).toLocaleString()}</p> : null}
+                </div>
+
+                <div style={buttonRowStyle}>
+                  <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>
+                  {selectedDocument.targetType && selectedDocument.targetType !== "General" ? (
+                    <button type="button" onClick={() => openDocumentTarget(selectedDocument)} style={secondaryButtonStyle}>Open Linked Record</button>
+                  ) : null}
+                </div>
+
+                {selectedDocument.notes ? (
+                  <div style={noticeStyle}>
+                    <strong>Notes</strong>
+                    <p style={mutedSmallStyle}>{selectedDocument.notes}</p>
+                  </div>
+                ) : null}
+
+                {selectedDocument.pastedText ? (
+                  <div style={noticeStyle}>
+                    <strong>Pasted Text</strong>
+                    <pre style={documentTextPreviewStyle}>{selectedDocument.pastedText}</pre>
+                  </div>
+                ) : null}
+
+                {selectedDocument.files?.length ? (
+                  <div>
+                    <div style={eyebrowStyle}>Files</div>
+                    <div style={photoGridStyle}>
+                      {selectedDocument.files.map((file) => (
+                        <button key={file.id} type="button" onClick={() => openUploadedFile(file)} style={{ ...photoCardStyle, textAlign: "left", cursor: "pointer" }}>
+                          {file.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt={file.name} style={photoStyle} /> : <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>}
+                          <strong>{file.name}</strong>
+                          <span style={mutedSmallStyle}>Open zoom preview</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={noticeStyle}>
+                    <strong>No file attached.</strong>
+                    <p style={mutedSmallStyle}>This record only contains text/details. Add a new document with a file or photo to view it here.</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={noticeStyle}>
+                <strong>Document vault is empty.</strong>
+                <p style={mutedSmallStyle}>Add the first scan, photo, PDF, or pasted note from your phone or computer.</p>
+                <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>Add Document</button>
+              </div>
+            )}
           </div>
         }
       />
@@ -4730,6 +4801,13 @@ export default function AtlasPage() {
     const source = previewFile.dataUrl || previewFile.url || "";
     const isImage = source.startsWith("data:image/") || (previewFile.type || "").startsWith("image/");
     const isPdf = source.startsWith("data:application/pdf") || (previewFile.type || "").includes("pdf");
+    const zoomedFrameStyle: React.CSSProperties = {
+      ...previewFrameStyle,
+      transform: `scale(${previewZoom / 100})`,
+      transformOrigin: "top left",
+      width: `${10000 / previewZoom}%`,
+      height: `${10000 / previewZoom}%`,
+    };
 
     return (
       <div style={previewOverlayStyle} onMouseDown={() => setPreviewFile(null)}>
@@ -4738,8 +4816,12 @@ export default function AtlasPage() {
             <div style={{ minWidth: 0 }}>
               <div style={eyebrowStyle}>Document Preview</div>
               <h3 style={detailTitleStyle}>{previewFile.name}</h3>
+              <p style={mutedSmallStyle}>Zoom: {previewZoom}%</p>
             </div>
             <div style={buttonRowStyle}>
+              <button type="button" onClick={() => setPreviewZoom((value) => Math.max(50, value - 25))} style={secondaryButtonStyle}>−</button>
+              <button type="button" onClick={() => setPreviewZoom(100)} style={secondaryButtonStyle}>100%</button>
+              <button type="button" onClick={() => setPreviewZoom((value) => Math.min(300, value + 25))} style={secondaryButtonStyle}>+</button>
               {source ? <a href={source} target="_blank" rel="noreferrer" style={secondaryButtonStyle}>Open New Tab</a> : null}
               <button type="button" onClick={() => setPreviewFile(null)} style={goldButtonStyle}>Close</button>
             </div>
@@ -4747,9 +4829,11 @@ export default function AtlasPage() {
 
           <div style={previewBodyStyle}>
             {isImage && source ? (
-              <img src={source} alt={previewFile.name} style={previewImageStyle} />
+              <img src={source} alt={previewFile.name} style={{ ...previewImageStyle, width: `${previewZoom}%`, maxWidth: "none", maxHeight: "none" }} />
             ) : isPdf && source ? (
-              <iframe src={source} title={previewFile.name} style={previewFrameStyle} />
+              <div style={previewPdfZoomShellStyle}>
+                <iframe src={source} title={previewFile.name} style={zoomedFrameStyle} />
+              </div>
             ) : source ? (
               <div style={noticeStyle}>
                 <strong>Preview not available for this file type.</strong>
@@ -5078,6 +5162,25 @@ const previewFrameStyle: React.CSSProperties = {
   border: 0,
   borderRadius: 14,
   background: "#FFFFFF",
+};
+
+const documentTextPreviewStyle: React.CSSProperties = {
+  margin: "8px 0 0",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  fontFamily: "inherit",
+  fontSize: 13,
+  lineHeight: 1.55,
+  color: colors.text,
+};
+
+const previewPdfZoomShellStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  minHeight: 620,
+  overflow: "auto",
+  background: "#FFFFFF",
+  borderRadius: 14,
 };
 
 const mobileHeaderShellStyle: React.CSSProperties = {
