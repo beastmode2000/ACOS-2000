@@ -48,6 +48,13 @@ type MapLabelRecord = {
   y: number;
   notes: string;
   photos: UploadedFileRecord[];
+  vendorIds?: string[];
+  installer?: string;
+  paintColor?: string;
+  specs?: string;
+  documentNotes?: string;
+  photoNotes?: string;
+  maintenanceNotes?: string;
 };
 
 type VendorRecord = {
@@ -245,7 +252,6 @@ const colors = {
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
-  { id: "map", label: "Map" },
   { id: "locations", label: "Locations" },
   { id: "assets", label: "Assets" },
   { id: "history", label: "Work Orders" },
@@ -256,6 +262,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "procedures", label: "Procedures" },
   { id: "parts", label: "Parts" },
   { id: "links", label: "Work Links" },
+  { id: "map", label: "Map" },
   { id: "assistant", label: "Ask Atlas" },
 ];
 
@@ -1222,6 +1229,13 @@ export default function AtlasPage() {
       y: clampPercent(Number(label.y)),
       notes: label.notes || "",
       photos: Array.isArray(label.photos) ? label.photos : [],
+      vendorIds: Array.isArray(label.vendorIds) ? label.vendorIds.map(String) : [],
+      installer: label.installer || "",
+      paintColor: label.paintColor || "",
+      specs: label.specs || "",
+      documentNotes: label.documentNotes || "",
+      photoNotes: label.photoNotes || "",
+      maintenanceNotes: label.maintenanceNotes || "",
     }));
 
     const storedAssets = readStoredArray<AssetRecord>(storageKeys.assets, fallbackAssets).map(normalizeAsset);
@@ -1526,7 +1540,18 @@ export default function AtlasPage() {
   const filteredMapLabels = useMemo(() => {
     const sorted = byLabel(mapLabels);
     if (!q) return sorted;
-    return sorted.filter((item) => [item.label, item.category, item.notes].join(" ").toLowerCase().includes(q));
+    return sorted.filter((item) => [
+      item.label,
+      item.category,
+      item.notes,
+      item.installer,
+      item.paintColor,
+      item.specs,
+      item.documentNotes,
+      item.photoNotes,
+      item.maintenanceNotes,
+      (item.vendorIds || []).map(vendorName).join(" "),
+    ].join(" ").toLowerCase().includes(q));
   }, [q, mapLabels]);
 
   const filteredAssets = useMemo(() => {
@@ -1601,7 +1626,24 @@ export default function AtlasPage() {
   function buildSearchIndex(): SearchResult[] {
     return [
       ...locations.map((item) => ({ id: `location-${item.id}`, type: "Location", title: item.name, subtitle: `${item.type} · ${item.zone}`, detail: item.notes, screen: "locations" as Screen })),
-      ...mapLabels.map((item) => ({ id: `map-${item.id}`, type: "Map Label", title: item.label, subtitle: item.category, detail: item.notes, screen: "map" as Screen, mapLabelId: item.id })),
+      ...mapLabels.map((item) => ({
+        id: `map-${item.id}`,
+        type: "Map Label",
+        title: item.label,
+        subtitle: item.category,
+        detail: [
+          item.notes,
+          item.installer,
+          item.paintColor,
+          item.specs,
+          item.documentNotes,
+          item.photoNotes,
+          item.maintenanceNotes,
+          (item.vendorIds || []).map(vendorName).join(" "),
+        ].join(" "),
+        screen: "map" as Screen,
+        mapLabelId: item.id,
+      })),
       ...assetRecords.map((item) => ({ id: `asset-${item.id}`, type: "Asset", title: item.name, subtitle: `${item.category} · ${locationName(item.locationId)} · ${item.status}`, detail: [item.make, item.model, item.serial, item.notes].join(" "), screen: "assets" as Screen, assetId: item.id })),
       ...vendorRecords.map((item) => ({ id: `vendor-${item.id}`, type: "Vendor", title: item.name, subtitle: item.category, detail: [item.phone, item.email, item.website, item.notes].join(" "), screen: "vendors" as Screen, vendorId: item.id })),
       ...serviceRecords.map((item) => ({ id: `wo-${item.id}`, type: "Work Order", title: item.title, subtitle: `${formatDate(item.date)} · ${item.status} · ${item.priority ?? "Medium"}`, detail: `${assetName(item.assetId)} ${vendorName(item.vendorId)} ${item.notes}`, screen: "history" as Screen, serviceId: item.id })),
@@ -2054,7 +2096,22 @@ export default function AtlasPage() {
   }
 
   function addMapLabel() {
-    const record: MapLabelRecord = { id: uid("map"), label: "New Label", category: "Location", x: 50, y: 50, notes: "", photos: [] };
+    const record: MapLabelRecord = {
+      id: uid("map"),
+      label: "New Label",
+      category: "Location",
+      x: 50,
+      y: 50,
+      notes: "",
+      photos: [],
+      vendorIds: [],
+      installer: "",
+      paintColor: "",
+      specs: "",
+      documentNotes: "",
+      photoNotes: "",
+      maintenanceNotes: "",
+    };
     setMapLabels((current) => byLabel([...current, record]));
     setSelectedMapLabelId(record.id);
   }
@@ -2075,11 +2132,62 @@ export default function AtlasPage() {
                 x: patch.x === undefined ? label.x : clampPercent(Number(patch.x)),
                 y: patch.y === undefined ? label.y : clampPercent(Number(patch.y)),
                 photos: patch.photos ?? label.photos ?? [],
+                vendorIds: patch.vendorIds ?? label.vendorIds ?? [],
+                installer: patch.installer ?? label.installer ?? "",
+                paintColor: patch.paintColor ?? label.paintColor ?? "",
+                specs: patch.specs ?? label.specs ?? "",
+                documentNotes: patch.documentNotes ?? label.documentNotes ?? "",
+                photoNotes: patch.photoNotes ?? label.photoNotes ?? "",
+                maintenanceNotes: patch.maintenanceNotes ?? label.maintenanceNotes ?? "",
               }
             : label
         )
       )
     );
+  }
+
+  function toggleMapLabelVendor(vendorId: string) {
+    const currentVendorIds = selectedMapLabel.vendorIds || [];
+    const nextVendorIds = currentVendorIds.includes(vendorId)
+      ? currentVendorIds.filter((id) => id !== vendorId)
+      : [...currentVendorIds, vendorId];
+
+    updateSelectedMapLabel({ vendorIds: nextVendorIds });
+  }
+
+  function handleMapLabelPhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files || []);
+    if (!files.length) return;
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const nextPhoto: UploadedFileRecord = {
+          id: uid("map-photo"),
+          name: file.name,
+          type: file.type,
+          dataUrl: String(reader.result || ""),
+          createdAt: new Date().toISOString(),
+        };
+
+        setMapLabels((current) =>
+          byLabel(
+            current.map((label) =>
+              label.id === selectedMapLabel.id
+                ? { ...label, photos: [...(label.photos || []), nextPhoto] }
+                : label
+            )
+          )
+        );
+      };
+      reader.readAsDataURL(file);
+    });
+
+    event.currentTarget.value = "";
+  }
+
+  function removeMapLabelPhoto(photoId: string) {
+    updateSelectedMapLabel({ photos: (selectedMapLabel.photos || []).filter((photo) => photo.id !== photoId) });
   }
 
   function handleMapLabelPointerDown(event: React.PointerEvent<HTMLButtonElement>, labelId: string) {
@@ -2352,11 +2460,13 @@ export default function AtlasPage() {
   }
 
   function renderMap() {
+    const selectedMapVendors = vendorRecords.filter((vendor) => (selectedMapLabel.vendorIds || []).includes(vendor.id));
+
     return (
       <ListDrawerLayout
-        eyebrow="Locked Original Map"
+        eyebrow="Map"
         title="Property Map"
-        detail="Drag labels to adjust placement. Use Reset Map to return to the saved label layout."
+        detail="Click a label for details. Drag labels to move them."
         isMobile={isMobile}
         right={
           <>
@@ -2411,32 +2521,103 @@ export default function AtlasPage() {
                 );
               })}
             </div>
-
-            <div style={{ ...listStyle, marginTop: 14 }}>
-              {filteredMapLabels.map((label) => (
-                <button key={label.id} type="button" onClick={() => setSelectedMapLabelId(label.id)} style={{ ...rowButtonStyle, borderColor: label.id === selectedMapLabel.id ? colors.gold : colors.line }}>
-                  <div>
-                    <strong>{label.label}</strong>
-                    <p style={mutedSmallStyle}>{label.category}</p>
-                  </div>
-                  <span style={badgeStyle("Monitor")}>{label.x}% / {label.y}%</span>
-                </button>
-              ))}
-            </div>
           </div>
         }
         drawer={
-          <>
-            <div style={eyebrowStyle}>Selected Label</div>
-            <h3 style={detailTitleStyle}>{selectedMapLabel.label}</h3>
-            <div style={formGridStyle}>
-              <Field label="Label" value={selectedMapLabel.label} onChange={(value) => updateSelectedMapLabel({ label: value })} />
-              <Field label="Category" value={selectedMapLabel.category} onChange={(value) => updateSelectedMapLabel({ category: value })} />
-              <Field label="X %" value={String(selectedMapLabel.x)} onChange={(value) => updateSelectedMapLabel({ x: Number(value) })} />
-              <Field label="Y %" value={String(selectedMapLabel.y)} onChange={(value) => updateSelectedMapLabel({ y: Number(value) })} />
-              <Field label="Notes" value={selectedMapLabel.notes} onChange={(value) => updateSelectedMapLabel({ notes: value })} multiline />
+          <div style={mapDetailStackStyle}>
+            <div>
+              <div style={eyebrowStyle}>Selected Label</div>
+              <h3 style={detailTitleStyle}>{selectedMapLabel.label}</h3>
             </div>
-          </>
+
+            <div style={mapDetailCardStyle}>
+              <div style={mapDetailSectionTitleStyle}>Label</div>
+              <div style={formGridStyle}>
+                <Field label="Name" value={selectedMapLabel.label} onChange={(value) => updateSelectedMapLabel({ label: value })} />
+                <Field label="Category" value={selectedMapLabel.category} onChange={(value) => updateSelectedMapLabel({ category: value })} />
+                <Field label="X" value={String(selectedMapLabel.x)} onChange={(value) => updateSelectedMapLabel({ x: Number(value) })} />
+                <Field label="Y" value={String(selectedMapLabel.y)} onChange={(value) => updateSelectedMapLabel({ y: Number(value) })} />
+              </div>
+            </div>
+
+            <div style={mapDetailCardStyle}>
+              <div style={mapDetailSectionTitleStyle}>Info</div>
+              <div style={formGridStyle}>
+                <Field label="Installer / Vendor" value={selectedMapLabel.installer || ""} onChange={(value) => updateSelectedMapLabel({ installer: value })} />
+                <Field label="Paint / Color / Finish" value={selectedMapLabel.paintColor || ""} onChange={(value) => updateSelectedMapLabel({ paintColor: value })} />
+                <Field label="Specs / Materials" value={selectedMapLabel.specs || ""} onChange={(value) => updateSelectedMapLabel({ specs: value })} multiline />
+                <Field label="Notes" value={selectedMapLabel.notes || ""} onChange={(value) => updateSelectedMapLabel({ notes: value })} multiline />
+              </div>
+            </div>
+
+            <div style={mapDetailCardStyle}>
+              <div style={mapDetailSectionTitleStyle}>Vendors</div>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={fieldLabelStyle}>Add Vendor</span>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    if (value) toggleMapLabelVendor(value);
+                  }}
+                  style={inputStyle}
+                >
+                  <option value="">Choose vendor</option>
+                  {vendorRecords
+                    .filter((vendor) => !(selectedMapLabel.vendorIds || []).includes(vendor.id))
+                    .map((vendor) => (
+                      <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                    ))}
+                </select>
+              </label>
+
+              {selectedMapVendors.length ? (
+                <div style={mapVendorChipListStyle}>
+                  {selectedMapVendors.map((vendor) => (
+                    <button key={vendor.id} type="button" onClick={() => toggleMapLabelVendor(vendor.id)} style={mapVendorChipStyle}>
+                      {vendor.name} ×
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p style={mutedSmallStyle}>No vendors linked.</p>
+              )}
+            </div>
+
+            <div style={mapDetailCardStyle}>
+              <div style={mapDetailSectionTitleStyle}>Docs</div>
+              <Field label="Document Notes / Links" value={selectedMapLabel.documentNotes || ""} onChange={(value) => updateSelectedMapLabel({ documentNotes: value })} multiline />
+            </div>
+
+            <div style={mapDetailCardStyle}>
+              <div style={mapDetailSectionTitleStyle}>Photos</div>
+              <label style={{ ...secondaryButtonStyle, display: "inline-flex", cursor: "pointer" }}>
+                Add Photos
+                <input type="file" accept="image/*" multiple onChange={handleMapLabelPhotoUpload} style={{ display: "none" }} />
+              </label>
+
+              <Field label="Photo Notes" value={selectedMapLabel.photoNotes || ""} onChange={(value) => updateSelectedMapLabel({ photoNotes: value })} multiline />
+
+              {selectedMapLabel.photos?.length ? (
+                <div style={photoGridStyle}>
+                  {selectedMapLabel.photos.map((photo) => (
+                    <div key={photo.id} style={photoCardStyle}>
+                      {photo.dataUrl || photo.url ? <img src={photo.dataUrl || photo.url} alt={photo.name} style={photoStyle} /> : null}
+                      <strong>{photo.name}</strong>
+                      <button type="button" onClick={() => removeMapLabelPhoto(photo.id)} style={dangerMiniButtonStyle}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={mutedSmallStyle}>No photos added.</p>
+              )}
+            </div>
+
+            <div style={mapDetailCardStyle}>
+              <div style={mapDetailSectionTitleStyle}>Maintenance</div>
+              <Field label="Maintenance Notes" value={selectedMapLabel.maintenanceNotes || ""} onChange={(value) => updateSelectedMapLabel({ maintenanceNotes: value })} multiline />
+            </div>
+          </div>
         }
       />
     );
@@ -4010,6 +4191,54 @@ const mapPinStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
   fontSize: 12,
   padding: "7px 9px",
+};
+
+const mapDetailStackStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 14,
+};
+
+const mapDetailCardStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 18,
+  background: "#FFFFFF",
+  padding: 14,
+  display: "grid",
+  gap: 12,
+};
+
+const mapDetailSectionTitleStyle: React.CSSProperties = {
+  color: colors.navy,
+  fontSize: 14,
+  fontWeight: 950,
+};
+
+const mapVendorChipListStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+};
+
+const mapVendorChipStyle: React.CSSProperties = {
+  border: `1px solid ${colors.gold}`,
+  borderRadius: 999,
+  background: "#FFFAEB",
+  color: colors.navy,
+  padding: "7px 10px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const dangerMiniButtonStyle: React.CSSProperties = {
+  border: "1px solid #FACACA",
+  borderRadius: 999,
+  background: "#FEECEC",
+  color: colors.red,
+  padding: "6px 9px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
 };
 
 const searchDropStyle: React.CSSProperties = {
