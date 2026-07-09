@@ -1,13 +1,14 @@
 {
-  "name": "Atlas",
+  "name": "Atlas / 2000",
   "short_name": "Atlas",
-  "description": "Atlas / 2000 property command center",
+  "description": "Private 2000 property command center.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#07172f",
-  "theme_color": "#07172f",
-  "orientation": "portrait-primary",
+  "background_color": "#071B2F",
+  "theme_color": "#071B2F",
+  "orientation": "portrait",
+  "categories": ["productivity", "business", "utilities"],
   "icons": [
     {
       "src": "/atlas-icon-192.png",
@@ -20,11 +21,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png"
     }
   ]
 }
