@@ -1116,7 +1116,7 @@ export default function AtlasPage() {
   const [showJewishHolidays, setShowJewishHolidays] = useState(true);
   const [calendarCategoryFilters, setCalendarCategoryFilters] = useState<Record<string, boolean>>({});
   const [calendarIntakeText, setCalendarIntakeText] = useState("");
-  const [calendarIntakeMessage, setCalendarIntakeMessage] = useState("Paste a text, email, or screenshot transcription here. Atlas will make a calendar draft for you to review before saving.");
+  const [calendarIntakeMessage, setCalendarIntakeMessage] = useState("");
 
   const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([]);
   const [selectedWeatherDate, setSelectedWeatherDate] = useState("");
@@ -1690,6 +1690,13 @@ export default function AtlasPage() {
     });
   }
 
+  function resetCalendarEntryForm(date = selectedCalendarDate || todayISO()) {
+    setSelectedCalendarId("");
+    setCalendarDraft(blankCalendarItem(date, "maintenance"));
+    setCalendarIntakeText("");
+    setCalendarIntakeMessage("");
+  }
+
   function saveCalendarItem() {
     const record: CalendarItem = normalizeCalendar({
       ...calendarDraft,
@@ -1727,9 +1734,8 @@ export default function AtlasPage() {
       ]);
     }
 
-    setSelectedCalendarId(record.id);
     setSelectedCalendarDate(record.date);
-    setCalendarDraft(record);
+    resetCalendarEntryForm(record.date);
     void postAtlasRecord("calendar", record);
   }
 
@@ -1772,12 +1778,12 @@ export default function AtlasPage() {
 
     if (lower.includes("today")) return todayISO();
 
-    const isoMatch = text.match(/(20\d{2})[-/](\d{1,2})[-/](\d{1,2})/);
+    const isoMatch = text.match(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/);
     if (isoMatch) {
       return localISODate(new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]), 12));
     }
 
-    const slashMatch = text.match(/(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/);
+    const slashMatch = text.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
     if (slashMatch) {
       const yearValue = slashMatch[3] ? Number(slashMatch[3]) : now.getFullYear();
       const fullYear = yearValue < 100 ? 2000 + yearValue : yearValue;
@@ -1811,7 +1817,7 @@ export default function AtlasPage() {
       december: 11,
     };
 
-    const monthMatch = lower.match(/(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(20\d{2}))?/);
+    const monthMatch = lower.match(/\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(20\d{2}))?\b/);
     if (monthMatch) {
       const year = monthMatch[3] ? Number(monthMatch[3]) : now.getFullYear();
       return localISODate(new Date(year, monthNames[monthMatch[1]], Number(monthMatch[2]), 12));
@@ -1821,10 +1827,10 @@ export default function AtlasPage() {
   }
 
   function timeFromCalendarIntake(text: string) {
-    const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i);
+    const timeMatch = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/i);
     if (timeMatch) return formatCalendarIntakeTime(timeMatch[1], timeMatch[2], timeMatch[3]);
 
-    const twentyFourHourMatch = text.match(/([01]?\d|2[0-3]):([0-5]\d)/);
+    const twentyFourHourMatch = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
     if (twentyFourHourMatch) return formatCalendarIntakeTime(twentyFourHourMatch[1], twentyFourHourMatch[2]);
 
     return "";
@@ -1884,7 +1890,7 @@ export default function AtlasPage() {
     const text = calendarIntakeText.trim();
 
     if (!text) {
-      setCalendarIntakeMessage("Paste the text from a screenshot, email, or message first.");
+      setCalendarIntakeMessage("Paste text first.");
       return;
     }
 
@@ -1907,8 +1913,7 @@ export default function AtlasPage() {
       allDay: !time,
       repeat: "None",
       reminder: "None",
-      notes: `Calendar intake source:
-${text}`,
+      notes: text,
       linkedType: linked.linkedType,
       linkedId: linked.linkedId,
       linkedName: linked.linkedName,
@@ -1921,7 +1926,7 @@ ${text}`,
     setCalendarCursor(calendarDateValue(date));
     setCalendarDraft(nextDraft);
     setScreen("calendar");
-    setCalendarIntakeMessage("Draft created. Review the event details on the Calendar, then click Save.");
+    setCalendarIntakeMessage("Draft ready. Review and save.");
   }
 
   function updateCalendarColor(id: string, patch: Partial<CalendarColor>) {
@@ -2072,28 +2077,28 @@ ${text}`,
       <section style={sectionStyle}>
         <SectionHeader
           eyebrow="Calendar Intake"
-          title="Screenshot / Text to Calendar"
-          detail="Paste text from a screenshot, email, text message, or vendor note. Atlas creates a calendar draft for review before saving."
+          title="Text to Calendar"
+          detail="Paste scheduling text, make a draft, review it, then save."
           right={<button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Open Calendar</button>}
         />
 
-        <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "grid", gap: 10 }}>
           <textarea
             value={calendarIntakeText}
             onChange={(event) => setCalendarIntakeText(event.currentTarget.value)}
-            placeholder={'Paste text here. Example: "5 Star Flooring / Eric on July 22 at 9 AM for Evi room."'}
-            style={{ ...inputStyle, minHeight: 120, resize: "vertical", fontFamily: "Arial, Helvetica, sans-serif" }}
+            placeholder="Paste scheduling text here"
+            style={{ ...inputStyle, minHeight: 86, resize: "vertical", fontFamily: "Arial, Helvetica, sans-serif" }}
           />
 
           <div style={buttonRowStyle}>
             <button type="button" onClick={applyCalendarIntake} style={goldButtonStyle}>
-              Make Calendar Draft
+              Make Draft
             </button>
             <button
               type="button"
               onClick={() => {
                 setCalendarIntakeText("");
-                setCalendarIntakeMessage("Paste a text, email, or screenshot transcription here. Atlas will make a calendar draft for you to review before saving.");
+                setCalendarIntakeMessage("");
               }}
               style={secondaryButtonStyle}
             >
@@ -2101,7 +2106,7 @@ ${text}`,
             </button>
           </div>
 
-          <p style={mutedSmallStyle}>{calendarIntakeMessage}</p>
+          {calendarIntakeMessage ? <p style={mutedSmallStyle}>{calendarIntakeMessage}</p> : null}
         </div>
       </section>
     );
@@ -2751,22 +2756,6 @@ ${text}`,
               </button>
             </div>
 
-            <div style={{ ...calendarColorsBoxStyle, marginTop: 16 }}>
-              <div style={eyebrowStyle}>Text Intake</div>
-              <p style={mutedSmallStyle}>Paste text from a screenshot, email, or message to fill a draft event. Review before saving.</p>
-              <textarea
-                value={calendarIntakeText}
-                onChange={(event) => setCalendarIntakeText(event.currentTarget.value)}
-                placeholder={'Example: "Elliott Paint here July 22 at 9 AM for exterior staining."'}
-                style={{ ...inputStyle, minHeight: 88, resize: "vertical", fontFamily: "Arial, Helvetica, sans-serif" }}
-              />
-              <div style={{ ...buttonRowStyle, marginTop: 10 }}>
-                <button type="button" onClick={applyCalendarIntake} style={goldButtonStyle}>Make Draft</button>
-                <button type="button" onClick={() => setCalendarIntakeText("")} style={secondaryButtonStyle}>Clear</button>
-              </div>
-              <p style={mutedSmallStyle}>{calendarIntakeMessage}</p>
-            </div>
-
             <div style={{ marginTop: 16 }}>
               <div style={eyebrowStyle}>{hasSelectedEvent ? "Edit Event" : "New Event"}</div>
               <h3 style={detailTitleStyle}>{hasSelectedEvent ? selectedCalendar.title : "Ready to add event"}</h3>
@@ -2787,7 +2776,7 @@ ${text}`,
                     value={selectedCalendar.time || ""}
                     disabled={!!selectedCalendar.allDay}
                     onChange={(event) => updateCalendarItem({ time: event.currentTarget.value })}
-                    placeholder="Example: 9:00 AM"
+                    placeholder="Optional"
                     style={{ ...inputStyle, background: selectedCalendar.allDay ? "#EEF2F6" : "#FFFFFF" }}
                   />
                 </label>
@@ -2806,7 +2795,7 @@ ${text}`,
                     list="calendar-category-labels"
                     value={selectedCalendar.categoryLabel || selectedCalendar.area || ""}
                     onChange={(event) => updateCalendarItem({ categoryLabel: event.currentTarget.value, area: event.currentTarget.value })}
-                    placeholder="Vendor, Family, Maintenance..."
+                    placeholder="Vendor, Family, Maintenance"
                     style={inputStyle}
                   />
                   <datalist id="calendar-category-labels">
@@ -2851,7 +2840,7 @@ ${text}`,
                   </select>
                 </label>
 
-                <Field label="Notes / Details" value={selectedCalendar.notes || ""} onChange={(value) => updateCalendarItem({ notes: value })} multiline placeholder="Add notes, vendor details, or instructions..." />
+                <Field label="Notes / Details" value={selectedCalendar.notes || ""} onChange={(value) => updateCalendarItem({ notes: value })} multiline placeholder="Optional notes" />
 
                 <label style={checkboxLineStyle}>
                   <input
@@ -2874,6 +2863,30 @@ ${text}`,
                   </button>
                 ) : null}
               </div>
+            <div style={{ ...calendarColorsBoxStyle, marginTop: 14, padding: 14 }}>
+              <div style={eyebrowStyle}>Text to Calendar</div>
+              <textarea
+                value={calendarIntakeText}
+                onChange={(event) => setCalendarIntakeText(event.currentTarget.value)}
+                placeholder="Paste scheduling text here"
+                style={{ ...inputStyle, minHeight: 58, resize: "vertical", fontFamily: "Arial, Helvetica, sans-serif" }}
+              />
+              <div style={{ ...buttonRowStyle, marginTop: 8 }}>
+                <button type="button" onClick={applyCalendarIntake} style={goldButtonStyle}>Make Draft</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCalendarIntakeText("");
+                    setCalendarIntakeMessage("");
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  Clear
+                </button>
+              </div>
+              {calendarIntakeMessage ? <p style={mutedSmallStyle}>{calendarIntakeMessage}</p> : null}
+            </div>
+
             </div>
 
             <div style={calendarColorsBoxStyle}>
