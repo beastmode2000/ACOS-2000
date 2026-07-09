@@ -16,6 +16,7 @@ type Screen =
   | "parts"
   | "links"
   | "qr"
+  | "scan"
   | "assistant";
 
 type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
@@ -1386,6 +1387,10 @@ export default function AtlasPage() {
   const [dirtyRecords, setDirtyRecords] = useState<Record<string, boolean>>({});
   const [qrKind, setQrKind] = useState<QrKind>("asset");
   const [qrSearch, setQrSearch] = useState("");
+  const [scannerActive, setScannerActive] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState("Scanner is off. Start the camera, then point it at an Atlas QR label.");
+  const [scannerManualValue, setScannerManualValue] = useState("");
+  const [lastScannedQr, setLastScannedQr] = useState("");
 
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
@@ -1407,6 +1412,8 @@ export default function AtlasPage() {
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
+  const qrScannerRef = useRef<any>(null);
+  const qrScannerElementId = "atlas-qr-reader";
 
   useEffect(() => {
     if ("serviceWorker" in navigator && window.location.protocol === "https:") {
@@ -1552,38 +1559,17 @@ export default function AtlasPage() {
     const rawQr = params.get("qr");
     if (!rawQr) return;
 
-    const [rawKind, ...idParts] = rawQr.split(":");
-    const kind = rawKind as QrKind;
-    const id = decodeURIComponent(idParts.join(":"));
-    if (!id || !["asset", "location", "vendor", "map"].includes(kind)) return;
+    openQrTarget(rawQr, { replaceUrl: true, source: "link" });
+  }, []);
 
-    setQuery("");
+  useEffect(() => {
+    if (screen !== "scan") void stopQrScanner(false);
+  }, [screen]);
 
-    if (kind === "asset") {
-      setSelectedAssetId(id);
-      setScreen("assets");
-    }
-
-    if (kind === "vendor") {
-      setSelectedVendorId(id);
-      setScreen("vendors");
-    }
-
-    if (kind === "location") {
-      const location = locations.find((item) => item.id === id);
-      setQuery(location?.name || "");
-      setScreen("locations");
-    }
-
-    if (kind === "map") {
-      setSelectedMapLabelId(id);
-      setScreen("map");
-    }
-
-    params.delete("qr");
-    const nextQuery = params.toString();
-    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
-    window.history.replaceState(null, "", nextUrl);
+  useEffect(() => {
+    return () => {
+      void stopQrScanner(false);
+    };
   }, []);
 
   useEffect(() => {
@@ -1653,6 +1639,176 @@ export default function AtlasPage() {
 
   function qrImageUrl(value: string, size = 230) {
     return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=12&data=${encodeURIComponent(value)}`;
+  }
+
+  function parseQrTarget(value: string): { kind: QrKind; id: string } | null {
+    let raw = String(value || "").trim();
+    if (!raw) return null;
+
+    try {
+      const parsedUrl = new URL(raw, atlasBaseUrl());
+      raw = parsedUrl.searchParams.get("qr") || raw;
+    } catch {
+      const match = raw.match(/[?&]qr=([^&#]+)/);
+      if (match?.[1]) raw = decodeURIComponent(match[1]);
+    }
+
+    const [rawKind, ...idParts] = raw.split(":");
+    const kind = rawKind as QrKind;
+    const id = decodeURIComponent(idParts.join(":")).trim();
+
+    if (!id || !["asset", "location", "vendor", "map"].includes(kind)) return null;
+    return { kind, id };
+  }
+
+  function openQrTarget(value: string, options?: { replaceUrl?: boolean; source?: "scanner" | "manual" | "link" }) {
+    const parsed = parseQrTarget(value);
+
+    if (!parsed) {
+      setScannerStatus("That QR is not an Atlas QR code. It should contain a link with ?qr=asset, location, vendor, or map.");
+      return false;
+    }
+
+    const { kind, id } = parsed;
+    setLastScannedQr(String(value || ""));
+    setScannerManualValue("");
+    setQuery("");
+
+    if (kind === "asset") {
+      setSelectedAssetId(id);
+      setScreen("assets");
+    }
+
+    if (kind === "vendor") {
+      setSelectedVendorId(id);
+      setScreen("vendors");
+    }
+
+    if (kind === "location") {
+      const location = locations.find((item) => item.id === id);
+      setQuery(location?.name || "");
+      setScreen("locations");
+    }
+
+    if (kind === "map") {
+      setSelectedMapLabelId(id);
+      setScreen("map");
+    }
+
+    setScannerStatus(`Opened Atlas ${kind}: ${id}`);
+
+    if (options?.source === "scanner") void stopQrScanner(false);
+
+    if (options?.replaceUrl && typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      params.delete("qr");
+      const nextQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", nextUrl);
+    }
+
+    return true;
+  }
+
+  function loadQrScannerScript() {
+    return new Promise<void>((resolve, reject) => {
+      if (typeof window === "undefined") {
+        reject(new Error("Scanner only runs in the browser."));
+        return;
+      }
+
+      if ((window as any).Html5Qrcode) {
+        resolve();
+        return;
+      }
+
+      const existing = document.getElementById("atlas-html5-qrcode-script") as HTMLScriptElement | null;
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("QR scanner script failed to load.")), { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.id = "atlas-html5-qrcode-script";
+      script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("QR scanner script failed to load."));
+      document.body.appendChild(script);
+    });
+  }
+
+  async function startQrScanner() {
+    if (typeof window === "undefined") return;
+
+    if (!window.isSecureContext && window.location.hostname !== "localhost") {
+      setScannerStatus("Camera scanning requires HTTPS. Open Atlas from https://www.atlas2000.com and try again.");
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScannerStatus("This browser does not allow camera scanning here. Use the phone Camera app to scan the QR label; it will still open Atlas correctly.");
+      return;
+    }
+
+    setScannerStatus("Starting camera scanner...");
+
+    try {
+      await loadQrScannerScript();
+      await stopQrScanner(false);
+
+      const Html5Qrcode = (window as any).Html5Qrcode;
+      if (!Html5Qrcode) throw new Error("QR scanner library did not load.");
+
+      const scanner = new Html5Qrcode(qrScannerElementId, false);
+      qrScannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: isMobile ? { width: 230, height: 230 } : { width: 280, height: 280 },
+          aspectRatio: 1,
+        },
+        (decodedText: string) => {
+          openQrTarget(decodedText, { source: "scanner" });
+        },
+        () => undefined
+      );
+
+      setScannerActive(true);
+      setScannerStatus("Camera is active. Point it at an Atlas QR label.");
+    } catch {
+      setScannerActive(false);
+      qrScannerRef.current = null;
+      setScannerStatus("Could not start the camera scanner. Allow camera permission, reload Atlas, or use the phone Camera app to scan the QR label.");
+    }
+  }
+
+  async function stopQrScanner(updateStatus = true) {
+    const scanner = qrScannerRef.current;
+    if (!scanner) {
+      setScannerActive(false);
+      if (updateStatus) setScannerStatus("Scanner is off.");
+      return;
+    }
+
+    try {
+      await scanner.stop();
+    } catch {
+      // Scanner may already be stopped.
+    }
+
+    try {
+      await scanner.clear();
+    } catch {
+      // Clear is best-effort only.
+    }
+
+    qrScannerRef.current = null;
+    setScannerActive(false);
+    if (updateStatus) setScannerStatus("Scanner is off.");
   }
 
   function colorForEvent(event: CalendarItem) {
@@ -3927,9 +4083,14 @@ export default function AtlasPage() {
           title="QR Codes"
           detail="Create printable QR labels for Atlas records. Scanning a code opens Atlas directly to the matching asset, location, vendor, or map label."
           right={
-            <button type="button" className="atlas-no-print" onClick={() => window.print()} style={goldButtonStyle}>
-              Print QR Labels
-            </button>
+            <div className="atlas-no-print" style={buttonRowStyle}>
+              <button type="button" onClick={() => setScreen("scan")} style={secondaryButtonStyle}>
+                Scan QR
+              </button>
+              <button type="button" onClick={() => window.print()} style={goldButtonStyle}>
+                Print QR Labels
+              </button>
+            </div>
           }
         />
 
@@ -3963,7 +4124,7 @@ export default function AtlasPage() {
 
         <div style={qrSummaryStyle}>
           <strong>{qrRecords.length} {qrKindLabel[qrKind].toLowerCase()} ready to print</strong>
-          <p style={mutedSmallStyle}>Labels are private to Atlas because the scanned links still require your normal Atlas login. The next phase can add phone-camera scanning inside Atlas.</p>
+          <p style={mutedSmallStyle}>Labels are private to Atlas because the scanned links still require your normal Atlas login. Use Scan QR from Atlas, or use the normal phone Camera app to open a printed label.</p>
         </div>
 
         <div style={qrGridStyle}>
@@ -4003,6 +4164,73 @@ export default function AtlasPage() {
               </article>
             );
           })}
+        </div>
+      </section>
+    );
+  }
+
+  function renderQRScanner() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Phone Scanner"
+          title="Scan QR"
+          detail="Use the phone camera to scan an Atlas QR label and jump directly to the matching asset, location, vendor, or map record."
+          right={
+            <div style={buttonRowStyle}>
+              <button type="button" onClick={() => setScreen("qr")} style={secondaryButtonStyle}>
+                QR Codes
+              </button>
+              {scannerActive ? (
+                <button type="button" onClick={() => void stopQrScanner()} style={dangerButtonStyle}>
+                  Stop Scanner
+                </button>
+              ) : (
+                <button type="button" onClick={() => void startQrScanner()} style={goldButtonStyle}>
+                  Start Camera
+                </button>
+              )}
+            </div>
+          }
+        />
+
+        <div style={isMobile ? { ...scannerLayoutStyle, gridTemplateColumns: "1fr" } : scannerLayoutStyle}>
+          <div style={scannerPanelStyle}>
+            <div id={qrScannerElementId} style={scannerReaderStyle} />
+            <div style={noticeStyle}>
+              <strong>{scannerActive ? "Scanner running" : "Scanner ready"}</strong>
+              <p style={mutedSmallStyle}>{scannerStatus}</p>
+            </div>
+          </div>
+
+          <div style={scannerSideStyle}>
+            <div style={cardStyle}>
+              <h3 style={cardTitleStyle}>How to use it</h3>
+              <p style={mutedSmallStyle}>Tap Start Camera, allow camera access, then point your phone at an Atlas QR label. Atlas will open the matching record automatically.</p>
+              <p style={mutedSmallStyle}>The regular iPhone Camera app also works because each QR label is a normal Atlas link.</p>
+            </div>
+
+            <div style={cardStyle}>
+              <h3 style={cardTitleStyle}>Manual QR link</h3>
+              <p style={mutedSmallStyle}>Paste a copied QR link here if camera permission is blocked.</p>
+              <textarea
+                value={scannerManualValue}
+                onChange={(event) => setScannerManualValue(event.currentTarget.value)}
+                placeholder="Paste Atlas QR link or qr value here..."
+                style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
+              />
+              <button type="button" onClick={() => openQrTarget(scannerManualValue, { source: "manual" })} style={{ ...goldButtonStyle, marginTop: 10 }}>
+                Open QR Target
+              </button>
+            </div>
+
+            {lastScannedQr ? (
+              <div style={noticeStyle}>
+                <strong>Last scanned</strong>
+                <p style={{ ...mutedSmallStyle, wordBreak: "break-all" }}>{lastScannedQr}</p>
+              </div>
+            ) : null}
+          </div>
         </div>
       </section>
     );
@@ -4108,6 +4336,7 @@ export default function AtlasPage() {
     if (screen === "parts") return renderParts();
     if (screen === "links") return renderWorkLinks();
     if (screen === "qr") return renderQRCodes();
+    if (screen === "scan") return renderQRScanner();
     return renderAssistant();
   }
 
@@ -4534,6 +4763,34 @@ const navButtonStyle: React.CSSProperties = {
   minHeight: 30,
   display: "flex",
   alignItems: "center",
+};
+
+const scannerLayoutStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.2fr) minmax(300px, 0.8fr)",
+  gap: 16,
+  alignItems: "start",
+};
+
+const scannerPanelStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 12,
+};
+
+const scannerReaderStyle: React.CSSProperties = {
+  minHeight: 380,
+  width: "100%",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 24,
+  overflow: "hidden",
+  background: colors.navy,
+  display: "grid",
+  placeItems: "center",
+};
+
+const scannerSideStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 12,
 };
 
 const commandStripStyle: React.CSSProperties = {
