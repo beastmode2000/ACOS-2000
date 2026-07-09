@@ -4501,7 +4501,6 @@ const rowButtonStyle: React.CSSProperties = {
   cursor: "pointer",
   color: colors.text,
   boxShadow: "0 10px 26px rgba(15,23,42,0.035)",
-  minWidth: 0,
   overflow: "hidden",
   wordBreak: "break-word",
 };
