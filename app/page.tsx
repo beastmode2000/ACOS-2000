@@ -1111,7 +1111,7 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     logoText: "MX",
     logoBg: "#EEF6FF",
     logoUrl: "https://app.getmaintainx.com/favicon.ico",
-    logoColor: colors.blue,
+    logoColor: colors.navy3,
     notes: "Direct MaintainX work order link.",
   },
 
@@ -1124,7 +1124,7 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     logoText: "PL",
     logoBg: "#EEF2FF",
     logoUrl: "https://access.paylocity.com/favicon.ico",
-    logoColor: colors.blue,
+    logoColor: colors.navy3,
     notes: "Payroll, HR, and timekeeping portal.",
   },
   {
