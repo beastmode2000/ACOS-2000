@@ -54,6 +54,7 @@ type MapLabelRecord = {
   y: number;
   notes: string;
   photos: UploadedFileRecord[];
+  coverPhotoId?: string;
   vendorIds?: string[];
   detailBoxes?: MapDetailBox[];
   installer?: string;
@@ -319,7 +320,7 @@ function normalizeMapDetailBoxes(label: Partial<MapLabelRecord>): MapDetailBox[]
     ? label.detailBoxes
         .map((box) => ({
           id: box.id || uid("mapbox"),
-          title: String(box.title || "Box").trim() || "Box",
+          title: String(box.title || "Tab").trim() || "Tab",
           body: String(box.body || ""),
         }))
         .filter((box) => box.title.trim() || box.body.trim())
@@ -341,7 +342,7 @@ function normalizeMapDetailBoxes(label: Partial<MapLabelRecord>): MapDetailBox[]
     return legacyBoxes.map((box) => ({ id: uid("mapbox"), title: box.title, body: String(box.body || "") }));
   }
 
-  return [{ id: uid("mapbox"), title: "Notes", body: "" }];
+  return [{ id: uid("mapbox"), title: "General Notes", body: "" }];
 }
 
 function slugify(value: string) {
@@ -1217,6 +1218,7 @@ export default function AtlasPage() {
 
   const [mapLabels, setMapLabels] = useState<MapLabelRecord[]>(defaultMapLabels);
   const [selectedMapLabelId, setSelectedMapLabelId] = useState(defaultMapLabels[0].id);
+  const [activeMapPanelTab, setActiveMapPanelTab] = useState<"info" | "vendors" | "photos" | "tabs">("info");
 
   const [assetRecords, setAssetRecords] = useState<AssetRecord[]>(fallbackAssets);
   const [vendorRecords, setVendorRecords] = useState<VendorRecord[]>(fallbackVendors);
@@ -2132,6 +2134,7 @@ export default function AtlasPage() {
       y: 50,
       notes: "",
       photos: [],
+      coverPhotoId: "",
       vendorIds: [],
       detailBoxes: [{ id: uid("mapbox"), title: "Notes", body: "" }],
       installer: "",
@@ -2143,11 +2146,13 @@ export default function AtlasPage() {
     };
     setMapLabels((current) => byLabel([...current, record]));
     setSelectedMapLabelId(record.id);
+    setActiveMapPanelTab("info");
   }
 
   function resetMapLabels() {
     setMapLabels(defaultMapLabels);
     setSelectedMapLabelId(defaultMapLabels[0].id);
+    setActiveMapPanelTab("info");
   }
 
   function updateSelectedMapLabel(patch: Partial<MapLabelRecord>) {
@@ -2161,6 +2166,7 @@ export default function AtlasPage() {
                 x: patch.x === undefined ? label.x : clampPercent(Number(patch.x)),
                 y: patch.y === undefined ? label.y : clampPercent(Number(patch.y)),
                 photos: patch.photos ?? label.photos ?? [],
+                coverPhotoId: patch.coverPhotoId ?? label.coverPhotoId ?? "",
                 vendorIds: patch.vendorIds ?? label.vendorIds ?? [],
                 detailBoxes: patch.detailBoxes ?? label.detailBoxes ?? normalizeMapDetailBoxes(label),
                 installer: patch.installer ?? label.installer ?? "",
@@ -2189,7 +2195,7 @@ export default function AtlasPage() {
     updateSelectedMapLabel({
       detailBoxes: [
         ...(selectedMapLabel.detailBoxes || []),
-        { id: uid("mapbox"), title: "New Box", body: "" },
+        { id: uid("mapbox"), title: "New Tab", body: "" },
       ],
     });
   }
@@ -2205,7 +2211,7 @@ export default function AtlasPage() {
   function removeMapDetailBox(boxId: string) {
     const nextBoxes = (selectedMapLabel.detailBoxes || []).filter((box) => box.id !== boxId);
     updateSelectedMapLabel({
-      detailBoxes: nextBoxes.length ? nextBoxes : [{ id: uid("mapbox"), title: "Notes", body: "" }],
+      detailBoxes: nextBoxes.length ? nextBoxes : [{ id: uid("mapbox"), title: "General Notes", body: "" }],
     });
   }
 
@@ -2241,7 +2247,32 @@ export default function AtlasPage() {
   }
 
   function removeMapLabelPhoto(photoId: string) {
-    updateSelectedMapLabel({ photos: (selectedMapLabel.photos || []).filter((photo) => photo.id !== photoId) });
+    const nextPhotos = (selectedMapLabel.photos || []).filter((photo) => photo.id !== photoId);
+    const nextCoverId = selectedMapLabel.coverPhotoId === photoId ? (nextPhotos[0]?.id || "") : selectedMapLabel.coverPhotoId;
+    updateSelectedMapLabel({ photos: nextPhotos, coverPhotoId: nextCoverId });
+  }
+
+  function handleMapHeaderPhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const nextPhoto: UploadedFileRecord = {
+        id: uid("map-photo"),
+        name: file.name,
+        type: file.type,
+        dataUrl: String(reader.result || ""),
+        createdAt: new Date().toISOString(),
+      };
+
+      updateSelectedMapLabel({
+        photos: [...(selectedMapLabel.photos || []), nextPhoto],
+        coverPhotoId: nextPhoto.id,
+      });
+    };
+    reader.readAsDataURL(file);
+    event.currentTarget.value = "";
   }
 
   function handleMapLabelPointerDown(event: React.PointerEvent<HTMLButtonElement>, labelId: string) {
@@ -2249,6 +2280,7 @@ export default function AtlasPage() {
     event.currentTarget.setPointerCapture(event.pointerId);
     draggingLabelRef.current = labelId;
     setSelectedMapLabelId(labelId);
+    setActiveMapPanelTab("info");
   }
 
   function handleMapPointerMove(event: React.PointerEvent<HTMLDivElement>) {
@@ -2515,6 +2547,8 @@ export default function AtlasPage() {
 
   function renderMap() {
     const selectedMapVendors = vendorRecords.filter((vendor) => (selectedMapLabel.vendorIds || []).includes(vendor.id));
+    const selectedCoverPhoto = (selectedMapLabel.photos || []).find((photo) => photo.id === selectedMapLabel.coverPhotoId) || (selectedMapLabel.photos || [])[0];
+    const mapTabs = selectedMapLabel.detailBoxes || normalizeMapDetailBoxes(selectedMapLabel);
 
     return (
       <ListDrawerLayout
@@ -2577,109 +2611,160 @@ export default function AtlasPage() {
           </div>
         }
         drawer={
-          <div style={mapDetailStackStyle}>
-            <div>
-              <div style={eyebrowStyle}>Selected Label</div>
-              <h3 style={detailTitleStyle}>{selectedMapLabel.label}</h3>
+          <div style={mapInfoPanelStyle}>
+            <div style={mapInfoHeaderStyle}>
+              <div style={mapInfoTitleRowStyle}>
+                <h3 style={mapInfoTitleStyle}>{selectedMapLabel.label}</h3>
+                <div style={mapInfoIconRowStyle}>
+                  <label title="Add header photo" style={mapIconButtonStyle}>
+                    ✎
+                    <input type="file" accept="image/*" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} />
+                  </label>
+                  <button type="button" onClick={() => setActiveMapPanelTab("info")} style={mapIconButtonStyle}>×</button>
+                </div>
+              </div>
+              {selectedCoverPhoto?.dataUrl || selectedCoverPhoto?.url ? (
+                <div style={mapHeaderPhotoShellStyle}>
+                  <img src={selectedCoverPhoto.dataUrl || selectedCoverPhoto.url} alt={selectedMapLabel.label} style={mapHeaderPhotoStyle} />
+                  <label style={mapHeaderPhotoChangeStyle}>
+                    Change Photo
+                    <input type="file" accept="image/*" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} />
+                  </label>
+                </div>
+              ) : (
+                <label style={mapHeaderPhotoEmptyStyle}>
+                  Add header photo
+                  <input type="file" accept="image/*" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} />
+                </label>
+              )}
             </div>
 
-            <div style={mapDetailCardStyle}>
-              <div style={mapDetailSectionTitleStyle}>Label</div>
-              <div style={formGridStyle}>
-                <Field label="Name" value={selectedMapLabel.label} onChange={(value) => updateSelectedMapLabel({ label: value })} />
-                <Field label="Type" value={selectedMapLabel.category} onChange={(value) => updateSelectedMapLabel({ category: value })} />
-              </div>
-            </div>
-
-            <div style={mapDetailCardStyle}>
-              <div style={mapDetailHeaderRowStyle}>
-                <div style={mapDetailSectionTitleStyle}>Boxes</div>
-                <button type="button" onClick={addMapDetailBox} style={smallSubtleButtonStyle}>Add Box</button>
-              </div>
-
-              <div style={mapBoxListStyle}>
-                {(selectedMapLabel.detailBoxes || normalizeMapDetailBoxes(selectedMapLabel)).map((box) => (
-                  <div key={box.id} style={mapCustomBoxStyle}>
-                    <div style={mapBoxHeaderStyle}>
-                      <input
-                        aria-label="Box title"
-                        value={box.title}
-                        onChange={(event) => updateMapDetailBox(box.id, { title: event.currentTarget.value })}
-                        placeholder="Box name"
-                        style={mapBoxTitleInputStyle}
-                      />
-                      <button type="button" onClick={() => removeMapDetailBox(box.id)} style={mapBoxRemoveButtonStyle}>Remove</button>
-                    </div>
-                    <textarea
-                      aria-label={`${box.title || "Box"} details`}
-                      value={box.body}
-                      onChange={(event) => updateMapDetailBox(box.id, { body: event.currentTarget.value })}
-                      placeholder="Add details"
-                      style={mapBoxTextareaStyle}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={mapDetailCardStyle}>
-              <div style={mapDetailSectionTitleStyle}>Vendors</div>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={fieldLabelStyle}>Add Vendor</span>
-                <select
-                  value=""
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    if (value) toggleMapLabelVendor(value);
-                  }}
-                  style={inputStyle}
+            <div style={mapPanelTabsStyle}>
+              {[
+                ["info", "Info"],
+                ["vendors", "Vendors"],
+                ["photos", "Photos"],
+                ["tabs", "Tabs"],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveMapPanelTab(id as "info" | "vendors" | "photos" | "tabs")}
+                  style={activeMapPanelTab === id ? mapPanelTabActiveStyle : mapPanelTabStyle}
                 >
-                  <option value="">Choose vendor</option>
-                  {vendorRecords
-                    .filter((vendor) => !(selectedMapLabel.vendorIds || []).includes(vendor.id))
-                    .map((vendor) => (
-                      <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
-                    ))}
-                </select>
-              </label>
-
-              {selectedMapVendors.length ? (
-                <div style={mapVendorChipListStyle}>
-                  {selectedMapVendors.map((vendor) => (
-                    <button key={vendor.id} type="button" onClick={() => toggleMapLabelVendor(vendor.id)} style={mapVendorChipStyle}>
-                      {vendor.name} ×
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p style={mutedSmallStyle}>No vendors linked.</p>
-              )}
+                  {label}
+                </button>
+              ))}
             </div>
 
-            <div style={mapDetailCardStyle}>
-              <div style={mapDetailSectionTitleStyle}>Photos</div>
-              <label style={{ ...secondaryButtonStyle, display: "inline-flex", cursor: "pointer" }}>
-                Add Photos
-                <input type="file" accept="image/*" multiple onChange={handleMapLabelPhotoUpload} style={{ display: "none" }} />
-              </label>
-
-              {selectedMapLabel.photos?.length ? (
-                <div style={photoGridStyle}>
-                  {selectedMapLabel.photos.map((photo) => (
-                    <div key={photo.id} style={photoCardStyle}>
-                      {photo.dataUrl || photo.url ? <img src={photo.dataUrl || photo.url} alt={photo.name} style={photoStyle} /> : null}
-                      <strong>{photo.name}</strong>
-                      <button type="button" onClick={() => removeMapLabelPhoto(photo.id)} style={dangerMiniButtonStyle}>Remove</button>
-                    </div>
-                  ))}
+            <div style={mapPanelBodyStyle}>
+              {activeMapPanelTab === "info" ? (
+                <div style={mapPanelFormStackStyle}>
+                  <Field label="Name" value={selectedMapLabel.label} onChange={(value) => updateSelectedMapLabel({ label: value })} />
+                  <Field label="Type" value={selectedMapLabel.category} onChange={(value) => updateSelectedMapLabel({ category: value })} />
+                  <label style={{ display: "grid", gap: 7 }}>
+                    <span style={fieldLabelStyle}>Description</span>
+                    <textarea
+                      value={selectedMapLabel.notes || ""}
+                      onChange={(event) => updateSelectedMapLabel({ notes: event.currentTarget.value })}
+                      placeholder="Add a short note"
+                      style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
+                    />
+                  </label>
                 </div>
-              ) : (
-                <p style={mutedSmallStyle}>No photos added.</p>
-              )}
+              ) : null}
+
+              {activeMapPanelTab === "vendors" ? (
+                <div style={mapPanelFormStackStyle}>
+                  <label style={{ display: "grid", gap: 7 }}>
+                    <span style={fieldLabelStyle}>Add Vendor</span>
+                    <select
+                      value=""
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        if (value) toggleMapLabelVendor(value);
+                      }}
+                      style={inputStyle}
+                    >
+                      <option value="">Choose vendor</option>
+                      {vendorRecords
+                        .filter((vendor) => !(selectedMapLabel.vendorIds || []).includes(vendor.id))
+                        .map((vendor) => (
+                          <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                        ))}
+                    </select>
+                  </label>
+
+                  {selectedMapVendors.length ? (
+                    <div style={mapVendorChipListStyle}>
+                      {selectedMapVendors.map((vendor) => (
+                        <button key={vendor.id} type="button" onClick={() => toggleMapLabelVendor(vendor.id)} style={mapVendorChipStyle}>
+                          {vendor.name} ×
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={mapEmptyNoteStyle}>No vendors linked.</p>
+                  )}
+                </div>
+              ) : null}
+
+              {activeMapPanelTab === "photos" ? (
+                <div style={mapPanelFormStackStyle}>
+                  <label style={{ ...secondaryButtonStyle, display: "inline-flex", cursor: "pointer", width: "fit-content" }}>
+                    Add Photos
+                    <input type="file" accept="image/*" multiple onChange={handleMapLabelPhotoUpload} style={{ display: "none" }} />
+                  </label>
+
+                  {selectedMapLabel.photos?.length ? (
+                    <div style={mapSmallPhotoGridStyle}>
+                      {selectedMapLabel.photos.map((photo) => (
+                        <div key={photo.id} style={mapSmallPhotoCardStyle}>
+                          {photo.dataUrl || photo.url ? <img src={photo.dataUrl || photo.url} alt={photo.name} style={mapSmallPhotoStyle} /> : null}
+                          <div style={mapPhotoCardFooterStyle}>
+                            <button type="button" onClick={() => updateSelectedMapLabel({ coverPhotoId: photo.id })} style={smallSubtleButtonStyle}>Use Header</button>
+                            <button type="button" onClick={() => removeMapLabelPhoto(photo.id)} style={dangerMiniButtonStyle}>Remove</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={mapEmptyNoteStyle}>No photos added.</p>
+                  )}
+                </div>
+              ) : null}
+
+              {activeMapPanelTab === "tabs" ? (
+                <div style={mapPanelFormStackStyle}>
+                  <div style={mapTabListStyle}>
+                    {mapTabs.map((box) => (
+                      <div key={box.id} style={mapTabEditorStyle}>
+                        <div style={mapBoxHeaderStyle}>
+                          <input
+                            aria-label="Tab title"
+                            value={box.title}
+                            onChange={(event) => updateMapDetailBox(box.id, { title: event.currentTarget.value })}
+                            placeholder="Tab name"
+                            style={mapBoxTitleInputStyle}
+                          />
+                          <button type="button" onClick={() => removeMapDetailBox(box.id)} style={mapBoxRemoveButtonStyle}>Remove</button>
+                        </div>
+                        <textarea
+                          aria-label={`${box.title || "Tab"} details`}
+                          value={box.body}
+                          onChange={(event) => updateMapDetailBox(box.id, { body: event.currentTarget.value })}
+                          placeholder="Add details"
+                          style={mapBoxTextareaStyle}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={addMapDetailBox} style={mapAddTabButtonStyle}>+ Add Tab</button>
+                </div>
+              ) : null}
             </div>
           </div>
-        }
-      />
+        }      />
     );
   }
 
@@ -4356,6 +4441,188 @@ const mapVendorChipStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 900,
   cursor: "pointer",
+};
+
+
+const mapInfoPanelStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 18,
+  background: "#FFFFFF",
+  overflow: "hidden",
+  boxShadow: "0 14px 32px rgba(15,23,42,0.08)",
+};
+
+const mapInfoHeaderStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 0,
+};
+
+const mapInfoTitleRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  padding: "14px 16px",
+};
+
+const mapInfoTitleStyle: React.CSSProperties = {
+  margin: 0,
+  color: colors.navy,
+  fontSize: 21,
+  fontWeight: 950,
+  letterSpacing: "-0.03em",
+};
+
+const mapInfoIconRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const mapIconButtonStyle: React.CSSProperties = {
+  border: "none",
+  background: "transparent",
+  color: colors.navy,
+  fontSize: 20,
+  lineHeight: 1,
+  cursor: "pointer",
+  padding: 4,
+};
+
+const mapHeaderPhotoShellStyle: React.CSSProperties = {
+  position: "relative",
+  height: 150,
+  overflow: "hidden",
+  borderTop: `1px solid ${colors.line}`,
+  borderBottom: `1px solid ${colors.line}`,
+  background: colors.panel,
+};
+
+const mapHeaderPhotoStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+  display: "block",
+};
+
+const mapHeaderPhotoChangeStyle: React.CSSProperties = {
+  position: "absolute",
+  right: 10,
+  bottom: 10,
+  border: `1px solid rgba(255,255,255,0.75)`,
+  borderRadius: 999,
+  background: "rgba(2, 28, 53, 0.78)",
+  color: "#FFFFFF",
+  padding: "6px 9px",
+  fontSize: 11,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const mapHeaderPhotoEmptyStyle: React.CSSProperties = {
+  height: 76,
+  borderTop: `1px solid ${colors.line}`,
+  borderBottom: `1px solid ${colors.line}`,
+  background: colors.panel,
+  color: colors.muted,
+  display: "grid",
+  placeItems: "center",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const mapPanelTabsStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, 1fr)",
+  borderBottom: `1px solid ${colors.line}`,
+};
+
+const mapPanelTabStyle: React.CSSProperties = {
+  border: "none",
+  borderBottom: "2px solid transparent",
+  background: "#FFFFFF",
+  color: colors.muted,
+  padding: "12px 6px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const mapPanelTabActiveStyle: React.CSSProperties = {
+  ...mapPanelTabStyle,
+  color: colors.gold,
+  borderBottomColor: colors.gold,
+};
+
+const mapPanelBodyStyle: React.CSSProperties = {
+  padding: 14,
+};
+
+const mapPanelFormStackStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 13,
+};
+
+const mapTabListStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+const mapTabEditorStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 13,
+  background: "#FFFFFF",
+  padding: 10,
+  display: "grid",
+  gap: 8,
+};
+
+const mapAddTabButtonStyle: React.CSSProperties = {
+  border: `1px dashed ${colors.line}`,
+  borderRadius: 13,
+  background: "#FFFFFF",
+  color: colors.navy,
+  padding: "11px 12px",
+  fontSize: 13,
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const mapSmallPhotoGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: 10,
+};
+
+const mapSmallPhotoCardStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  borderRadius: 13,
+  background: "#FFFFFF",
+  padding: 8,
+  display: "grid",
+  gap: 8,
+};
+
+const mapSmallPhotoStyle: React.CSSProperties = {
+  width: "100%",
+  height: 92,
+  objectFit: "cover",
+  borderRadius: 10,
+  border: `1px solid ${colors.line}`,
+};
+
+const mapPhotoCardFooterStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 6,
+  flexWrap: "wrap",
+};
+
+const mapEmptyNoteStyle: React.CSSProperties = {
+  margin: 0,
+  color: colors.muted,
+  fontSize: 12,
+  lineHeight: 1.4,
 };
 
 const dangerMiniButtonStyle: React.CSSProperties = {
