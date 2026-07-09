@@ -3633,6 +3633,27 @@ export default function AtlasPage() {
     );
   }
 
+  function renderIdentityRail() {
+    return (
+      <div style={identityRailStyle}>
+        <div style={identityRailInnerStyle}>
+          <div style={identityMarkStyle}>A</div>
+          <div style={identityVerticalTextStyle}>
+            <span>ATLAS / 2000</span>
+            <strong>Property Command Center</strong>
+          </div>
+          <div style={identityDividerStyle} />
+          <div style={identitySmallTextStyle}>
+            <span>Private estate systems</span>
+            <span>Operations</span>
+            <span>Grounds</span>
+            <span>Assets</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function renderCommandStrip() {
     const openWorkOrders = serviceRecords.filter((record) => record.status !== "Completed");
     const highPriority = serviceRecords.filter((record) => record.priority === "High" && record.status !== "Completed");
@@ -3737,7 +3758,7 @@ export default function AtlasPage() {
 
   return (
     <main style={appStyle}>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "260px 1fr", minHeight: "100vh" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "260px 138px minmax(0, 1fr)", minHeight: "100vh" }}>
         <aside style={{ ...sidebarStyle, position: isMobile ? "static" : "sticky", height: isMobile ? "auto" : "100vh" }}>
           <div style={brandStyle}>
             <div style={logoBoxStyle}>
@@ -3778,6 +3799,8 @@ export default function AtlasPage() {
 
           {!isMobile ? renderCommandStrip() : null}
         </aside>
+
+        {!isMobile ? renderIdentityRail() : null}
 
         <section style={{ minWidth: 0 }}>
           <header style={topbarStyle}>
@@ -3909,6 +3932,77 @@ const navButtonStyle: React.CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   fontWeight: 950,
+};
+
+const identityRailStyle: React.CSSProperties = {
+  background: colors.bg,
+  borderRight: `1px solid ${colors.line}`,
+  minHeight: "100vh",
+  position: "sticky",
+  top: 0,
+  display: "flex",
+  alignItems: "stretch",
+  justifyContent: "center",
+  padding: "28px 12px",
+  overflow: "hidden",
+};
+
+const identityRailInnerStyle: React.CSSProperties = {
+  width: "100%",
+  borderRadius: 24,
+  border: "1px solid rgba(13, 39, 66, 0.08)",
+  background: "linear-gradient(180deg, rgba(255,255,255,0.50) 0%, rgba(255,255,255,0.16) 100%)",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "22px 10px",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
+};
+
+const identityMarkStyle: React.CSSProperties = {
+  width: 42,
+  height: 42,
+  borderRadius: 14,
+  border: `1px solid rgba(207, 157, 54, 0.32)`,
+  color: "rgba(207, 157, 54, 0.72)",
+  display: "grid",
+  placeItems: "center",
+  fontWeight: 950,
+  fontSize: 20,
+  letterSpacing: -1,
+  background: "rgba(255,255,255,0.45)",
+};
+
+const identityVerticalTextStyle: React.CSSProperties = {
+  writingMode: "vertical-rl",
+  transform: "rotate(180deg)",
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  color: "rgba(13, 39, 66, 0.36)",
+  textTransform: "uppercase",
+  letterSpacing: 3.2,
+  fontSize: 11,
+  fontWeight: 900,
+  textAlign: "center",
+};
+
+const identityDividerStyle: React.CSSProperties = {
+  width: 1,
+  height: 72,
+  background: "linear-gradient(180deg, transparent, rgba(207,157,54,0.32), transparent)",
+};
+
+const identitySmallTextStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  color: "rgba(13, 39, 66, 0.34)",
+  fontSize: 10,
+  fontWeight: 850,
+  textAlign: "center",
+  textTransform: "uppercase",
+  letterSpacing: 1.4,
 };
 
 const commandStripStyle: React.CSSProperties = {
