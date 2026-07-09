@@ -1101,6 +1101,68 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     logoColor: colors.red,
     notes: "Main zone control page for the Carrier / Honeywell HVAC zoning system.",
   },
+
+  {
+    id: "maintainx-work-order",
+    name: "MaintainX Work Order",
+    category: "Work Orders / Maintenance",
+    vendor: "MaintainX",
+    url: "https://app.getmaintainx.com/workorders/108180701",
+    logoText: "MX",
+    logoBg: "#EEF6FF",
+    logoUrl: "https://app.getmaintainx.com/favicon.ico",
+    logoColor: colors.blue,
+    notes: "Direct MaintainX work order link.",
+  },
+
+  {
+    id: "paylocity",
+    name: "Paylocity",
+    category: "Payroll / HR",
+    vendor: "Paylocity",
+    url: "https://access.paylocity.com/",
+    logoText: "PL",
+    logoBg: "#EEF2FF",
+    logoUrl: "https://access.paylocity.com/favicon.ico",
+    logoColor: colors.blue,
+    notes: "Payroll, HR, and timekeeping portal.",
+  },
+  {
+    id: "ramp",
+    name: "Ramp",
+    category: "Company Cards / Expenses",
+    vendor: "Ramp",
+    url: "https://app.ramp.com/sign-in",
+    logoText: "R",
+    logoBg: "#ECFDF3",
+    logoUrl: "https://app.ramp.com/favicon.ico",
+    logoColor: colors.green,
+    notes: "Company cards, receipts, and expense management.",
+  },
+  {
+    id: "chatgpt",
+    name: "ChatGPT",
+    category: "AI / Assistant",
+    vendor: "OpenAI",
+    url: "https://chatgpt.com/",
+    logoText: "AI",
+    logoBg: "#F8FAFC",
+    logoUrl: "https://chatgpt.com/favicon.ico",
+    logoColor: colors.navy3,
+    notes: "Assistant workspace for Atlas notes, planning, email review, and intake.",
+  },
+  {
+    id: "babbel",
+    name: "Babbel",
+    category: "Learning / Training",
+    vendor: "Babbel",
+    url: "https://my.babbel.com/dashboard",
+    logoText: "BB",
+    logoBg: "#FFF7ED",
+    logoUrl: "https://my.babbel.com/favicon.ico",
+    logoColor: "#C2410C",
+    notes: "Learning dashboard.",
+  },
   {
     id: "metaviewer",
     name: "MetaViewer Invoice Search / Approvals",
@@ -2342,7 +2404,7 @@ export default function AtlasPage() {
     }
 
     if (text.includes("link") || text.includes("portal") || text.includes("login")) {
-      setAssistantAnswer(`Atlas currently has ${defaultWorkLinks.length} work links loaded: Landscape Help Admin, Landscape Help Crew Link, UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`);
+      setAssistantAnswer(`Atlas currently has ${defaultWorkLinks.length} work links loaded: Landscape Help Admin, Landscape Help Crew Link, MaintainX, Paylocity, Ramp, ChatGPT, Babbel, UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`);
       return;
     }
 
@@ -3532,7 +3594,7 @@ export default function AtlasPage() {
         <SectionHeader
           eyebrow="Quick Access"
           title="Work Links"
-          detail="Regularly used work portals for Landscape Help admin, the crew checklist link, cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
+          detail="Regularly used work portals for Landscape Help admin, the crew checklist link, MaintainX, Paylocity, Ramp, ChatGPT, Babbel, cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
         />
 
         <div style={workLinksPageGridStyle}>
