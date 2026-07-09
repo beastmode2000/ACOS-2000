@@ -2538,30 +2538,34 @@ export default function AtlasPage() {
           <StatCard label="High Priority" value={highPriority.length} onClick={() => setScreen("history")} />
         </div>
 
-        <div style={{ ...dashboardTopGridStyle, gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr" }}>
-          <section style={sectionStyle}>
-            <SectionHeader eyebrow="Calendar / Property Focus" title="Today" />
-            <div style={listStyle}>
-              {todayEvents.length ? (
-                todayEvents.map((event) => {
-                  const eventColor = colorForEvent(event);
-                  return (
-                    <button key={event.instanceId || event.id} type="button" onClick={() => { openCalendarItem(event); if (event.source !== "work-order") setScreen("calendar"); }} style={{ ...todayEventStyle, borderLeftColor: eventColor.hex }}>
-                      <div>
-                        <strong>{event.title}</strong>
-                        <p style={mutedSmallStyle}>{formatDate(event.date)} · {event.allDay ? "All day" : event.time || "No time"} · {categoryForEvent(event)}</p>
-                      </div>
-                      <span style={{ ...eventColorPillStyle, borderColor: eventColor.hex, color: eventColor.hex }}>{eventColor.label}</span>
-                    </button>
-                  );
-                })
-              ) : (
-                <div style={noticeStyle}>No calendar items listed for today.</div>
-              )}
+        <div style={{ ...dashboardTopGridStyle, gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", alignItems: "start" }}>
+          <div style={{ display: "grid", gap: 16 }}>
+            <section style={sectionStyle}>
+              <SectionHeader eyebrow="Calendar / Property Focus" title="Today" />
+              <div style={listStyle}>
+                {todayEvents.length ? (
+                  todayEvents.map((event) => {
+                    const eventColor = colorForEvent(event);
+                    return (
+                      <button key={event.instanceId || event.id} type="button" onClick={() => { openCalendarItem(event); if (event.source !== "work-order") setScreen("calendar"); }} style={{ ...todayEventStyle, borderLeftColor: eventColor.hex }}>
+                        <div>
+                          <strong>{event.title}</strong>
+                          <p style={mutedSmallStyle}>{formatDate(event.date)} · {event.allDay ? "All day" : event.time || "No time"} · {categoryForEvent(event)}</p>
+                        </div>
+                        <span style={{ ...eventColorPillStyle, borderColor: eventColor.hex, color: eventColor.hex }}>{eventColor.label}</span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div style={noticeStyle}>No calendar items listed for today.</div>
+                )}
 
-              <button type="button" onClick={() => addCalendarItem(todayISO())} style={{ ...goldButtonStyle, width: "100%" }}>Add today event</button>
-            </div>
-          </section>
+                <button type="button" onClick={() => addCalendarItem(todayISO())} style={{ ...goldButtonStyle, width: "100%" }}>Add today event</button>
+              </div>
+            </section>
+
+            {renderCalendarIntakeCard()}
+          </div>
 
           <section style={sectionStyle}>
             <SectionHeader eyebrow="Next Scheduled Items" title="Upcoming" />
@@ -2581,8 +2585,6 @@ export default function AtlasPage() {
             </div>
           </section>
         </div>
-
-        {renderCalendarIntakeCard()}
 
         {renderDashboardWeather()}
 
