@@ -50,6 +50,20 @@ function cleanDocument(record: AtlasDocumentRecord): Required<AtlasDocumentRecor
   };
 }
 
+function errorResponse(error: unknown, label: string) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return NextResponse.json(
+    {
+      ok: false,
+      documents: [],
+      error: label,
+      detail: message,
+    },
+    { status: 500 }
+  );
+}
+
 async function ensureDocumentsTable(sql: SqlClient) {
   await sql`
     create table if not exists atlas_documents (
@@ -76,125 +90,140 @@ async function ensureDocumentsTable(sql: SqlClient) {
 }
 
 export async function GET() {
-  const databaseUrl = getDatabaseUrl();
+  try {
+    const databaseUrl = getDatabaseUrl();
 
-  if (!databaseUrl) {
-    return NextResponse.json(
-      {
-        ok: false,
-        documents: [],
-        error: "Missing database connection string.",
-      },
-      { status: 500 }
-    );
+    if (!databaseUrl) {
+      return NextResponse.json(
+        {
+          ok: false,
+          documents: [],
+          error: "Missing database connection string.",
+          detail: "Vercel does not have DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL available.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const sql = neon(databaseUrl);
+    await ensureDocumentsTable(sql);
+
+    const rows = (await sql`
+      select record
+      from atlas_documents
+      order by lower(title) asc, created_at desc
+      limit 500
+    `) as { record: AtlasDocumentRecord }[];
+
+    return NextResponse.json({
+      ok: true,
+      documents: rows.map((row) => row.record),
+    });
+  } catch (error) {
+    return errorResponse(error, "GET atlas-documents failed");
   }
-
-  const sql = neon(databaseUrl);
-  await ensureDocumentsTable(sql);
-
-  const rows = (await sql`
-    select record
-    from atlas_documents
-    order by lower(title) asc, created_at desc
-    limit 500
-  `) as { record: AtlasDocumentRecord }[];
-
-  return NextResponse.json({
-    ok: true,
-    documents: rows.map((row) => row.record),
-  });
 }
 
 export async function POST(request: Request) {
-  const databaseUrl = getDatabaseUrl();
+  try {
+    const databaseUrl = getDatabaseUrl();
 
-  if (!databaseUrl) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Missing database connection string.",
-      },
-      { status: 500 }
-    );
-  }
+    if (!databaseUrl) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing database connection string.",
+          detail: "Vercel does not have DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL available.",
+        },
+        { status: 500 }
+      );
+    }
 
-  const body = (await request.json()) as { record?: AtlasDocumentRecord };
-  const record = cleanDocument(body.record || {});
-  const sql = neon(databaseUrl);
+    const body = (await request.json()) as { record?: AtlasDocumentRecord };
+    const record = cleanDocument(body.record || {});
+    const sql = neon(databaseUrl);
 
-  await ensureDocumentsTable(sql);
+    await ensureDocumentsTable(sql);
 
-  await sql`
-    insert into atlas_documents (
-      id,
-      title,
-      target_type,
-      target_id,
-      target_name,
+    await sql`
+      insert into atlas_documents (
+        id,
+        title,
+        target_type,
+        target_id,
+        target_name,
+        record,
+        created_at,
+        updated_at
+      )
+      values (
+        ${record.id},
+        ${record.title},
+        ${record.targetType},
+        ${record.targetId},
+        ${record.targetName},
+        ${JSON.stringify(record)}::jsonb,
+        ${record.createdAt}::timestamptz,
+        now()
+      )
+      on conflict (id) do update set
+        title = excluded.title,
+        target_type = excluded.target_type,
+        target_id = excluded.target_id,
+        target_name = excluded.target_name,
+        record = excluded.record,
+        updated_at = now()
+    `;
+
+    return NextResponse.json({
+      ok: true,
       record,
-      created_at,
-      updated_at
-    )
-    values (
-      ${record.id},
-      ${record.title},
-      ${record.targetType},
-      ${record.targetId},
-      ${record.targetName},
-      ${JSON.stringify(record)}::jsonb,
-      ${record.createdAt}::timestamptz,
-      now()
-    )
-    on conflict (id) do update set
-      title = excluded.title,
-      target_type = excluded.target_type,
-      target_id = excluded.target_id,
-      target_name = excluded.target_name,
-      record = excluded.record,
-      updated_at = now()
-  `;
-
-  return NextResponse.json({
-    ok: true,
-    record,
-  });
+    });
+  } catch (error) {
+    return errorResponse(error, "POST atlas-documents failed");
+  }
 }
 
 export async function DELETE(request: Request) {
-  const databaseUrl = getDatabaseUrl();
+  try {
+    const databaseUrl = getDatabaseUrl();
 
-  if (!databaseUrl) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Missing database connection string.",
-      },
-      { status: 500 }
-    );
+    if (!databaseUrl) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing database connection string.",
+          detail: "Vercel does not have DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL available.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const documentId = new URL(request.url).searchParams.get("id");
+
+    if (!documentId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing document id.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const sql = neon(databaseUrl);
+    await ensureDocumentsTable(sql);
+
+    await sql`
+      delete from atlas_documents
+      where id = ${documentId}
+    `;
+
+    return NextResponse.json({
+      ok: true,
+      id: documentId,
+    });
+  } catch (error) {
+    return errorResponse(error, "DELETE atlas-documents failed");
   }
-
-  const documentId = new URL(request.url).searchParams.get("id");
-
-  if (!documentId) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Missing document id.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const sql = neon(databaseUrl);
-  await ensureDocumentsTable(sql);
-
-  await sql`
-    delete from atlas_documents
-    where id = ${documentId}
-  `;
-
-  return NextResponse.json({
-    ok: true,
-    id: documentId,
-  });
 }
