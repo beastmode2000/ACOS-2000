@@ -1115,6 +1115,8 @@ export default function AtlasPage() {
   const [showUsHolidays, setShowUsHolidays] = useState(true);
   const [showJewishHolidays, setShowJewishHolidays] = useState(true);
   const [calendarCategoryFilters, setCalendarCategoryFilters] = useState<Record<string, boolean>>({});
+  const [calendarIntakeText, setCalendarIntakeText] = useState("");
+  const [calendarIntakeMessage, setCalendarIntakeMessage] = useState("Paste a text, email, or screenshot transcription here. Atlas will make a calendar draft for you to review before saving.");
 
   const [weatherDays, setWeatherDays] = useState<WeatherDay[]>([]);
   const [selectedWeatherDate, setSelectedWeatherDate] = useState("");
@@ -1744,6 +1746,185 @@ export default function AtlasPage() {
     setCalendarDraft(blankCalendarItem(selectedCalendarDate, "maintenance"));
   }
 
+  function formatCalendarIntakeTime(hourText: string, minuteText: string | undefined, meridiemText?: string) {
+    let hour = Number(hourText);
+    const minute = minuteText ? minuteText.padStart(2, "0") : "00";
+    const meridiem = meridiemText?.toLowerCase().replace(/\./g, "") || "";
+
+    if (meridiem === "pm" && hour < 12) hour += 12;
+    if (meridiem === "am" && hour === 12) hour = 0;
+
+    const displayHour = hour % 12 || 12;
+    const displayMeridiem = hour >= 12 ? "PM" : "AM";
+
+    return `${displayHour}:${minute} ${displayMeridiem}`;
+  }
+
+  function dateFromCalendarIntake(text: string) {
+    const now = new Date();
+    const lower = text.toLowerCase();
+
+    if (lower.includes("tomorrow")) {
+      const date = new Date(now);
+      date.setDate(date.getDate() + 1);
+      return localISODate(date);
+    }
+
+    if (lower.includes("today")) return todayISO();
+
+    const isoMatch = text.match(/(20\d{2})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (isoMatch) {
+      return localISODate(new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]), 12));
+    }
+
+    const slashMatch = text.match(/(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/);
+    if (slashMatch) {
+      const yearValue = slashMatch[3] ? Number(slashMatch[3]) : now.getFullYear();
+      const fullYear = yearValue < 100 ? 2000 + yearValue : yearValue;
+      return localISODate(new Date(fullYear, Number(slashMatch[1]) - 1, Number(slashMatch[2]), 12));
+    }
+
+    const monthNames: Record<string, number> = {
+      jan: 0,
+      january: 0,
+      feb: 1,
+      february: 1,
+      mar: 2,
+      march: 2,
+      apr: 3,
+      april: 3,
+      may: 4,
+      jun: 5,
+      june: 5,
+      jul: 6,
+      july: 6,
+      aug: 7,
+      august: 7,
+      sep: 8,
+      sept: 8,
+      september: 8,
+      oct: 9,
+      october: 9,
+      nov: 10,
+      november: 10,
+      dec: 11,
+      december: 11,
+    };
+
+    const monthMatch = lower.match(/(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(20\d{2}))?/);
+    if (monthMatch) {
+      const year = monthMatch[3] ? Number(monthMatch[3]) : now.getFullYear();
+      return localISODate(new Date(year, monthNames[monthMatch[1]], Number(monthMatch[2]), 12));
+    }
+
+    return selectedCalendarDate || todayISO();
+  }
+
+  function timeFromCalendarIntake(text: string) {
+    const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i);
+    if (timeMatch) return formatCalendarIntakeTime(timeMatch[1], timeMatch[2], timeMatch[3]);
+
+    const twentyFourHourMatch = text.match(/([01]?\d|2[0-3]):([0-5]\d)/);
+    if (twentyFourHourMatch) return formatCalendarIntakeTime(twentyFourHourMatch[1], twentyFourHourMatch[2]);
+
+    return "";
+  }
+
+  function titleFromCalendarIntake(text: string) {
+    const lines = text
+      .split(/
++/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const firstUsefulLine = lines.find((line) => !/^from:|^to:|^sent:|^subject:/i.test(line)) || lines[0] || "New Calendar Item";
+    return firstUsefulLine.replace(/\s+/g, " ").slice(0, 90);
+  }
+
+  function categoryFromCalendarIntake(text: string) {
+    const lower = text.toLowerCase();
+
+    if (/landscape|weeding|grounds|lawn|irrigation|hydrawise|sprinkler/.test(lower)) {
+      return { label: "Landscaping", colorId: "landscaping", colorName: "green" as CalendarColorName };
+    }
+
+    if (/boat|dock|cobalt|seadoo|sea-doo|sunstream|seaborne/.test(lower)) {
+      return { label: "Boat / Dock", colorId: "boat-dock", colorName: "blue" as CalendarColorName };
+    }
+
+    if (/vendor|service|install|repair|estimate|invoice|paint|flooring|plumb|electric|hvac|delivery|appointment/.test(lower)) {
+      return { label: "Vendor", colorId: "vendor", colorName: "purple" as CalendarColorName };
+    }
+
+    if (/family|school|kids|personal|owner|steve|jessica|jeremy/.test(lower)) {
+      return { label: "Personal / Owner", colorId: "personal-owner", colorName: "yellow" as CalendarColorName };
+    }
+
+    if (/work order|wo:|maintenance|check|inspect|maintenance/.test(lower)) {
+      return { label: "Maintenance", colorId: "maintenance", colorName: "gray" as CalendarColorName };
+    }
+
+    return { label: "Maintenance", colorId: "maintenance", colorName: "gray" as CalendarColorName };
+  }
+
+  function linkedRecordFromCalendarIntake(text: string) {
+    const lower = text.toLowerCase();
+    const vendor = vendorRecords.find((record) => record.name && lower.includes(record.name.toLowerCase()));
+    if (vendor) return { linkedType: "Vendor" as CalendarLinkType, linkedId: vendor.id, linkedName: vendor.name };
+
+    const asset = assetRecords.find((record) => record.name && lower.includes(record.name.toLowerCase()));
+    if (asset) return { linkedType: "Asset" as CalendarLinkType, linkedId: asset.id, linkedName: asset.name };
+
+    const location = locations.find((record) => record.name && lower.includes(record.name.toLowerCase()));
+    if (location) return { linkedType: "Location" as CalendarLinkType, linkedId: location.id, linkedName: location.name };
+
+    return { linkedType: "None" as CalendarLinkType, linkedId: "", linkedName: "" };
+  }
+
+  function applyCalendarIntake() {
+    const text = calendarIntakeText.trim();
+
+    if (!text) {
+      setCalendarIntakeMessage("Paste the text from a screenshot, email, or message first.");
+      return;
+    }
+
+    const date = dateFromCalendarIntake(text);
+    const time = timeFromCalendarIntake(text);
+    const category = categoryFromCalendarIntake(text);
+    const linked = linkedRecordFromCalendarIntake(text);
+    const title = titleFromCalendarIntake(text);
+
+    const nextDraft: CalendarItem = {
+      ...blankCalendarItem(date, category.colorId),
+      id: "",
+      date,
+      time,
+      title,
+      area: category.label,
+      categoryLabel: category.label,
+      colorId: category.colorId,
+      colorName: category.colorName,
+      allDay: !time,
+      repeat: "None",
+      reminder: "None",
+      notes: `Calendar intake source:
+${text}`,
+      linkedType: linked.linkedType,
+      linkedId: linked.linkedId,
+      linkedName: linked.linkedName,
+      completed: false,
+      source: "manual",
+    };
+
+    setSelectedCalendarId("");
+    setSelectedCalendarDate(date);
+    setCalendarCursor(calendarDateValue(date));
+    setCalendarDraft(nextDraft);
+    setScreen("calendar");
+    setCalendarIntakeMessage("Draft created. Review the event details on the Calendar, then click Save.");
+  }
+
   function updateCalendarColor(id: string, patch: Partial<CalendarColor>) {
     setCalendarColors((current) =>
       current.map((item) => {
@@ -1887,6 +2068,46 @@ export default function AtlasPage() {
     setAssistantAnswer(`Loaded now: ${assetRecords.length} assets, ${vendorRecords.length} vendors, ${serviceRecords.length} work orders, ${procedureRecords.length} procedures, ${calendarItems.length} calendar items, ${partRecords.length} parts, and ${mapLabels.length} map labels.`);
   }
 
+  function renderCalendarIntakeCard() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Calendar Intake"
+          title="Screenshot / Text to Calendar"
+          detail="Paste text from a screenshot, email, text message, or vendor note. Atlas creates a calendar draft for review before saving."
+          right={<button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Open Calendar</button>}
+        />
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <textarea
+            value={calendarIntakeText}
+            onChange={(event) => setCalendarIntakeText(event.currentTarget.value)}
+            placeholder={'Paste text here. Example: "5 Star Flooring / Eric on July 22 at 9 AM for Evi room."'}
+            style={{ ...inputStyle, minHeight: 120, resize: "vertical", fontFamily: "Arial, Helvetica, sans-serif" }}
+          />
+
+          <div style={buttonRowStyle}>
+            <button type="button" onClick={applyCalendarIntake} style={goldButtonStyle}>
+              Make Calendar Draft
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCalendarIntakeText("");
+                setCalendarIntakeMessage("Paste a text, email, or screenshot transcription here. Atlas will make a calendar draft for you to review before saving.");
+              }}
+              style={secondaryButtonStyle}
+            >
+              Clear
+            </button>
+          </div>
+
+          <p style={mutedSmallStyle}>{calendarIntakeMessage}</p>
+        </div>
+      </section>
+    );
+  }
+
   function renderDashboardWorkLinks() {
     return (
       <section style={sectionStyle}>
@@ -2012,6 +2233,8 @@ export default function AtlasPage() {
             </div>
           </section>
         </div>
+
+        {renderCalendarIntakeCard()}
 
         {renderDashboardWeather()}
 
@@ -2527,6 +2750,22 @@ export default function AtlasPage() {
               >
                 Add Event
               </button>
+            </div>
+
+            <div style={{ ...calendarColorsBoxStyle, marginTop: 16 }}>
+              <div style={eyebrowStyle}>Text Intake</div>
+              <p style={mutedSmallStyle}>Paste text from a screenshot, email, or message to fill a draft event. Review before saving.</p>
+              <textarea
+                value={calendarIntakeText}
+                onChange={(event) => setCalendarIntakeText(event.currentTarget.value)}
+                placeholder={'Example: "Elliott Paint here July 22 at 9 AM for exterior staining."'}
+                style={{ ...inputStyle, minHeight: 88, resize: "vertical", fontFamily: "Arial, Helvetica, sans-serif" }}
+              />
+              <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+                <button type="button" onClick={applyCalendarIntake} style={goldButtonStyle}>Make Draft</button>
+                <button type="button" onClick={() => setCalendarIntakeText("")} style={secondaryButtonStyle}>Clear</button>
+              </div>
+              <p style={mutedSmallStyle}>{calendarIntakeMessage}</p>
             </div>
 
             <div style={{ marginTop: 16 }}>
