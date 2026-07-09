@@ -1151,6 +1151,19 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     logoColor: colors.navy3,
     notes: "Assistant workspace for Atlas notes, planning, email review, and intake.",
   },
+
+  {
+    id: "outlook-email",
+    name: "Outlook Email",
+    category: "Email / Communication",
+    vendor: "Microsoft Outlook",
+    url: "https://outlook.office.com/mail/",
+    logoText: "OL",
+    logoBg: "#EFF6FF",
+    logoUrl: "https://outlook.office.com/favicon.ico",
+    logoColor: colors.navy3,
+    notes: "Outlook email inbox for viewing mail.",
+  },
   {
     id: "babbel",
     name: "Babbel",
@@ -2362,6 +2375,10 @@ export default function AtlasPage() {
     setCalendarCursor((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
   }
 
+  function moveCalendarYear(delta: number) {
+    setCalendarCursor((current) => new Date(current.getFullYear() + delta, current.getMonth(), 1));
+  }
+
   function moveCalendarPeriod(delta: number) {
     if (calendarView === "week") {
       setCalendarCursor((current) => {
@@ -2404,7 +2421,7 @@ export default function AtlasPage() {
     }
 
     if (text.includes("link") || text.includes("portal") || text.includes("login")) {
-      setAssistantAnswer(`Atlas currently has ${defaultWorkLinks.length} work links loaded: Landscape Help Admin, Landscape Help Crew Link, MaintainX, Paylocity, Ramp, ChatGPT, Babbel, UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`);
+      setAssistantAnswer(`Atlas currently has ${defaultWorkLinks.length} work links loaded: Landscape Help Admin, Landscape Help Crew Link, MaintainX, Paylocity, Ramp, ChatGPT, Outlook Email, Babbel, UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`);
       return;
     }
 
@@ -3050,6 +3067,9 @@ export default function AtlasPage() {
         drawerStyleOverride={calendarWhiteDrawerStyle}
         right={
           <>
+            <button type="button" onClick={() => moveCalendarYear(-1)} style={secondaryButtonStyle}>
+              Previous Year
+            </button>
             <button type="button" onClick={() => moveCalendarPeriod(-1)} style={secondaryButtonStyle}>
               Previous
             </button>
@@ -3068,6 +3088,9 @@ export default function AtlasPage() {
             <button type="button" onClick={() => moveCalendarPeriod(1)} style={secondaryButtonStyle}>
               Next
             </button>
+            <button type="button" onClick={() => moveCalendarYear(1)} style={secondaryButtonStyle}>
+              Next Year
+            </button>
           </>
         }
         list={
@@ -3078,6 +3101,16 @@ export default function AtlasPage() {
                 <div style={buttonRowStyle}>
                   <button type="button" onClick={() => setCalendarView("month")} style={calendarView === "month" ? goldButtonStyle : secondaryButtonStyle}>Month</button>
                   <button type="button" onClick={() => setCalendarView("week")} style={calendarView === "week" ? goldButtonStyle : secondaryButtonStyle}>Week</button>
+                  <select
+                    value={calendarCursor.getFullYear()}
+                    onChange={(event) => setCalendarCursor((current) => new Date(Number(event.currentTarget.value), current.getMonth(), 1))}
+                    style={{ ...inputStyle, width: 120, padding: "10px 12px" }}
+                    aria-label="Calendar year"
+                  >
+                    {Array.from({ length: 31 }, (_, index) => new Date().getFullYear() - 15 + index).map((year) => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -3589,7 +3622,7 @@ export default function AtlasPage() {
         <SectionHeader
           eyebrow="Quick Access"
           title="Work Links"
-          detail="Regularly used work portals for Landscape Help admin, the crew checklist link, MaintainX, Paylocity, Ramp, ChatGPT, Babbel, cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
+          detail="Regularly used work portals for Landscape Help admin, the crew checklist link, MaintainX, Paylocity, Ramp, ChatGPT, Outlook Email, Babbel, cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
         />
 
         <div style={workLinksPageGridStyle}>
