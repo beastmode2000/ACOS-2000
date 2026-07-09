@@ -1309,11 +1309,13 @@ export default function AtlasPage() {
   const [selectedServiceId, setSelectedServiceId] = useState(fallbackWorkOrders[0]?.id || "");
   const [selectedProcedureId, setSelectedProcedureId] = useState(fallbackProcedures[0]?.id || "");
   const [selectedPartId, setSelectedPartId] = useState(fallbackParts[0]?.id || "");
+  const [dirtyRecords, setDirtyRecords] = useState<Record<string, boolean>>({});
 
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
   const [selectedCalendarId, setSelectedCalendarId] = useState("");
   const [calendarDraft, setCalendarDraft] = useState<CalendarItem>(() => blankCalendarItem(todayISO()));
+  const [calendarDirty, setCalendarDirty] = useState(false);
   const [calendarView, setCalendarView] = useState<"month" | "week">("month");
   const [showUsHolidays, setShowUsHolidays] = useState(true);
   const [showJewishHolidays, setShowJewishHolidays] = useState(true);
@@ -1542,6 +1544,38 @@ export default function AtlasPage() {
   const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
   const selectedWeather = weatherDays.find((day) => day.date === selectedWeatherDate) ?? weatherDays[0];
   const selectedCalendar = calendarDraft;
+
+  function dirtyKey(recordType: string, id?: string) {
+    return `${recordType}:${id || ""}`;
+  }
+
+  function markRecordDirty(recordType: string, id?: string) {
+    if (!id) return;
+    const key = dirtyKey(recordType, id);
+    setDirtyRecords((current) => ({ ...current, [key]: true }));
+  }
+
+  function clearRecordDirty(recordType: string, id?: string) {
+    if (!id) return;
+    const key = dirtyKey(recordType, id);
+    setDirtyRecords((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function isRecordDirty(recordType: string, id?: string) {
+    return !!id && !!dirtyRecords[dirtyKey(recordType, id)];
+  }
+
+  async function saveDirtyRecord(table: AtlasTable, record: unknown, recordType: string, id?: string) {
+    await postAtlasRecord(table, record);
+    clearRecordDirty(recordType, id);
+  }
+
+  const showCalendarSave = calendarDirty;
 
   const holidayYears = useMemo(() => {
     const year = calendarCursor.getFullYear();
@@ -1817,10 +1851,12 @@ export default function AtlasPage() {
     const record = normalizeAsset({ id: uid("asset"), name: "New Asset", locationId: "general", category: "General", status: "Monitor", notes: "" });
     setAssetRecords((current) => byName([record, ...current]));
     setSelectedAssetId(record.id);
+    markRecordDirty("asset", record.id);
     setScreen("assets");
   }
 
   function updateAsset(patch: Partial<AssetRecord>) {
+    markRecordDirty("asset", selectedAsset.id);
     setAssetRecords((current) => byName(current.map((item) => (item.id === selectedAsset.id ? normalizeAsset({ ...item, ...patch }) : item))));
   }
 
@@ -1828,10 +1864,12 @@ export default function AtlasPage() {
     const record = normalizeVendor({ id: uid("vendor"), name: "New Vendor", category: "General", notes: "" });
     setVendorRecords((current) => byName([record, ...current]));
     setSelectedVendorId(record.id);
+    markRecordDirty("vendor", record.id);
     setScreen("vendors");
   }
 
   function updateVendor(patch: Partial<VendorRecord>) {
+    markRecordDirty("vendor", selectedVendor.id);
     setVendorRecords((current) => byName(current.map((item) => (item.id === selectedVendor.id ? normalizeVendor({ ...item, ...patch }) : item))));
   }
 
@@ -1839,10 +1877,12 @@ export default function AtlasPage() {
     const record = normalizeService({ id: uid("wo"), title: "New Work Order", date: todayISO(), status: "Open", priority: "Medium", notes: "", assetId: selectedAsset.id });
     setServiceRecords((current) => byTitle([record, ...current]));
     setSelectedServiceId(record.id);
+    markRecordDirty("work_order", record.id);
     setScreen("history");
   }
 
   function updateWorkOrder(patch: Partial<ServiceRecord>) {
+    markRecordDirty("work_order", selectedService.id);
     setServiceRecords((current) => byTitle(current.map((item) => (item.id === selectedService.id ? normalizeService({ ...item, ...patch }) : item))));
   }
 
@@ -1851,6 +1891,7 @@ export default function AtlasPage() {
     setSelectedCalendarDate(targetDate);
     setSelectedCalendarId("");
     setCalendarDraft(blankCalendarItem(targetDate));
+    setCalendarDirty(false);
     setCalendarIntakeText("");
     setCalendarIntakeMessage("");
     setScreen("calendar");
@@ -1863,6 +1904,7 @@ export default function AtlasPage() {
     setSelectedCalendarId(normalized.id);
     setSelectedCalendarDate(normalized.date);
     setCalendarDraft({ ...normalized });
+    setCalendarDirty(false);
   }
 
   function openCalendarItem(event: CalendarItem) {
@@ -1887,6 +1929,7 @@ export default function AtlasPage() {
   }
 
   function updateCalendarItem(patch: Partial<CalendarItem>) {
+    setCalendarDirty(true);
     setCalendarDraft((current) => {
       const nextAllDay = patch.allDay ?? current.allDay ?? false;
       const nextCategory = patch.categoryLabel ?? patch.area ?? current.categoryLabel ?? current.area ?? "";
@@ -1928,6 +1971,7 @@ export default function AtlasPage() {
   function resetCalendarEntryForm(date = selectedCalendarDate || todayISO()) {
     setSelectedCalendarId("");
     setCalendarDraft(blankCalendarItem(date));
+    setCalendarDirty(false);
     setCalendarIntakeText("");
     setCalendarIntakeMessage("");
   }
@@ -1985,6 +2029,7 @@ export default function AtlasPage() {
     setCalendarItems(byTitle(remaining));
     setSelectedCalendarId("");
     setCalendarDraft(blankCalendarItem(selectedCalendarDate));
+    setCalendarDirty(false);
   }
 
   function formatCalendarIntakeTime(hourText: string, minuteText: string | undefined, meridiemText?: string) {
@@ -2160,6 +2205,7 @@ export default function AtlasPage() {
     setSelectedCalendarDate(date);
     setCalendarCursor(calendarDateValue(date));
     setCalendarDraft(nextDraft);
+    setCalendarDirty(true);
     setScreen("calendar");
     setCalendarIntakeMessage("Draft ready. Review and save.");
   }
@@ -2193,10 +2239,12 @@ export default function AtlasPage() {
   }
 
   function updateProcedure(patch: Partial<ProcedureRecord>) {
+    markRecordDirty("procedure", selectedProcedure.id);
     setProcedureRecords((current) => byTitle(current.map((item) => (item.id === selectedProcedure.id ? normalizeProcedure({ ...item, ...patch }) : item))));
   }
 
   function updatePart(patch: Partial<PartRecord>) {
+    markRecordDirty("part", selectedPart.id);
     setPartRecords((current) => byName(current.map((item) => (item.id === selectedPart.id ? normalizePart({ ...item, ...patch }) : item))));
   }
 
@@ -2926,7 +2974,9 @@ export default function AtlasPage() {
             </div>
 
             <div style={buttonRowStyle}>
-              <button type="button" onClick={() => void postAtlasRecord("assets", selectedAsset)} style={goldButtonStyle}>Save Asset</button>
+              {isRecordDirty("asset", selectedAsset.id) ? (
+                <button type="button" onClick={() => void saveDirtyRecord("assets", selectedAsset, "asset", selectedAsset.id)} style={goldButtonStyle}>Save Asset</button>
+              ) : null}
               <button type="button" onClick={addWorkOrder} style={secondaryButtonStyle}>Create WO</button>
             </div>
 
@@ -2983,7 +3033,9 @@ export default function AtlasPage() {
               <Field label="Website" value={selectedVendor.website ?? ""} onChange={(value) => updateVendor({ website: value })} />
               <Field label="Notes" value={selectedVendor.notes} onChange={(value) => updateVendor({ notes: value })} multiline />
             </div>
-            <button type="button" onClick={() => void postAtlasRecord("vendors", selectedVendor)} style={goldButtonStyle}>Save Vendor</button>
+            {isRecordDirty("vendor", selectedVendor.id) ? (
+              <button type="button" onClick={() => void saveDirtyRecord("vendors", selectedVendor, "vendor", selectedVendor.id)} style={goldButtonStyle}>Save Vendor</button>
+            ) : null}
           </>
         }
       />
@@ -3036,7 +3088,9 @@ export default function AtlasPage() {
               <Field label="Follow-up Date" value={selectedService.followUpDate ?? ""} onChange={(value) => updateWorkOrder({ followUpDate: value })} />
               <Field label="Notes" value={selectedService.notes} onChange={(value) => updateWorkOrder({ notes: value })} multiline />
             </div>
-            <button type="button" onClick={() => void postAtlasRecord("work_orders", selectedService)} style={goldButtonStyle}>Save Work Order</button>
+            {isRecordDirty("work_order", selectedService.id) ? (
+              <button type="button" onClick={() => void saveDirtyRecord("work_orders", selectedService, "work_order", selectedService.id)} style={goldButtonStyle}>Save Work Order</button>
+            ) : null}
           </>
         }
       />
@@ -3391,9 +3445,11 @@ export default function AtlasPage() {
               </div>
 
               <div style={buttonRowStyle}>
-                <button type="button" onClick={saveCalendarItem} style={goldButtonStyle}>
-                  Save
-                </button>
+                {showCalendarSave ? (
+                  <button type="button" onClick={saveCalendarItem} style={goldButtonStyle}>
+                    Save
+                  </button>
+                ) : null}
 
                 {hasSelectedEvent ? (
                   <button type="button" onClick={() => deleteCalendarItem(selectedCalendarId)} style={dangerButtonStyle}>
@@ -3572,7 +3628,9 @@ export default function AtlasPage() {
               <SelectField label="Priority" value={selectedProcedure.priority} onChange={(value) => updateProcedure({ priority: value })} options={["High", "Normal", "Seasonal"] as const} />
               <Field label="Steps, one per line" value={selectedProcedure.steps.join("\n")} onChange={(value) => updateProcedure({ steps: value.split("\n").map((item) => item.trim()).filter(Boolean) })} multiline />
             </div>
-            <button type="button" onClick={() => void postAtlasRecord("procedures", selectedProcedure)} style={goldButtonStyle}>Save Procedure</button>
+            {isRecordDirty("procedure", selectedProcedure.id) ? (
+              <button type="button" onClick={() => void saveDirtyRecord("procedures", selectedProcedure, "procedure", selectedProcedure.id)} style={goldButtonStyle}>Save Procedure</button>
+            ) : null}
           </>
         }
       />
