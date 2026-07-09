@@ -57,43 +57,87 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
     )
   `;
 
-  await sql`create index if not exists atlas_documents_created_at_idx on atlas_documents (created_at desc)`;
-  await sql`create index if not exists atlas_documents_target_idx on atlas_documents (target_type, target_id)`;
+  await sql`
+    create index if not exists atlas_documents_created_at_idx
+    on atlas_documents (created_at desc)
+  `;
+
+  await sql`
+    create index if not exists atlas_documents_target_idx
+    on atlas_documents (target_type, target_id)
+  `;
 }
 
 export async function GET() {
   const url = databaseUrl();
+
   if (!url) {
-    return NextResponse.json({ ok: false, documents: [], error: "Missing DATABASE_URL / POSTGRES_URL / NEON_DATABASE_URL" }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        documents: [],
+        error: "Missing DATABASE_URL / POSTGRES_URL / NEON_DATABASE_URL",
+      },
+      { status: 500 }
+    );
   }
 
   const sql = neon(url);
   await ensureTable(sql);
 
-  const rows = await sql<{ record: AtlasDocumentRecord }[]>`
+  const rows = (await sql`
     select record
     from atlas_documents
     order by created_at desc
     limit 500
-  `;
+  `) as Array<{ record: AtlasDocumentRecord }>;
 
-  return NextResponse.json({ ok: true, documents: rows.map((row) => row.record) });
+  return NextResponse.json({
+    ok: true,
+    documents: rows.map((row) => row.record),
+  });
 }
 
 export async function POST(request: Request) {
   const url = databaseUrl();
+
   if (!url) {
-    return NextResponse.json({ ok: false, error: "Missing DATABASE_URL / POSTGRES_URL / NEON_DATABASE_URL" }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Missing DATABASE_URL / POSTGRES_URL / NEON_DATABASE_URL",
+      },
+      { status: 500 }
+    );
   }
 
   const body = (await request.json()) as { record?: AtlasDocumentRecord };
   const record = sanitizeDocument(body.record || {});
   const sql = neon(url);
+
   await ensureTable(sql);
 
   await sql`
-    insert into atlas_documents (id, title, target_type, target_id, target_name, record, created_at, updated_at)
-    values (${record.id}, ${record.title}, ${record.targetType}, ${record.targetId}, ${record.targetName}, ${JSON.stringify(record)}::jsonb, ${record.createdAt}::timestamptz, now())
+    insert into atlas_documents (
+      id,
+      title,
+      target_type,
+      target_id,
+      target_name,
+      record,
+      created_at,
+      updated_at
+    )
+    values (
+      ${record.id},
+      ${record.title},
+      ${record.targetType},
+      ${record.targetId},
+      ${record.targetName},
+      ${JSON.stringify(record)}::jsonb,
+      ${record.createdAt}::timestamptz,
+      now()
+    )
     on conflict (id) do update set
       title = excluded.title,
       target_type = excluded.target_type,
@@ -103,5 +147,8 @@ export async function POST(request: Request) {
       updated_at = now()
   `;
 
-  return NextResponse.json({ ok: true, record });
+  return NextResponse.json({
+    ok: true,
+    record,
+  });
 }
