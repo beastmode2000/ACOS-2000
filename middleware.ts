@@ -4,6 +4,28 @@ function hasShareToken(request: NextRequest) {
   return request.nextUrl.searchParams.has("token");
 }
 
+function redirectOldLandscapeTokenLink(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // Old/bad format:
+  // /landscape-help/REAL_TOKEN
+  //
+  // Redirect to correct format:
+  // /landscape-help?token=REAL_TOKEN
+  if (!pathname.startsWith("/landscape-help/")) return null;
+
+  const token = pathname.replace("/landscape-help/", "").trim();
+
+  if (!token || token.includes("/")) return null;
+
+  const url = request.nextUrl.clone();
+  url.pathname = "/landscape-help";
+  url.search = "";
+  url.searchParams.set("token", token);
+
+  return NextResponse.redirect(url);
+}
+
 function isPublicPath(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
@@ -17,13 +39,13 @@ function isPublicPath(request: NextRequest) {
     return true;
   }
 
-  // Public crew page ONLY with token:
+  // Correct public crew page:
   // /landscape-help?token=REAL_TOKEN
   if (pathname === "/landscape-help" && hasShareToken(request)) {
     return true;
   }
 
-  // Public crew API ONLY with token:
+  // Correct public crew API:
   // /api/landscape-help?token=REAL_TOKEN
   if (pathname === "/api/landscape-help" && hasShareToken(request)) {
     return true;
@@ -62,6 +84,12 @@ function unauthorizedResponse() {
 }
 
 export function middleware(request: NextRequest) {
+  const redirectedOldLandscapeLink = redirectOldLandscapeTokenLink(request);
+
+  if (redirectedOldLandscapeLink) {
+    return redirectedOldLandscapeLink;
+  }
+
   if (isPublicPath(request)) {
     return NextResponse.next();
   }
