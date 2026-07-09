@@ -1146,13 +1146,16 @@ function ListDrawerLayout(props: {
   list: React.ReactNode;
   drawer: React.ReactNode;
   isMobile: boolean;
+  outerStyle?: React.CSSProperties;
+  listPanelStyleOverride?: React.CSSProperties;
+  drawerStyleOverride?: React.CSSProperties;
 }) {
   return (
-    <section style={sectionStyle}>
+    <section style={props.outerStyle ? { ...sectionStyle, ...props.outerStyle } : sectionStyle}>
       <SectionHeader eyebrow={props.eyebrow} title={props.title} detail={props.detail} right={props.right} />
       <div style={{ ...drawerGridStyle, gridTemplateColumns: props.isMobile ? "1fr" : "minmax(0, 1fr) minmax(330px, 430px)" }}>
-        <div style={listPanelStyle}>{props.list}</div>
-        <div style={drawerStyle}>{props.drawer}</div>
+        <div style={props.listPanelStyleOverride ? { ...listPanelStyle, ...props.listPanelStyleOverride } : listPanelStyle}>{props.list}</div>
+        <div style={props.drawerStyleOverride ? { ...drawerStyle, ...props.drawerStyleOverride } : drawerStyle}>{props.drawer}</div>
       </div>
     </section>
   );
@@ -2656,6 +2659,9 @@ export default function AtlasPage() {
         title=""
         detail={undefined}
         isMobile={isMobile}
+        outerStyle={calendarNavyShellStyle}
+        listPanelStyleOverride={calendarWhitePanelStyle}
+        drawerStyleOverride={calendarWhiteDrawerStyle}
         right={
           <>
             <button type="button" onClick={() => moveCalendarPeriod(-1)} style={secondaryButtonStyle}>
@@ -3471,6 +3477,29 @@ const dashboardStackStyle: React.CSSProperties = { display: "grid", gap: 14 };
 const stackStyle: React.CSSProperties = { display: "grid", gap: 16 };
 const listStyle: React.CSSProperties = { display: "grid", gap: 10 };
 const buttonRowStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" };
+
+const calendarNavyShellStyle: React.CSSProperties = {
+  background: colors.navy,
+  border: `1px solid ${colors.navy3}`,
+  borderRadius: 24,
+  padding: 18,
+  boxShadow: "0 22px 55px rgba(7,27,47,0.22)",
+};
+
+const calendarWhitePanelStyle: React.CSSProperties = {
+  background: "#FFFFFF",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 22,
+  padding: 16,
+  boxShadow: "0 18px 42px rgba(0,0,0,0.12)",
+};
+
+const calendarWhiteDrawerStyle: React.CSSProperties = {
+  background: "#FFFFFF",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 22,
+  boxShadow: "0 18px 42px rgba(0,0,0,0.12)",
+};
 
 const sectionStyle: React.CSSProperties = {
   background: colors.card,
