@@ -310,23 +310,21 @@ function slugify(value: string) {
   );
 }
 
-function blankCalendarItem(date = todayISO(), defaultColorId = "maintenance"): CalendarItem {
-  const defaultColor = defaultCalendarColors.find((color) => color.id === defaultColorId) ?? defaultCalendarColors[0];
-
+function blankCalendarItem(date = todayISO(), _defaultColorId = "maintenance"): CalendarItem {
   return {
     id: "",
     date,
     time: "",
     title: "",
-    area: defaultColor?.label || "Maintenance",
-    categoryLabel: defaultColor?.label || "Maintenance",
-    colorId: defaultColor?.id || "maintenance",
-    colorName: defaultColor?.colorName || "blue",
+    area: "",
+    categoryLabel: "",
+    colorId: "",
+    colorName: undefined,
     allDay: false,
-    repeat: "None",
-    reminder: "None",
+    repeat: undefined,
+    reminder: undefined,
     notes: "",
-    linkedType: "None",
+    linkedType: undefined,
     linkedId: "",
     linkedName: "",
     completed: false,
@@ -573,10 +571,26 @@ function irrigationAdvice(day: WeatherDay) {
 
 function categoryToColorId(value: string) {
   const lower = value.toLowerCase();
-  if (lower.includes("landscape") || lower.includes("irrigation") || lower.includes("grounds")) return "landscaping";
-  if (lower.includes("boat") || lower.includes("dock") || lower.includes("marine")) return "boat-dock";
+  if (lower.includes("landscape") || lower.includes("grounds")) return "landscaping";
+  if (lower.includes("irrigation") || lower.includes("hydrawise")) return "irrigation";
+  if (lower.includes("hvac") || lower.includes("thermostat") || lower.includes("carrier") || lower.includes("honeywell")) return "hvac";
+  if (lower.includes("paint") || lower.includes("stain") || lower.includes("elliott")) return "paint-stain";
+  if (lower.includes("clean")) return "cleaning";
+  if (lower.includes("camera") || lower.includes("security") || lower.includes("unifi") || lower.includes("ubiquiti")) return "security-cameras";
+  if (lower.includes("control4") || lower.includes("smart home")) return "smart-home-controls";
+  if (lower.includes("boat") || lower.includes("dock") || lower.includes("marine") || lower.includes("seadoo")) return "boat-dock";
+  if (lower.includes("waterfront") || lower.includes("waterside")) return "waterfront";
+  if (lower.includes("vehicle") || lower.includes("car")) return "vehicles";
+  if (lower.includes("interior") || lower.includes("house")) return "house-interior";
+  if (lower.includes("exterior")) return "exterior";
+  if (lower.includes("supply") || lower.includes("amazon") || lower.includes("order")) return "supplies-orders";
+  if (lower.includes("invoice") || lower.includes("accounting") || lower.includes("metaviewer")) return "accounting-invoices";
+  if (lower.includes("meeting")) return "meeting";
+  if (lower.includes("reminder")) return "reminder";
   if (lower.includes("vendor")) return "vendor";
+  if (lower.includes("family")) return "family";
   if (lower.includes("owner") || lower.includes("personal")) return "personal-owner";
+  if (lower.includes("work order")) return "work-order";
   if (lower.includes("maintenance") || lower.includes("work")) return "maintenance";
   return "other";
 }
@@ -594,6 +608,32 @@ const calendarPlainColors: { id: CalendarColorName; label: string; hex: string }
 const repeatOptions: CalendarRepeat[] = ["None", "Daily", "Weekly", "Monthly", "Yearly", "Custom"];
 const reminderOptions: CalendarReminder[] = ["None", "Morning of", "Day before", "Week before"];
 const linkTypeOptions: CalendarLinkType[] = ["None", "Asset", "Location", "Vendor", "Work Order"];
+
+const standardCalendarCategoryLabels = [
+  "Maintenance",
+  "Vendor",
+  "Family",
+  "Personal / Owner",
+  "Work Order",
+  "Holiday",
+  "Landscaping",
+  "Irrigation",
+  "HVAC",
+  "Paint / Stain",
+  "Cleaning",
+  "Security / Cameras",
+  "Smart Home / Controls",
+  "Boat / Dock",
+  "Waterfront",
+  "Vehicles",
+  "House / Interior",
+  "Exterior",
+  "Supplies / Orders",
+  "Accounting / Invoices",
+  "Meeting",
+  "Reminder",
+  "Other",
+];
 
 function plainColor(value?: string) {
   return calendarPlainColors.find((color) => color.id === value) ?? calendarPlainColors.find((color) => color.id === "blue") ?? calendarPlainColors[0];
@@ -613,13 +653,28 @@ function colorLabelFromColorId(colorId?: string) {
 }
 
 const defaultCalendarColors: CalendarColor[] = [
-  { id: "personal-owner", label: "Personal / Owner", hex: "#C99A3D", colorName: "yellow" },
-  { id: "landscaping", label: "Landscaping", hex: "#087443", colorName: "green" },
-  { id: "boat-dock", label: "Boat / Dock", hex: "#175CD3", colorName: "blue" },
-  { id: "vendor", label: "Vendor", hex: "#7C3AED", colorName: "purple" },
   { id: "maintenance", label: "Maintenance", hex: "#475467", colorName: "gray" },
-  { id: "holiday", label: "Holiday", hex: "#7C3AED", colorName: "purple" },
+  { id: "vendor", label: "Vendor", hex: "#7C3AED", colorName: "purple" },
+  { id: "family", label: "Family", hex: "#175CD3", colorName: "blue" },
+  { id: "personal-owner", label: "Personal / Owner", hex: "#C99A3D", colorName: "yellow" },
   { id: "work-order", label: "Work Order", hex: "#175CD3", colorName: "blue" },
+  { id: "holiday", label: "Holiday", hex: "#7C3AED", colorName: "purple" },
+  { id: "landscaping", label: "Landscaping", hex: "#087443", colorName: "green" },
+  { id: "irrigation", label: "Irrigation", hex: "#087443", colorName: "green" },
+  { id: "hvac", label: "HVAC", hex: "#175CD3", colorName: "blue" },
+  { id: "paint-stain", label: "Paint / Stain", hex: "#B54708", colorName: "orange" },
+  { id: "cleaning", label: "Cleaning", hex: "#087443", colorName: "green" },
+  { id: "security-cameras", label: "Security / Cameras", hex: "#B42318", colorName: "red" },
+  { id: "smart-home-controls", label: "Smart Home / Controls", hex: "#7C3AED", colorName: "purple" },
+  { id: "boat-dock", label: "Boat / Dock", hex: "#175CD3", colorName: "blue" },
+  { id: "waterfront", label: "Waterfront", hex: "#175CD3", colorName: "blue" },
+  { id: "vehicles", label: "Vehicles", hex: "#475467", colorName: "gray" },
+  { id: "house-interior", label: "House / Interior", hex: "#C99A3D", colorName: "yellow" },
+  { id: "exterior", label: "Exterior", hex: "#087443", colorName: "green" },
+  { id: "supplies-orders", label: "Supplies / Orders", hex: "#B54708", colorName: "orange" },
+  { id: "accounting-invoices", label: "Accounting / Invoices", hex: "#7C3AED", colorName: "purple" },
+  { id: "meeting", label: "Meeting", hex: "#175CD3", colorName: "blue" },
+  { id: "reminder", label: "Reminder", hex: "#C99A3D", colorName: "yellow" },
   { id: "other", label: "Other", hex: "#94A3B8", colorName: "gray" },
 ];
 
@@ -634,6 +689,27 @@ function normalizeCalendarColor(record: Partial<CalendarColor>): CalendarColor {
     colorName,
     hex: record.hex || plain.hex,
   };
+}
+
+function mergeCalendarColors(storedColors: CalendarColor[]) {
+  const merged = new Map<string, CalendarColor>();
+
+  defaultCalendarColors.forEach((color) => merged.set(color.id, normalizeCalendarColor(color)));
+
+  storedColors.forEach((color) => {
+    const normalized = normalizeCalendarColor(color);
+    merged.set(normalized.id, normalized);
+  });
+
+  standardCalendarCategoryLabels.forEach((label) => {
+    const exists = Array.from(merged.values()).some((color) => color.label === label);
+    if (!exists) {
+      const id = slugify(label);
+      merged.set(id, normalizeCalendarColor({ id, label, colorName: colorNameFromLegacyColorId(id) }));
+    }
+  });
+
+  return Array.from(merged.values()).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function getNthWeekdayOfMonth(year: number, monthIndex: number, weekday: number, nth: number) {
@@ -1047,12 +1123,14 @@ function StatCard(props: { label: string; value: string | number; onClick?: () =
   );
 }
 
-function SectionHeader(props: { eyebrow: string; title: string; detail?: string; right?: React.ReactNode }) {
+function SectionHeader(props: { eyebrow?: string; title?: string; detail?: string; right?: React.ReactNode }) {
+  if (!props.eyebrow && !props.title && !props.detail && !props.right) return null;
+
   return (
     <div style={sectionHeaderStyle}>
       <div style={{ minWidth: 0 }}>
-        <div style={eyebrowStyle}>{props.eyebrow}</div>
-        <h2 style={sectionTitleStyle}>{props.title}</h2>
+        {props.eyebrow ? <div style={eyebrowStyle}>{props.eyebrow}</div> : null}
+        {props.title ? <h2 style={sectionTitleStyle}>{props.title}</h2> : null}
         {props.detail ? <p style={mutedSmallStyle}>{props.detail}</p> : null}
       </div>
       {props.right ? <div style={buttonRowStyle}>{props.right}</div> : null}
@@ -1061,8 +1139,8 @@ function SectionHeader(props: { eyebrow: string; title: string; detail?: string;
 }
 
 function ListDrawerLayout(props: {
-  eyebrow: string;
-  title: string;
+  eyebrow?: string;
+  title?: string;
   detail?: string;
   right?: React.ReactNode;
   list: React.ReactNode;
@@ -1084,6 +1162,7 @@ export default function AtlasPage() {
   const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [databaseStatus, setDatabaseStatus] = useState("Loading Atlas records...");
   const [logoIndex, setLogoIndex] = useState(0);
@@ -1158,7 +1237,7 @@ export default function AtlasPage() {
     setServiceRecords(storedServices.length ? byTitle(storedServices) : fallbackWorkOrders);
     setProcedureRecords(storedProcedures.length ? byTitle(storedProcedures) : fallbackProcedures);
     setCalendarItems(storedCalendar.length ? byTitle(storedCalendar) : fallbackCalendar);
-    setCalendarColors(storedCalendarColors.length ? storedCalendarColors.map(normalizeCalendarColor) : defaultCalendarColors);
+    setCalendarColors(mergeCalendarColors(storedCalendarColors));
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
     setPhotos(storedPhotos);
     setSelectedCalendarId("");
@@ -1540,6 +1619,7 @@ export default function AtlasPage() {
     if (result.partId) setSelectedPartId(result.partId);
     setScreen(result.screen);
     setQuery("");
+    setSearchOpen(false);
   }
 
   async function loadWeather() {
@@ -1618,10 +1698,11 @@ export default function AtlasPage() {
 
   function startNewCalendarDraft(date?: string) {
     const targetDate = date || selectedCalendarDate || todayISO();
-    const defaultLabel = calendarColors.find((color) => color.id === "maintenance") ?? calendarColors[0] ?? defaultCalendarColors[0];
     setSelectedCalendarDate(targetDate);
     setSelectedCalendarId("");
-    setCalendarDraft(blankCalendarItem(targetDate, defaultLabel.id));
+    setCalendarDraft(blankCalendarItem(targetDate));
+    setCalendarIntakeText("");
+    setCalendarIntakeMessage("");
     setScreen("calendar");
   }
 
@@ -1644,7 +1725,7 @@ export default function AtlasPage() {
     if (event.source === "us-holiday" || event.source === "jewish-holiday") {
       setSelectedCalendarDate(event.date);
       setSelectedCalendarId("");
-      setCalendarDraft(blankCalendarItem(event.date, "holiday"));
+      setCalendarDraft(blankCalendarItem(event.date));
       return;
     }
 
@@ -1657,32 +1738,36 @@ export default function AtlasPage() {
 
   function updateCalendarItem(patch: Partial<CalendarItem>) {
     setCalendarDraft((current) => {
-      const nextColorId = patch.colorId ?? current.colorId ?? calendarColors[0]?.id ?? "maintenance";
-      const nextColorName = (patch.colorName ?? current.colorName ?? colorNameFromLegacyColorId(nextColorId)) as CalendarColorName;
-      const nextCategory = patch.categoryLabel ?? patch.area ?? current.categoryLabel ?? current.area ?? colorLabelFromColorId(nextColorId) ?? "Maintenance";
       const nextAllDay = patch.allDay ?? current.allDay ?? false;
+      const nextCategory = patch.categoryLabel ?? patch.area ?? current.categoryLabel ?? current.area ?? "";
+      const nextLinkedType = patch.linkedType ?? current.linkedType;
 
       const next: CalendarItem = {
         ...current,
         ...patch,
         id: selectedCalendarId || current.id || "",
-        title: patch.title ?? current.title,
+        title: patch.title ?? current.title ?? "",
         area: nextCategory,
         categoryLabel: nextCategory,
-        date: patch.date ?? current.date,
+        date: patch.date ?? current.date ?? selectedCalendarDate ?? todayISO(),
         time: nextAllDay ? "" : patch.time ?? current.time ?? "",
-        colorId: nextColorId,
-        colorName: nextColorName,
+        colorId: patch.colorId ?? current.colorId ?? "",
+        colorName: patch.colorName ?? current.colorName,
         allDay: nextAllDay,
-        repeat: patch.repeat ?? current.repeat ?? "None",
-        reminder: patch.reminder ?? current.reminder ?? "None",
+        repeat: patch.repeat ?? current.repeat,
+        reminder: patch.reminder ?? current.reminder,
         notes: patch.notes ?? current.notes ?? "",
-        linkedType: patch.linkedType ?? current.linkedType ?? "None",
+        linkedType: nextLinkedType,
         linkedId: patch.linkedId ?? current.linkedId ?? "",
         linkedName: patch.linkedName ?? current.linkedName ?? "",
         completed: patch.completed ?? current.completed ?? false,
         source: "manual",
       };
+
+      if (nextLinkedType === "None" || !nextLinkedType) {
+        next.linkedId = "";
+        next.linkedName = "";
+      }
 
       if (patch.date) setSelectedCalendarDate(patch.date);
 
@@ -1692,7 +1777,7 @@ export default function AtlasPage() {
 
   function resetCalendarEntryForm(date = selectedCalendarDate || todayISO()) {
     setSelectedCalendarId("");
-    setCalendarDraft(blankCalendarItem(date, "maintenance"));
+    setCalendarDraft(blankCalendarItem(date));
     setCalendarIntakeText("");
     setCalendarIntakeMessage("");
   }
@@ -1706,8 +1791,8 @@ export default function AtlasPage() {
       categoryLabel: (calendarDraft.categoryLabel || calendarDraft.area || "Maintenance").trim(),
       date: calendarDraft.date || selectedCalendarDate || todayISO(),
       time: calendarDraft.allDay ? "" : calendarDraft.time || "",
-      colorId: calendarDraft.colorId || "maintenance",
-      colorName: calendarDraft.colorName || selectedColor().colorName,
+      colorId: calendarDraft.colorId || categoryToColorId(calendarDraft.categoryLabel || calendarDraft.area || "Maintenance"),
+      colorName: calendarDraft.colorName || colorNameFromLegacyColorId(calendarDraft.colorId || categoryToColorId(calendarDraft.categoryLabel || calendarDraft.area || "Maintenance")),
       allDay: !!calendarDraft.allDay,
       repeat: calendarDraft.repeat || "None",
       reminder: calendarDraft.reminder || "None",
@@ -1742,14 +1827,14 @@ export default function AtlasPage() {
   function deleteCalendarItem(id: string) {
     if (!id) {
       setSelectedCalendarId("");
-      setCalendarDraft(blankCalendarItem(selectedCalendarDate, "maintenance"));
+      setCalendarDraft(blankCalendarItem(selectedCalendarDate));
       return;
     }
 
     const remaining = calendarItems.filter((item) => item.id !== id);
     setCalendarItems(byTitle(remaining));
     setSelectedCalendarId("");
-    setCalendarDraft(blankCalendarItem(selectedCalendarDate, "maintenance"));
+    setCalendarDraft(blankCalendarItem(selectedCalendarDate));
   }
 
   function formatCalendarIntakeTime(hourText: string, minuteText: string | undefined, meridiemText?: string) {
@@ -2567,9 +2652,9 @@ export default function AtlasPage() {
 
     return (
       <ListDrawerLayout
-        eyebrow="Clean Calendar"
-        title="Calendar"
-        detail="Events, work orders, US holidays, Jewish holidays, filters, reminders, notes, and category colors."
+        eyebrow=""
+        title=""
+        detail={undefined}
         isMobile={isMobile}
         right={
           <>
@@ -2582,7 +2667,7 @@ export default function AtlasPage() {
                 setCalendarCursor(new Date());
                 setSelectedCalendarDate(todayISO());
                 setSelectedCalendarId("");
-                setCalendarDraft(blankCalendarItem(todayISO(), "maintenance"));
+                setCalendarDraft(blankCalendarItem(todayISO()));
               }}
               style={secondaryButtonStyle}
             >
@@ -2604,31 +2689,34 @@ export default function AtlasPage() {
                 </div>
               </div>
 
-              <div style={calendarFilterStripStyle}>
-                <label style={calendarToggleStyle}>
-                  <input type="checkbox" checked={showUsHolidays} onChange={() => setShowUsHolidays((current) => !current)} />
-                  US Holidays
-                </label>
-                <label style={calendarToggleStyle}>
-                  <input type="checkbox" checked={showJewishHolidays} onChange={() => setShowJewishHolidays((current) => !current)} />
-                  Jewish Holidays
-                </label>
-                {calendarFilterLabels.map((label) => (
-                  <label key={label} style={calendarToggleStyle}>
-                    <input
-                      type="checkbox"
-                      checked={calendarCategoryFilters[label] !== false}
-                      onChange={() => {
-                        setCalendarCategoryFilters((current) => ({
-                          ...current,
-                          [label]: current[label] === false,
-                        }));
-                      }}
-                    />
-                    {label}
+              <details style={calendarFilterDropdownStyle}>
+                <summary style={calendarFilterSummaryStyle}>Filters</summary>
+                <div style={calendarFilterListStyle}>
+                  <label style={calendarFilterListItemStyle}>
+                    <input type="checkbox" checked={showUsHolidays} onChange={() => setShowUsHolidays((current) => !current)} />
+                    US Holidays
                   </label>
-                ))}
-              </div>
+                  <label style={calendarFilterListItemStyle}>
+                    <input type="checkbox" checked={showJewishHolidays} onChange={() => setShowJewishHolidays((current) => !current)} />
+                    Jewish Holidays
+                  </label>
+                  {calendarFilterLabels.map((label) => (
+                    <label key={label} style={calendarFilterListItemStyle}>
+                      <input
+                        type="checkbox"
+                        checked={calendarCategoryFilters[label] !== false}
+                        onChange={() => {
+                          setCalendarCategoryFilters((current) => ({
+                            ...current,
+                            [label]: current[label] === false,
+                          }));
+                        }}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </details>
             </div>
 
             <div style={calendarWeekStyle}>
@@ -2655,7 +2743,7 @@ export default function AtlasPage() {
                       if (!cell.date) return;
                       setSelectedCalendarDate(cell.date);
                       setSelectedCalendarId("");
-                      setCalendarDraft(blankCalendarItem(cell.date, "maintenance"));
+                      setCalendarDraft(blankCalendarItem(cell.date));
                     }}
                     style={{
                       ...calendarCellStyle,
@@ -2790,22 +2878,33 @@ export default function AtlasPage() {
                 </label>
 
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                  <span style={fieldLabelStyle}>Category Label</span>
-                  <input
-                    list="calendar-category-labels"
+                  <span style={fieldLabelStyle}>Category</span>
+                  <select
                     value={selectedCalendar.categoryLabel || selectedCalendar.area || ""}
-                    onChange={(event) => updateCalendarItem({ categoryLabel: event.currentTarget.value, area: event.currentTarget.value })}
-                    placeholder="Vendor, Family, Maintenance"
+                    onChange={(event) => {
+                      const nextLabel = event.currentTarget.value;
+                      const matchingColor = calendarColors.find((color) => color.label === nextLabel);
+                      updateCalendarItem({
+                        categoryLabel: nextLabel,
+                        area: nextLabel,
+                        colorId: matchingColor?.id || categoryToColorId(nextLabel),
+                        colorName: matchingColor?.colorName,
+                      });
+                    }}
                     style={inputStyle}
-                  />
-                  <datalist id="calendar-category-labels">
-                    {calendarColors.map((color) => <option key={color.id} value={color.label} />)}
-                  </datalist>
+                  >
+                    <option value="">Select category</option>
+                    {Array.from(new Set([...standardCalendarCategoryLabels, ...calendarColors.map((color) => color.label)]))
+                      .filter(Boolean)
+                      .sort((a, b) => a.localeCompare(b))
+                      .map((label) => <option key={label} value={label}>{label}</option>)}
+                  </select>
                 </label>
 
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                   <span style={fieldLabelStyle}>Color</span>
-                  <select value={selectedCalendar.colorName || selectedColor().colorName} onChange={(event) => updateCalendarItem({ colorName: event.currentTarget.value as CalendarColorName })} style={inputStyle}>
+                  <select value={selectedCalendar.colorName || ""} onChange={(event) => updateCalendarItem({ colorName: event.currentTarget.value as CalendarColorName })} style={inputStyle}>
+                    <option value="">Select color</option>
                     {calendarPlainColors.map((color) => (
                       <option key={color.id} value={color.id}>
                         {color.label}
@@ -2814,15 +2913,29 @@ export default function AtlasPage() {
                   </select>
                 </label>
 
-                <SelectField label="Repeat" value={selectedCalendar.repeat || "None"} onChange={(value) => updateCalendarItem({ repeat: value })} options={repeatOptions} />
-                <SelectField label="Reminder" value={selectedCalendar.reminder || "None"} onChange={(value) => updateCalendarItem({ reminder: value })} options={reminderOptions} />
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Repeat</span>
+                  <select value={selectedCalendar.repeat || ""} onChange={(event) => updateCalendarItem({ repeat: event.currentTarget.value as CalendarRepeat })} style={inputStyle}>
+                    <option value="">No repeat</option>
+                    {repeatOptions.filter((option) => option !== "None").map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </label>
 
-                <SelectField
-                  label="Attach To"
-                  value={selectedCalendar.linkedType || "None"}
-                  onChange={(value) => updateCalendarItem({ linkedType: value, linkedId: "", linkedName: "" })}
-                  options={linkTypeOptions}
-                />
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Reminder</span>
+                  <select value={selectedCalendar.reminder || ""} onChange={(event) => updateCalendarItem({ reminder: event.currentTarget.value as CalendarReminder })} style={inputStyle}>
+                    <option value="">No reminder</option>
+                    {reminderOptions.filter((option) => option !== "None").map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Attach To</span>
+                  <select value={selectedCalendar.linkedType || ""} onChange={(event) => updateCalendarItem({ linkedType: event.currentTarget.value as CalendarLinkType, linkedId: "", linkedName: "" })} style={inputStyle}>
+                    <option value="">No attachment</option>
+                    {linkTypeOptions.filter((option) => option !== "None").map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </label>
 
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                   <span style={fieldLabelStyle}>Linked Record</span>
@@ -2890,25 +3003,8 @@ export default function AtlasPage() {
             </div>
 
             <div style={calendarColorsBoxStyle}>
-              <div style={eyebrowStyle}>Category Labels</div>
-              <p style={mutedSmallStyle}>Keep labels clean, then choose the plain event color from the event form.</p>
-
-              <div style={calendarColorListStyle}>
-                {calendarColors.map((color) => (
-                  <div key={color.id} style={calendarColorRowStyle}>
-                    <span style={{ ...calendarColorDotStyle, background: plainColor(color.colorName).hex }} />
-                    <input
-                      value={color.label}
-                      onChange={(event) => updateCalendarColor(color.id, { label: event.currentTarget.value })}
-                      style={{ ...inputStyle, padding: "9px 10px" }}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <button type="button" onClick={addCalendarColor} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 10 }}>
-                Add Label
-              </button>
+              <div style={eyebrowStyle}>Categories</div>
+              <p style={mutedSmallStyle}>Use the Category dropdown above. Add more categories later only if needed.</p>
             </div>
           </>
         }
@@ -3228,12 +3324,44 @@ export default function AtlasPage() {
                 {screen === "dashboard" ? <p style={headerSubStyle}>{databaseStatus}</p> : null}
               </div>
 
-              <div style={{ position: "relative", width: isMobile ? "100%" : 480, maxWidth: "100%" }}>
-                <input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Search Atlas..." style={{ ...inputStyle, width: "100%" }} />
-                {searchResults.length ? (
+              <div
+                style={{ position: "relative", width: isMobile ? "100%" : 480, maxWidth: "100%" }}
+                onBlur={() => {
+                  window.setTimeout(() => {
+                    setQuery("");
+                    setSearchOpen(false);
+                  }, 120);
+                }}
+              >
+                <input
+                  value={query}
+                  onFocus={() => setSearchOpen(true)}
+                  onChange={(event) => {
+                    setQuery(event.currentTarget.value);
+                    setSearchOpen(true);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setQuery("");
+                      setSearchOpen(false);
+                    }
+                  }}
+                  placeholder="Search Atlas..."
+                  style={{ ...inputStyle, width: "100%" }}
+                />
+                {searchOpen && searchResults.length ? (
                   <div style={searchDropStyle}>
                     {searchResults.map((result) => (
-                      <button key={result.id} type="button" onClick={() => openSearchResult(result)} style={searchResultStyle}>
+                      <button
+                        key={result.id}
+                        type="button"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          openSearchResult(result);
+                          setSearchOpen(false);
+                        }}
+                        style={searchResultStyle}
+                      >
                         <strong>{result.title}</strong>
                         <span style={mutedSmallStyle}>{result.type} · {result.subtitle}</span>
                       </button>
@@ -3909,6 +4037,43 @@ const calendarToggleStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 850,
   whiteSpace: "nowrap",
+};
+
+const calendarFilterDropdownStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#F8FAFC",
+  borderRadius: 14,
+  padding: 0,
+  overflow: "hidden",
+};
+
+const calendarFilterSummaryStyle: React.CSSProperties = {
+  cursor: "pointer",
+  padding: "11px 13px",
+  color: colors.navy,
+  fontSize: 13,
+  fontWeight: 950,
+  listStyle: "none",
+};
+
+const calendarFilterListStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 6,
+  borderTop: `1px solid ${colors.line}`,
+  padding: 10,
+  maxHeight: 260,
+  overflow: "auto",
+  background: "#FFFFFF",
+};
+
+const calendarFilterListItemStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  color: colors.text,
+  fontSize: 13,
+  fontWeight: 800,
+  padding: "6px 4px",
 };
 
 const checkboxLineStyle: React.CSSProperties = {
