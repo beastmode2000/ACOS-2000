@@ -3120,7 +3120,35 @@ export default function AtlasPage() {
           setPartRecords(next);
         }
 
-        if (apiPhotos.length) setPhotos(apiPhotos);
+        if (apiPhotos.length) {
+          setPhotos((current) => {
+            const merged = new Map<string, PhotoRecord>();
+
+            [...current, ...apiPhotos].forEach((photo) => {
+              const existing = merged.get(photo.id);
+              merged.set(photo.id, {
+                ...existing,
+                ...photo,
+                dataUrl: photo.dataUrl || existing?.dataUrl,
+                url: photo.url || existing?.url,
+              });
+            });
+
+            const next = [...merged.values()].sort((a, b) =>
+              String(b.createdAt || "").localeCompare(
+                String(a.createdAt || ""),
+              ),
+            );
+
+            try {
+              saveStoredArray(storageKeys.photos[0], next);
+            } catch {
+              // Keep the current browser copy intact if storage is full.
+            }
+
+            return next;
+          });
+        }
 
         setDatabaseStatus(
           `Atlas loaded: ${apiAssets.length || assetRecords.length} assets, ${apiVendors.length || vendorRecords.length} vendors, ${apiServices.length || serviceRecords.length} work orders.`,
@@ -4576,20 +4604,31 @@ export default function AtlasPage() {
     }
 
     setPhotos((current) => {
-      const next = [...imagePhotos, ...current];
+      const merged = new Map<string, PhotoRecord>();
+
+      [...imagePhotos, ...current].forEach((photo) => {
+        const existing = merged.get(photo.id);
+        merged.set(photo.id, {
+          ...existing,
+          ...photo,
+          dataUrl: photo.dataUrl || existing?.dataUrl,
+          url: photo.url || existing?.url,
+        });
+      });
+
+      const next = [...merged.values()].sort((a, b) =>
+        String(b.createdAt || "").localeCompare(
+          String(a.createdAt || ""),
+        ),
+      );
 
       try {
         saveStoredArray(storageKeys.photos[0], next);
       } catch {
         try {
-          const lightweight = next.map((photo, index) =>
-            index < imagePhotos.length
-              ? photo
-              : { ...photo, dataUrl: undefined },
-          );
-          saveStoredArray(storageKeys.photos[0], lightweight);
+          saveStoredArray(storageKeys.photos[0], current);
         } catch {
-          // The Atlas API remains the durable copy when browser storage is full.
+          // Never erase older photos when browser storage is full.
         }
       }
 
@@ -4605,8 +4644,8 @@ export default function AtlasPage() {
     const syncedCount = syncResults.filter(Boolean).length;
     setDatabaseStatus(
       syncedCount === imagePhotos.length
-        ? `Added ${imagePhotos.length} photo${imagePhotos.length === 1 ? "" : "s"} to ${selectedAsset.name}.`
-        : `The photo is showing in Atlas, but ${imagePhotos.length - syncedCount} image${imagePhotos.length - syncedCount === 1 ? "" : "s"} did not finish syncing.`,
+        ? `Added ${imagePhotos.length} photo${imagePhotos.length === 1 ? "" : "s"} to ${selectedAsset.name}. Existing photos were preserved.`
+        : `The new photo is showing in Atlas, but ${imagePhotos.length - syncedCount} image${imagePhotos.length - syncedCount === 1 ? "" : "s"} did not finish syncing. Existing photos were preserved.`,
     );
   }
 
