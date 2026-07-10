@@ -2436,8 +2436,9 @@ export default function AtlasPage() {
   );
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(
-    "Ask Atlas about assets, vendors, map labels, work orders, calendar, weather, procedures, documents, or parts.",
+    "Ask Atlas about assets, locations, vendors, work orders, calendar items, procedures, documents, parts, or map records.",
   );
+  const [assistantLoading, setAssistantLoading] = useState(false);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
@@ -5079,65 +5080,180 @@ export default function AtlasPage() {
     moveCalendarMonth(delta);
   }
 
-  function askAtlas() {
-    const text = assistantQuestion.trim().toLowerCase();
+  async function askAtlas() {
+    const question = assistantQuestion.trim();
 
-    if (!text) {
+    if (!question) {
       setAssistantAnswer("Type a question first.");
       return;
     }
 
-    if (text.includes("weather") || text.includes("irrigation")) {
-      setAssistantAnswer(weatherStatus);
-      return;
-    }
+    const cleanText = (value: unknown, maxLength = 1200) =>
+      String(value ?? "").slice(0, maxLength);
 
-    if (text.includes("map")) {
+    const atlasSnapshot = {
+      generatedAt: new Date().toISOString(),
+      counts: {
+        locations: locations.length,
+        assets: assetRecords.length,
+        vendors: vendorRecords.length,
+        workOrders: serviceRecords.length,
+        calendarItems: calendarItems.length,
+        procedures: procedureRecords.length,
+        parts: partRecords.length,
+        documents: intakeDocs.length,
+        mapLabels: mapLabels.length,
+      },
+      locations: locations.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        type: cleanText(item.type, 120),
+        zone: cleanText(item.zone, 120),
+        notes: cleanText(item.notes),
+      })),
+      assets: assetRecords.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        locationId: item.locationId,
+        locationName:
+          locations.find((location) => location.id === item.locationId)?.name ||
+          "",
+        category: cleanText(item.category, 120),
+        status: item.status,
+        make: cleanText(item.make, 160),
+        model: cleanText(item.model, 160),
+        serial: cleanText(item.serial, 160),
+        notes: cleanText(item.notes),
+        vendorIds: item.vendorIds,
+      })),
+      vendors: vendorRecords.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        category: cleanText(item.category, 120),
+        phone: cleanText(item.phone, 120),
+        email: cleanText(item.email, 200),
+        website: cleanText(item.website, 300),
+        notes: cleanText(item.notes),
+      })),
+      workOrders: serviceRecords.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        date: item.date,
+        followUpDate: item.followUpDate || "",
+        status: item.status,
+        priority: item.priority || "",
+        assetId: item.assetId,
+        assetName:
+          assetRecords.find((asset) => asset.id === item.assetId)?.name || "",
+        vendorId: item.vendorId || "",
+        vendorName:
+          vendorRecords.find((vendor) => vendor.id === item.vendorId)?.name ||
+          "",
+        procedureId: item.procedureId || "",
+        notes: cleanText(item.notes),
+      })),
+      calendarItems: calendarItems.map((item) => ({
+        id: item.id,
+        date: item.date,
+        time: item.time || "",
+        title: cleanText(item.title, 240),
+        area: cleanText(item.area, 160),
+        category: cleanText(item.categoryLabel, 160),
+        notes: cleanText(item.notes),
+        linkedType: item.linkedType || "None",
+        linkedId: item.linkedId || "",
+        linkedName: cleanText(item.linkedName, 240),
+        completed: Boolean(item.completed),
+      })),
+      procedures: procedureRecords.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        area: cleanText(item.area, 160),
+        priority: item.priority,
+        steps: item.steps.map((step) => cleanText(step, 500)),
+      })),
+      parts: partRecords.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        category: cleanText(item.category, 120),
+        locationId: item.locationId,
+        locationName:
+          locations.find((location) => location.id === item.locationId)?.name ||
+          "",
+        assetId: item.assetId || "",
+        assetName:
+          assetRecords.find((asset) => asset.id === item.assetId)?.name || "",
+        vendorId: item.vendorId || "",
+        vendorName:
+          vendorRecords.find((vendor) => vendor.id === item.vendorId)?.name ||
+          "",
+        quantity: item.quantity,
+        minQuantity: item.minQuantity,
+        status: item.status,
+        notes: cleanText(item.notes),
+      })),
+      documents: intakeDocs.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        area: cleanText(item.area, 160),
+        type: cleanText(item.type, 120),
+        targetType: item.targetType || "General",
+        targetId: item.targetId || "",
+        targetName: cleanText(item.targetName, 240),
+        notes: cleanText(item.notes),
+        pastedText: cleanText(item.pastedText, 2500),
+        createdAt: item.createdAt || "",
+        fileNames: (item.files || []).map((file) => cleanText(file.name, 240)),
+      })),
+      mapLabels: mapLabels.map((item) => ({
+        id: item.id,
+        label: cleanText(item.label, 200),
+        category: cleanText(item.category, 120),
+        notes: cleanText(item.notes),
+        installer: cleanText(item.installer, 200),
+        paintColor: cleanText(item.paintColor, 160),
+        specs: cleanText(item.specs),
+        documentNotes: cleanText(item.documentNotes),
+        photoNotes: cleanText(item.photoNotes),
+        maintenanceNotes: cleanText(item.maintenanceNotes),
+        vendorIds: item.vendorIds || [],
+      })),
+      weather: {
+        status: weatherStatus,
+        days: weatherDays,
+      },
+    };
+
+    setAssistantLoading(true);
+    setAssistantAnswer("Ask Atlas is reviewing the current Atlas records...");
+
+    try {
+      const response = await fetch("/api/ask-atlas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, atlas: atlasSnapshot }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        answer?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.ok || !payload.answer) {
+        throw new Error(payload.error || "Ask Atlas could not answer right now.");
+      }
+
+      setAssistantAnswer(payload.answer);
+    } catch (error) {
       setAssistantAnswer(
-        `The map is locked to /atlas-property-map.png and has ${mapLabels.length} movable labels. Click a label for details; click and hold to move it.`,
+        error instanceof Error
+          ? error.message
+          : "Ask Atlas could not answer right now.",
       );
-      return;
+    } finally {
+      setAssistantLoading(false);
     }
-
-    if (text.includes("asset") || text.includes("equipment")) {
-      setAssistantAnswer(
-        `Atlas currently has ${assetRecords.length} asset records loaded. Open Assets to review or edit them.`,
-      );
-      return;
-    }
-
-    if (text.includes("vendor")) {
-      setAssistantAnswer(
-        `Atlas currently has ${vendorRecords.length} vendors loaded. Open Vendors to review or edit them.`,
-      );
-      return;
-    }
-
-    if (
-      text.includes("link") ||
-      text.includes("portal") ||
-      text.includes("login")
-    ) {
-      setAssistantAnswer(
-        `Atlas currently has ${defaultWorkLinks.length} work links loaded: Landscape Help Admin, Landscape Help Crew Link, MaintainX, Paylocity, Ramp, ChatGPT, Outlook Email, Babbel, UniFi Protect, Hydrawise, Amazon, Control4, Total Connect Comfort, and MetaViewer. Open Work Links from the sidebar or dashboard.`,
-      );
-      return;
-    }
-
-    if (
-      text.includes("work") ||
-      text.includes("order") ||
-      text.includes("service")
-    ) {
-      setAssistantAnswer(
-        `Atlas currently has ${serviceRecords.length} work orders/service records loaded. Open Work Orders to review them.`,
-      );
-      return;
-    }
-
-    setAssistantAnswer(
-      `Loaded now: ${assetRecords.length} assets, ${vendorRecords.length} vendors, ${serviceRecords.length} work orders, ${procedureRecords.length} procedures, ${calendarItems.length} calendar items, ${partRecords.length} parts, and ${mapLabels.length} map labels.`,
-    );
   }
 
   function renderCalendarIntakeCard() {
@@ -8484,8 +8600,8 @@ export default function AtlasPage() {
       <section style={sectionStyle}>
         <SectionHeader
           eyebrow="Ask Atlas"
-          title="Property Assistant"
-          detail="Quick local assistant tied to loaded Atlas records."
+          title="AI Property Assistant"
+          detail="Ask natural-language questions about the records currently loaded in Atlas."
         />
         <div style={stackStyle}>
           <textarea
@@ -8493,13 +8609,55 @@ export default function AtlasPage() {
             onChange={(event) =>
               setAssistantQuestion(event.currentTarget.value)
             }
-            placeholder="Ask about assets, vendors, work orders, map, weather, database, or records..."
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                event.preventDefault();
+                if (!assistantLoading) void askAtlas();
+              }
+            }}
+            placeholder="Examples: What work is due this week? Who services Boiler 2? Show everything connected to the dock."
             style={{ ...inputStyle, minHeight: 130, resize: "vertical" }}
           />
-          <button type="button" onClick={askAtlas} style={goldButtonStyle}>
-            Ask Atlas
-          </button>
-          <div style={noticeStyle}>{assistantAnswer}</div>
+          <div style={buttonRowStyle}>
+            <button
+              type="button"
+              onClick={() => void askAtlas()}
+              disabled={assistantLoading}
+              style={{
+                ...goldButtonStyle,
+                opacity: assistantLoading ? 0.65 : 1,
+                cursor: assistantLoading ? "wait" : "pointer",
+              }}
+            >
+              {assistantLoading ? "Reviewing Atlas..." : "Ask Atlas"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAssistantQuestion("");
+                setAssistantAnswer(
+                  "Ask Atlas about assets, locations, vendors, work orders, calendar items, procedures, documents, parts, or map records.",
+                );
+              }}
+              disabled={assistantLoading}
+              style={secondaryButtonStyle}
+            >
+              Clear
+            </button>
+          </div>
+          <div
+            style={{
+              ...noticeStyle,
+              whiteSpace: "pre-wrap",
+              lineHeight: 1.6,
+            }}
+          >
+            {assistantAnswer}
+          </div>
+          <p style={mutedSmallStyle}>
+            Press Ctrl+Enter or Command+Enter to submit. Ask Atlas answers from
+            the Atlas records sent with your question.
+          </p>
         </div>
       </section>
     );
