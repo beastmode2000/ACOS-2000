@@ -293,6 +293,7 @@ type SearchResult = {
   subtitle: string;
   detail: string;
   screen: Screen;
+  locationId?: string;
   assetId?: string;
   vendorId?: string;
   serviceId?: string;
@@ -300,6 +301,7 @@ type SearchResult = {
   procedureId?: string;
   calendarId?: string;
   partId?: string;
+  manualId?: string;
 };
 
 type ManualCandidate = {
@@ -2225,6 +2227,22 @@ const defaultManuals: ManualRecord[] = [
   },
 ];
 
+function inferManualCategory(value: string): ManualCategory {
+  const text = String(value || "").toLowerCase();
+  if (/install/.test(text)) return "Installation Manuals";
+  if (/service|repair|shop/.test(text)) return "Service / Repair Manuals";
+  if (/maintenan/.test(text)) return "Maintenance Guides";
+  if (/parts|catalog/.test(text)) return "Parts Catalogs";
+  if (/wiring|electrical|diagram/.test(text)) return "Wiring Diagrams";
+  if (/spec|data ?sheet|technical/.test(text))
+    return "Technical Specifications";
+  if (/quick|start/.test(text)) return "Quick Start Guides";
+  if (/warrant/.test(text)) return "Warranty Documents";
+  if (/safety|compliance/.test(text))
+    return "Safety / Compliance Documents";
+  return "Operator / Owner Manuals";
+}
+
 function blankManual(): ManualRecord {
   return {
     id: "",
@@ -2539,6 +2557,7 @@ export default function AtlasPage() {
   const [documentSearch, setDocumentSearch] = useState("");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
 
+  const [selectedLocationId, setSelectedLocationId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState("");
   const [selectedServiceId, setSelectedServiceId] = useState("");
@@ -3272,6 +3291,14 @@ export default function AtlasPage() {
     photoNotes: "",
     maintenanceNotes: "",
   };
+  const selectedLocation =
+    locations.find((location) => location.id === selectedLocationId) ?? {
+      id: "",
+      name: "",
+      type: "",
+      zone: "",
+      notes: "",
+    };
   const selectedAsset =
     assetRecords.find((asset) => asset.id === selectedAssetId) ??
     normalizeAsset({
@@ -3683,6 +3710,73 @@ export default function AtlasPage() {
     [intakeDocs],
   );
 
+  const allManualRecords = useMemo(() => {
+    const documentManuals = allDocuments
+      .filter((document) => {
+        const text = `${document.type} ${document.title}`.toLowerCase();
+        const hasOpenableFile = Boolean(
+          document.href ||
+            (document.files || []).some(
+              (file) => file.url || file.dataUrl,
+            ),
+        );
+        return (
+          hasOpenableFile &&
+          /manual|owner'?s guide|operator|installation|service|repair|maintenance|parts catalog|wiring|specification|quick start|warranty|safety/.test(
+            text,
+          )
+        );
+      })
+      .map((document) => {
+        const openableFile = (document.files || []).find(
+          (file) => file.url || file.dataUrl,
+        );
+        return normalizeManualRecord({
+          id: `document-manual-${document.id}`,
+          title: document.title,
+          category: inferManualCategory(
+            `${document.type} ${document.title}`,
+          ),
+          manufacturer: "",
+          model: "",
+          documentNumber: "",
+          linkedAssetId:
+            document.targetType === "Asset"
+              ? document.targetId || document.linkedAssetId || ""
+              : document.linkedAssetId || "",
+          linkedAssetName:
+            document.targetType === "Asset"
+              ? document.targetName || ""
+              : document.linkedAssetId
+                ? assetName(document.linkedAssetId)
+                : "",
+          sourceLabel: "Atlas Documents",
+          href:
+            document.href ||
+            openableFile?.url ||
+            openableFile?.dataUrl ||
+            "",
+          notes: document.notes || "",
+          files: document.files || [],
+          createdAt: document.createdAt || "",
+        });
+      });
+
+    const merged = new Map<string, ManualRecord>();
+    [...manualRecords, ...documentManuals].forEach((manual) => {
+      const key =
+        cleanManualOpenUrl(manual.href).toLowerCase() ||
+        `${manual.title.toLowerCase()}|${String(
+          manual.linkedAssetId || manual.linkedAssetName || "",
+        ).toLowerCase()}`;
+      if (!merged.has(key)) merged.set(key, manual);
+    });
+
+    return [...merged.values()].sort((a, b) =>
+      a.title.localeCompare(b.title),
+    );
+  }, [allDocuments, manualRecords, assetRecords]);
+
   function documentTargetOptionsFor(kind: IntakeTargetKind) {
     if (kind === "Asset")
       return byName(assetRecords).map((asset) => ({
@@ -3822,6 +3916,7 @@ export default function AtlasPage() {
     partRecords,
     calendarColors,
     allDocuments,
+    allManualRecords,
   ]);
 
   const monthCells = useMemo(() => {
@@ -3865,6 +3960,7 @@ export default function AtlasPage() {
         subtitle: `${item.type} · ${item.zone}`,
         detail: item.notes,
         screen: "locations" as Screen,
+        locationId: item.id,
       })),
       ...mapLabels.map((item) => ({
         id: `map-${item.id}`,
@@ -3943,6 +4039,15 @@ export default function AtlasPage() {
         detail: `${item.notes} ${item.pastedText || ""} ${item.targetName || ""}`,
         screen: "documents" as Screen,
       })),
+      ...allManualRecords.map((item) => ({
+        id: `manual-${item.id}`,
+        type: "Manual",
+        title: item.title,
+        subtitle: `${item.linkedAssetName || "Not linked"} · ${item.category}`,
+        detail: `${item.manufacturer} ${item.model} ${item.documentNumber} ${item.notes}`,
+        screen: "manuals" as Screen,
+        manualId: item.id,
+      })),
       ...defaultWorkLinks.map((item) => ({
         id: `link-${item.id}`,
         type: "Work Link",
@@ -3955,6 +4060,7 @@ export default function AtlasPage() {
   }
 
   function openSearchResult(result: SearchResult) {
+    if (result.locationId) setSelectedLocationId(result.locationId);
     if (result.assetId) setSelectedAssetId(result.assetId);
     if (result.vendorId) setSelectedVendorId(result.vendorId);
     if (result.serviceId) setSelectedServiceId(result.serviceId);
@@ -3962,6 +4068,10 @@ export default function AtlasPage() {
     if (result.procedureId) setSelectedProcedureId(result.procedureId);
     if (result.calendarId) startEditCalendarItem(result.calendarId);
     if (result.partId) setSelectedPartId(result.partId);
+    if (result.manualId) {
+      setSelectedManualId(result.manualId);
+      setManualSearch("");
+    }
     setScreen(result.screen);
     setQuery("");
     setSearchOpen(false);
@@ -4072,6 +4182,214 @@ export default function AtlasPage() {
       url: photo.url,
       createdAt: photo.createdAt,
     });
+  }
+
+  function linkedImageFilesFor(
+    kind: IntakeTargetKind,
+    id: string,
+    includeVendorLogos = false,
+  ) {
+    if (!id) return [];
+
+    return allDocuments
+      .filter(
+        (document) =>
+          document.targetType === kind &&
+          document.targetId === id &&
+          (includeVendorLogos ||
+            document.type.toLowerCase() !== "vendor logo"),
+      )
+      .sort((a, b) =>
+        String(b.createdAt || "").localeCompare(
+          String(a.createdAt || ""),
+        ),
+      )
+      .flatMap((document) => document.files || [])
+      .filter(
+        (file) =>
+          String(file.type || "").startsWith("image/") ||
+          String(file.dataUrl || "").startsWith("data:image/"),
+      );
+  }
+
+  function vendorLogoFor(vendorId: string) {
+    if (!vendorId) return undefined;
+    const logoDocument = allDocuments
+      .filter(
+        (document) =>
+          document.targetType === "Vendor" &&
+          document.targetId === vendorId &&
+          document.type.toLowerCase() === "vendor logo",
+      )
+      .sort((a, b) =>
+        String(b.createdAt || "").localeCompare(
+          String(a.createdAt || ""),
+        ),
+      )[0];
+
+    return (logoDocument?.files || []).find(
+      (file) =>
+        String(file.type || "").startsWith("image/") ||
+        String(file.dataUrl || "").startsWith("data:image/"),
+    );
+  }
+
+  function manualsForAsset(asset: AssetRecord) {
+    if (!asset.id) return [];
+    const assetNameLower = asset.name.trim().toLowerCase();
+
+    return allManualRecords
+      .filter((manual) => {
+        if (manual.linkedAssetId === asset.id) return true;
+        const linkedName = String(manual.linkedAssetName || "")
+          .trim()
+          .toLowerCase();
+        return Boolean(
+          linkedName &&
+            assetNameLower &&
+            (linkedName === assetNameLower ||
+              linkedName.includes(assetNameLower) ||
+              assetNameLower.includes(linkedName)),
+        );
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }
+
+  function openManualUrl(manual: ManualRecord) {
+    const uploadedFile = manual.files.find(
+      (file) => file.url || file.dataUrl,
+    );
+    return cleanManualOpenUrl(
+      manual.id === "manual-seadoo-219002349"
+        ? seaDooManualUrl
+        : manual.href ||
+            uploadedFile?.url ||
+            uploadedFile?.dataUrl ||
+            "",
+    );
+  }
+
+  async function addAssetPhotoFiles(fileList: FileList | null) {
+    if (!selectedAsset.id || !fileList?.length) return;
+
+    const uploaded = await Promise.all(
+      Array.from(fileList).map(fileToUploadedRecord),
+    );
+    const imagePhotos: PhotoRecord[] = uploaded
+      .filter(
+        (file) =>
+          String(file.type || "").startsWith("image/") && file.dataUrl,
+      )
+      .map((file) => ({
+        id: uid("photo"),
+        assetId: selectedAsset.id,
+        name: file.name,
+        dataUrl: file.dataUrl,
+        createdAt: file.createdAt || new Date().toISOString(),
+      }));
+
+    if (!imagePhotos.length) return;
+
+    setPhotos((current) => {
+      const next = [...imagePhotos, ...current];
+      saveStoredArray(storageKeys.photos[0], next);
+      return next;
+    });
+
+    imagePhotos.forEach((photo) => {
+      void postAtlasRecord("asset_photos", photo);
+    });
+
+    setDatabaseStatus(
+      `Added ${imagePhotos.length} photo${imagePhotos.length === 1 ? "" : "s"} to ${selectedAsset.name}.`,
+    );
+  }
+
+  async function addLinkedPhotoFiles(
+    kind: "Location" | "Vendor",
+    id: string,
+    recordName: string,
+    fileList: FileList | null,
+    documentType = "Photo",
+  ) {
+    if (!id || !fileList?.length) return;
+
+    const uploaded = (
+      await Promise.all(Array.from(fileList).map(fileToUploadedRecord))
+    ).filter(
+      (file) =>
+        String(file.type || "").startsWith("image/") && file.dataUrl,
+    );
+
+    if (!uploaded.length) return;
+
+    const createdAt = new Date().toISOString();
+    const record = normalizeDocument({
+      id: uid("doc"),
+      title:
+        documentType === "Vendor Logo"
+          ? `${recordName} logo`
+          : `${recordName} photo`,
+      area: recordName,
+      type: documentType,
+      targetType: kind,
+      targetId: id,
+      targetName: recordName,
+      linkedVendorId: kind === "Vendor" ? id : undefined,
+      notes:
+        documentType === "Vendor Logo"
+          ? "Company logo uploaded from the vendor record."
+          : `Photo uploaded from the ${kind.toLowerCase()} record.`,
+      files: uploaded,
+      createdAt,
+    });
+
+    replaceDocumentInVault(record);
+
+    try {
+      await postDocumentToAtlasVault(record);
+      setDocumentSyncStatus(
+        `${documentType} added to ${recordName} and synced to Atlas.`,
+      );
+    } catch {
+      setDocumentSyncStatus(
+        `${documentType} added to ${recordName} on this browser. Atlas vault sync did not complete.`,
+      );
+    }
+  }
+
+  function startManualForAsset(asset: AssetRecord) {
+    if (!asset.id) return;
+    setSelectedManualId("");
+    setManualDraft(
+      normalizeManualRecord({
+        ...blankManual(),
+        linkedAssetId: asset.id,
+        linkedAssetName: asset.name,
+        manufacturer: asset.make || "",
+        model: asset.model || "",
+      }),
+    );
+    setManualAddOpen(true);
+    setManualMessage(`Adding a manual for ${asset.name}.`);
+    setScreen("manuals");
+  }
+
+  function findManualForAsset(asset: AssetRecord) {
+    if (!asset.id) return;
+    const equipment = [asset.make, asset.model]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    const question = `Find the official owner or operator manual for ${
+      equipment || asset.name
+    }. Use the exact Atlas asset ${asset.name}${
+      asset.serial ? `, serial ${asset.serial}` : ""
+    }, and attach the best verified result to this asset.`;
+
+    setAssistantQuestion(question);
+    setScreen("assistant");
+    void askAtlas(question);
   }
 
   async function refreshDocumentVault() {
@@ -5327,6 +5645,35 @@ export default function AtlasPage() {
 
       replaceDocumentInVault(record);
       await postDocumentToAtlasVault(record);
+
+      const manualRecord = normalizeManualRecord({
+        id: uid("manual"),
+        title: record.title,
+        category: inferManualCategory(record.title),
+        manufacturer: candidate.manufacturer || "",
+        model: candidate.model || "",
+        documentNumber: "",
+        linkedAssetId: linkedAsset?.id || "",
+        linkedAssetName: linkedAsset?.name || "",
+        sourceLabel:
+          candidate.sourceLabel || candidate.sourceDomain || "Official source",
+        href: verified.url,
+        notes: candidate.reason || record.notes,
+        files: record.files || [],
+        createdAt,
+      });
+
+      setManualRecords((current) => {
+        const duplicate = current.some(
+          (manual) =>
+            cleanManualOpenUrl(manual.href) ===
+            cleanManualOpenUrl(manualRecord.href),
+        );
+        const next = duplicate ? current : [manualRecord, ...current];
+        saveStoredArray(storageKeys.manuals[0], next);
+        return next;
+      });
+
       setManualSaveMessage(
         `Saved ${record.title} to Atlas Documents${linkedAsset ? ` and linked it to ${linkedAsset.name}` : ""}.`,
       );
@@ -5342,8 +5689,9 @@ export default function AtlasPage() {
     }
   }
 
-  async function askAtlas() {
-    const question = assistantQuestion.trim();
+  async function askAtlas(questionOverride?: string) {
+    const question = String(questionOverride ?? assistantQuestion).trim();
+    if (questionOverride) setAssistantQuestion(question);
 
     if (!question) {
       setAssistantAnswer("Type a question first.");
@@ -6300,6 +6648,17 @@ export default function AtlasPage() {
   }
 
   function renderLocations() {
+    const locationPhotos = selectedLocation.id
+      ? linkedImageFilesFor("Location", selectedLocation.id)
+      : [];
+    const locationAssets = selectedLocation.id
+      ? byName(
+          assetRecords.filter(
+            (asset) => asset.locationId === selectedLocation.id,
+          ),
+        )
+      : [];
+
     return (
       <ListDrawerLayout
         eyebrow="Property Areas"
@@ -6311,8 +6670,14 @@ export default function AtlasPage() {
               <button
                 key={location.id}
                 type="button"
-                onClick={() => setQuery(location.name)}
-                style={rowButtonStyle}
+                onClick={() => setSelectedLocationId(location.id)}
+                style={{
+                  ...rowButtonStyle,
+                  borderColor:
+                    location.id === selectedLocation.id
+                      ? colors.gold
+                      : colors.line,
+                }}
               >
                 <div>
                   <strong>{location.name}</strong>
@@ -6333,25 +6698,133 @@ export default function AtlasPage() {
           </div>
         }
         drawer={
-          <div>
-            <h3 style={editorHeaderStyle}>Locations Overview</h3>
-            <p style={mutedSmallStyle}>
-              Click any location to filter/search related Atlas records. Assets,
-              work orders, vendors, and map labels stay in the main sections.
-            </p>
+          selectedLocation.id ? (
+            <div style={stackStyle}>
+              <div>
+                <h3 style={editorHeaderStyle}>{selectedLocation.name}</h3>
+                <div style={recordInfoGridStyle}>
+                  <div style={recordInfoItemStyle}>
+                    <span style={fieldLabelStyle}>Type</span>
+                    <strong>{selectedLocation.type || "—"}</strong>
+                  </div>
+                  <div style={recordInfoItemStyle}>
+                    <span style={fieldLabelStyle}>Zone</span>
+                    <strong>{selectedLocation.zone || "—"}</strong>
+                  </div>
+                </div>
+                {selectedLocation.notes ? (
+                  <p style={recordNotesStyle}>{selectedLocation.notes}</p>
+                ) : null}
+              </div>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Photos</div>
+                    <strong>{locationPhotos.length} attached</strong>
+                  </div>
+                  <label style={compactUploadButtonStyle}>
+                    Add Photo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      capture="environment"
+                      onChange={(event) => {
+                        void addLinkedPhotoFiles(
+                          "Location",
+                          selectedLocation.id,
+                          selectedLocation.name,
+                          event.currentTarget.files,
+                        );
+                        event.currentTarget.value = "";
+                      }}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                </div>
+
+                {locationPhotos.length ? (
+                  <div style={photoGridStyle}>
+                    {locationPhotos.map((file) => (
+                      <button
+                        key={file.id}
+                        type="button"
+                        onClick={() => openUploadedFile(file)}
+                        style={compactPhotoButtonStyle}
+                      >
+                        <img
+                          src={file.dataUrl || file.url}
+                          alt={file.name}
+                          style={photoStyle}
+                        />
+                        <strong>{file.name}</strong>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    No photos attached to this location yet.
+                  </p>
+                )}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Assets at this location</div>
+                {locationAssets.length ? (
+                  <div style={compactLinkedListStyle}>
+                    {locationAssets.map((asset) => (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAssetId(asset.id);
+                          setScreen("assets");
+                        }}
+                        style={compactLinkedRowStyle}
+                      >
+                        <span>
+                          <strong>{asset.name}</strong>
+                          <small style={mutedSmallStyle}>
+                            {asset.category}
+                          </small>
+                        </span>
+                        <span style={badgeStyle(asset.status)}>
+                          {asset.status}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    No assets are assigned to this location.
+                  </p>
+                )}
+              </section>
+
+              {renderLinkedDocuments("Location", selectedLocation.id)}
+            </div>
+          ) : (
             <div style={noticeStyle}>
-              <strong>{filteredLocations.length} locations shown</strong>
+              <strong>Select a location.</strong>
               <p style={mutedSmallStyle}>
-                Use search at the top to narrow by area, type, zone, or notes.
+                Open a location to see its information, photos, and assets.
               </p>
             </div>
-          </div>
+          )
         }
       />
     );
   }
 
   function renderAssets() {
+    const attachedManuals = manualsForAsset(selectedAsset);
+    const relatedWorkOrders = selectedAsset.id
+      ? [...serviceRecords]
+          .filter((record) => record.assetId === selectedAsset.id)
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      : [];
+
     return (
       <ListDrawerLayout
         eyebrow="Property Records"
@@ -6364,164 +6837,354 @@ export default function AtlasPage() {
         }
         list={
           <div style={listStyle}>
-            {filteredAssets.map((asset) => (
-              <button
-                key={asset.id}
-                type="button"
-                onClick={() => setSelectedAssetId(asset.id)}
-                style={{
-                  ...rowButtonStyle,
-                  borderColor:
-                    asset.id === selectedAsset.id ? colors.gold : colors.line,
-                }}
-              >
-                <div>
-                  <strong>{asset.name}</strong>
-                  <p style={mutedSmallStyle}>
-                    {asset.category} · {locationName(asset.locationId)}
-                  </p>
-                  <p style={mutedSmallStyle}>
-                    {[asset.make, asset.model, asset.serial]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                </div>
-                <span style={badgeStyle(asset.status)}>{asset.status}</span>
-              </button>
-            ))}
+            {filteredAssets.map((asset) => {
+              const coverPhoto = photos.find(
+                (photo) => photo.assetId === asset.id,
+              );
+              return (
+                <button
+                  key={asset.id}
+                  type="button"
+                  onClick={() => setSelectedAssetId(asset.id)}
+                  style={{
+                    ...rowButtonStyle,
+                    borderColor:
+                      asset.id === selectedAsset.id
+                        ? colors.gold
+                        : colors.line,
+                  }}
+                >
+                  <div style={recordListIdentityStyle}>
+                    <div style={recordListThumbStyle}>
+                      {coverPhoto?.dataUrl || coverPhoto?.url ? (
+                        <img
+                          src={coverPhoto.dataUrl || coverPhoto.url}
+                          alt=""
+                          style={recordListThumbImageStyle}
+                        />
+                      ) : (
+                        <span>{asset.name.slice(0, 1).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div>
+                      <strong>{asset.name}</strong>
+                      <p style={mutedSmallStyle}>
+                        {asset.category} · {locationName(asset.locationId)}
+                      </p>
+                      <p style={mutedSmallStyle}>
+                        {[asset.make, asset.model, asset.serial]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                  </div>
+                  <span style={badgeStyle(asset.status)}>{asset.status}</span>
+                </button>
+              );
+            })}
           </div>
         }
         drawer={
-          <>
-            <h3 style={editorHeaderStyle}>
-              {selectedAsset.name.trim() || "New Asset"}
-            </h3>
-            <div style={formGridStyle}>
-              <Field
-                label="Name"
-                value={selectedAsset.name}
-                onChange={(value) => updateAsset({ name: value })}
-              />
-              <Field
-                label="Category"
-                value={selectedAsset.category}
-                onChange={(value) => updateAsset({ category: value })}
-              />
-              <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                <span style={fieldLabelStyle}>Location</span>
-                <select
-                  value={selectedAsset.locationId}
-                  onChange={(event) =>
-                    updateAsset({ locationId: event.currentTarget.value })
-                  }
-                  style={inputStyle}
-                >
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <SelectField
-                label="Status"
-                value={selectedAsset.status}
-                onChange={(value) => updateAsset({ status: value })}
-                options={["Online", "Offline", "Seasonal", "Monitor"] as const}
-              />
-              <Field
-                label="Make"
-                value={selectedAsset.make ?? ""}
-                onChange={(value) => updateAsset({ make: value })}
-              />
-              <Field
-                label="Model"
-                value={selectedAsset.model ?? ""}
-                onChange={(value) => updateAsset({ model: value })}
-              />
-              <Field
-                label="Serial / VIN / HIN"
-                value={selectedAsset.serial ?? ""}
-                onChange={(value) => updateAsset({ serial: value })}
-              />
-              <Field
-                label="Vendor IDs"
-                value={selectedAsset.vendorIds.join(", ")}
-                onChange={(value) =>
-                  updateAsset({
-                    vendorIds: value
-                      .split(",")
-                      .map((item) => item.trim())
-                      .filter(Boolean),
-                  })
-                }
-              />
-              <Field
-                label="Notes"
-                value={selectedAsset.notes}
-                onChange={(value) => updateAsset({ notes: value })}
-                multiline
-              />
-            </div>
-
-            <div style={buttonRowStyle}>
-              {isRecordDirty("asset", selectedAsset.id) ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void saveDirtyRecord(
-                      "assets",
-                      selectedAsset,
-                      "asset",
-                      selectedAsset.id,
-                    )
-                  }
-                  style={goldButtonStyle}
-                >
-                  Save Asset
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={addWorkOrder}
-                style={secondaryButtonStyle}
-              >
-                Create WO
-              </button>
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              <div style={eyebrowStyle}>Photos</div>
-              {selectedAssetPhotos.length ? (
-                <div style={photoGridStyle}>
-                  {selectedAssetPhotos.map((photo) => (
-                    <div key={photo.id} style={photoCardStyle}>
-                      {photo.dataUrl || photo.url ? (
-                        <img
-                          src={photo.dataUrl || photo.url}
-                          alt={photo.name}
-                          style={photoStyle}
-                        />
-                      ) : null}
-                      <strong>{photo.name}</strong>
-                    </div>
-                  ))}
+          selectedAsset.id ? (
+            <div style={stackStyle}>
+              <div style={assetDetailTitleRowStyle}>
+                <div>
+                  <h3 style={editorHeaderStyle}>
+                    {selectedAsset.name.trim() || "Asset"}
+                  </h3>
+                  <p style={mutedSmallStyle}>
+                    {selectedAsset.category || "Uncategorized"} ·{" "}
+                    {locationName(selectedAsset.locationId)}
+                  </p>
                 </div>
-              ) : (
-                <p style={mutedSmallStyle}>
-                  No photos attached to this asset in the loaded records.
-                </p>
-              )}
-            </div>
+                <span style={badgeStyle(selectedAsset.status)}>
+                  {selectedAsset.status}
+                </span>
+              </div>
 
-            {renderLinkedDocuments("Asset", selectedAsset.id)}
-          </>
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Asset Information</div>
+                <div style={formGridStyle}>
+                  <Field
+                    label="Name"
+                    value={selectedAsset.name}
+                    onChange={(value) => updateAsset({ name: value })}
+                  />
+                  <Field
+                    label="Category"
+                    value={selectedAsset.category}
+                    onChange={(value) => updateAsset({ category: value })}
+                  />
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Location</span>
+                    <select
+                      value={selectedAsset.locationId}
+                      onChange={(event) =>
+                        updateAsset({
+                          locationId: event.currentTarget.value,
+                        })
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="">No location</option>
+                      {locations.map((location) => (
+                        <option key={location.id} value={location.id}>
+                          {location.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <SelectField
+                    label="Status"
+                    value={selectedAsset.status}
+                    onChange={(value) => updateAsset({ status: value })}
+                    options={
+                      ["Online", "Offline", "Seasonal", "Monitor"] as const
+                    }
+                  />
+                  <Field
+                    label="Make"
+                    value={selectedAsset.make ?? ""}
+                    onChange={(value) => updateAsset({ make: value })}
+                  />
+                  <Field
+                    label="Model"
+                    value={selectedAsset.model ?? ""}
+                    onChange={(value) => updateAsset({ model: value })}
+                  />
+                  <Field
+                    label="Serial / VIN / HIN"
+                    value={selectedAsset.serial ?? ""}
+                    onChange={(value) => updateAsset({ serial: value })}
+                  />
+                  <Field
+                    label="Vendor IDs"
+                    value={selectedAsset.vendorIds.join(", ")}
+                    onChange={(value) =>
+                      updateAsset({
+                        vendorIds: value
+                          .split(",")
+                          .map((item) => item.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                  />
+                  <Field
+                    label="Notes"
+                    value={selectedAsset.notes}
+                    onChange={(value) => updateAsset({ notes: value })}
+                    multiline
+                  />
+                </div>
+
+                <div style={buttonRowStyle}>
+                  {isRecordDirty("asset", selectedAsset.id) ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void saveDirtyRecord(
+                          "assets",
+                          selectedAsset,
+                          "asset",
+                          selectedAsset.id,
+                        )
+                      }
+                      style={goldButtonStyle}
+                    >
+                      Save Asset
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={addWorkOrder}
+                    style={secondaryButtonStyle}
+                  >
+                    Create Work Order
+                  </button>
+                </div>
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Manuals</div>
+                    <strong>
+                      {attachedManuals.length
+                        ? `${attachedManuals.length} attached`
+                        : "No manual attached"}
+                    </strong>
+                  </div>
+                  <div style={buttonRowStyle}>
+                    <button
+                      type="button"
+                      onClick={() => startManualForAsset(selectedAsset)}
+                      style={secondaryButtonStyle}
+                    >
+                      Add Manual
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => findManualForAsset(selectedAsset)}
+                      style={goldButtonStyle}
+                    >
+                      Find Online
+                    </button>
+                  </div>
+                </div>
+
+                {attachedManuals.length ? (
+                  <div style={compactLinkedListStyle}>
+                    {attachedManuals.map((manual) => {
+                      const url = openManualUrl(manual);
+                      return (
+                        <div key={manual.id} style={manualAssetRowStyle}>
+                          <span style={{ minWidth: 0 }}>
+                            <strong>{manual.title}</strong>
+                            <small style={mutedSmallStyle}>
+                              {[manual.manufacturer, manual.model]
+                                .filter(Boolean)
+                                .join(" · ") || manual.category}
+                            </small>
+                          </span>
+                          {url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={manualCompactFileStyle}
+                            >
+                              Open
+                            </a>
+                          ) : (
+                            <span style={manualNoPdfStyle}>—</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    Use Find Online to search official manufacturer sources,
+                    or Add Manual to paste a known link.
+                  </p>
+                )}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Photos</div>
+                    <strong>{selectedAssetPhotos.length} attached</strong>
+                  </div>
+                  <label style={compactUploadButtonStyle}>
+                    Add Photo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      capture="environment"
+                      onChange={(event) => {
+                        void addAssetPhotoFiles(
+                          event.currentTarget.files,
+                        );
+                        event.currentTarget.value = "";
+                      }}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                </div>
+
+                {selectedAssetPhotos.length ? (
+                  <div style={photoGridStyle}>
+                    {selectedAssetPhotos.map((photo) => (
+                      <button
+                        key={photo.id}
+                        type="button"
+                        onClick={() => openPhotoPreview(photo)}
+                        style={compactPhotoButtonStyle}
+                      >
+                        {photo.dataUrl || photo.url ? (
+                          <img
+                            src={photo.dataUrl || photo.url}
+                            alt={photo.name}
+                            style={photoStyle}
+                          />
+                        ) : null}
+                        <strong>{photo.name}</strong>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    No photos attached to this asset yet.
+                  </p>
+                )}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Work Order History</div>
+                {relatedWorkOrders.length ? (
+                  <div style={compactLinkedListStyle}>
+                    {relatedWorkOrders.slice(0, 8).map((record) => (
+                      <button
+                        key={record.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedServiceId(record.id);
+                          setScreen("history");
+                        }}
+                        style={compactLinkedRowStyle}
+                      >
+                        <span>
+                          <strong>{record.title}</strong>
+                          <small style={mutedSmallStyle}>
+                            {formatDate(record.date)}
+                          </small>
+                        </span>
+                        <span style={badgeStyle(record.status)}>
+                          {record.status}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    No work orders are linked to this asset.
+                  </p>
+                )}
+              </section>
+
+              {renderLinkedDocuments("Asset", selectedAsset.id)}
+            </div>
+          ) : (
+            <div style={noticeStyle}>
+              <strong>Select an asset.</strong>
+              <p style={mutedSmallStyle}>
+                Open an asset to see its information, manuals, photos, work
+                orders, and documents.
+              </p>
+            </div>
+          )
         }
       />
     );
   }
 
   function renderVendors() {
+    const selectedVendorLogo = selectedVendor.id
+      ? vendorLogoFor(selectedVendor.id)
+      : undefined;
+    const selectedVendorPhotos = selectedVendor.id
+      ? linkedImageFilesFor("Vendor", selectedVendor.id)
+      : [];
+    const relatedVendorAssets = selectedVendor.id
+      ? byName(
+          assetRecords.filter((asset) =>
+            asset.vendorIds.includes(selectedVendor.id),
+          ),
+        )
+      : [];
+
     return (
       <ListDrawerLayout
         eyebrow="Property Records"
@@ -6534,104 +7197,274 @@ export default function AtlasPage() {
         }
         list={
           <div style={listStyle}>
-            {filteredVendors.map((vendor) => (
-              <button
-                key={vendor.id}
-                type="button"
-                onClick={() => setSelectedVendorId(vendor.id)}
-                style={{
-                  ...rowButtonStyle,
-                  borderColor:
-                    vendor.id === selectedVendor.id ? colors.gold : colors.line,
-                }}
-              >
-                <div>
-                  <strong>{vendor.name}</strong>
-                  <p style={mutedSmallStyle}>{vendor.category}</p>
-                  <p style={mutedSmallStyle}>
-                    {[vendor.phone, vendor.email].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-              </button>
-            ))}
+            {filteredVendors.map((vendor) => {
+              const logo = vendorLogoFor(vendor.id);
+              const logoSrc = logo?.dataUrl || logo?.url || "";
+              return (
+                <button
+                  key={vendor.id}
+                  type="button"
+                  onClick={() => setSelectedVendorId(vendor.id)}
+                  style={{
+                    ...rowButtonStyle,
+                    borderColor:
+                      vendor.id === selectedVendor.id
+                        ? colors.gold
+                        : colors.line,
+                  }}
+                >
+                  <div style={recordListIdentityStyle}>
+                    <div style={vendorLogoThumbStyle}>
+                      {logoSrc ? (
+                        <img
+                          src={logoSrc}
+                          alt={`${vendor.name} logo`}
+                          style={vendorLogoImageStyle}
+                        />
+                      ) : (
+                        <span>{vendor.name.slice(0, 2).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div>
+                      <strong>{vendor.name}</strong>
+                      <p style={mutedSmallStyle}>{vendor.category}</p>
+                      <p style={mutedSmallStyle}>
+                        {[vendor.phone, vendor.email]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         }
         drawer={
-          <>
-            <h3 style={editorHeaderStyle}>
-              {selectedVendor.name.trim() || "New Vendor"}
-            </h3>
-            <div style={formGridStyle}>
-              <Field
-                label="Name"
-                value={selectedVendor.name}
-                onChange={(value) =>
-                  setVendorRecords((current) =>
-                    byName(
-                      current.map((item) =>
-                        item.id === selectedVendor.id
-                          ? normalizeVendor({ ...item, name: value })
-                          : item,
-                      ),
-                    ),
-                  )
-                }
-              />
-              <Field
-                label="Category"
-                value={selectedVendor.category}
-                onChange={(value) =>
-                  setVendorRecords((current) =>
-                    byName(
-                      current.map((item) =>
-                        item.id === selectedVendor.id
-                          ? normalizeVendor({ ...item, category: value })
-                          : item,
-                      ),
-                    ),
-                  )
-                }
-              />
-              <Field
-                label="Phone"
-                value={selectedVendor.phone ?? ""}
-                onChange={(value) => updateVendor({ phone: value })}
-              />
-              <Field
-                label="Email"
-                value={selectedVendor.email ?? ""}
-                onChange={(value) => updateVendor({ email: value })}
-              />
-              <Field
-                label="Website"
-                value={selectedVendor.website ?? ""}
-                onChange={(value) => updateVendor({ website: value })}
-              />
-              <Field
-                label="Notes"
-                value={selectedVendor.notes}
-                onChange={(value) => updateVendor({ notes: value })}
-                multiline
-              />
+          selectedVendor.id ? (
+            <div style={stackStyle}>
+              <div style={vendorDetailHeaderStyle}>
+                <div style={vendorLogoLargeStyle}>
+                  {selectedVendorLogo?.dataUrl ||
+                  selectedVendorLogo?.url ? (
+                    <img
+                      src={
+                        selectedVendorLogo.dataUrl ||
+                        selectedVendorLogo.url
+                      }
+                      alt={`${selectedVendor.name} logo`}
+                      style={vendorLogoImageStyle}
+                    />
+                  ) : (
+                    <span>
+                      {selectedVendor.name.slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <h3 style={editorHeaderStyle}>
+                    {selectedVendor.name.trim() || "Vendor"}
+                  </h3>
+                  <p style={mutedSmallStyle}>
+                    {selectedVendor.category || "Uncategorized"}
+                  </p>
+                </div>
+                <label style={compactUploadButtonStyle}>
+                  {selectedVendorLogo ? "Change Logo" : "Add Logo"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      void addLinkedPhotoFiles(
+                        "Vendor",
+                        selectedVendor.id,
+                        selectedVendor.name,
+                        event.currentTarget.files,
+                        "Vendor Logo",
+                      );
+                      event.currentTarget.value = "";
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              </div>
+
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Vendor Information</div>
+                <div style={formGridStyle}>
+                  <Field
+                    label="Name"
+                    value={selectedVendor.name}
+                    onChange={(value) =>
+                      setVendorRecords((current) =>
+                        byName(
+                          current.map((item) =>
+                            item.id === selectedVendor.id
+                              ? normalizeVendor({
+                                  ...item,
+                                  name: value,
+                                })
+                              : item,
+                          ),
+                        ),
+                      )
+                    }
+                  />
+                  <Field
+                    label="Category"
+                    value={selectedVendor.category}
+                    onChange={(value) =>
+                      setVendorRecords((current) =>
+                        byName(
+                          current.map((item) =>
+                            item.id === selectedVendor.id
+                              ? normalizeVendor({
+                                  ...item,
+                                  category: value,
+                                })
+                              : item,
+                          ),
+                        ),
+                      )
+                    }
+                  />
+                  <Field
+                    label="Phone"
+                    value={selectedVendor.phone ?? ""}
+                    onChange={(value) => updateVendor({ phone: value })}
+                  />
+                  <Field
+                    label="Email"
+                    value={selectedVendor.email ?? ""}
+                    onChange={(value) => updateVendor({ email: value })}
+                  />
+                  <Field
+                    label="Website"
+                    value={selectedVendor.website ?? ""}
+                    onChange={(value) => updateVendor({ website: value })}
+                  />
+                  <Field
+                    label="Notes"
+                    value={selectedVendor.notes}
+                    onChange={(value) => updateVendor({ notes: value })}
+                    multiline
+                  />
+                </div>
+
+                {isRecordDirty("vendor", selectedVendor.id) ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void saveDirtyRecord(
+                        "vendors",
+                        selectedVendor,
+                        "vendor",
+                        selectedVendor.id,
+                      )
+                    }
+                    style={goldButtonStyle}
+                  >
+                    Save Vendor
+                  </button>
+                ) : null}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Photos</div>
+                    <strong>{selectedVendorPhotos.length} attached</strong>
+                  </div>
+                  <label style={compactUploadButtonStyle}>
+                    Add Photo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      capture="environment"
+                      onChange={(event) => {
+                        void addLinkedPhotoFiles(
+                          "Vendor",
+                          selectedVendor.id,
+                          selectedVendor.name,
+                          event.currentTarget.files,
+                        );
+                        event.currentTarget.value = "";
+                      }}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                </div>
+
+                {selectedVendorPhotos.length ? (
+                  <div style={photoGridStyle}>
+                    {selectedVendorPhotos.map((file) => (
+                      <button
+                        key={file.id}
+                        type="button"
+                        onClick={() => openUploadedFile(file)}
+                        style={compactPhotoButtonStyle}
+                      >
+                        <img
+                          src={file.dataUrl || file.url}
+                          alt={file.name}
+                          style={photoStyle}
+                        />
+                        <strong>{file.name}</strong>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    No vendor photos attached yet.
+                  </p>
+                )}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Related Assets</div>
+                {relatedVendorAssets.length ? (
+                  <div style={compactLinkedListStyle}>
+                    {relatedVendorAssets.map((asset) => (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAssetId(asset.id);
+                          setScreen("assets");
+                        }}
+                        style={compactLinkedRowStyle}
+                      >
+                        <span>
+                          <strong>{asset.name}</strong>
+                          <small style={mutedSmallStyle}>
+                            {asset.category}
+                          </small>
+                        </span>
+                        <span style={badgeStyle(asset.status)}>
+                          {asset.status}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    No assets currently list this vendor.
+                  </p>
+                )}
+              </section>
+
+              {renderLinkedDocuments("Vendor", selectedVendor.id)}
             </div>
-            {isRecordDirty("vendor", selectedVendor.id) ? (
-              <button
-                type="button"
-                onClick={() =>
-                  void saveDirtyRecord(
-                    "vendors",
-                    selectedVendor,
-                    "vendor",
-                    selectedVendor.id,
-                  )
-                }
-                style={goldButtonStyle}
-              >
-                Save Vendor
-              </button>
-            ) : null}
-            {renderLinkedDocuments("Vendor", selectedVendor.id)}
-          </>
+          ) : (
+            <div style={noticeStyle}>
+              <strong>Select a vendor.</strong>
+              <p style={mutedSmallStyle}>
+                Open a vendor to see contact information, logo, photos,
+                related assets, and documents.
+              </p>
+            </div>
+          )
         }
       />
     );
@@ -7561,7 +8394,7 @@ export default function AtlasPage() {
   function renderManuals() {
     const normalizedSearch = manualSearch.trim().toLowerCase();
 
-    const filteredManuals = [...manualRecords]
+    const filteredManuals = [...allManualRecords]
       .filter((manual) => {
         if (!normalizedSearch) return true;
         return [
@@ -7590,7 +8423,7 @@ export default function AtlasPage() {
       );
     }
 
-    function saveManual() {
+    async function saveManual() {
       const prepared = normalizeManualRecord({
         ...manualDraft,
         id: `manual-${Date.now()}`,
@@ -7609,9 +8442,55 @@ export default function AtlasPage() {
       const next = [prepared, ...manualRecords];
       setManualRecords(next);
       saveStoredArray(storageKeys.manuals[0], next);
+
+      const linkedAsset = prepared.linkedAssetId
+        ? assetRecords.find(
+            (asset) => asset.id === prepared.linkedAssetId,
+          )
+        : undefined;
+      const documentRecord = normalizeDocument({
+        id: uid("doc"),
+        title: prepared.title,
+        area: linkedAsset
+          ? locationName(linkedAsset.locationId)
+          : prepared.linkedAssetName || "General",
+        type: prepared.category,
+        targetType: linkedAsset ? "Asset" : "General",
+        targetId: linkedAsset?.id || "",
+        targetName: linkedAsset?.name || "General",
+        linkedAssetId: linkedAsset?.id,
+        notes: [
+          prepared.manufacturer
+            ? `Manufacturer: ${prepared.manufacturer}`
+            : "",
+          prepared.model ? `Model: ${prepared.model}` : "",
+          prepared.documentNumber
+            ? `Document number: ${prepared.documentNumber}`
+            : "",
+          prepared.sourceLabel
+            ? `Source: ${prepared.sourceLabel}`
+            : "",
+          prepared.notes,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        href: prepared.href,
+        files: prepared.files,
+        createdAt: prepared.createdAt,
+      });
+
+      replaceDocumentInVault(documentRecord);
+      try {
+        await postDocumentToAtlasVault(documentRecord);
+        setManualMessage("Manual saved and synced to Atlas.");
+      } catch {
+        setManualMessage(
+          "Manual saved on this browser. Atlas document sync did not complete.",
+        );
+      }
+
       setManualDraft(blankManual());
       setManualAddOpen(false);
-      setManualMessage("");
     }
 
     async function addManualFiles(fileList: FileList | null) {
@@ -7631,9 +8510,22 @@ export default function AtlasPage() {
         detail="Manuals listed alphabetically with their attached asset and a direct Open button."
         isMobile={isMobile}
         right={
-          <button type="button" onClick={startNewManual} style={goldButtonStyle}>
-            Add Manual
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setScreen("documents")}
+              style={secondaryButtonStyle}
+            >
+              Back to Documents
+            </button>
+            <button
+              type="button"
+              onClick={startNewManual}
+              style={goldButtonStyle}
+            >
+              Add Manual
+            </button>
+          </>
         }
         list={
           <div style={stackStyle}>
@@ -7738,7 +8630,7 @@ export default function AtlasPage() {
                 <div style={{ ...buttonRowStyle, marginTop: 12 }}>
                   <button
                     type="button"
-                    onClick={saveManual}
+                    onClick={() => void saveManual()}
                     style={goldButtonStyle}
                   >
                     Save Manual
@@ -7757,17 +8649,7 @@ export default function AtlasPage() {
               {filteredManuals.length ? (
                 <div style={manualCompactListStyle}>
                   {filteredManuals.map((manual) => {
-                    const uploadedFile = manual.files.find(
-                      (file) => file.url || file.dataUrl,
-                    );
-                    const manualOpenUrl = cleanManualOpenUrl(
-                      manual.id === "manual-seadoo-219002349"
-                        ? seaDooManualUrl
-                        : manual.href ||
-                            uploadedFile?.url ||
-                            uploadedFile?.dataUrl ||
-                            "",
-                    );
+                    const manualOpenUrl = openManualUrl(manual);
 
                     return (
                       <div key={manual.id} style={manualSimpleRowStyle}>
@@ -7874,13 +8756,22 @@ export default function AtlasPage() {
         detail="Search, open, edit, delete, zoom, and sync paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots between phone and desktop."
         isMobile={isMobile}
         right={
-          <button
-            type="button"
-            onClick={() => setScreen("intake")}
-            style={goldButtonStyle}
-          >
-            Add Document
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setScreen("manuals")}
+              style={secondaryButtonStyle}
+            >
+              Manual Library
+            </button>
+            <button
+              type="button"
+              onClick={() => setScreen("intake")}
+              style={goldButtonStyle}
+            >
+              Add Document
+            </button>
+          </>
         }
         list={
           <div style={stackStyle}>
@@ -9420,7 +10311,10 @@ export default function AtlasPage() {
                 aria-label="Open Atlas section"
               >
                 {screens
-                  .filter((item) => item.id !== "intake")
+                  .filter(
+                    (item) =>
+                      item.id !== "intake" && item.id !== "manuals",
+                  )
                   .map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.label}
@@ -9438,7 +10332,10 @@ export default function AtlasPage() {
                 }}
               >
                 {screens
-                  .filter((item) => item.id !== "intake")
+                  .filter(
+                    (item) =>
+                      item.id !== "intake" && item.id !== "manuals",
+                  )
                   .map((item) => (
                     <button
                       key={item.id}
@@ -11131,6 +12028,185 @@ const searchResultStyle: React.CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   color: colors.text,
+};
+
+const detailSectionStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 12,
+  padding: 14,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  background: "#FFFFFF",
+};
+
+const detailSectionHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const recordInfoGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+  gap: 10,
+  marginTop: 10,
+};
+
+const recordInfoItemStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 4,
+  padding: 12,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 12,
+  background: colors.panel,
+};
+
+const recordNotesStyle: React.CSSProperties = {
+  margin: "10px 0 0",
+  padding: 12,
+  borderRadius: 12,
+  background: colors.panel,
+  color: colors.text,
+  lineHeight: 1.5,
+  whiteSpace: "pre-wrap",
+};
+
+const compactUploadButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 38,
+  padding: "9px 12px",
+  border: `1px solid ${colors.gold}`,
+  borderRadius: 11,
+  background: colors.gold,
+  color: colors.navy,
+  fontSize: 12,
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const compactPhotoButtonStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 7,
+  padding: 8,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 12,
+  background: "#FFFFFF",
+  color: colors.text,
+  textAlign: "left",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const compactLinkedListStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const compactLinkedRowStyle: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "10px 12px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 12,
+  background: colors.panel,
+  color: colors.text,
+  textAlign: "left",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const assetDetailTitleRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const manualAssetRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 64px",
+  alignItems: "center",
+  gap: 12,
+  padding: "10px 12px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 12,
+  background: colors.panel,
+};
+
+const recordListIdentityStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  gap: 11,
+};
+
+const recordListThumbStyle: React.CSSProperties = {
+  width: 44,
+  height: 44,
+  flex: "0 0 44px",
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+  borderRadius: 12,
+  background: colors.navy,
+  color: "#FFFFFF",
+  fontWeight: 950,
+};
+
+const recordListThumbImageStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+};
+
+const vendorLogoThumbStyle: React.CSSProperties = {
+  width: 44,
+  height: 44,
+  flex: "0 0 44px",
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 12,
+  background: "#FFFFFF",
+  color: colors.navy,
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const vendorLogoLargeStyle: React.CSSProperties = {
+  width: 72,
+  height: 72,
+  flex: "0 0 72px",
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 18,
+  background: "#FFFFFF",
+  color: colors.navy,
+  fontSize: 18,
+  fontWeight: 950,
+};
+
+const vendorLogoImageStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "contain",
+};
+
+const vendorDetailHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
 };
 
 const manualSimpleTableStyle: React.CSSProperties = {
