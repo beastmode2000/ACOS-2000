@@ -7375,64 +7375,64 @@ export default function AtlasPage() {
               }}
             >
               <div style={assetVisualHeaderStyle}>
-                <div style={assetPhotoLargeStyle}>
-                  {selectedAssetCoverPhoto?.dataUrl || selectedAssetCoverPhoto?.url ? (
-                    <img
-                      src={
-                        selectedAssetCoverPhoto.dataUrl ||
-                        selectedAssetCoverPhoto.url
-                      }
-                      alt={selectedAsset.name}
-                      style={assetPhotoLargeImageStyle}
-                    />
-                  ) : (
-                    <span>
-                      {selectedAsset.name.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={assetDetailTitleRowStyle}>
-                    <div>
-                      <h3 style={editorHeaderStyle}>
-                        {selectedAsset.name.trim() || "Asset"}
-                      </h3>
-                      <p style={mutedSmallStyle}>
-                        {selectedAsset.category || "Uncategorized"} ·{" "}
-                        {locationName(selectedAsset.locationId)}
-                      </p>
-                      <p style={mutedSmallStyle}>
-                        {[selectedAsset.make, selectedAsset.model, selectedAsset.serial]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    </div>
-                    <span style={badgeStyle(selectedAsset.status)}>
-                      {selectedAsset.status}
-                    </span>
+                <div style={assetHeaderTopRowStyle}>
+                  <div style={assetPhotoLargeStyle}>
+                    {selectedAssetCoverPhoto?.dataUrl ||
+                    selectedAssetCoverPhoto?.url ? (
+                      <img
+                        src={
+                          selectedAssetCoverPhoto.dataUrl ||
+                          selectedAssetCoverPhoto.url
+                        }
+                        alt={selectedAsset.name}
+                        style={assetPhotoLargeImageStyle}
+                      />
+                    ) : (
+                      <span>
+                        {selectedAsset.name.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
                   </div>
+
+                  <span style={badgeStyle(selectedAsset.status)}>
+                    {selectedAsset.status}
+                  </span>
                 </div>
 
-                <div style={buttonRowStyle}>
+                <div style={assetHeaderTextStyle}>
+                  <h3 style={assetHeaderTitleStyle}>
+                    {selectedAsset.name.trim() || "Asset"}
+                  </h3>
+                  <p style={assetHeaderMetaStyle}>
+                    {selectedAsset.category || "Uncategorized"} ·{" "}
+                    {locationName(selectedAsset.locationId)}
+                  </p>
+                  <p style={assetHeaderMetaStyle}>
+                    {[selectedAsset.make, selectedAsset.model, selectedAsset.serial]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+
+                <div style={assetHeaderActionRowStyle}>
                   <button
                     type="button"
                     onClick={() => void pasteAssetPhoto()}
-                    style={secondaryButtonStyle}
+                    style={assetHeaderActionButtonStyle}
                   >
                     Paste Image
                   </button>
-                  <label style={compactUploadButtonStyle}>
+                  <label style={assetHeaderUploadButtonStyle}>
                     {selectedAssetCoverPhoto ? "Add Another" : "Add Photo"}
                     <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    capture="environment"
-                    onChange={(event) => {
-                      void addAssetPhotoFiles(event.currentTarget.files);
-                      event.currentTarget.value = "";
-                    }}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      capture="environment"
+                      onChange={(event) => {
+                        void addAssetPhotoFiles(event.currentTarget.files);
+                        event.currentTarget.value = "";
+                      }}
                       style={{ display: "none" }}
                     />
                   </label>
@@ -13198,14 +13198,97 @@ const compactLinkedRowStyle: React.CSSProperties = {
 };
 
 const assetVisualHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr)",
   gap: 14,
-  flexWrap: "wrap",
+  minWidth: 0,
+  width: "100%",
+  boxSizing: "border-box",
   padding: 14,
   border: `1px solid ${colors.line}`,
   borderRadius: 16,
   background: "#FFFFFF",
+};
+
+const assetHeaderTopRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 12,
+  minWidth: 0,
+  width: "100%",
+};
+
+const assetHeaderTextStyle: React.CSSProperties = {
+  display: "block",
+  minWidth: 0,
+  width: "100%",
+};
+
+const assetHeaderTitleStyle: React.CSSProperties = {
+  margin: 0,
+  padding: "0 0 10px",
+  borderBottom: `2px solid ${colors.gold}`,
+  color: colors.navy,
+  fontSize: 24,
+  fontWeight: 950,
+  letterSpacing: "-0.03em",
+  lineHeight: 1.15,
+  whiteSpace: "normal",
+  wordBreak: "normal",
+  overflowWrap: "break-word",
+  writingMode: "horizontal-tb",
+  textOrientation: "mixed",
+};
+
+const assetHeaderMetaStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 13,
+  margin: "7px 0 0",
+  lineHeight: 1.45,
+  whiteSpace: "normal",
+  wordBreak: "normal",
+  overflowWrap: "break-word",
+  writingMode: "horizontal-tb",
+  textOrientation: "mixed",
+};
+
+const assetHeaderActionRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 8,
+  width: "100%",
+  minWidth: 0,
+};
+
+const assetHeaderActionButtonStyle: React.CSSProperties = {
+  ...secondaryButtonStyle,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "100%",
+  minWidth: 0,
+  minHeight: 42,
+  boxSizing: "border-box",
+  whiteSpace: "nowrap",
+  wordBreak: "normal",
+  writingMode: "horizontal-tb",
+  textOrientation: "mixed",
+};
+
+const assetHeaderUploadButtonStyle: React.CSSProperties = {
+  ...compactUploadButtonStyle,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "100%",
+  minWidth: 0,
+  minHeight: 42,
+  boxSizing: "border-box",
+  whiteSpace: "nowrap",
+  wordBreak: "normal",
+  writingMode: "horizontal-tb",
+  textOrientation: "mixed",
 };
 
 const assetPhotoLargeStyle: React.CSSProperties = {
@@ -13230,10 +13313,11 @@ const assetPhotoLargeImageStyle: React.CSSProperties = {
 };
 
 const assetDetailTitleRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  alignItems: "start",
   gap: 12,
+  minWidth: 0,
 };
 
 const manualAssetRowStyle: React.CSSProperties = {
