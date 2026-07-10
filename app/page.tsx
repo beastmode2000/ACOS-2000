@@ -2447,24 +2447,14 @@ export default function AtlasPage() {
   const [weatherStatus, setWeatherStatus] = useState(
     "Loading 7-day irrigation weather...",
   );
-  const [assistantMode, setAssistantMode] = useState<"records" | "manuals">(
-    "records",
-  );
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(
     "Ask Atlas about assets, locations, vendors, work orders, calendar items, procedures, documents, parts, or map records.",
   );
-  const [assistantLoading, setAssistantLoading] = useState(false);
-
-  const [manualAssetId, setManualAssetId] = useState("");
-  const [manualQuery, setManualQuery] = useState("");
-  const [manualAnswer, setManualAnswer] = useState(
-    "Select an Atlas asset or type the equipment manufacturer and model.",
-  );
   const [manualCandidates, setManualCandidates] = useState<ManualCandidate[]>([]);
-  const [manualLoading, setManualLoading] = useState(false);
   const [manualSavingUrl, setManualSavingUrl] = useState("");
   const [manualSaveMessage, setManualSaveMessage] = useState("");
+  const [assistantLoading, setAssistantLoading] = useState(false);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
@@ -5195,11 +5185,20 @@ export default function AtlasPage() {
     }
   }
 
-  function buildAtlasSnapshot() {
+  async function askAtlas() {
+    const question = assistantQuestion.trim();
+
+    if (!question) {
+      setAssistantAnswer("Type a question first.");
+      return;
+    }
+
+    const manualQuestion = /\b(manual|owner'?s manual|user guide|installation guide|service manual|pdf|documentation|spec sheet|datasheet)\b/i.test(question);
+
     const cleanText = (value: unknown, maxLength = 1200) =>
       String(value ?? "").slice(0, maxLength);
 
-    return {
+    const atlasSnapshot = {
       generatedAt: new Date().toISOString(),
       counts: {
         locations: locations.length,
@@ -5331,18 +5330,30 @@ export default function AtlasPage() {
         days: weatherDays,
       },
     };
-  }
 
-  async function askAtlas() {
-    const question = assistantQuestion.trim();
-
-    if (!question) {
-      setAssistantAnswer("Type a question first.");
-      return;
-    }
+    const requestSnapshot = manualQuestion
+      ? {
+          generatedAt: atlasSnapshot.generatedAt,
+          assets: atlasSnapshot.assets.map((asset) => ({
+            id: asset.id,
+            name: asset.name,
+            make: asset.make,
+            model: asset.model,
+            category: asset.category,
+            locationName: asset.locationName,
+            notes: asset.notes.slice(0, 500),
+          })),
+        }
+      : atlasSnapshot;
 
     setAssistantLoading(true);
-    setAssistantAnswer("Ask Atlas is reviewing your property records...");
+    setManualCandidates([]);
+    setManualSaveMessage("");
+    setAssistantAnswer(
+      manualQuestion
+        ? "Ask Atlas is checking the exact equipment details and searching official manufacturer sources..."
+        : "Ask Atlas is reviewing your Atlas records...",
+    );
 
     try {
       const response = await fetch("/api/ask-atlas", {
@@ -5350,87 +5361,8 @@ export default function AtlasPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question,
-          atlas: buildAtlasSnapshot(),
-        }),
-      });
-
-      const payload = (await response.json().catch(() => ({}))) as {
-        ok?: boolean;
-        answer?: string;
-        error?: string;
-      };
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Ask Atlas could not answer right now.");
-      }
-
-      setAssistantAnswer(
-        String(payload.answer || "").trim() ||
-          "Ask Atlas did not return a readable answer.",
-      );
-    } catch (error) {
-      setAssistantAnswer(
-        error instanceof Error
-          ? error.message
-          : "Ask Atlas could not answer right now.",
-      );
-    } finally {
-      setAssistantLoading(false);
-    }
-  }
-
-  function selectedManualAsset() {
-    return assetRecords.find((asset) => asset.id === manualAssetId);
-  }
-
-  function manualSearchText() {
-    const asset = selectedManualAsset();
-    const assetText = asset
-      ? [asset.make, asset.model, asset.name].filter(Boolean).join(" ")
-      : "";
-    return manualQuery.trim() || assetText.trim();
-  }
-
-  function manualGoogleUrl() {
-    const terms = manualSearchText();
-    const search = `${terms} official manual PDF`.trim();
-    return `https://www.google.com/search?q=${encodeURIComponent(search)}`;
-  }
-
-  async function findManuals() {
-    const equipment = manualSearchText();
-    const asset = selectedManualAsset();
-
-    if (!equipment) {
-      setManualAnswer(
-        "Select an Atlas asset or type the manufacturer and model first.",
-      );
-      return;
-    }
-
-    setManualLoading(true);
-    setManualCandidates([]);
-    setManualSaveMessage("");
-    setManualAnswer(
-      "Searching official manufacturer documentation. A normal web-search link is available below while Atlas ranks the results.",
-    );
-
-    try {
-      const response = await fetch("/api/manual-search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: equipment,
-          asset: asset
-            ? {
-                id: asset.id,
-                name: asset.name,
-                make: asset.make || "",
-                model: asset.model || "",
-                serial: asset.serial || "",
-                category: asset.category,
-              }
-            : null,
+          atlas: requestSnapshot,
+          allowWebSearch: manualQuestion,
         }),
       });
 
@@ -5442,30 +5374,46 @@ export default function AtlasPage() {
       };
 
       if (!response.ok || !payload.ok) {
-        throw new Error(
-          payload.error || "Manual Finder could not complete the search.",
-        );
+        throw new Error(payload.error || "Ask Atlas could not answer right now.");
       }
 
-      const results = Array.isArray(payload.manuals)
-        ? payload.manuals.slice(0, 3)
-        : [];
+      let cleanAnswer = String(payload.answer || "").trim();
+      let cleanManuals = Array.isArray(payload.manuals) ? payload.manuals : [];
 
-      setManualCandidates(results);
-      setManualAnswer(
-        String(payload.answer || "").trim() ||
-          (results.length
-            ? `Found ${results.length} likely manual result${results.length === 1 ? "" : "s"}.`
-            : "No verified manual was returned. Use Open Web Search below or add the exact model number."),
+      if (cleanAnswer.startsWith("{") || cleanAnswer.startsWith("```")) {
+        try {
+          const normalized = cleanAnswer
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/i, "")
+            .trim();
+          const parsed = JSON.parse(normalized) as {
+            answer?: unknown;
+            manuals?: ManualCandidate[];
+          };
+          cleanAnswer = String(parsed.answer || "").trim();
+          if (!cleanManuals.length && Array.isArray(parsed.manuals)) {
+            cleanManuals = parsed.manuals;
+          }
+        } catch {
+          // Keep the readable text returned by the route.
+        }
+      }
+
+      setAssistantAnswer(
+        cleanAnswer ||
+          (cleanManuals.length
+            ? "I found the official manual options below."
+            : "Ask Atlas did not find a verified result."),
       );
+      setManualCandidates(cleanManuals.slice(0, 3));
     } catch (error) {
-      setManualAnswer(
+      setAssistantAnswer(
         error instanceof Error
           ? error.message
-          : "Manual Finder could not complete the search.",
+          : "Ask Atlas could not answer right now.",
       );
     } finally {
-      setManualLoading(false);
+      setAssistantLoading(false);
     }
   }
 
@@ -8809,398 +8757,130 @@ export default function AtlasPage() {
   }
 
   function renderAssistant() {
-    const manualAsset = selectedManualAsset();
-    const canSearchManual = Boolean(manualSearchText());
-
-    const tabButton = (
-      label: string,
-      mode: "records" | "manuals",
-    ): React.CSSProperties => ({
-      border: 0,
-      borderBottom:
-        assistantMode === mode
-          ? `3px solid ${colors.gold}`
-          : "3px solid transparent",
-      background: assistantMode === mode ? "#FFFFFF" : "transparent",
-      color: assistantMode === mode ? colors.navy : colors.muted,
-      padding: "13px 18px 11px",
-      fontWeight: 950,
-      fontSize: 14,
-      cursor: "pointer",
-      borderRadius: "12px 12px 0 0",
-    });
-
     return (
       <section style={sectionStyle}>
         <SectionHeader
           eyebrow="Ask Atlas"
           title="AI Property Assistant"
-          detail="Use private Atlas intelligence for property records, or switch to Manual Finder for live manufacturer documentation."
+          detail="Search Atlas records, or ask Atlas to find an official equipment manual online and save it to Documents."
         />
-
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            borderBottom: `1px solid ${colors.line}`,
-            marginBottom: 18,
-            paddingLeft: 4,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setAssistantMode("records")}
-            style={tabButton("Ask Atlas", "records")}
-          >
-            Ask Atlas
-          </button>
-          <button
-            type="button"
-            onClick={() => setAssistantMode("manuals")}
-            style={tabButton("Manual Finder", "manuals")}
-          >
-            Manual Finder
-          </button>
-        </div>
-
-        {assistantMode === "records" ? (
-          <div style={stackStyle}>
-            <div style={{ ...cardStyle, padding: 18 }}>
-              <div style={{ fontWeight: 950, fontSize: 18, marginBottom: 5 }}>
-                Search Your Atlas Records
-              </div>
-              <p style={{ ...mutedSmallStyle, marginTop: 0 }}>
-                Ask about assets, work orders, vendors, dates, procedures,
-                documents, parts, locations, or maintenance history.
-              </p>
-
-              <textarea
-                value={assistantQuestion}
-                onChange={(event) =>
-                  setAssistantQuestion(event.currentTarget.value)
-                }
-                onKeyDown={(event) => {
-                  if (
-                    (event.ctrlKey || event.metaKey) &&
-                    event.key === "Enter"
-                  ) {
-                    event.preventDefault();
-                    if (!assistantLoading) void askAtlas();
-                  }
-                }}
-                placeholder="Example: What work orders are open, and which ones are high priority?"
-                style={{ ...inputStyle, minHeight: 130, resize: "vertical" }}
-              />
-
-              <div style={{ ...buttonRowStyle, marginTop: 12 }}>
-                <button
-                  type="button"
-                  onClick={() => void askAtlas()}
-                  disabled={assistantLoading}
-                  style={{
-                    ...goldButtonStyle,
-                    opacity: assistantLoading ? 0.65 : 1,
-                    cursor: assistantLoading ? "wait" : "pointer",
-                  }}
-                >
-                  {assistantLoading ? "Reviewing Atlas..." : "Ask Atlas"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAssistantQuestion("");
-                    setAssistantAnswer(
-                      "Ask Atlas about assets, locations, vendors, work orders, calendar items, procedures, documents, parts, or map records.",
-                    );
-                  }}
-                  disabled={assistantLoading}
-                  style={secondaryButtonStyle}
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <div
+        <div style={stackStyle}>
+          <textarea
+            value={assistantQuestion}
+            onChange={(event) =>
+              setAssistantQuestion(event.currentTarget.value)
+            }
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                event.preventDefault();
+                if (!assistantLoading) void askAtlas();
+              }
+            }}
+            placeholder="Examples: What work is due this week? Find the official PDF manual for the Hunter HCC 24-zone controller and link it to the irrigation controller asset."
+            style={{ ...inputStyle, minHeight: 130, resize: "vertical" }}
+          />
+          <div style={buttonRowStyle}>
+            <button
+              type="button"
+              onClick={() => void askAtlas()}
+              disabled={assistantLoading}
               style={{
-                ...noticeStyle,
-                whiteSpace: "pre-wrap",
-                lineHeight: 1.65,
-                fontSize: 15,
+                ...goldButtonStyle,
+                opacity: assistantLoading ? 0.65 : 1,
+                cursor: assistantLoading ? "wait" : "pointer",
               }}
             >
-              {assistantAnswer}
-            </div>
+              {assistantLoading ? "Searching..." : "Ask Atlas"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAssistantQuestion("");
+                setManualCandidates([]);
+                setManualSaveMessage("");
+                setAssistantAnswer(
+                  "Ask Atlas about your records, or ask it to find an official PDF manual and save it to Atlas Documents.",
+                );
+              }}
+              disabled={assistantLoading}
+              style={secondaryButtonStyle}
+            >
+              Clear
+            </button>
           </div>
-        ) : (
-          <div style={stackStyle}>
-            <div style={{ ...cardStyle, padding: 18 }}>
-              <div style={{ fontWeight: 950, fontSize: 18, marginBottom: 5 }}>
-                Find Official Equipment Manuals
-              </div>
-              <p style={{ ...mutedSmallStyle, marginTop: 0 }}>
-                Select an Atlas asset or type the exact manufacturer and model.
-                Manual Finder searches the live internet without sending the
-                rest of your private Atlas database.
-              </p>
+          <div
+            style={{
+              ...noticeStyle,
+              whiteSpace: "pre-wrap",
+              lineHeight: 1.6,
+            }}
+          >
+            {assistantAnswer}
+          </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "minmax(240px, 0.9fr) minmax(280px, 1.4fr)",
-                  gap: 12,
-                }}
-              >
-                <label style={fieldStyle}>
-                  <span style={fieldLabelStyle}>Atlas asset</span>
-                  <select
-                    value={manualAssetId}
-                    onChange={(event) => {
-                      const nextId = event.currentTarget.value;
-                      const nextAsset = assetRecords.find(
-                        (asset) => asset.id === nextId,
-                      );
-                      setManualAssetId(nextId);
-                      setManualCandidates([]);
-                      setManualSaveMessage("");
-                      if (nextAsset) {
-                        setManualQuery(
-                          [nextAsset.make, nextAsset.model, nextAsset.name]
-                            .filter(Boolean)
-                            .join(" "),
-                        );
-                        setManualAnswer(
-                          "Ready to search official manufacturer documentation.",
-                        );
-                      }
-                    }}
-                    style={inputStyle}
-                  >
-                    <option value="">Choose an asset (optional)</option>
-                    {byName(assetRecords).map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.name}
-                        {asset.make || asset.model
-                          ? ` — ${[asset.make, asset.model]
-                              .filter(Boolean)
-                              .join(" ")}`
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={fieldStyle}>
-                  <span style={fieldLabelStyle}>
-                    Manufacturer, model, or search terms
-                  </span>
-                  <input
-                    value={manualQuery}
-                    onChange={(event) => {
-                      setManualQuery(event.currentTarget.value);
-                      setManualCandidates([]);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        if (!manualLoading) void findManuals();
-                      }
-                    }}
-                    placeholder="Example: Hunter HCC 24-zone controller"
-                    style={inputStyle}
-                  />
-                </label>
-              </div>
-
-              {manualAsset ? (
-                <div
+          {manualCandidates.length ? (
+            <div style={stackStyle}>
+              <div style={{ fontWeight: 950, fontSize: 18 }}>Manuals Found</div>
+              {manualCandidates.map((candidate, index) => (
+                <article
+                  key={`${candidate.url}-${index}`}
                   style={{
-                    ...noticeStyle,
-                    marginTop: 12,
+                    ...cardStyle,
+                    padding: 16,
                     display: "grid",
-                    gap: 4,
+                    gap: 10,
                   }}
                 >
-                  <strong>{manualAsset.name}</strong>
-                  <span style={mutedSmallStyle}>
-                    {[manualAsset.make, manualAsset.model, manualAsset.serial]
-                      .filter(Boolean)
-                      .join(" • ") || "No make/model saved yet"}
-                  </span>
-                </div>
-              ) : null}
-
-              <div style={{ ...buttonRowStyle, marginTop: 14 }}>
-                <button
-                  type="button"
-                  onClick={() => void findManuals()}
-                  disabled={manualLoading || !canSearchManual}
-                  style={{
-                    ...goldButtonStyle,
-                    opacity: manualLoading || !canSearchManual ? 0.6 : 1,
-                    cursor:
-                      manualLoading || !canSearchManual ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {manualLoading ? "Searching the Web..." : "Find Manual"}
-                </button>
-
-                {canSearchManual ? (
-                  <a
-                    href={manualGoogleUrl()}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      ...secondaryButtonStyle,
-                      textDecoration: "none",
-                      display: "inline-flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    Open Web Search
-                  </a>
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManualAssetId("");
-                    setManualQuery("");
-                    setManualCandidates([]);
-                    setManualSaveMessage("");
-                    setManualAnswer(
-                      "Select an Atlas asset or type the equipment manufacturer and model.",
-                    );
-                  }}
-                  disabled={manualLoading}
-                  style={secondaryButtonStyle}
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <div
-              style={{
-                ...noticeStyle,
-                whiteSpace: "pre-wrap",
-                lineHeight: 1.6,
-              }}
-            >
-              {manualAnswer}
-            </div>
-
-            {manualCandidates.length ? (
-              <div style={stackStyle}>
-                <div style={{ fontWeight: 950, fontSize: 18 }}>
-                  Best Documentation Matches
-                </div>
-
-                {manualCandidates.map((candidate, index) => (
-                  <article
-                    key={`${candidate.url}-${index}`}
-                    style={{
-                      ...cardStyle,
-                      padding: 16,
-                      display: "grid",
-                      gap: 10,
-                    }}
-                  >
-                    <div
+                  <div>
+                    <div style={{ fontWeight: 950, fontSize: 17 }}>
+                      {candidate.title}
+                    </div>
+                    <div style={mutedSmallStyle}>
+                      {[candidate.manufacturer, candidate.model, candidate.sourceDomain]
+                        .filter(Boolean)
+                        .join(" • ")}
+                    </div>
+                  </div>
+                  <div style={{ lineHeight: 1.5 }}>{candidate.reason}</div>
+                  <div style={buttonRowStyle}>
+                    <a
+                      href={candidate.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ ...secondaryButtonStyle, textDecoration: "none" }}
+                    >
+                      Open PDF
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => void saveManualToAtlas(candidate)}
+                      disabled={Boolean(manualSavingUrl)}
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        gap: 12,
-                        flexWrap: "wrap",
+                        ...goldButtonStyle,
+                        opacity:
+                          manualSavingUrl && manualSavingUrl !== candidate.url
+                            ? 0.55
+                            : 1,
                       }}
                     >
-                      <div>
-                        <div style={{ fontWeight: 950, fontSize: 17 }}>
-                          {candidate.title}
-                        </div>
-                        <div style={mutedSmallStyle}>
-                          {[
-                            candidate.manufacturer,
-                            candidate.model,
-                            candidate.sourceLabel || candidate.sourceDomain,
-                          ]
-                            .filter(Boolean)
-                            .join(" • ")}
-                        </div>
-                      </div>
-                      <span
-                        style={{
-                          borderRadius: 999,
-                          padding: "5px 9px",
-                          fontSize: 11,
-                          fontWeight: 950,
-                          background:
-                            candidate.confidence === "High"
-                              ? "#DCFCE7"
-                              : candidate.confidence === "Low"
-                                ? "#FEE2E2"
-                                : "#FEF3C7",
-                          color:
-                            candidate.confidence === "High"
-                              ? "#166534"
-                              : candidate.confidence === "Low"
-                                ? "#991B1B"
-                                : "#92400E",
-                        }}
-                      >
-                        {candidate.confidence} match
-                      </span>
-                    </div>
+                      {manualSavingUrl === candidate.url
+                        ? "Saving..."
+                        : "Save to Atlas Documents"}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
 
-                    <div style={{ lineHeight: 1.5 }}>{candidate.reason}</div>
+          {manualSaveMessage ? (
+            <div style={noticeStyle}>{manualSaveMessage}</div>
+          ) : null}
 
-                    <div style={buttonRowStyle}>
-                      <a
-                        href={candidate.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          ...secondaryButtonStyle,
-                          textDecoration: "none",
-                        }}
-                      >
-                        Open Source
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => void saveManualToAtlas(candidate)}
-                        disabled={Boolean(manualSavingUrl)}
-                        style={{
-                          ...goldButtonStyle,
-                          opacity:
-                            manualSavingUrl &&
-                            manualSavingUrl !== candidate.url
-                              ? 0.55
-                              : 1,
-                        }}
-                      >
-                        {manualSavingUrl === candidate.url
-                          ? "Saving..."
-                          : "Save to Atlas Documents"}
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : null}
-
-            {manualSaveMessage ? (
-              <div style={noticeStyle}>{manualSaveMessage}</div>
-            ) : null}
-
-            <p style={mutedSmallStyle}>
-              Manual Finder prefers official manufacturer sources. Review the
-              model match before saving. Saved manuals appear in Documents with
-              their original source link.
-            </p>
-          </div>
-        )}
+          <p style={mutedSmallStyle}>
+            Atlas prefers official manufacturer PDF manuals. Review the match before saving. Saved manuals appear in Documents with their original source link.
+          </p>
+        </div>
       </section>
     );
   }
