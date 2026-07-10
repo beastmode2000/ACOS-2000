@@ -9,6 +9,7 @@ type Screen =
   | "assets"
   | "history"
   | "vendors"
+  | "contacts"
   | "calendar"
   | "weather"
   | "documents"
@@ -76,6 +77,19 @@ type VendorRecord = {
   phone?: string;
   email?: string;
   website?: string;
+  notes: string;
+};
+
+type ContactRecord = {
+  id: string;
+  name: string;
+  organization: string;
+  role: string;
+  category: string;
+  phone: string;
+  email: string;
+  address: string;
+  website: string;
   notes: string;
 };
 
@@ -296,6 +310,7 @@ type SearchResult = {
   locationId?: string;
   assetId?: string;
   vendorId?: string;
+  contactId?: string;
   serviceId?: string;
   mapLabelId?: string;
   procedureId?: string;
@@ -339,6 +354,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "assets", label: "Assets" },
   { id: "history", label: "Work Orders" },
   { id: "vendors", label: "Vendors" },
+  { id: "contacts", label: "Contacts" },
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
   { id: "documents", label: "Documents" },
@@ -388,6 +404,7 @@ const storageKeys = {
     "atlas-vendor-records-v1",
     "atlas_2000_vendors_safe_v1",
   ],
+  contacts: ["atlas-contact-records-v1"],
   workOrders: [
     "atlas-service-records-v11",
     "atlas-service-records-v10",
@@ -692,6 +709,36 @@ function normalizeVendor(record: Partial<VendorRecord>): VendorRecord {
     website: record.website || "",
     notes: String(record.notes || ""),
   };
+}
+
+function normalizeContact(record: Partial<ContactRecord>): ContactRecord {
+  return {
+    id: String(record.id || ""),
+    name: String(record.name ?? ""),
+    organization: String(record.organization ?? ""),
+    role: String(record.role ?? ""),
+    category: String(record.category ?? ""),
+    phone: String(record.phone ?? ""),
+    email: String(record.email ?? ""),
+    address: String(record.address ?? ""),
+    website: String(record.website ?? ""),
+    notes: String(record.notes ?? ""),
+  };
+}
+
+function blankContact(): ContactRecord {
+  return normalizeContact({
+    id: "",
+    name: "",
+    organization: "",
+    role: "",
+    category: "",
+    phone: "",
+    email: "",
+    address: "",
+    website: "",
+    notes: "",
+  });
 }
 
 function normalizeService(record: Partial<ServiceRecord>): ServiceRecord {
@@ -2514,6 +2561,14 @@ export default function AtlasPage() {
     useState<AssetRecord[]>(fallbackAssets);
   const [vendorRecords, setVendorRecords] =
     useState<VendorRecord[]>(fallbackVendors);
+  const [contactRecords, setContactRecords] = useState<ContactRecord[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState("");
+  const [contactDraft, setContactDraft] = useState<ContactRecord>(() =>
+    blankContact(),
+  );
+  const [contactEditorOpen, setContactEditorOpen] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  const [contactMessage, setContactMessage] = useState("");
   const [serviceRecords, setServiceRecords] =
     useState<ServiceRecord[]>(fallbackWorkOrders);
   const [procedureRecords, setProcedureRecords] =
@@ -2596,7 +2651,7 @@ export default function AtlasPage() {
   );
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(
-    "Ask Atlas about assets, locations, vendors, work orders, calendar items, procedures, documents, parts, or map records.",
+    "Ask Atlas about assets, locations, vendors, contacts, work orders, calendar items, procedures, documents, parts, or map records.",
   );
   const [manualCandidates, setManualCandidates] = useState<ManualCandidate[]>([]);
   const [manualSavingUrl, setManualSavingUrl] = useState("");
@@ -2744,6 +2799,10 @@ export default function AtlasPage() {
       storageKeys.vendors,
       fallbackVendors,
     ).map(normalizeVendor);
+    const storedContacts = readStoredArray<ContactRecord>(
+      storageKeys.contacts,
+      [],
+    ).map(normalizeContact);
     const storedServices = readStoredArray<ServiceRecord>(
       storageKeys.workOrders,
       fallbackWorkOrders,
@@ -2784,6 +2843,7 @@ export default function AtlasPage() {
     setVendorRecords(
       storedVendors.length ? byName(storedVendors) : fallbackVendors,
     );
+    setContactRecords(byName(storedContacts));
     setServiceRecords(
       storedServices.length ? byTitle(storedServices) : fallbackWorkOrders,
     );
@@ -2980,6 +3040,11 @@ export default function AtlasPage() {
     if (!ready) return;
     saveStoredArray(storageKeys.vendors[0], vendorRecords);
   }, [ready, vendorRecords]);
+
+  useEffect(() => {
+    if (!ready) return;
+    saveStoredArray(storageKeys.contacts[0], contactRecords);
+  }, [ready, contactRecords]);
 
   useEffect(() => {
     if (!ready) return;
@@ -3622,6 +3687,28 @@ export default function AtlasPage() {
     );
   }, [q, vendorRecords]);
 
+  const filteredContacts = useMemo(() => {
+    const search = contactSearch.trim().toLowerCase();
+    const sorted = byName(contactRecords);
+    if (!search) return sorted;
+    return sorted.filter((item) =>
+      [
+        item.name,
+        item.organization,
+        item.role,
+        item.category,
+        item.phone,
+        item.email,
+        item.address,
+        item.website,
+        item.notes,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(search),
+    );
+  }, [contactRecords, contactSearch]);
+
   const filteredServices = useMemo(() => {
     const sorted = byTitle(serviceRecords);
     if (!q) return sorted;
@@ -3910,6 +3997,7 @@ export default function AtlasPage() {
     mapLabels,
     assetRecords,
     vendorRecords,
+    contactRecords,
     serviceRecords,
     procedureRecords,
     calendarItems,
@@ -3995,6 +4083,24 @@ export default function AtlasPage() {
         screen: "vendors" as Screen,
         vendorId: item.id,
       })),
+      ...contactRecords.map((item) => ({
+        id: `contact-${item.id}`,
+        type: "Contact",
+        title: item.name,
+        subtitle:
+          [item.organization, item.role, item.category]
+            .filter(Boolean)
+            .join(" · ") || "Contact",
+        detail: [
+          item.phone,
+          item.email,
+          item.address,
+          item.website,
+          item.notes,
+        ].join(" "),
+        screen: "contacts" as Screen,
+        contactId: item.id,
+      })),
       ...serviceRecords.map((item) => ({
         id: `wo-${item.id}`,
         type: "Work Order",
@@ -4063,6 +4169,17 @@ export default function AtlasPage() {
     if (result.locationId) setSelectedLocationId(result.locationId);
     if (result.assetId) setSelectedAssetId(result.assetId);
     if (result.vendorId) setSelectedVendorId(result.vendorId);
+    if (result.contactId) {
+      const contact = contactRecords.find(
+        (item) => item.id === result.contactId,
+      );
+      if (contact) {
+        setSelectedContactId(contact.id);
+        setContactDraft(normalizeContact(contact));
+        setContactEditorOpen(true);
+        setContactMessage("");
+      }
+    }
     if (result.serviceId) setSelectedServiceId(result.serviceId);
     if (result.mapLabelId) setSelectedMapLabelId(result.mapLabelId);
     if (result.procedureId) setSelectedProcedureId(result.procedureId);
@@ -4269,7 +4386,7 @@ export default function AtlasPage() {
     );
   }
 
-  async function addAssetPhotoFiles(fileList: FileList | null) {
+  async function addAssetPhotoFiles(fileList: FileList | File[] | null) {
     if (!selectedAsset.id || !fileList?.length) return;
 
     const uploaded = await Promise.all(
@@ -4309,7 +4426,7 @@ export default function AtlasPage() {
     kind: "Location" | "Vendor",
     id: string,
     recordName: string,
-    fileList: FileList | null,
+    fileList: FileList | File[] | null,
     documentType = "Photo",
   ) {
     if (!id || !fileList?.length) return;
@@ -4356,6 +4473,195 @@ export default function AtlasPage() {
         `${documentType} added to ${recordName} on this browser. Atlas vault sync did not complete.`,
       );
     }
+  }
+
+  function imageFilesFromPasteEvent(
+    event: React.ClipboardEvent<HTMLElement>,
+  ) {
+    return Array.from(event.clipboardData?.items || [])
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+  }
+
+  async function readClipboardImageFiles() {
+    if (!navigator.clipboard || !("read" in navigator.clipboard)) {
+      throw new Error(
+        "This browser cannot read copied images from a button. Click inside this panel and paste with Ctrl+V or Command+V instead.",
+      );
+    }
+
+    const clipboardItems = await navigator.clipboard.read();
+    const files: File[] = [];
+    for (const item of clipboardItems) {
+      for (const type of item.types) {
+        if (!type.startsWith("image/")) continue;
+        const blob = await item.getType(type);
+        const extension = type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+        files.push(
+          new File([blob], `pasted-image-${Date.now()}.${extension}`, {
+            type,
+          }),
+        );
+      }
+    }
+    if (!files.length) throw new Error("No copied image was found in the clipboard.");
+    return files;
+  }
+
+  async function pasteAssetPhoto() {
+    try {
+      const files = await readClipboardImageFiles();
+      await addAssetPhotoFiles(files);
+    } catch (error) {
+      setDatabaseStatus(
+        error instanceof Error ? error.message : "Could not paste that image.",
+      );
+    }
+  }
+
+  async function pasteLinkedPhoto(
+    kind: "Location" | "Vendor",
+    id: string,
+    recordName: string,
+    documentType = "Photo",
+  ) {
+    try {
+      const files = await readClipboardImageFiles();
+      await addLinkedPhotoFiles(kind, id, recordName, files, documentType);
+    } catch (error) {
+      setDocumentSyncStatus(
+        error instanceof Error ? error.message : "Could not paste that image.",
+      );
+    }
+  }
+
+  async function deleteAssetPhoto(photo: PhotoRecord) {
+    if (!window.confirm(`Delete photo ${photo.name}?`)) return;
+    const deleted = await deleteAtlasRecord("asset_photos", photo.id);
+    if (!deleted) return;
+    setPhotos((current) => {
+      const next = current.filter((item) => item.id !== photo.id);
+      saveStoredArray(storageKeys.photos[0], next);
+      return next;
+    });
+  }
+
+  async function deleteLinkedImage(file: UploadedFileRecord) {
+    const record = intakeDocs.find((document) =>
+      (document.files || []).some((item) => item.id === file.id),
+    );
+    if (!record) {
+      setDocumentSyncStatus("That image is not stored in the editable Atlas vault.");
+      return;
+    }
+    if (!window.confirm(`Delete image ${file.name}?`)) return;
+
+    const remainingFiles = (record.files || []).filter(
+      (item) => item.id !== file.id,
+    );
+    if (remainingFiles.length) {
+      const updated = normalizeDocument({ ...record, files: remainingFiles });
+      replaceDocumentInVault(updated);
+      try {
+        await postDocumentToAtlasVault(updated);
+        setDocumentSyncStatus(`Deleted ${file.name} from Atlas.`);
+      } catch {
+        setDocumentSyncStatus(
+          `Deleted ${file.name} on this browser. Atlas sync did not complete.`,
+        );
+      }
+      return;
+    }
+
+    setIntakeDocs((current) => {
+      const next = current.filter((document) => document.id !== record.id);
+      saveStoredArray(storageKeys.intakeDocs[0], next);
+      return next;
+    });
+    try {
+      await deleteDocumentFromAtlasVault(record.id);
+      setDocumentSyncStatus(`Deleted ${file.name} from Atlas.`);
+    } catch {
+      setDocumentSyncStatus(
+        `Deleted ${file.name} on this browser. Atlas sync did not complete.`,
+      );
+    }
+  }
+
+  async function deleteAssetRecord(record: AssetRecord) {
+    if (!window.confirm(`Delete asset ${record.name || "this asset"}?`)) return;
+    const relatedPhotos = photos.filter((photo) => photo.assetId === record.id);
+    for (const photo of relatedPhotos) {
+      await deleteAtlasRecord("asset_photos", photo.id);
+    }
+    const deleted = await deleteAtlasRecord("assets", record.id);
+    if (!deleted) return;
+    setAssetRecords((current) => current.filter((item) => item.id !== record.id));
+    setPhotos((current) => current.filter((photo) => photo.assetId !== record.id));
+    setSelectedAssetId("");
+  }
+
+  async function deleteVendorRecord(record: VendorRecord) {
+    if (!window.confirm(`Delete vendor ${record.name || "this vendor"}?`)) return;
+    const deleted = await deleteAtlasRecord("vendors", record.id);
+    if (!deleted) return;
+    setVendorRecords((current) => current.filter((item) => item.id !== record.id));
+    setSelectedVendorId("");
+  }
+
+  async function deleteWorkOrderRecord(record: ServiceRecord) {
+    if (!window.confirm(`Delete work order ${record.title || "this work order"}?`)) return;
+    const deleted = await deleteAtlasRecord("work_orders", record.id);
+    if (!deleted) return;
+    setServiceRecords((current) => current.filter((item) => item.id !== record.id));
+    setSelectedServiceId("");
+  }
+
+  async function deleteProcedureRecord(record: ProcedureRecord) {
+    if (!window.confirm(`Delete procedure ${record.title || "this procedure"}?`)) return;
+    const deleted = await deleteAtlasRecord("procedures", record.id);
+    if (!deleted) return;
+    setProcedureRecords((current) => current.filter((item) => item.id !== record.id));
+    setSelectedProcedureId("");
+  }
+
+  function deletePartRecord(record: PartRecord) {
+    if (!window.confirm(`Delete part ${record.name || "this part"}?`)) return;
+    setPartRecords((current) => current.filter((item) => item.id !== record.id));
+    setSelectedPartId("");
+  }
+
+  function deleteMapLabelRecord(record: MapLabelRecord) {
+    if (!window.confirm(`Delete map label ${record.label || "this label"}?`)) return;
+    setMapLabels((current) => current.filter((item) => item.id !== record.id));
+    setSelectedMapLabelId("");
+  }
+
+  async function deleteManualRecord(record: ManualRecord) {
+    if (!window.confirm(`Delete manual ${record.title}?`)) return;
+    setManualRecords((current) => {
+      const next = current.filter((item) => item.id !== record.id);
+      saveStoredArray(storageKeys.manuals[0], next);
+      return next;
+    });
+
+    const matchingDocuments = intakeDocs.filter((document) => {
+      const sameHref =
+        cleanManualOpenUrl(document.href || "") &&
+        cleanManualOpenUrl(document.href || "") === cleanManualOpenUrl(record.href || "");
+      const sameTitle = document.title.trim().toLowerCase() === record.title.trim().toLowerCase();
+      return sameHref || sameTitle;
+    });
+    for (const document of matchingDocuments) {
+      setIntakeDocs((current) => current.filter((item) => item.id !== document.id));
+      try {
+        await deleteDocumentFromAtlasVault(document.id);
+      } catch {
+        // Manual is still removed locally if the vault call is unavailable.
+      }
+    }
+    setSelectedManualId("");
   }
 
   function startManualForAsset(asset: AssetRecord) {
@@ -4723,14 +5029,48 @@ export default function AtlasPage() {
 
   async function postAtlasRecord(table: AtlasTable, record: unknown) {
     try {
-      await fetch("/api/atlas", {
+      const response = await fetch("/api/atlas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ table, record }),
       });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || `Atlas save returned ${response.status}`);
+      }
       setDatabaseStatus("Saved to Atlas API.");
-    } catch {
-      setDatabaseStatus("Saved in browser. Atlas API save did not complete.");
+      return true;
+    } catch (error) {
+      setDatabaseStatus(
+        error instanceof Error
+          ? `Saved in browser, but Atlas API save failed: ${error.message}`
+          : "Saved in browser. Atlas API save did not complete.",
+      );
+      return false;
+    }
+  }
+
+  async function deleteAtlasRecord(table: AtlasTable, id: string) {
+    if (!id) return false;
+    try {
+      const response = await fetch("/api/atlas", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table, id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || `Atlas delete returned ${response.status}`);
+      }
+      setDatabaseStatus("Deleted from Atlas.");
+      return true;
+    } catch (error) {
+      setDatabaseStatus(
+        error instanceof Error
+          ? `Delete failed: ${error.message}`
+          : "Delete failed.",
+      );
+      return false;
     }
   }
 
@@ -4793,6 +5133,81 @@ export default function AtlasPage() {
         ),
       ),
     );
+  }
+
+  function startNewContact() {
+    setSelectedContactId("");
+    setContactDraft(blankContact());
+    setContactEditorOpen(true);
+    setContactMessage("");
+    setScreen("contacts");
+  }
+
+  function editContact(record: ContactRecord) {
+    setSelectedContactId(record.id);
+    setContactDraft(normalizeContact(record));
+    setContactEditorOpen(true);
+    setContactMessage("");
+  }
+
+  function updateContactDraft(patch: Partial<ContactRecord>) {
+    setContactDraft((current) =>
+      normalizeContact({
+        ...current,
+        ...patch,
+        id: current.id || selectedContactId,
+      }),
+    );
+  }
+
+  function saveContact() {
+    const name = contactDraft.name.trim();
+    if (!name) {
+      setContactMessage("Add a name before saving this contact.");
+      return;
+    }
+
+    const prepared = normalizeContact({
+      ...contactDraft,
+      id: selectedContactId || contactDraft.id || uid("contact"),
+      name,
+    });
+
+    setContactRecords((current) => {
+      const exists = current.some((item) => item.id === prepared.id);
+      const next = exists
+        ? current.map((item) =>
+            item.id === prepared.id ? prepared : item,
+          )
+        : [prepared, ...current];
+      const sorted = byName(next);
+      saveStoredArray(storageKeys.contacts[0], sorted);
+      return sorted;
+    });
+
+    setSelectedContactId("");
+    setContactDraft(blankContact());
+    setContactEditorOpen(true);
+    setContactMessage(`Saved ${prepared.name}. Ready for the next contact.`);
+  }
+
+  function deleteContact(record: ContactRecord) {
+    if (
+      !record.id ||
+      !window.confirm(`Delete contact ${record.name || "this contact"}?`)
+    ) {
+      return;
+    }
+
+    setContactRecords((current) => {
+      const next = current.filter((item) => item.id !== record.id);
+      saveStoredArray(storageKeys.contacts[0], next);
+      return next;
+    });
+    setSelectedContactId("");
+    setContactDraft(blankContact());
+    setContactEditorOpen(false);
+    setContactMessage("");
   }
 
   function addWorkOrder() {
@@ -4997,13 +5412,16 @@ export default function AtlasPage() {
     void postAtlasRecord("calendar", record);
   }
 
-  function deleteCalendarItem(id: string) {
+  async function deleteCalendarItem(id: string) {
     if (!id) {
       setSelectedCalendarId("");
       setCalendarDraft(blankCalendarItem(selectedCalendarDate));
       return;
     }
-
+    const record = calendarItems.find((item) => item.id === id);
+    if (!window.confirm(`Delete ${record?.title || "this calendar item"}?`)) return;
+    const deleted = await deleteAtlasRecord("calendar", id);
+    if (!deleted) return;
     const remaining = calendarItems.filter((item) => item.id !== id);
     setCalendarItems(byTitle(remaining));
     setSelectedCalendarId("");
@@ -5709,6 +6127,7 @@ export default function AtlasPage() {
         locations: locations.length,
         assets: assetRecords.length,
         vendors: vendorRecords.length,
+        contacts: contactRecords.length,
         workOrders: serviceRecords.length,
         calendarItems: calendarItems.length,
         procedures: procedureRecords.length,
@@ -5744,6 +6163,18 @@ export default function AtlasPage() {
         category: cleanText(item.category, 120),
         phone: cleanText(item.phone, 120),
         email: cleanText(item.email, 200),
+        website: cleanText(item.website, 300),
+        notes: cleanText(item.notes),
+      })),
+      contacts: contactRecords.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        organization: cleanText(item.organization, 200),
+        role: cleanText(item.role, 160),
+        category: cleanText(item.category, 120),
+        phone: cleanText(item.phone, 120),
+        email: cleanText(item.email, 200),
+        address: cleanText(item.address, 300),
         website: cleanText(item.website, 300),
         notes: cleanText(item.notes),
       })),
@@ -6304,6 +6735,15 @@ export default function AtlasPage() {
         isMobile={isMobile}
         right={
           <>
+            {selectedMapLabel.id ? (
+              <button
+                type="button"
+                onClick={() => deleteMapLabelRecord(selectedMapLabel)}
+                style={dangerButtonStyle}
+              >
+                Delete Label
+              </button>
+            ) : null}
             <button type="button" onClick={addMapLabel} style={goldButtonStyle}>
               Add Label
             </button>
@@ -6699,7 +7139,21 @@ export default function AtlasPage() {
         }
         drawer={
           selectedLocation.id ? (
-            <div style={stackStyle}>
+            <div
+              style={stackStyle}
+              tabIndex={0}
+              onPaste={(event) => {
+                const files = imageFilesFromPasteEvent(event);
+                if (!files.length) return;
+                event.preventDefault();
+                void addLinkedPhotoFiles(
+                  "Location",
+                  selectedLocation.id,
+                  selectedLocation.name,
+                  files,
+                );
+              }}
+            >
               <div>
                 <h3 style={editorHeaderStyle}>{selectedLocation.name}</h3>
                 <div style={recordInfoGridStyle}>
@@ -6723,9 +7177,23 @@ export default function AtlasPage() {
                     <div style={eyebrowStyle}>Photos</div>
                     <strong>{locationPhotos.length} attached</strong>
                   </div>
-                  <label style={compactUploadButtonStyle}>
-                    Add Photo
-                    <input
+                  <div style={buttonRowStyle}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void pasteLinkedPhoto(
+                          "Location",
+                          selectedLocation.id,
+                          selectedLocation.name,
+                        )
+                      }
+                      style={secondaryButtonStyle}
+                    >
+                      Paste Image
+                    </button>
+                    <label style={compactUploadButtonStyle}>
+                      Add Photo
+                      <input
                       type="file"
                       accept="image/*"
                       multiple
@@ -6739,32 +7207,41 @@ export default function AtlasPage() {
                         );
                         event.currentTarget.value = "";
                       }}
-                      style={{ display: "none" }}
-                    />
-                  </label>
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 {locationPhotos.length ? (
                   <div style={photoGridStyle}>
                     {locationPhotos.map((file) => (
-                      <button
-                        key={file.id}
-                        type="button"
-                        onClick={() => openUploadedFile(file)}
-                        style={compactPhotoButtonStyle}
-                      >
-                        <img
-                          src={file.dataUrl || file.url}
-                          alt={file.name}
-                          style={photoStyle}
-                        />
-                        <strong>{file.name}</strong>
-                      </button>
+                      <div key={file.id} style={photoManageCardStyle}>
+                        <button
+                          type="button"
+                          onClick={() => openUploadedFile(file)}
+                          style={compactPhotoButtonStyle}
+                        >
+                          <img
+                            src={file.dataUrl || file.url}
+                            alt={file.name}
+                            style={photoStyle}
+                          />
+                          <strong>{file.name}</strong>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteLinkedImage(file)}
+                          style={photoDeleteButtonStyle}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     ))}
                   </div>
                 ) : (
                   <p style={mutedSmallStyle}>
-                    No photos attached to this location yet.
+                    No photos attached yet. You can also click this panel and paste a copied image.
                   </p>
                 )}
               </section>
@@ -6887,7 +7364,16 @@ export default function AtlasPage() {
         }
         drawer={
           selectedAsset.id ? (
-            <div style={stackStyle}>
+            <div
+              style={stackStyle}
+              tabIndex={0}
+              onPaste={(event) => {
+                const files = imageFilesFromPasteEvent(event);
+                if (!files.length) return;
+                event.preventDefault();
+                void addAssetPhotoFiles(files);
+              }}
+            >
               <div style={assetVisualHeaderStyle}>
                 <div style={assetPhotoLargeStyle}>
                   {selectedAssetCoverPhoto?.dataUrl || selectedAssetCoverPhoto?.url ? (
@@ -6928,9 +7414,17 @@ export default function AtlasPage() {
                   </div>
                 </div>
 
-                <label style={compactUploadButtonStyle}>
-                  {selectedAssetCoverPhoto ? "Change Photo" : "Add Photo"}
-                  <input
+                <div style={buttonRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() => void pasteAssetPhoto()}
+                    style={secondaryButtonStyle}
+                  >
+                    Paste Image
+                  </button>
+                  <label style={compactUploadButtonStyle}>
+                    {selectedAssetCoverPhoto ? "Add Another" : "Add Photo"}
+                    <input
                     type="file"
                     accept="image/*"
                     multiple
@@ -6939,9 +7433,10 @@ export default function AtlasPage() {
                       void addAssetPhotoFiles(event.currentTarget.files);
                       event.currentTarget.value = "";
                     }}
-                    style={{ display: "none" }}
-                  />
-                </label>
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                </div>
               </div>
 
               <section style={detailSectionStyle}>
@@ -7043,6 +7538,13 @@ export default function AtlasPage() {
                   >
                     Create Work Order
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteAssetRecord(selectedAsset)}
+                    style={dangerButtonStyle}
+                  >
+                    Delete Asset
+                  </button>
                 </div>
               </section>
 
@@ -7088,18 +7590,27 @@ export default function AtlasPage() {
                                 .join(" · ") || manual.category}
                             </small>
                           </span>
-                          {url ? (
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={manualCompactFileStyle}
+                          <div style={manualActionRowStyle}>
+                            {url ? (
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={manualCompactFileStyle}
+                              >
+                                Open
+                              </a>
+                            ) : (
+                              <span style={manualNoPdfStyle}>—</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => void deleteManualRecord(manual)}
+                              style={manualDeleteButtonStyle}
                             >
-                              Open
-                            </a>
-                          ) : (
-                            <span style={manualNoPdfStyle}>—</span>
-                          )}
+                              Delete
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -7118,9 +7629,17 @@ export default function AtlasPage() {
                     <div style={eyebrowStyle}>Photos</div>
                     <strong>{selectedAssetPhotos.length} attached</strong>
                   </div>
-                  <label style={compactUploadButtonStyle}>
-                    Add Photo
-                    <input
+                  <div style={buttonRowStyle}>
+                    <button
+                      type="button"
+                      onClick={() => void pasteAssetPhoto()}
+                      style={secondaryButtonStyle}
+                    >
+                      Paste Image
+                    </button>
+                    <label style={compactUploadButtonStyle}>
+                      Add Photo
+                      <input
                       type="file"
                       accept="image/*"
                       multiple
@@ -7131,34 +7650,46 @@ export default function AtlasPage() {
                         );
                         event.currentTarget.value = "";
                       }}
-                      style={{ display: "none" }}
-                    />
-                  </label>
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 {selectedAssetPhotos.length ? (
                   <div style={photoGridStyle}>
-                    {selectedAssetPhotos.map((photo) => (
-                      <button
-                        key={photo.id}
-                        type="button"
-                        onClick={() => openPhotoPreview(photo)}
-                        style={compactPhotoButtonStyle}
-                      >
-                        {photo.dataUrl || photo.url ? (
-                          <img
-                            src={photo.dataUrl || photo.url}
-                            alt={photo.name}
-                            style={photoStyle}
-                          />
-                        ) : null}
-                        <strong>{photo.name}</strong>
-                      </button>
+                    {selectedAssetPhotos.map((photo, index) => (
+                      <div key={photo.id} style={photoManageCardStyle}>
+                        <button
+                          type="button"
+                          onClick={() => openPhotoPreview(photo)}
+                          style={compactPhotoButtonStyle}
+                        >
+                          {photo.dataUrl || photo.url ? (
+                            <img
+                              src={photo.dataUrl || photo.url}
+                              alt={photo.name}
+                              style={photoStyle}
+                            />
+                          ) : null}
+                          <strong>{photo.name}</strong>
+                          {index === 0 ? (
+                            <small style={coverPhotoLabelStyle}>Main photo</small>
+                          ) : null}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteAssetPhoto(photo)}
+                          style={photoDeleteButtonStyle}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     ))}
                   </div>
                 ) : (
                   <p style={mutedSmallStyle}>
-                    No photos attached to this asset yet.
+                    No photos attached yet. You can also click this panel and paste a copied image.
                   </p>
                 )}
               </section>
@@ -7204,6 +7735,262 @@ export default function AtlasPage() {
               <p style={mutedSmallStyle}>
                 Open an asset to see its information, manuals, photos, work
                 orders, and documents.
+              </p>
+            </div>
+          )
+        }
+      />
+    );
+  }
+
+  function renderContacts() {
+    const selectedStoredContact = selectedContactId
+      ? contactRecords.find((item) => item.id === selectedContactId)
+      : undefined;
+
+    const contactSubtitle = (contact: ContactRecord) =>
+      [contact.organization, contact.role, contact.category]
+        .filter(Boolean)
+        .join(" · ");
+
+    return (
+      <ListDrawerLayout
+        eyebrow="People & Companies"
+        title="Contacts"
+        detail="Coworkers, vendors, carriers, contractors, and other useful contacts in alphabetical order."
+        isMobile={isMobile}
+        right={
+          <button
+            type="button"
+            onClick={startNewContact}
+            style={goldButtonStyle}
+          >
+            Add Contact
+          </button>
+        }
+        list={
+          <div style={stackStyle}>
+            <div style={cardStyle}>
+              <input
+                value={contactSearch}
+                onChange={(event) =>
+                  setContactSearch(event.currentTarget.value)
+                }
+                placeholder="Search contacts..."
+                style={inputStyle}
+              />
+            </div>
+
+            <div style={contactListShellStyle}>
+              {filteredContacts.length ? (
+                filteredContacts.map((contact) => (
+                  <button
+                    key={contact.id}
+                    type="button"
+                    onClick={() => editContact(contact)}
+                    style={{
+                      ...contactRowStyle,
+                      borderColor:
+                        contact.id === selectedContactId
+                          ? colors.gold
+                          : "transparent",
+                    }}
+                  >
+                    <div style={contactAvatarStyle}>
+                      {contact.name
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((part) => part.slice(0, 1).toUpperCase())
+                        .join("") || "C"}
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={contactNameStyle}>
+                        {contact.name}
+                      </strong>
+                      {contactSubtitle(contact) ? (
+                        <p style={mutedSmallStyle}>
+                          {contactSubtitle(contact)}
+                        </p>
+                      ) : null}
+                      <p style={contactSecondaryLineStyle}>
+                        {[contact.phone, contact.email]
+                          .filter(Boolean)
+                          .join(" · ") || "No phone or email saved"}
+                      </p>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div style={noticeStyle}>
+                  {contactSearch
+                    ? "No contacts match this search."
+                    : "No contacts have been added yet."}
+                </div>
+              )}
+            </div>
+          </div>
+        }
+        drawer={
+          contactEditorOpen ? (
+            <div style={stackStyle}>
+              <div style={contactDetailHeaderStyle}>
+                <div style={contactAvatarLargeStyle}>
+                  {contactDraft.name
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((part) => part.slice(0, 1).toUpperCase())
+                    .join("") || "C"}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <h3 style={editorHeaderStyle}>
+                    {contactDraft.name.trim() ||
+                      (selectedContactId
+                        ? "Edit Contact"
+                        : "New Contact")}
+                  </h3>
+                  <p style={mutedSmallStyle}>
+                    {contactSubtitle(contactDraft) ||
+                      "Add contact information below."}
+                  </p>
+                </div>
+              </div>
+
+              {contactMessage ? (
+                <div style={noticeStyle}>{contactMessage}</div>
+              ) : null}
+
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Contact Information</div>
+                <div style={formGridStyle}>
+                  <Field
+                    label="Name"
+                    value={contactDraft.name}
+                    onChange={(name) => updateContactDraft({ name })}
+                    placeholder="Full name"
+                  />
+                  <Field
+                    label="Company / Organization"
+                    value={contactDraft.organization}
+                    onChange={(organization) =>
+                      updateContactDraft({ organization })
+                    }
+                    placeholder="Company, employer, or organization"
+                  />
+                  <Field
+                    label="Role / Title"
+                    value={contactDraft.role}
+                    onChange={(role) => updateContactDraft({ role })}
+                    placeholder="Job title or relationship"
+                  />
+                  <Field
+                    label="Category"
+                    value={contactDraft.category}
+                    onChange={(category) =>
+                      updateContactDraft({ category })
+                    }
+                    placeholder="Coworker, vendor, carrier, contractor..."
+                  />
+                  <Field
+                    label="Phone Number"
+                    value={contactDraft.phone}
+                    onChange={(phone) => updateContactDraft({ phone })}
+                    placeholder="Phone number"
+                  />
+                  <Field
+                    label="Email Address"
+                    value={contactDraft.email}
+                    onChange={(email) => updateContactDraft({ email })}
+                    placeholder="Email address"
+                  />
+                  <Field
+                    label="Address"
+                    value={contactDraft.address}
+                    onChange={(address) => updateContactDraft({ address })}
+                    placeholder="Mailing or business address"
+                  />
+                  <Field
+                    label="Website"
+                    value={contactDraft.website}
+                    onChange={(website) => updateContactDraft({ website })}
+                    placeholder="Website"
+                  />
+                  <Field
+                    label="Notes"
+                    value={contactDraft.notes}
+                    onChange={(notes) => updateContactDraft({ notes })}
+                    multiline
+                    placeholder="Useful details, hours, account numbers, or other notes"
+                  />
+                </div>
+
+                <div style={buttonRowStyle}>
+                  <button
+                    type="button"
+                    onClick={saveContact}
+                    style={goldButtonStyle}
+                  >
+                    Save Contact
+                  </button>
+
+                  {contactDraft.phone.trim() ? (
+                    <a
+                      href={`tel:${contactDraft.phone.replace(
+                        /[^+\d]/g,
+                        "",
+                      )}`}
+                      style={secondaryButtonStyle}
+                    >
+                      Call
+                    </a>
+                  ) : null}
+
+                  {contactDraft.email.trim() ? (
+                    <a
+                      href={`mailto:${contactDraft.email.trim()}`}
+                      style={secondaryButtonStyle}
+                    >
+                      Email
+                    </a>
+                  ) : null}
+
+                  {contactDraft.website.trim() ? (
+                    <a
+                      href={
+                        /^https?:\/\//i.test(contactDraft.website.trim())
+                          ? contactDraft.website.trim()
+                          : `https://${contactDraft.website.trim()}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={secondaryButtonStyle}
+                    >
+                      Website
+                    </a>
+                  ) : null}
+
+                  {selectedStoredContact ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        deleteContact(selectedStoredContact)
+                      }
+                      style={dangerButtonStyle}
+                    >
+                      Delete Contact
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+            </div>
+          ) : (
+            <div style={noticeStyle}>
+              <strong>Select a contact or add a new one.</strong>
+              <p style={mutedSmallStyle}>
+                Contacts stay alphabetized automatically and every field is
+                editable.
               </p>
             </div>
           )
@@ -7284,7 +8071,22 @@ export default function AtlasPage() {
         }
         drawer={
           selectedVendor.id ? (
-            <div style={stackStyle}>
+            <div
+              style={stackStyle}
+              tabIndex={0}
+              onPaste={(event) => {
+                const files = imageFilesFromPasteEvent(event);
+                if (!files.length) return;
+                event.preventDefault();
+                void addLinkedPhotoFiles(
+                  "Vendor",
+                  selectedVendor.id,
+                  selectedVendor.name,
+                  files,
+                  selectedVendorLogo ? "Photo" : "Vendor Logo",
+                );
+              }}
+            >
               <div style={vendorDetailHeaderStyle}>
                 <div style={vendorLogoLargeStyle}>
                   {selectedVendorLogo?.dataUrl ||
@@ -7311,9 +8113,24 @@ export default function AtlasPage() {
                     {selectedVendor.category || "Uncategorized"}
                   </p>
                 </div>
-                <label style={compactUploadButtonStyle}>
-                  {selectedVendorLogo ? "Change Logo" : "Add Logo"}
-                  <input
+                <div style={buttonRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void pasteLinkedPhoto(
+                        "Vendor",
+                        selectedVendor.id,
+                        selectedVendor.name,
+                        "Vendor Logo",
+                      )
+                    }
+                    style={secondaryButtonStyle}
+                  >
+                    Paste Logo
+                  </button>
+                  <label style={compactUploadButtonStyle}>
+                    {selectedVendorLogo ? "Change Logo" : "Add Logo"}
+                    <input
                     type="file"
                     accept="image/*"
                     onChange={(event) => {
@@ -7326,9 +8143,19 @@ export default function AtlasPage() {
                       );
                       event.currentTarget.value = "";
                     }}
-                    style={{ display: "none" }}
-                  />
-                </label>
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                  {selectedVendorLogo ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteLinkedImage(selectedVendorLogo)}
+                      style={dangerButtonStyle}
+                    >
+                      Delete Logo
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               <section style={detailSectionStyle}>
@@ -7393,22 +8220,31 @@ export default function AtlasPage() {
                   />
                 </div>
 
-                {isRecordDirty("vendor", selectedVendor.id) ? (
+                <div style={buttonRowStyle}>
+                  {isRecordDirty("vendor", selectedVendor.id) ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void saveDirtyRecord(
+                          "vendors",
+                          selectedVendor,
+                          "vendor",
+                          selectedVendor.id,
+                        )
+                      }
+                      style={goldButtonStyle}
+                    >
+                      Save Vendor
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() =>
-                      void saveDirtyRecord(
-                        "vendors",
-                        selectedVendor,
-                        "vendor",
-                        selectedVendor.id,
-                      )
-                    }
-                    style={goldButtonStyle}
+                    onClick={() => void deleteVendorRecord(selectedVendor)}
+                    style={dangerButtonStyle}
                   >
-                    Save Vendor
+                    Delete Vendor
                   </button>
-                ) : null}
+                </div>
               </section>
 
               <section style={detailSectionStyle}>
@@ -7417,48 +8253,71 @@ export default function AtlasPage() {
                     <div style={eyebrowStyle}>Photos</div>
                     <strong>{selectedVendorPhotos.length} attached</strong>
                   </div>
-                  <label style={compactUploadButtonStyle}>
-                    Add Photo
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      capture="environment"
-                      onChange={(event) => {
-                        void addLinkedPhotoFiles(
+                  <div style={buttonRowStyle}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void pasteLinkedPhoto(
                           "Vendor",
+                          selectedVendor.id,
+                          selectedVendor.name,
+                        )
+                      }
+                      style={secondaryButtonStyle}
+                    >
+                      Paste Image
+                    </button>
+                    <label style={compactUploadButtonStyle}>
+                      Add Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        capture="environment"
+                        onChange={(event) => {
+                          void addLinkedPhotoFiles(
+                            "Vendor",
                           selectedVendor.id,
                           selectedVendor.name,
                           event.currentTarget.files,
                         );
-                        event.currentTarget.value = "";
-                      }}
-                      style={{ display: "none" }}
-                    />
-                  </label>
+                          event.currentTarget.value = "";
+                        }}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 {selectedVendorPhotos.length ? (
                   <div style={photoGridStyle}>
                     {selectedVendorPhotos.map((file) => (
-                      <button
-                        key={file.id}
-                        type="button"
-                        onClick={() => openUploadedFile(file)}
-                        style={compactPhotoButtonStyle}
-                      >
-                        <img
-                          src={file.dataUrl || file.url}
-                          alt={file.name}
-                          style={photoStyle}
-                        />
-                        <strong>{file.name}</strong>
-                      </button>
+                      <div key={file.id} style={photoManageCardStyle}>
+                        <button
+                          type="button"
+                          onClick={() => openUploadedFile(file)}
+                          style={compactPhotoButtonStyle}
+                        >
+                          <img
+                            src={file.dataUrl || file.url}
+                            alt={file.name}
+                            style={photoStyle}
+                          />
+                          <strong>{file.name}</strong>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteLinkedImage(file)}
+                          style={photoDeleteButtonStyle}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     ))}
                   </div>
                 ) : (
                   <p style={mutedSmallStyle}>
-                    No vendor photos attached yet.
+                    No vendor photos attached yet. You can also click this panel and paste a copied image.
                   </p>
                 )}
               </section>
@@ -7624,22 +8483,33 @@ export default function AtlasPage() {
                 multiline
               />
             </div>
-            {isRecordDirty("work_order", selectedService.id) ? (
-              <button
-                type="button"
-                onClick={() =>
-                  void saveDirtyRecord(
-                    "work_orders",
-                    selectedService,
-                    "work_order",
-                    selectedService.id,
-                  )
-                }
-                style={goldButtonStyle}
-              >
-                Save Work Order
-              </button>
-            ) : null}
+            <div style={buttonRowStyle}>
+              {isRecordDirty("work_order", selectedService.id) ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void saveDirtyRecord(
+                      "work_orders",
+                      selectedService,
+                      "work_order",
+                      selectedService.id,
+                    )
+                  }
+                  style={goldButtonStyle}
+                >
+                  Save Work Order
+                </button>
+              ) : null}
+              {selectedService.id ? (
+                <button
+                  type="button"
+                  onClick={() => void deleteWorkOrderRecord(selectedService)}
+                  style={dangerButtonStyle}
+                >
+                  Delete Work Order
+                </button>
+              ) : null}
+            </div>
             {renderLinkedDocuments("Work Order", selectedService.id)}
           </>
         }
@@ -8276,7 +9146,7 @@ export default function AtlasPage() {
                 {hasSelectedEvent ? (
                   <button
                     type="button"
-                    onClick={() => deleteCalendarItem(selectedCalendarId)}
+                    onClick={() => void deleteCalendarItem(selectedCalendarId)}
                     style={dangerButtonStyle}
                   >
                     Delete
@@ -8685,7 +9555,7 @@ export default function AtlasPage() {
               <div style={manualListHeaderStyle}>
                 <span>Manual</span>
                 <span>Asset</span>
-                <span>PDF</span>
+                <span>Actions</span>
               </div>
 
               {filteredManuals.length ? (
@@ -8703,19 +9573,28 @@ export default function AtlasPage() {
                           {manual.linkedAssetName || "Not linked"}
                         </span>
 
-                        {manualOpenUrl ? (
-                          <a
-                            href={manualOpenUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={manualCompactFileStyle}
-                            aria-label={`Open ${manual.title}`}
+                        <div style={manualActionRowStyle}>
+                          {manualOpenUrl ? (
+                            <a
+                              href={manualOpenUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={manualCompactFileStyle}
+                              aria-label={`Open ${manual.title}`}
+                            >
+                              Open
+                            </a>
+                          ) : (
+                            <span style={manualNoPdfStyle}>—</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void deleteManualRecord(manual)}
+                            style={manualDeleteButtonStyle}
                           >
-                            Open
-                          </a>
-                        ) : (
-                          <span style={manualNoPdfStyle}>—</span>
-                        )}
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -9432,22 +10311,33 @@ export default function AtlasPage() {
                 multiline
               />
             </div>
-            {isRecordDirty("procedure", selectedProcedure.id) ? (
-              <button
-                type="button"
-                onClick={() =>
-                  void saveDirtyRecord(
-                    "procedures",
-                    selectedProcedure,
-                    "procedure",
-                    selectedProcedure.id,
-                  )
-                }
-                style={goldButtonStyle}
-              >
-                Save Procedure
-              </button>
-            ) : null}
+            <div style={buttonRowStyle}>
+              {isRecordDirty("procedure", selectedProcedure.id) ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void saveDirtyRecord(
+                      "procedures",
+                      selectedProcedure,
+                      "procedure",
+                      selectedProcedure.id,
+                    )
+                  }
+                  style={goldButtonStyle}
+                >
+                  Save Procedure
+                </button>
+              ) : null}
+              {selectedProcedure.id ? (
+                <button
+                  type="button"
+                  onClick={() => void deleteProcedureRecord(selectedProcedure)}
+                  style={dangerButtonStyle}
+                >
+                  Delete Procedure
+                </button>
+              ) : null}
+            </div>
           </>
         }
       />
@@ -9524,6 +10414,15 @@ export default function AtlasPage() {
                 multiline
               />
             </div>
+            {selectedPart.id ? (
+              <button
+                type="button"
+                onClick={() => deletePartRecord(selectedPart)}
+                style={dangerButtonStyle}
+              >
+                Delete Part
+              </button>
+            ) : null}
           </>
         }
       />
@@ -10235,6 +11134,7 @@ export default function AtlasPage() {
     else if (screen === "assets") content = renderAssets();
     else if (screen === "history") content = renderWorkOrders();
     else if (screen === "vendors") content = renderVendors();
+    else if (screen === "contacts") content = renderContacts();
     else if (screen === "calendar") content = renderCalendar();
     else if (screen === "weather") content = renderWeather();
     else if (screen === "documents") content = renderDocuments();
@@ -12072,6 +12972,132 @@ const searchResultStyle: React.CSSProperties = {
   color: colors.text,
 };
 
+const photoManageCardStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 6,
+  padding: 7,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 13,
+  background: colors.panel,
+};
+
+const photoDeleteButtonStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid #F1B8B4",
+  borderRadius: 9,
+  padding: "7px 9px",
+  background: "#FFF1F0",
+  color: colors.red,
+  fontSize: 11,
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const coverPhotoLabelStyle: React.CSSProperties = {
+  color: colors.gold,
+  fontSize: 10,
+  fontWeight: 950,
+  textTransform: "uppercase",
+  letterSpacing: 0.7,
+};
+
+const manualActionRowStyle: React.CSSProperties = {
+  justifySelf: "end",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: 6,
+  flexWrap: "wrap",
+};
+
+const manualDeleteButtonStyle: React.CSSProperties = {
+  border: "1px solid #F1B8B4",
+  borderRadius: 999,
+  padding: "7px 9px",
+  background: "#FFF1F0",
+  color: colors.red,
+  fontSize: 10,
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const contactListShellStyle: React.CSSProperties = {
+  display: "grid",
+  overflow: "hidden",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  background: "#FFFFFF",
+};
+
+const contactRowStyle: React.CSSProperties = {
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns: "48px minmax(0, 1fr)",
+  gap: 12,
+  alignItems: "center",
+  padding: "12px 14px",
+  border: "1px solid transparent",
+  borderBottom: `1px solid ${colors.line}`,
+  borderRadius: 0,
+  background: "#FFFFFF",
+  color: colors.text,
+  textAlign: "left",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const contactAvatarStyle: React.CSSProperties = {
+  width: 42,
+  height: 42,
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 13,
+  background: colors.navy,
+  color: "#FFFFFF",
+  fontSize: 13,
+  fontWeight: 950,
+  letterSpacing: 0.4,
+};
+
+const contactAvatarLargeStyle: React.CSSProperties = {
+  width: 70,
+  height: 70,
+  flex: "0 0 70px",
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 18,
+  background: colors.navy,
+  color: "#FFFFFF",
+  fontSize: 20,
+  fontWeight: 950,
+  letterSpacing: 0.7,
+};
+
+const contactNameStyle: React.CSSProperties = {
+  display: "block",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const contactSecondaryLineStyle: React.CSSProperties = {
+  ...mutedSmallStyle,
+  margin: "3px 0 0",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const contactDetailHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 13,
+  padding: 14,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  background: "#FFFFFF",
+};
+
 const detailSectionStyle: React.CSSProperties = {
   display: "grid",
   gap: 12,
@@ -12292,7 +13318,7 @@ const manualSimpleTableStyle: React.CSSProperties = {
 
 const manualListHeaderStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 2fr) minmax(180px, 1fr) 76px",
+  gridTemplateColumns: "minmax(0, 2fr) minmax(180px, 1fr) 150px",
   gap: 14,
   padding: "11px 16px",
   borderBottom: `1px solid ${colors.line}`,
@@ -12310,7 +13336,7 @@ const manualCompactListStyle: React.CSSProperties = {
 
 const manualSimpleRowStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 2fr) minmax(180px, 1fr) 76px",
+  gridTemplateColumns: "minmax(0, 2fr) minmax(180px, 1fr) 150px",
   gap: 14,
   alignItems: "center",
   minHeight: 52,
