@@ -4663,6 +4663,17 @@ export default function AtlasPage() {
     }
   }
 
+  function imageFilesFromPasteEvent(
+    event: React.ClipboardEvent<HTMLElement>,
+  ) {
+    return Array.from(event.clipboardData?.items || [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file))
+      .map(normalizeImageFile)
+      .filter((file) => file.type.startsWith("image/"));
+  }
+
   function imagePayloadFromPasteEvent(
     event: React.ClipboardEvent<HTMLElement>,
   ) {
