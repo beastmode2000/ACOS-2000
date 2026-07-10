@@ -13145,6 +13145,8 @@ const compactUploadButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  flexShrink: 0,
+  minWidth: "max-content",
   minHeight: 38,
   padding: "9px 12px",
   border: `1px solid ${colors.gold}`,
@@ -13153,6 +13155,11 @@ const compactUploadButtonStyle: React.CSSProperties = {
   color: colors.navy,
   fontSize: 12,
   fontWeight: 950,
+  lineHeight: 1,
+  whiteSpace: "nowrap",
+  wordBreak: "keep-all",
+  writingMode: "horizontal-tb",
+  textOrientation: "mixed",
   cursor: "pointer",
 };
 
