@@ -5193,6 +5193,8 @@ export default function AtlasPage() {
       return;
     }
 
+    const manualQuestion = /\b(manual|owner'?s manual|user guide|installation guide|service manual|pdf|documentation|spec sheet|datasheet)\b/i.test(question);
+
     const cleanText = (value: unknown, maxLength = 1200) =>
       String(value ?? "").slice(0, maxLength);
 
@@ -5329,16 +5331,39 @@ export default function AtlasPage() {
       },
     };
 
+    const requestSnapshot = manualQuestion
+      ? {
+          generatedAt: atlasSnapshot.generatedAt,
+          assets: atlasSnapshot.assets.map((asset) => ({
+            id: asset.id,
+            name: asset.name,
+            make: asset.make,
+            model: asset.model,
+            category: asset.category,
+            locationName: asset.locationName,
+            notes: asset.notes.slice(0, 500),
+          })),
+        }
+      : atlasSnapshot;
+
     setAssistantLoading(true);
     setManualCandidates([]);
     setManualSaveMessage("");
-    setAssistantAnswer("Ask Atlas is reviewing Atlas and searching trusted web sources when needed...");
+    setAssistantAnswer(
+      manualQuestion
+        ? "Ask Atlas is checking the exact equipment details and searching official manufacturer sources..."
+        : "Ask Atlas is reviewing your Atlas records...",
+    );
 
     try {
       const response = await fetch("/api/ask-atlas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, atlas: atlasSnapshot, allowWebSearch: true }),
+        body: JSON.stringify({
+          question,
+          atlas: requestSnapshot,
+          allowWebSearch: manualQuestion,
+        }),
       });
 
       const payload = (await response.json().catch(() => ({}))) as {
@@ -5348,12 +5373,39 @@ export default function AtlasPage() {
         error?: string;
       };
 
-      if (!response.ok || !payload.ok || !payload.answer) {
+      if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "Ask Atlas could not answer right now.");
       }
 
-      setAssistantAnswer(payload.answer);
-      setManualCandidates(Array.isArray(payload.manuals) ? payload.manuals : []);
+      let cleanAnswer = String(payload.answer || "").trim();
+      let cleanManuals = Array.isArray(payload.manuals) ? payload.manuals : [];
+
+      if (cleanAnswer.startsWith("{") || cleanAnswer.startsWith("```")) {
+        try {
+          const normalized = cleanAnswer
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/i, "")
+            .trim();
+          const parsed = JSON.parse(normalized) as {
+            answer?: unknown;
+            manuals?: ManualCandidate[];
+          };
+          cleanAnswer = String(parsed.answer || "").trim();
+          if (!cleanManuals.length && Array.isArray(parsed.manuals)) {
+            cleanManuals = parsed.manuals;
+          }
+        } catch {
+          // Keep the readable text returned by the route.
+        }
+      }
+
+      setAssistantAnswer(
+        cleanAnswer ||
+          (cleanManuals.length
+            ? "I found the official manual options below."
+            : "Ask Atlas did not find a verified result."),
+      );
+      setManualCandidates(cleanManuals.slice(0, 3));
     } catch (error) {
       setAssistantAnswer(
         error instanceof Error
