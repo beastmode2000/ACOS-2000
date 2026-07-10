@@ -535,12 +535,12 @@ async function fileToUploadedRecord(file: File): Promise<UploadedFileRecord> {
 }
 
 function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
-  const name = String(record.name || "Unnamed Asset");
+  const name = String(record.name ?? "Unnamed Asset");
   return {
     id: String(record.id || slugify(name)),
     name,
-    locationId: String(record.locationId || "general"),
-    category: String(record.category || "General"),
+    locationId: String(record.locationId ?? "general"),
+    category: String(record.category ?? "General"),
     status: isStatus(record.status) ? record.status : "Monitor",
     make: record.make || "",
     model: record.model || "",
@@ -551,11 +551,11 @@ function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
 }
 
 function normalizeVendor(record: Partial<VendorRecord>): VendorRecord {
-  const name = String(record.name || "Unnamed Vendor");
+  const name = String(record.name ?? "Unnamed Vendor");
   return {
     id: String(record.id || slugify(name)),
     name,
-    category: String(record.category || "General"),
+    category: String(record.category ?? "General"),
     phone: record.phone || "",
     email: record.email || "",
     website: record.website || "",
@@ -564,13 +564,13 @@ function normalizeVendor(record: Partial<VendorRecord>): VendorRecord {
 }
 
 function normalizeService(record: Partial<ServiceRecord>): ServiceRecord {
-  const title = String(record.title || "Untitled Work Order");
+  const title = String(record.title ?? "Untitled Work Order");
   return {
     id: String(record.id || slugify(title)),
-    assetId: String(record.assetId || ""),
+    assetId: String(record.assetId ?? ""),
     vendorId: record.vendorId || "",
     procedureId: record.procedureId || "",
-    date: String(record.date || todayISO()),
+    date: String(record.date ?? todayISO()),
     title,
     status: isServiceStatus(record.status) ? record.status : "Open",
     priority: isPriority(record.priority) ? record.priority : "Medium",
@@ -582,25 +582,25 @@ function normalizeService(record: Partial<ServiceRecord>): ServiceRecord {
 }
 
 function normalizeProcedure(record: Partial<ProcedureRecord>): ProcedureRecord {
-  const title = String(record.title || "Untitled Procedure");
+  const title = String(record.title ?? "Untitled Procedure");
   return {
     id: String(record.id || slugify(title)),
     title,
-    area: String(record.area || "2000"),
+    area: String(record.area ?? "2000"),
     priority: isProcedurePriority(record.priority) ? record.priority : "Normal",
     steps: Array.isArray(record.steps) ? record.steps.map(String) : [],
   };
 }
 
 function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
-  const title = String(record.title || "Untitled Calendar Item");
-  const rawColorId = String(record.colorId || "") || categoryToColorId(String(record.area || record.categoryLabel || ""));
-  const categoryLabel = String(record.categoryLabel || record.area || colorLabelFromColorId(rawColorId) || "Maintenance");
+  const title = String(record.title ?? "Untitled Calendar Item");
+  const rawColorId = String(record.colorId ?? "") || categoryToColorId(String(record.area ?? record.categoryLabel ?? ""));
+  const categoryLabel = String(record.categoryLabel ?? record.area ?? colorLabelFromColorId(rawColorId) ?? "Maintenance");
   const colorName = (record.colorName || colorNameFromLegacyColorId(rawColorId)) as CalendarColorName;
 
   return {
     id: String(record.id || slugify(title)),
-    date: String(record.date || todayISO()),
+    date: String(record.date ?? todayISO()),
     time: String(record.time || ""),
     title,
     area: categoryLabel,
@@ -620,16 +620,16 @@ function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
 }
 
 function normalizePart(record: Partial<PartRecord>): PartRecord {
-  const name = String(record.name || "Unnamed Part");
+  const name = String(record.name ?? "Unnamed Part");
   return {
     id: String(record.id || slugify(name)),
     name,
-    category: String(record.category || "General"),
-    locationId: String(record.locationId || "general"),
+    category: String(record.category ?? "General"),
+    locationId: String(record.locationId ?? "general"),
     assetId: record.assetId || "",
     vendorId: record.vendorId || "",
-    quantity: Number(record.quantity || 0),
-    minQuantity: Number(record.minQuantity || 1),
+    quantity: Number(record.quantity ?? 0),
+    minQuantity: Number(record.minQuantity ?? 1),
     status: isPartStatus(record.status) ? record.status : "In Stock",
     notes: String(record.notes || ""),
   };
@@ -1479,7 +1479,7 @@ export default function AtlasPage() {
   const [mapImageOk, setMapImageOk] = useState(true);
 
   const [mapLabels, setMapLabels] = useState<MapLabelRecord[]>(defaultMapLabels);
-  const [selectedMapLabelId, setSelectedMapLabelId] = useState(defaultMapLabels[0].id);
+  const [selectedMapLabelId, setSelectedMapLabelId] = useState("");
   const [activeMapPanelTab, setActiveMapPanelTab] = useState<"info" | "vendors" | "photos" | "tabs">("info");
 
   const [assetRecords, setAssetRecords] = useState<AssetRecord[]>(fallbackAssets);
@@ -1506,11 +1506,11 @@ export default function AtlasPage() {
   const [documentSearch, setDocumentSearch] = useState("");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
 
-  const [selectedAssetId, setSelectedAssetId] = useState(fallbackAssets[0]?.id || "");
-  const [selectedVendorId, setSelectedVendorId] = useState(fallbackVendors[0]?.id || "");
-  const [selectedServiceId, setSelectedServiceId] = useState(fallbackWorkOrders[0]?.id || "");
-  const [selectedProcedureId, setSelectedProcedureId] = useState(fallbackProcedures[0]?.id || "");
-  const [selectedPartId, setSelectedPartId] = useState(fallbackParts[0]?.id || "");
+  const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [selectedVendorId, setSelectedVendorId] = useState("");
+  const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [selectedProcedureId, setSelectedProcedureId] = useState("");
+  const [selectedPartId, setSelectedPartId] = useState("");
   const [dirtyRecords, setDirtyRecords] = useState<Record<string, boolean>>({});
   const [qrKind, setQrKind] = useState<QrKind>("asset");
   const [qrSearch, setQrSearch] = useState("");
@@ -1690,25 +1690,25 @@ export default function AtlasPage() {
         if (apiAssets.length) {
           const next = byName(apiAssets.map(normalizeAsset));
           setAssetRecords(next);
-          setSelectedAssetId((current) => next.find((item) => item.id === current)?.id ?? next[0].id);
+          setSelectedAssetId((current) => next.some((item) => item.id === current) ? current : "");
         }
 
         if (apiVendors.length) {
           const next = byName(apiVendors.map(normalizeVendor));
           setVendorRecords(next);
-          setSelectedVendorId((current) => next.find((item) => item.id === current)?.id ?? next[0].id);
+          setSelectedVendorId((current) => next.some((item) => item.id === current) ? current : "");
         }
 
         if (apiServices.length) {
           const next = byTitle(apiServices.map(normalizeService));
           setServiceRecords(next);
-          setSelectedServiceId((current) => next.find((item) => item.id === current)?.id ?? next[0].id);
+          setSelectedServiceId((current) => next.some((item) => item.id === current) ? current : "");
         }
 
         if (apiProcedures.length) {
           const next = byTitle(apiProcedures.map(normalizeProcedure));
           setProcedureRecords(next);
-          setSelectedProcedureId((current) => next.find((item) => item.id === current)?.id ?? next[0].id);
+          setSelectedProcedureId((current) => next.some((item) => item.id === current) ? current : "");
         }
 
         if (apiCalendar.length) {
@@ -2030,13 +2030,13 @@ export default function AtlasPage() {
     return calendarCategoryFilters[category] !== false;
   }
 
-  const selectedMapLabel = mapLabels.find((label) => label.id === selectedMapLabelId) ?? mapLabels[0] ?? defaultMapLabels[0];
-  const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? assetRecords[0] ?? normalizeAsset({});
-  const selectedVendor = vendorRecords.find((vendor) => vendor.id === selectedVendorId) ?? vendorRecords[0] ?? normalizeVendor({});
-  const selectedService = serviceRecords.find((service) => service.id === selectedServiceId) ?? serviceRecords[0] ?? normalizeService({});
-  const selectedProcedure = procedureRecords.find((procedure) => procedure.id === selectedProcedureId) ?? procedureRecords[0] ?? normalizeProcedure({});
-  const selectedPart = partRecords.find((part) => part.id === selectedPartId) ?? partRecords[0] ?? normalizePart({});
-  const selectedAssetPhotos = photos.filter((photo) => photo.assetId === selectedAsset.id);
+  const selectedMapLabel = mapLabels.find((label) => label.id === selectedMapLabelId) ?? { id: "", label: "", category: "", x: 50, y: 50, notes: "", photos: [], coverPhotoId: "", vendorIds: [], detailBoxes: [], installer: "", paintColor: "", specs: "", documentNotes: "", photoNotes: "", maintenanceNotes: "" };
+  const selectedAsset = assetRecords.find((asset) => asset.id === selectedAssetId) ?? normalizeAsset({ id: "", name: "", locationId: "", category: "", status: "Monitor", make: "", model: "", serial: "", notes: "", vendorIds: [] });
+  const selectedVendor = vendorRecords.find((vendor) => vendor.id === selectedVendorId) ?? normalizeVendor({ id: "", name: "", category: "", phone: "", email: "", website: "", notes: "" });
+  const selectedService = serviceRecords.find((service) => service.id === selectedServiceId) ?? normalizeService({ id: "", assetId: "", vendorId: "", procedureId: "", date: "", title: "", status: "Open", priority: "Medium", notes: "", followUpDate: "", photos: [], documents: [] });
+  const selectedProcedure = procedureRecords.find((procedure) => procedure.id === selectedProcedureId) ?? normalizeProcedure({ id: "", title: "", area: "", priority: "Normal", steps: [] });
+  const selectedPart = partRecords.find((part) => part.id === selectedPartId) ?? normalizePart({ id: "", name: "", category: "", locationId: "", assetId: "", vendorId: "", quantity: 0, minQuantity: 0, status: "In Stock", notes: "" });
+  const selectedAssetPhotos = selectedAssetId ? photos.filter((photo) => photo.assetId === selectedAssetId) : [];
   const selectedWeather = weatherDays.find((day) => day.date === selectedWeatherDate) ?? weatherDays[0];
   const selectedCalendar = calendarDraft;
 
@@ -2068,6 +2068,12 @@ export default function AtlasPage() {
   async function saveDirtyRecord(table: AtlasTable, record: unknown, recordType: string, id?: string) {
     await postAtlasRecord(table, record);
     clearRecordDirty(recordType, id);
+
+    if (recordType === "asset") setSelectedAssetId("");
+    if (recordType === "vendor") setSelectedVendorId("");
+    if (recordType === "work_order") setSelectedServiceId("");
+    if (recordType === "procedure") setSelectedProcedureId("");
+    if (recordType === "part") setSelectedPartId("");
   }
 
   const showCalendarSave = calendarDirty;
@@ -2722,7 +2728,7 @@ export default function AtlasPage() {
   }
 
   function addAsset() {
-    const record = normalizeAsset({ id: uid("asset"), name: "New Asset", locationId: "general", category: "General", status: "Monitor", notes: "" });
+    const record = normalizeAsset({ id: uid("asset"), name: "", locationId: "", category: "", status: "Monitor", make: "", model: "", serial: "", notes: "", vendorIds: [] });
     setAssetRecords((current) => byName([record, ...current]));
     setSelectedAssetId(record.id);
     markRecordDirty("asset", record.id);
@@ -2735,7 +2741,7 @@ export default function AtlasPage() {
   }
 
   function addVendor() {
-    const record = normalizeVendor({ id: uid("vendor"), name: "New Vendor", category: "General", notes: "" });
+    const record = normalizeVendor({ id: uid("vendor"), name: "", category: "", phone: "", email: "", website: "", notes: "" });
     setVendorRecords((current) => byName([record, ...current]));
     setSelectedVendorId(record.id);
     markRecordDirty("vendor", record.id);
@@ -2748,7 +2754,7 @@ export default function AtlasPage() {
   }
 
   function addWorkOrder() {
-    const record = normalizeService({ id: uid("wo"), title: "New Work Order", date: todayISO(), status: "Open", priority: "Medium", notes: "", assetId: selectedAsset.id });
+    const record = normalizeService({ id: uid("wo"), title: "", date: "", status: "Open", priority: "Medium", notes: "", assetId: "", vendorId: "", procedureId: "", followUpDate: "", photos: [], documents: [] });
     setServiceRecords((current) => byTitle([record, ...current]));
     setSelectedServiceId(record.id);
     markRecordDirty("work_order", record.id);
@@ -3104,7 +3110,7 @@ export default function AtlasPage() {
   function addCalendarColor() {
     const newColor: CalendarColor = {
       id: uid("label"),
-      label: "New Label",
+      label: "",
       colorName: "blue",
       hex: plainColor("blue").hex,
     };
@@ -3125,15 +3131,15 @@ export default function AtlasPage() {
   function addMapLabel() {
     const record: MapLabelRecord = {
       id: uid("map"),
-      label: "New Label",
-      category: "Location",
+      label: "",
+      category: "",
       x: 50,
       y: 50,
       notes: "",
       photos: [],
       coverPhotoId: "",
       vendorIds: [],
-      detailBoxes: [{ id: uid("mapbox"), title: "Notes", body: "" }],
+      detailBoxes: [{ id: uid("mapbox"), title: "", body: "" }],
       installer: "",
       paintColor: "",
       specs: "",
