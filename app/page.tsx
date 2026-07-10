@@ -8812,13 +8812,31 @@ export default function AtlasPage() {
                               color: event.completed
                                 ? colors.muted
                                 : eventColor.hex,
-                              textDecoration: event.completed
-                                ? "line-through"
-                                : "none",
-                              background: "#F8FAFC",
+                              background: event.completed
+                                ? "#EEF2F6"
+                                : "#F8FAFC",
+                              opacity: event.completed ? 0.58 : 1,
                             }}
                           >
-                            {event.title}
+                            <span style={calendarPillContentStyle}>
+                              <span
+                                style={{
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  textDecoration: event.completed
+                                    ? "line-through"
+                                    : "none",
+                                }}
+                              >
+                                {event.completed ? "✓ " : ""}
+                                {event.title}
+                              </span>
+                              {event.completed ? (
+                                <span style={calendarDoneMiniStyle}>Done</span>
+                              ) : null}
+                            </span>
                           </span>
                         );
                       })}
@@ -8858,47 +8876,61 @@ export default function AtlasPage() {
                           (event.originalId || event.id) === selectedCalendarId
                             ? eventColor.hex
                             : colors.line,
-                        opacity: event.completed ? 0.65 : 1,
+                        background: event.completed
+                          ? "#EEF2F6"
+                          : "#F8FAFC",
+                        opacity: event.completed ? 0.62 : 1,
                       }}
                     >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                        }}
-                      >
-                        <span
+                      <div style={calendarSelectedEventRowStyle}>
+                        <div
                           style={{
-                            ...calendarColorDotStyle,
-                            background: eventColor.hex,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            minWidth: 0,
                           }}
-                        />
-                        <div>
-                          <strong
+                        >
+                          <span
                             style={{
-                              textDecoration: event.completed
-                                ? "line-through"
-                                : "none",
+                              ...calendarColorDotStyle,
+                              background: eventColor.hex,
                             }}
-                          >
-                            {event.title}
-                          </strong>
-                          <span>
-                            {event.allDay ? "All day" : event.time || "No time"}{" "}
-                            · {eventColor.label}
-                          </span>
-                          {event.repeat &&
-                          event.repeat !== "None" &&
-                          event.source === "manual" ? (
-                            <span>Repeats {event.repeat}</span>
-                          ) : null}
-                          {event.linkedType &&
-                          event.linkedType !== "None" &&
-                          event.linkedName ? (
-                            <span>Linked: {event.linkedName}</span>
-                          ) : null}
+                          />
+                          <div style={{ minWidth: 0 }}>
+                            <strong
+                              style={{
+                                display: "block",
+                                textDecoration: event.completed
+                                  ? "line-through"
+                                  : "none",
+                              }}
+                            >
+                              {event.completed ? "✓ " : ""}
+                              {event.title}
+                            </strong>
+                            <span>
+                              {event.allDay
+                                ? "All day"
+                                : event.time || "No time"}{" "}
+                              · {eventColor.label}
+                            </span>
+                            {event.repeat &&
+                            event.repeat !== "None" &&
+                            event.source === "manual" ? (
+                              <span>Repeats {event.repeat}</span>
+                            ) : null}
+                            {event.linkedType &&
+                            event.linkedType !== "None" &&
+                            event.linkedName ? (
+                              <span>Linked: {event.linkedName}</span>
+                            ) : null}
+                          </div>
                         </div>
+
+                        {event.completed ? (
+                          <span style={calendarDoneBadgeStyle}>✓ Done</span>
+                        ) : null}
                       </div>
                     </button>
                   );
@@ -13679,6 +13711,48 @@ const calendarPillStyle: React.CSSProperties = {
   fontWeight: 850,
   overflow: "hidden",
   textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const calendarPillContentStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 6,
+};
+
+const calendarDoneMiniStyle: React.CSSProperties = {
+  flex: "0 0 auto",
+  padding: "2px 5px",
+  borderRadius: 999,
+  background: "#DDE5EC",
+  color: colors.muted,
+  fontSize: 8,
+  fontWeight: 950,
+  lineHeight: 1,
+  textDecoration: "none",
+};
+
+const calendarSelectedEventRowStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+};
+
+const calendarDoneBadgeStyle: React.CSSProperties = {
+  flex: "0 0 auto",
+  padding: "6px 9px",
+  border: "1px solid #BFCBD5",
+  borderRadius: 999,
+  background: "#FFFFFF",
+  color: colors.muted,
+  fontSize: 10,
+  fontWeight: 950,
+  lineHeight: 1,
   whiteSpace: "nowrap",
 };
 
