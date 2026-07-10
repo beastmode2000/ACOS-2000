@@ -2194,7 +2194,7 @@ const manualCategories: ManualCategory[] = [
 ];
 
 const seaDooManualUrl =
-  "https://www.operatorsguides.brp.com/public/tmp/219002349%20%20Sea-Doo%20GTI%20GTR%20and%20Wake%20170%20Series.WEB.pdf";
+  "https://www.operatorsguides.brp.com/readguide/12118";
 
 function cleanManualOpenUrl(value: string): string {
   const trimmed = String(value || "").trim();
@@ -7780,27 +7780,15 @@ export default function AtlasPage() {
                         </span>
 
                         {manualOpenUrl ? (
-                          <button
-                            type="button"
-                            style={{
-                              ...manualCompactFileStyle,
-                              border: 0,
-                              fontFamily: "inherit",
-                            }}
+                          <a
+                            href={manualOpenUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={manualCompactFileStyle}
                             aria-label={`Open ${manual.title}`}
-                            onClick={() => {
-                              const atlasManualUrl = `/api/manual-file?url=${encodeURIComponent(
-                                manualOpenUrl,
-                              )}`;
-                              window.open(
-                                atlasManualUrl,
-                                "_blank",
-                                "noopener,noreferrer",
-                              );
-                            }}
                           >
                             Open
-                          </button>
+                          </a>
                         ) : (
                           <span style={manualNoPdfStyle}>—</span>
                         )}
