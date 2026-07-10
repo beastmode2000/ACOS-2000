@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 type AskAtlasRequest = {
   question?: unknown;
@@ -53,6 +54,72 @@ function extractOutputText(payload: OpenAIResponsePayload): string {
     .map((content) => content.text || "")
     .join("\n")
     .trim();
+}
+
+
+function parseJsonResponse(outputText: string): unknown | null {
+  const cleaned = outputText
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Some web-search responses can include a short preface or trailing citations.
+    // Pull out the outermost JSON object instead of failing the entire request.
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function fallbackReadableResult(outputText: string): AskAtlasResult {
+  const plain = outputText
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const pdfUrls = Array.from(
+    new Set(plain.match(/https:\/\/[^\s<>"']+?\.pdf(?:\?[^\s<>"']*)?/gi) || []),
+  ).slice(0, 4);
+
+  const manuals = pdfUrls.map((url): ManualCandidate => {
+    let sourceDomain = "Official source";
+    try {
+      sourceDomain = new URL(url).hostname;
+    } catch {
+      // URL came from the validated regex above.
+    }
+
+    return {
+      title: "Equipment Manual",
+      manufacturer: "",
+      model: "",
+      url,
+      sourceDomain,
+      sourceLabel: sourceDomain,
+      confidence: "Medium",
+      reason: "Ask Atlas found this PDF. Review the title and model before saving.",
+    };
+  });
+
+  return {
+    answer:
+      plain ||
+      (manuals.length
+        ? "I found the PDF option below. Review it before saving."
+        : "Ask Atlas completed the search but could not format the answer."),
+    manuals,
+  };
 }
 
 function safeResult(raw: unknown): AskAtlasResult {
@@ -263,16 +330,18 @@ Return valid JSON matching the requested schema. The answer should be readable p
       return NextResponse.json({ ok: false, error: "Ask Atlas received an empty response." }, { status: 502 });
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(outputText);
-    } catch {
-      console.error("Ask Atlas returned invalid JSON:", outputText);
-      return NextResponse.json({ ok: false, error: "Ask Atlas returned an unreadable response." }, { status: 502 });
+    const parsed = parseJsonResponse(outputText);
+    const result = parsed ? safeResult(parsed) : fallbackReadableResult(outputText);
+
+    if (!parsed) {
+      console.warn("Ask Atlas used readable fallback for non-JSON output.");
     }
 
-    const result = safeResult(parsed);
-    return NextResponse.json({ ok: true, answer: result.answer, manuals: result.manuals });
+    return NextResponse.json({
+      ok: true,
+      answer: result.answer,
+      manuals: result.manuals,
+    });
   } catch (error) {
     console.error("Ask Atlas route error:", error);
     return NextResponse.json(
