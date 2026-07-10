@@ -6824,6 +6824,7 @@ export default function AtlasPage() {
           .filter((record) => record.assetId === selectedAsset.id)
           .sort((a, b) => String(b.date).localeCompare(String(a.date)))
       : [];
+    const selectedAssetCoverPhoto = selectedAssetPhotos[0];
 
     return (
       <ListDrawerLayout
@@ -6887,19 +6888,60 @@ export default function AtlasPage() {
         drawer={
           selectedAsset.id ? (
             <div style={stackStyle}>
-              <div style={assetDetailTitleRowStyle}>
-                <div>
-                  <h3 style={editorHeaderStyle}>
-                    {selectedAsset.name.trim() || "Asset"}
-                  </h3>
-                  <p style={mutedSmallStyle}>
-                    {selectedAsset.category || "Uncategorized"} ·{" "}
-                    {locationName(selectedAsset.locationId)}
-                  </p>
+              <div style={assetVisualHeaderStyle}>
+                <div style={assetPhotoLargeStyle}>
+                  {selectedAssetCoverPhoto?.dataUrl || selectedAssetCoverPhoto?.url ? (
+                    <img
+                      src={
+                        selectedAssetCoverPhoto.dataUrl ||
+                        selectedAssetCoverPhoto.url
+                      }
+                      alt={selectedAsset.name}
+                      style={assetPhotoLargeImageStyle}
+                    />
+                  ) : (
+                    <span>
+                      {selectedAsset.name.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
                 </div>
-                <span style={badgeStyle(selectedAsset.status)}>
-                  {selectedAsset.status}
-                </span>
+
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={assetDetailTitleRowStyle}>
+                    <div>
+                      <h3 style={editorHeaderStyle}>
+                        {selectedAsset.name.trim() || "Asset"}
+                      </h3>
+                      <p style={mutedSmallStyle}>
+                        {selectedAsset.category || "Uncategorized"} ·{" "}
+                        {locationName(selectedAsset.locationId)}
+                      </p>
+                      <p style={mutedSmallStyle}>
+                        {[selectedAsset.make, selectedAsset.model, selectedAsset.serial]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                    <span style={badgeStyle(selectedAsset.status)}>
+                      {selectedAsset.status}
+                    </span>
+                  </div>
+                </div>
+
+                <label style={compactUploadButtonStyle}>
+                  {selectedAssetCoverPhoto ? "Change Photo" : "Add Photo"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    capture="environment"
+                    onChange={(event) => {
+                      void addAssetPhotoFiles(event.currentTarget.files);
+                      event.currentTarget.value = "";
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </label>
               </div>
 
               <section style={detailSectionStyle}>
@@ -12120,6 +12162,38 @@ const compactLinkedRowStyle: React.CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   fontFamily: "inherit",
+};
+
+const assetVisualHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  flexWrap: "wrap",
+  padding: 14,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  background: "#FFFFFF",
+};
+
+const assetPhotoLargeStyle: React.CSSProperties = {
+  width: 96,
+  height: 96,
+  flex: "0 0 96px",
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+  borderRadius: 20,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.navy,
+  fontSize: 28,
+  fontWeight: 950,
+};
+
+const assetPhotoLargeImageStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
 };
 
 const assetDetailTitleRowStyle: React.CSSProperties = {
