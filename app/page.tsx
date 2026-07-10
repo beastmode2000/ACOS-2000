@@ -2501,6 +2501,7 @@ export default function AtlasPage() {
 
   const [manualRecords, setManualRecords] = useState<ManualRecord[]>(defaultManuals);
   const [selectedManualId, setSelectedManualId] = useState("");
+  const [manualAddOpen, setManualAddOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState<ManualRecord>(() => blankManual());
   const [manualSearch, setManualSearch] = useState("");
   const [manualCategoryFilter, setManualCategoryFilter] = useState<ManualCategory | "All">("All");
@@ -7529,97 +7530,75 @@ export default function AtlasPage() {
 
   function renderManuals() {
     const normalizedSearch = manualSearch.trim().toLowerCase();
+
     const filteredManuals = [...manualRecords]
-      .filter((manual) =>
-        manualCategoryFilter === "All" ? true : manual.category === manualCategoryFilter,
-      )
       .filter((manual) => {
         if (!normalizedSearch) return true;
         return [
           manual.title,
-          manual.category,
+          manual.linkedAssetName,
           manual.manufacturer,
           manual.model,
           manual.documentNumber,
-          manual.linkedAssetName,
-          manual.sourceLabel,
-          manual.notes,
         ]
           .join(" ")
           .toLowerCase()
           .includes(normalizedSearch);
       })
-      .sort((a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title));
-
-    const selectedManual = selectedManualId
-      ? manualRecords.find((item) => item.id === selectedManualId) || null
-      : null;
-    const activeManual = selectedManual || manualDraft;
-    const isEditing = Boolean(selectedManual);
+      .sort((a, b) => a.title.localeCompare(b.title));
 
     function startNewManual() {
       setSelectedManualId("");
       setManualDraft(blankManual());
-      setManualMessage("Ready for a new manual. Paste a PDF link or upload a file.");
+      setManualAddOpen(true);
+      setManualMessage("");
     }
 
-    function updateActiveManual(patch: Partial<ManualRecord>) {
-      if (isEditing && selectedManual) {
-        setManualRecords((current) =>
-          current.map((item) =>
-            item.id === selectedManual.id ? normalizeManualRecord({ ...item, ...patch }) : item,
-          ),
-        );
-      } else {
-        setManualDraft((current) => normalizeManualRecord({ ...current, ...patch, id: "" }));
-      }
+    function updateManualDraft(patch: Partial<ManualRecord>) {
+      setManualDraft((current) =>
+        normalizeManualRecord({ ...current, ...patch, id: "" }),
+      );
     }
 
     function saveManual() {
       const prepared = normalizeManualRecord({
-        ...activeManual,
-        id: activeManual.id || `manual-${Date.now()}`,
+        ...manualDraft,
+        id: `manual-${Date.now()}`,
         linkedAssetName:
-          assetRecords.find((asset) => asset.id === activeManual.linkedAssetId)?.name ||
-          activeManual.linkedAssetName ||
+          assetRecords.find((asset) => asset.id === manualDraft.linkedAssetId)
+            ?.name ||
+          manualDraft.linkedAssetName ||
           "",
       });
+
       if (!prepared.title.trim()) {
         setManualMessage("Add a manual title before saving.");
         return;
       }
-      const next = manualRecords.some((item) => item.id === prepared.id)
-        ? manualRecords.map((item) => (item.id === prepared.id ? prepared : item))
-        : [prepared, ...manualRecords];
-      setManualRecords(next);
-      saveStoredArray(storageKeys.manuals[0], next);
-      setSelectedManualId("");
-      setManualDraft(blankManual());
-      setManualMessage("Manual saved. The entry box is clear for the next manual.");
-    }
 
-    function deleteManual(id: string) {
-      if (!window.confirm("Delete this manual from Atlas?")) return;
-      const next = manualRecords.filter((item) => item.id !== id);
+      const next = [prepared, ...manualRecords];
       setManualRecords(next);
       saveStoredArray(storageKeys.manuals[0], next);
-      setSelectedManualId("");
       setManualDraft(blankManual());
-      setManualMessage("Manual deleted.");
+      setManualAddOpen(false);
+      setManualMessage("");
     }
 
     async function addManualFiles(fileList: FileList | null) {
       if (!fileList?.length) return;
-      const records = await Promise.all(Array.from(fileList).map(fileToUploadedRecord));
-      updateActiveManual({ files: [...(activeManual.files || []), ...records] });
-      setManualMessage(`${records.length} file(s) attached. Press Save Manual.`);
+      const records = await Promise.all(
+        Array.from(fileList).map(fileToUploadedRecord),
+      );
+      updateManualDraft({
+        files: [...(manualDraft.files || []), ...records],
+      });
     }
 
     return (
       <ListDrawerLayout
         eyebrow="Manual Library"
         title="Manuals"
-        detail="Owner manuals, installation guides, service documents, wiring diagrams, parts catalogs, specifications, warranties, and safety documents organized by category."
+        detail="Manuals listed alphabetically with their attached asset and a direct Open button."
         isMobile={isMobile}
         right={
           <button type="button" onClick={startNewManual} style={goldButtonStyle}>
@@ -7629,145 +7608,170 @@ export default function AtlasPage() {
         list={
           <div style={stackStyle}>
             <div style={cardStyle}>
-              <div style={eyebrowStyle}>Find Manuals</div>
               <input
                 value={manualSearch}
-                onChange={(event) => setManualSearch(event.currentTarget.value)}
-                placeholder="Search title, asset, manufacturer, model, document number..."
+                onChange={(event) =>
+                  setManualSearch(event.currentTarget.value)
+                }
+                placeholder="Search manuals or assets..."
                 style={inputStyle}
               />
-              <select
-                value={manualCategoryFilter}
-                onChange={(event) =>
-                  setManualCategoryFilter(event.currentTarget.value as ManualCategory | "All")
-                }
-                style={{ ...inputStyle, marginTop: 10 }}
-              >
-                <option value="All">All manual categories</option>
-                {manualCategories.map((category) => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
-              <p style={mutedSmallStyle}>{filteredManuals.length} manual(s)</p>
             </div>
 
-            <div style={cardStyle}>
+            {manualAddOpen ? (
+              <div style={cardStyle}>
+                <div style={manualInlineFormHeaderStyle}>
+                  <strong>Add Manual</strong>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualAddOpen(false);
+                      setManualDraft(blankManual());
+                      setManualMessage("");
+                    }}
+                    style={smallSubtleButtonStyle}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                {manualMessage ? (
+                  <p style={mutedSmallStyle}>{manualMessage}</p>
+                ) : null}
+
+                <div style={formGridStyle}>
+                  <Field
+                    label="Manual title"
+                    value={manualDraft.title}
+                    onChange={(title) => updateManualDraft({ title })}
+                    placeholder="Official manual title"
+                  />
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Attached asset</span>
+                    <select
+                      value={manualDraft.linkedAssetId || ""}
+                      onChange={(event) => {
+                        const asset = assetRecords.find(
+                          (item) => item.id === event.currentTarget.value,
+                        );
+                        updateManualDraft({
+                          linkedAssetId: event.currentTarget.value,
+                          linkedAssetName: asset?.name || "",
+                        });
+                      }}
+                      style={inputStyle}
+                    >
+                      <option value="">Not linked</option>
+                      {byName(assetRecords).map((asset) => (
+                        <option key={asset.id} value={asset.id}>
+                          {asset.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <Field
+                    label="PDF / manual link"
+                    value={manualDraft.href}
+                    onChange={(href) => updateManualDraft({ href })}
+                    placeholder="Paste the online PDF URL"
+                  />
+
+                  <Field
+                    label="Manufacturer"
+                    value={manualDraft.manufacturer}
+                    onChange={(manufacturer) =>
+                      updateManualDraft({ manufacturer })
+                    }
+                  />
+
+                  <Field
+                    label="Model"
+                    value={manualDraft.model}
+                    onChange={(model) => updateManualDraft({ model })}
+                  />
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Upload PDF</span>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(event) =>
+                        void addManualFiles(event.currentTarget.files)
+                      }
+                      style={inputStyle}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ ...buttonRowStyle, marginTop: 12 }}>
+                  <button
+                    type="button"
+                    onClick={saveManual}
+                    style={goldButtonStyle}
+                  >
+                    Save Manual
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div style={manualSimpleTableStyle}>
               <div style={manualListHeaderStyle}>
                 <span>Manual</span>
                 <span>Asset</span>
-                <span>File</span>
+                <span>PDF</span>
               </div>
 
               {filteredManuals.length ? (
                 <div style={manualCompactListStyle}>
-                  {filteredManuals.map((manual) => (
-                    <button
-                      key={manual.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedManualId(manual.id);
-                        setManualMessage("Editing selected manual.");
-                      }}
-                      style={{
-                        ...manualCompactRowStyle,
-                        borderColor:
-                          selectedManualId === manual.id ? colors.gold : "transparent",
-                        background:
-                          selectedManualId === manual.id
-                            ? "rgba(201,154,61,0.10)"
-                            : "#FFFFFF",
-                      }}
-                    >
-                      <span style={manualCompactTitleStyle}>
-                        {manual.title}
-                        <small style={manualCompactMetaStyle}>
-                          {[manual.category, manual.manufacturer, manual.model]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </small>
-                      </span>
+                  {filteredManuals.map((manual) => {
+                    const uploadedFile = manual.files.find(
+                      (file) => file.url || file.dataUrl,
+                    );
+                    const manualOpenUrl =
+                      manual.href ||
+                      uploadedFile?.url ||
+                      uploadedFile?.dataUrl ||
+                      "";
 
-                      <span style={manualCompactAssetStyle}>
-                        {manual.linkedAssetName || "Not linked"}
-                      </span>
+                    return (
+                      <div key={manual.id} style={manualSimpleRowStyle}>
+                        <span style={manualSimpleTitleStyle}>
+                          {manual.title}
+                        </span>
 
-                      <span style={manualCompactFileStyle}>
-                        {manual.href || manual.files.length ? "PDF" : "—"}
-                      </span>
-                    </button>
-                  ))}
+                        <span style={manualCompactAssetStyle}>
+                          {manual.linkedAssetName || "Not linked"}
+                        </span>
+
+                        {manualOpenUrl ? (
+                          <a
+                            href={manualOpenUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={manualCompactFileStyle}
+                            aria-label={`Open ${manual.title}`}
+                          >
+                            Open
+                          </a>
+                        ) : (
+                          <span style={manualNoPdfStyle}>—</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
-                <p style={mutedSmallStyle}>No manuals match this search.</p>
+                <p style={{ ...mutedSmallStyle, padding: 16 }}>
+                  No manuals match this search.
+                </p>
               )}
             </div>
           </div>
         }
-        drawer={
-          <div style={stackStyle}>
-            <h3 style={editorHeaderStyle}>{isEditing ? "Edit Manual" : "Add Manual"}</h3>
-            <p style={mutedSmallStyle}>{manualMessage}</p>
-            <div style={formGridStyle}>
-              <Field label="Manual title" value={activeManual.title} onChange={(title) => updateActiveManual({ title })} placeholder="Paste or type the official title" />
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={fieldLabelStyle}>Category</span>
-                <select value={activeManual.category} onChange={(event) => updateActiveManual({ category: event.currentTarget.value as ManualCategory })} style={inputStyle}>
-                  {manualCategories.map((category) => <option key={category} value={category}>{category}</option>)}
-                </select>
-              </label>
-              <Field label="Manufacturer" value={activeManual.manufacturer} onChange={(manufacturer) => updateActiveManual({ manufacturer })} />
-              <Field label="Model" value={activeManual.model} onChange={(model) => updateActiveManual({ model })} />
-              <Field label="Document number" value={activeManual.documentNumber} onChange={(documentNumber) => updateActiveManual({ documentNumber })} />
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={fieldLabelStyle}>Linked asset</span>
-                <select
-                  value={activeManual.linkedAssetId || ""}
-                  onChange={(event) => {
-                    const asset = assetRecords.find((item) => item.id === event.currentTarget.value);
-                    updateActiveManual({ linkedAssetId: event.currentTarget.value, linkedAssetName: asset?.name || "" });
-                  }}
-                  style={inputStyle}
-                >
-                  <option value="">Not linked</option>
-                  {byName(assetRecords).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-                </select>
-              </label>
-              <Field label="Official source" value={activeManual.sourceLabel} onChange={(sourceLabel) => updateActiveManual({ sourceLabel })} placeholder="Official BRP Operator Guides" />
-              <Field label="Manual / PDF web link" value={activeManual.href} onChange={(href) => updateActiveManual({ href })} placeholder="Paste the online PDF URL here" />
-              <Field label="Notes" value={activeManual.notes} onChange={(notes) => updateActiveManual({ notes })} multiline />
-            </div>
-
-            <label style={uploadButtonStyle}>
-              <strong>Upload a PDF or manual file</strong>
-              <span style={mutedSmallStyle}>Choose one or more files from your computer or phone.</span>
-              <input type="file" accept="application/pdf,image/*,.doc,.docx" multiple onChange={(event) => void addManualFiles(event.currentTarget.files)} />
-            </label>
-
-            {activeManual.files.length ? (
-              <div style={cardStyle}>
-                <div style={eyebrowStyle}>Attached Files</div>
-                {activeManual.files.map((file) => (
-                  <button key={file.id} type="button" onClick={() => openUploadedFile(file)} style={rowButtonStyle}>
-                    <strong>{file.name}</strong>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            <div style={buttonRowStyle}>
-              <button type="button" onClick={saveManual} style={goldButtonStyle}>Save Manual</button>
-              {activeManual.href ? (
-                <a href={activeManual.href} target="_blank" rel="noreferrer" style={{ ...secondaryButtonStyle, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Open Manual</a>
-              ) : null}
-              {activeManual.href ? (
-                <button type="button" onClick={() => void navigator.clipboard.writeText(activeManual.href)} style={secondaryButtonStyle}>Copy Link</button>
-              ) : null}
-              {isEditing && selectedManual ? (
-                <button type="button" onClick={() => deleteManual(selectedManual.id)} style={dangerButtonStyle}>Delete</button>
-              ) : null}
-            </div>
-          </div>
-        }
+        drawer={undefined}
       />
     );
   }
@@ -11096,12 +11100,20 @@ const searchResultStyle: React.CSSProperties = {
   color: colors.text,
 };
 
+const manualSimpleTableStyle: React.CSSProperties = {
+  overflow: "hidden",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  background: "#FFFFFF",
+};
+
 const manualListHeaderStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 2fr) minmax(160px, 1fr) 70px",
+  gridTemplateColumns: "minmax(0, 2fr) minmax(180px, 1fr) 76px",
   gap: 14,
-  padding: "0 14px 9px",
+  padding: "11px 16px",
   borderBottom: `1px solid ${colors.line}`,
+  background: colors.panel,
   color: colors.muted,
   fontSize: 11,
   fontWeight: 950,
@@ -11113,35 +11125,22 @@ const manualCompactListStyle: React.CSSProperties = {
   display: "grid",
 };
 
-const manualCompactRowStyle: React.CSSProperties = {
-  width: "100%",
+const manualSimpleRowStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 2fr) minmax(160px, 1fr) 70px",
+  gridTemplateColumns: "minmax(0, 2fr) minmax(180px, 1fr) 76px",
   gap: 14,
   alignItems: "center",
-  padding: "13px 14px",
-  border: "1px solid transparent",
+  minHeight: 52,
+  padding: "10px 16px",
   borderBottom: `1px solid ${colors.line}`,
-  borderRadius: 0,
-  color: colors.text,
-  textAlign: "left",
-  cursor: "pointer",
-  fontFamily: "inherit",
+  background: "#FFFFFF",
 };
 
-const manualCompactTitleStyle: React.CSSProperties = {
+const manualSimpleTitleStyle: React.CSSProperties = {
   minWidth: 0,
-  display: "grid",
-  gap: 3,
-  fontWeight: 900,
-  lineHeight: 1.25,
-};
-
-const manualCompactMetaStyle: React.CSSProperties = {
-  display: "block",
-  color: colors.muted,
-  fontSize: 11,
-  fontWeight: 700,
+  color: colors.text,
+  fontSize: 14,
+  fontWeight: 850,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
@@ -11151,7 +11150,7 @@ const manualCompactAssetStyle: React.CSSProperties = {
   minWidth: 0,
   color: colors.navy3,
   fontSize: 13,
-  fontWeight: 850,
+  fontWeight: 800,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
@@ -11159,14 +11158,34 @@ const manualCompactAssetStyle: React.CSSProperties = {
 
 const manualCompactFileStyle: React.CSSProperties = {
   justifySelf: "end",
-  minWidth: 46,
-  padding: "6px 9px",
+  minWidth: 56,
+  padding: "7px 10px",
   borderRadius: 999,
   background: colors.navy,
   color: "#FFFFFF",
   fontSize: 11,
   fontWeight: 950,
   textAlign: "center",
+  textDecoration: "none",
+  cursor: "pointer",
+  boxSizing: "border-box",
+};
+
+const manualNoPdfStyle: React.CSSProperties = {
+  justifySelf: "end",
+  minWidth: 56,
+  color: colors.muted,
+  fontSize: 13,
+  fontWeight: 800,
+  textAlign: "center",
+};
+
+const manualInlineFormHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  marginBottom: 12,
 };
 
 const calendarControlPanelStyle: React.CSSProperties = {
