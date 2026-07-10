@@ -609,6 +609,265 @@ function saveStoredArray<T>(key: string, value: T[]) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function normalizePhotoRecord(value: unknown): PhotoRecord {
+  const outer = asRecord(value);
+  const nested = asRecord(
+    outer.record ?? outer.photo ?? outer.data ?? outer.payload,
+  );
+  const combined = { ...outer, ...nested };
+  const files = Array.isArray(combined.files) ? combined.files : [];
+  const firstFile = asRecord(
+    combined.file ??
+      files.find((item) => {
+        const file = asRecord(item);
+        const type = firstText(file.type, file.mimeType, file.mime_type);
+        const data = firstText(file.dataUrl, file.data_url, file.url, file.src);
+        return type.startsWith("image/") || data.startsWith("data:image/");
+      }) ??
+      files[0],
+  );
+
+  const rawUrl = firstText(
+    combined.url,
+    combined.imageUrl,
+    combined.image_url,
+    combined.src,
+    firstFile.url,
+    firstFile.imageUrl,
+    firstFile.image_url,
+    firstFile.src,
+  );
+  const explicitDataUrl = firstText(
+    combined.dataUrl,
+    combined.data_url,
+    combined.imageData,
+    combined.image_data,
+    firstFile.dataUrl,
+    firstFile.data_url,
+    firstFile.imageData,
+    firstFile.image_data,
+  );
+  const dataUrl =
+    explicitDataUrl || (rawUrl.startsWith("data:image/") ? rawUrl : "");
+  const url = rawUrl.startsWith("data:image/") ? "" : rawUrl;
+
+  return {
+    id: firstText(
+      nested.id,
+      nested.photoId,
+      nested.photo_id,
+      outer.id,
+      outer.photoId,
+      outer.photo_id,
+    ),
+    assetId: firstText(
+      nested.assetId,
+      nested.asset_id,
+      outer.assetId,
+      outer.asset_id,
+    ),
+    name:
+      firstText(
+        nested.name,
+        nested.filename,
+        nested.fileName,
+        nested.file_name,
+        outer.name,
+        outer.filename,
+        outer.fileName,
+        outer.file_name,
+        firstFile.name,
+        firstFile.filename,
+      ) || "Asset photo",
+    dataUrl: dataUrl || undefined,
+    url: url || undefined,
+    createdAt:
+      firstText(
+        nested.createdAt,
+        nested.created_at,
+        outer.createdAt,
+        outer.created_at,
+        firstFile.createdAt,
+        firstFile.created_at,
+      ) || undefined,
+  };
+}
+
+function photoSource(photo?: PhotoRecord) {
+  return firstText(photo?.dataUrl, photo?.url);
+}
+
+function mergePhotoRecords(...groups: PhotoRecord[][]) {
+  const merged = new Map<string, PhotoRecord>();
+
+  groups.flat().map(normalizePhotoRecord).forEach((photo) => {
+    if (!photo.id || !photo.assetId) return;
+    const existing = merged.get(photo.id);
+    merged.set(photo.id, {
+      ...existing,
+      ...photo,
+      dataUrl: photo.dataUrl || existing?.dataUrl,
+      url: photo.url || existing?.url,
+      name: photo.name || existing?.name || "Asset photo",
+      createdAt: photo.createdAt || existing?.createdAt,
+    });
+  });
+
+  return [...merged.values()].sort((a, b) =>
+    String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+  );
+}
+
+const PHOTO_CACHE_DB = "atlas-photo-cache-v1";
+const PHOTO_CACHE_STORE = "asset-photos";
+
+function openPhotoCache(): Promise<IDBDatabase | null> {
+  if (typeof window === "undefined" || !("indexedDB" in window)) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const request = window.indexedDB.open(PHOTO_CACHE_DB, 1);
+
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(PHOTO_CACHE_STORE)) {
+        database.createObjectStore(PHOTO_CACHE_STORE, { keyPath: "id" });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+}
+
+async function cachePhotoRecord(photo: PhotoRecord) {
+  const source = photoSource(photo);
+  if (!photo.id || !source) return;
+
+  const database = await openPhotoCache();
+  if (!database) return;
+
+  await new Promise<void>((resolve) => {
+    try {
+      const transaction = database.transaction(
+        PHOTO_CACHE_STORE,
+        "readwrite",
+      );
+      transaction.objectStore(PHOTO_CACHE_STORE).put({
+        id: photo.id,
+        dataUrl: photo.dataUrl || "",
+        url: photo.url || "",
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+      transaction.onabort = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+
+  database.close();
+}
+
+async function cachePhotoRecords(photos: PhotoRecord[]) {
+  await Promise.all(photos.map((photo) => cachePhotoRecord(photo)));
+}
+
+async function readCachedPhoto(
+  id: string,
+): Promise<Pick<PhotoRecord, "dataUrl" | "url"> | null> {
+  if (!id) return null;
+
+  const database = await openPhotoCache();
+  if (!database) return null;
+
+  const result = await new Promise<Record<string, unknown> | null>(
+    (resolve) => {
+      try {
+        const transaction = database.transaction(
+          PHOTO_CACHE_STORE,
+          "readonly",
+        );
+        const request = transaction
+          .objectStore(PHOTO_CACHE_STORE)
+          .get(id);
+        request.onsuccess = () =>
+          resolve(request.result ? asRecord(request.result) : null);
+        request.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    },
+  );
+
+  database.close();
+  if (!result) return null;
+
+  const dataUrl = firstText(result.dataUrl, result.data_url);
+  const url = firstText(result.url);
+  if (!dataUrl && !url) return null;
+
+  return {
+    dataUrl: dataUrl || undefined,
+    url: url || undefined,
+  };
+}
+
+async function deleteCachedPhoto(id: string) {
+  if (!id) return;
+  const database = await openPhotoCache();
+  if (!database) return;
+
+  await new Promise<void>((resolve) => {
+    try {
+      const transaction = database.transaction(
+        PHOTO_CACHE_STORE,
+        "readwrite",
+      );
+      transaction.objectStore(PHOTO_CACHE_STORE).delete(id);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+      transaction.onabort = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+
+  database.close();
+}
+
+function persistPhotoRecords(photos: PhotoRecord[]) {
+  const metadata = mergePhotoRecords(photos).map((photo) => ({
+    ...photo,
+    dataUrl: undefined,
+    url:
+      photo.url && !photo.url.startsWith("data:image/")
+        ? photo.url
+        : undefined,
+  }));
+
+  try {
+    saveStoredArray(storageKeys.photos[0], metadata);
+  } catch {
+    // IndexedDB remains the image source if localStorage is unavailable.
+  }
+}
+
 function readFileDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1086,6 +1345,22 @@ function irrigationAdvice(day: WeatherDay) {
   if (day.windMax >= 18)
     return "Windy — avoid spray irrigation during peak wind.";
   return "Good yard-work window — normal irrigation check.";
+}
+
+function weatherDayPlanning(day: WeatherDay) {
+  if (day.precipChance >= 75 || day.precipAmount >= 0.25) {
+    return "Plan indoor or covered work. Rain is likely enough to affect outdoor maintenance.";
+  }
+  if (day.windMax >= 20) {
+    return "Expect a windy workday. Avoid spraying, loose covers, and wind-sensitive outdoor work.";
+  }
+  if (day.high >= 85) {
+    return "Schedule strenuous outdoor work earlier in the day and check pots and new plantings.";
+  }
+  if (day.low <= 40) {
+    return "Cool start expected. Delay temperature-sensitive watering or outdoor work until later.";
+  }
+  return "Conditions look workable for normal outdoor maintenance and property checks.";
 }
 
 function categoryToColorId(value: string) {
@@ -2965,7 +3240,10 @@ export default function AtlasPage() {
       storageKeys.parts,
       fallbackParts,
     ).map(normalizePart);
-    const storedPhotos = readStoredArray<PhotoRecord>(storageKeys.photos, []);
+    const storedPhotos = readStoredArray<PhotoRecord>(
+      storageKeys.photos,
+      [],
+    ).map(normalizePhotoRecord);
     const storedIntakeDocs = readStoredArray<DocumentRecord>(
       storageKeys.intakeDocs,
       [],
@@ -2998,6 +3276,9 @@ export default function AtlasPage() {
     setCalendarColors(mergeCalendarColors(storedCalendarColors));
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
     setPhotos(storedPhotos);
+    void cachePhotoRecords(storedPhotos).then(() => {
+      persistPhotoRecords(storedPhotos);
+    });
     setIntakeDocs(storedIntakeDocs.map(normalizeDocument));
     const repairedStoredManuals = storedManuals.map((item) =>
       item.id === "manual-seadoo-219002349"
@@ -3072,11 +3353,15 @@ export default function AtlasPage() {
           : Array.isArray(payload.parts)
             ? payload.parts
             : [];
-        const apiPhotos = Array.isArray(payload.photos)
-          ? payload.photos
-          : Array.isArray(payload.assetPhotos)
-            ? payload.assetPhotos
-            : [];
+        const apiPhotos = (
+          Array.isArray(payload.photos)
+            ? payload.photos
+            : Array.isArray(payload.assetPhotos)
+              ? payload.assetPhotos
+              : []
+        )
+          .map(normalizePhotoRecord)
+          .filter((photo) => photo.id && photo.assetId);
 
         if (apiAssets.length) {
           const next = byName(apiAssets.map(normalizeAsset));
@@ -3121,31 +3406,10 @@ export default function AtlasPage() {
         }
 
         if (apiPhotos.length) {
+          await cachePhotoRecords(apiPhotos);
           setPhotos((current) => {
-            const merged = new Map<string, PhotoRecord>();
-
-            [...current, ...apiPhotos].forEach((photo) => {
-              const existing = merged.get(photo.id);
-              merged.set(photo.id, {
-                ...existing,
-                ...photo,
-                dataUrl: photo.dataUrl || existing?.dataUrl,
-                url: photo.url || existing?.url,
-              });
-            });
-
-            const next = [...merged.values()].sort((a, b) =>
-              String(b.createdAt || "").localeCompare(
-                String(a.createdAt || ""),
-              ),
-            );
-
-            try {
-              saveStoredArray(storageKeys.photos[0], next);
-            } catch {
-              // Keep the current browser copy intact if storage is full.
-            }
-
+            const next = mergePhotoRecords(current, apiPhotos);
+            persistPhotoRecords(next);
             return next;
           });
         }
@@ -3167,6 +3431,49 @@ export default function AtlasPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!ready || !photos.length) return;
+
+    const missing = photos.filter((photo) => !photoSource(photo));
+    if (!missing.length) return;
+
+    let cancelled = false;
+
+    void Promise.all(
+      missing.map(async (photo) => ({
+        id: photo.id,
+        cached: await readCachedPhoto(photo.id),
+      })),
+    ).then((results) => {
+      if (cancelled) return;
+
+      const cachedById = new Map(
+        results
+          .filter((result) => result.cached)
+          .map((result) => [result.id, result.cached!]),
+      );
+
+      if (!cachedById.size) return;
+
+      setPhotos((current) =>
+        current.map((photo) => {
+          const cached = cachedById.get(photo.id);
+          return cached
+            ? {
+                ...photo,
+                dataUrl: cached.dataUrl || photo.dataUrl,
+                url: cached.url || photo.url,
+              }
+            : photo;
+        }),
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, photos]);
 
   useEffect(() => {
     void loadWeather();
@@ -4603,35 +4910,11 @@ export default function AtlasPage() {
       return;
     }
 
+    await cachePhotoRecords(imagePhotos);
+
     setPhotos((current) => {
-      const merged = new Map<string, PhotoRecord>();
-
-      [...imagePhotos, ...current].forEach((photo) => {
-        const existing = merged.get(photo.id);
-        merged.set(photo.id, {
-          ...existing,
-          ...photo,
-          dataUrl: photo.dataUrl || existing?.dataUrl,
-          url: photo.url || existing?.url,
-        });
-      });
-
-      const next = [...merged.values()].sort((a, b) =>
-        String(b.createdAt || "").localeCompare(
-          String(a.createdAt || ""),
-        ),
-      );
-
-      try {
-        saveStoredArray(storageKeys.photos[0], next);
-      } catch {
-        try {
-          saveStoredArray(storageKeys.photos[0], current);
-        } catch {
-          // Never erase older photos when browser storage is full.
-        }
-      }
-
+      const next = mergePhotoRecords(imagePhotos, current);
+      persistPhotoRecords(next);
       return next;
     });
 
@@ -4841,9 +5124,10 @@ export default function AtlasPage() {
     if (!window.confirm(`Delete photo ${photo.name}?`)) return;
     const deleted = await deleteAtlasRecord("asset_photos", photo.id);
     if (!deleted) return;
+    await deleteCachedPhoto(photo.id);
     setPhotos((current) => {
       const next = current.filter((item) => item.id !== photo.id);
-      saveStoredArray(storageKeys.photos[0], next);
+      persistPhotoRecords(next);
       return next;
     });
   }
@@ -4898,8 +5182,19 @@ export default function AtlasPage() {
     }
     const deleted = await deleteAtlasRecord("assets", record.id);
     if (!deleted) return;
-    setAssetRecords((current) => current.filter((item) => item.id !== record.id));
-    setPhotos((current) => current.filter((photo) => photo.assetId !== record.id));
+    await Promise.all(
+      relatedPhotos.map((photo) => deleteCachedPhoto(photo.id)),
+    );
+    setAssetRecords((current) =>
+      current.filter((item) => item.id !== record.id),
+    );
+    setPhotos((current) => {
+      const next = current.filter(
+        (photo) => photo.assetId !== record.id,
+      );
+      persistPhotoRecords(next);
+      return next;
+    });
     setSelectedAssetId("");
   }
 
@@ -5235,9 +5530,10 @@ export default function AtlasPage() {
         }));
 
       if (imagePhotos.length) {
+        await cachePhotoRecords(imagePhotos);
         setPhotos((current) => {
-          const nextPhotos = [...imagePhotos, ...current];
-          saveStoredArray(storageKeys.photos[0], nextPhotos);
+          const nextPhotos = mergePhotoRecords(imagePhotos, current);
+          persistPhotoRecords(nextPhotos);
           return nextPhotos;
         });
         imagePhotos.forEach((photo) => {
@@ -7616,6 +7912,9 @@ export default function AtlasPage() {
           .sort((a, b) => String(b.date).localeCompare(String(a.date)))
       : [];
     const selectedAssetCoverPhoto = selectedAssetPhotos[0];
+    const selectedAssetCoverSource = photoSource(
+      selectedAssetCoverPhoto,
+    );
 
     return (
       <ListDrawerLayout
@@ -7633,6 +7932,7 @@ export default function AtlasPage() {
               const coverPhoto = photos.find(
                 (photo) => photo.assetId === asset.id,
               );
+              const coverPhotoSource = photoSource(coverPhoto);
               return (
                 <button
                   key={asset.id}
@@ -7648,9 +7948,9 @@ export default function AtlasPage() {
                 >
                   <div style={recordListIdentityStyle}>
                     <div style={recordListThumbStyle}>
-                      {coverPhoto?.dataUrl || coverPhoto?.url ? (
+                      {coverPhotoSource ? (
                         <img
-                          src={coverPhoto.dataUrl || coverPhoto.url}
+                          src={coverPhotoSource}
                           alt=""
                           style={recordListThumbImageStyle}
                         />
@@ -7711,13 +8011,9 @@ export default function AtlasPage() {
             >
               <div style={assetVisualHeaderStyle}>
                 <div style={assetPhotoLargeStyle}>
-                  {selectedAssetCoverPhoto?.dataUrl ||
-                  selectedAssetCoverPhoto?.url ? (
+                  {selectedAssetCoverSource ? (
                     <img
-                      src={
-                        selectedAssetCoverPhoto.dataUrl ||
-                        selectedAssetCoverPhoto.url
-                      }
+                      src={selectedAssetCoverSource}
                       alt={selectedAsset.name}
                       style={assetPhotoLargeImageStyle}
                     />
@@ -7995,34 +8291,44 @@ export default function AtlasPage() {
 
                 {selectedAssetPhotos.length ? (
                   <div style={photoGridStyle}>
-                    {selectedAssetPhotos.map((photo, index) => (
-                      <div key={photo.id} style={photoManageCardStyle}>
-                        <button
-                          type="button"
-                          onClick={() => openPhotoPreview(photo)}
-                          style={compactPhotoButtonStyle}
-                        >
-                          {photo.dataUrl || photo.url ? (
-                            <img
-                              src={photo.dataUrl || photo.url}
-                              alt={photo.name}
-                              style={photoStyle}
-                            />
-                          ) : null}
-                          <strong>{photo.name}</strong>
-                          {index === 0 ? (
-                            <small style={coverPhotoLabelStyle}>Main photo</small>
-                          ) : null}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void deleteAssetPhoto(photo)}
-                          style={photoDeleteButtonStyle}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))}
+                    {selectedAssetPhotos.map((photo, index) => {
+                      const source = photoSource(photo);
+                      return (
+                        <div key={photo.id} style={photoManageCardStyle}>
+                          <button
+                            type="button"
+                            onClick={() => openPhotoPreview(photo)}
+                            style={compactPhotoButtonStyle}
+                            disabled={!source}
+                          >
+                            {source ? (
+                              <img
+                                src={source}
+                                alt={photo.name}
+                                style={photoStyle}
+                              />
+                            ) : (
+                              <div style={photoMissingStyle}>
+                                Image data missing
+                              </div>
+                            )}
+                            <strong>{photo.name}</strong>
+                            {index === 0 ? (
+                              <small style={coverPhotoLabelStyle}>
+                                Main photo
+                              </small>
+                            ) : null}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteAssetPhoto(photo)}
+                            style={photoDeleteButtonStyle}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p style={mutedSmallStyle}>
@@ -9659,7 +9965,7 @@ export default function AtlasPage() {
                 <div style={weatherMiniGridStyle}>
                   <span>Rain {day.precipChance}%</span>
                   <span>{day.precipAmount}"</span>
-                  <span>Wind {day.windMax}</span>
+                  <span>Wind {day.windMax} mph</span>
                   <span>ET0 {day.et0}"</span>
                 </div>
 
@@ -9667,6 +9973,69 @@ export default function AtlasPage() {
               </button>
             ))}
           </div>
+
+          {selectedWeather ? (
+            <section style={weatherDetailPanelStyle}>
+              <div style={weatherDetailHeaderStyle}>
+                <div>
+                  <div style={eyebrowStyle}>Selected Day</div>
+                  <h3 style={weatherDetailTitleStyle}>
+                    {new Date(
+                      `${selectedWeather.date}T12:00:00`,
+                    ).toLocaleDateString(undefined, {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </h3>
+                  <p style={weatherDetailConditionStyle}>
+                    {weatherText(selectedWeather.code)}
+                  </p>
+                </div>
+                <div style={weatherDetailIconStyle}>
+                  {weatherIcon(selectedWeather.code)}
+                </div>
+              </div>
+
+              <div style={weatherDetailGridStyle}>
+                <div style={weatherDetailMetricStyle}>
+                  <span>High</span>
+                  <strong>{selectedWeather.high}°F</strong>
+                </div>
+                <div style={weatherDetailMetricStyle}>
+                  <span>Low</span>
+                  <strong>{selectedWeather.low}°F</strong>
+                </div>
+                <div style={weatherDetailMetricStyle}>
+                  <span>Rain chance</span>
+                  <strong>{selectedWeather.precipChance}%</strong>
+                </div>
+                <div style={weatherDetailMetricStyle}>
+                  <span>Expected rain</span>
+                  <strong>{selectedWeather.precipAmount}"</strong>
+                </div>
+                <div style={weatherDetailMetricStyle}>
+                  <span>Maximum wind</span>
+                  <strong>{selectedWeather.windMax} mph</strong>
+                </div>
+                <div style={weatherDetailMetricStyle}>
+                  <span>Water loss / ET0</span>
+                  <strong>{selectedWeather.et0}"</strong>
+                </div>
+              </div>
+
+              <div style={weatherDetailNotesGridStyle}>
+                <div style={weatherDetailNoteStyle}>
+                  <strong>Irrigation</strong>
+                  <p>{irrigationAdvice(selectedWeather)}</p>
+                </div>
+                <div style={weatherDetailNoteStyle}>
+                  <strong>Workday planning</strong>
+                  <p>{weatherDayPlanning(selectedWeather)}</p>
+                </div>
+              </div>
+            </section>
+          ) : null}
         </div>
       </section>
     );
@@ -14244,6 +14613,98 @@ const weatherAdviceSmallStyle: React.CSSProperties = {
   lineHeight: 1.35,
   margin: 0,
   wordBreak: "break-word",
+};
+
+const photoMissingStyle: React.CSSProperties = {
+  width: "100%",
+  minHeight: 120,
+  display: "grid",
+  placeItems: "center",
+  marginBottom: 8,
+  border: `1px dashed ${colors.line}`,
+  borderRadius: 12,
+  background: colors.panel,
+  color: colors.muted,
+  fontSize: 12,
+  fontWeight: 900,
+};
+
+const weatherDetailPanelStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 16,
+  padding: 18,
+  border: `1px solid ${colors.gold}`,
+  borderRadius: 20,
+  background: "#FFFFFF",
+  boxShadow: "0 16px 34px rgba(15,23,42,0.08)",
+};
+
+const weatherDetailHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 14,
+};
+
+const weatherDetailTitleStyle: React.CSSProperties = {
+  margin: "4px 0 2px",
+  color: colors.navy,
+  fontSize: 24,
+  fontWeight: 950,
+  letterSpacing: "-0.03em",
+};
+
+const weatherDetailConditionStyle: React.CSSProperties = {
+  margin: 0,
+  color: colors.muted,
+  fontSize: 14,
+  fontWeight: 850,
+};
+
+const weatherDetailIconStyle: React.CSSProperties = {
+  width: 68,
+  height: 68,
+  flex: "0 0 68px",
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 20,
+  background: "#FFFAEB",
+  fontSize: 38,
+};
+
+const weatherDetailGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+  gap: 10,
+};
+
+const weatherDetailMetricStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 5,
+  padding: 12,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 14,
+  background: colors.panel,
+  color: colors.muted,
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const weatherDetailNotesGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 10,
+};
+
+const weatherDetailNoteStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 5,
+  padding: 14,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 14,
+  background: "#FFFFFF",
+  color: colors.navy,
+  lineHeight: 1.45,
 };
 
 const photoGridStyle: React.CSSProperties = {
