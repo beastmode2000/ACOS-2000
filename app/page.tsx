@@ -7651,41 +7651,56 @@ export default function AtlasPage() {
               <p style={mutedSmallStyle}>{filteredManuals.length} manual(s)</p>
             </div>
 
-            {manualCategories.map((category) => {
-              const categoryManuals = filteredManuals.filter((manual) => manual.category === category);
-              if (!categoryManuals.length) return null;
-              return (
-                <div key={category} style={cardStyle}>
-                  <div style={eyebrowStyle}>{category}</div>
-                  <div style={{ ...listStyle, marginTop: 10 }}>
-                    {categoryManuals.map((manual) => (
-                      <button
-                        key={manual.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedManualId(manual.id);
-                          setManualMessage("Editing selected manual.");
-                        }}
-                        style={{
-                          ...rowButtonStyle,
-                          borderColor: selectedManualId === manual.id ? colors.gold : colors.line,
-                        }}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <strong>{manual.title}</strong>
-                          <p style={mutedSmallStyle}>
-                            {[manual.manufacturer, manual.model].filter(Boolean).join(" · ") || "Manual"}
-                          </p>
-                          <p style={mutedSmallStyle}>
-                            {manual.linkedAssetName || "Not linked to an asset"}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+            <div style={cardStyle}>
+              <div style={manualListHeaderStyle}>
+                <span>Manual</span>
+                <span>Asset</span>
+                <span>File</span>
+              </div>
+
+              {filteredManuals.length ? (
+                <div style={manualCompactListStyle}>
+                  {filteredManuals.map((manual) => (
+                    <button
+                      key={manual.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedManualId(manual.id);
+                        setManualMessage("Editing selected manual.");
+                      }}
+                      style={{
+                        ...manualCompactRowStyle,
+                        borderColor:
+                          selectedManualId === manual.id ? colors.gold : "transparent",
+                        background:
+                          selectedManualId === manual.id
+                            ? "rgba(201,154,61,0.10)"
+                            : "#FFFFFF",
+                      }}
+                    >
+                      <span style={manualCompactTitleStyle}>
+                        {manual.title}
+                        <small style={manualCompactMetaStyle}>
+                          {[manual.category, manual.manufacturer, manual.model]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </small>
+                      </span>
+
+                      <span style={manualCompactAssetStyle}>
+                        {manual.linkedAssetName || "Not linked"}
+                      </span>
+
+                      <span style={manualCompactFileStyle}>
+                        {manual.href || manual.files.length ? "PDF" : "—"}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-              );
-            })}
+              ) : (
+                <p style={mutedSmallStyle}>No manuals match this search.</p>
+              )}
+            </div>
           </div>
         }
         drawer={
@@ -11079,6 +11094,79 @@ const searchResultStyle: React.CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   color: colors.text,
+};
+
+const manualListHeaderStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 2fr) minmax(160px, 1fr) 70px",
+  gap: 14,
+  padding: "0 14px 9px",
+  borderBottom: `1px solid ${colors.line}`,
+  color: colors.muted,
+  fontSize: 11,
+  fontWeight: 950,
+  letterSpacing: 0.8,
+  textTransform: "uppercase",
+};
+
+const manualCompactListStyle: React.CSSProperties = {
+  display: "grid",
+};
+
+const manualCompactRowStyle: React.CSSProperties = {
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 2fr) minmax(160px, 1fr) 70px",
+  gap: 14,
+  alignItems: "center",
+  padding: "13px 14px",
+  border: "1px solid transparent",
+  borderBottom: `1px solid ${colors.line}`,
+  borderRadius: 0,
+  color: colors.text,
+  textAlign: "left",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const manualCompactTitleStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 3,
+  fontWeight: 900,
+  lineHeight: 1.25,
+};
+
+const manualCompactMetaStyle: React.CSSProperties = {
+  display: "block",
+  color: colors.muted,
+  fontSize: 11,
+  fontWeight: 700,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const manualCompactAssetStyle: React.CSSProperties = {
+  minWidth: 0,
+  color: colors.navy3,
+  fontSize: 13,
+  fontWeight: 850,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const manualCompactFileStyle: React.CSSProperties = {
+  justifySelf: "end",
+  minWidth: 46,
+  padding: "6px 9px",
+  borderRadius: 999,
+  background: colors.navy,
+  color: "#FFFFFF",
+  fontSize: 11,
+  fontWeight: 950,
+  textAlign: "center",
 };
 
 const calendarControlPanelStyle: React.CSSProperties = {
