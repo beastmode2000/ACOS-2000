@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 45;
 
 type AskAtlasRequest = {
   question?: unknown;
@@ -47,6 +47,14 @@ type OpenAIResponsePayload = {
   error?: { message?: string };
 };
 
+type CacheEntry = {
+  expiresAt: number;
+  result: AskAtlasResult;
+};
+
+const manualCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
 function extractOutputText(payload: OpenAIResponsePayload): string {
   if (typeof payload.output_text === "string" && payload.output_text.trim()) {
     return payload.output_text.trim();
@@ -89,10 +97,6 @@ function isManualQuestion(question: string): boolean {
   );
 }
 
-function isLikelyPdfUrl(url: string): boolean {
-  return /^https:\/\//i.test(url) && (/\.pdf(?:$|[?#])/i.test(url) || /\/pdf\//i.test(url));
-}
-
 function normalizeManual(entry: unknown): ManualCandidate | null {
   if (!entry || typeof entry !== "object") return null;
   const item = entry as Record<string, unknown>;
@@ -101,7 +105,7 @@ function normalizeManual(entry: unknown): ManualCandidate | null {
 
   let sourceDomain = String(item.sourceDomain ?? "").trim();
   try {
-    sourceDomain = new URL(url).hostname;
+    sourceDomain = new URL(url).hostname.replace(/^www\./i, "");
   } catch {
     return null;
   }
@@ -112,15 +116,20 @@ function normalizeManual(entry: unknown): ManualCandidate | null {
       ? confidenceValue
       : "Medium";
 
+  const title = String(item.title ?? "").trim();
+  if (!title) return null;
+
   return {
-    title: String(item.title ?? "Equipment Manual").trim() || "Equipment Manual",
+    title,
     manufacturer: String(item.manufacturer ?? "").trim(),
     model: String(item.model ?? "").trim(),
     url,
     sourceDomain,
     sourceLabel: String(item.sourceLabel ?? sourceDomain).trim() || sourceDomain,
     confidence,
-    reason: String(item.reason ?? "Review this result before saving.").trim(),
+    reason:
+      String(item.reason ?? "Review this result before saving.").trim() ||
+      "Review this result before saving.",
     assetId: String(item.assetId ?? "").trim() || undefined,
     assetName: String(item.assetName ?? "").trim() || undefined,
   };
@@ -128,63 +137,41 @@ function normalizeManual(entry: unknown): ManualCandidate | null {
 
 function safeResult(raw: unknown): AskAtlasResult {
   const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const answer = String(source.answer ?? "").trim();
+  const nestedAnswer = source.answer;
+
+  if (typeof nestedAnswer === "string") {
+    const nested = parseJsonResponse(nestedAnswer);
+    if (nested && typeof nested === "object") {
+      return safeResult(nested);
+    }
+  }
+
   const manuals = (Array.isArray(source.manuals) ? source.manuals : [])
     .map(normalizeManual)
     .filter((item): item is ManualCandidate => Boolean(item))
-    .slice(0, 4);
+    .slice(0, 3);
+
+  const answer = String(source.answer ?? "").trim();
 
   return {
     answer:
       answer ||
       (manuals.length
-        ? "I found the manual option below. Review it before saving."
+        ? `I found ${manuals.length} official manual option${manuals.length === 1 ? "" : "s"} below.`
         : "Atlas could not find enough information to answer."),
     manuals,
   };
 }
 
-function fallbackReadableResult(outputText: string): AskAtlasResult {
-  const plain = outputText
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-  const urls = Array.from(
-    new Set(plain.match(/https:\/\/[^\s<>"')\]]+/gi) || []),
-  )
-    .map((url) => url.replace(/[.,;:]+$/, ""))
-    .filter(isLikelyPdfUrl)
-    .slice(0, 4);
-
-  const manuals = urls.map((url): ManualCandidate => {
-    let sourceDomain = "Official source";
-    try {
-      sourceDomain = new URL(url).hostname;
-    } catch {
-      // The URL was already filtered as HTTPS.
-    }
-
-    return {
-      title: "Equipment Manual",
-      manufacturer: "",
-      model: "",
-      url,
-      sourceDomain,
-      sourceLabel: sourceDomain,
-      confidence: "Medium",
-      reason: "Ask Atlas found this PDF. Confirm the model before saving.",
-    };
-  });
-
-  return {
-    answer:
-      plain ||
-      (manuals.length
-        ? "I found the manual option below. Review it before saving."
-        : "The manual search completed, but no verified PDF was returned."),
-    manuals,
-  };
+function makeCacheKey(question: string, atlasJson: string): string {
+  const normalizedQuestion = question.toLowerCase().replace(/\s+/g, " ").trim();
+  let hash = 2166136261;
+  const source = `${normalizedQuestion}|${atlasJson}`;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${normalizedQuestion}|${hash >>> 0}`;
 }
 
 async function callOpenAI(
@@ -260,64 +247,105 @@ export async function POST(request: NextRequest) {
   }
 
   const manualQuestion = isManualQuestion(question);
-  const allowWebSearch = body.allowWebSearch !== false;
+  const allowWebSearch = body.allowWebSearch === true;
   const model = process.env.OPENAI_MODEL || "gpt-5-mini";
 
-  const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas / 2000.
+  if (manualQuestion && allowWebSearch) {
+    const cacheKey = makeCacheKey(question, atlasJson);
+    const cached = manualCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return NextResponse.json({ ok: true, ...cached.result, cached: true });
+    }
 
-Use Atlas records as the authority for private property facts. Resolve IDs to readable names. Never invent Atlas records, dates, vendors, costs, or maintenance history.
+    const instructions = `You are the manual-finder inside Ask Atlas.
 
-When the user asks for an equipment manual, owner manual, installation guide, service guide, specification sheet, or PDF documentation:
-- Search the live web.
-- Use the manufacturer and exact model from Atlas whenever available.
-- Prefer the official manufacturer's domain.
-- Prefer a direct public HTTPS PDF URL.
-- Never invent a URL.
-- Avoid scraped manual sites, retailer uploads, file-sharing sites, and unrelated products when an official source exists.
-- Return no more than four candidates.
-- Confidence is High only when the manufacturer, model, and document clearly match.
-- Include the matching Atlas assetId and assetName when supported by the snapshot.
-- Never say a document was saved; the user must press Save to Atlas Documents.
+Your only task is to find up to 3 official manufacturer PDF documents that best match the user's equipment and Atlas asset details.
 
-Return ONLY one JSON object with this exact shape:
+Rules:
+- Prefer the exact manufacturer and model found in the Atlas asset list.
+- Search official manufacturer domains first.
+- Return direct public HTTPS PDF URLs whenever possible.
+- Do not use scraped manual sites, retailer uploads, file-sharing sites, or unrelated products when an official source exists.
+- Never invent a title, URL, model, or source.
+- Return only the strongest 1 to 3 matches.
+- Keep the answer under 2 sentences.
+- Never say anything was saved.
+
+Return ONLY one JSON object:
 {
-  "answer": "short readable answer",
+  "answer": "short readable summary",
   "manuals": [
     {
-      "title": "document title",
+      "title": "exact document title",
       "manufacturer": "manufacturer",
       "model": "model",
       "url": "direct https URL",
       "sourceDomain": "domain",
-      "sourceLabel": "source label",
+      "sourceLabel": "official source label",
       "confidence": "High or Medium or Low",
-      "reason": "why it matches",
+      "reason": "one short sentence explaining the match",
       "assetId": "matching Atlas asset id or empty string",
       "assetName": "matching Atlas asset name or empty string"
     }
   ]
-}
+}`;
 
-For non-manual questions, manuals must be an empty array.`;
-
-  const inputText = `QUESTION\n${question}\n\nATLAS SNAPSHOT\n${atlasJson}`;
-
-  try {
-    // Manual searches intentionally avoid strict Structured Outputs because web-search
-    // tool calls can occasionally complete without a final schema-formatted text block.
-    // Plain JSON instructions plus a retry are more reliable for this flow.
-    const firstBody: Record<string, unknown> = {
+    const response = await callOpenAI(apiKey, {
       model,
       instructions,
-      input: inputText,
-      max_output_tokens: manualQuestion ? 3200 : 1800,
-    };
+      input: `QUESTION\n${question}\n\nRELEVANT ATLAS ASSETS\n${atlasJson}`,
+      tools: [{ type: "web_search", search_context_size: "low" }],
+      tool_choice: "auto",
+      max_output_tokens: 1400,
+    });
 
-    if (manualQuestion && allowWebSearch) {
-      firstBody.tools = [{ type: "web_search", search_context_size: "medium" }];
-      firstBody.tool_choice = "auto";
-    } else {
-      firstBody.text = {
+    if (!response.ok) {
+      const providerMessage = response.payload.error?.message?.trim();
+      console.error("Ask Atlas manual search error:", providerMessage || response.payload);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: providerMessage || "The manual search could not be completed.",
+        },
+        { status: response.status },
+      );
+    }
+
+    const outputText = extractOutputText(response.payload);
+    const parsed = outputText ? parseJsonResponse(outputText) : null;
+    const result = parsed
+      ? safeResult(parsed)
+      : {
+          answer:
+            "I could not verify an official PDF from that search. Include the exact manufacturer and model number and try again.",
+          manuals: [],
+        };
+
+    manualCache.set(cacheKey, {
+      expiresAt: Date.now() + CACHE_TTL_MS,
+      result,
+    });
+
+    return NextResponse.json({ ok: true, ...result, cached: false });
+  }
+
+  const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas / 2000.
+
+Use only the Atlas snapshot as the authority for private property facts. Resolve IDs to readable names. Never invent records, dates, vendors, costs, maintenance history, or document contents. Give a direct useful answer. If the answer is not in Atlas, say so clearly.
+
+Return ONLY one JSON object with this exact shape:
+{
+  "answer": "readable answer",
+  "manuals": []
+}`;
+
+  try {
+    const response = await callOpenAI(apiKey, {
+      model,
+      instructions,
+      input: `QUESTION\n${question}\n\nATLAS SNAPSHOT\n${atlasJson}`,
+      max_output_tokens: 1400,
+      text: {
         format: {
           type: "json_schema",
           name: "ask_atlas_result",
@@ -330,114 +358,37 @@ For non-manual questions, manuals must be an empty array.`;
               answer: { type: "string" },
               manuals: {
                 type: "array",
-                maxItems: 4,
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: [
-                    "title",
-                    "manufacturer",
-                    "model",
-                    "url",
-                    "sourceDomain",
-                    "sourceLabel",
-                    "confidence",
-                    "reason",
-                    "assetId",
-                    "assetName",
-                  ],
-                  properties: {
-                    title: { type: "string" },
-                    manufacturer: { type: "string" },
-                    model: { type: "string" },
-                    url: { type: "string" },
-                    sourceDomain: { type: "string" },
-                    sourceLabel: { type: "string" },
-                    confidence: {
-                      type: "string",
-                      enum: ["High", "Medium", "Low"],
-                    },
-                    reason: { type: "string" },
-                    assetId: { type: "string" },
-                    assetName: { type: "string" },
-                  },
-                },
+                maxItems: 0,
+                items: { type: "object" },
               },
             },
           },
         },
-      };
-    }
+      },
+    });
 
-    const first = await callOpenAI(apiKey, firstBody);
-
-    if (!first.ok) {
-      const providerMessage = first.payload.error?.message?.trim();
-      console.error("Ask Atlas OpenAI error:", providerMessage || first.payload);
+    if (!response.ok) {
+      const providerMessage = response.payload.error?.message?.trim();
+      console.error("Ask Atlas OpenAI error:", providerMessage || response.payload);
       return NextResponse.json(
         {
           ok: false,
           error: providerMessage || "Ask Atlas could not reach the AI service.",
         },
-        { status: first.status },
+        { status: response.status },
       );
     }
 
-    let outputText = extractOutputText(first.payload);
-
-    // Retry only for manual searches that returned no final text. This second call is
-    // shorter and explicitly demands at least a readable answer even if no PDF exists.
-    if (!outputText && manualQuestion && allowWebSearch) {
-      console.warn("Ask Atlas manual search returned empty text; retrying once.", {
-        responseId: first.payload.id,
-        status: first.payload.status,
-        incompleteReason: first.payload.incomplete_details?.reason,
-      });
-
-      const retry = await callOpenAI(apiKey, {
-        model,
-        instructions,
-        tools: [{ type: "web_search", search_context_size: "low" }],
-        tool_choice: "auto",
-        input: `${inputText}\n\nIMPORTANT: Always finish with a JSON object. If no verified PDF is found, return a helpful answer and an empty manuals array. Never return an empty response.`,
-        max_output_tokens: 2400,
-      });
-
-      if (!retry.ok) {
-        const providerMessage = retry.payload.error?.message?.trim();
-        console.error("Ask Atlas retry error:", providerMessage || retry.payload);
-        return NextResponse.json(
-          {
-            ok: false,
-            error: providerMessage || "The manual search could not be completed.",
-          },
-          { status: retry.status },
-        );
-      }
-
-      outputText = extractOutputText(retry.payload);
-    }
-
-    if (!outputText) {
-      return NextResponse.json(
-        {
-          ok: true,
-          answer:
-            "I could not verify a manual from the search results. Try including the exact manufacturer and model number.",
+    const outputText = extractOutputText(response.payload);
+    const parsed = outputText ? parseJsonResponse(outputText) : null;
+    const result = parsed
+      ? safeResult(parsed)
+      : {
+          answer: "Ask Atlas did not return a readable answer.",
           manuals: [],
-        },
-        { status: 200 },
-      );
-    }
+        };
 
-    const parsed = parseJsonResponse(outputText);
-    const result = parsed ? safeResult(parsed) : fallbackReadableResult(outputText);
-
-    return NextResponse.json({
-      ok: true,
-      answer: result.answer,
-      manuals: result.manuals,
-    });
+    return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     console.error("Ask Atlas route error:", error);
     return NextResponse.json(
