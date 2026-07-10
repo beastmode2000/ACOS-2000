@@ -7789,8 +7789,11 @@ export default function AtlasPage() {
                             }}
                             aria-label={`Open ${manual.title}`}
                             onClick={() => {
-                              window.open(
+                              const atlasManualUrl = `/api/manual-file?url=${encodeURIComponent(
                                 manualOpenUrl,
+                              )}`;
+                              window.open(
+                                atlasManualUrl,
                                 "_blank",
                                 "noopener,noreferrer",
                               );
