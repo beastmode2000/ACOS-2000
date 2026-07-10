@@ -9032,7 +9032,7 @@ export default function AtlasPage() {
                   gap: 12,
                 }}
               >
-                <label style={fieldStyle}>
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                   <span style={fieldLabelStyle}>Atlas asset</span>
                   <select
                     value={manualAssetId}
@@ -9073,7 +9073,7 @@ export default function AtlasPage() {
                   </select>
                 </label>
 
-                <label style={fieldStyle}>
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                   <span style={fieldLabelStyle}>
                     Manufacturer, model, or search terms
                   </span>
