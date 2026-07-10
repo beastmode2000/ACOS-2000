@@ -28,14 +28,30 @@ type AskAtlasResult = {
   manuals: ManualCandidate[];
 };
 
+type UrlCitation = {
+  type?: string;
+  url?: string;
+  title?: string;
+};
+
 type OpenAIContent = {
   type?: string;
   text?: string;
+  annotations?: UrlCitation[];
+};
+
+type WebSource = {
+  type?: string;
+  url?: string;
+  title?: string;
 };
 
 type OpenAIOutputItem = {
   type?: string;
   content?: OpenAIContent[];
+  action?: {
+    sources?: WebSource[];
+  };
 };
 
 type OpenAIResponsePayload = {
@@ -157,10 +173,122 @@ function safeResult(raw: unknown): AskAtlasResult {
     answer:
       answer ||
       (manuals.length
-        ? `I found ${manuals.length} official manual option${manuals.length === 1 ? "" : "s"} below.`
+        ? `I found ${manuals.length} manual option${manuals.length === 1 ? "" : "s"} below.`
         : "Atlas could not find enough information to answer."),
     manuals,
   };
+}
+
+function extractUrlsFromText(text: string): string[] {
+  const matches = text.match(/https:\/\/[^\s"'<>\\\]\)]+/gi) || [];
+  return matches.map((url) => url.replace(/[.,;:!?]+$/g, ""));
+}
+
+function extractWebSources(payload: OpenAIResponsePayload): WebSource[] {
+  const sources: WebSource[] = [];
+
+  for (const item of payload.output || []) {
+    for (const source of item.action?.sources || []) {
+      if (source?.url) sources.push(source);
+    }
+
+    for (const content of item.content || []) {
+      for (const annotation of content.annotations || []) {
+        if (annotation.type === "url_citation" && annotation.url) {
+          sources.push({
+            type: "url_citation",
+            url: annotation.url,
+            title: annotation.title,
+          });
+        }
+      }
+    }
+  }
+
+  return sources;
+}
+
+function manualFromUrl(
+  url: string,
+  titleHint: string,
+  question: string,
+): ManualCandidate | null {
+  try {
+    const parsed = new URL(url);
+    const sourceDomain = parsed.hostname.replace(/^www\./i, "");
+    const pathname = decodeURIComponent(parsed.pathname);
+    const filename = pathname.split("/").filter(Boolean).pop() || "";
+    const titleFromFile = filename
+      .replace(/\.pdf(?:$|\?.*)/i, "")
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const title =
+      titleHint.trim() ||
+      titleFromFile ||
+      "Equipment manual";
+
+    const looksRelevant =
+      /\.pdf(?:$|\?)/i.test(url) ||
+      /\b(manual|guide|instructions|documentation|spec|datasheet|controller)\b/i.test(
+        `${title} ${url} ${question}`,
+      );
+
+    if (!looksRelevant) return null;
+
+    return {
+      title,
+      manufacturer: "",
+      model: "",
+      url,
+      sourceDomain,
+      sourceLabel: sourceDomain,
+      confidence: /\.pdf(?:$|\?)/i.test(url) ? "High" : "Medium",
+      reason: /\.pdf(?:$|\?)/i.test(url)
+        ? "Direct PDF result found from the web search."
+        : "Official documentation page found from the web search.",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function fallbackManuals(
+  payload: OpenAIResponsePayload,
+  outputText: string,
+  question: string,
+): ManualCandidate[] {
+  const candidates: ManualCandidate[] = [];
+  const seen = new Set<string>();
+
+  const sourcePairs = extractWebSources(payload).map((source) => ({
+    url: String(source.url || "").trim(),
+    title: String(source.title || "").trim(),
+  }));
+
+  const textPairs = extractUrlsFromText(outputText).map((url) => ({
+    url,
+    title: "",
+  }));
+
+  const allPairs = [...sourcePairs, ...textPairs];
+
+  for (const pair of allPairs) {
+    if (!pair.url || seen.has(pair.url)) continue;
+    seen.add(pair.url);
+
+    const candidate = manualFromUrl(pair.url, pair.title, question);
+    if (candidate) candidates.push(candidate);
+  }
+
+  return candidates
+    .sort((a, b) => {
+      const aPdf = /\.pdf(?:$|\?)/i.test(a.url) ? 1 : 0;
+      const bPdf = /\.pdf(?:$|\?)/i.test(b.url) ? 1 : 0;
+      return bPdf - aPdf;
+    })
+    .slice(0, 3);
 }
 
 function makeCacheKey(question: string, atlasJson: string): string {
@@ -259,43 +387,25 @@ export async function POST(request: NextRequest) {
 
     const instructions = `You are the manual-finder inside Ask Atlas.
 
-Your only task is to find up to 3 official manufacturer PDF documents that best match the user's equipment and Atlas asset details.
+Find up to 3 official manufacturer documents that best match the user's equipment and Atlas asset details.
 
 Rules:
 - Prefer the exact manufacturer and model found in the Atlas asset list.
 - Search official manufacturer domains first.
-- Return direct public HTTPS PDF URLs whenever possible.
+- Prefer direct public HTTPS PDF URLs.
 - Do not use scraped manual sites, retailer uploads, file-sharing sites, or unrelated products when an official source exists.
 - Never invent a title, URL, model, or source.
-- Return only the strongest 1 to 3 matches.
 - Keep the answer under 2 sentences.
 - Never say anything was saved.
-
-Return ONLY one JSON object:
-{
-  "answer": "short readable summary",
-  "manuals": [
-    {
-      "title": "exact document title",
-      "manufacturer": "manufacturer",
-      "model": "model",
-      "url": "direct https URL",
-      "sourceDomain": "domain",
-      "sourceLabel": "official source label",
-      "confidence": "High or Medium or Low",
-      "reason": "one short sentence explaining the match",
-      "assetId": "matching Atlas asset id or empty string",
-      "assetName": "matching Atlas asset name or empty string"
-    }
-  ]
-}`;
+- Return a plain JSON object only.`;
 
     const response = await callOpenAI(apiKey, {
       model,
       instructions,
-      input: `QUESTION\n${question}\n\nRELEVANT ATLAS ASSETS\n${atlasJson}`,
+      input: `QUESTION\n${question}\n\nRELEVANT ATLAS ASSETS\n${atlasJson}\n\nReturn this exact JSON shape:\n{"answer":"short summary","manuals":[{"title":"document title","manufacturer":"manufacturer","model":"model","url":"https URL","sourceDomain":"domain","sourceLabel":"official source","confidence":"High","reason":"why it matches","assetId":"","assetName":""}]}`,
       tools: [{ type: "web_search", search_context_size: "low" }],
       tool_choice: "auto",
+      include: ["web_search_call.action.sources"],
       max_output_tokens: 1400,
     });
 
@@ -313,13 +423,17 @@ Return ONLY one JSON object:
 
     const outputText = extractOutputText(response.payload);
     const parsed = outputText ? parseJsonResponse(outputText) : null;
-    const result = parsed
-      ? safeResult(parsed)
-      : {
-          answer:
-            "I could not verify an official PDF from that search. Include the exact manufacturer and model number and try again.",
-          manuals: [],
-        };
+    let result = parsed ? safeResult(parsed) : { answer: "", manuals: [] };
+
+    if (!result.manuals.length) {
+      const fallback = fallbackManuals(response.payload, outputText, question);
+      result = {
+        answer: fallback.length
+          ? `I found ${fallback.length} manual result${fallback.length === 1 ? "" : "s"} below. Review the model before saving.`
+          : "I could not verify an official manual from that search. Include the exact manufacturer and model number and try again.",
+        manuals: fallback,
+      };
+    }
 
     manualCache.set(cacheKey, {
       expiresAt: Date.now() + CACHE_TTL_MS,
@@ -362,33 +476,7 @@ Return ONLY one JSON object with this exact shape:
                 items: {
                   type: "object",
                   additionalProperties: false,
-                  required: [
-                    "title",
-                    "manufacturer",
-                    "model",
-                    "url",
-                    "sourceDomain",
-                    "sourceLabel",
-                    "confidence",
-                    "reason",
-                    "assetId",
-                    "assetName",
-                  ],
-                  properties: {
-                    title: { type: "string" },
-                    manufacturer: { type: "string" },
-                    model: { type: "string" },
-                    url: { type: "string" },
-                    sourceDomain: { type: "string" },
-                    sourceLabel: { type: "string" },
-                    confidence: {
-                      type: "string",
-                      enum: ["High", "Medium", "Low"],
-                    },
-                    reason: { type: "string" },
-                    assetId: { type: "string" },
-                    assetName: { type: "string" },
-                  },
+                  properties: {},
                 },
               },
             },
