@@ -2196,6 +2196,16 @@ const manualCategories: ManualCategory[] = [
 const seaDooManualUrl =
   "https://www.operatorsguides.brp.com/public/tmp/219002349%20%20Sea-Doo%20GTI%20GTR%20and%20Wake%20170%20Series.WEB.pdf";
 
+function cleanManualOpenUrl(value: string): string {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+
+  return trimmed
+    .replace(/&amp;/gi, "&")
+    .replace(/%2520/gi, "%20")
+    .replace(/\s/g, "%20");
+}
+
 const defaultManuals: ManualRecord[] = [
   {
     id: "manual-seadoo-219002349",
@@ -2768,9 +2778,29 @@ export default function AtlasPage() {
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
     setPhotos(storedPhotos);
     setIntakeDocs(storedIntakeDocs.map(normalizeDocument));
-    const manualsWithSeed = storedManuals.some((item) => item.id === "manual-seadoo-219002349")
-      ? storedManuals
-      : [defaultManuals[0], ...storedManuals];
+    const repairedStoredManuals = storedManuals.map((item) =>
+      item.id === "manual-seadoo-219002349"
+        ? normalizeManualRecord({
+            ...item,
+            title: defaultManuals[0].title,
+            category: defaultManuals[0].category,
+            manufacturer: defaultManuals[0].manufacturer,
+            model: defaultManuals[0].model,
+            documentNumber: defaultManuals[0].documentNumber,
+            linkedAssetName:
+              item.linkedAssetName || defaultManuals[0].linkedAssetName,
+            sourceLabel: defaultManuals[0].sourceLabel,
+            href: seaDooManualUrl,
+          })
+        : item,
+    );
+
+    const manualsWithSeed = repairedStoredManuals.some(
+      (item) => item.id === "manual-seadoo-219002349",
+    )
+      ? repairedStoredManuals
+      : [defaultManuals[0], ...repairedStoredManuals];
+
     setManualRecords(manualsWithSeed);
     saveStoredArray(storageKeys.manuals[0], manualsWithSeed);
     setSelectedCalendarId("");
@@ -7730,11 +7760,14 @@ export default function AtlasPage() {
                     const uploadedFile = manual.files.find(
                       (file) => file.url || file.dataUrl,
                     );
-                    const manualOpenUrl =
-                      manual.href ||
-                      uploadedFile?.url ||
-                      uploadedFile?.dataUrl ||
-                      "";
+                    const manualOpenUrl = cleanManualOpenUrl(
+                      manual.id === "manual-seadoo-219002349"
+                        ? seaDooManualUrl
+                        : manual.href ||
+                            uploadedFile?.url ||
+                            uploadedFile?.dataUrl ||
+                            "",
+                    );
 
                     return (
                       <div key={manual.id} style={manualSimpleRowStyle}>
@@ -7747,15 +7780,24 @@ export default function AtlasPage() {
                         </span>
 
                         {manualOpenUrl ? (
-                          <a
-                            href={manualOpenUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={manualCompactFileStyle}
+                          <button
+                            type="button"
+                            style={{
+                              ...manualCompactFileStyle,
+                              border: 0,
+                              fontFamily: "inherit",
+                            }}
                             aria-label={`Open ${manual.title}`}
+                            onClick={() => {
+                              window.open(
+                                manualOpenUrl,
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
+                            }}
                           >
                             Open
-                          </a>
+                          </button>
                         ) : (
                           <span style={manualNoPdfStyle}>—</span>
                         )}
