@@ -272,6 +272,19 @@ type SearchResult = {
   partId?: string;
 };
 
+type ManualCandidate = {
+  title: string;
+  manufacturer: string;
+  model: string;
+  url: string;
+  sourceDomain: string;
+  sourceLabel: string;
+  confidence: "High" | "Medium" | "Low";
+  reason: string;
+  assetId?: string;
+  assetName?: string;
+};
+
 const colors = {
   navy: "#071B2F",
   navy2: "#0B2742",
@@ -2438,6 +2451,9 @@ export default function AtlasPage() {
   const [assistantAnswer, setAssistantAnswer] = useState(
     "Ask Atlas about assets, locations, vendors, work orders, calendar items, procedures, documents, parts, or map records.",
   );
+  const [manualCandidates, setManualCandidates] = useState<ManualCandidate[]>([]);
+  const [manualSavingUrl, setManualSavingUrl] = useState("");
+  const [manualSaveMessage, setManualSaveMessage] = useState("");
   const [assistantLoading, setAssistantLoading] = useState(false);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -5080,6 +5096,95 @@ export default function AtlasPage() {
     moveCalendarMonth(delta);
   }
 
+  async function saveManualToAtlas(candidate: ManualCandidate) {
+    if (!candidate.url) return;
+
+    setManualSavingUrl(candidate.url);
+    setManualSaveMessage(`Checking ${candidate.title}...`);
+
+    try {
+      const verifyResponse = await fetch("/api/manual-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: candidate.url }),
+      });
+
+      const verified = (await verifyResponse.json().catch(() => ({}))) as {
+        ok?: boolean;
+        url?: string;
+        contentType?: string;
+        fileName?: string;
+        sizeBytes?: number;
+        error?: string;
+      };
+
+      if (!verifyResponse.ok || !verified.ok || !verified.url) {
+        throw new Error(verified.error || "Atlas could not verify that manual.");
+      }
+
+      const linkedAsset = candidate.assetId
+        ? assetRecords.find((asset) => asset.id === candidate.assetId)
+        : assetRecords.find((asset) =>
+            [candidate.assetName, candidate.model]
+              .filter(Boolean)
+              .some((value) =>
+                asset.name.toLowerCase().includes(String(value).toLowerCase()),
+              ),
+          );
+
+      const createdAt = new Date().toISOString();
+      const record: DocumentRecord = normalizeDocument({
+        id: uid("doc"),
+        title: candidate.title || verified.fileName || "Equipment Manual",
+        area: linkedAsset
+          ? locations.find((location) => location.id === linkedAsset.locationId)?.name ||
+            linkedAsset.name
+          : "General",
+        type: "Equipment Manual / PDF",
+        linkedAssetId: linkedAsset?.id,
+        targetType: linkedAsset ? "Asset" : "General",
+        targetId: linkedAsset?.id || "",
+        targetName: linkedAsset?.name || "General",
+        notes: [
+          candidate.manufacturer ? `Manufacturer: ${candidate.manufacturer}` : "",
+          candidate.model ? `Model: ${candidate.model}` : "",
+          candidate.sourceLabel ? `Source: ${candidate.sourceLabel}` : "",
+          candidate.reason ? `Match: ${candidate.reason}` : "",
+          `Original PDF: ${verified.url}`,
+          verified.sizeBytes ? `Verified size: ${Math.round(verified.sizeBytes / 1024)} KB` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        files: [
+          {
+            id: uid("file"),
+            name: verified.fileName || `${candidate.title || "manual"}.pdf`,
+            type: verified.contentType || "application/pdf",
+            url: verified.url,
+            createdAt,
+          },
+        ],
+        href: verified.url,
+        createdAt,
+      });
+
+      replaceDocumentInVault(record);
+      await postDocumentToAtlasVault(record);
+      setManualSaveMessage(
+        `Saved ${record.title} to Atlas Documents${linkedAsset ? ` and linked it to ${linkedAsset.name}` : ""}.`,
+      );
+      setDocumentSyncStatus(`Saved ${record.title} from Ask Atlas.`);
+    } catch (error) {
+      setManualSaveMessage(
+        error instanceof Error
+          ? error.message
+          : "Atlas could not save that manual.",
+      );
+    } finally {
+      setManualSavingUrl("");
+    }
+  }
+
   async function askAtlas() {
     const question = assistantQuestion.trim();
 
@@ -5225,18 +5330,21 @@ export default function AtlasPage() {
     };
 
     setAssistantLoading(true);
-    setAssistantAnswer("Ask Atlas is reviewing the current Atlas records...");
+    setManualCandidates([]);
+    setManualSaveMessage("");
+    setAssistantAnswer("Ask Atlas is reviewing Atlas and searching trusted web sources when needed...");
 
     try {
       const response = await fetch("/api/ask-atlas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, atlas: atlasSnapshot }),
+        body: JSON.stringify({ question, atlas: atlasSnapshot, allowWebSearch: true }),
       });
 
       const payload = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
         answer?: string;
+        manuals?: ManualCandidate[];
         error?: string;
       };
 
@@ -5245,6 +5353,7 @@ export default function AtlasPage() {
       }
 
       setAssistantAnswer(payload.answer);
+      setManualCandidates(Array.isArray(payload.manuals) ? payload.manuals : []);
     } catch (error) {
       setAssistantAnswer(
         error instanceof Error
@@ -8601,7 +8710,7 @@ export default function AtlasPage() {
         <SectionHeader
           eyebrow="Ask Atlas"
           title="AI Property Assistant"
-          detail="Ask natural-language questions about the records currently loaded in Atlas."
+          detail="Search Atlas records, or ask Atlas to find an official equipment manual online and save it to Documents."
         />
         <div style={stackStyle}>
           <textarea
@@ -8615,7 +8724,7 @@ export default function AtlasPage() {
                 if (!assistantLoading) void askAtlas();
               }
             }}
-            placeholder="Examples: What work is due this week? Who services Boiler 2? Show everything connected to the dock."
+            placeholder="Examples: What work is due this week? Find the official PDF manual for the Hunter HCC 24-zone controller and link it to the irrigation controller asset."
             style={{ ...inputStyle, minHeight: 130, resize: "vertical" }}
           />
           <div style={buttonRowStyle}>
@@ -8629,14 +8738,16 @@ export default function AtlasPage() {
                 cursor: assistantLoading ? "wait" : "pointer",
               }}
             >
-              {assistantLoading ? "Reviewing Atlas..." : "Ask Atlas"}
+              {assistantLoading ? "Searching..." : "Ask Atlas"}
             </button>
             <button
               type="button"
               onClick={() => {
                 setAssistantQuestion("");
+                setManualCandidates([]);
+                setManualSaveMessage("");
                 setAssistantAnswer(
-                  "Ask Atlas about assets, locations, vendors, work orders, calendar items, procedures, documents, parts, or map records.",
+                  "Ask Atlas about your records, or ask it to find an official PDF manual and save it to Atlas Documents.",
                 );
               }}
               disabled={assistantLoading}
@@ -8654,9 +8765,68 @@ export default function AtlasPage() {
           >
             {assistantAnswer}
           </div>
+
+          {manualCandidates.length ? (
+            <div style={stackStyle}>
+              <div style={{ fontWeight: 950, fontSize: 18 }}>Manuals Found</div>
+              {manualCandidates.map((candidate, index) => (
+                <article
+                  key={`${candidate.url}-${index}`}
+                  style={{
+                    ...cardStyle,
+                    padding: 16,
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 950, fontSize: 17 }}>
+                      {candidate.title}
+                    </div>
+                    <div style={mutedSmallStyle}>
+                      {[candidate.manufacturer, candidate.model, candidate.sourceDomain]
+                        .filter(Boolean)
+                        .join(" • ")}
+                    </div>
+                  </div>
+                  <div style={{ lineHeight: 1.5 }}>{candidate.reason}</div>
+                  <div style={buttonRowStyle}>
+                    <a
+                      href={candidate.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ ...secondaryButtonStyle, textDecoration: "none" }}
+                    >
+                      Open PDF
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => void saveManualToAtlas(candidate)}
+                      disabled={Boolean(manualSavingUrl)}
+                      style={{
+                        ...goldButtonStyle,
+                        opacity:
+                          manualSavingUrl && manualSavingUrl !== candidate.url
+                            ? 0.55
+                            : 1,
+                      }}
+                    >
+                      {manualSavingUrl === candidate.url
+                        ? "Saving..."
+                        : "Save to Atlas Documents"}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
+          {manualSaveMessage ? (
+            <div style={noticeStyle}>{manualSaveMessage}</div>
+          ) : null}
+
           <p style={mutedSmallStyle}>
-            Press Ctrl+Enter or Command+Enter to submit. Ask Atlas answers from
-            the Atlas records sent with your question.
+            Atlas prefers official manufacturer PDF manuals. Review the match before saving. Saved manuals appear in Documents with their original source link.
           </p>
         </div>
       </section>
