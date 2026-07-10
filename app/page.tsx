@@ -8525,9 +8525,9 @@ export default function AtlasPage() {
     else if (screen === "scan") content = renderQRScanner();
     else content = renderAssistant();
 
-    // Calendar already has its own navy shell. Weather and Map intentionally
-    // stay on the standard light background.
-    if (screen === "calendar" || screen === "weather" || screen === "map") {
+    // Calendar already has its own navy shell. Every other section uses the
+    // shared navy Atlas backdrop, including Weather and Map.
+    if (screen === "calendar") {
       return content;
     }
 
