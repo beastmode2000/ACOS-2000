@@ -626,7 +626,7 @@ function compressImageFile(file: File): Promise<string> {
 
     image.onload = () => {
       try {
-        const maxSide = 1600;
+        const maxSide = 1200;
         const scale = Math.min(
           1,
           maxSide / Math.max(image.width, image.height),
@@ -636,9 +636,21 @@ function compressImageFile(file: File): Promise<string> {
         canvas.height = Math.max(1, Math.round(image.height * scale));
         const context = canvas.getContext("2d");
         if (!context) throw new Error("Canvas unavailable");
+
+        context.fillStyle = "#FFFFFF";
+        context.fillRect(0, 0, canvas.width, canvas.height);
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        const qualities = [0.8, 0.7, 0.6, 0.5];
+        let result = canvas.toDataURL("image/jpeg", qualities[0]);
+
+        for (const quality of qualities.slice(1)) {
+          if (result.length <= 700_000) break;
+          result = canvas.toDataURL("image/jpeg", quality);
+        }
+
         URL.revokeObjectURL(objectUrl);
-        resolve(canvas.toDataURL("image/jpeg", 0.82));
+        resolve(result);
       } catch (error) {
         URL.revokeObjectURL(objectUrl);
         reject(error);
@@ -678,6 +690,128 @@ async function fileToUploadedRecord(file: File): Promise<UploadedFileRecord> {
     dataUrl,
     createdAt: new Date().toISOString(),
   };
+}
+
+function dataUrlToFile(dataUrl: string, fileName = "pasted-image.png") {
+  const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) throw new Error("That copied image data is not valid.");
+
+  const mimeType = match[1];
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new File([bytes], fileName, { type: mimeType });
+}
+
+function imageUrlsFromClipboardText(value: string) {
+  const source = String(value || "").trim();
+  if (!source) return [];
+
+  const urls = new Set<string>();
+
+  if (source.startsWith("data:image/")) {
+    urls.add(source);
+  }
+
+  try {
+    const parsed = new DOMParser().parseFromString(source, "text/html");
+    parsed.querySelectorAll("img").forEach((image) => {
+      const src = image.getAttribute("src")?.trim() || "";
+      if (src) urls.add(src);
+    });
+  } catch {
+    // Plain text is handled below.
+  }
+
+  source
+    .split(/\s+/)
+    .map((item) => item.replace(/^['"<(]+|[>'"),]+$/g, ""))
+    .filter(
+      (item) =>
+        item.startsWith("https://") ||
+        item.startsWith("data:image/") ||
+        item.startsWith("blob:"),
+    )
+    .forEach((item) => urls.add(item));
+
+  return [...urls];
+}
+
+async function importImageUrlAsFile(url: string) {
+  if (url.startsWith("data:image/")) {
+    return dataUrlToFile(url, `pasted-ai-image-${Date.now()}.png`);
+  }
+
+  if (url.startsWith("blob:")) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Blob image could not be read.");
+      const blob = await response.blob();
+      if (!blob.type.startsWith("image/")) {
+        throw new Error("The copied item was not an image.");
+      }
+      const extension =
+        blob.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+      return new File(
+        [blob],
+        `pasted-ai-image-${Date.now()}.${extension}`,
+        { type: blob.type },
+      );
+    } catch {
+      throw new Error(
+        "That copied AI image only included a temporary link. Use Copy image, then click Paste Image again.",
+      );
+    }
+  }
+
+  const response = await fetch(
+    `/api/image-import?url=${encodeURIComponent(url)}`,
+    { cache: "no-store" },
+  );
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(message || "Atlas could not import that copied image.");
+  }
+
+  const blob = await response.blob();
+  if (!blob.type.startsWith("image/")) {
+    throw new Error("The copied link did not return an image.");
+  }
+
+  const extension =
+    blob.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+
+  return new File(
+    [blob],
+    `pasted-ai-image-${Date.now()}.${extension}`,
+    { type: blob.type },
+  );
+}
+
+function normalizeImageFile(file: File) {
+  if (file.type.startsWith("image/")) return file;
+
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  const inferredType =
+    extension === "png"
+      ? "image/png"
+      : extension === "jpg" || extension === "jpeg"
+        ? "image/jpeg"
+        : extension === "webp"
+          ? "image/webp"
+          : extension === "gif"
+            ? "image/gif"
+            : extension === "avif"
+              ? "image/avif"
+              : "";
+
+  if (!inferredType) return file;
+  return new File([file], file.name, { type: inferredType });
 }
 
 function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
@@ -4397,9 +4531,30 @@ export default function AtlasPage() {
   async function addAssetPhotoFiles(fileList: FileList | File[] | null) {
     if (!selectedAsset.id || !fileList?.length) return;
 
-    const uploaded = await Promise.all(
-      Array.from(fileList).map(fileToUploadedRecord),
+    const incomingFiles = Array.from(fileList)
+      .map(normalizeImageFile)
+      .filter((file) => file.type.startsWith("image/"));
+
+    if (!incomingFiles.length) {
+      setDatabaseStatus("Atlas did not find an image in that item.");
+      return;
+    }
+
+    setDatabaseStatus("Preparing image for this asset...");
+
+    const settled = await Promise.allSettled(
+      incomingFiles.map(fileToUploadedRecord),
     );
+
+    const uploaded = settled
+      .filter(
+        (
+          result,
+        ): result is PromiseFulfilledResult<UploadedFileRecord> =>
+          result.status === "fulfilled",
+      )
+      .map((result) => result.value);
+
     const imagePhotos: PhotoRecord[] = uploaded
       .filter(
         (file) =>
@@ -4408,25 +4563,50 @@ export default function AtlasPage() {
       .map((file) => ({
         id: uid("photo"),
         assetId: selectedAsset.id,
-        name: file.name,
+        name: file.name || `asset-photo-${Date.now()}.jpg`,
         dataUrl: file.dataUrl,
         createdAt: file.createdAt || new Date().toISOString(),
       }));
 
-    if (!imagePhotos.length) return;
+    if (!imagePhotos.length) {
+      setDatabaseStatus(
+        "Atlas could not read that image. Try Copy image instead of Copy link.",
+      );
+      return;
+    }
 
     setPhotos((current) => {
       const next = [...imagePhotos, ...current];
-      saveStoredArray(storageKeys.photos[0], next);
+
+      try {
+        saveStoredArray(storageKeys.photos[0], next);
+      } catch {
+        try {
+          const lightweight = next.map((photo, index) =>
+            index < imagePhotos.length
+              ? photo
+              : { ...photo, dataUrl: undefined },
+          );
+          saveStoredArray(storageKeys.photos[0], lightweight);
+        } catch {
+          // The Atlas API remains the durable copy when browser storage is full.
+        }
+      }
+
       return next;
     });
 
-    imagePhotos.forEach((photo) => {
-      void postAtlasRecord("asset_photos", photo);
-    });
+    const syncResults = await Promise.all(
+      imagePhotos.map((photo) =>
+        postAtlasRecord("asset_photos", photo),
+      ),
+    );
 
+    const syncedCount = syncResults.filter(Boolean).length;
     setDatabaseStatus(
-      `Added ${imagePhotos.length} photo${imagePhotos.length === 1 ? "" : "s"} to ${selectedAsset.name}.`,
+      syncedCount === imagePhotos.length
+        ? `Added ${imagePhotos.length} photo${imagePhotos.length === 1 ? "" : "s"} to ${selectedAsset.name}.`
+        : `The photo is showing in Atlas, but ${imagePhotos.length - syncedCount} image${imagePhotos.length - syncedCount === 1 ? "" : "s"} did not finish syncing.`,
     );
   }
 
@@ -4483,42 +4663,105 @@ export default function AtlasPage() {
     }
   }
 
-  function imageFilesFromPasteEvent(
+  function imagePayloadFromPasteEvent(
     event: React.ClipboardEvent<HTMLElement>,
   ) {
-    return Array.from(event.clipboardData?.items || [])
-      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    const files = Array.from(event.clipboardData?.items || [])
+      .filter((item) => item.kind === "file")
       .map((item) => item.getAsFile())
-      .filter((file): file is File => Boolean(file));
+      .filter((file): file is File => Boolean(file))
+      .map(normalizeImageFile)
+      .filter((file) => file.type.startsWith("image/"));
+
+    const html = event.clipboardData?.getData("text/html") || "";
+    const plainText = event.clipboardData?.getData("text/plain") || "";
+    const urls = [
+      ...imageUrlsFromClipboardText(html),
+      ...imageUrlsFromClipboardText(plainText),
+    ];
+
+    return {
+      files,
+      urls: [...new Set(urls)],
+    };
+  }
+
+  async function filesFromClipboardPayload(
+    files: File[],
+    urls: string[],
+  ) {
+    const imported: File[] = [...files];
+
+    for (const url of urls) {
+      if (imported.length >= 10) break;
+      try {
+        imported.push(await importImageUrlAsFile(url));
+      } catch {
+        // Continue because a direct clipboard image may already be present.
+      }
+    }
+
+    const unique = new Map<string, File>();
+    imported.forEach((file) => {
+      const key = `${file.name}|${file.type}|${file.size}`;
+      if (!unique.has(key)) unique.set(key, file);
+    });
+
+    return [...unique.values()];
   }
 
   async function readClipboardImageFiles() {
     if (!navigator.clipboard || !("read" in navigator.clipboard)) {
       throw new Error(
-        "This browser cannot read copied images from a button. Click inside this panel and paste with Ctrl+V or Command+V instead.",
+        "Click inside the asset panel and press Ctrl+V or Command+V to paste the image.",
       );
     }
 
     const clipboardItems = await navigator.clipboard.read();
-    const files: File[] = [];
+    const directFiles: File[] = [];
+    const urls: string[] = [];
+
     for (const item of clipboardItems) {
       for (const type of item.types) {
-        if (!type.startsWith("image/")) continue;
         const blob = await item.getType(type);
-        const extension = type.split("/")[1]?.replace("jpeg", "jpg") || "png";
-        files.push(
-          new File([blob], `pasted-image-${Date.now()}.${extension}`, {
-            type,
-          }),
-        );
+
+        if (type.startsWith("image/")) {
+          const extension =
+            type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+          directFiles.push(
+            new File(
+              [blob],
+              `pasted-ai-image-${Date.now()}.${extension}`,
+              { type },
+            ),
+          );
+          continue;
+        }
+
+        if (type === "text/html" || type === "text/plain") {
+          const text = await blob.text();
+          urls.push(...imageUrlsFromClipboardText(text));
+        }
       }
     }
-    if (!files.length) throw new Error("No copied image was found in the clipboard.");
+
+    const files = await filesFromClipboardPayload(
+      directFiles,
+      [...new Set(urls)],
+    );
+
+    if (!files.length) {
+      throw new Error(
+        "No image was found. On the AI picture, choose Copy image—not Copy link—then click Paste Image.",
+      );
+    }
+
     return files;
   }
 
   async function pasteAssetPhoto() {
     try {
+      setDatabaseStatus("Reading copied image...");
       const files = await readClipboardImageFiles();
       await addAssetPhotoFiles(files);
     } catch (error) {
@@ -7389,10 +7632,31 @@ export default function AtlasPage() {
               style={stackStyle}
               tabIndex={0}
               onPaste={(event) => {
-                const files = imageFilesFromPasteEvent(event);
-                if (!files.length) return;
+                const payload = imagePayloadFromPasteEvent(event);
+                if (!payload.files.length && !payload.urls.length) return;
                 event.preventDefault();
-                void addAssetPhotoFiles(files);
+
+                void (async () => {
+                  try {
+                    setDatabaseStatus("Reading pasted image...");
+                    const files = await filesFromClipboardPayload(
+                      payload.files,
+                      payload.urls,
+                    );
+                    if (!files.length) {
+                      throw new Error(
+                        "No usable image was found. Use Copy image instead of Copy link.",
+                      );
+                    }
+                    await addAssetPhotoFiles(files);
+                  } catch (error) {
+                    setDatabaseStatus(
+                      error instanceof Error
+                        ? error.message
+                        : "Could not paste that image.",
+                    );
+                  }
+                })();
               }}
             >
               <div style={assetVisualHeaderStyle}>
