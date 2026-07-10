@@ -1424,6 +1424,14 @@ function daysBetween(start: string, end: string) {
   );
 }
 
+function upcomingDayLabel(date: string) {
+  const distance = daysBetween(todayISO(), date);
+  if (distance === 0) return "Today";
+  if (distance === 1) return "Tomorrow";
+  if (distance >= 2 && distance <= 5) return `In ${distance} days`;
+  return "";
+}
+
 function isRecurringInstanceOnDate(event: CalendarItem, date: string) {
   if (!event.repeat || event.repeat === "None") return event.date === date;
   if (event.date > date) return false;
@@ -6638,6 +6646,7 @@ export default function AtlasPage() {
             <div style={upcomingListStyle}>
               {upcomingEvents.map((event) => {
                 const eventColor = colorForEvent(event);
+                const dayLabel = upcomingDayLabel(event.date);
                 return (
                   <button
                     key={event.instanceId || event.id}
@@ -6662,6 +6671,18 @@ export default function AtlasPage() {
                         {eventColor.label}
                       </p>
                     </div>
+                    {dayLabel ? (
+                      <span
+                        style={{
+                          ...upcomingDayPillStyle,
+                          ...(dayLabel === "Today"
+                            ? upcomingTodayPillStyle
+                            : {}),
+                        }}
+                      >
+                        {dayLabel}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -7375,38 +7396,39 @@ export default function AtlasPage() {
               }}
             >
               <div style={assetVisualHeaderStyle}>
-                <div style={assetHeaderTopRowStyle}>
-                  <div style={assetPhotoLargeStyle}>
-                    {selectedAssetCoverPhoto?.dataUrl ||
-                    selectedAssetCoverPhoto?.url ? (
-                      <img
-                        src={
-                          selectedAssetCoverPhoto.dataUrl ||
-                          selectedAssetCoverPhoto.url
-                        }
-                        alt={selectedAsset.name}
-                        style={assetPhotoLargeImageStyle}
-                      />
-                    ) : (
-                      <span>
-                        {selectedAsset.name.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-
-                  <span style={badgeStyle(selectedAsset.status)}>
-                    {selectedAsset.status}
-                  </span>
+                <div style={assetPhotoLargeStyle}>
+                  {selectedAssetCoverPhoto?.dataUrl ||
+                  selectedAssetCoverPhoto?.url ? (
+                    <img
+                      src={
+                        selectedAssetCoverPhoto.dataUrl ||
+                        selectedAssetCoverPhoto.url
+                      }
+                      alt={selectedAsset.name}
+                      style={assetPhotoLargeImageStyle}
+                    />
+                  ) : (
+                    <span>
+                      {selectedAsset.name.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
                 </div>
 
                 <div style={assetHeaderTextStyle}>
-                  <h3 style={assetHeaderTitleStyle}>
-                    {selectedAsset.name.trim() || "Asset"}
-                  </h3>
+                  <div style={assetHeaderNameRowStyle}>
+                    <h3 style={assetHeaderNameStyle}>
+                      {selectedAsset.name.trim() || "Asset"}
+                    </h3>
+                    <span style={badgeStyle(selectedAsset.status)}>
+                      {selectedAsset.status}
+                    </span>
+                  </div>
+
                   <p style={assetHeaderMetaStyle}>
                     {selectedAsset.category || "Uncategorized"} ·{" "}
                     {locationName(selectedAsset.locationId)}
                   </p>
+
                   <p style={assetHeaderMetaStyle}>
                     {[selectedAsset.make, selectedAsset.model, selectedAsset.serial]
                       .filter(Boolean)
@@ -7414,15 +7436,16 @@ export default function AtlasPage() {
                   </p>
                 </div>
 
-                <div style={assetHeaderActionRowStyle}>
+                <div style={assetPhotoButtonRowStyle}>
                   <button
                     type="button"
                     onClick={() => void pasteAssetPhoto()}
-                    style={assetHeaderActionButtonStyle}
+                    style={assetPhotoActionButtonStyle}
                   >
                     Paste Image
                   </button>
-                  <label style={assetHeaderUploadButtonStyle}>
+
+                  <label style={assetPhotoUploadButtonStyle}>
                     {selectedAssetCoverPhoto ? "Add Another" : "Add Photo"}
                     <input
                       type="file"
@@ -12306,6 +12329,27 @@ const upcomingInfoStyle: React.CSSProperties = {
   width: "100%",
 };
 
+const upcomingDayPillStyle: React.CSSProperties = {
+  flex: "0 0 auto",
+  minWidth: 78,
+  padding: "6px 9px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 999,
+  background: colors.panel,
+  color: colors.navy,
+  fontSize: 11,
+  fontWeight: 950,
+  lineHeight: 1,
+  textAlign: "center",
+  whiteSpace: "nowrap",
+};
+
+const upcomingTodayPillStyle: React.CSSProperties = {
+  borderColor: colors.gold,
+  background: colors.gold,
+  color: colors.navy,
+};
+
 const dashboardWeatherStripStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(7, minmax(145px, 1fr))",
@@ -13198,39 +13242,64 @@ const compactLinkedRowStyle: React.CSSProperties = {
 };
 
 const assetVisualHeaderStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr)",
   gap: 14,
-  minWidth: 0,
-  width: "100%",
-  boxSizing: "border-box",
   padding: 14,
   border: `1px solid ${colors.line}`,
   borderRadius: 16,
   background: "#FFFFFF",
 };
 
-const assetHeaderTopRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 12,
-  minWidth: 0,
+const assetPhotoLargeStyle: React.CSSProperties = {
   width: "100%",
+  height: 190,
+  minWidth: 0,
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+  borderRadius: 16,
+  border: `1px solid ${colors.line}`,
+  background: colors.panel,
+  color: colors.navy,
+  fontSize: 34,
+  fontWeight: 950,
+};
+
+const assetPhotoLargeImageStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  display: "block",
+  objectFit: "contain",
+  background: "#FFFFFF",
 };
 
 const assetHeaderTextStyle: React.CSSProperties = {
-  display: "block",
-  minWidth: 0,
   width: "100%",
+  minWidth: 0,
+  display: "grid",
+  gap: 5,
 };
 
-const assetHeaderTitleStyle: React.CSSProperties = {
+const assetHeaderNameRowStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const assetHeaderNameStyle: React.CSSProperties = {
+  flex: "1 1 220px",
+  minWidth: 0,
   margin: 0,
-  padding: "0 0 10px",
-  borderBottom: `2px solid ${colors.gold}`,
   color: colors.navy,
-  fontSize: 24,
+  fontSize: 23,
   fontWeight: 950,
   letterSpacing: "-0.03em",
   lineHeight: 1.15,
@@ -13242,9 +13311,11 @@ const assetHeaderTitleStyle: React.CSSProperties = {
 };
 
 const assetHeaderMetaStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  margin: 0,
   color: colors.muted,
   fontSize: 13,
-  margin: "7px 0 0",
   lineHeight: 1.45,
   whiteSpace: "normal",
   wordBreak: "normal",
@@ -13253,71 +13324,59 @@ const assetHeaderMetaStyle: React.CSSProperties = {
   textOrientation: "mixed",
 };
 
-const assetHeaderActionRowStyle: React.CSSProperties = {
+const assetPhotoButtonRowStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
   display: "grid",
   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 8,
-  width: "100%",
-  minWidth: 0,
+  gap: 10,
 };
 
-const assetHeaderActionButtonStyle: React.CSSProperties = {
-  ...secondaryButtonStyle,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
+const assetPhotoActionButtonStyle: React.CSSProperties = {
   width: "100%",
   minWidth: 0,
   minHeight: 42,
-  boxSizing: "border-box",
-  whiteSpace: "nowrap",
-  wordBreak: "normal",
-  writingMode: "horizontal-tb",
-  textOrientation: "mixed",
-};
-
-const assetHeaderUploadButtonStyle: React.CSSProperties = {
-  ...compactUploadButtonStyle,
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: "100%",
-  minWidth: 0,
-  minHeight: 42,
-  boxSizing: "border-box",
-  whiteSpace: "nowrap",
-  wordBreak: "normal",
-  writingMode: "horizontal-tb",
-  textOrientation: "mixed",
-};
-
-const assetPhotoLargeStyle: React.CSSProperties = {
-  width: 96,
-  height: 96,
-  flex: "0 0 96px",
-  display: "grid",
-  placeItems: "center",
-  overflow: "hidden",
-  borderRadius: 20,
+  padding: "10px 12px",
   border: `1px solid ${colors.line}`,
+  borderRadius: 12,
   background: "#FFFFFF",
   color: colors.navy,
-  fontSize: 28,
+  fontFamily: "inherit",
+  fontSize: 13,
   fontWeight: 950,
+  lineHeight: 1,
+  whiteSpace: "nowrap",
+  wordBreak: "keep-all",
+  writingMode: "horizontal-tb",
+  textOrientation: "mixed",
+  cursor: "pointer",
+  boxSizing: "border-box",
 };
 
-const assetPhotoLargeImageStyle: React.CSSProperties = {
+const assetPhotoUploadButtonStyle: React.CSSProperties = {
   width: "100%",
-  height: "100%",
-  objectFit: "cover",
-};
-
-const assetDetailTitleRowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
-  alignItems: "start",
-  gap: 12,
   minWidth: 0,
+  minHeight: 42,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "10px 12px",
+  border: `1px solid ${colors.gold}`,
+  borderRadius: 12,
+  background: colors.gold,
+  color: colors.navy,
+  fontSize: 13,
+  fontWeight: 950,
+  lineHeight: 1,
+  whiteSpace: "nowrap",
+  wordBreak: "keep-all",
+  writingMode: "horizontal-tb",
+  textOrientation: "mixed",
+  cursor: "pointer",
+  boxSizing: "border-box",
 };
 
 const manualAssetRowStyle: React.CSSProperties = {
