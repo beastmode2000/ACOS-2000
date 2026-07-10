@@ -8506,22 +8506,32 @@ export default function AtlasPage() {
   }
 
   function renderScreen() {
-    if (screen === "dashboard") return renderDashboard();
-    if (screen === "map") return renderMap();
-    if (screen === "locations") return renderLocations();
-    if (screen === "assets") return renderAssets();
-    if (screen === "history") return renderWorkOrders();
-    if (screen === "vendors") return renderVendors();
-    if (screen === "calendar") return renderCalendar();
-    if (screen === "weather") return renderWeather();
-    if (screen === "documents") return renderDocuments();
-    if (screen === "intake") return renderIntake();
-    if (screen === "procedures") return renderProcedures();
-    if (screen === "parts") return renderParts();
-    if (screen === "links") return renderWorkLinks();
-    if (screen === "qr") return renderQRCodes();
-    if (screen === "scan") return renderQRScanner();
-    return renderAssistant();
+    let content: React.ReactNode;
+
+    if (screen === "dashboard") content = renderDashboard();
+    else if (screen === "map") content = renderMap();
+    else if (screen === "locations") content = renderLocations();
+    else if (screen === "assets") content = renderAssets();
+    else if (screen === "history") content = renderWorkOrders();
+    else if (screen === "vendors") content = renderVendors();
+    else if (screen === "calendar") content = renderCalendar();
+    else if (screen === "weather") content = renderWeather();
+    else if (screen === "documents") content = renderDocuments();
+    else if (screen === "intake") content = renderIntake();
+    else if (screen === "procedures") content = renderProcedures();
+    else if (screen === "parts") content = renderParts();
+    else if (screen === "links") content = renderWorkLinks();
+    else if (screen === "qr") content = renderQRCodes();
+    else if (screen === "scan") content = renderQRScanner();
+    else content = renderAssistant();
+
+    // Calendar already has its own navy shell. Weather and Map intentionally
+    // stay on the standard light background.
+    if (screen === "calendar" || screen === "weather" || screen === "map") {
+      return content;
+    }
+
+    return <div style={sectionNavyBackdropStyle}>{content}</div>;
   }
 
   return (
@@ -9343,6 +9353,17 @@ const calendarNavyShellStyle: React.CSSProperties = {
   borderRadius: 24,
   padding: 18,
   boxShadow: "0 22px 55px rgba(7,27,47,0.22)",
+};
+
+const sectionNavyBackdropStyle: React.CSSProperties = {
+  background: colors.navy,
+  border: `1px solid ${colors.navy3}`,
+  borderRadius: 24,
+  padding: 18,
+  boxShadow: "0 22px 55px rgba(7,27,47,0.22)",
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
 };
 
 const calendarWhitePanelStyle: React.CSSProperties = {
