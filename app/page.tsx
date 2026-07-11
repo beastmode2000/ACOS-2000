@@ -445,6 +445,7 @@ const storageKeys = {
   ],
   intakeDocs: ["atlas-intake-documents-v1"],
   manuals: ["atlas-manual-records-v1"],
+  workLinks: ["atlas-work-links-v1"],
 };
 
 function localISODate(date = new Date()) {
@@ -2743,6 +2744,18 @@ const defaultWorkLinks: WorkLinkRecord[] = [
     notes: "Learning dashboard.",
   },
   {
+    id: "microsoft-to-do",
+    name: "Microsoft To Do",
+    category: "Tasks / Planning",
+    vendor: "Microsoft",
+    url: "https://to-do.office.com/tasks/",
+    logoText: "TD",
+    logoBg: "#EEF6FF",
+    logoUrl: "https://to-do.office.com/favicon.ico",
+    logoColor: "#2563EB",
+    notes: "Microsoft To Do task lists and personal planning.",
+  },
+  {
     id: "metaviewer",
     name: "MetaViewer Invoice Search / Approvals",
     category: "Invoices / Approvals / Accounting",
@@ -3130,6 +3143,25 @@ export default function AtlasPage() {
     defaultCalendarColors,
   );
   const [partRecords, setPartRecords] = useState<PartRecord[]>(fallbackParts);
+  const [workLinks, setWorkLinks] =
+    useState<WorkLinkRecord[]>(defaultWorkLinks);
+  const [workLinkEditorOpen, setWorkLinkEditorOpen] = useState(false);
+  const [workLinkDraft, setWorkLinkDraft] = useState<WorkLinkRecord>(() => ({
+    id: "",
+    name: "",
+    category: "",
+    vendor: "",
+    url: "",
+    logoText: "",
+    logoBg: "#EEF6FF",
+    logoUrl: "",
+    logoColor: colors.navy3,
+    notes: "",
+  }));
+  const [workLinkMessage, setWorkLinkMessage] = useState("");
+  const [quickToolsOpen, setQuickToolsOpen] = useState(false);
+  const [calculatorValue, setCalculatorValue] = useState("");
+  const [calculatorResult, setCalculatorResult] = useState("0");
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [intakeDocs, setIntakeDocs] = useState<DocumentRecord[]>([]);
 
@@ -3394,6 +3426,10 @@ export default function AtlasPage() {
       storageKeys.manuals,
       defaultManuals,
     ).map(normalizeManualRecord);
+    const storedWorkLinks = readStoredArray<WorkLinkRecord>(
+      storageKeys.workLinks,
+      defaultWorkLinks,
+    );
 
     setMapLabels(
       byLabel(storedMapLabels.length ? storedMapLabels : defaultMapLabels),
@@ -3417,6 +3453,11 @@ export default function AtlasPage() {
     );
     setCalendarColors(mergeCalendarColors(storedCalendarColors));
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
+    setWorkLinks(
+      storedWorkLinks.length
+        ? [...storedWorkLinks].sort((a, b) => a.name.localeCompare(b.name))
+        : defaultWorkLinks,
+    );
     setPhotos(storedPhotos);
     void cachePhotoRecords(storedPhotos).then(() => {
       persistPhotoRecords(storedPhotos);
@@ -3689,6 +3730,17 @@ export default function AtlasPage() {
     if (!ready) return;
     saveStoredArray(storageKeys.parts[0], partRecords);
   }, [ready, partRecords]);
+
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      saveStoredArray(storageKeys.workLinks[0], workLinks);
+    } catch {
+      setWorkLinkMessage(
+        "Work Links could not be saved in this browser. Try a smaller logo image.",
+      );
+    }
+  }, [ready, workLinks]);
 
   function byLabel(records: MapLabelRecord[]) {
     return [...records].sort((a, b) => a.label.localeCompare(b.label));
@@ -4425,7 +4477,7 @@ export default function AtlasPage() {
   }, [q, partRecords, assetRecords, vendorRecords]);
 
   const filteredWorkLinks = useMemo(() => {
-    const sorted = [...defaultWorkLinks].sort((a, b) =>
+    const sorted = [...workLinks].sort((a, b) =>
       a.name.localeCompare(b.name),
     );
     if (!q) return sorted;
@@ -4435,7 +4487,7 @@ export default function AtlasPage() {
         .toLowerCase()
         .includes(q),
     );
-  }, [q]);
+  }, [q, workLinks]);
 
   const allDocuments = useMemo(
     () => [...documents, ...intakeDocs],
@@ -7307,6 +7359,147 @@ export default function AtlasPage() {
     );
   }
 
+  function blankWorkLink(): WorkLinkRecord {
+    return {
+      id: "",
+      name: "",
+      category: "",
+      vendor: "",
+      url: "",
+      logoText: "",
+      logoBg: "#EEF6FF",
+      logoUrl: "",
+      logoColor: colors.navy3,
+      notes: "",
+    };
+  }
+
+  function openNewWorkLink() {
+    setWorkLinkDraft(blankWorkLink());
+    setWorkLinkMessage("");
+    setWorkLinkEditorOpen(true);
+  }
+
+  function openEditWorkLink(link: WorkLinkRecord) {
+    setWorkLinkDraft({ ...link });
+    setWorkLinkMessage("");
+    setWorkLinkEditorOpen(true);
+  }
+
+  function saveWorkLink() {
+    const name = workLinkDraft.name.trim();
+    const url = workLinkDraft.url.trim();
+
+    if (!name || !url) {
+      setWorkLinkMessage("Name and URL are required.");
+      return;
+    }
+
+    const normalizedUrl =
+      url.startsWith("/") || /^https?:\/\//i.test(url)
+        ? url
+        : `https://${url}`;
+
+    const next: WorkLinkRecord = {
+      ...workLinkDraft,
+      id: workLinkDraft.id || uid("work-link"),
+      name,
+      url: normalizedUrl,
+      category: workLinkDraft.category.trim() || "Work Link",
+      vendor: workLinkDraft.vendor?.trim() || "",
+      logoText:
+        workLinkDraft.logoText.trim().slice(0, 4).toUpperCase() ||
+        name
+          .split(/\s+/)
+          .map((part) => part[0])
+          .join("")
+          .slice(0, 3)
+          .toUpperCase(),
+      logoBg: workLinkDraft.logoBg || "#EEF6FF",
+      logoColor: workLinkDraft.logoColor || colors.navy3,
+      logoUrl: workLinkDraft.logoUrl?.trim() || "",
+      notes: workLinkDraft.notes.trim(),
+    };
+
+    setWorkLinks((current) =>
+      [...current.filter((item) => item.id !== next.id), next].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    );
+    setWorkLinkEditorOpen(false);
+    setWorkLinkMessage(`Saved ${next.name}.`);
+    showSaveToast(`${next.name} was saved to Work Links.`, "success");
+  }
+
+  function deleteWorkLink(link: WorkLinkRecord) {
+    if (!window.confirm(`Delete ${link.name} from Work Links?`)) return;
+    setWorkLinks((current) => current.filter((item) => item.id !== link.id));
+    setWorkLinkEditorOpen(false);
+    setWorkLinkMessage(`Deleted ${link.name}.`);
+  }
+
+  function uploadWorkLinkLogo(file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setWorkLinkMessage("Choose an image file for the logo.");
+      return;
+    }
+    if (file.size > 700_000) {
+      setWorkLinkMessage("Logo image is too large. Use an image under 700 KB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setWorkLinkDraft((current) => ({
+        ...current,
+        logoUrl: String(reader.result || ""),
+      }));
+      setWorkLinkMessage("Logo loaded. Save the Work Link to keep it.");
+    };
+    reader.onerror = () => setWorkLinkMessage("Logo could not be read.");
+    reader.readAsDataURL(file);
+  }
+
+  function calculateExpression(value = calculatorValue) {
+    const clean = value.trim();
+    if (!clean) {
+      setCalculatorResult("0");
+      return;
+    }
+    if (!/^[0-9+\-*/().%\s]+$/.test(clean)) {
+      setCalculatorResult("Invalid");
+      return;
+    }
+    try {
+      const result = Function(`"use strict"; return (${clean});`)();
+      setCalculatorResult(
+        typeof result === "number" && Number.isFinite(result)
+          ? String(Math.round((result + Number.EPSILON) * 1e10) / 1e10)
+          : "Invalid",
+      );
+    } catch {
+      setCalculatorResult("Invalid");
+    }
+  }
+
+  function calculatorKey(value: string) {
+    if (value === "C") {
+      setCalculatorValue("");
+      setCalculatorResult("0");
+      return;
+    }
+    if (value === "⌫") {
+      setCalculatorValue((current) => current.slice(0, -1));
+      return;
+    }
+    if (value === "=") {
+      calculateExpression();
+      return;
+    }
+    setCalculatorValue((current) => `${current}${value}`);
+  }
+
   function renderDashboardWorkLinks() {
     return (
       <section style={sectionStyle}>
@@ -7326,7 +7519,7 @@ export default function AtlasPage() {
         />
 
         <div style={quickLinksGridStyle}>
-          {defaultWorkLinks.map((link) => (
+          {workLinks.map((link) => (
             <a
               key={link.id}
               href={link.url}
@@ -7455,6 +7648,48 @@ export default function AtlasPage() {
             onClick={() => setScreen("history")}
           />
         </div>
+
+        <section style={sectionStyle}>
+          <SectionHeader
+            eyebrow="Quick Actions"
+            title="Scan and Tools"
+            detail="Open the QR scanner, use the calculator, or add a Work Link without leaving the Dashboard."
+          />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(3, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setScreen("scan")}
+              style={goldButtonStyle}
+            >
+              Scan QR Code
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuickToolsOpen(true)}
+              style={secondaryButtonStyle}
+            >
+              Quick Calculator
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setScreen("links");
+                openNewWorkLink();
+              }}
+              style={secondaryButtonStyle}
+            >
+              Add Work Link
+            </button>
+          </div>
+        </section>
 
         <div
           style={{
@@ -11758,59 +11993,235 @@ export default function AtlasPage() {
         <SectionHeader
           eyebrow="Quick Access"
           title="Work Links"
-          detail="Regularly used work portals for Landscape Help admin, the crew checklist link, MaintainX, Paylocity, Ramp, ChatGPT, Outlook Email, Babbel, cameras, irrigation, supplies, smart-home controls, HVAC zones, and invoices."
+          detail="Open regular work portals, add new links, and edit names, destinations, notes, and logos directly from Atlas."
+          right={
+            <button
+              type="button"
+              onClick={openNewWorkLink}
+              style={goldButtonStyle}
+            >
+              + Add Work Link
+            </button>
+          }
         />
+
+        {workLinkMessage ? (
+          <div style={{ ...noticeStyle, marginBottom: 14 }}>
+            {workLinkMessage}
+          </div>
+        ) : null}
+
+        {workLinkEditorOpen ? (
+          <div style={{ ...cardStyle, marginBottom: 16, padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={eyebrowStyle}>Work Link Editor</div>
+                <h3 style={detailTitleStyle}>
+                  {workLinkDraft.id ? "Edit Work Link" : "Add Work Link"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWorkLinkEditorOpen(false)}
+                style={secondaryButtonStyle}
+              >
+                Close
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(2, minmax(0, 1fr))",
+                gap: 12,
+              }}
+            >
+              <Field
+                label="Name"
+                value={workLinkDraft.name}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({ ...current, name: value }))
+                }
+              />
+              <Field
+                label="URL"
+                value={workLinkDraft.url}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({ ...current, url: value }))
+                }
+              />
+              <Field
+                label="Category"
+                value={workLinkDraft.category}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({
+                    ...current,
+                    category: value,
+                  }))
+                }
+              />
+              <Field
+                label="Vendor / Company"
+                value={workLinkDraft.vendor || ""}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({ ...current, vendor: value }))
+                }
+              />
+              <Field
+                label="Logo initials"
+                value={workLinkDraft.logoText}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({
+                    ...current,
+                    logoText: value.slice(0, 4),
+                  }))
+                }
+              />
+              <Field
+                label="Logo image URL"
+                value={workLinkDraft.logoUrl || ""}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({
+                    ...current,
+                    logoUrl: value,
+                  }))
+                }
+              />
+              <label style={{ display: "grid", gap: 7 }}>
+                <span style={fieldLabelStyle}>Upload logo image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) =>
+                    uploadWorkLinkLogo(event.currentTarget.files?.[0])
+                  }
+                  style={inputStyle}
+                />
+              </label>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                }}
+              >
+                <label style={{ display: "grid", gap: 7 }}>
+                  <span style={fieldLabelStyle}>Badge background</span>
+                  <input
+                    type="color"
+                    value={workLinkDraft.logoBg || "#EEF6FF"}
+                    onChange={(event) =>
+                      setWorkLinkDraft((current) => ({
+                        ...current,
+                        logoBg: event.currentTarget.value,
+                      }))
+                    }
+                    style={{ ...inputStyle, minHeight: 46, padding: 6 }}
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 7 }}>
+                  <span style={fieldLabelStyle}>Badge text</span>
+                  <input
+                    type="color"
+                    value={workLinkDraft.logoColor || colors.navy3}
+                    onChange={(event) =>
+                      setWorkLinkDraft((current) => ({
+                        ...current,
+                        logoColor: event.currentTarget.value,
+                      }))
+                    }
+                    style={{ ...inputStyle, minHeight: 46, padding: 6 }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <Field
+              label="Notes"
+              value={workLinkDraft.notes}
+              onChange={(value) =>
+                setWorkLinkDraft((current) => ({ ...current, notes: value }))
+              }
+              multiline
+            />
+
+            <div style={{ ...buttonRowStyle, marginTop: 14 }}>
+              <button type="button" onClick={saveWorkLink} style={goldButtonStyle}>
+                Save Work Link
+              </button>
+              {workLinkDraft.id ? (
+                <button
+                  type="button"
+                  onClick={() => deleteWorkLink(workLinkDraft)}
+                  style={dangerButtonStyle}
+                >
+                  Delete Work Link
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div style={workLinksPageGridStyle}>
           {filteredWorkLinks.map((link) => (
-            <a
-              key={link.id}
-              href={link.url}
-              target="_blank"
-              rel="noreferrer"
-              style={workLinkPageCardStyle}
-            >
-              <span
+            <article key={link.id} style={workLinkPageCardStyle}>
+              <a
+                href={link.url}
+                target="_blank"
+                rel="noreferrer"
                 style={{
-                  ...workLinkLogoLargeStyle,
-                  background: link.logoBg,
-                  color: link.logoColor || colors.navy,
+                  display: "grid",
+                  gridTemplateColumns: "auto minmax(0, 1fr) auto",
+                  alignItems: "center",
+                  gap: 14,
+                  color: "inherit",
+                  textDecoration: "none",
+                  minWidth: 0,
                 }}
               >
-                <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
-                {link.logoUrl ? (
-                  <img
-                    src={link.logoUrl}
-                    alt=""
-                    onError={(event) => {
-                      event.currentTarget.style.display = "none";
-                    }}
-                    style={workLinkLogoImageLargeStyle}
-                  />
-                ) : null}
-              </span>
-
-              <span style={workLinkPageBodyStyle}>
-                <strong>{link.name}</strong>
-                <span>
-                  {link.category}
-                  {link.vendor ? ` · ${link.vendor}` : ""}
+                <span
+                  style={{
+                    ...workLinkLogoLargeStyle,
+                    background: link.logoBg,
+                    color: link.logoColor || colors.navy,
+                  }}
+                >
+                  <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
+                  {link.logoUrl ? (
+                    <img
+                      src={link.logoUrl}
+                      alt=""
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                      style={workLinkLogoImageLargeStyle}
+                    />
+                  ) : null}
                 </span>
-                <small>{link.notes}</small>
-              </span>
 
-              <span style={workLinkOpenLargeStyle}>Open</span>
-            </a>
+                <span style={workLinkPageBodyStyle}>
+                  <strong>{link.name}</strong>
+                  <span>
+                    {link.category}
+                    {link.vendor ? ` · ${link.vendor}` : ""}
+                  </span>
+                  <small>{link.notes}</small>
+                </span>
+
+                <span style={workLinkOpenLargeStyle}>Open</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => openEditWorkLink(link)}
+                style={{ ...secondaryButtonStyle, width: "100%", marginTop: 10 }}
+              >
+                Edit Work Link
+              </button>
+            </article>
           ))}
-        </div>
-
-        <div style={{ ...noticeStyle, marginTop: 14 }}>
-          <strong>Logo note:</strong>
-          <p style={mutedSmallStyle}>
-            These use company favicon/logo images when available, with clean
-            fallback badges if an image does not load. Real uploaded logos can
-            replace them later without changing the link layout.
-          </p>
         </div>
       </section>
     );
@@ -12731,6 +13142,78 @@ export default function AtlasPage() {
 
       {previewFile ? renderFilePreviewOverlay() : null}
 
+      {quickToolsOpen ? (
+        <div style={quickToolsOverlayStyle}>
+          <div style={quickToolsPanelStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={eyebrowStyle}>Quick Tools</div>
+                <h2 style={{ ...detailTitleStyle, marginBottom: 0 }}>Calculator</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickToolsOpen(false)}
+                style={secondaryButtonStyle}
+              >
+                Close
+              </button>
+            </div>
+
+            <input
+              value={calculatorValue}
+              onChange={(event) => setCalculatorValue(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") calculateExpression();
+              }}
+              placeholder="Example: 1250 + 375"
+              inputMode="decimal"
+              style={{ ...inputStyle, fontSize: 22, textAlign: "right" }}
+            />
+            <div style={calculatorDisplayStyle}>{calculatorResult}</div>
+            <div style={calculatorGridStyle}>
+              {[
+                "C",
+                "(",
+                ")",
+                "⌫",
+                "7",
+                "8",
+                "9",
+                "/",
+                "4",
+                "5",
+                "6",
+                "*",
+                "1",
+                "2",
+                "3",
+                "-",
+                "0",
+                ".",
+                "%",
+                "+",
+              ].map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => calculatorKey(key)}
+                  style={calculatorKeyStyle}
+                >
+                  {key}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => calculatorKey("=")}
+                style={{ ...goldButtonStyle, gridColumn: "1 / -1" }}
+              >
+                =
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {saveToast ? (
         <div
           role="status"
@@ -12784,6 +13267,59 @@ export default function AtlasPage() {
     </main>
   );
 }
+
+const quickToolsOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 280,
+  display: "grid",
+  placeItems: "center",
+  padding: 16,
+  background: "rgba(7,27,47,0.72)",
+};
+
+const quickToolsPanelStyle: React.CSSProperties = {
+  width: "min(420px, 100%)",
+  display: "grid",
+  gap: 14,
+  padding: 18,
+  borderRadius: 20,
+  border: `1px solid ${colors.line}`,
+  background: colors.card,
+  boxShadow: "0 28px 80px rgba(0,0,0,0.34)",
+};
+
+const calculatorDisplayStyle: React.CSSProperties = {
+  minHeight: 64,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  padding: "12px 14px",
+  borderRadius: 14,
+  border: `1px solid ${colors.line}`,
+  background: colors.panel,
+  color: colors.navy,
+  fontSize: 30,
+  fontWeight: 950,
+  overflowWrap: "anywhere",
+};
+
+const calculatorGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 9,
+};
+
+const calculatorKeyStyle: React.CSSProperties = {
+  minHeight: 52,
+  borderRadius: 12,
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.navy,
+  fontSize: 18,
+  fontWeight: 900,
+  cursor: "pointer",
+};
 
 const saveToastStyle: React.CSSProperties = {
   position: "fixed",
