@@ -8646,7 +8646,13 @@ export default function AtlasPage() {
           </button>
         }
         list={
-          <div style={stackStyle}>
+          <div
+            style={
+              compactMonthView
+                ? calendarMonthViewportStyle
+                : stackStyle
+            }
+          >
             <div style={cardStyle}>
               <input
                 value={contactSearch}
@@ -9645,6 +9651,9 @@ export default function AtlasPage() {
       calendarView === "week"
         ? `Week of ${formatDate(weekCells[0]?.date || selectedCalendarDate)}`
         : monthName(calendarCursor);
+    const calendarRowCount = Math.max(1, Math.ceil(cells.length / 7));
+    const compactMonthView = calendarView === "month" && !isMobile;
+    const visibleEventLimit = compactMonthView ? 2 : 3;
 
     const linkedOptions = (() => {
       if (selectedCalendar.linkedType === "Asset")
@@ -9676,7 +9685,11 @@ export default function AtlasPage() {
         detail={undefined}
         isMobile={isMobile}
         outerStyle={calendarNavyShellStyle}
-        listPanelStyleOverride={calendarWhitePanelStyle}
+        listPanelStyleOverride={
+          compactMonthView
+            ? calendarMonthWhitePanelStyle
+            : calendarWhitePanelStyle
+        }
         drawerStyleOverride={calendarWhiteDrawerStyle}
         right={
           <>
@@ -9724,7 +9737,13 @@ export default function AtlasPage() {
         }
         list={
           <div style={stackStyle}>
-            <div style={calendarControlPanelStyle}>
+            <div
+              style={
+                compactMonthView
+                  ? calendarCompactControlPanelStyle
+                  : calendarControlPanelStyle
+              }
+            >
               <div
                 style={{
                   display: "flex",
@@ -9833,7 +9852,18 @@ export default function AtlasPage() {
               ))}
             </div>
 
-            <div style={calendarGridStyle}>
+            <div
+              style={{
+                ...calendarGridStyle,
+                ...(compactMonthView
+                  ? {
+                      height: "100%",
+                      minHeight: 0,
+                      gridTemplateRows: `repeat(${calendarRowCount}, minmax(0, 1fr))`,
+                    }
+                  : {}),
+              }}
+            >
               {cells.map((cell) => {
                 const events = cell.date
                   ? expandedCalendarItems.filter(
@@ -9859,6 +9889,7 @@ export default function AtlasPage() {
                     }}
                     style={{
                       ...calendarCellStyle,
+                      ...(compactMonthView ? calendarCompactCellStyle : {}),
                       opacity: cell.outside ? 0.55 : 1,
                       borderColor: isSelected
                         ? colors.gold
@@ -9894,8 +9925,15 @@ export default function AtlasPage() {
                       ) : null}
                     </div>
 
-                    <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
-                      {events.slice(0, 3).map((event) => {
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: compactMonthView ? 2 : 4,
+                        marginTop: compactMonthView ? 4 : 8,
+                        minHeight: 0,
+                      }}
+                    >
+                      {events.slice(0, visibleEventLimit).map((event) => {
                         const eventColor = colorForEvent(event);
                         return (
                           <span
@@ -9906,7 +9944,12 @@ export default function AtlasPage() {
                             }}
                             style={{
                               ...calendarPillStyle,
-                              borderLeft: `5px solid ${eventColor.hex}`,
+                              ...(compactMonthView
+                                ? calendarCompactPillStyle
+                                : {}),
+                              borderLeft: `${
+                                compactMonthView ? 3 : 5
+                              }px solid ${eventColor.hex}`,
                               color: event.completed
                                 ? colors.muted
                                 : eventColor.hex,
@@ -9939,9 +9982,16 @@ export default function AtlasPage() {
                         );
                       })}
 
-                      {events.length > 3 ? (
-                        <span style={calendarMoreStyle}>
-                          +{events.length - 3} more
+                      {events.length > visibleEventLimit ? (
+                        <span
+                          style={{
+                            ...calendarMoreStyle,
+                            ...(compactMonthView
+                              ? calendarCompactMoreStyle
+                              : {}),
+                          }}
+                        >
+                          +{events.length - visibleEventLimit} more
                         </span>
                       ) : null}
                     </div>
@@ -13218,6 +13268,22 @@ const calendarWhitePanelStyle: React.CSSProperties = {
   boxShadow: "0 18px 42px rgba(0,0,0,0.12)",
 };
 
+const calendarMonthWhitePanelStyle: React.CSSProperties = {
+  ...calendarWhitePanelStyle,
+  padding: 10,
+  overflowY: "hidden",
+  overflowX: "hidden",
+};
+
+const calendarMonthViewportStyle: React.CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  display: "grid",
+  gridTemplateRows: "auto auto minmax(0, 1fr)",
+  gap: 7,
+  overflow: "hidden",
+};
+
 const calendarWhiteDrawerStyle: React.CSSProperties = {
   background: "#FFFFFF",
   border: `1px solid ${colors.line}`,
@@ -14858,6 +14924,13 @@ const calendarControlPanelStyle: React.CSSProperties = {
   gap: 12,
 };
 
+const calendarCompactControlPanelStyle: React.CSSProperties = {
+  ...calendarControlPanelStyle,
+  padding: 8,
+  gap: 7,
+  borderRadius: 13,
+};
+
 const calendarFilterStripStyle: React.CSSProperties = {
   display: "flex",
   gap: 8,
@@ -14968,6 +15041,14 @@ const calendarCellStyle: React.CSSProperties = {
   overflow: "hidden",
 };
 
+const calendarCompactCellStyle: React.CSSProperties = {
+  minHeight: 0,
+  height: "100%",
+  padding: 5,
+  borderRadius: 10,
+  fontSize: 11,
+};
+
 const calendarPillStyle: React.CSSProperties = {
   display: "block",
   background: "#EDF3FF",
@@ -14979,6 +15060,18 @@ const calendarPillStyle: React.CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
+};
+
+const calendarCompactPillStyle: React.CSSProperties = {
+  padding: "2px 4px",
+  borderRadius: 6,
+  fontSize: 8,
+  lineHeight: 1.15,
+};
+
+const calendarCompactMoreStyle: React.CSSProperties = {
+  fontSize: 8,
+  lineHeight: 1.1,
 };
 
 const calendarPillContentStyle: React.CSSProperties = {
