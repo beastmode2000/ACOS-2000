@@ -3517,6 +3517,7 @@ export default function AtlasPage() {
   const [inboxItems, setInboxItems] = useState<InboxItemRecord[]>([]);
   const [selectedInboxId, setSelectedInboxId] = useState("");
   const [inboxMessage, setInboxMessage] = useState("Loading Atlas Inbox...");
+  const [analyzingInboxId, setAnalyzingInboxId] = useState("");
   const [inboxSearch, setInboxSearch] = useState("");
 
   const [manualRecords, setManualRecords] = useState<ManualRecord[]>(defaultManuals);
@@ -12490,103 +12491,155 @@ export default function AtlasPage() {
     return match?.[1]?.trim() || "";
   }
 
-  function analyzeInboxItem(item: InboxItemRecord) {
-    const fileNames = (item.files || []).map((file) => file.name).join("\n");
-    const text = [item.title, item.notes, item.pastedText, fileNames]
+  async function analyzeInboxItem(item: InboxItemRecord) {
+    if (analyzingInboxId) return;
+
+    const usableFiles = (item.files || [])
+      .filter((file) => Boolean(file.dataUrl || file.url))
+      .slice(0, 3)
+      .map((file) => ({
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        dataUrl: file.dataUrl || "",
+        url: file.url || "",
+      }));
+
+    const fileNames = usableFiles.map((file) => file.name).join("\n");
+    const existingText = [item.title, item.notes, item.pastedText, fileNames]
       .filter(Boolean)
       .join("\n");
 
-    if (!text.trim()) {
-      setInboxMessage("Add a title, notes, pasted text, or a named file before analyzing.");
+    if (!existingText.trim() && !usableFiles.length) {
+      setInboxMessage("Add a file, title, notes, or pasted text before analyzing.");
       return;
     }
 
-    const serial = firstInboxMatch(
-      text,
-      /(?:serial(?:\s*(?:number|no\.?))?|s\s*\/\s*n|\bsn\b)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{3,})/i,
-    );
-    const model = firstInboxMatch(
-      text,
-      /(?:model(?:\s*(?:number|no\.?))?|m\s*\/\s*n)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
-    );
-    const invoiceNumber = firstInboxMatch(
-      text,
-      /(?:invoice|inv(?:oice)?)(?:\s*(?:number|no\.?))?\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
-    );
-    const amount = firstInboxMatch(text, /(\$\s?\d[\d,]*(?:\.\d{2})?)/i);
-    const date = firstInboxMatch(
-      text,
-      /\b((?:0?[1-9]|1[0-2])[\/-](?:0?[1-9]|[12]\d|3[01])[\/-](?:19|20)?\d{2})\b/,
-    );
-    const psi = firstInboxMatch(text, /\b(\d+(?:\.\d+)?)\s*psi\b/i);
-    const temperature = firstInboxMatch(
-      text,
-      /\b(\d+(?:\.\d+)?)\s*(?:°\s*)?(?:f|fahrenheit)\b/i,
-    );
-    const ph = firstInboxMatch(text, /\bph\s*[:=]?\s*(\d+(?:\.\d+)?)\b/i);
-    const hours = firstInboxMatch(text, /\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/i);
+    setAnalyzingInboxId(item.id);
+    setInboxMessage("Atlas is reading the selected file and preparing suggestions...");
+
+    let visionData: Record<string, unknown> = {};
+    try {
+      const response = await fetch("/api/atlas-inbox-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item: {
+            id: item.id,
+            title: item.title,
+            intakeType: item.intakeType,
+            notes: item.notes,
+            pastedText: item.pastedText,
+            files: usableFiles,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Photo/PDF analysis failed.");
+      }
+      visionData = (payload.analysis || {}) as Record<string, unknown>;
+    } catch (error) {
+      setInboxMessage(
+        error instanceof Error ? error.message : "Photo/PDF analysis failed.",
+      );
+      setAnalyzingInboxId("");
+      return;
+    }
+
+    const aiReadings = (visionData.readings || {}) as Record<string, unknown>;
+    const rawText = inboxAnalysisText(visionData.rawText);
+    const combinedText = [
+      existingText,
+      rawText,
+      inboxAnalysisText(visionData.manufacturer),
+      inboxAnalysisText(visionData.model),
+      inboxAnalysisText(visionData.serial),
+      inboxAnalysisText(visionData.invoiceNumber),
+      inboxAnalysisText(visionData.vendorName),
+      inboxAnalysisText(visionData.assetName),
+      inboxAnalysisText(visionData.locationName),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const serial =
+      inboxAnalysisText(visionData.serial) ||
+      firstInboxMatch(
+        combinedText,
+        /(?:serial(?:\s*(?:number|no\.?))?|s\s*\/\s*n|\bsn\b)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{3,})/i,
+      );
+    const model =
+      inboxAnalysisText(visionData.model) ||
+      firstInboxMatch(
+        combinedText,
+        /(?:model(?:\s*(?:number|no\.?))?|m\s*\/\s*n)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
+      );
+    const invoiceNumber =
+      inboxAnalysisText(visionData.invoiceNumber) ||
+      firstInboxMatch(
+        combinedText,
+        /(?:invoice|inv(?:oice)?)(?:\s*(?:number|no\.?))?\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
+      );
+    const amount =
+      inboxAnalysisText(visionData.amount) ||
+      firstInboxMatch(combinedText, /(\$\s?\d[\d,]*(?:\.\d{2})?)/i);
+    const date =
+      inboxAnalysisText(visionData.date) ||
+      firstInboxMatch(
+        combinedText,
+        /\b((?:0?[1-9]|1[0-2])[\/-](?:0?[1-9]|[12]\d|3[01])[\/-](?:19|20)?\d{2})\b/,
+      );
+    const psi =
+      inboxAnalysisText(aiReadings.psi) ||
+      firstInboxMatch(combinedText, /\b(\d+(?:\.\d+)?)\s*psi\b/i);
+    const temperature =
+      inboxAnalysisText(aiReadings.temperature) ||
+      firstInboxMatch(
+        combinedText,
+        /\b(\d+(?:\.\d+)?)\s*(?:°\s*)?(?:f|fahrenheit)\b/i,
+      );
+    const ph =
+      inboxAnalysisText(aiReadings.ph) ||
+      firstInboxMatch(combinedText, /\bph\s*[:=]?\s*(\d+(?:\.\d+)?)\b/i);
+    const hours =
+      inboxAnalysisText(aiReadings.hours) ||
+      firstInboxMatch(combinedText, /\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/i);
 
     const knownManufacturers = [
-      "Viessmann",
-      "Carrier",
-      "Honeywell",
-      "Mitsubishi",
-      "Pentair",
-      "Sundance",
-      "Sunstream",
-      "Bosch",
-      "Electrolux",
-      "Kohler",
-      "Cobalt",
-      "Sea-Doo",
-      "Fisher & Paykel",
-      "Desert Aire",
-      "Hunter",
-      "Hydrawise",
-      "Starlink",
+      "Viessmann", "Carrier", "Honeywell", "Mitsubishi", "Pentair",
+      "Sundance", "Sunstream", "Bosch", "Electrolux", "Kohler",
+      "Cobalt", "Sea-Doo", "Fisher & Paykel", "Desert Aire", "Hunter",
+      "Hydrawise", "Starlink",
     ];
     const manufacturer =
+      inboxAnalysisText(visionData.manufacturer) ||
       knownManufacturers.find((name) =>
-        text.toLowerCase().includes(name.toLowerCase()),
+        combinedText.toLowerCase().includes(name.toLowerCase()),
       ) || "";
 
-    const sourceTokens = inboxAnalysisTokens(text);
+    const sourceTokens = inboxAnalysisTokens(combinedText);
     const normalizedSerial = serial.toLowerCase();
     const normalizedModel = model.toLowerCase();
 
     const assetMatches = assetRecords
       .map((asset) => {
-        const searchable = [
-          asset.name,
-          asset.make,
-          asset.model,
-          asset.serial,
-          asset.category,
-          asset.notes,
-        ]
-          .filter(Boolean)
-          .join(" ");
+        const searchable = [asset.name, asset.make, asset.model, asset.serial, asset.category, asset.notes]
+          .filter(Boolean).join(" ");
         const assetTokens = inboxAnalysisTokens(searchable);
         let score = sourceTokens.filter((token) => assetTokens.includes(token)).length;
         const reasons: string[] = [];
-
         if (normalizedSerial && asset.serial?.toLowerCase() === normalizedSerial) {
-          score += 20;
-          reasons.push("Exact serial number");
+          score += 20; reasons.push("Exact serial number");
         }
         if (normalizedModel && asset.model?.toLowerCase().includes(normalizedModel)) {
-          score += 10;
-          reasons.push("Matching model");
+          score += 10; reasons.push("Matching model");
         }
         if (manufacturer && asset.make?.toLowerCase().includes(manufacturer.toLowerCase())) {
-          score += 6;
-          reasons.push("Matching manufacturer");
+          score += 6; reasons.push("Matching manufacturer");
         }
-        if (text.toLowerCase().includes(asset.name.toLowerCase())) {
-          score += 8;
-          reasons.push("Asset name appears in intake");
+        if (combinedText.toLowerCase().includes(asset.name.toLowerCase())) {
+          score += 8; reasons.push("Asset name appears in analysis");
         }
-
         return { asset, score, reasons };
       })
       .filter((match) => match.score > 0)
@@ -12594,12 +12647,10 @@ export default function AtlasPage() {
 
     const vendorMatches = vendorRecords
       .map((vendor) => {
-        const vendorText = [vendor.name, vendor.category, vendor.notes]
-          .filter(Boolean)
-          .join(" ");
+        const vendorText = [vendor.name, vendor.category, vendor.notes].filter(Boolean).join(" ");
         const vendorTokens = inboxAnalysisTokens(vendorText);
         let score = sourceTokens.filter((token) => vendorTokens.includes(token)).length;
-        if (text.toLowerCase().includes(vendor.name.toLowerCase())) score += 10;
+        if (combinedText.toLowerCase().includes(vendor.name.toLowerCase())) score += 10;
         return { vendor, score };
       })
       .filter((match) => match.score > 0)
@@ -12607,9 +12658,7 @@ export default function AtlasPage() {
 
     const workOrderMatches = serviceRecords
       .map((workOrder) => {
-        const workOrderText = [workOrder.title, workOrder.notes, workOrder.date]
-          .filter(Boolean)
-          .join(" ");
+        const workOrderText = [workOrder.title, workOrder.notes, workOrder.date].filter(Boolean).join(" ");
         const workOrderTokens = inboxAnalysisTokens(workOrderText);
         const score = sourceTokens.filter((token) => workOrderTokens.includes(token)).length;
         return { workOrder, score };
@@ -12620,42 +12669,21 @@ export default function AtlasPage() {
     const bestAsset = assetMatches[0];
     const bestVendor = vendorMatches[0];
     const bestWorkOrder = workOrderMatches[0];
-    const bestScore = Math.max(
-      bestAsset?.score || 0,
-      bestVendor?.score || 0,
-      bestWorkOrder?.score || 0,
-    );
+    const bestScore = Math.max(bestAsset?.score || 0, bestVendor?.score || 0, bestWorkOrder?.score || 0);
     const confidence = bestScore >= 20 ? "High" : bestScore >= 8 ? "Medium" : bestScore > 0 ? "Low" : "None";
 
     const suggestedMatch = bestAsset && bestAsset.score === bestScore
-      ? {
-          type: "Asset",
-          id: bestAsset.asset.id,
-          name: bestAsset.asset.name,
-          confidence,
-          reasons: bestAsset.reasons,
-        }
+      ? { type: "Asset", id: bestAsset.asset.id, name: bestAsset.asset.name, confidence, reasons: bestAsset.reasons }
       : bestVendor && bestVendor.score === bestScore
-        ? {
-            type: "Vendor",
-            id: bestVendor.vendor.id,
-            name: bestVendor.vendor.name,
-            confidence,
-            reasons: ["Vendor name or related terms appear in intake"],
-          }
+        ? { type: "Vendor", id: bestVendor.vendor.id, name: bestVendor.vendor.name, confidence, reasons: ["Vendor name or related terms appear in analysis"] }
         : bestWorkOrder && bestWorkOrder.score === bestScore
-          ? {
-              type: "Work Order",
-              id: bestWorkOrder.workOrder.id,
-              name: bestWorkOrder.workOrder.title,
-              confidence,
-              reasons: ["Related work-order terms appear in intake"],
-            }
+          ? { type: "Work Order", id: bestWorkOrder.workOrder.id, name: bestWorkOrder.workOrder.title, confidence, reasons: ["Related work-order terms appear in analysis"] }
           : null;
 
     const extractedData: Record<string, unknown> = {
+      ...visionData,
       analyzedAt: new Date().toISOString(),
-      analyzer: "Atlas local intake analyzer",
+      analyzer: "Atlas secure photo/PDF analyzer",
       manufacturer,
       model,
       serial,
@@ -12664,31 +12692,19 @@ export default function AtlasPage() {
       date,
       readings: { psi, temperature, ph, hours },
       suggestedMatch,
-      candidateAssets: assetMatches.slice(0, 3).map((match) => ({
-        id: match.asset.id,
-        name: match.asset.name,
-        score: match.score,
-      })),
-      candidateVendors: vendorMatches.slice(0, 3).map((match) => ({
-        id: match.vendor.id,
-        name: match.vendor.name,
-        score: match.score,
-      })),
-      candidateWorkOrders: workOrderMatches.slice(0, 3).map((match) => ({
-        id: match.workOrder.id,
-        name: match.workOrder.title,
-        score: match.score,
-      })),
+      candidateAssets: assetMatches.slice(0, 3).map((match) => ({ id: match.asset.id, name: match.asset.name, score: match.score })),
+      candidateVendors: vendorMatches.slice(0, 3).map((match) => ({ id: match.vendor.id, name: match.vendor.name, score: match.score })),
+      candidateWorkOrders: workOrderMatches.slice(0, 3).map((match) => ({ id: match.workOrder.id, name: match.workOrder.title, score: match.score })),
     };
 
     setInboxItems((current) =>
-      current.map((entry) =>
-        entry.id === item.id
-          ? { ...entry, extractedData, status: "Analyzed", updatedAt: new Date().toISOString() }
-          : entry,
-      ),
+      current.map((entry) => entry.id === item.id
+        ? { ...entry, extractedData, status: "Analyzed", updatedAt: new Date().toISOString() }
+        : entry),
     );
-    void updateInboxItem(item.id, { extractedData, status: "Analyzed" });
+    await updateInboxItem(item.id, { extractedData, status: "Analyzed" });
+    setInboxMessage("Analysis complete. Review the detected information before approving anything.");
+    setAnalyzingInboxId("");
   }
 
   function openInboxItemInFastIntake(item: InboxItemRecord) {
@@ -12861,10 +12877,19 @@ export default function AtlasPage() {
                 >
                   <button
                     type="button"
-                    onClick={() => analyzeInboxItem(selected)}
-                    style={goldButtonStyle}
+                    onClick={() => void analyzeInboxItem(selected)}
+                    disabled={analyzingInboxId === selected.id}
+                    style={{
+                      ...goldButtonStyle,
+                      opacity: analyzingInboxId === selected.id ? 0.65 : 1,
+                      cursor: analyzingInboxId === selected.id ? "wait" : "pointer",
+                    }}
                   >
-                    {analysis.analyzedAt ? "Analyze Again" : "Analyze Item"}
+                    {analyzingInboxId === selected.id
+                      ? "Reading File..."
+                      : analysis.analyzedAt
+                        ? "Analyze Again"
+                        : "Analyze Item"}
                   </button>
                   {analysis.analyzedAt ? (
                     <span style={mutedSmallStyle}>
@@ -12878,7 +12903,7 @@ export default function AtlasPage() {
                 <div style={eyebrowStyle}>Atlas Analysis</div>
                 <h3 style={detailTitleStyle}>Review Suggested Information</h3>
                 <p style={mutedSmallStyle}>
-                  Atlas checks the title, notes, pasted text, and file names, then compares them with existing Assets, Vendors, and Work Orders. Nothing is saved anywhere else until you approve it.
+                  Atlas securely reads supported photos and PDFs, combines that with the title and notes, and then compares the results with existing Assets, Vendors, and Work Orders. Nothing is saved anywhere else until you approve it.
                 </p>
 
                 {analysis.analyzedAt ? (
@@ -12949,9 +12974,9 @@ export default function AtlasPage() {
                 )}
 
                 <div style={{ ...noticeStyle, marginTop: 14 }}>
-                  <strong>Photo/PDF reading is the next backend connection.</strong>
+                  <strong>Secure photo/PDF reading is connected.</strong>
                   <p style={mutedSmallStyle}>
-                    This screen now keeps the original file, Analyze button, and results together. The current analyzer still uses available text and file names; true image and PDF text extraction requires a secure server API and is not being simulated in the browser.
+                    Atlas sends the selected file through the protected server route, returns proposed fields, and keeps every result in review status. It does not create or overwrite any Atlas record automatically.
                   </p>
                 </div>
               </div>
