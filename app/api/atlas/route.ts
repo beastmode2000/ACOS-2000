@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const MAIN_EMAIL = "nthornton87@yahoo.com";
-const API_VERSION = "atlas-route-photo-protection-v2";
+const API_VERSION = "atlas-route-photo-and-date-protection-v3";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -114,6 +114,20 @@ const LOCATION_NAME_BY_ID: Record<string, string> = {
   "pilatus-pc12-n126al": "Pilatus PC12 N126AL",
 };
 
+const NULLABLE_DATE_COLUMNS = new Set([
+  "date",
+  "work_date",
+  "scheduled_date",
+  "due_date",
+  "calendar_date",
+  "follow_up_date",
+  "followUpDate",
+  "recurrence_next_due",
+  "recurrence_end_date",
+  "invoice_date",
+  "approved_date",
+]);
+
 function jsonResponse(body: unknown, status = 200) {
   return NextResponse.json(body, {
     status,
@@ -142,7 +156,10 @@ function text(value: unknown, fallback = "") {
 function firstText(...values: unknown[]) {
   for (const value of values) {
     const clean = text(value).trim();
-    if (clean) return clean;
+
+    if (clean) {
+      return clean;
+    }
   }
 
   return "";
@@ -153,7 +170,9 @@ function bool(value: unknown, fallback = false) {
     return fallback;
   }
 
-  if (typeof value === "boolean") return value;
+  if (typeof value === "boolean") {
+    return value;
+  }
 
   const clean = String(value).trim().toLowerCase();
 
@@ -184,7 +203,9 @@ function dateText(value: unknown, fallback = "") {
 }
 
 function arr<T = unknown>(value: unknown): T[] {
-  if (Array.isArray(value)) return value as T[];
+  if (Array.isArray(value)) {
+    return value as T[];
+  }
 
   if (value === null || value === undefined || value === "") {
     return [];
@@ -193,6 +214,7 @@ function arr<T = unknown>(value: unknown): T[] {
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
+
       return Array.isArray(parsed) ? (parsed as T[]) : [];
     } catch {
       return [];
@@ -230,13 +252,17 @@ function assetStatus(value: unknown) {
 function serviceStatus(value: unknown) {
   const clean = text(value, "Open").trim().toLowerCase();
 
-  if (clean === "scheduled") return "Scheduled";
+  if (clean === "scheduled") {
+    return "Scheduled";
+  }
 
   if (["completed", "complete", "done"].includes(clean)) {
     return "Completed";
   }
 
-  if (clean === "monitor") return "Monitor";
+  if (clean === "monitor") {
+    return "Monitor";
+  }
 
   return "Open";
 }
@@ -320,7 +346,9 @@ async function tableExists(table: string) {
 
 async function resolveTable(table: AtlasTable) {
   for (const candidate of FALLBACK_TABLES[table]) {
-    if (await tableExists(candidate)) return candidate;
+    if (await tableExists(candidate)) {
+      return candidate;
+    }
   }
 
   return null;
@@ -395,7 +423,9 @@ async function getOrCreateLocationId(
   userId: string,
   frontendLocationId: unknown,
 ) {
-  if (!(await tableExists("locations"))) return null;
+  if (!(await tableExists("locations"))) {
+    return null;
+  }
 
   const locationName =
     locationNameFromFrontendId(frontendLocationId);
@@ -473,7 +503,9 @@ async function queryTable(
 ) {
   const actualTable = await resolveTable(table);
 
-  if (!actualTable) return [];
+  if (!actualTable) {
+    return [];
+  }
 
   const columns = await getColumns(actualTable);
   const userColumn = hasUserColumn(columns);
@@ -507,7 +539,9 @@ async function queryTable(
 async function queryAssets(userId: string) {
   const actualTable = await resolveTable("assets");
 
-  if (!actualTable) return [];
+  if (!actualTable) {
+    return [];
+  }
 
   const columns = await getColumns(actualTable);
   const userColumn = hasUserColumn(columns);
@@ -541,7 +575,9 @@ async function queryAssets(userId: string) {
 async function queryWorkOrders(userId: string) {
   const actualTable = await resolveTable("work_orders");
 
-  if (!actualTable) return [];
+  if (!actualTable) {
+    return [];
+  }
 
   const columns = await getColumns(actualTable);
   const userColumn = hasUserColumn(columns);
@@ -556,9 +592,7 @@ async function queryWorkOrders(userId: string) {
           ? "due_date"
           : "";
 
-  const titleColumn = columns.has("title")
-    ? "title"
-    : "";
+  const titleColumn = columns.has("title") ? "title" : "";
 
   const orderBy =
     dateColumn && titleColumn
@@ -1095,9 +1129,20 @@ async function buildPayload(
     column: string,
     value: unknown,
   ) {
-    if (columns.has(column)) {
-      payload[column] = value;
+    if (!columns.has(column)) {
+      return;
     }
+
+    if (
+      NULLABLE_DATE_COLUMNS.has(column) &&
+      typeof value === "string" &&
+      value.trim() === ""
+    ) {
+      payload[column] = null;
+      return;
+    }
+
+    payload[column] = value;
   }
 
   function setTextIfPresent(
@@ -1152,6 +1197,7 @@ async function buildPayload(
 
     set("phone", text(record.phone));
     set("email", text(record.email));
+
     set(
       "website",
       text(record.website),
@@ -1776,16 +1822,19 @@ async function buildPayload(
     );
 
     set("date", dateValue);
+
     set(
       "calendar_date",
       dateValue,
     );
+
     set(
       "scheduled_date",
       dateValue,
     );
 
     set("time", text(record.time));
+
     set(
       "event_time",
       text(record.time),
@@ -1986,9 +2035,6 @@ async function buildPayload(
       ),
     );
 
-    // Blank image fields are intentionally omitted.
-    // This prevents a stale browser record from
-    // erasing a photo already saved in Neon.
     setTextIfPresent(
       "dataUrl",
       dataUrl,
@@ -2039,7 +2085,9 @@ async function findRecordById(
   const actualTable =
     await resolveTable(table);
 
-  if (!actualTable) return null;
+  if (!actualTable) {
+    return null;
+  }
 
   const columns =
     await getColumns(actualTable);
@@ -2170,7 +2218,9 @@ async function deleteRecord(
   const actualTable =
     await resolveTable(table);
 
-  if (!actualTable) return;
+  if (!actualTable) {
+    return;
+  }
 
   const columns =
     await getColumns(actualTable);
@@ -2383,8 +2433,6 @@ export async function POST(
         );
       }
 
-      // Metadata-only saves can never overwrite
-      // or create a blank image.
       if (!incomingImage) {
         const existing =
           await findRecordById(
