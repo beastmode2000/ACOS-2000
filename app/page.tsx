@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type Screen =
   | "dashboard"
@@ -3308,14 +3308,22 @@ function ListDrawerLayout(props: {
 }) {
   const drawerScrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      if (drawerScrollRef.current) {
-        drawerScrollRef.current.scrollTop = 0;
-      }
-    });
+  useLayoutEffect(() => {
+    const resetDrawerScroll = () => {
+      const drawer = drawerScrollRef.current;
+      if (!drawer) return;
+      drawer.scrollTop = 0;
+      drawer.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    };
 
-    return () => window.cancelAnimationFrame(frame);
+    resetDrawerScroll();
+    const frame = window.requestAnimationFrame(resetDrawerScroll);
+    const timeout = window.setTimeout(resetDrawerScroll, 80);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
   }, [props.drawerResetKey]);
 
   const desktopOuterStyle: React.CSSProperties = props.isMobile
@@ -12740,7 +12748,7 @@ export default function AtlasPage() {
         title="Review Before Anything Changes"
         detail="Photos, screenshots, PDFs, labels, invoices, readings, and notes can wait here until you decide what they should become."
         isMobile={isMobile}
-        drawerResetKey={selected?.id || "inbox-empty"}
+        drawerResetKey={`${selected?.id || "inbox-empty"}:${String(analysis.analyzedAt || "not-analyzed")}`}
         gridStyleOverride={
           isMobile
             ? undefined
