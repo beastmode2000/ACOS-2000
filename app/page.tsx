@@ -3303,6 +3303,7 @@ function ListDrawerLayout(props: {
   outerStyle?: React.CSSProperties;
   listPanelStyleOverride?: React.CSSProperties;
   drawerStyleOverride?: React.CSSProperties;
+  gridStyleOverride?: React.CSSProperties;
   drawerResetKey?: string | number;
 }) {
   const drawerScrollRef = useRef<HTMLDivElement>(null);
@@ -3400,7 +3401,13 @@ function ListDrawerLayout(props: {
           {props.right ? <div style={buttonRowStyle}>{props.right}</div> : null}
         </div>
       ) : null}
-      <div style={desktopGridStyle}>
+      <div
+        style={
+          props.gridStyleOverride
+            ? { ...desktopGridStyle, ...props.gridStyleOverride }
+            : desktopGridStyle
+        }
+      >
         <div
           style={
             props.listPanelStyleOverride
@@ -12734,6 +12741,12 @@ export default function AtlasPage() {
         detail="Photos, screenshots, PDFs, labels, invoices, readings, and notes can wait here until you decide what they should become."
         isMobile={isMobile}
         drawerResetKey={selected?.id || "inbox-empty"}
+        gridStyleOverride={
+          isMobile
+            ? undefined
+            : { gridTemplateColumns: "minmax(300px, 0.78fr) minmax(520px, 1.22fr)" }
+        }
+        drawerStyleOverride={isMobile ? undefined : { paddingLeft: 10 }}
         list={
           <div style={{ display: "grid", gap: 12 }}>
             <div style={cardStyle}>
@@ -12783,12 +12796,160 @@ export default function AtlasPage() {
           selected ? (
             <div style={{ display: "grid", gap: 14 }}>
               <div style={cardStyle}>
-                <div style={eyebrowStyle}>Inbox Item</div>
-                <h3 style={detailTitleStyle}>{selected.title}</h3>
-                <p style={mutedSmallStyle}>
-                  {selected.intakeType} · {selected.source || "Manual"} · Created {formatDate(selected.createdAt)}
+                <div style={eyebrowStyle}>Selected Inbox Item</div>
+                <h3 style={{ ...detailTitleStyle, marginBottom: 4 }}>{selected.title}</h3>
+                <p style={{ ...mutedSmallStyle, marginTop: 0 }}>
+                  {selected.intakeType} · {selected.source || "Manual"} · {selected.status}
                 </p>
 
+                {(selected.files || []).length ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {(selected.files || []).map((file, index) => (
+                      <div key={file.id} style={{ ...photoCardStyle, padding: 12 }}>
+                        {file.dataUrl?.startsWith("data:image/") ? (
+                          <img
+                            src={file.dataUrl}
+                            alt={file.name}
+                            style={{
+                              ...photoStyle,
+                              maxHeight: index === 0 ? 420 : 220,
+                              objectFit: "contain",
+                              background: colors.panel,
+                            }}
+                          />
+                        ) : (
+                          <div style={{ ...fileTileStyle, minHeight: 150 }}>
+                            {file.type?.includes("pdf") ? "PDF" : "FILE"}
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 10,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <strong style={{ overflowWrap: "anywhere" }}>{file.name}</strong>
+                          <button type="button" onClick={() => openUploadedFile(file)} style={tinyButtonStyle}>
+                            Preview
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={emptyStateStyle}>No original file attached.</div>
+                )}
+
+                <div
+                  style={{
+                    ...buttonRowStyle,
+                    marginTop: 12,
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => analyzeInboxItem(selected)}
+                    style={goldButtonStyle}
+                  >
+                    {analysis.analyzedAt ? "Analyze Again" : "Analyze Item"}
+                  </button>
+                  {analysis.analyzedAt ? (
+                    <span style={mutedSmallStyle}>
+                      Last analyzed {formatDate(String(analysis.analyzedAt))}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={cardStyle}>
+                <div style={eyebrowStyle}>Atlas Analysis</div>
+                <h3 style={detailTitleStyle}>Review Suggested Information</h3>
+                <p style={mutedSmallStyle}>
+                  Atlas checks the title, notes, pasted text, and file names, then compares them with existing Assets, Vendors, and Work Orders. Nothing is saved anywhere else until you approve it.
+                </p>
+
+                {analysis.analyzedAt ? (
+                  <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+                    {analysisFields.length ? (
+                      <div style={{ ...formGridStyle, alignItems: "stretch" }}>
+                        {analysisFields.map(([label, value]) => (
+                          <div key={String(label)} style={noticeStyle}>
+                            <span style={fieldLabelStyle}>{String(label)}</span>
+                            <strong>{String(value)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={emptyStateStyle}>
+                        No structured fields were detected from the available text yet.
+                      </div>
+                    )}
+
+                    <div style={noticeStyle}>
+                      <div style={eyebrowStyle}>Suggested Match</div>
+                      {suggestedMatch?.name ? (
+                        <>
+                          <h4 style={{ margin: "6px 0" }}>
+                            {suggestedMatch.type}: {suggestedMatch.name}
+                          </h4>
+                          <p style={mutedSmallStyle}>
+                            Confidence: {suggestedMatch.confidence || "Low"}
+                          </p>
+                          {Array.isArray(suggestedMatch.reasons) && suggestedMatch.reasons.length ? (
+                            <p style={mutedSmallStyle}>{suggestedMatch.reasons.join(" · ")}</p>
+                          ) : null}
+                          <div style={buttonRowStyle}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void updateInboxItem(selected.id, {
+                                  targetType: suggestedMatch.type as IntakeTargetKind,
+                                  targetId: suggestedMatch.id || "",
+                                  targetName: suggestedMatch.name || "",
+                                  status: "Needs Review",
+                                })
+                              }
+                              style={secondaryButtonStyle}
+                            >
+                              Use Suggested Match
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openInboxItemInFastIntake(selected)}
+                              style={goldButtonStyle}
+                            >
+                              Review Actions
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <p style={mutedSmallStyle}>
+                          No reliable existing-record match was found. You can still review the item and choose Create Asset, Create Vendor, Create Work Order, or Document Only.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ ...emptyStateStyle, marginTop: 14 }}>
+                    Tap Analyze Item directly below the file preview.
+                  </div>
+                )}
+
+                <div style={{ ...noticeStyle, marginTop: 14 }}>
+                  <strong>Photo/PDF reading is the next backend connection.</strong>
+                  <p style={mutedSmallStyle}>
+                    This screen now keeps the original file, Analyze button, and results together. The current analyzer still uses available text and file names; true image and PDF text extraction requires a secure server API and is not being simulated in the browser.
+                  </p>
+                </div>
+              </div>
+
+              <div style={cardStyle}>
+                <div style={eyebrowStyle}>Review and Edit</div>
                 <div style={formGridStyle}>
                   <Field
                     label="Title"
@@ -12887,126 +13048,6 @@ export default function AtlasPage() {
                     Delete
                   </button>
                 </div>
-              </div>
-
-              <div style={cardStyle}>
-                <div style={eyebrowStyle}>Atlas Analysis</div>
-                <h3 style={detailTitleStyle}>Review Suggested Information</h3>
-                <p style={mutedSmallStyle}>
-                  Atlas analyzes the title, notes, pasted text, and file names, then compares them with existing Assets, Vendors, and Work Orders. Nothing is saved anywhere else until you approve it.
-                </p>
-
-                <div style={buttonRowStyle}>
-                  <button
-                    type="button"
-                    onClick={() => analyzeInboxItem(selected)}
-                    style={goldButtonStyle}
-                  >
-                    {analysis.analyzedAt ? "Analyze Again" : "Analyze Item"}
-                  </button>
-                  {analysis.analyzedAt ? (
-                    <span style={mutedSmallStyle}>
-                      Last analyzed {formatDate(String(analysis.analyzedAt))}
-                    </span>
-                  ) : null}
-                </div>
-
-                {analysis.analyzedAt ? (
-                  <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
-                    {analysisFields.length ? (
-                      <div style={{ ...formGridStyle, alignItems: "stretch" }}>
-                        {analysisFields.map(([label, value]) => (
-                          <div key={String(label)} style={noticeStyle}>
-                            <span style={fieldLabelStyle}>{String(label)}</span>
-                            <strong>{String(value)}</strong>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={emptyStateStyle}>
-                        No structured fields were detected yet. Add pasted text or clearer notes and analyze again.
-                      </div>
-                    )}
-
-                    <div style={noticeStyle}>
-                      <div style={eyebrowStyle}>Suggested Match</div>
-                      {suggestedMatch?.name ? (
-                        <>
-                          <h4 style={{ margin: "6px 0" }}>
-                            {suggestedMatch.type}: {suggestedMatch.name}
-                          </h4>
-                          <p style={mutedSmallStyle}>
-                            Confidence: {suggestedMatch.confidence || "Low"}
-                          </p>
-                          {Array.isArray(suggestedMatch.reasons) && suggestedMatch.reasons.length ? (
-                            <p style={mutedSmallStyle}>{suggestedMatch.reasons.join(" · ")}</p>
-                          ) : null}
-                          <div style={buttonRowStyle}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void updateInboxItem(selected.id, {
-                                  targetType: suggestedMatch.type as IntakeTargetKind,
-                                  targetId: suggestedMatch.id || "",
-                                  targetName: suggestedMatch.name || "",
-                                  status: "Needs Review",
-                                })
-                              }
-                              style={secondaryButtonStyle}
-                            >
-                              Use Suggested Match
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openInboxItemInFastIntake(selected)}
-                              style={goldButtonStyle}
-                            >
-                              Review Actions
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <p style={mutedSmallStyle}>
-                          No reliable existing-record match was found. You can still review the item and choose Create Asset, Create Vendor, Create Work Order, or Document Only.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ ...emptyStateStyle, marginTop: 14 }}>
-                    Tap Analyze Item to extract likely fields and search Atlas for possible matches.
-                  </div>
-                )}
-
-                <div style={{ ...noticeStyle, marginTop: 14 }}>
-                  <strong>Image-reading safeguard</strong>
-                  <p style={mutedSmallStyle}>
-                    This first analyzer uses available text and file names. It does not pretend to read text inside a photo yet. Photo/PDF vision extraction will be connected as the next layer.
-                  </p>
-                </div>
-              </div>
-
-              <div style={cardStyle}>
-                <div style={eyebrowStyle}>Original Files</div>
-                {(selected.files || []).length ? (
-                  <div style={photoGridStyle}>
-                    {(selected.files || []).map((file) => (
-                      <div key={file.id} style={photoCardStyle}>
-                        {file.dataUrl?.startsWith("data:image/") ? (
-                          <img src={file.dataUrl} alt={file.name} style={photoStyle} />
-                        ) : (
-                          <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>
-                        )}
-                        <strong>{file.name}</strong>
-                        <button type="button" onClick={() => openUploadedFile(file)} style={tinyButtonStyle}>
-                          Preview
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={emptyStateStyle}>No original file attached.</div>
-                )}
               </div>
 
               <div style={noticeStyle}>
