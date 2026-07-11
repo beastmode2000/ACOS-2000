@@ -4214,11 +4214,39 @@ export default function AtlasPage() {
     value: string,
     options?: { replaceUrl?: boolean; source?: "scanner" | "manual" | "link" },
   ) {
-    const parsed = parseQrTarget(value);
+    const scannedValue = String(value || "").trim();
+
+    if (scannedValue && typeof window !== "undefined") {
+      try {
+        const scannedUrl = new URL(scannedValue, window.location.origin);
+        const isSafeAtlasUrl =
+          scannedUrl.protocol === "https:" &&
+          scannedUrl.origin === window.location.origin;
+
+        if (isSafeAtlasUrl && !scannedUrl.searchParams.get("qr")) {
+          setLastScannedQr(scannedValue);
+          setScannerStatus("QR code recognized. Opening link...");
+
+          if (options?.source === "scanner") {
+            void stopQrScanner(false).finally(() => {
+              window.location.assign(scannedUrl.toString());
+            });
+          } else {
+            window.location.assign(scannedUrl.toString());
+          }
+
+          return true;
+        }
+      } catch {
+        // Continue to Atlas record parsing below.
+      }
+    }
+
+    const parsed = parseQrTarget(scannedValue);
 
     if (!parsed) {
       setScannerStatus(
-        "That QR is not an Atlas QR code. It should contain a link with ?qr=asset, location, vendor, or map.",
+        "That QR code was read, but it is not a supported Atlas record or secure Atlas link.",
       );
       return false;
     }
