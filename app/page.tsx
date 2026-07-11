@@ -2959,7 +2959,20 @@ function ListDrawerLayout(props: {
   outerStyle?: React.CSSProperties;
   listPanelStyleOverride?: React.CSSProperties;
   drawerStyleOverride?: React.CSSProperties;
+  drawerResetKey?: string | number;
 }) {
+  const drawerScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (drawerScrollRef.current) {
+        drawerScrollRef.current.scrollTop = 0;
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [props.drawerResetKey]);
+
   const desktopOuterStyle: React.CSSProperties = props.isMobile
     ? sectionStyle
     : {
@@ -3054,6 +3067,7 @@ function ListDrawerLayout(props: {
           {props.list}
         </div>
         <div
+          ref={drawerScrollRef}
           style={
             props.drawerStyleOverride
               ? { ...desktopDrawerStyle, ...props.drawerStyleOverride }
@@ -3076,6 +3090,11 @@ export default function AtlasPage() {
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
   );
+  const [saveToast, setSaveToast] = useState<{
+    message: string;
+    tone: "success" | "warning";
+  } | null>(null);
+  const saveToastTimerRef = useRef<number | null>(null);
   const [logoIndex, setLogoIndex] = useState(0);
   const [mapImageOk, setMapImageOk] = useState(true);
 
@@ -3244,6 +3263,14 @@ export default function AtlasPage() {
       window.history.pushState(state, "", nextUrl);
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (saveToastTimerRef.current !== null) {
+        window.clearTimeout(saveToastTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -5004,6 +5031,21 @@ export default function AtlasPage() {
     );
   }
 
+  function showSaveToast(
+    message: string,
+    tone: "success" | "warning" = "success",
+  ) {
+    if (saveToastTimerRef.current !== null) {
+      window.clearTimeout(saveToastTimerRef.current);
+    }
+
+    setSaveToast({ message, tone });
+    saveToastTimerRef.current = window.setTimeout(() => {
+      setSaveToast(null);
+      saveToastTimerRef.current = null;
+    }, 3200);
+  }
+
   async function addAssetPhotoFiles(fileList: FileList | File[] | null) {
     if (!selectedAsset.id || !fileList?.length) return;
 
@@ -5066,10 +5108,19 @@ export default function AtlasPage() {
     );
 
     const syncedCount = syncResults.filter(Boolean).length;
+    const fullySynced = syncedCount === imagePhotos.length;
+
     setDatabaseStatus(
-      syncedCount === imagePhotos.length
+      fullySynced
         ? `Added ${imagePhotos.length} photo${imagePhotos.length === 1 ? "" : "s"} to ${selectedAsset.name}. Existing photos were preserved.`
         : `The new photo is showing in Atlas, but ${imagePhotos.length - syncedCount} image${imagePhotos.length - syncedCount === 1 ? "" : "s"} did not finish syncing. Existing photos were preserved.`,
+    );
+
+    showSaveToast(
+      fullySynced
+        ? `${imagePhotos.length === 1 ? "Photo" : "Photos"} saved to ${selectedAsset.name}.`
+        : `${imagePhotos.length === 1 ? "Photo" : "Photos"} saved on this device; Atlas sync did not finish.`,
+      fullySynced ? "success" : "warning",
     );
   }
 
@@ -5119,9 +5170,14 @@ export default function AtlasPage() {
       setDocumentSyncStatus(
         `${documentType} added to ${recordName} and synced to Atlas.`,
       );
+      showSaveToast(`${documentType} saved to ${recordName}.`);
     } catch {
       setDocumentSyncStatus(
         `${documentType} added to ${recordName} on this browser. Atlas vault sync did not complete.`,
+      );
+      showSaveToast(
+        `${documentType} saved on this device; Atlas sync did not finish.`,
+        "warning",
       );
     }
   }
@@ -6717,6 +6773,9 @@ export default function AtlasPage() {
             ),
           ),
         );
+        showSaveToast(
+          `Photo saved to ${selectedMapLabel.label || "map record"}.`,
+        );
       };
       reader.readAsDataURL(file);
     });
@@ -6755,6 +6814,9 @@ export default function AtlasPage() {
         photos: [...(selectedMapLabel.photos || []), nextPhoto],
         coverPhotoId: nextPhoto.id,
       });
+      showSaveToast(
+        `Main photo saved to ${selectedMapLabel.label || "map record"}.`,
+      );
     };
     reader.readAsDataURL(file);
     event.currentTarget.value = "";
@@ -8155,6 +8217,7 @@ export default function AtlasPage() {
         eyebrow="Property Records"
         title="Assets"
         isMobile={isMobile}
+        drawerResetKey={selectedAssetId}
         right={
           <button type="button" onClick={addAsset} style={goldButtonStyle}>
             Add Asset
@@ -12668,6 +12731,31 @@ export default function AtlasPage() {
 
       {previewFile ? renderFilePreviewOverlay() : null}
 
+      {saveToast ? (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            ...saveToastStyle,
+            bottom: isMobile ? 88 : 24,
+            borderColor:
+              saveToast.tone === "success" ? "#9FD6B8" : "#E7C46A",
+            background:
+              saveToast.tone === "success" ? "#F0FBF5" : "#FFF8E8",
+          }}
+        >
+          <span style={saveToastCheckStyle}>
+            {saveToast.tone === "success" ? "✓" : "!"}
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <strong>
+              {saveToast.tone === "success" ? "Saved" : "Saved locally"}
+            </strong>
+            <p style={saveToastMessageStyle}>{saveToast.message}</p>
+          </div>
+        </div>
+      ) : null}
+
       {isMobile ? (
         <nav style={mobileBottomNavStyle} aria-label="Mobile Atlas navigation">
           {[
@@ -12696,6 +12784,41 @@ export default function AtlasPage() {
     </main>
   );
 }
+
+const saveToastStyle: React.CSSProperties = {
+  position: "fixed",
+  right: 22,
+  zIndex: 260,
+  width: "min(360px, calc(100vw - 32px))",
+  display: "grid",
+  gridTemplateColumns: "34px minmax(0, 1fr)",
+  alignItems: "center",
+  gap: 10,
+  padding: "12px 14px",
+  border: "1px solid #9FD6B8",
+  borderRadius: 14,
+  color: colors.navy,
+  boxShadow: "0 18px 48px rgba(7,27,47,0.22)",
+};
+
+const saveToastCheckStyle: React.CSSProperties = {
+  width: 32,
+  height: 32,
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 999,
+  background: colors.navy,
+  color: "#FFFFFF",
+  fontSize: 16,
+  fontWeight: 950,
+};
+
+const saveToastMessageStyle: React.CSSProperties = {
+  margin: "3px 0 0",
+  color: colors.muted,
+  fontSize: 11,
+  lineHeight: 1.35,
+};
 
 const previewOverlayStyle: React.CSSProperties = {
   position: "fixed",
