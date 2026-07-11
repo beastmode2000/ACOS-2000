@@ -9,6 +9,7 @@ type Screen =
   | "assets"
   | "history"
   | "requests"
+  | "inbox"
   | "vendors"
   | "contacts"
   | "calendar"
