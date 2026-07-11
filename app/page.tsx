@@ -12453,6 +12453,229 @@ export default function AtlasPage() {
     }
   }
 
+  function inboxAnalysisText(value: unknown) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function inboxAnalysisTokens(value: string) {
+    return Array.from(
+      new Set(
+        value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .split(" ")
+          .map((token) => token.trim())
+          .filter((token) => token.length >= 3),
+      ),
+    );
+  }
+
+  function firstInboxMatch(text: string, pattern: RegExp) {
+    const match = text.match(pattern);
+    return match?.[1]?.trim() || "";
+  }
+
+  function analyzeInboxItem(item: InboxItemRecord) {
+    const fileNames = (item.files || []).map((file) => file.name).join("\n");
+    const text = [item.title, item.notes, item.pastedText, fileNames]
+      .filter(Boolean)
+      .join("\n");
+
+    if (!text.trim()) {
+      setInboxMessage("Add a title, notes, pasted text, or a named file before analyzing.");
+      return;
+    }
+
+    const serial = firstInboxMatch(
+      text,
+      /(?:serial(?:\s*(?:number|no\.?))?|s\s*\/\s*n|\bsn\b)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{3,})/i,
+    );
+    const model = firstInboxMatch(
+      text,
+      /(?:model(?:\s*(?:number|no\.?))?|m\s*\/\s*n)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
+    );
+    const invoiceNumber = firstInboxMatch(
+      text,
+      /(?:invoice|inv(?:oice)?)(?:\s*(?:number|no\.?))?\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
+    );
+    const amount = firstInboxMatch(text, /(\$\s?\d[\d,]*(?:\.\d{2})?)/i);
+    const date = firstInboxMatch(
+      text,
+      /\b((?:0?[1-9]|1[0-2])[\/-](?:0?[1-9]|[12]\d|3[01])[\/-](?:19|20)?\d{2})\b/,
+    );
+    const psi = firstInboxMatch(text, /\b(\d+(?:\.\d+)?)\s*psi\b/i);
+    const temperature = firstInboxMatch(
+      text,
+      /\b(\d+(?:\.\d+)?)\s*(?:°\s*)?(?:f|fahrenheit)\b/i,
+    );
+    const ph = firstInboxMatch(text, /\bph\s*[:=]?\s*(\d+(?:\.\d+)?)\b/i);
+    const hours = firstInboxMatch(text, /\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/i);
+
+    const knownManufacturers = [
+      "Viessmann",
+      "Carrier",
+      "Honeywell",
+      "Mitsubishi",
+      "Pentair",
+      "Sundance",
+      "Sunstream",
+      "Bosch",
+      "Electrolux",
+      "Kohler",
+      "Cobalt",
+      "Sea-Doo",
+      "Fisher & Paykel",
+      "Desert Aire",
+      "Hunter",
+      "Hydrawise",
+      "Starlink",
+    ];
+    const manufacturer =
+      knownManufacturers.find((name) =>
+        text.toLowerCase().includes(name.toLowerCase()),
+      ) || "";
+
+    const sourceTokens = inboxAnalysisTokens(text);
+    const normalizedSerial = serial.toLowerCase();
+    const normalizedModel = model.toLowerCase();
+
+    const assetMatches = assetRecords
+      .map((asset) => {
+        const searchable = [
+          asset.name,
+          asset.make,
+          asset.model,
+          asset.serial,
+          asset.category,
+          asset.notes,
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const assetTokens = inboxAnalysisTokens(searchable);
+        let score = sourceTokens.filter((token) => assetTokens.includes(token)).length;
+        const reasons: string[] = [];
+
+        if (normalizedSerial && asset.serial?.toLowerCase() === normalizedSerial) {
+          score += 20;
+          reasons.push("Exact serial number");
+        }
+        if (normalizedModel && asset.model?.toLowerCase().includes(normalizedModel)) {
+          score += 10;
+          reasons.push("Matching model");
+        }
+        if (manufacturer && asset.make?.toLowerCase().includes(manufacturer.toLowerCase())) {
+          score += 6;
+          reasons.push("Matching manufacturer");
+        }
+        if (text.toLowerCase().includes(asset.name.toLowerCase())) {
+          score += 8;
+          reasons.push("Asset name appears in intake");
+        }
+
+        return { asset, score, reasons };
+      })
+      .filter((match) => match.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const vendorMatches = vendorRecords
+      .map((vendor) => {
+        const vendorText = [vendor.name, vendor.category, vendor.notes]
+          .filter(Boolean)
+          .join(" ");
+        const vendorTokens = inboxAnalysisTokens(vendorText);
+        let score = sourceTokens.filter((token) => vendorTokens.includes(token)).length;
+        if (text.toLowerCase().includes(vendor.name.toLowerCase())) score += 10;
+        return { vendor, score };
+      })
+      .filter((match) => match.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const workOrderMatches = serviceRecords
+      .map((workOrder) => {
+        const workOrderText = [workOrder.title, workOrder.notes, workOrder.date]
+          .filter(Boolean)
+          .join(" ");
+        const workOrderTokens = inboxAnalysisTokens(workOrderText);
+        const score = sourceTokens.filter((token) => workOrderTokens.includes(token)).length;
+        return { workOrder, score };
+      })
+      .filter((match) => match.score >= 2)
+      .sort((a, b) => b.score - a.score);
+
+    const bestAsset = assetMatches[0];
+    const bestVendor = vendorMatches[0];
+    const bestWorkOrder = workOrderMatches[0];
+    const bestScore = Math.max(
+      bestAsset?.score || 0,
+      bestVendor?.score || 0,
+      bestWorkOrder?.score || 0,
+    );
+    const confidence = bestScore >= 20 ? "High" : bestScore >= 8 ? "Medium" : bestScore > 0 ? "Low" : "None";
+
+    const suggestedMatch = bestAsset && bestAsset.score === bestScore
+      ? {
+          type: "Asset",
+          id: bestAsset.asset.id,
+          name: bestAsset.asset.name,
+          confidence,
+          reasons: bestAsset.reasons,
+        }
+      : bestVendor && bestVendor.score === bestScore
+        ? {
+            type: "Vendor",
+            id: bestVendor.vendor.id,
+            name: bestVendor.vendor.name,
+            confidence,
+            reasons: ["Vendor name or related terms appear in intake"],
+          }
+        : bestWorkOrder && bestWorkOrder.score === bestScore
+          ? {
+              type: "Work Order",
+              id: bestWorkOrder.workOrder.id,
+              name: bestWorkOrder.workOrder.title,
+              confidence,
+              reasons: ["Related work-order terms appear in intake"],
+            }
+          : null;
+
+    const extractedData: Record<string, unknown> = {
+      analyzedAt: new Date().toISOString(),
+      analyzer: "Atlas local intake analyzer",
+      manufacturer,
+      model,
+      serial,
+      invoiceNumber,
+      amount,
+      date,
+      readings: { psi, temperature, ph, hours },
+      suggestedMatch,
+      candidateAssets: assetMatches.slice(0, 3).map((match) => ({
+        id: match.asset.id,
+        name: match.asset.name,
+        score: match.score,
+      })),
+      candidateVendors: vendorMatches.slice(0, 3).map((match) => ({
+        id: match.vendor.id,
+        name: match.vendor.name,
+        score: match.score,
+      })),
+      candidateWorkOrders: workOrderMatches.slice(0, 3).map((match) => ({
+        id: match.workOrder.id,
+        name: match.workOrder.title,
+        score: match.score,
+      })),
+    };
+
+    setInboxItems((current) =>
+      current.map((entry) =>
+        entry.id === item.id
+          ? { ...entry, extractedData, status: "Analyzed", updatedAt: new Date().toISOString() }
+          : entry,
+      ),
+    );
+    void updateInboxItem(item.id, { extractedData, status: "Analyzed" });
+  }
+
   function openInboxItemInFastIntake(item: InboxItemRecord) {
     setFastIntakeKind(item.intakeType || "Document");
     setFastIntakeSaveMode(item.proposedAction || "Attach to Existing");
@@ -12485,6 +12708,24 @@ export default function AtlasPage() {
 
     const selected =
       inboxItems.find((item) => item.id === selectedInboxId) || filtered[0];
+    const analysis = (selected?.extractedData || {}) as Record<string, unknown>;
+    const suggestedMatch = analysis.suggestedMatch as
+      | { type?: string; id?: string; name?: string; confidence?: string; reasons?: string[] }
+      | null
+      | undefined;
+    const readings = (analysis.readings || {}) as Record<string, unknown>;
+    const analysisFields = [
+      ["Manufacturer", analysis.manufacturer],
+      ["Model", analysis.model],
+      ["Serial", analysis.serial],
+      ["Invoice #", analysis.invoiceNumber],
+      ["Amount", analysis.amount],
+      ["Date", analysis.date],
+      ["PSI", readings.psi],
+      ["Temperature", readings.temperature ? `${String(readings.temperature)}°F` : ""],
+      ["pH", readings.ph],
+      ["Hours", readings.hours],
+    ].filter(([, value]) => typeof value === "string" && value.trim());
 
     return (
       <ListDrawerLayout
@@ -12645,6 +12886,103 @@ export default function AtlasPage() {
                   >
                     Delete
                   </button>
+                </div>
+              </div>
+
+              <div style={cardStyle}>
+                <div style={eyebrowStyle}>Atlas Analysis</div>
+                <h3 style={detailTitleStyle}>Review Suggested Information</h3>
+                <p style={mutedSmallStyle}>
+                  Atlas analyzes the title, notes, pasted text, and file names, then compares them with existing Assets, Vendors, and Work Orders. Nothing is saved anywhere else until you approve it.
+                </p>
+
+                <div style={buttonRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() => analyzeInboxItem(selected)}
+                    style={goldButtonStyle}
+                  >
+                    {analysis.analyzedAt ? "Analyze Again" : "Analyze Item"}
+                  </button>
+                  {analysis.analyzedAt ? (
+                    <span style={mutedSmallStyle}>
+                      Last analyzed {formatDate(String(analysis.analyzedAt))}
+                    </span>
+                  ) : null}
+                </div>
+
+                {analysis.analyzedAt ? (
+                  <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+                    {analysisFields.length ? (
+                      <div style={{ ...formGridStyle, alignItems: "stretch" }}>
+                        {analysisFields.map(([label, value]) => (
+                          <div key={String(label)} style={noticeStyle}>
+                            <span style={fieldLabelStyle}>{String(label)}</span>
+                            <strong>{String(value)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={emptyStateStyle}>
+                        No structured fields were detected yet. Add pasted text or clearer notes and analyze again.
+                      </div>
+                    )}
+
+                    <div style={noticeStyle}>
+                      <div style={eyebrowStyle}>Suggested Match</div>
+                      {suggestedMatch?.name ? (
+                        <>
+                          <h4 style={{ margin: "6px 0" }}>
+                            {suggestedMatch.type}: {suggestedMatch.name}
+                          </h4>
+                          <p style={mutedSmallStyle}>
+                            Confidence: {suggestedMatch.confidence || "Low"}
+                          </p>
+                          {Array.isArray(suggestedMatch.reasons) && suggestedMatch.reasons.length ? (
+                            <p style={mutedSmallStyle}>{suggestedMatch.reasons.join(" · ")}</p>
+                          ) : null}
+                          <div style={buttonRowStyle}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void updateInboxItem(selected.id, {
+                                  targetType: suggestedMatch.type as IntakeTargetKind,
+                                  targetId: suggestedMatch.id || "",
+                                  targetName: suggestedMatch.name || "",
+                                  status: "Needs Review",
+                                })
+                              }
+                              style={secondaryButtonStyle}
+                            >
+                              Use Suggested Match
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openInboxItemInFastIntake(selected)}
+                              style={goldButtonStyle}
+                            >
+                              Review Actions
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <p style={mutedSmallStyle}>
+                          No reliable existing-record match was found. You can still review the item and choose Create Asset, Create Vendor, Create Work Order, or Document Only.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ ...emptyStateStyle, marginTop: 14 }}>
+                    Tap Analyze Item to extract likely fields and search Atlas for possible matches.
+                  </div>
+                )}
+
+                <div style={{ ...noticeStyle, marginTop: 14 }}>
+                  <strong>Image-reading safeguard</strong>
+                  <p style={mutedSmallStyle}>
+                    This first analyzer uses available text and file names. It does not pretend to read text inside a photo yet. Photo/PDF vision extraction will be connected as the next layer.
+                  </p>
                 </div>
               </div>
 
