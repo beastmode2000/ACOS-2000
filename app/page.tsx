@@ -12487,10 +12487,12 @@ export default function AtlasPage() {
       inboxItems.find((item) => item.id === selectedInboxId) || filtered[0];
 
     return (
-      <SplitView
+      <ListDrawerLayout
         eyebrow="Atlas Inbox"
         title="Review Before Anything Changes"
         detail="Photos, screenshots, PDFs, labels, invoices, readings, and notes can wait here until you decide what they should become."
+        isMobile={isMobile}
+        drawerResetKey={selected?.id || "inbox-empty"}
         list={
           <div style={{ display: "grid", gap: 12 }}>
             <div style={cardStyle}>
