@@ -183,6 +183,35 @@ type FastIntakeSaveMode =
   | "Create Vendor"
   | "Document Only";
 
+
+
+type InboxStatus =
+  | "New"
+  | "Analyzed"
+  | "Needs Review"
+  | "Approved"
+  | "Saved"
+  | "Archived"
+  | "Error";
+
+type InboxItemRecord = {
+  id: string;
+  title: string;
+  intakeType: FastIntakeKind;
+  status: InboxStatus;
+  source: string;
+  notes: string;
+  pastedText: string;
+  files: UploadedFileRecord[];
+  targetType: IntakeTargetKind;
+  targetId: string;
+  targetName: string;
+  proposedAction: FastIntakeSaveMode;
+  extractedData: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type DocumentRecord = {
   id: string;
   title: string;
@@ -410,6 +439,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "calendar", label: "Calendar" },
   { id: "weather", label: "Weather" },
   { id: "documents", label: "Documents" },
+  { id: "inbox", label: "Inbox" },
   { id: "manuals", label: "Manuals" },
   { id: "procedures", label: "Procedures" },
   { id: "parts", label: "Parts" },
@@ -3468,6 +3498,10 @@ export default function AtlasPage() {
   const [calculatorResult, setCalculatorResult] = useState("0");
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [intakeDocs, setIntakeDocs] = useState<DocumentRecord[]>([]);
+  const [inboxItems, setInboxItems] = useState<InboxItemRecord[]>([]);
+  const [selectedInboxId, setSelectedInboxId] = useState("");
+  const [inboxMessage, setInboxMessage] = useState("Loading Atlas Inbox...");
+  const [inboxSearch, setInboxSearch] = useState("");
 
   const [manualRecords, setManualRecords] = useState<ManualRecord[]>(defaultManuals);
   const [selectedManualId, setSelectedManualId] = useState("");
@@ -4056,6 +4090,46 @@ export default function AtlasPage() {
     }
 
     void loadRequests();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+
+    let cancelled = false;
+
+    async function loadInbox() {
+      try {
+        const response = await fetch("/api/atlas-inbox", { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok === false) {
+          throw new Error(payload?.error || "Atlas Inbox could not be loaded.");
+        }
+        if (cancelled) return;
+        const next = Array.isArray(payload.items) ? payload.items : [];
+        setInboxItems(next);
+        setSelectedInboxId((current) =>
+          next.some((item: InboxItemRecord) => item.id === current)
+            ? current
+            : next[0]?.id || "",
+        );
+        setInboxMessage(
+          next.length
+            ? `${next.length} Inbox item${next.length === 1 ? "" : "s"} loaded.`
+            : "Atlas Inbox is empty.",
+        );
+      } catch (error) {
+        if (!cancelled) {
+          setInboxMessage(
+            error instanceof Error ? error.message : "Atlas Inbox could not be loaded.",
+          );
+        }
+      }
+    }
+
+    void loadInbox();
     return () => {
       cancelled = true;
     };
@@ -8343,7 +8417,7 @@ export default function AtlasPage() {
               display: "grid",
               gridTemplateColumns: isMobile
                 ? "1fr"
-                : "repeat(3, minmax(0, 1fr))",
+                : "repeat(4, minmax(0, 1fr))",
               gap: 10,
             }}
           >
@@ -8353,6 +8427,13 @@ export default function AtlasPage() {
               style={goldButtonStyle}
             >
               Scan QR Code
+            </button>
+            <button
+              type="button"
+              onClick={() => setScreen("inbox")}
+              style={secondaryButtonStyle}
+            >
+              Atlas Inbox
             </button>
             <button
               type="button"
@@ -12274,6 +12355,334 @@ export default function AtlasPage() {
     );
   }
 
+  async function createInboxItemFromDraft() {
+    if (!intakeFiles.length && !intakePastedText.trim() && !intakeNotes.trim()) {
+      setIntakeMessage("Add a file, pasted text, or notes before saving to the Inbox.");
+      return;
+    }
+
+    const title =
+      intakeTitle.trim() ||
+      fastIntakeRecordName.trim() ||
+      intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") ||
+      intakePastedText.trim().slice(0, 48) ||
+      "Untitled Inbox item";
+
+    setIntakeMessage("Saving to the permanent Atlas Inbox...");
+
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          intakeType: fastIntakeKind,
+          status: "New",
+          source: "Fast Intake",
+          notes: intakeNotes.trim(),
+          pastedText: intakePastedText.trim(),
+          files: intakeFiles,
+          targetType: intakeTargetKind,
+          targetId: intakeTargetKind === "General" ? "" : intakeTargetId,
+          targetName: targetNameFor(intakeTargetKind, intakeTargetId),
+          proposedAction: fastIntakeSaveMode,
+          extractedData: {},
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Inbox save failed.");
+      }
+
+      const saved = payload.item as InboxItemRecord;
+      setInboxItems((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      setSelectedInboxId(saved.id);
+      setIntakeMessage("Saved to Atlas Inbox. Nothing else was changed.");
+      resetIntakeDraft();
+      setScreen("inbox");
+    } catch (error) {
+      setIntakeMessage(error instanceof Error ? error.message : "Inbox save failed.");
+    }
+  }
+
+  async function updateInboxItem(
+    id: string,
+    patch: Partial<InboxItemRecord>,
+  ) {
+    setInboxMessage("Saving Inbox item...");
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Inbox update failed.");
+      }
+      const saved = payload.item as InboxItemRecord;
+      setInboxItems((current) =>
+        current.map((item) => (item.id === saved.id ? saved : item)),
+      );
+      setInboxMessage("Inbox item saved.");
+    } catch (error) {
+      setInboxMessage(error instanceof Error ? error.message : "Inbox update failed.");
+    }
+  }
+
+  async function deleteInboxItem(item: InboxItemRecord) {
+    if (!window.confirm(`Delete \"${item.title}\" from the Atlas Inbox?`)) return;
+
+    setInboxMessage("Deleting Inbox item...");
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Inbox delete failed.");
+      }
+      setInboxItems((current) => current.filter((entry) => entry.id !== item.id));
+      setSelectedInboxId((current) => (current === item.id ? "" : current));
+      setInboxMessage("Inbox item deleted.");
+    } catch (error) {
+      setInboxMessage(error instanceof Error ? error.message : "Inbox delete failed.");
+    }
+  }
+
+  function openInboxItemInFastIntake(item: InboxItemRecord) {
+    setFastIntakeKind(item.intakeType || "Document");
+    setFastIntakeSaveMode(item.proposedAction || "Attach to Existing");
+    setIntakeTitle(item.title || "");
+    setIntakeNotes(item.notes || "");
+    setIntakePastedText(item.pastedText || "");
+    setIntakeFiles(Array.isArray(item.files) ? item.files : []);
+    setIntakeTargetKind(item.targetType || "General");
+    setIntakeTargetId(item.targetId || "");
+    setIntakeMessage("Loaded from Atlas Inbox. Review everything before saving.");
+    void updateInboxItem(item.id, { status: "Needs Review" });
+    setScreen("intake");
+  }
+
+  function renderInbox() {
+    const filtered = inboxItems.filter((item) => {
+      const haystack = [
+        item.title,
+        item.intakeType,
+        item.status,
+        item.source,
+        item.notes,
+        item.pastedText,
+        item.targetName,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(inboxSearch.trim().toLowerCase());
+    });
+
+    const selected =
+      inboxItems.find((item) => item.id === selectedInboxId) || filtered[0];
+
+    return (
+      <SplitView
+        eyebrow="Atlas Inbox"
+        title="Review Before Anything Changes"
+        detail="Photos, screenshots, PDFs, labels, invoices, readings, and notes can wait here until you decide what they should become."
+        list={
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={cardStyle}>
+              <Field
+                label="Search Inbox"
+                value={inboxSearch}
+                onChange={setInboxSearch}
+                placeholder="Title, type, status, notes, destination..."
+              />
+              <div style={buttonRowStyle}>
+                <button type="button" onClick={() => setScreen("intake")} style={goldButtonStyle}>
+                  Add to Inbox
+                </button>
+              </div>
+              <p style={mutedSmallStyle}>{inboxMessage}</p>
+            </div>
+
+            {filtered.length ? (
+              <div style={listStyle}>
+                {filtered.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSelectedInboxId(item.id)}
+                    style={
+                      item.id === selected?.id
+                        ? { ...rowButtonStyle, borderColor: colors.gold, background: "#FFF8E8" }
+                        : rowButtonStyle
+                    }
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <strong>{item.title}</strong>
+                      <p style={mutedSmallStyle}>
+                        {item.intakeType} · {item.status} · {(item.files || []).length} file(s)
+                      </p>
+                    </div>
+                    <span style={mutedSmallStyle}>{formatDate(item.updatedAt || item.createdAt)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={emptyStateStyle}>No Inbox items match this search.</div>
+            )}
+          </div>
+        }
+        drawer={
+          selected ? (
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={cardStyle}>
+                <div style={eyebrowStyle}>Inbox Item</div>
+                <h3 style={detailTitleStyle}>{selected.title}</h3>
+                <p style={mutedSmallStyle}>
+                  {selected.intakeType} · {selected.source || "Manual"} · Created {formatDate(selected.createdAt)}
+                </p>
+
+                <div style={formGridStyle}>
+                  <Field
+                    label="Title"
+                    value={selected.title}
+                    onChange={(value) =>
+                      setInboxItems((current) =>
+                        current.map((item) =>
+                          item.id === selected.id ? { ...item, title: value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Status</span>
+                    <select
+                      value={selected.status}
+                      onChange={(event) =>
+                        void updateInboxItem(selected.id, {
+                          status: event.currentTarget.value as InboxStatus,
+                        })
+                      }
+                      style={inputStyle}
+                    >
+                      {[
+                        "New",
+                        "Analyzed",
+                        "Needs Review",
+                        "Approved",
+                        "Saved",
+                        "Archived",
+                        "Error",
+                      ].map((status) => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <Field
+                    label="Notes"
+                    value={selected.notes}
+                    onChange={(value) =>
+                      setInboxItems((current) =>
+                        current.map((item) =>
+                          item.id === selected.id ? { ...item, notes: value } : item,
+                        ),
+                      )
+                    }
+                    multiline
+                  />
+                  <Field
+                    label="Pasted text"
+                    value={selected.pastedText}
+                    onChange={(value) =>
+                      setInboxItems((current) =>
+                        current.map((item) =>
+                          item.id === selected.id ? { ...item, pastedText: value } : item,
+                        ),
+                      )
+                    }
+                    multiline
+                  />
+                </div>
+
+                <div style={buttonRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void updateInboxItem(selected.id, {
+                        title: selected.title,
+                        notes: selected.notes,
+                        pastedText: selected.pastedText,
+                      })
+                    }
+                    style={secondaryButtonStyle}
+                  >
+                    Save Edits
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openInboxItemInFastIntake(selected)}
+                    style={goldButtonStyle}
+                  >
+                    Review in Fast Intake
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void updateInboxItem(selected.id, { status: "Archived" })}
+                    style={secondaryButtonStyle}
+                  >
+                    Archive
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteInboxItem(selected)}
+                    style={dangerButtonStyle}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              <div style={cardStyle}>
+                <div style={eyebrowStyle}>Original Files</div>
+                {(selected.files || []).length ? (
+                  <div style={photoGridStyle}>
+                    {(selected.files || []).map((file) => (
+                      <div key={file.id} style={photoCardStyle}>
+                        {file.dataUrl?.startsWith("data:image/") ? (
+                          <img src={file.dataUrl} alt={file.name} style={photoStyle} />
+                        ) : (
+                          <div style={fileTileStyle}>{file.type?.includes("pdf") ? "PDF" : "FILE"}</div>
+                        )}
+                        <strong>{file.name}</strong>
+                        <button type="button" onClick={() => openUploadedFile(file)} style={tinyButtonStyle}>
+                          Preview
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={emptyStateStyle}>No original file attached.</div>
+                )}
+              </div>
+
+              <div style={noticeStyle}>
+                <strong>No automatic changes.</strong>
+                <p style={mutedSmallStyle}>
+                  This Inbox item cannot alter Assets, Vendors, Work Orders, Documents, Calendar, or Readings until you open it in Fast Intake and approve the final save.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div style={emptyStateStyle}>Select an Inbox item.</div>
+          )
+        }
+      />
+    );
+  }
+
   function renderIntake() {
     const selectedTargetName = targetNameFor(intakeTargetKind, intakeTargetId);
     const reviewName = fastIntakeRecordName.trim() || intakeTitle.trim() ||
@@ -12288,10 +12697,10 @@ export default function AtlasPage() {
           right={
             <button
               type="button"
-              onClick={() => setScreen("documents")}
+              onClick={() => setScreen("inbox")}
               style={secondaryButtonStyle}
             >
-              Intake History
+              Open Inbox
             </button>
           }
         />
@@ -12641,6 +13050,13 @@ export default function AtlasPage() {
             </div>
 
             <div style={buttonRowStyle}>
+              <button
+                type="button"
+                onClick={() => void createInboxItemFromDraft()}
+                style={goldButtonStyle}
+              >
+                Save to Inbox
+              </button>
               <button
                 type="button"
                 onClick={() => void saveIntakeDocument()}
@@ -14070,6 +14486,7 @@ export default function AtlasPage() {
     else if (screen === "documents") content = renderDocuments();
     else if (screen === "manuals") content = renderManuals();
     else if (screen === "intake") content = renderIntake();
+    else if (screen === "inbox") content = renderInbox();
     else if (screen === "procedures") content = renderProcedures();
     else if (screen === "parts") content = renderParts();
     else if (screen === "links") content = renderWorkLinks();
