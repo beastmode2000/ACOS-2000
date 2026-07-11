@@ -1,2575 +1,853 @@
+import { neon } from "@neondatabase/serverless";
 import { NextRequest, NextResponse } from "next/server";
-import { Pool } from "@neondatabase/serverless";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const runtime = "nodejs";
 
-const MAIN_EMAIL = "nthornton87@yahoo.com";
-const API_VERSION = "atlas-route-photo-and-date-protection-v3";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-type AnyRow = Record<string, unknown>;
+type JsonRecord = Record<string, unknown>;
 
 type AtlasTable =
   | "vendors"
   | "assets"
   | "procedures"
   | "work_orders"
-  | "work_order_templates"
   | "calendar"
+  | "documents"
   | "asset_photos";
 
-const ALLOWED_TABLES: AtlasTable[] = [
-  "vendors",
-  "assets",
-  "procedures",
-  "work_orders",
-  "work_order_templates",
-  "calendar",
-  "asset_photos",
-];
+function getSql() {
+  const connectionString =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.NEON_DATABASE_URL;
 
-const FALLBACK_TABLES: Record<AtlasTable, string[]> = {
-  vendors: ["vendors"],
-  assets: ["assets"],
-  procedures: ["procedures"],
-  work_orders: [
-    "atlas_work_orders",
-    "work_orders",
-    "workorders",
-    "service_records",
-    "services",
-  ],
-  work_order_templates: ["work_order_templates"],
-  calendar: ["atlas_calendar_items", "calendar", "calendar_items"],
-  asset_photos: ["asset_photos", "photos"],
-};
-
-const LOCATION_ID_BY_NAME: Record<string, string> = {
-  general: "general",
-  "2000": "general",
-  "main house": "main-house",
-  "mechanical room": "mechanical-room",
-  "mechanical room 2": "mechanical-room",
-  "formal dining room": "main-house",
-  "wine room": "wine-room",
-  "fitness room": "fitness-room",
-  kitchen: "kitchen",
-  pantry: "pantry",
-  pool: "indoor-pool",
-  "indoor pool": "indoor-pool",
-  "pool equipment room": "pool-equipment",
-  "back patio (water side)": "standalone-spa",
-  "upstairs laundry closet": "upstairs-laundry",
-  "pool changing room": "pool-changing-room",
-  "house managers office": "house-office",
-  "house manager office": "house-office",
-  "west side of house": "exterior",
-  attic: "main-house",
-  "attic 2": "main-house",
-  "outdoor condenser area": "exterior",
-  "outdoor generator area": "lower-generator-area",
-  "vegetable garden": "irrigation",
-  garage: "garage",
-  "garage (new)": "garage",
-  "garage (old)": "old-garage",
-  "old garage": "old-garage",
-  roof: "roof-gutters",
-  hangar: "hangar",
-  dock: "dock",
-  "gulfstream g600 n23pa": "gulfstream-g600-n23pa",
-  "gulfstream g280 n280cc": "gulfstream-g280-n280cc",
-  "gulfstream g280 n755pa": "gulfstream-g280-n755pa",
-  "pilatus pc12 n126al": "pilatus-pc12-n126al",
-};
-
-const LOCATION_NAME_BY_ID: Record<string, string> = {
-  general: "General",
-  "main-house": "Main House",
-  "mechanical-room": "Mechanical Room",
-  kitchen: "Kitchen",
-  pantry: "Pantry",
-  "wine-room": "Wine Room",
-  "upstairs-laundry": "Upstairs Laundry Closet",
-  "pool-changing-room": "Pool Changing Room",
-  "fitness-room": "Fitness Room",
-  "house-office": "House Managers Office",
-  "indoor-pool": "Pool",
-  "pool-equipment": "Pool Equipment Room",
-  "standalone-spa": "Standalone Spa",
-  dock: "Dock",
-  garage: "Garage",
-  "old-garage": "Old Garage",
-  exterior: "Exterior",
-  "roof-gutters": "Roof / Gutters",
-  irrigation: "Irrigation",
-  "lower-generator-area": "Lower Generator Area",
-  hangar: "Hangar",
-  "gulfstream-g600-n23pa": "Gulfstream G600 N23PA",
-  "gulfstream-g280-n280cc": "Gulfstream G280 N280CC",
-  "gulfstream-g280-n755pa": "Gulfstream G280 N755PA",
-  "pilatus-pc12-n126al": "Pilatus PC12 N126AL",
-};
-
-const NULLABLE_DATE_COLUMNS = new Set([
-  "date",
-  "work_date",
-  "scheduled_date",
-  "due_date",
-  "calendar_date",
-  "follow_up_date",
-  "followUpDate",
-  "recurrence_next_due",
-  "recurrence_end_date",
-  "invoice_date",
-  "approved_date",
-]);
-
-function jsonResponse(body: unknown, status = 200) {
-  return NextResponse.json(body, {
-    status,
-    headers: {
-      "Cache-Control":
-        "no-store, no-cache, must-revalidate, proxy-revalidate",
-      Pragma: "no-cache",
-      Expires: "0",
-    },
-  });
-}
-
-async function queryRows<T extends AnyRow = AnyRow>(
-  query: string,
-  params: unknown[] = [],
-): Promise<T[]> {
-  const result = await pool.query(query, params);
-  return result.rows as T[];
-}
-
-function text(value: unknown, fallback = "") {
-  if (value === null || value === undefined) return fallback;
-  return String(value);
-}
-
-function firstText(...values: unknown[]) {
-  for (const value of values) {
-    const clean = text(value).trim();
-
-    if (clean) {
-      return clean;
-    }
+  if (!connectionString) {
+    throw new Error("Missing DATABASE_URL");
   }
 
-  return "";
+  return neon(connectionString);
 }
 
-function bool(value: unknown, fallback = false) {
-  if (value === null || value === undefined || value === "") {
-    return fallback;
-  }
-
-  if (typeof value === "boolean") {
-    return value;
-  }
-
-  const clean = String(value).trim().toLowerCase();
-
-  if (["true", "t", "yes", "y", "1", "on"].includes(clean)) {
-    return true;
-  }
-
-  if (["false", "f", "no", "n", "0", "off"].includes(clean)) {
-    return false;
-  }
-
-  return fallback;
+function asString(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim();
 }
 
-function intValue(value: unknown, fallback = 0) {
-  const parsed = Number.parseInt(text(value), 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
+function nullableString(value: unknown) {
+  const text = asString(value);
+  if (!text) return null;
+  return text;
 }
 
-function numberText(value: unknown) {
-  const clean = text(value).trim();
-  return clean ? clean.replace(/[$,]/g, "") : "";
+function asDate(value: unknown) {
+  const text = asString(value);
+  if (!text) return null;
+  return text;
 }
 
-function dateText(value: unknown, fallback = "") {
-  const clean = text(value).trim();
-  return clean ? clean.slice(0, 10) : fallback;
+function asStatus(value: unknown, fallback: string) {
+  const text = asString(value);
+  if (!text) return fallback;
+  return text;
 }
 
-function arr<T = unknown>(value: unknown): T[] {
+function asBoolean(value: unknown) {
+  return value === true || value === "true" || value === 1;
+}
+
+function asPositiveInteger(value: unknown, fallback = 1) {
+  const parsed = Math.floor(Number(value));
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return parsed;
+}
+
+function asArray(value: unknown) {
+  if (Array.isArray(value)) return value;
+  return [];
+}
+
+function asStringArray(value: unknown) {
   if (Array.isArray(value)) {
-    return value as T[];
+    return value.map(function (item) {
+      return String(item);
+    });
   }
 
-  if (value === null || value === undefined || value === "") {
-    return [];
-  }
-
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-
-      return Array.isArray(parsed) ? (parsed as T[]) : [];
-    } catch {
-      return [];
-    }
+  if (
+    typeof value === "string" &&
+    value.startsWith("{") &&
+    value.endsWith("}")
+  ) {
+    return value
+      .slice(1, -1)
+      .split(",")
+      .map(function (item) {
+        return item.replace(/^"|"$/g, "").trim();
+      })
+      .filter(Boolean);
   }
 
   return [];
 }
 
-function nestedRecord(row: AnyRow) {
-  const nested = row.record;
-
-  return nested && typeof nested === "object"
-    ? (nested as AnyRow)
-    : ({} as AnyRow);
-}
-
-function mergedRow(row: AnyRow) {
-  return {
-    ...nestedRecord(row),
-    ...row,
-  };
-}
-
-function assetStatus(value: unknown) {
-  const clean = text(value, "Monitor").trim().toLowerCase();
-
-  if (clean === "online") return "Online";
-  if (clean === "offline") return "Offline";
-  if (clean === "seasonal") return "Seasonal";
-
-  return "Monitor";
-}
-
-function serviceStatus(value: unknown) {
-  const clean = text(value, "Open").trim().toLowerCase();
-
-  if (clean === "scheduled") {
-    return "Scheduled";
+function jsonArray(value: unknown) {
+  if (Array.isArray(value)) {
+    return JSON.stringify(value);
   }
 
-  if (["completed", "complete", "done"].includes(clean)) {
-    return "Completed";
-  }
-
-  if (clean === "monitor") {
-    return "Monitor";
-  }
-
-  return "Open";
+  return "[]";
 }
 
-function priority(value: unknown) {
-  const clean = text(value, "Normal").trim().toLowerCase();
-
-  if (clean === "high") return "High";
-  if (clean === "seasonal") return "Seasonal";
-
-  return "Normal";
-}
-
-function workOrderPriority(value: unknown) {
-  const clean = text(value, "Medium").trim().toLowerCase();
-
-  if (clean === "high") return "High";
-  if (clean === "low") return "Low";
-
-  return "Medium";
-}
-
-function normalizeId(value: unknown, prefix: string) {
-  const raw = text(value).trim();
-
+function makeId(prefix: string) {
   return (
-    raw ||
-    `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    prefix +
+    "-" +
+    Date.now().toString() +
+    "-" +
+    Math.random().toString(16).slice(2)
   );
 }
 
-function quoteIdentifier(value: string) {
-  return `"${value.replace(/"/g, '""')}"`;
+function getId(record: JsonRecord, prefix: string) {
+  const existingId = asString(record.id);
+  if (existingId) return existingId;
+  return makeId(prefix);
 }
 
-function locationIdFromRecord(input: AnyRow) {
-  const row = mergedRow(input);
-  const savedFrontendId = text(row.locationId).trim();
+function cleanTable(value: unknown): AtlasTable | "" {
+  const table = asString(value);
 
-  if (savedFrontendId && LOCATION_NAME_BY_ID[savedFrontendId]) {
-    return savedFrontendId;
-  }
+  if (table === "vendors") return "vendors";
+  if (table === "assets") return "assets";
+  if (table === "procedures") return "procedures";
+  if (table === "work_orders") return "work_orders";
+  if (table === "calendar") return "calendar";
+  if (table === "documents") return "documents";
+  if (table === "asset_photos") return "asset_photos";
 
-  const directLocationId = text(row.location_id).trim();
-
-  if (directLocationId && LOCATION_NAME_BY_ID[directLocationId]) {
-    return directLocationId;
-  }
-
-  const locationName = firstText(
-    row.location_name,
-    row.locationName,
-    row.location,
-  )
-    .trim()
-    .toLowerCase();
-
-  return LOCATION_ID_BY_NAME[locationName] || "general";
+  return "";
 }
 
-function locationNameFromFrontendId(frontendLocationId: unknown) {
-  const id = text(frontendLocationId, "general").trim();
-  return LOCATION_NAME_BY_ID[id] || "General";
+async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS priority text NOT NULL DEFAULT 'Medium'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS recurring boolean NOT NULL DEFAULT false
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS recurrence_interval integer NOT NULL DEFAULT 1
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS recurrence_unit text NOT NULL DEFAULT 'Weeks'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS recurrence_end_date date
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS season text NOT NULL DEFAULT 'Year-Round'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS last_completed_date date
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS completion_history jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
 }
 
-async function tableExists(table: string) {
-  const rows = await queryRows<{ exists: boolean }>(
-    `
-      SELECT EXISTS (
-        SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_name = $1
-      ) AS exists
-    `,
-    [table],
-  );
-
-  return Boolean(rows[0]?.exists);
-}
-
-async function resolveTable(table: AtlasTable) {
-  for (const candidate of FALLBACK_TABLES[table]) {
-    if (await tableExists(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
-async function getColumns(table: string) {
-  const rows = await queryRows<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = $1
-    `,
-    [table],
-  );
-
-  return new Set(rows.map((row) => row.column_name));
-}
-
-function hasUserColumn(columns: Set<string>) {
-  if (columns.has("userId")) return "userId";
-  if (columns.has("user_id")) return "user_id";
-
-  return null;
-}
-
-async function getTargetUserId() {
-  const assetsTable = await resolveTable("assets");
-
-  if (assetsTable) {
-    const columns = await getColumns(assetsTable);
-    const userColumn = hasUserColumn(columns);
-
-    if (userColumn) {
-      const rows = await queryRows<{ user_id_value: string }>(
-        `
-          SELECT ${quoteIdentifier(userColumn)}::text AS user_id_value
-          FROM ${quoteIdentifier(assetsTable)}
-          WHERE ${quoteIdentifier(userColumn)} IS NOT NULL
-          GROUP BY ${quoteIdentifier(userColumn)}
-          ORDER BY COUNT(*) DESC
-          LIMIT 1
-        `,
-      );
-
-      if (rows[0]?.user_id_value) {
-        return String(rows[0].user_id_value);
-      }
-    }
-  }
-
-  if (await tableExists("user")) {
-    const rows = await queryRows<{ id: string }>(
-      `
-        SELECT id
-        FROM "user"
-        WHERE lower(email) = lower($1)
-        LIMIT 1
-      `,
-      [MAIN_EMAIL],
-    );
-
-    if (rows[0]?.id) {
-      return String(rows[0].id);
-    }
-  }
-
-  return "atlas-master";
-}
-
-async function getOrCreateLocationId(
-  userId: string,
-  frontendLocationId: unknown,
-) {
-  if (!(await tableExists("locations"))) {
-    return null;
-  }
-
-  const locationName =
-    locationNameFromFrontendId(frontendLocationId);
-
-  const columns = await getColumns("locations");
-  const userColumn = hasUserColumn(columns);
-
-  if (userColumn) {
-    const existing = await queryRows<{ id: unknown }>(
-      `
-        SELECT id
-        FROM locations
-        WHERE ${quoteIdentifier(userColumn)} = $1
-          AND lower(trim(name)) = lower(trim($2))
-        LIMIT 1
-      `,
-      [userId, locationName],
-    );
-
-    if (
-      existing[0]?.id !== undefined &&
-      existing[0]?.id !== null
-    ) {
-      return existing[0].id;
-    }
-
-    const created = await queryRows<{ id: unknown }>(
-      `
-        INSERT INTO locations (
-          ${quoteIdentifier(userColumn)},
-          name
-        )
-        VALUES ($1, $2)
-        RETURNING id
-      `,
-      [userId, locationName],
-    );
-
-    return created[0]?.id ?? null;
-  }
-
-  const existing = await queryRows<{ id: unknown }>(
-    `
-      SELECT id
-      FROM locations
-      WHERE lower(trim(name)) = lower(trim($1))
-      LIMIT 1
-    `,
-    [locationName],
-  );
-
-  if (
-    existing[0]?.id !== undefined &&
-    existing[0]?.id !== null
-  ) {
-    return existing[0].id;
-  }
-
-  const created = await queryRows<{ id: unknown }>(
-    `
-      INSERT INTO locations (name)
-      VALUES ($1)
-      RETURNING id
-    `,
-    [locationName],
-  );
-
-  return created[0]?.id ?? null;
-}
-
-async function queryTable(
-  table: AtlasTable,
-  userId: string,
-  orderColumn: string,
-) {
-  const actualTable = await resolveTable(table);
-
-  if (!actualTable) {
-    return [];
-  }
-
-  const columns = await getColumns(actualTable);
-  const userColumn = hasUserColumn(columns);
-
-  const orderBy = columns.has(orderColumn)
-    ? `ORDER BY lower(${quoteIdentifier(orderColumn)}::text)`
-    : "ORDER BY id";
-
-  if (userColumn) {
-    return queryRows(
-      `
-        SELECT *
-        FROM ${quoteIdentifier(actualTable)}
-        WHERE ${quoteIdentifier(userColumn)} = $1
-           OR ${quoteIdentifier(userColumn)} IS NULL
-        ${orderBy}
-      `,
-      [userId],
-    );
-  }
-
-  return queryRows(
-    `
-      SELECT *
-      FROM ${quoteIdentifier(actualTable)}
-      ${orderBy}
-    `,
-  );
-}
-
-async function queryAssets(userId: string) {
-  const actualTable = await resolveTable("assets");
-
-  if (!actualTable) {
-    return [];
-  }
-
-  const columns = await getColumns(actualTable);
-  const userColumn = hasUserColumn(columns);
-
-  const orderBy = columns.has("name")
-    ? "ORDER BY lower(name::text)"
-    : "ORDER BY id";
-
-  if (userColumn) {
-    return queryRows(
-      `
-        SELECT *
-        FROM ${quoteIdentifier(actualTable)}
-        WHERE ${quoteIdentifier(userColumn)} = $1
-           OR ${quoteIdentifier(userColumn)} IS NULL
-        ${orderBy}
-      `,
-      [userId],
-    );
-  }
-
-  return queryRows(
-    `
-      SELECT *
-      FROM ${quoteIdentifier(actualTable)}
-      ${orderBy}
-    `,
-  );
-}
-
-async function queryWorkOrders(userId: string) {
-  const actualTable = await resolveTable("work_orders");
-
-  if (!actualTable) {
-    return [];
-  }
-
-  const columns = await getColumns(actualTable);
-  const userColumn = hasUserColumn(columns);
-
-  const dateColumn = columns.has("work_date")
-    ? "work_date"
-    : columns.has("date")
-      ? "date"
-      : columns.has("scheduled_date")
-        ? "scheduled_date"
-        : columns.has("due_date")
-          ? "due_date"
-          : "";
-
-  const titleColumn = columns.has("title") ? "title" : "";
-
-  const orderBy =
-    dateColumn && titleColumn
-      ? `ORDER BY ${quoteIdentifier(
-          dateColumn,
-        )} DESC NULLS LAST, lower(${quoteIdentifier(
-          titleColumn,
-        )}::text)`
-      : dateColumn
-        ? `ORDER BY ${quoteIdentifier(
-            dateColumn,
-          )} DESC NULLS LAST`
-        : titleColumn
-          ? `ORDER BY lower(${quoteIdentifier(
-              titleColumn,
-            )}::text)`
-          : "ORDER BY id";
-
-  if (userColumn) {
-    return queryRows(
-      `
-        SELECT *
-        FROM ${quoteIdentifier(actualTable)}
-        WHERE ${quoteIdentifier(userColumn)} = $1
-           OR ${quoteIdentifier(userColumn)} IS NULL
-        ${orderBy}
-      `,
-      [userId],
-    );
-  }
-
-  return queryRows(
-    `
-      SELECT *
-      FROM ${quoteIdentifier(actualTable)}
-      ${orderBy}
-    `,
-  );
-}
-
-function mapVendor(input: AnyRow) {
-  const row = mergedRow(input);
-
+function mapLocation(row: JsonRecord) {
   return {
-    id: normalizeId(row.id, "vendor"),
-    name: text(row.name, "Unnamed Vendor"),
-    category: text(row.category, "General"),
-    phone: text(row.phone),
-    email: text(row.email),
-    website: text(row.website),
-    notes: text(row.notes, "No notes added yet."),
-    logoDataUrl: firstText(
-      row.logoDataUrl,
-      row.logo_data_url,
-    ),
-    documents: arr(row.documents),
+    id: String(row.id || ""),
+    name: String(row.name || ""),
+    type: String(row.type || ""),
+    zone: String(row.zone || ""),
+    notes: String(row.notes || ""),
+    sort_order: Number(row.sort_order || 0),
   };
 }
 
-function mapAsset(input: AnyRow) {
-  const row = mergedRow(input);
-
+function mapVendor(row: JsonRecord) {
   return {
-    id: normalizeId(row.id, "asset"),
-    name: text(row.name, "Unnamed Asset"),
-    locationId: locationIdFromRecord(row),
-    category: text(row.category, "General"),
-    status: assetStatus(row.status),
-    make: firstText(row.make, row.manufacturer),
-    model: text(row.model),
-    serial: firstText(row.serial, row.serial_number),
-    notes:
-      firstText(row.notes, row.description) ||
-      "No notes added yet.",
-    vendorIds: arr(
-      row.vendorIds ??
-        row.vendor_ids ??
-        row.vendorids,
-    ),
-    documents: arr(row.documents),
+    id: String(row.id || ""),
+    name: String(row.name || ""),
+    category: String(row.category || ""),
+    phone: row.phone ? String(row.phone) : "",
+    email: row.email ? String(row.email) : "",
+    website: row.website ? String(row.website) : "",
+    notes: String(row.notes || ""),
+    logoDataUrl: row.logo_data_url ? String(row.logo_data_url) : "",
+    documents: asArray(row.documents),
   };
 }
 
-function mapProcedure(input: AnyRow) {
-  const row = mergedRow(input);
-  const steps = arr<string>(row.steps);
-
+function mapAsset(row: JsonRecord) {
   return {
-    id: normalizeId(row.id, "procedure"),
-    title: text(row.title, "Untitled Procedure"),
-    area: text(row.area, "General"),
-    priority: priority(row.priority),
-    steps: steps.length ? steps : [""],
+    id: String(row.id || ""),
+    name: String(row.name || ""),
+    locationId: String(row.location_id || "general"),
+    category: String(row.category || ""),
+    status: String(row.status || "Monitor"),
+    make: row.make ? String(row.make) : "",
+    model: row.model ? String(row.model) : "",
+    serial: row.serial ? String(row.serial) : "",
+    notes: String(row.notes || ""),
+    vendorIds: asStringArray(row.vendor_ids),
+    documents: asArray(row.documents),
   };
 }
 
-function mapWorkOrder(input: AnyRow) {
-  const row = mergedRow(input);
-
+function mapProcedure(row: JsonRecord) {
   return {
-    id: normalizeId(row.id, "service"),
+    id: String(row.id || ""),
+    title: String(row.title || ""),
+    area: String(row.area || ""),
+    priority: String(row.priority || "Normal"),
+    steps: asStringArray(row.steps),
+  };
+}
 
-    assetId: firstText(
-      row.assetId,
-      row.asset_id,
-    ),
-
-    vendorId: firstText(
-      row.vendorId,
-      row.vendor_id,
-    ),
-
-    procedureId: firstText(
-      row.procedureId,
-      row.procedure_id,
-    ),
-
-    date: dateText(
-      firstText(
-        row.date,
-        row.work_date,
-        row.scheduled_date,
-        row.due_date,
-      ),
-      new Date().toISOString().slice(0, 10),
-    ),
-
-    title: text(
-      row.title,
-      "Untitled Work Order",
-    ),
-
-    status: serviceStatus(row.status),
-
-    priority: workOrderPriority(
-      row.priority,
-    ),
-
-    notes: text(
-      row.notes,
-      "No notes added yet.",
-    ),
-
-    followUpDate: dateText(
-      firstText(
-        row.followUpDate,
-        row.follow_up_date,
-      ),
-    ),
-
-    photos: arr(row.photos),
-    documents: arr(row.documents),
-
-    isRecurring: bool(
-      row.isRecurring ??
-        row.is_recurring,
-    ),
-
-    recurrenceFrequency: firstText(
-      row.recurrenceFrequency,
-      row.recurrence_frequency,
-    ),
-
-    recurrenceInterval: intValue(
-      row.recurrenceInterval ??
-        row.recurrence_interval,
+function mapWorkOrder(row: JsonRecord) {
+  return {
+    id: String(row.id || ""),
+    assetId: String(row.asset_id || ""),
+    vendorId: row.vendor_id ? String(row.vendor_id) : "",
+    procedureId: row.procedure_id ? String(row.procedure_id) : "",
+    date: row.date ? String(row.date).slice(0, 10) : "",
+    title: String(row.title || ""),
+    status: String(row.status || "Open"),
+    priority: String(row.priority || "Medium"),
+    notes: String(row.notes || ""),
+    followUpDate: row.follow_up_date
+      ? String(row.follow_up_date).slice(0, 10)
+      : "",
+    recurring: Boolean(row.recurring),
+    recurrenceInterval: Math.max(
       1,
+      Number(row.recurrence_interval || 1),
     ),
-
-    recurrenceDays: firstText(
-      row.recurrenceDays,
-      row.recurrence_days,
-    ),
-
-    recurrenceNextDue: dateText(
-      firstText(
-        row.recurrenceNextDue,
-        row.recurrence_next_due,
-      ),
-    ),
-
-    recurrenceEndType:
-      firstText(
-        row.recurrenceEndType,
-        row.recurrence_end_type,
-      ) || "never",
-
-    recurrenceEndDate: dateText(
-      firstText(
-        row.recurrenceEndDate,
-        row.recurrence_end_date,
-      ),
-    ),
-
-    recurrenceCountLimit: firstText(
-      row.recurrenceCountLimit,
-      row.recurrence_count_limit,
-    ),
-
-    recurrenceCompletedCount: intValue(
-      row.recurrenceCompletedCount ??
-        row.recurrence_completed_count,
-      0,
-    ),
-
-    recurrenceStatus:
-      firstText(
-        row.recurrenceStatus,
-        row.recurrence_status,
-      ) ||
-      (bool(
-        row.isRecurring ??
-          row.is_recurring,
-      )
-        ? "active"
-        : "inactive"),
-
-    parentWorkOrderId: firstText(
-      row.parentWorkOrderId,
-      row.parent_work_order_id,
-    ),
-
-    invoiceNumber: firstText(
-      row.invoiceNumber,
-      row.invoice_number,
-    ),
-
-    invoiceDate: dateText(
-      firstText(
-        row.invoiceDate,
-        row.invoice_date,
-      ),
-    ),
-
-    invoiceAmount: firstText(
-      row.invoiceAmount,
-      row.invoice_amount,
-    ),
-
-    invoiceStatus:
-      firstText(
-        row.invoiceStatus,
-        row.invoice_status,
-      ) || "not added",
-
-    paymentStatus:
-      firstText(
-        row.paymentStatus,
-        row.payment_status,
-      ) || "unknown",
-
-    costCategory: firstText(
-      row.costCategory,
-      row.cost_category,
-    ),
-
-    approvedBy: firstText(
-      row.approvedBy,
-      row.approved_by,
-    ),
-
-    approvedDate: dateText(
-      firstText(
-        row.approvedDate,
-        row.approved_date,
-      ),
-    ),
-
-    costNotes: firstText(
-      row.costNotes,
-      row.cost_notes,
-    ),
-
-    invoiceDocumentIds: firstText(
-      row.invoiceDocumentIds,
-      row.invoice_document_ids,
-    ),
+    recurrenceUnit: String(row.recurrence_unit || "Weeks"),
+    recurrenceEndDate: row.recurrence_end_date
+      ? String(row.recurrence_end_date).slice(0, 10)
+      : "",
+    season: String(row.season || "Year-Round"),
+    lastCompletedDate: row.last_completed_date
+      ? String(row.last_completed_date).slice(0, 10)
+      : "",
+    completionHistory: asArray(row.completion_history).map(String),
+    photos: asArray(row.photos),
+    documents: asArray(row.documents),
   };
 }
 
-function mapWorkOrderTemplate(input: AnyRow) {
-  const row = mergedRow(input);
-
-  const isRecurring = bool(
-    row.isRecurring ??
-      row.is_recurring,
-  );
-
+function mapCalendarItem(row: JsonRecord) {
   return {
-    id: normalizeId(
-      row.id,
-      "work-order-template",
-    ),
-
-    title:
-      firstText(row.title, row.name) ||
-      "Untitled Template",
-
-    name:
-      firstText(row.name, row.title) ||
-      "Untitled Template",
-
-    assetId: firstText(
-      row.assetId,
-      row.asset_id,
-    ),
-
-    vendorId: firstText(
-      row.vendorId,
-      row.vendor_id,
-    ),
-
-    procedureId: firstText(
-      row.procedureId,
-      row.procedure_id,
-    ),
-
-    priority: workOrderPriority(
-      row.priority,
-    ),
-
-    notes: text(row.notes),
-    isRecurring,
-
-    recurrenceFrequency: firstText(
-      row.recurrenceFrequency,
-      row.recurrence_frequency,
-    ),
-
-    recurrenceInterval: intValue(
-      row.recurrenceInterval ??
-        row.recurrence_interval,
-      1,
-    ),
-
-    recurrenceDays: firstText(
-      row.recurrenceDays,
-      row.recurrence_days,
-    ),
-
-    recurrenceNextDue: dateText(
-      firstText(
-        row.recurrenceNextDue,
-        row.recurrence_next_due,
-      ),
-    ),
-
-    recurrenceEndType:
-      firstText(
-        row.recurrenceEndType,
-        row.recurrence_end_type,
-      ) || "never",
-
-    recurrenceEndDate: dateText(
-      firstText(
-        row.recurrenceEndDate,
-        row.recurrence_end_date,
-      ),
-    ),
-
-    recurrenceCountLimit: firstText(
-      row.recurrenceCountLimit,
-      row.recurrence_count_limit,
-    ),
-
-    recurrenceCompletedCount: intValue(
-      row.recurrenceCompletedCount ??
-        row.recurrence_completed_count,
-      0,
-    ),
-
-    recurrenceStatus:
-      firstText(
-        row.recurrenceStatus,
-        row.recurrence_status,
-      ) ||
-      (isRecurring
-        ? "active"
-        : "inactive"),
+    id: String(row.id || ""),
+    date: row.date ? String(row.date).slice(0, 10) : "",
+    title: String(row.title || ""),
+    area: String(row.area || ""),
+    status: String(row.status || "Scheduled"),
   };
 }
 
-function mapCalendar(input: AnyRow) {
-  const row = mergedRow(input);
-
+function mapDocument(row: JsonRecord) {
   return {
-    id: normalizeId(row.id, "calendar"),
-
-    date: dateText(
-      firstText(
-        row.date,
-        row.calendar_date,
-        row.scheduled_date,
-      ),
-      new Date().toISOString().slice(0, 10),
-    ),
-
-    time: firstText(
-      row.time,
-      row.event_time,
-    ),
-
-    title: text(
-      row.title,
-      "Untitled Calendar Item",
-    ),
-
-    area: text(row.area, "General"),
-
-    categoryLabel: firstText(
-      row.categoryLabel,
-      row.category_label,
-    ),
-
-    colorId: firstText(
-      row.colorId,
-      row.color_id,
-    ),
-
-    colorName: firstText(
-      row.colorName,
-      row.color_name,
-    ),
-
-    allDay: bool(
-      row.allDay ??
-        row.all_day,
-    ),
-
-    repeat:
-      firstText(
-        row.repeat,
-        row.repeat_type,
-      ) || "None",
-
-    reminder:
-      firstText(row.reminder) ||
-      "None",
-
-    notes: text(row.notes),
-
-    linkedType:
-      firstText(
-        row.linkedType,
-        row.linked_type,
-      ) || "None",
-
-    linkedId: firstText(
-      row.linkedId,
-      row.linked_id,
-    ),
-
-    linkedName: firstText(
-      row.linkedName,
-      row.linked_name,
-    ),
-
-    completed: bool(row.completed),
-
-    source:
-      firstText(row.source) ||
-      "manual",
-
-    originalId: firstText(
-      row.originalId,
-      row.original_id,
-    ),
-
-    instanceId: firstText(
-      row.instanceId,
-      row.instance_id,
-    ),
-
-    status: serviceStatus(row.status),
+    id: String(row.id || ""),
+    title: String(row.title || ""),
+    area: String(row.area || ""),
+    type: String(row.type || ""),
+    linkedAssetId: row.linked_asset_id
+      ? String(row.linked_asset_id)
+      : "",
+    notes: String(row.notes || ""),
   };
 }
 
-function mapPhoto(input: AnyRow) {
-  const row = mergedRow(input);
-
+function mapPhoto(row: JsonRecord) {
   return {
-    id: normalizeId(row.id, "photo"),
-
-    assetId: firstText(
-      row.assetId,
-      row.asset_id,
-    ),
-
-    name: text(row.name, "Photo"),
-
-    dataUrl: firstText(
-      row.dataUrl,
-      row.data_url,
-    ),
-
-    url: firstText(
-      row.url,
-      row.fileUrl,
-      row.file_url,
-    ),
-
-    createdAt:
-      firstText(
-        row.createdAt,
-        row.created_at,
-      ) ||
-      new Date().toISOString(),
+    id: String(row.id || ""),
+    assetId: String(row.asset_id || ""),
+    name: String(row.name || ""),
+    dataUrl: String(row.data_url || ""),
+    createdAt: row.created_at
+      ? String(row.created_at)
+      : new Date().toISOString(),
   };
-}
-
-async function buildPayload(
-  table: AtlasTable,
-  record: AnyRow,
-  userId: string,
-) {
-  const actualTable =
-    await resolveTable(table);
-
-  if (!actualTable) {
-    throw new Error(
-      `Missing database table for ${table}`,
-    );
-  }
-
-  const columns =
-    await getColumns(actualTable);
-
-  const payload: AnyRow = {};
-
-  const userColumn =
-    hasUserColumn(columns);
-
-  function set(
-    column: string,
-    value: unknown,
-  ) {
-    if (!columns.has(column)) {
-      return;
-    }
-
-    if (
-      NULLABLE_DATE_COLUMNS.has(column) &&
-      typeof value === "string" &&
-      value.trim() === ""
-    ) {
-      payload[column] = null;
-      return;
-    }
-
-    payload[column] = value;
-  }
-
-  function setTextIfPresent(
-    column: string,
-    value: unknown,
-  ) {
-    const clean = text(value).trim();
-
-    if (
-      clean &&
-      columns.has(column)
-    ) {
-      payload[column] = clean;
-    }
-  }
-
-  set(
-    "id",
-    normalizeId(
-      record.id,
-      table.replaceAll("_", "-"),
-    ),
-  );
-
-  if (userColumn) {
-    set(userColumn, userId);
-  }
-
-  if (columns.has("record")) {
-    set(
-      "record",
-      JSON.stringify(record),
-    );
-  }
-
-  if (table === "vendors") {
-    set(
-      "name",
-      text(
-        record.name,
-        "Unnamed Vendor",
-      ),
-    );
-
-    set(
-      "category",
-      text(
-        record.category,
-        "General",
-      ),
-    );
-
-    set("phone", text(record.phone));
-    set("email", text(record.email));
-
-    set(
-      "website",
-      text(record.website),
-    );
-
-    set(
-      "notes",
-      text(
-        record.notes,
-        "No notes added yet.",
-      ),
-    );
-
-    set(
-      "logoDataUrl",
-      text(record.logoDataUrl),
-    );
-
-    set(
-      "logo_data_url",
-      text(record.logoDataUrl),
-    );
-
-    set(
-      "documents",
-      JSON.stringify(
-        arr(record.documents),
-      ),
-    );
-  }
-
-  if (table === "assets") {
-    const frontendLocationId =
-      text(
-        record.locationId,
-        "general",
-      );
-
-    const locationName =
-      locationNameFromFrontendId(
-        frontendLocationId,
-      );
-
-    const locationDbId =
-      await getOrCreateLocationId(
-        userId,
-        frontendLocationId,
-      );
-
-    const makeValue = firstText(
-      record.make,
-      record.manufacturer,
-    );
-
-    const serialValue = firstText(
-      record.serial,
-      record.serial_number,
-    );
-
-    set(
-      "name",
-      text(
-        record.name,
-        "Unnamed Asset",
-      ),
-    );
-
-    set(
-      "location_id",
-      locationDbId,
-    );
-
-    set(
-      "locationId",
-      frontendLocationId,
-    );
-
-    set(
-      "location",
-      locationName,
-    );
-
-    set(
-      "location_name",
-      locationName,
-    );
-
-    set(
-      "category",
-      text(
-        record.category,
-        "General",
-      ),
-    );
-
-    set(
-      "status",
-      assetStatus(record.status),
-    );
-
-    set("make", makeValue);
-    set("manufacturer", makeValue);
-    set("model", text(record.model));
-    set("serial", serialValue);
-    set("serial_number", serialValue);
-
-    set(
-      "notes",
-      text(
-        record.notes,
-        "No notes added yet.",
-      ),
-    );
-
-    set(
-      "description",
-      text(
-        record.notes,
-        "No notes added yet.",
-      ),
-    );
-
-    set(
-      "vendor_ids",
-      JSON.stringify(
-        arr(record.vendorIds),
-      ),
-    );
-
-    set(
-      "vendorIds",
-      JSON.stringify(
-        arr(record.vendorIds),
-      ),
-    );
-
-    set(
-      "documents",
-      JSON.stringify(
-        arr(record.documents),
-      ),
-    );
-  }
-
-  if (table === "procedures") {
-    set(
-      "title",
-      text(
-        record.title,
-        "Untitled Procedure",
-      ),
-    );
-
-    set(
-      "area",
-      text(
-        record.area,
-        "General",
-      ),
-    );
-
-    set(
-      "priority",
-      priority(record.priority),
-    );
-
-    set(
-      "steps",
-      JSON.stringify(
-        arr(record.steps),
-      ),
-    );
-  }
-
-  if (table === "work_orders") {
-    const dateValue = dateText(
-      record.date,
-      new Date()
-        .toISOString()
-        .slice(0, 10),
-    );
-
-    const isRecurring = bool(
-      record.isRecurring ??
-        record.is_recurring,
-    );
-
-    const recurrenceStatusValue =
-      firstText(
-        record.recurrenceStatus,
-        record.recurrence_status,
-      ) ||
-      (isRecurring
-        ? "active"
-        : "inactive");
-
-    set(
-      "asset_id",
-      text(record.assetId),
-    );
-
-    set(
-      "assetId",
-      text(record.assetId),
-    );
-
-    set(
-      "vendor_id",
-      text(record.vendorId),
-    );
-
-    set(
-      "vendorId",
-      text(record.vendorId),
-    );
-
-    set(
-      "procedure_id",
-      text(record.procedureId),
-    );
-
-    set(
-      "procedureId",
-      text(record.procedureId),
-    );
-
-    set("date", dateValue);
-    set("work_date", dateValue);
-    set("scheduled_date", dateValue);
-    set("due_date", dateValue);
-
-    set(
-      "title",
-      text(
-        record.title,
-        "Untitled Work Order",
-      ),
-    );
-
-    set(
-      "status",
-      serviceStatus(record.status),
-    );
-
-    set(
-      "priority",
-      workOrderPriority(
-        record.priority,
-      ),
-    );
-
-    set(
-      "notes",
-      text(
-        record.notes,
-        "No notes added yet.",
-      ),
-    );
-
-    set(
-      "follow_up_date",
-      dateText(
-        record.followUpDate,
-      ),
-    );
-
-    set(
-      "followUpDate",
-      dateText(
-        record.followUpDate,
-      ),
-    );
-
-    set(
-      "photos",
-      JSON.stringify(
-        arr(record.photos),
-      ),
-    );
-
-    set(
-      "documents",
-      JSON.stringify(
-        arr(record.documents),
-      ),
-    );
-
-    set(
-      "is_recurring",
-      isRecurring,
-    );
-
-    set(
-      "isRecurring",
-      isRecurring,
-    );
-
-    set(
-      "recurrence_frequency",
-      firstText(
-        record.recurrenceFrequency,
-        record.recurrence_frequency,
-      ),
-    );
-
-    set(
-      "recurrence_interval",
-      intValue(
-        record.recurrenceInterval ??
-          record.recurrence_interval,
-        1,
-      ),
-    );
-
-    set(
-      "recurrence_days",
-      firstText(
-        record.recurrenceDays,
-        record.recurrence_days,
-      ),
-    );
-
-    set(
-      "recurrence_next_due",
-      dateText(
-        firstText(
-          record.recurrenceNextDue,
-          record.recurrence_next_due,
-        ),
-      ),
-    );
-
-    set(
-      "recurrence_end_type",
-      firstText(
-        record.recurrenceEndType,
-        record.recurrence_end_type,
-      ) || "never",
-    );
-
-    set(
-      "recurrence_end_date",
-      dateText(
-        firstText(
-          record.recurrenceEndDate,
-          record.recurrence_end_date,
-        ),
-      ),
-    );
-
-    set(
-      "recurrence_count_limit",
-      firstText(
-        record.recurrenceCountLimit,
-        record.recurrence_count_limit,
-      ) || null,
-    );
-
-    set(
-      "recurrence_completed_count",
-      intValue(
-        record.recurrenceCompletedCount ??
-          record.recurrence_completed_count,
-        0,
-      ),
-    );
-
-    set(
-      "recurrence_status",
-      recurrenceStatusValue,
-    );
-
-    set(
-      "parent_work_order_id",
-      firstText(
-        record.parentWorkOrderId,
-        record.parent_work_order_id,
-      ),
-    );
-
-    set(
-      "invoice_number",
-      firstText(
-        record.invoiceNumber,
-        record.invoice_number,
-      ),
-    );
-
-    set(
-      "invoice_date",
-      dateText(
-        firstText(
-          record.invoiceDate,
-          record.invoice_date,
-        ),
-      ),
-    );
-
-    set(
-      "invoice_amount",
-      numberText(
-        firstText(
-          record.invoiceAmount,
-          record.invoice_amount,
-        ),
-      ) || null,
-    );
-
-    set(
-      "invoice_status",
-      firstText(
-        record.invoiceStatus,
-        record.invoice_status,
-      ) || "not added",
-    );
-
-    set(
-      "payment_status",
-      firstText(
-        record.paymentStatus,
-        record.payment_status,
-      ) || "unknown",
-    );
-
-    set(
-      "cost_category",
-      firstText(
-        record.costCategory,
-        record.cost_category,
-      ),
-    );
-
-    set(
-      "approved_by",
-      firstText(
-        record.approvedBy,
-        record.approved_by,
-      ),
-    );
-
-    set(
-      "approved_date",
-      dateText(
-        firstText(
-          record.approvedDate,
-          record.approved_date,
-        ),
-      ),
-    );
-
-    set(
-      "cost_notes",
-      firstText(
-        record.costNotes,
-        record.cost_notes,
-      ),
-    );
-
-    set(
-      "invoice_document_ids",
-      firstText(
-        record.invoiceDocumentIds,
-        record.invoice_document_ids,
-      ),
-    );
-  }
-
-  if (
-    table ===
-    "work_order_templates"
-  ) {
-    const isRecurring = bool(
-      record.isRecurring ??
-        record.is_recurring,
-    );
-
-    set(
-      "name",
-      firstText(
-        record.name,
-        record.title,
-      ) || "Untitled Template",
-    );
-
-    set(
-      "title",
-      firstText(
-        record.title,
-        record.name,
-      ) || "Untitled Template",
-    );
-
-    set(
-      "asset_id",
-      firstText(
-        record.assetId,
-        record.asset_id,
-      ),
-    );
-
-    set(
-      "vendor_id",
-      firstText(
-        record.vendorId,
-        record.vendor_id,
-      ),
-    );
-
-    set(
-      "procedure_id",
-      firstText(
-        record.procedureId,
-        record.procedure_id,
-      ),
-    );
-
-    set(
-      "priority",
-      workOrderPriority(
-        record.priority,
-      ),
-    );
-
-    set(
-      "notes",
-      text(record.notes),
-    );
-
-    set(
-      "is_recurring",
-      isRecurring,
-    );
-
-    set(
-      "recurrence_frequency",
-      firstText(
-        record.recurrenceFrequency,
-        record.recurrence_frequency,
-      ),
-    );
-
-    set(
-      "recurrence_interval",
-      intValue(
-        record.recurrenceInterval ??
-          record.recurrence_interval,
-        1,
-      ),
-    );
-
-    set(
-      "recurrence_days",
-      firstText(
-        record.recurrenceDays,
-        record.recurrence_days,
-      ),
-    );
-
-    set(
-      "recurrence_next_due",
-      dateText(
-        firstText(
-          record.recurrenceNextDue,
-          record.recurrence_next_due,
-        ),
-      ),
-    );
-
-    set(
-      "recurrence_end_type",
-      firstText(
-        record.recurrenceEndType,
-        record.recurrence_end_type,
-      ) || "never",
-    );
-
-    set(
-      "recurrence_end_date",
-      dateText(
-        firstText(
-          record.recurrenceEndDate,
-          record.recurrence_end_date,
-        ),
-      ),
-    );
-
-    set(
-      "recurrence_count_limit",
-      firstText(
-        record.recurrenceCountLimit,
-        record.recurrence_count_limit,
-      ) || null,
-    );
-
-    set(
-      "recurrence_completed_count",
-      intValue(
-        record.recurrenceCompletedCount ??
-          record.recurrence_completed_count,
-        0,
-      ),
-    );
-
-    set(
-      "recurrence_status",
-      firstText(
-        record.recurrenceStatus,
-        record.recurrence_status,
-      ) ||
-        (isRecurring
-          ? "active"
-          : "inactive"),
-    );
-  }
-
-  if (table === "calendar") {
-    const dateValue = dateText(
-      record.date,
-      new Date()
-        .toISOString()
-        .slice(0, 10),
-    );
-
-    set("date", dateValue);
-
-    set(
-      "calendar_date",
-      dateValue,
-    );
-
-    set(
-      "scheduled_date",
-      dateValue,
-    );
-
-    set("time", text(record.time));
-
-    set(
-      "event_time",
-      text(record.time),
-    );
-
-    set(
-      "title",
-      text(
-        record.title,
-        "Untitled Calendar Item",
-      ),
-    );
-
-    set(
-      "area",
-      text(
-        record.area,
-        "General",
-      ),
-    );
-
-    set(
-      "categoryLabel",
-      text(record.categoryLabel),
-    );
-
-    set(
-      "category_label",
-      text(record.categoryLabel),
-    );
-
-    set(
-      "colorId",
-      text(record.colorId),
-    );
-
-    set(
-      "color_id",
-      text(record.colorId),
-    );
-
-    set(
-      "colorName",
-      text(record.colorName),
-    );
-
-    set(
-      "color_name",
-      text(record.colorName),
-    );
-
-    set(
-      "allDay",
-      bool(record.allDay),
-    );
-
-    set(
-      "all_day",
-      bool(record.allDay),
-    );
-
-    set(
-      "repeat",
-      text(
-        record.repeat,
-        "None",
-      ),
-    );
-
-    set(
-      "repeat_type",
-      text(
-        record.repeat,
-        "None",
-      ),
-    );
-
-    set(
-      "reminder",
-      text(
-        record.reminder,
-        "None",
-      ),
-    );
-
-    set(
-      "notes",
-      text(record.notes),
-    );
-
-    set(
-      "linkedType",
-      text(
-        record.linkedType,
-        "None",
-      ),
-    );
-
-    set(
-      "linked_type",
-      text(
-        record.linkedType,
-        "None",
-      ),
-    );
-
-    set(
-      "linkedId",
-      text(record.linkedId),
-    );
-
-    set(
-      "linked_id",
-      text(record.linkedId),
-    );
-
-    set(
-      "linkedName",
-      text(record.linkedName),
-    );
-
-    set(
-      "linked_name",
-      text(record.linkedName),
-    );
-
-    set(
-      "completed",
-      bool(record.completed),
-    );
-
-    set(
-      "source",
-      text(
-        record.source,
-        "manual",
-      ),
-    );
-
-    set(
-      "originalId",
-      text(record.originalId),
-    );
-
-    set(
-      "original_id",
-      text(record.originalId),
-    );
-
-    set(
-      "instanceId",
-      text(record.instanceId),
-    );
-
-    set(
-      "instance_id",
-      text(record.instanceId),
-    );
-
-    set(
-      "status",
-      serviceStatus(record.status),
-    );
-  }
-
-  if (table === "asset_photos") {
-    const assetId = firstText(
-      record.assetId,
-      record.asset_id,
-    );
-
-    const dataUrl = firstText(
-      record.dataUrl,
-      record.data_url,
-    );
-
-    const fileUrl = firstText(
-      record.url,
-      record.fileUrl,
-      record.file_url,
-    );
-
-    const createdAt =
-      firstText(
-        record.createdAt,
-        record.created_at,
-      ) ||
-      new Date().toISOString();
-
-    set("asset_id", assetId);
-    set("assetId", assetId);
-
-    set(
-      "name",
-      text(
-        record.name,
-        "Photo",
-      ),
-    );
-
-    setTextIfPresent(
-      "dataUrl",
-      dataUrl,
-    );
-
-    setTextIfPresent(
-      "data_url",
-      dataUrl,
-    );
-
-    setTextIfPresent(
-      "url",
-      fileUrl,
-    );
-
-    setTextIfPresent(
-      "fileUrl",
-      fileUrl,
-    );
-
-    setTextIfPresent(
-      "file_url",
-      fileUrl,
-    );
-
-    set(
-      "createdAt",
-      createdAt,
-    );
-
-    set(
-      "created_at",
-      createdAt,
-    );
-  }
-
-  return {
-    actualTable,
-    payload,
-  };
-}
-
-async function findRecordById(
-  table: AtlasTable,
-  id: string,
-  userId: string,
-) {
-  const actualTable =
-    await resolveTable(table);
-
-  if (!actualTable) {
-    return null;
-  }
-
-  const columns =
-    await getColumns(actualTable);
-
-  const userColumn =
-    hasUserColumn(columns);
-
-  if (userColumn) {
-    const rows = await queryRows(
-      `
-        SELECT *
-        FROM ${quoteIdentifier(
-          actualTable,
-        )}
-        WHERE id = $1
-          AND (
-            ${quoteIdentifier(
-              userColumn,
-            )} = $2
-            OR ${quoteIdentifier(
-              userColumn,
-            )} IS NULL
-          )
-        LIMIT 1
-      `,
-      [id, userId],
-    );
-
-    return rows[0] || null;
-  }
-
-  const rows = await queryRows(
-    `
-      SELECT *
-      FROM ${quoteIdentifier(
-        actualTable,
-      )}
-      WHERE id = $1
-      LIMIT 1
-    `,
-    [id],
-  );
-
-  return rows[0] || null;
-}
-
-async function upsertRecord(
-  table: AtlasTable,
-  record: AnyRow,
-  userId: string,
-) {
-  const {
-    actualTable,
-    payload,
-  } = await buildPayload(
-    table,
-    record,
-    userId,
-  );
-
-  const columns =
-    Object.keys(payload);
-
-  if (!columns.length) {
-    throw new Error(
-      `No writable columns found for ${table}`,
-    );
-  }
-
-  const quotedColumns = columns
-    .map(quoteIdentifier)
-    .join(", ");
-
-  const placeholders = columns
-    .map(
-      (_, index) =>
-        `$${index + 1}`,
-    )
-    .join(", ");
-
-  const values = columns.map(
-    (column) => payload[column],
-  );
-
-  const updateColumns = columns
-    .filter(
-      (column) =>
-        column !== "id",
-    )
-    .map(
-      (column) =>
-        `${quoteIdentifier(
-          column,
-        )} = EXCLUDED.${quoteIdentifier(
-          column,
-        )}`,
-    )
-    .join(", ");
-
-  const rows = await queryRows(
-    `
-      INSERT INTO ${quoteIdentifier(
-        actualTable,
-      )} (${quotedColumns})
-      VALUES (${placeholders})
-      ON CONFLICT (id) DO UPDATE SET
-        ${
-          updateColumns ||
-          `${quoteIdentifier(
-            "id",
-          )} = EXCLUDED.${quoteIdentifier(
-            "id",
-          )}`
-        }
-      RETURNING *
-    `,
-    values,
-  );
-
-  return rows[0] || payload;
-}
-
-async function deleteRecord(
-  table: AtlasTable,
-  id: string,
-  userId: string,
-) {
-  const actualTable =
-    await resolveTable(table);
-
-  if (!actualTable) {
-    return;
-  }
-
-  const columns =
-    await getColumns(actualTable);
-
-  const userColumn =
-    hasUserColumn(columns);
-
-  if (userColumn) {
-    await queryRows(
-      `
-        DELETE FROM ${quoteIdentifier(
-          actualTable,
-        )}
-        WHERE id = $1
-          AND ${quoteIdentifier(
-            userColumn,
-          )} = $2
-      `,
-      [id, userId],
-    );
-
-    return;
-  }
-
-  await queryRows(
-    `
-      DELETE FROM ${quoteIdentifier(
-        actualTable,
-      )}
-      WHERE id = $1
-    `,
-    [id],
-  );
 }
 
 export async function GET() {
   try {
-    const userId =
-      await getTargetUserId();
+    const sql = getSql();
+    await ensureWorkOrderColumns(sql);
 
-    const [
-      vendorRows,
-      assetRows,
-      procedureRows,
-      serviceRows,
-      templateRows,
-      calendarRows,
-      photoRows,
-    ] = await Promise.all([
-      queryTable(
-        "vendors",
-        userId,
-        "name",
-      ),
+    const locationRows = (await sql`
+      SELECT id, name, type, zone, notes, sort_order
+      FROM atlas_locations
+      ORDER BY sort_order ASC, name ASC
+    `) as unknown as JsonRecord[];
 
-      queryAssets(userId),
+    const vendorRows = (await sql`
+      SELECT id, name, category, phone, email, website, notes, logo_data_url, documents
+      FROM atlas_vendors
+      ORDER BY name ASC
+    `) as unknown as JsonRecord[];
 
-      queryTable(
-        "procedures",
-        userId,
-        "title",
-      ),
+    const assetRows = (await sql`
+      SELECT id, name, location_id, category, status, make, model, serial, notes, vendor_ids, documents
+      FROM atlas_assets
+      ORDER BY name ASC
+    `) as unknown as JsonRecord[];
 
-      queryWorkOrders(userId),
+    const procedureRows = (await sql`
+      SELECT id, title, area, priority, steps
+      FROM atlas_procedures
+      ORDER BY title ASC
+    `) as unknown as JsonRecord[];
 
-      queryTable(
-        "work_order_templates",
-        userId,
-        "name",
-      ),
+    const workOrderRows = (await sql`
+      SELECT
+        id,
+        asset_id,
+        vendor_id,
+        procedure_id,
+        date,
+        title,
+        status,
+        priority,
+        notes,
+        follow_up_date,
+        recurring,
+        recurrence_interval,
+        recurrence_unit,
+        recurrence_end_date,
+        season,
+        last_completed_date,
+        completion_history,
+        photos,
+        documents
+      FROM atlas_work_orders
+      ORDER BY date ASC NULLS LAST, title ASC
+    `) as unknown as JsonRecord[];
 
-      queryTable(
-        "calendar",
-        userId,
-        "date",
-      ),
+    const calendarRows = (await sql`
+      SELECT id, date, title, area, status
+      FROM atlas_calendar_items
+      ORDER BY date ASC, title ASC
+    `) as unknown as JsonRecord[];
 
-      queryTable(
-        "asset_photos",
-        userId,
-        "id",
-      ),
-    ]);
+    const documentRows = (await sql`
+      SELECT id, title, area, type, linked_asset_id, notes
+      FROM atlas_documents
+      ORDER BY title ASC
+    `) as unknown as JsonRecord[];
 
-    return jsonResponse({
+    const photoRows = (await sql`
+      SELECT id, asset_id, name, data_url, created_at
+      FROM atlas_asset_photos
+      ORDER BY created_at DESC
+    `) as unknown as JsonRecord[];
+
+    return NextResponse.json({
       ok: true,
       source: "neon",
-      apiVersion: API_VERSION,
-      userId,
-
-      vendorRecords:
-        vendorRows.map(mapVendor),
-
-      assetRecords:
-        assetRows.map(mapAsset),
-
-      procedureRecords:
-        procedureRows.map(
-          mapProcedure,
-        ),
-
-      serviceRecords:
-        serviceRows.map(
-          mapWorkOrder,
-        ),
-
-      workOrderTemplateRecords:
-        templateRows.map(
-          mapWorkOrderTemplate,
-        ),
-
-      calendarItems:
-        calendarRows.map(
-          mapCalendar,
-        ),
-
-      photos:
-        photoRows.map(mapPhoto),
-
-      assetPhotos:
-        photoRows.map(mapPhoto),
+      locations: locationRows.map(mapLocation),
+      vendorRecords: vendorRows.map(mapVendor),
+      assetRecords: assetRows.map(mapAsset),
+      procedureRecords: procedureRows.map(mapProcedure),
+      serviceRecords: workOrderRows.map(mapWorkOrder),
+      calendarItems: calendarRows.map(mapCalendarItem),
+      documents: documentRows.map(mapDocument),
+      photos: photoRows.map(mapPhoto),
     });
   } catch (error) {
-    return jsonResponse(
+    return NextResponse.json(
       {
         ok: false,
-        source: "neon",
-        apiVersion: API_VERSION,
-
         error:
           error instanceof Error
             ? error.message
-            : "Atlas API load failed",
+            : "Unknown Atlas database read error",
       },
-      500,
+      { status: 500 },
     );
   }
 }
 
-export async function POST(
-  req: NextRequest,
-) {
+export async function POST(request: NextRequest) {
   try {
-    const body =
-      (await req.json()) as AnyRow;
+    const sql = getSql();
+    const body = (await request.json().catch(function () {
+      return {};
+    })) as JsonRecord;
 
-    const table =
-      body.table as AtlasTable;
-
+    const table = cleanTable(body.table);
     const record =
-      body.record as AnyRow;
+      body.record && typeof body.record === "object"
+        ? (body.record as JsonRecord)
+        : {};
 
-    if (
-      !table ||
-      !record ||
-      !ALLOWED_TABLES.includes(
-        table,
-      )
-    ) {
-      return jsonResponse(
+    if (!table) {
+      return NextResponse.json(
         {
           ok: false,
-          error:
-            "Invalid Atlas save request",
-          apiVersion: API_VERSION,
+          error: "Unsupported table: " + asString(body.table),
         },
-        400,
+        { status: 400 },
       );
     }
 
-    const userId =
-      await getTargetUserId();
+    if (table === "vendors") {
+      const id = getId(record, "vendor");
 
-    if (
-      table ===
-      "asset_photos"
-    ) {
-      const photoId =
-        text(record.id).trim();
+      await sql`
+        INSERT INTO atlas_vendors (
+          id,
+          name,
+          category,
+          phone,
+          email,
+          website,
+          notes,
+          logo_data_url,
+          documents,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.name) || "Untitled Vendor"},
+          ${asString(record.category) || "General"},
+          ${nullableString(record.phone)},
+          ${nullableString(record.email)},
+          ${nullableString(record.website)},
+          ${asString(record.notes)},
+          ${nullableString(record.logoDataUrl)},
+          ${jsonArray(record.documents)}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          category = EXCLUDED.category,
+          phone = EXCLUDED.phone,
+          email = EXCLUDED.email,
+          website = EXCLUDED.website,
+          notes = EXCLUDED.notes,
+          logo_data_url = EXCLUDED.logo_data_url,
+          documents = EXCLUDED.documents,
+          updated_at = NOW()
+      `;
 
-      const assetId = firstText(
-        record.assetId,
-        record.asset_id,
-      );
-
-      const incomingImage =
-        firstText(
-          record.dataUrl,
-          record.data_url,
-          record.url,
-          record.fileUrl,
-          record.file_url,
-        );
-
-      if (
-        !photoId ||
-        !assetId
-      ) {
-        return jsonResponse(
-          {
-            ok: false,
-
-            error:
-              "Asset photo requires both an id and an assetId",
-
-            apiVersion:
-              API_VERSION,
-          },
-          400,
-        );
-      }
-
-      if (!incomingImage) {
-        const existing =
-          await findRecordById(
-            "asset_photos",
-            photoId,
-            userId,
-          );
-
-        if (existing) {
-          return jsonResponse({
-            ok: true,
-            source: "neon",
-            apiVersion:
-              API_VERSION,
-            table,
-
-            preservedExistingImage:
-              true,
-
-            record:
-              mapPhoto(existing),
-          });
-        }
-
-        return jsonResponse({
-          ok: true,
-          source: "neon",
-          apiVersion:
-            API_VERSION,
-          table,
-
-          skippedBlankPhoto:
-            true,
-
-          record: null,
-        });
-      }
+      return NextResponse.json({ ok: true, id });
     }
 
-    const saved =
-      await upsertRecord(
-        table,
-        record,
-        userId,
-      );
+    if (table === "assets") {
+      const id = getId(record, "asset");
 
-    return jsonResponse({
-      ok: true,
-      source: "neon",
-      apiVersion: API_VERSION,
-      table,
+      await sql`
+        INSERT INTO atlas_assets (
+          id,
+          name,
+          location_id,
+          category,
+          status,
+          make,
+          model,
+          serial,
+          notes,
+          vendor_ids,
+          documents,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.name) || "Untitled Asset"},
+          ${asString(record.locationId) || "general"},
+          ${asString(record.category) || "General"},
+          ${asStatus(record.status, "Monitor")},
+          ${nullableString(record.make)},
+          ${nullableString(record.model)},
+          ${nullableString(record.serial)},
+          ${asString(record.notes)},
+          ARRAY(
+            SELECT jsonb_array_elements_text(
+              ${jsonArray(record.vendorIds)}::jsonb
+            )
+          ),
+          ${jsonArray(record.documents)}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          location_id = EXCLUDED.location_id,
+          category = EXCLUDED.category,
+          status = EXCLUDED.status,
+          make = EXCLUDED.make,
+          model = EXCLUDED.model,
+          serial = EXCLUDED.serial,
+          notes = EXCLUDED.notes,
+          vendor_ids = EXCLUDED.vendor_ids,
+          documents = EXCLUDED.documents,
+          updated_at = NOW()
+      `;
 
-      record:
-        table ===
-        "asset_photos"
-          ? mapPhoto(saved)
-          : saved,
-    });
-  } catch (error) {
-    return jsonResponse(
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "procedures") {
+      const id = getId(record, "procedure");
+
+      await sql`
+        INSERT INTO atlas_procedures (
+          id,
+          title,
+          area,
+          priority,
+          steps,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.title) || "Untitled Procedure"},
+          ${asString(record.area) || "General"},
+          ${asString(record.priority) || "Normal"},
+          ARRAY(
+            SELECT jsonb_array_elements_text(
+              ${jsonArray(record.steps)}::jsonb
+            )
+          ),
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          area = EXCLUDED.area,
+          priority = EXCLUDED.priority,
+          steps = EXCLUDED.steps,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "work_orders") {
+      await ensureWorkOrderColumns(sql);
+      const id = getId(record, "work-order");
+
+      await sql`
+        INSERT INTO atlas_work_orders (
+          id,
+          asset_id,
+          vendor_id,
+          procedure_id,
+          date,
+          title,
+          status,
+          priority,
+          notes,
+          follow_up_date,
+          recurring,
+          recurrence_interval,
+          recurrence_unit,
+          recurrence_end_date,
+          season,
+          last_completed_date,
+          completion_history,
+          photos,
+          documents,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.assetId) || "general"},
+          ${nullableString(record.vendorId)},
+          ${nullableString(record.procedureId)},
+          ${asDate(record.date)}::date,
+          ${asString(record.title) || "Untitled Work Order"},
+          ${asStatus(record.status, "Open")},
+          ${asStatus(record.priority, "Medium")},
+          ${asString(record.notes)},
+          ${asDate(record.followUpDate)}::date,
+          ${asBoolean(record.recurring)},
+          ${asPositiveInteger(record.recurrenceInterval, 1)},
+          ${asStatus(record.recurrenceUnit, "Weeks")},
+          ${asDate(record.recurrenceEndDate)}::date,
+          ${asStatus(record.season, "Year-Round")},
+          ${asDate(record.lastCompletedDate)}::date,
+          ${jsonArray(record.completionHistory)}::jsonb,
+          ${jsonArray(record.photos)}::jsonb,
+          ${jsonArray(record.documents)}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          asset_id = EXCLUDED.asset_id,
+          vendor_id = EXCLUDED.vendor_id,
+          procedure_id = EXCLUDED.procedure_id,
+          date = EXCLUDED.date,
+          title = EXCLUDED.title,
+          status = EXCLUDED.status,
+          priority = EXCLUDED.priority,
+          notes = EXCLUDED.notes,
+          follow_up_date = EXCLUDED.follow_up_date,
+          recurring = EXCLUDED.recurring,
+          recurrence_interval = EXCLUDED.recurrence_interval,
+          recurrence_unit = EXCLUDED.recurrence_unit,
+          recurrence_end_date = EXCLUDED.recurrence_end_date,
+          season = EXCLUDED.season,
+          last_completed_date = EXCLUDED.last_completed_date,
+          completion_history = EXCLUDED.completion_history,
+          photos = EXCLUDED.photos,
+          documents = EXCLUDED.documents,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "calendar") {
+      const id = getId(record, "calendar");
+
+      await sql`
+        INSERT INTO atlas_calendar_items (
+          id,
+          date,
+          title,
+          area,
+          status,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asDate(record.date)}::date,
+          ${asString(record.title) || "Untitled Calendar Item"},
+          ${asString(record.area) || "General"},
+          ${asStatus(record.status, "Scheduled")},
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          date = EXCLUDED.date,
+          title = EXCLUDED.title,
+          area = EXCLUDED.area,
+          status = EXCLUDED.status,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "documents") {
+      const id = getId(record, "document");
+
+      await sql`
+        INSERT INTO atlas_documents (
+          id,
+          title,
+          area,
+          type,
+          linked_asset_id,
+          notes,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.title) || "Untitled Document"},
+          ${asString(record.area) || "General"},
+          ${asString(record.type) || "Document"},
+          ${nullableString(record.linkedAssetId)},
+          ${asString(record.notes)},
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          area = EXCLUDED.area,
+          type = EXCLUDED.type,
+          linked_asset_id = EXCLUDED.linked_asset_id,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "asset_photos") {
+      const id = getId(record, "photo");
+
+      await sql`
+        INSERT INTO atlas_asset_photos (
+          id,
+          asset_id,
+          name,
+          data_url,
+          created_at
+        )
+        VALUES (
+          ${id},
+          ${asString(record.assetId) || "general"},
+          ${asString(record.name) || "Photo"},
+          ${asString(record.dataUrl)},
+          COALESCE(
+            ${nullableString(record.createdAt)}::timestamptz,
+            NOW()
+          )
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          asset_id = EXCLUDED.asset_id,
+          name = EXCLUDED.name,
+          data_url = EXCLUDED.data_url
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    return NextResponse.json(
       {
         ok: false,
-        source: "neon",
-        apiVersion: API_VERSION,
-
+        error: "Unsupported table: " + table,
+      },
+      { status: 400 },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
         error:
           error instanceof Error
             ? error.message
-            : "Atlas API save failed",
+            : "Unknown Atlas database save error",
       },
-      500,
+      { status: 500 },
     );
   }
 }
 
-export async function DELETE(
-  req: NextRequest,
-) {
+export async function DELETE(request: NextRequest) {
   try {
-    const body =
-      (await req.json()) as AnyRow;
+    const sql = getSql();
+    const body = (await request.json().catch(function () {
+      return {};
+    })) as JsonRecord;
 
-    const table =
-      body.table as AtlasTable;
+    const table = cleanTable(body.table);
+    const id = asString(body.id);
 
-    const id =
-      text(body.id).trim();
-
-    if (
-      !table ||
-      !id ||
-      !ALLOWED_TABLES.includes(
-        table,
-      )
-    ) {
-      return jsonResponse(
+    if (!table || !id) {
+      return NextResponse.json(
         {
           ok: false,
-
-          error:
-            "Invalid Atlas delete request",
-
-          apiVersion: API_VERSION,
+          error: "Table and id are required.",
         },
-        400,
+        { status: 400 },
       );
     }
 
-    const userId =
-      await getTargetUserId();
+    if (table === "vendors") {
+      await sql`
+        DELETE FROM atlas_vendors
+        WHERE id = ${id}
+      `;
 
-    await deleteRecord(
-      table,
-      id,
-      userId,
-    );
+      return NextResponse.json({ ok: true });
+    }
 
-    return jsonResponse({
-      ok: true,
-      source: "neon",
-      apiVersion: API_VERSION,
-      table,
-      id,
-    });
-  } catch (error) {
-    return jsonResponse(
+    if (table === "assets") {
+      await sql`
+        DELETE FROM atlas_asset_photos
+        WHERE asset_id = ${id}
+      `;
+
+      await sql`
+        DELETE FROM atlas_work_orders
+        WHERE asset_id = ${id}
+      `;
+
+      await sql`
+        DELETE FROM atlas_assets
+        WHERE id = ${id}
+      `;
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "procedures") {
+      await sql`
+        DELETE FROM atlas_procedures
+        WHERE id = ${id}
+      `;
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "work_orders") {
+      await sql`
+        DELETE FROM atlas_work_orders
+        WHERE id = ${id}
+      `;
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "calendar") {
+      await sql`
+        DELETE FROM atlas_calendar_items
+        WHERE id = ${id}
+      `;
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "documents") {
+      await sql`
+        DELETE FROM atlas_documents
+        WHERE id = ${id}
+      `;
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "asset_photos") {
+      await sql`
+        DELETE FROM atlas_asset_photos
+        WHERE id = ${id}
+      `;
+
+      return NextResponse.json({ ok: true });
+    }
+
+    return NextResponse.json(
       {
         ok: false,
-        source: "neon",
-        apiVersion: API_VERSION,
-
+        error: "Unsupported table: " + table,
+      },
+      { status: 400 },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
         error:
           error instanceof Error
             ? error.message
-            : "Atlas API delete failed",
+            : "Unknown Atlas database delete error",
       },
-      500,
+      { status: 500 },
     );
   }
 }
