@@ -195,6 +195,26 @@ type InboxStatus =
   | "Archived"
   | "Error";
 
+type InboxReviewDraft = {
+  documentType: string;
+  summary: string;
+  manufacturer: string;
+  model: string;
+  serial: string;
+  invoiceNumber: string;
+  amount: string;
+  date: string;
+  psi: string;
+  temperature: string;
+  ph: string;
+  hours: string;
+  assetId: string;
+  locationId: string;
+  vendorId: string;
+  workOrderId: string;
+  notes: string;
+};
+
 type InboxItemRecord = {
   id: string;
   title: string;
@@ -3518,6 +3538,13 @@ export default function AtlasPage() {
   const [selectedInboxId, setSelectedInboxId] = useState("");
   const [inboxMessage, setInboxMessage] = useState("Loading Atlas Inbox...");
   const [analyzingInboxId, setAnalyzingInboxId] = useState("");
+  const [inboxReviewOpen, setInboxReviewOpen] = useState(false);
+  const [inboxReviewDraft, setInboxReviewDraft] = useState<InboxReviewDraft>({
+    documentType: "", summary: "", manufacturer: "", model: "", serial: "",
+    invoiceNumber: "", amount: "", date: "", psi: "", temperature: "",
+    ph: "", hours: "", assetId: "", locationId: "", vendorId: "",
+    workOrderId: "", notes: "",
+  });
   const [inboxSearch, setInboxSearch] = useState("");
 
   const [manualRecords, setManualRecords] = useState<ManualRecord[]>(defaultManuals);
@@ -12491,6 +12518,35 @@ export default function AtlasPage() {
     return match?.[1]?.trim() || "";
   }
 
+  function buildInboxReviewDraft(data: Record<string, unknown>): InboxReviewDraft {
+    const readingData = (data.readings || {}) as Record<string, unknown>;
+    return {
+      documentType: inboxAnalysisText(data.documentType) || inboxAnalysisText(data.type),
+      summary: inboxAnalysisText(data.summary),
+      manufacturer: inboxAnalysisText(data.manufacturer),
+      model: inboxAnalysisText(data.model),
+      serial: inboxAnalysisText(data.serial),
+      invoiceNumber: inboxAnalysisText(data.invoiceNumber),
+      amount: inboxAnalysisText(data.amount),
+      date: inboxAnalysisText(data.date),
+      psi: inboxAnalysisText(readingData.psi),
+      temperature: inboxAnalysisText(readingData.temperature),
+      ph: inboxAnalysisText(readingData.ph),
+      hours: inboxAnalysisText(readingData.hours),
+      assetId: "",
+      locationId: "",
+      vendorId: "",
+      workOrderId: "",
+      notes: "",
+    };
+  }
+
+  function openInboxReview(item: InboxItemRecord) {
+    setSelectedInboxId(item.id);
+    setInboxReviewDraft(buildInboxReviewDraft((item.extractedData || {}) as Record<string, unknown>));
+    setInboxReviewOpen(true);
+  }
+
   async function analyzeInboxItem(item: InboxItemRecord) {
     if (analyzingInboxId) return;
 
@@ -12515,6 +12571,8 @@ export default function AtlasPage() {
     }
 
     setAnalyzingInboxId(item.id);
+    setInboxReviewDraft(buildInboxReviewDraft((item.extractedData || {}) as Record<string, unknown>));
+    setInboxReviewOpen(true);
     setInboxMessage("Atlas is reading the selected file and preparing suggestions...");
 
     let visionData: Record<string, unknown> = {};
@@ -12703,6 +12761,8 @@ export default function AtlasPage() {
         : entry),
     );
     await updateInboxItem(item.id, { extractedData, status: "Analyzed" });
+    setInboxReviewDraft(buildInboxReviewDraft(extractedData));
+    setInboxReviewOpen(true);
     setInboxMessage("Analysis complete. Review the detected information before approving anything.");
     setAnalyzingInboxId("");
   }
@@ -12759,6 +12819,7 @@ export default function AtlasPage() {
     ].filter(([, value]) => typeof value === "string" && value.trim());
 
     return (
+      <>
       <ListDrawerLayout
         eyebrow="Atlas Inbox"
         title="Review Before Anything Changes"
@@ -12877,7 +12938,10 @@ export default function AtlasPage() {
                 >
                   <button
                     type="button"
-                    onClick={() => void analyzeInboxItem(selected)}
+                    onClick={() => {
+                      openInboxReview(selected);
+                      void analyzeInboxItem(selected);
+                    }}
                     disabled={analyzingInboxId === selected.id}
                     style={{
                       ...goldButtonStyle,
@@ -12900,84 +12964,19 @@ export default function AtlasPage() {
               </div>
 
               <div style={cardStyle}>
-                <div style={eyebrowStyle}>Atlas Analysis</div>
-                <h3 style={detailTitleStyle}>Review Suggested Information</h3>
+                <div style={eyebrowStyle}>Atlas AI Review</div>
+                <h3 style={detailTitleStyle}>Analysis Opens in a Separate Review Drawer</h3>
                 <p style={mutedSmallStyle}>
-                  Atlas securely reads supported photos and PDFs, combines that with the title and notes, and then compares the results with existing Assets, Vendors, and Work Orders. Nothing is saved anywhere else until you approve it.
+                  The review drawer keeps the original file, detected information, editable fields, and any reliable match together. Destination fields stay blank unless you choose them.
                 </p>
-
-                {analysis.analyzedAt ? (
-                  <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
-                    {analysisFields.length ? (
-                      <div style={{ ...formGridStyle, alignItems: "stretch" }}>
-                        {analysisFields.map(([label, value]) => (
-                          <div key={String(label)} style={noticeStyle}>
-                            <span style={fieldLabelStyle}>{String(label)}</span>
-                            <strong>{String(value)}</strong>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={emptyStateStyle}>
-                        No structured fields were detected from the available text yet.
-                      </div>
-                    )}
-
-                    <div style={noticeStyle}>
-                      <div style={eyebrowStyle}>Suggested Match</div>
-                      {suggestedMatch?.name ? (
-                        <>
-                          <h4 style={{ margin: "6px 0" }}>
-                            {suggestedMatch.type}: {suggestedMatch.name}
-                          </h4>
-                          <p style={mutedSmallStyle}>
-                            Confidence: {suggestedMatch.confidence || "Low"}
-                          </p>
-                          {Array.isArray(suggestedMatch.reasons) && suggestedMatch.reasons.length ? (
-                            <p style={mutedSmallStyle}>{suggestedMatch.reasons.join(" · ")}</p>
-                          ) : null}
-                          <div style={buttonRowStyle}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void updateInboxItem(selected.id, {
-                                  targetType: suggestedMatch.type as IntakeTargetKind,
-                                  targetId: suggestedMatch.id || "",
-                                  targetName: suggestedMatch.name || "",
-                                  status: "Needs Review",
-                                })
-                              }
-                              style={secondaryButtonStyle}
-                            >
-                              Use Suggested Match
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openInboxItemInFastIntake(selected)}
-                              style={goldButtonStyle}
-                            >
-                              Review Actions
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <p style={mutedSmallStyle}>
-                          No reliable existing-record match was found. You can still review the item and choose Create Asset, Create Vendor, Create Work Order, or Document Only.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ ...emptyStateStyle, marginTop: 14 }}>
-                    Tap Analyze Item directly below the file preview.
-                  </div>
-                )}
-
-                <div style={{ ...noticeStyle, marginTop: 14 }}>
-                  <strong>Secure photo/PDF reading is connected.</strong>
-                  <p style={mutedSmallStyle}>
-                    Atlas sends the selected file through the protected server route, returns proposed fields, and keeps every result in review status. It does not create or overwrite any Atlas record automatically.
-                  </p>
+                <div style={buttonRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() => openInboxReview(selected)}
+                    style={secondaryButtonStyle}
+                  >
+                    {analysis.analyzedAt ? "Open AI Review" : "Open Review Drawer"}
+                  </button>
                 </div>
               </div>
 
@@ -13095,6 +13094,119 @@ export default function AtlasPage() {
           )
         }
       />
+
+      {inboxReviewOpen && selected ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Atlas AI Review"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setInboxReviewOpen(false);
+          }}
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000, background: "rgba(4, 18, 32, 0.72)",
+            display: "flex", justifyContent: "flex-end",
+          }}
+        >
+          <div style={{
+            width: isMobile ? "100%" : "min(760px, 94vw)", height: "100%", background: colors.bg,
+            overflowY: "auto", boxShadow: "-18px 0 48px rgba(0,0,0,0.28)", padding: isMobile ? 14 : 22,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={eyebrowStyle}>Atlas AI Review</div>
+                <h2 style={{ ...detailTitleStyle, margin: "4px 0" }}>{selected.title}</h2>
+                <p style={{ ...mutedSmallStyle, margin: 0 }}>Review and edit everything before choosing what Atlas should do.</p>
+              </div>
+              <button type="button" onClick={() => setInboxReviewOpen(false)} style={secondaryButtonStyle}>Close</button>
+            </div>
+
+            {analyzingInboxId === selected.id ? (
+              <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
+                <h3 style={{ ...detailTitleStyle, margin: 0 }}>Analyzing image...</h3>
+                {["Reading the file", "Extracting visible text", "Finding identifying fields", "Searching Atlas records", "Preparing review"].map((step, index) => (
+                  <div key={step} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: index === 4 ? "none" : `1px solid ${colors.line}` }}>
+                    <span>{step}</span><strong>{index === 0 ? "Working..." : "Queued"}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 14 }}>
+                <div style={cardStyle}>
+                  <div style={eyebrowStyle}>Original File</div>
+                  {(selected.files || [])[0]?.dataUrl?.startsWith("data:image/") ? (
+                    <img src={(selected.files || [])[0].dataUrl} alt={(selected.files || [])[0].name} style={{ ...photoStyle, maxHeight: 360, objectFit: "contain", background: colors.panel }} />
+                  ) : (selected.files || []).length ? (
+                    <div style={{ ...fileTileStyle, minHeight: 120 }}>{(selected.files || [])[0].type?.includes("pdf") ? "PDF" : "FILE"}</div>
+                  ) : <div style={emptyStateStyle}>No original file attached.</div>}
+                </div>
+
+                <div style={cardStyle}>
+                  <div style={eyebrowStyle}>What Atlas Detected</div>
+                  <div style={formGridStyle}>
+                    <Field label="Document / image type" value={inboxReviewDraft.documentType} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, documentType: value }))} />
+                    <Field label="Summary" value={inboxReviewDraft.summary} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, summary: value }))} multiline />
+                    <Field label="Manufacturer" value={inboxReviewDraft.manufacturer} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, manufacturer: value }))} />
+                    <Field label="Model" value={inboxReviewDraft.model} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, model: value }))} />
+                    <Field label="Serial number" value={inboxReviewDraft.serial} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, serial: value }))} />
+                    <Field label="Invoice number" value={inboxReviewDraft.invoiceNumber} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, invoiceNumber: value }))} />
+                    <Field label="Amount" value={inboxReviewDraft.amount} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, amount: value }))} />
+                    <Field label="Date" value={inboxReviewDraft.date} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, date: value }))} />
+                    <Field label="PSI" value={inboxReviewDraft.psi} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, psi: value }))} />
+                    <Field label="Temperature" value={inboxReviewDraft.temperature} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, temperature: value }))} />
+                    <Field label="pH" value={inboxReviewDraft.ph} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, ph: value }))} />
+                    <Field label="Hours" value={inboxReviewDraft.hours} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, hours: value }))} />
+                  </div>
+                </div>
+
+                <div style={cardStyle}>
+                  <div style={eyebrowStyle}>Where Should This Go?</div>
+                  <p style={mutedSmallStyle}>These fields intentionally start blank. Atlas will not label something as a boiler, vehicle, vendor, or other record unless you choose it or there is a reliable match.</p>
+                  <div style={formGridStyle}>
+                    <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Asset</span><select value={inboxReviewDraft.assetId} onChange={(e) => setInboxReviewDraft((c) => ({ ...c, assetId: e.currentTarget.value }))} style={inputStyle}><option value="">No asset selected</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                    <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Location</span><select value={inboxReviewDraft.locationId} onChange={(e) => setInboxReviewDraft((c) => ({ ...c, locationId: e.currentTarget.value }))} style={inputStyle}><option value="">No location selected</option>{locationRecords.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                    <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Vendor</span><select value={inboxReviewDraft.vendorId} onChange={(e) => setInboxReviewDraft((c) => ({ ...c, vendorId: e.currentTarget.value }))} style={inputStyle}><option value="">No vendor selected</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                    <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Work Order</span><select value={inboxReviewDraft.workOrderId} onChange={(e) => setInboxReviewDraft((c) => ({ ...c, workOrderId: e.currentTarget.value }))} style={inputStyle}><option value="">No work order selected</option>{serviceRecords.map((workOrder) => <option key={workOrder.id} value={workOrder.id}>{workOrder.title}</option>)}</select></label>
+                  </div>
+                </div>
+
+                <div style={cardStyle}>
+                  <div style={eyebrowStyle}>Reliable Match Check</div>
+                  {suggestedMatch?.name && (suggestedMatch.confidence === "High" || suggestedMatch.confidence === "Medium") ? (
+                    <>
+                      <h3 style={{ ...detailTitleStyle, margin: "6px 0" }}>{suggestedMatch.type}: {suggestedMatch.name}</h3>
+                      <p style={mutedSmallStyle}>Confidence: {suggestedMatch.confidence}{Array.isArray(suggestedMatch.reasons) && suggestedMatch.reasons.length ? ` · ${suggestedMatch.reasons.join(" · ")}` : ""}</p>
+                      <button type="button" onClick={() => {
+                        if (suggestedMatch.type === "Asset") setInboxReviewDraft((c) => ({ ...c, assetId: suggestedMatch.id || "" }));
+                        if (suggestedMatch.type === "Vendor") setInboxReviewDraft((c) => ({ ...c, vendorId: suggestedMatch.id || "" }));
+                        if (suggestedMatch.type === "Work Order") setInboxReviewDraft((c) => ({ ...c, workOrderId: suggestedMatch.id || "" }));
+                      }} style={secondaryButtonStyle}>Use This Match</button>
+                    </>
+                  ) : (
+                    <p style={mutedSmallStyle}>No reliable match found. Nothing has been selected for you.</p>
+                  )}
+                </div>
+
+                <div style={cardStyle}>
+                  <Field label="Review notes" value={inboxReviewDraft.notes} onChange={(value) => setInboxReviewDraft((current) => ({ ...current, notes: value }))} multiline />
+                  <div style={buttonRowStyle}>
+                    <button type="button" onClick={() => void updateInboxItem(selected.id, {
+                      extractedData: { ...analysis, ...inboxReviewDraft, readings: { psi: inboxReviewDraft.psi, temperature: inboxReviewDraft.temperature, ph: inboxReviewDraft.ph, hours: inboxReviewDraft.hours } },
+                      targetType: inboxReviewDraft.assetId ? "Asset" : inboxReviewDraft.vendorId ? "Vendor" : inboxReviewDraft.workOrderId ? "Work Order" : inboxReviewDraft.locationId ? "Location" : "General",
+                      targetId: inboxReviewDraft.assetId || inboxReviewDraft.vendorId || inboxReviewDraft.workOrderId || inboxReviewDraft.locationId || "",
+                      targetName: inboxReviewDraft.assetId ? assetRecords.find((r) => r.id === inboxReviewDraft.assetId)?.name || "" : inboxReviewDraft.vendorId ? vendorRecords.find((r) => r.id === inboxReviewDraft.vendorId)?.name || "" : inboxReviewDraft.workOrderId ? serviceRecords.find((r) => r.id === inboxReviewDraft.workOrderId)?.title || "" : inboxReviewDraft.locationId ? locationRecords.find((r) => r.id === inboxReviewDraft.locationId)?.name || "" : "",
+                      status: "Needs Review",
+                    })} style={secondaryButtonStyle}>Save Review Draft</button>
+                    <button type="button" onClick={() => { setInboxReviewOpen(false); openInboxItemInFastIntake(selected); }} style={goldButtonStyle}>Continue to Approval Actions</button>
+                  </div>
+                  <p style={mutedSmallStyle}>Saving this review only updates the Inbox item. It does not create or overwrite an Atlas record.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+      </>
     );
   }
 
