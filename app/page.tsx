@@ -8646,13 +8646,7 @@ export default function AtlasPage() {
           </button>
         }
         list={
-          <div
-            style={
-              compactMonthView
-                ? calendarMonthViewportStyle
-                : stackStyle
-            }
-          >
+          <div style={stackStyle}>
             <div style={cardStyle}>
               <input
                 value={contactSearch}
