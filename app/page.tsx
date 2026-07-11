@@ -8,6 +8,7 @@ type Screen =
   | "locations"
   | "assets"
   | "history"
+  | "requests"
   | "vendors"
   | "contacts"
   | "calendar"
@@ -136,6 +137,32 @@ type ProcedureRecord = {
   area: string;
   priority: Priority;
   steps: string[];
+};
+
+type RequestStatus =
+  | "New"
+  | "Under Review"
+  | "Approved"
+  | "Converted to Work Order"
+  | "Declined"
+  | "Closed";
+
+type OwnerRequestRecord = {
+  id: string;
+  requesterName: string;
+  requesterContact: string;
+  title: string;
+  description: string;
+  locationName: string;
+  assetName: string;
+  priority: WorkOrderPriority;
+  preferredTiming: string;
+  status: RequestStatus;
+  photos: UploadedFileRecord[];
+  adminNotes: string;
+  convertedWorkOrderId: string;
+  submittedAt: string;
+  updatedAt: string;
 };
 
 type IntakeTargetKind =
@@ -362,6 +389,7 @@ const screens: { id: Screen; label: string }[] = [
   { id: "locations", label: "Locations" },
   { id: "assets", label: "Assets" },
   { id: "history", label: "Work Orders" },
+  { id: "requests", label: "Requests" },
   { id: "vendors", label: "Vendors" },
   { id: "contacts", label: "Contacts" },
   { id: "calendar", label: "Calendar" },
@@ -2480,6 +2508,251 @@ const fallbackProcedures: ProcedureRecord[] = [
       "Friday: final walkthrough/testing/updates and 9 AM meeting.",
     ],
   },
+  {
+    id: "boat-dock-party",
+    title: "Boat/Dock Party",
+    area: "Boat / Dock",
+    priority: "High",
+    steps: [
+      "SECTION: Sign Preparation",
+      "Prepare and place required signs.",
+      "SECTION: Parking Area Preparation",
+      "Prepare and inspect the parking area.",
+      "SECTION: Tree and Pathway Maintenance",
+      "Inspect and clean trees, paths, and approaches.",
+      "SECTION: Lawn Maintenance",
+      "Mow, edge, blow, and present lawns for guests.",
+      "SECTION: Lighting Check",
+      "Test outdoor, pathway, dock, and event lighting.",
+      "SECTION: Dock and Sport Court Preparation",
+      "Clean and prepare the dock and sport court.",
+      "SECTION: Final Preparations",
+      "Complete a final walkthrough and correct remaining issues.",
+    ],
+  },
+  {
+    id: "out-of-town-to-do-list",
+    title: "Out of Town To Do List",
+    area: "2000",
+    priority: "High",
+    steps: [
+      "SECTION: Inside Tasks",
+      "Complete the interior checks shown in the MaintainX checklist.",
+      "SECTION: Outside Tasks",
+      "Complete the exterior, grounds, dock, and equipment checks shown in the MaintainX checklist.",
+      "Review the original screenshots before activating this procedure because some item wording was not fully visible.",
+    ],
+  },
+  {
+    id: "city-water-irrigation",
+    title: "City Water Irrigation",
+    area: "Irrigation",
+    priority: "High",
+    steps: [
+      "Steps to change irrigation from lake water to city water.",
+      "Shut off lake water pump.",
+      "Shut off green valve to the right.",
+      "Remove P/MV wire from controller.",
+      "Turn on city water valve at the street.",
+      "Test with remote controller.",
+    ],
+  },
+  {
+    id: "spring-dock-preparation",
+    title: "Spring Dock Preparation",
+    area: "Boat / Dock",
+    priority: "Seasonal",
+    steps: [
+      "Prepare the dock and associated equipment for seasonal use.",
+      "SECTION: Boat Preparation",
+      "Clean the interior of the boat.",
+      "Clean the exterior of the boat.",
+      "Install carpet on the boat.",
+      "SECTION: Lift and Storage Box Maintenance",
+      "Clean the Cobalt lift box.",
+      "Clean the Sea-Doo lift box.",
+      "Clean the dock lift box.",
+      "Clean and organize the storage box.",
+      "SECTION: De-winterization",
+      "De-winterize the Sea-Doo.",
+      "De-winterize the Cobalt.",
+      "SECTION: Dock Maintenance",
+      "Install solar bug zapper.",
+      "Clean the dock and dock extension.",
+      "Check dock lights.",
+    ],
+  },
+  {
+    id: "power-outage",
+    title: "Power Outage (Draft)",
+    area: "Mechanical Room",
+    priority: "High",
+    steps: [
+      "DRAFT — review technical instructions before use.",
+      "Check both boilers for faults; follow the on-screen correction steps if a fault is shown.",
+      "Check the make-up water container; it should contain 6 gallons. Fill from the hose bib above if needed.",
+      "Check recirculation-pump PSI. If under 20, fill the boilers using the hose bib above the make-up water container.",
+      "Check pool temperature on the Desert Aire screen.",
+      "Recheck PSI every 30 minutes and add water if below 20.",
+      "After pressures balance, noises should stop and equipment should return to normal operation.",
+    ],
+  },
+  {
+    id: "fertilize-lawn",
+    title: "Fertilize Lawn",
+    area: "Landscaping",
+    priority: "Seasonal",
+    steps: [
+      "Every 6–8 weeks according to the soil sample.",
+      "Mow lawn.",
+      "Fill spreader with fertilizer.",
+      "Spread evenly across lawn.",
+      "Blow fertilizer off pavers, sport court, and driveway.",
+      "Water all lawns.",
+    ],
+  },
+  {
+    id: "cushion-storage-winter",
+    title: "Cushion Storage for Winter",
+    area: "Exterior",
+    priority: "Seasonal",
+    steps: [
+      "Bring exterior cushions to the basement to dry.",
+      "After dry, vacuum all cushions.",
+      "Spray stains with fabric cleaner and scrub.",
+      "Steam-clean stained areas and remove all suds.",
+      "Lay cushions out to dry.",
+      "Bag each sitting area together.",
+      "Store in crawlspace until spring.",
+      "Obtain completion sign-off.",
+    ],
+  },
+  {
+    id: "yearly-service-wine-cooler",
+    title: "Yearly Service of Wine Cooler",
+    area: "Wine Cooling",
+    priority: "Seasonal",
+    steps: [
+      "Unplug and unload the appliance.",
+      "Vacuum the condenser on the back of the appliance.",
+      "Clean the inside compartment with water and a gentle cleaning product.",
+      "Rinse thoroughly.",
+      "Dry with a soft rag.",
+      "Replace the charcoal filter in the breather hole at the top of the cabinet.",
+      "One lower source item was obscured and must be reviewed before adding.",
+    ],
+  },
+  {
+    id: "winterizing-cobalt",
+    title: "Winterizing Cobalt",
+    area: "Boat / Dock",
+    priority: "Seasonal",
+    steps: [
+      "Schedule Seattle Boat.",
+      "Remove and store carpets.",
+      "Install snap covers for winter.",
+      "Plug in dehumidifier.",
+      "Vacuum and sweep the boat.",
+      "Install automatic cover.",
+      "Check weekly.",
+      "Obtain completion sign-off.",
+    ],
+  },
+  {
+    id: "generator-maintenance",
+    title: "Generator Maintenance",
+    area: "Generators",
+    priority: "High",
+    steps: [
+      "Check generator belt for wear.",
+      "Change air filters.",
+      "Remove and inspect spark plugs; replace after 1,000 hours.",
+      "Check oil level in sight glass; if oil is visible, do not add oil.",
+      "Inspect V-belt tension and wear; replace if cracked.",
+    ],
+  },
+  {
+    id: "pool-heater-burner-inspection",
+    title: "Pool Heater / Burner System Inspection (Draft)",
+    area: "Pool Equipment",
+    priority: "High",
+    steps: [
+      "DRAFT — confirm exact title and linked asset before use.",
+      "Replace sand in filter every 5 years.",
+      "Visually inspect and clean wiring and burner system; contact vendor if damage is found.",
+      "Inspect burner chamber for scaling inside tubes / heat exchanger.",
+      "Check for leaks near the pressure-relief valve.",
+      "Inspect seals and fittings.",
+    ],
+  },
+  {
+    id: "inverter-maintenance",
+    title: "Inverter Maintenance (Draft)",
+    area: "Electrical",
+    priority: "Normal",
+    steps: [
+      "DRAFT — confirm exact inverter asset and location before use.",
+      "Verify switches are set to Auto or On.",
+      "Check wiring and electrical connections.",
+      "Clean inverter of dust and debris.",
+      "Inspect inverter display for error messages.",
+      "Confirm inverter is operating as expected.",
+      "Verify correct AC and DC voltage.",
+    ],
+  },
+  {
+    id: "low-voltage-controls-inspection",
+    title: "Low-Voltage Panels / Controls Inspection",
+    area: "Low Voltage / Controls",
+    priority: "Normal",
+    steps: [
+      "Test all exterior lighting and replace failed bulbs.",
+      "Check each panel for damage and corrosion.",
+      "Clean panels of dust and debris.",
+      "Inspect wiring and burned equipment.",
+      "Power down and clean panel interiors with compressed air.",
+      "Tighten loose screws.",
+      "Test operating voltage and lighting battery backup.",
+      "Check all cameras and schedules.",
+      "Test network connections.",
+      "Test fuses and breakers, including phone and lighting panels.",
+    ],
+  },
+  {
+    id: "boat-cleaning",
+    title: "Boat Cleaning",
+    area: "Cobalt R7",
+    priority: "Normal",
+    steps: [
+      "Clean the outside of the boat; use saltwater wash if very dirty, otherwise regular boat wash. Wash top to bottom with a wash brush and towel dry.",
+      "Clean seats throughout the boat with multipurpose boat cleaner.",
+      "Clean windshield inside and out with streak-free cleaner.",
+      "Wipe stainless steel.",
+      "Clean interior bathroom.",
+      "Make sure the automatic cover is on when finished.",
+    ],
+  },
+  {
+    id: "pool-daily-treatment-cleaning",
+    title: "Pool Daily Treatment / Pool Cleaning (Draft)",
+    area: "Indoor Pool",
+    priority: "High",
+    steps: [
+      "DRAFT — chemical wording must be confirmed before activation.",
+      "Keep 10 tabs in the reservoir.",
+      "Clean both skimmer baskets.",
+      "Empty the in-floor vacuum basket.",
+      "Check and empty the pool filter basket.",
+      "Clean the vacuum screen.",
+      "Vacuum the pool floor.",
+      "Brush the pool.",
+      "Fill the pool with well water as needed.",
+      "Leave the on/off switch on.",
+      "Setting was 50% as of 1/25/2026.",
+      "Inspect daily.",
+      "Chlorine and bromine source instructions were obscured; do not guess or activate them.",
+    ],
+  },
 ];
 
 const fallbackCalendar: CalendarItem[] = [
@@ -3137,6 +3410,10 @@ export default function AtlasPage() {
   >("All");
   const [procedureRecords, setProcedureRecords] =
     useState<ProcedureRecord[]>(fallbackProcedures);
+  const [requestRecords, setRequestRecords] = useState<OwnerRequestRecord[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState("");
+  const [requestPortalToken, setRequestPortalToken] = useState("");
+  const [requestMessage, setRequestMessage] = useState("Loading requests...");
   const [calendarItems, setCalendarItems] =
     useState<CalendarItem[]>(fallbackCalendar);
   const [calendarColors, setCalendarColors] = useState<CalendarColor[]>(
@@ -3571,11 +3848,26 @@ export default function AtlasPage() {
         }
 
         if (apiProcedures.length) {
-          const next = byTitle(apiProcedures.map(normalizeProcedure));
+          const normalizedApi = apiProcedures.map(normalizeProcedure);
+          const existingTitles = new Set(
+            normalizedApi.map((item) => item.title.trim().toLowerCase()),
+          );
+          const missingSeeds = fallbackProcedures.filter(
+            (seed) => !existingTitles.has(seed.title.trim().toLowerCase()),
+          );
+          const next = byTitle([...normalizedApi, ...missingSeeds]);
           setProcedureRecords(next);
           setSelectedProcedureId((current) =>
             next.some((item) => item.id === current) ? current : "",
           );
+          for (const seed of missingSeeds) {
+            void postAtlasRecord("procedures", seed);
+          }
+        } else {
+          setProcedureRecords(byTitle(fallbackProcedures));
+          for (const seed of fallbackProcedures) {
+            void postAtlasRecord("procedures", seed);
+          }
         }
 
         if (apiCalendar.length) {
@@ -3690,6 +3982,47 @@ export default function AtlasPage() {
     if (!ready) return;
     saveStoredArray(storageKeys.mapLabels[0], mapLabels);
   }, [ready, mapLabels]);
+
+  useEffect(() => {
+    if (!ready) return;
+
+    let cancelled = false;
+
+    async function loadRequests() {
+      try {
+        const response = await fetch("/api/atlas-requests", { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok === false) {
+          throw new Error(payload?.error || "Requests could not be loaded.");
+        }
+        if (cancelled) return;
+        const next = Array.isArray(payload.requests) ? payload.requests : [];
+        setRequestRecords(next);
+        setRequestPortalToken(String(payload.portalToken || ""));
+        setSelectedRequestId((current) =>
+          next.some((item: OwnerRequestRecord) => item.id === current)
+            ? current
+            : next[0]?.id || "",
+        );
+        setRequestMessage(
+          next.length
+            ? `${next.length} owner request${next.length === 1 ? "" : "s"} loaded.`
+            : "No owner requests yet.",
+        );
+      } catch (error) {
+        if (!cancelled) {
+          setRequestMessage(
+            error instanceof Error ? error.message : "Requests could not be loaded.",
+          );
+        }
+      }
+    }
+
+    void loadRequests();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -4094,6 +4427,10 @@ export default function AtlasPage() {
       priority: "Normal",
       steps: [],
     });
+  const selectedRequest =
+    requestRecords.find((request) => request.id === selectedRequestId) ??
+    requestRecords[0] ??
+    null;
   const selectedPart =
     partRecords.find((part) => part.id === selectedPartId) ??
     normalizePart({
@@ -11799,12 +12136,204 @@ export default function AtlasPage() {
     );
   }
 
+  async function updateOwnerRequest(
+    requestId: string,
+    patch: Partial<OwnerRequestRecord>,
+  ) {
+    setRequestMessage("Saving request...");
+    try {
+      const response = await fetch("/api/atlas-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: requestId, ...patch }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Request update failed.");
+      }
+      const saved = payload.request as OwnerRequestRecord;
+      setRequestRecords((current) =>
+        current.map((item) => (item.id === saved.id ? saved : item)),
+      );
+      setRequestMessage("Request saved.");
+    } catch (error) {
+      setRequestMessage(
+        error instanceof Error ? error.message : "Request update failed.",
+      );
+    }
+  }
+
+  async function convertOwnerRequestToWorkOrder(request: OwnerRequestRecord) {
+    if (request.convertedWorkOrderId) {
+      setRequestMessage("This request was already converted to a work order.");
+      return;
+    }
+
+    const asset = assetRecords.find(
+      (item) =>
+        request.assetName &&
+        item.name.trim().toLowerCase() === request.assetName.trim().toLowerCase(),
+    );
+
+    const record = normalizeService({
+      id: uid("service"),
+      assetId: asset?.id || "",
+      date: todayISO(),
+      title: request.title || "Owner Request",
+      status: "Open",
+      priority: request.priority || "Medium",
+      notes: [
+        request.description,
+        request.locationName ? `Location: ${request.locationName}` : "",
+        request.assetName ? `Requested asset: ${request.assetName}` : "",
+        request.requesterName ? `Requested by: ${request.requesterName}` : "",
+        request.preferredTiming
+          ? `Preferred timing: ${request.preferredTiming}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      photos: request.photos || [],
+      documents: [],
+    });
+
+    const saved = await postAtlasRecord("work_orders", record);
+    if (!saved) {
+      setRequestMessage("Work order was not saved. Request was left unchanged.");
+      return;
+    }
+
+    setServiceRecords((current) => byTitle([...current, record]));
+    await updateOwnerRequest(request.id, {
+      status: "Converted to Work Order",
+      convertedWorkOrderId: record.id,
+    });
+    setSelectedServiceId(record.id);
+    setScreen("history");
+  }
+
+  function renderRequests() {
+    const portalLink =
+      requestPortalToken && typeof window !== "undefined"
+        ? `${window.location.origin}/request?token=${encodeURIComponent(
+            requestPortalToken,
+          )}`
+        : "";
+
+    return (
+      <ListDrawerLayout
+        eyebrow="Owner Intake"
+        title="Requests"
+        detail="Review owner-submitted maintenance requests, then approve, decline, or convert them into work orders."
+        isMobile={isMobile}
+        drawerResetKey={selectedRequest?.id || "requests-empty"}
+        right={
+          portalLink ? (
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(portalLink);
+                setRequestMessage("Owner request link copied.");
+              }}
+              style={goldButtonStyle}
+            >
+              Copy Owner Request Link
+            </button>
+          ) : null
+        }
+        list={
+          <div style={listStyle}>
+            {requestRecords.length ? (
+              requestRecords.map((request) => (
+                <button
+                  key={request.id}
+                  type="button"
+                  onClick={() => setSelectedRequestId(request.id)}
+                  style={{
+                    ...rowButtonStyle,
+                    borderColor:
+                      request.id === selectedRequest?.id ? colors.gold : colors.line,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <strong>{request.title || "Untitled Request"}</strong>
+                    <p style={mutedSmallStyle}>
+                      {request.requesterName || "Owner"} · {request.locationName || request.assetName || "No location"}
+                    </p>
+                  </div>
+                  <span style={badgeStyle(request.status)}>{request.status}</span>
+                </button>
+              ))
+            ) : (
+              <div style={noticeStyle}>{requestMessage}</div>
+            )}
+          </div>
+        }
+        drawer={
+          selectedRequest ? (
+            <>
+              <div style={eyebrowStyle}>Request Details</div>
+              <h3 style={editorHeaderStyle}>{selectedRequest.title}</h3>
+              <div style={noticeStyle}>{requestMessage}</div>
+              <div style={formGridStyle}>
+                <Field label="Requester" value={selectedRequest.requesterName} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, requesterName: value } : item))} />
+                <Field label="Contact" value={selectedRequest.requesterContact} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, requesterContact: value } : item))} />
+                <Field label="Title" value={selectedRequest.title} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, title: value } : item))} />
+                <Field label="Location" value={selectedRequest.locationName} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, locationName: value } : item))} />
+                <Field label="Asset" value={selectedRequest.assetName} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, assetName: value } : item))} />
+                <SelectField label="Priority" value={selectedRequest.priority} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, priority: value } : item))} options={["Low", "Medium", "High"] as const} />
+                <SelectField label="Status" value={selectedRequest.status} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, status: value } : item))} options={["New", "Under Review", "Approved", "Converted to Work Order", "Declined", "Closed"] as const} />
+                <Field label="Preferred Timing" value={selectedRequest.preferredTiming} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, preferredTiming: value } : item))} />
+                <Field label="Issue / Request" value={selectedRequest.description} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, description: value } : item))} multiline />
+                <Field label="Admin Notes" value={selectedRequest.adminNotes} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, adminNotes: value } : item))} multiline />
+              </div>
+              {selectedRequest.photos?.length ? (
+                <div style={photoGridStyle}>
+                  {selectedRequest.photos.map((photo) => (
+                    <button
+                      key={photo.id}
+                      type="button"
+                      onClick={() => setPreviewFile(photo)}
+                      style={{
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 14,
+                        overflow: "hidden",
+                        padding: 0,
+                        background: colors.card,
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <img
+                        src={photo.dataUrl || photo.url}
+                        alt={photo.name}
+                        style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }}
+                      />
+                      <span style={{ display: "block", padding: 10 }}>{photo.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <div style={buttonRowStyle}>
+                <button type="button" onClick={() => void updateOwnerRequest(selectedRequest.id, selectedRequest)} style={secondaryButtonStyle}>Save</button>
+                <button type="button" onClick={() => void convertOwnerRequestToWorkOrder(selectedRequest)} style={goldButtonStyle}>Convert to Work Order</button>
+              </div>
+            </>
+          ) : (
+            <div style={noticeStyle}>No request selected.</div>
+          )
+        }
+      />
+    );
+  }
+
   function renderProcedures() {
     return (
       <ListDrawerLayout
         eyebrow="Procedures"
         title="Procedures"
         isMobile={isMobile}
+        drawerResetKey={selectedProcedure.id || "procedure-new"}
         list={
           <div style={listStyle}>
             {filteredProcedures.map((procedure) => (
@@ -12017,7 +12546,7 @@ export default function AtlasPage() {
               <div>
                 <div style={eyebrowStyle}>Work Link Editor</div>
                 <h3 style={detailTitleStyle}>
-                  {workLinkDraft.id ? "Edit Work Link" : "Add Work Link"}
+                  {workLinkDraft.id ? "Edit" : "Add Work Link"}
                 </h3>
               </div>
               <button
@@ -12166,7 +12695,7 @@ export default function AtlasPage() {
 
         <div style={workLinksPageGridStyle}>
           {filteredWorkLinks.map((link) => (
-            <article key={link.id} style={workLinkPageCardStyle}>
+            <article key={link.id} style={{ ...workLinkPageCardStyle, position: "relative" }}>
               <a
                 href={link.url}
                 target="_blank"
@@ -12216,9 +12745,20 @@ export default function AtlasPage() {
               <button
                 type="button"
                 onClick={() => openEditWorkLink(link)}
-                style={{ ...secondaryButtonStyle, width: "100%", marginTop: 10 }}
+                aria-label={`Edit ${link.name}`}
+                title="Edit"
+                style={{
+                  ...secondaryButtonStyle,
+                  position: "absolute",
+                  top: 10,
+                  right: 10,
+                  width: 42,
+                  minWidth: 42,
+                  padding: 8,
+                  borderRadius: 999,
+                }}
               >
-                Edit Work Link
+                Edit
               </button>
             </article>
           ))}
@@ -12535,40 +13075,6 @@ export default function AtlasPage() {
         </div>
 
         <div style={commandSectionStyle}>
-          <div style={commandEyebrowStyle}>Quick Add</div>
-          <div style={commandActionGridStyle}>
-            <button
-              type="button"
-              onClick={() => addCalendarItem(todayISO())}
-              style={commandActionButtonStyle}
-            >
-              + Event
-            </button>
-            <button
-              type="button"
-              onClick={addWorkOrder}
-              style={commandActionButtonStyle}
-            >
-              + Work Order
-            </button>
-            <button
-              type="button"
-              onClick={() => setScreen("assistant")}
-              style={commandActionButtonStyle}
-            >
-              + Note
-            </button>
-            <button
-              type="button"
-              onClick={() => setScreen("documents")}
-              style={commandActionButtonStyle}
-            >
-              + Document
-            </button>
-          </div>
-        </div>
-
-        <div style={commandSectionStyle}>
           <div style={commandEyebrowStyle}>Pinned</div>
           <div style={commandPinnedGridStyle}>
             {pinnedLinks.map((link) => (
@@ -12867,6 +13373,7 @@ export default function AtlasPage() {
     else if (screen === "locations") content = renderLocations();
     else if (screen === "assets") content = renderAssets();
     else if (screen === "history") content = renderWorkOrders();
+    else if (screen === "requests") content = renderRequests();
     else if (screen === "vendors") content = renderVendors();
     else if (screen === "contacts") content = renderContacts();
     else if (screen === "calendar") content = renderCalendar();
