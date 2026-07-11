@@ -168,6 +168,21 @@ type OwnerRequestRecord = {
 type IntakeTargetKind =
   "General" | "Asset" | "Location" | "Vendor" | "Work Order" | "Map Label";
 
+type FastIntakeKind =
+  | "Asset Label"
+  | "Invoice / Receipt"
+  | "Work Order Issue"
+  | "Document"
+  | "Gauge / Meter Reading"
+  | "General Photo";
+
+type FastIntakeSaveMode =
+  | "Attach to Existing"
+  | "Create Work Order"
+  | "Create Asset"
+  | "Create Vendor"
+  | "Document Only";
+
 type DocumentRecord = {
   id: string;
   title: string;
@@ -1186,6 +1201,18 @@ function normalizeImageFile(file: File) {
 
   if (!inferredType) return file;
   return new File([file], file.name, { type: inferredType });
+}
+
+function mergeUploadedFiles(
+  incoming: UploadedFileRecord[],
+  existing: UploadedFileRecord[],
+) {
+  const map = new Map<string, UploadedFileRecord>();
+  [...existing, ...incoming].forEach((file) => {
+    const key = file.id || `${file.name}-${file.createdAt || ""}`;
+    map.set(key, file);
+  });
+  return Array.from(map.values());
 }
 
 function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
@@ -3453,6 +3480,16 @@ export default function AtlasPage() {
 
   const [intakeTitle, setIntakeTitle] = useState("");
   const [intakeType, setIntakeType] = useState("Paperwork / Scan");
+  const [fastIntakeKind, setFastIntakeKind] =
+    useState<FastIntakeKind>("Document");
+  const [fastIntakeSaveMode, setFastIntakeSaveMode] =
+    useState<FastIntakeSaveMode>("Attach to Existing");
+  const [fastIntakeRecordName, setFastIntakeRecordName] = useState("");
+  const [fastIntakeCategory, setFastIntakeCategory] = useState("General");
+  const [fastIntakePriority, setFastIntakePriority] =
+    useState<WorkOrderPriority>("Medium");
+  const [fastIntakeLocationId, setFastIntakeLocationId] = useState("general");
+  const [fastIntakeAppendNotes, setFastIntakeAppendNotes] = useState(false);
   const [intakeTargetKind, setIntakeTargetKind] =
     useState<IntakeTargetKind>("Asset");
   const [intakeTargetId, setIntakeTargetId] = useState("");
@@ -5000,6 +5037,46 @@ export default function AtlasPage() {
     }
   }, [intakeTargetKind, intakeTargetOptions, intakeTargetId]);
 
+  const fastIntakeDuplicateWarning = useMemo(() => {
+    const candidate = (fastIntakeRecordName || intakeTitle).trim().toLowerCase();
+    if (!candidate) return "";
+
+    let existingName = "";
+    if (fastIntakeSaveMode === "Create Asset") {
+      existingName =
+        assetRecords.find((item) => item.name.trim().toLowerCase() === candidate)
+          ?.name || "";
+    } else if (fastIntakeSaveMode === "Create Vendor") {
+      existingName =
+        vendorRecords.find((item) => item.name.trim().toLowerCase() === candidate)
+          ?.name || "";
+    } else if (fastIntakeSaveMode === "Create Work Order") {
+      existingName =
+        serviceRecords.find((item) => item.title.trim().toLowerCase() === candidate)
+          ?.title || "";
+    }
+
+    if (!existingName) return "";
+    return `Possible duplicate: Atlas already has ${existingName}. Choose Attach to Existing or change the name before saving.`;
+  }, [
+    fastIntakeRecordName,
+    intakeTitle,
+    fastIntakeSaveMode,
+    assetRecords,
+    vendorRecords,
+    serviceRecords,
+  ]);
+
+  const recentFastIntake = useMemo(
+    () =>
+      [...intakeDocs]
+        .sort((a, b) =>
+          String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+        )
+        .slice(0, 6),
+    [intakeDocs],
+  );
+
   const qrRecords = useMemo<QrRecord[]>(() => {
     const localSearch = qrSearch.trim().toLowerCase();
     const records: QrRecord[] =
@@ -5325,10 +5402,60 @@ export default function AtlasPage() {
   function resetIntakeDraft() {
     setIntakeTitle("");
     setIntakeType("Paperwork / Scan");
+    setFastIntakeKind("Document");
+    setFastIntakeSaveMode("Attach to Existing");
+    setFastIntakeRecordName("");
+    setFastIntakeCategory("General");
+    setFastIntakePriority("Medium");
+    setFastIntakeLocationId("general");
+    setFastIntakeAppendNotes(false);
     setIntakeNotes("");
     setIntakePastedText("");
     setIntakeFiles([]);
     setIntakeMessage("Ready for the next scan, photo, upload, or pasted note.");
+  }
+
+  function applyFastIntakeKind(kind: FastIntakeKind) {
+    setFastIntakeKind(kind);
+    setIntakeType(kind);
+
+    if (kind === "Asset Label") {
+      setFastIntakeSaveMode("Attach to Existing");
+      setIntakeTargetKind("Asset");
+      return;
+    }
+
+    if (kind === "Invoice / Receipt") {
+      setFastIntakeSaveMode("Attach to Existing");
+      setIntakeTargetKind("Vendor");
+      return;
+    }
+
+    if (kind === "Work Order Issue") {
+      setFastIntakeSaveMode("Create Work Order");
+      setIntakeTargetKind("Asset");
+      return;
+    }
+
+    if (kind === "Gauge / Meter Reading") {
+      setFastIntakeSaveMode("Attach to Existing");
+      setIntakeTargetKind("Asset");
+      return;
+    }
+
+    setFastIntakeSaveMode("Document Only");
+    setIntakeTargetKind("General");
+  }
+
+  function appendIntakeNote(existing: string, incoming: string) {
+    const cleanExisting = existing.trim();
+    const cleanIncoming = incoming.trim();
+    if (!cleanIncoming) return cleanExisting;
+    if (!cleanExisting) return cleanIncoming;
+    if (cleanExisting.toLowerCase().includes(cleanIncoming.toLowerCase())) {
+      return cleanExisting;
+    }
+    return `${cleanExisting}\n\nFast Intake — ${new Date().toLocaleDateString()}\n${cleanIncoming}`;
   }
 
   async function addIntakeFiles(fileList: FileList | File[] | null) {
@@ -6106,81 +6233,227 @@ export default function AtlasPage() {
   }
 
   async function saveIntakeDocument() {
-    const targetName = targetNameFor(intakeTargetKind, intakeTargetId);
+    if (!intakeFiles.length && !intakePastedText.trim() && !intakeNotes.trim()) {
+      setIntakeMessage("Add a photo, file, pasted text, or note before saving.");
+      return;
+    }
+
+    if (fastIntakeDuplicateWarning) {
+      setIntakeMessage(fastIntakeDuplicateWarning);
+      return;
+    }
+
     const title =
       intakeTitle.trim() ||
+      fastIntakeRecordName.trim() ||
       intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") ||
       intakePastedText.trim().slice(0, 48) ||
-      "New Atlas Document";
-    const record: DocumentRecord = {
-      id: uid("doc"),
-      title,
-      area: targetName,
-      type: intakeType.trim() || "Paperwork / Scan",
-      linkedAssetId: intakeTargetKind === "Asset" ? intakeTargetId : undefined,
-      linkedVendorId:
-        intakeTargetKind === "Vendor" ? intakeTargetId : undefined,
-      targetType: intakeTargetKind,
-      targetId: intakeTargetKind === "General" ? "" : intakeTargetId,
-      targetName,
-      notes: intakeNotes.trim(),
-      pastedText: intakePastedText.trim(),
-      files: intakeFiles,
-      createdAt: new Date().toISOString(),
-    };
+      "New Atlas Intake";
 
-    const nextDocs = mergeDocuments([record], intakeDocs);
-    setIntakeDocs(nextDocs);
-    setSelectedDocumentId("");
-    saveStoredArray(storageKeys.intakeDocs[0], nextDocs);
+    const combinedNotes = [intakeNotes.trim(), intakePastedText.trim()]
+      .filter(Boolean)
+      .join("\n\n");
 
-    let syncedToVault = false;
+    let finalTargetKind: IntakeTargetKind = intakeTargetKind;
+    let finalTargetId = intakeTargetKind === "General" ? "" : intakeTargetId;
+    let finalTargetName = targetNameFor(finalTargetKind, finalTargetId);
+    let createdLabel = "document";
+
     try {
-      await postDocumentToAtlasVault(record);
-      syncedToVault = true;
-      setDocumentSyncStatus(
-        "Document synced to Atlas. It should show on your other devices after Refresh Vault or page reload.",
-      );
-    } catch {
-      setDocumentSyncStatus(
-        "Saved on this browser only. The document sync API/table still needs to be added for phone-to-desktop vault sync.",
-      );
-    }
-
-    if (record.targetType === "Asset" && record.targetId) {
-      const imagePhotos: PhotoRecord[] = (record.files || [])
-        .filter(
-          (file) => (file.type || "").startsWith("image/") && file.dataUrl,
-        )
-        .map((file) => ({
-          id: uid("photo"),
-          assetId: record.targetId || "",
-          name: file.name,
-          dataUrl: file.dataUrl,
-          createdAt: file.createdAt || new Date().toISOString(),
-        }));
-
-      if (imagePhotos.length) {
-        await cachePhotoRecords(imagePhotos);
-        setPhotos((current) => {
-          const nextPhotos = mergePhotoRecords(imagePhotos, current);
-          persistPhotoRecords(nextPhotos);
-          return nextPhotos;
+      if (fastIntakeSaveMode === "Create Work Order") {
+        const workOrder = normalizeService({
+          id: uid("service"),
+          assetId: intakeTargetKind === "Asset" ? intakeTargetId : "",
+          vendorId: intakeTargetKind === "Vendor" ? intakeTargetId : "",
+          date: todayISO(),
+          title: fastIntakeRecordName.trim() || title,
+          status: "Open",
+          priority: fastIntakePriority,
+          notes: combinedNotes,
+          photos: intakeFiles.filter((file) =>
+            (file.type || "").startsWith("image/"),
+          ),
+          documents: intakeFiles,
         });
-        imagePhotos.forEach((photo) => {
-          void postAtlasRecord("asset_photos", photo);
-        });
+        const saved = await postAtlasRecord("work_orders", workOrder);
+        if (!saved) throw new Error("Work order did not save.");
+        setServiceRecords((current) => byTitle([...current, workOrder]));
+        finalTargetKind = "Work Order";
+        finalTargetId = workOrder.id;
+        finalTargetName = workOrder.title;
+        createdLabel = "work order and intake record";
       }
-    }
 
-    setIntakeMessage(
-      syncedToVault
-        ? `Saved to ${targetName} and synced to the Atlas Document Vault.`
-        : `Saved to ${targetName} on this browser. Atlas sync failed; check the vault status message.`,
-    );
-    resetIntakeDraft();
-    setDocumentSearch("");
-    setScreen("documents");
+      if (fastIntakeSaveMode === "Create Asset") {
+        const asset = normalizeAsset({
+          id: uid("asset"),
+          name: fastIntakeRecordName.trim() || title,
+          locationId: fastIntakeLocationId || "general",
+          category: fastIntakeCategory.trim() || "General",
+          status: "Monitor",
+          notes: combinedNotes,
+          vendorIds: intakeTargetKind === "Vendor" && intakeTargetId
+            ? [intakeTargetId]
+            : [],
+        });
+        const saved = await postAtlasRecord("assets", asset);
+        if (!saved) throw new Error("Asset did not save.");
+        setAssetRecords((current) => byName([...current, asset]));
+        finalTargetKind = "Asset";
+        finalTargetId = asset.id;
+        finalTargetName = asset.name;
+        createdLabel = "asset and intake record";
+      }
+
+      if (fastIntakeSaveMode === "Create Vendor") {
+        const vendor = normalizeVendor({
+          id: uid("vendor"),
+          name: fastIntakeRecordName.trim() || title,
+          category: fastIntakeCategory.trim() || "General",
+          notes: combinedNotes,
+        });
+        const saved = await postAtlasRecord("vendors", vendor);
+        if (!saved) throw new Error("Vendor did not save.");
+        setVendorRecords((current) => byName([...current, vendor]));
+        finalTargetKind = "Vendor";
+        finalTargetId = vendor.id;
+        finalTargetName = vendor.name;
+        createdLabel = "vendor and intake record";
+      }
+
+      if (fastIntakeSaveMode === "Document Only") {
+        finalTargetKind = "General";
+        finalTargetId = "";
+        finalTargetName = "General";
+      }
+
+      if (
+        fastIntakeSaveMode === "Attach to Existing" &&
+        fastIntakeAppendNotes &&
+        combinedNotes
+      ) {
+        if (intakeTargetKind === "Asset") {
+          const existing = assetRecords.find((item) => item.id === intakeTargetId);
+          if (existing) {
+            const updated = normalizeAsset({
+              ...existing,
+              notes: appendIntakeNote(existing.notes, combinedNotes),
+            });
+            const saved = await postAtlasRecord("assets", updated);
+            if (!saved) throw new Error("Asset note update did not save.");
+            setAssetRecords((current) =>
+              current.map((item) => (item.id === updated.id ? updated : item)),
+            );
+          }
+        }
+
+        if (intakeTargetKind === "Vendor") {
+          const existing = vendorRecords.find((item) => item.id === intakeTargetId);
+          if (existing) {
+            const updated = normalizeVendor({
+              ...existing,
+              notes: appendIntakeNote(existing.notes, combinedNotes),
+            });
+            const saved = await postAtlasRecord("vendors", updated);
+            if (!saved) throw new Error("Vendor note update did not save.");
+            setVendorRecords((current) =>
+              current.map((item) => (item.id === updated.id ? updated : item)),
+            );
+          }
+        }
+
+        if (intakeTargetKind === "Work Order") {
+          const existing = serviceRecords.find((item) => item.id === intakeTargetId);
+          if (existing) {
+            const updated = normalizeService({
+              ...existing,
+              notes: appendIntakeNote(existing.notes, combinedNotes),
+              photos: mergeUploadedFiles(
+                intakeFiles.filter((file) =>
+                  (file.type || "").startsWith("image/"),
+                ),
+                existing.photos || [],
+              ),
+              documents: mergeUploadedFiles(intakeFiles, existing.documents || []),
+            });
+            const saved = await postAtlasRecord("work_orders", updated);
+            if (!saved) throw new Error("Work order update did not save.");
+            setServiceRecords((current) =>
+              current.map((item) => (item.id === updated.id ? updated : item)),
+            );
+          }
+        }
+      }
+
+      const record: DocumentRecord = {
+        id: uid("doc"),
+        title,
+        area: finalTargetName,
+        type: fastIntakeKind || intakeType.trim() || "Paperwork / Scan",
+        linkedAssetId: finalTargetKind === "Asset" ? finalTargetId : undefined,
+        linkedVendorId: finalTargetKind === "Vendor" ? finalTargetId : undefined,
+        targetType: finalTargetKind,
+        targetId: finalTargetKind === "General" ? "" : finalTargetId,
+        targetName: finalTargetName,
+        notes: intakeNotes.trim(),
+        pastedText: intakePastedText.trim(),
+        files: intakeFiles,
+        createdAt: new Date().toISOString(),
+      };
+
+      const nextDocs = mergeDocuments([record], intakeDocs);
+      setIntakeDocs(nextDocs);
+      setSelectedDocumentId("");
+      saveStoredArray(storageKeys.intakeDocs[0], nextDocs);
+
+      let syncedToVault = false;
+      try {
+        await postDocumentToAtlasVault(record);
+        syncedToVault = true;
+        setDocumentSyncStatus(
+          "Fast Intake synced to the Atlas Document Vault.",
+        );
+      } catch {
+        setDocumentSyncStatus(
+          "Fast Intake saved on this browser, but document-vault sync failed.",
+        );
+      }
+
+      if (record.targetType === "Asset" && record.targetId) {
+        const imagePhotos: PhotoRecord[] = (record.files || [])
+          .filter((file) => (file.type || "").startsWith("image/") && file.dataUrl)
+          .map((file) => ({
+            id: uid("photo"),
+            assetId: record.targetId || "",
+            name: file.name,
+            dataUrl: file.dataUrl,
+            createdAt: file.createdAt || new Date().toISOString(),
+          }));
+
+        if (imagePhotos.length) {
+          await cachePhotoRecords(imagePhotos);
+          setPhotos((current) => {
+            const nextPhotos = mergePhotoRecords(imagePhotos, current);
+            persistPhotoRecords(nextPhotos);
+            return nextPhotos;
+          });
+          imagePhotos.forEach((photo) => {
+            void postAtlasRecord("asset_photos", photo);
+          });
+        }
+      }
+
+      const success = syncedToVault
+        ? `Saved ${createdLabel} and synced the intake files.`
+        : `Saved ${createdLabel}. Document-vault sync needs attention.`;
+      resetIntakeDraft();
+      setIntakeMessage(success);
+      setDocumentSearch("");
+    } catch (error) {
+      setIntakeMessage(
+        error instanceof Error ? error.message : "Fast Intake save failed.",
+      );
+    }
   }
 
   function renderLinkedDocuments(kind: IntakeTargetKind, id?: string) {
@@ -11974,188 +12247,368 @@ export default function AtlasPage() {
   }
 
   function renderIntake() {
+    const selectedTargetName = targetNameFor(intakeTargetKind, intakeTargetId);
+    const reviewName = fastIntakeRecordName.trim() || intakeTitle.trim() ||
+      intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") || "Untitled intake";
+
     return (
       <section style={sectionStyle}>
         <SectionHeader
-          eyebrow="Phone Intake"
-          title="Add Document / Photo"
-          detail="Take a photo, upload paperwork, paste notes, and link it directly to the right Atlas section."
+          eyebrow="Fast Intake"
+          title="Scan, Review, Save"
+          detail="Take a photo or upload a file, review exactly where it will go, then approve the save. Atlas will never change a record until you tap Save."
           right={
             <button
               type="button"
               onClick={() => setScreen("documents")}
               style={secondaryButtonStyle}
             >
-              Documents
+              Intake History
             </button>
           }
         />
 
-        <div
-          style={
-            isMobile
-              ? { ...intakeLayoutStyle, gridTemplateColumns: "1fr" }
-              : intakeLayoutStyle
-          }
-        >
+        <div style={{ display: "grid", gap: 16 }}>
           <div style={cardStyle}>
-            <div style={eyebrowStyle}>1. Capture or upload</div>
-            <h3 style={detailTitleStyle}>Paperwork / Scan</h3>
-            <p style={mutedSmallStyle}>
-              On your phone, Take Photo opens the camera. Upload handles PDFs,
-              screenshots, photos, and other paperwork files.
-            </p>
-
-            <div style={buttonRowStyle}>
-              <label style={uploadButtonStyle}>
-                Take Photo
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={(event) => {
-                    void addIntakeFiles(event.currentTarget.files);
-                    event.currentTarget.value = "";
-                  }}
-                  style={{ display: "none" }}
-                />
-              </label>
-              <label style={secondaryUploadButtonStyle}>
-                Upload File(s)
-                <input
-                  type="file"
-                  accept="image/*,.pdf,.txt,.doc,.docx"
-                  multiple
-                  onChange={(event) => {
-                    void addIntakeFiles(event.currentTarget.files);
-                    event.currentTarget.value = "";
-                  }}
-                  style={{ display: "none" }}
-                />
-              </label>
+            <div style={eyebrowStyle}>1. What are you adding?</div>
+            <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+              {(
+                [
+                  "Asset Label",
+                  "Invoice / Receipt",
+                  "Work Order Issue",
+                  "Document",
+                  "Gauge / Meter Reading",
+                  "General Photo",
+                ] as FastIntakeKind[]
+              ).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => applyFastIntakeKind(kind)}
+                  style={
+                    fastIntakeKind === kind
+                      ? goldButtonStyle
+                      : secondaryButtonStyle
+                  }
+                >
+                  {kind}
+                </button>
+              ))}
             </div>
-
-            {intakeFiles.length ? (
-              <div style={{ ...photoGridStyle, marginTop: 14 }}>
-                {intakeFiles.map((file) => (
-                  <div key={file.id} style={photoCardStyle}>
-                    {file.dataUrl?.startsWith("data:image/") ? (
-                      <img
-                        src={file.dataUrl}
-                        alt={file.name}
-                        style={photoStyle}
-                      />
-                    ) : (
-                      <div style={fileTileStyle}>
-                        {file.type?.includes("pdf") ? "PDF" : "FILE"}
-                      </div>
-                    )}
-                    <strong>{file.name}</strong>
-                    <div style={buttonRowStyle}>
-                      <button
-                        type="button"
-                        onClick={() => openUploadedFile(file)}
-                        style={tinyButtonStyle}
-                      >
-                        Preview
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeIntakeFile(file.id)}
-                        style={tinyDangerButtonStyle}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={emptyStateStyle}>No file attached yet.</div>
-            )}
           </div>
 
-          <div style={cardStyle}>
-            <div style={eyebrowStyle}>2. Link to Atlas</div>
-            <div style={formGridStyle}>
-              <Field
-                label="Title"
-                value={intakeTitle}
-                onChange={setIntakeTitle}
-                placeholder="Invoice, receipt, photo, estimate, note..."
-              />
-              <Field
-                label="Type"
-                value={intakeType}
-                onChange={setIntakeType}
-                placeholder="Invoice, Manual, Photo, Receipt, Estimate..."
-              />
-              <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                <span style={fieldLabelStyle}>Send to section</span>
-                <select
-                  value={intakeTargetKind}
-                  onChange={(event) =>
-                    setIntakeTargetKind(
-                      event.currentTarget.value as IntakeTargetKind,
-                    )
-                  }
-                  style={inputStyle}
-                >
-                  {(
-                    [
-                      "Asset",
-                      "Location",
-                      "Vendor",
-                      "Work Order",
-                      "Map Label",
-                      "General",
-                    ] as IntakeTargetKind[]
-                  ).map((kind) => (
-                    <option key={kind} value={kind}>
-                      {kind}
-                    </option>
+          <div
+            style={
+              isMobile
+                ? { ...intakeLayoutStyle, gridTemplateColumns: "1fr" }
+                : intakeLayoutStyle
+            }
+          >
+            <div style={cardStyle}>
+              <div style={eyebrowStyle}>2. Capture or upload</div>
+              <h3 style={detailTitleStyle}>{fastIntakeKind}</h3>
+              <p style={mutedSmallStyle}>
+                Take Photo opens the phone camera. Upload supports photos,
+                screenshots, PDFs, text files, and common documents.
+              </p>
+
+              <div style={buttonRowStyle}>
+                <label style={uploadButtonStyle}>
+                  Take Photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(event) => {
+                      void addIntakeFiles(event.currentTarget.files);
+                      event.currentTarget.value = "";
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                <label style={secondaryUploadButtonStyle}>
+                  Upload File(s)
+                  <input
+                    type="file"
+                    accept="image/*,.pdf,.txt,.doc,.docx"
+                    multiple
+                    onChange={(event) => {
+                      void addIntakeFiles(event.currentTarget.files);
+                      event.currentTarget.value = "";
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              </div>
+
+              {intakeFiles.length ? (
+                <div style={{ ...photoGridStyle, marginTop: 14 }}>
+                  {intakeFiles.map((file) => (
+                    <div key={file.id} style={photoCardStyle}>
+                      {file.dataUrl?.startsWith("data:image/") ? (
+                        <img src={file.dataUrl} alt={file.name} style={photoStyle} />
+                      ) : (
+                        <div style={fileTileStyle}>
+                          {file.type?.includes("pdf") ? "PDF" : "FILE"}
+                        </div>
+                      )}
+                      <strong>{file.name}</strong>
+                      <div style={buttonRowStyle}>
+                        <button
+                          type="button"
+                          onClick={() => openUploadedFile(file)}
+                          style={tinyButtonStyle}
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeIntakeFile(file.id)}
+                          style={tinyDangerButtonStyle}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
                   ))}
-                </select>
-              </label>
-              {intakeTargetKind !== "General" ? (
+                </div>
+              ) : (
+                <div style={emptyStateStyle}>No file attached yet.</div>
+              )}
+            </div>
+
+            <div style={cardStyle}>
+              <div style={eyebrowStyle}>3. Choose what Atlas should do</div>
+              <div style={formGridStyle}>
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                  <span style={fieldLabelStyle}>Record</span>
+                  <span style={fieldLabelStyle}>Save action</span>
                   <select
-                    value={intakeTargetId}
+                    value={fastIntakeSaveMode}
                     onChange={(event) =>
-                      setIntakeTargetId(event.currentTarget.value)
+                      setFastIntakeSaveMode(
+                        event.currentTarget.value as FastIntakeSaveMode,
+                      )
                     }
                     style={inputStyle}
                   >
-                    {intakeTargetOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.name}
-                      </option>
-                    ))}
+                    <option value="Attach to Existing">Attach to Existing</option>
+                    <option value="Create Work Order">Create Work Order</option>
+                    <option value="Create Asset">Create Asset</option>
+                    <option value="Create Vendor">Create Vendor</option>
+                    <option value="Document Only">Document Only</option>
                   </select>
                 </label>
+
+                <Field
+                  label="Intake title"
+                  value={intakeTitle}
+                  onChange={setIntakeTitle}
+                  placeholder="Invoice, equipment label, issue, reading..."
+                />
+
+                {fastIntakeSaveMode === "Create Work Order" ||
+                fastIntakeSaveMode === "Create Asset" ||
+                fastIntakeSaveMode === "Create Vendor" ? (
+                  <Field
+                    label={
+                      fastIntakeSaveMode === "Create Work Order"
+                        ? "Work order title"
+                        : fastIntakeSaveMode === "Create Asset"
+                          ? "Asset name"
+                          : "Vendor name"
+                    }
+                    value={fastIntakeRecordName}
+                    onChange={setFastIntakeRecordName}
+                    placeholder="Required before creating a new record"
+                  />
+                ) : null}
+
+                {fastIntakeSaveMode === "Create Work Order" ? (
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Priority</span>
+                    <select
+                      value={fastIntakePriority}
+                      onChange={(event) =>
+                        setFastIntakePriority(
+                          event.currentTarget.value as WorkOrderPriority,
+                        )
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </label>
+                ) : null}
+
+                {fastIntakeSaveMode === "Create Asset" ? (
+                  <>
+                    <Field
+                      label="Category"
+                      value={fastIntakeCategory}
+                      onChange={setFastIntakeCategory}
+                      placeholder="HVAC, Appliance, Watercraft..."
+                    />
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Location</span>
+                      <select
+                        value={fastIntakeLocationId}
+                        onChange={(event) =>
+                          setFastIntakeLocationId(event.currentTarget.value)
+                        }
+                        style={inputStyle}
+                      >
+                        {byName(locations).map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                ) : null}
+
+                {fastIntakeSaveMode === "Create Vendor" ? (
+                  <Field
+                    label="Category"
+                    value={fastIntakeCategory}
+                    onChange={setFastIntakeCategory}
+                    placeholder="Painting, Plumbing, Boat Service..."
+                  />
+                ) : null}
+
+                {fastIntakeSaveMode === "Attach to Existing" ||
+                fastIntakeSaveMode === "Create Work Order" ? (
+                  <>
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Link to section</span>
+                      <select
+                        value={intakeTargetKind}
+                        onChange={(event) =>
+                          setIntakeTargetKind(
+                            event.currentTarget.value as IntakeTargetKind,
+                          )
+                        }
+                        style={inputStyle}
+                      >
+                        {(
+                          [
+                            "Asset",
+                            "Location",
+                            "Vendor",
+                            "Work Order",
+                            "Map Label",
+                            "General",
+                          ] as IntakeTargetKind[]
+                        ).map((kind) => (
+                          <option key={kind} value={kind}>
+                            {kind}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {intakeTargetKind !== "General" ? (
+                      <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                        <span style={fieldLabelStyle}>Existing record</span>
+                        <select
+                          value={intakeTargetId}
+                          onChange={(event) =>
+                            setIntakeTargetId(event.currentTarget.value)
+                          }
+                          style={inputStyle}
+                        >
+                          {intakeTargetOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                  </>
+                ) : null}
+
+                <Field
+                  label="Notes"
+                  value={intakeNotes}
+                  onChange={setIntakeNotes}
+                  multiline
+                  placeholder="What is it, what happened, follow-up needed, reading and unit..."
+                />
+                <Field
+                  label="Paste text / email / copied information"
+                  value={intakePastedText}
+                  onChange={setIntakePastedText}
+                  multiline
+                  placeholder="Paste invoice text, serial information, email details, or copied notes."
+                />
+              </div>
+
+              {fastIntakeSaveMode === "Attach to Existing" &&
+              ["Asset", "Vendor", "Work Order"].includes(intakeTargetKind) ? (
+                <label style={{ ...noticeStyle, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <input
+                    type="checkbox"
+                    checked={fastIntakeAppendNotes}
+                    onChange={(event) =>
+                      setFastIntakeAppendNotes(event.currentTarget.checked)
+                    }
+                    style={{ width: 20, height: 20, marginTop: 1 }}
+                  />
+                  <span>
+                    <strong>Also append these notes to the selected record.</strong>
+                    <span style={{ ...mutedSmallStyle, display: "block" }}>
+                      Existing notes are preserved. Atlas adds the new intake below them.
+                    </span>
+                  </span>
+                </label>
               ) : null}
-              <Field
-                label="Notes"
-                value={intakeNotes}
-                onChange={setIntakeNotes}
-                multiline
-                placeholder="What is this, why it matters, follow-up needed..."
-              />
-              <Field
-                label="Paste text / email / copied paperwork"
-                value={intakePastedText}
-                onChange={setIntakePastedText}
-                multiline
-                placeholder="Paste copied text, email content, invoice notes, serial info, etc."
-              />
+
+              {fastIntakeDuplicateWarning ? (
+                <div style={{ ...noticeStyle, borderColor: colors.red, color: colors.red }}>
+                  <strong>{fastIntakeDuplicateWarning}</strong>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div style={cardStyle}>
+            <div style={eyebrowStyle}>4. Review before saving</div>
+            <div style={reviewGridStyle}>
+              <div style={noticeStyle}>
+                <strong>{fastIntakeKind}</strong>
+                <p style={mutedSmallStyle}>Intake type</p>
+              </div>
+              <div style={noticeStyle}>
+                <strong>{fastIntakeSaveMode}</strong>
+                <p style={mutedSmallStyle}>Save action</p>
+              </div>
+              <div style={noticeStyle}>
+                <strong>{reviewName}</strong>
+                <p style={mutedSmallStyle}>Title / new record</p>
+              </div>
+              <div style={noticeStyle}>
+                <strong>
+                  {fastIntakeSaveMode === "Document Only"
+                    ? "General"
+                    : fastIntakeSaveMode.startsWith("Create")
+                      ? fastIntakeSaveMode.replace("Create ", "New ")
+                      : selectedTargetName}
+                </strong>
+                <p style={mutedSmallStyle}>Destination</p>
+              </div>
+              <div style={noticeStyle}>
+                <strong>{intakeFiles.length} file(s)</strong>
+                <p style={mutedSmallStyle}>Photos / documents</p>
+              </div>
             </div>
 
-            <div style={noticeStyle}>
+            <div style={{ ...noticeStyle, marginTop: 12 }}>
               <strong>{intakeMessage}</strong>
               <p style={mutedSmallStyle}>
-                Saved intake appears in Documents and is linked back to the
-                selected record.
+                Atlas saves only after you approve below. New records are merged into the current lists; existing records and photos are not replaced.
               </p>
             </div>
 
@@ -12163,18 +12616,48 @@ export default function AtlasPage() {
               <button
                 type="button"
                 onClick={() => void saveIntakeDocument()}
-                style={goldButtonStyle}
+                disabled={Boolean(fastIntakeDuplicateWarning)}
+                style={{
+                  ...goldButtonStyle,
+                  opacity: fastIntakeDuplicateWarning ? 0.55 : 1,
+                }}
               >
-                Save to Atlas
+                Approve and Save
               </button>
-              <button
-                type="button"
-                onClick={resetIntakeDraft}
-                style={secondaryButtonStyle}
-              >
+              <button type="button" onClick={resetIntakeDraft} style={secondaryButtonStyle}>
                 Clear
               </button>
             </div>
+          </div>
+
+          <div style={cardStyle}>
+            <div style={eyebrowStyle}>Recent Intake</div>
+            <h3 style={detailTitleStyle}>Intake history</h3>
+            {recentFastIntake.length ? (
+              <div style={listStyle}>
+                {recentFastIntake.map((doc) => (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDocumentId(doc.id);
+                      setScreen("documents");
+                    }}
+                    style={rowButtonStyle}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <strong>{doc.title}</strong>
+                      <p style={mutedSmallStyle}>
+                        {doc.type} · {doc.targetName || "General"} · {(doc.files || []).length} file(s)
+                      </p>
+                    </div>
+                    <span style={mutedSmallStyle}>{formatDate(doc.createdAt || "")}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={emptyStateStyle}>No Fast Intake records yet.</div>
+            )}
           </div>
         </div>
       </section>
@@ -14324,6 +14807,12 @@ const navButtonStyle: React.CSSProperties = {
   minHeight: 30,
   display: "flex",
   alignItems: "center",
+};
+
+const reviewGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 10,
 };
 
 const intakeLayoutStyle: React.CSSProperties = {
