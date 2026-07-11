@@ -4107,6 +4107,51 @@ export default function AtlasPage() {
     return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=12&data=${encodeURIComponent(value)}`;
   }
 
+  async function copyOwnerRequestQrImage(portalLink: string) {
+    if (!portalLink) return;
+
+    const imageUrl = qrImageUrl(portalLink, 700);
+
+    try {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard?.write &&
+        typeof ClipboardItem !== "undefined"
+      ) {
+        const response = await fetch(imageUrl, { cache: "no-store" });
+        if (!response.ok) throw new Error("QR image download failed.");
+
+        const sourceBlob = await response.blob();
+        const pngBlob =
+          sourceBlob.type === "image/png"
+            ? sourceBlob
+            : new Blob([await sourceBlob.arrayBuffer()], {
+                type: "image/png",
+              });
+
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": pngBlob }),
+        ]);
+        setRequestMessage("Owner request QR image copied.");
+        return;
+      }
+
+      throw new Error("Image clipboard is unavailable.");
+    } catch {
+      try {
+        await navigator.clipboard.writeText(portalLink);
+        setRequestMessage(
+          "This browser could not copy the QR picture, so the owner request link was copied instead.",
+        );
+      } catch {
+        window.open(imageUrl, "_blank", "noopener,noreferrer");
+        setRequestMessage(
+          "The QR image opened in a new tab. Save or share it from there.",
+        );
+      }
+    }
+  }
+
   function parseQrTarget(value: string): { kind: QrKind; id: string } | null {
     let raw = String(value || "").trim();
     if (!raw) return null;
@@ -12220,110 +12265,167 @@ export default function AtlasPage() {
           )}`
         : "";
 
+    const ownerRequestQr = portalLink ? qrImageUrl(portalLink, 320) : "";
+
     return (
-      <ListDrawerLayout
-        eyebrow="Owner Intake"
-        title="Requests"
-        detail="Review owner-submitted maintenance requests, then approve, decline, or convert them into work orders."
-        isMobile={isMobile}
-        drawerResetKey={selectedRequest?.id || "requests-empty"}
-        right={
-          portalLink ? (
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(portalLink);
-                setRequestMessage("Owner request link copied.");
-              }}
-              style={goldButtonStyle}
-            >
-              Copy Owner Request Link
-            </button>
-          ) : null
-        }
-        list={
-          <div style={listStyle}>
-            {requestRecords.length ? (
-              requestRecords.map((request) => (
+      <div style={{ display: "grid", gap: 18 }}>
+        {portalLink ? (
+          <section style={ownerRequestPortalCardStyle}>
+            <div style={{ minWidth: 0 }}>
+              <div style={eyebrowStyle}>Owner Access</div>
+              <h3 style={{ ...editorHeaderStyle, marginBottom: 8 }}>
+                Request Service QR Code
+              </h3>
+              <p style={mutedSmallStyle}>
+                The owner can scan this code to open the secure request form
+                without entering the full Atlas app.
+              </p>
+              <div className="atlas-no-print" style={buttonRowStyle}>
                 <button
-                  key={request.id}
                   type="button"
-                  onClick={() => setSelectedRequestId(request.id)}
-                  style={{
-                    ...rowButtonStyle,
-                    borderColor:
-                      request.id === selectedRequest?.id ? colors.gold : colors.line,
+                  onClick={() => {
+                    void navigator.clipboard.writeText(portalLink);
+                    setRequestMessage("Owner request link copied.");
                   }}
+                  style={secondaryButtonStyle}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <strong>{request.title || "Untitled Request"}</strong>
-                    <p style={mutedSmallStyle}>
-                      {request.requesterName || "Owner"} · {request.locationName || request.assetName || "No location"}
-                    </p>
-                  </div>
-                  <span style={badgeStyle(request.status)}>{request.status}</span>
+                  Copy Link
                 </button>
-              ))
-            ) : (
-              <div style={noticeStyle}>{requestMessage}</div>
-            )}
-          </div>
-        }
-        drawer={
-          selectedRequest ? (
-            <>
-              <div style={eyebrowStyle}>Request Details</div>
-              <h3 style={editorHeaderStyle}>{selectedRequest.title}</h3>
-              <div style={noticeStyle}>{requestMessage}</div>
-              <div style={formGridStyle}>
-                <Field label="Requester" value={selectedRequest.requesterName} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, requesterName: value } : item))} />
-                <Field label="Contact" value={selectedRequest.requesterContact} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, requesterContact: value } : item))} />
-                <Field label="Title" value={selectedRequest.title} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, title: value } : item))} />
-                <Field label="Location" value={selectedRequest.locationName} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, locationName: value } : item))} />
-                <Field label="Asset" value={selectedRequest.assetName} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, assetName: value } : item))} />
-                <SelectField label="Priority" value={selectedRequest.priority} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, priority: value } : item))} options={["Low", "Medium", "High"] as const} />
-                <SelectField label="Status" value={selectedRequest.status} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, status: value } : item))} options={["New", "Under Review", "Approved", "Converted to Work Order", "Declined", "Closed"] as const} />
-                <Field label="Preferred Timing" value={selectedRequest.preferredTiming} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, preferredTiming: value } : item))} />
-                <Field label="Issue / Request" value={selectedRequest.description} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, description: value } : item))} multiline />
-                <Field label="Admin Notes" value={selectedRequest.adminNotes} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, adminNotes: value } : item))} multiline />
+                <button
+                  type="button"
+                  onClick={() => void copyOwnerRequestQrImage(portalLink)}
+                  style={secondaryButtonStyle}
+                >
+                  Copy QR Image
+                </button>
+                <a
+                  href={portalLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={goldButtonStyle}
+                >
+                  Open Request Form
+                </a>
               </div>
-              {selectedRequest.photos?.length ? (
-                <div style={photoGridStyle}>
-                  {selectedRequest.photos.map((photo) => (
-                    <button
-                      key={photo.id}
-                      type="button"
-                      onClick={() => setPreviewFile(photo)}
-                      style={{
-                        border: `1px solid ${colors.line}`,
-                        borderRadius: 14,
-                        overflow: "hidden",
-                        padding: 0,
-                        background: colors.card,
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <img
-                        src={photo.dataUrl || photo.url}
-                        alt={photo.name}
-                        style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }}
-                      />
-                      <span style={{ display: "block", padding: 10 }}>{photo.name}</span>
-                    </button>
-                  ))}
+              <small style={{ ...qrUrlStyle, display: "block", marginTop: 10 }}>
+                {portalLink}
+              </small>
+            </div>
+
+            <div style={ownerRequestQrShellStyle}>
+              <img
+                src={ownerRequestQr}
+                alt="Owner Request QR code"
+                style={ownerRequestQrImageStyle}
+              />
+            </div>
+          </section>
+        ) : null}
+
+        <ListDrawerLayout
+          eyebrow="Owner Intake"
+          title="Requests"
+          detail="Review owner-submitted maintenance requests, then approve, decline, or convert them into work orders."
+          isMobile={isMobile}
+          drawerResetKey={selectedRequest?.id || "requests-empty"}
+          right={
+            portalLink ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(portalLink);
+                  setRequestMessage("Owner request link copied.");
+                }}
+                style={goldButtonStyle}
+              >
+                Copy Owner Request Link
+              </button>
+            ) : null
+          }
+          list={
+            <div style={listStyle}>
+              {requestRecords.length ? (
+                requestRecords.map((request) => (
+                  <button
+                    key={request.id}
+                    type="button"
+                    onClick={() => setSelectedRequestId(request.id)}
+                    style={{
+                      ...rowButtonStyle,
+                      borderColor:
+                        request.id === selectedRequest?.id ? colors.gold : colors.line,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <strong>{request.title || "Untitled Request"}</strong>
+                      <p style={mutedSmallStyle}>
+                        {request.requesterName || "Owner"} · {request.locationName || request.assetName || "No location"}
+                      </p>
+                    </div>
+                    <span style={badgeStyle(request.status)}>{request.status}</span>
+                  </button>
+                ))
+              ) : (
+                <div style={noticeStyle}>{requestMessage}</div>
+              )}
+            </div>
+          }
+          drawer={
+            selectedRequest ? (
+              <>
+                <div style={eyebrowStyle}>Request Details</div>
+                <h3 style={editorHeaderStyle}>{selectedRequest.title}</h3>
+                <div style={noticeStyle}>{requestMessage}</div>
+                <div style={formGridStyle}>
+                  <Field label="Requester" value={selectedRequest.requesterName} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, requesterName: value } : item))} />
+                  <Field label="Contact" value={selectedRequest.requesterContact} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, requesterContact: value } : item))} />
+                  <Field label="Title" value={selectedRequest.title} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, title: value } : item))} />
+                  <Field label="Location" value={selectedRequest.locationName} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, locationName: value } : item))} />
+                  <Field label="Asset" value={selectedRequest.assetName} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, assetName: value } : item))} />
+                  <SelectField label="Priority" value={selectedRequest.priority} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, priority: value } : item))} options={["Low", "Medium", "High"] as const} />
+                  <SelectField label="Status" value={selectedRequest.status} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, status: value } : item))} options={["New", "Under Review", "Approved", "Converted to Work Order", "Declined", "Closed"] as const} />
+                  <Field label="Preferred Timing" value={selectedRequest.preferredTiming} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, preferredTiming: value } : item))} />
+                  <Field label="Issue / Request" value={selectedRequest.description} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, description: value } : item))} multiline />
+                  <Field label="Admin Notes" value={selectedRequest.adminNotes} onChange={(value) => setRequestRecords((current) => current.map((item) => item.id === selectedRequest.id ? { ...item, adminNotes: value } : item))} multiline />
                 </div>
-              ) : null}
-              <div style={buttonRowStyle}>
-                <button type="button" onClick={() => void updateOwnerRequest(selectedRequest.id, selectedRequest)} style={secondaryButtonStyle}>Save</button>
-                <button type="button" onClick={() => void convertOwnerRequestToWorkOrder(selectedRequest)} style={goldButtonStyle}>Convert to Work Order</button>
-              </div>
-            </>
-          ) : (
-            <div style={noticeStyle}>No request selected.</div>
-          )
-        }
-      />
+                {selectedRequest.photos?.length ? (
+                  <div style={photoGridStyle}>
+                    {selectedRequest.photos.map((photo) => (
+                      <button
+                        key={photo.id}
+                        type="button"
+                        onClick={() => setPreviewFile(photo)}
+                        style={{
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 14,
+                          overflow: "hidden",
+                          padding: 0,
+                          background: colors.card,
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <img
+                          src={photo.dataUrl || photo.url}
+                          alt={photo.name}
+                          style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }}
+                        />
+                        <span style={{ display: "block", padding: 10 }}>{photo.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div style={buttonRowStyle}>
+                  <button type="button" onClick={() => void updateOwnerRequest(selectedRequest.id, selectedRequest)} style={secondaryButtonStyle}>Save</button>
+                  <button type="button" onClick={() => void convertOwnerRequestToWorkOrder(selectedRequest)} style={goldButtonStyle}>Convert to Work Order</button>
+                </div>
+              </>
+            ) : (
+              <div style={noticeStyle}>No request selected.</div>
+            )
+          }
+        />
+      </div>
     );
   }
 
@@ -12807,6 +12909,82 @@ export default function AtlasPage() {
             </div>
           }
         />
+
+        {requestPortalToken && typeof window !== "undefined" ? (
+          <article
+            className="atlas-qr-print-card"
+            style={{ ...qrCardStyle, marginBottom: 18 }}
+          >
+            <div style={qrImageShellStyle}>
+              <img
+                src={qrImageUrl(
+                  `${window.location.origin}/request?token=${encodeURIComponent(
+                    requestPortalToken,
+                  )}`,
+                  320,
+                )}
+                alt="Owner Request QR code"
+                style={qrImageStyle}
+              />
+            </div>
+
+            <div style={qrCardBodyStyle}>
+              <div>
+                <div style={eyebrowStyle}>Owner Request</div>
+                <h3 style={qrCardTitleStyle}>Request Service</h3>
+                <p style={mutedSmallStyle}>
+                  Public secure form for the owner to submit maintenance requests.
+                </p>
+              </div>
+
+              <div className="atlas-no-print" style={buttonRowStyle}>
+                <a
+                  href={`${window.location.origin}/request?token=${encodeURIComponent(
+                    requestPortalToken,
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={secondaryButtonStyle}
+                >
+                  Open
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(
+                      `${window.location.origin}/request?token=${encodeURIComponent(
+                        requestPortalToken,
+                      )}`,
+                    );
+                    setRequestMessage("Owner request link copied.");
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  Copy Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void copyOwnerRequestQrImage(
+                      `${window.location.origin}/request?token=${encodeURIComponent(
+                        requestPortalToken,
+                      )}`,
+                    )
+                  }
+                  style={secondaryButtonStyle}
+                >
+                  Copy QR Image
+                </button>
+              </div>
+
+              <small style={qrUrlStyle}>
+                {`${window.location.origin}/request?token=${encodeURIComponent(
+                  requestPortalToken,
+                )}`}
+              </small>
+            </div>
+          </article>
+        ) : null}
 
         <div className="atlas-no-print" style={qrControlPanelStyle}>
           <div style={qrTypeGridStyle}>
@@ -14901,6 +15079,35 @@ const workLinkOpenStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 950,
   whiteSpace: "nowrap",
+};
+
+const ownerRequestPortalCardStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 18,
+  alignItems: "center",
+  padding: 20,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 20,
+  background: colors.card,
+  boxShadow: "0 12px 28px rgba(7, 27, 47, 0.07)",
+};
+
+const ownerRequestQrShellStyle: React.CSSProperties = {
+  width: 190,
+  maxWidth: "100%",
+  justifySelf: "center",
+  padding: 10,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 18,
+  background: "#FFFFFF",
+};
+
+const ownerRequestQrImageStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  height: "auto",
+  borderRadius: 10,
 };
 
 const qrControlPanelStyle: React.CSSProperties = {
