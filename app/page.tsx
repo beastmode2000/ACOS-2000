@@ -8517,31 +8517,98 @@ export default function AtlasPage() {
 
         {renderDashboardWeather()}
 
-        <div
-          style={{
-            ...dashboardTopGridStyle,
-            gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
-            alignItems: "start",
-          }}
-        >
-          <section style={sectionStyle}>
-            <SectionHeader
-              eyebrow="Today"
-              title="Today's Schedule"
-              right={
-                <button
-                  type="button"
-                  onClick={() => addCalendarItem(todayISO())}
-                  style={goldButtonStyle}
-                >
-                  + Event
-                </button>
-              }
-            />
-            <div style={listStyle}>
-              {todayEvents.length ? (
-                todayEvents.map((event) => {
+        <section style={sectionStyle}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
+              alignItems: "stretch",
+            }}
+          >
+            <div
+              style={{
+                minWidth: 0,
+                paddingRight: isMobile ? 0 : 18,
+                paddingBottom: isMobile ? 18 : 0,
+              }}
+            >
+              <SectionHeader
+                eyebrow="Today"
+                title="Today's Schedule"
+                right={
+                  <button
+                    type="button"
+                    onClick={() => addCalendarItem(todayISO())}
+                    style={goldButtonStyle}
+                  >
+                    + Event
+                  </button>
+                }
+              />
+              <div style={listStyle}>
+                {todayEvents.length ? (
+                  todayEvents.map((event) => {
+                    const eventColor = colorForEvent(event);
+                    return (
+                      <button
+                        key={event.instanceId || event.id}
+                        type="button"
+                        onClick={() => {
+                          openCalendarItem(event);
+                          if (event.source !== "work-order") setScreen("calendar");
+                        }}
+                        style={{ ...todayEventStyle, borderLeftColor: eventColor.hex }}
+                      >
+                        <div>
+                          <strong>{event.title}</strong>
+                          <p style={mutedSmallStyle}>
+                            {event.allDay ? "All day" : event.time || "No time"} · {categoryForEvent(event)}
+                          </p>
+                        </div>
+                        <span
+                          style={{
+                            ...eventColorPillStyle,
+                            borderColor: eventColor.hex,
+                            color: eventColor.hex,
+                          }}
+                        >
+                          {eventColor.label}
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div style={noticeStyle}>Nothing is scheduled for today.</div>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                minWidth: 0,
+                borderLeft: isMobile ? "none" : `1px solid ${colors.line}`,
+                borderTop: isMobile ? `1px solid ${colors.line}` : "none",
+                paddingLeft: isMobile ? 0 : 18,
+                paddingTop: isMobile ? 18 : 0,
+              }}
+            >
+              <SectionHeader
+                eyebrow="Next"
+                title="Upcoming"
+                right={
+                  <button
+                    type="button"
+                    onClick={() => setScreen("calendar")}
+                    style={secondaryButtonStyle}
+                  >
+                    Full Calendar
+                  </button>
+                }
+              />
+              <div style={upcomingListStyle}>
+                {upcomingEvents.slice(0, 7).map((event) => {
                   const eventColor = colorForEvent(event);
+                  const dayLabel = upcomingDayLabel(event.date);
                   return (
                     <button
                       key={event.instanceId || event.id}
@@ -8550,83 +8617,32 @@ export default function AtlasPage() {
                         openCalendarItem(event);
                         if (event.source !== "work-order") setScreen("calendar");
                       }}
-                      style={{ ...todayEventStyle, borderLeftColor: eventColor.hex }}
+                      style={upcomingItemStyle}
                     >
-                      <div>
+                      <span style={{ ...upcomingDotStyle, background: eventColor.hex }} />
+                      <div style={upcomingInfoStyle}>
                         <strong>{event.title}</strong>
                         <p style={mutedSmallStyle}>
-                          {event.allDay ? "All day" : event.time || "No time"} · {categoryForEvent(event)}
+                          {formatDate(event.date)} · {event.allDay ? "All day" : event.time || "No time"}
                         </p>
                       </div>
-                      <span
-                        style={{
-                          ...eventColorPillStyle,
-                          borderColor: eventColor.hex,
-                          color: eventColor.hex,
-                        }}
-                      >
-                        {eventColor.label}
-                      </span>
+                      {dayLabel ? (
+                        <span
+                          style={{
+                            ...upcomingDayPillStyle,
+                            ...(dayLabel === "Today" ? upcomingTodayPillStyle : {}),
+                          }}
+                        >
+                          {dayLabel}
+                        </span>
+                      ) : null}
                     </button>
                   );
-                })
-              ) : (
-                <div style={noticeStyle}>Nothing is scheduled for today.</div>
-              )}
+                })}
+              </div>
             </div>
-          </section>
-
-          <section style={sectionStyle}>
-            <SectionHeader
-              eyebrow="Next"
-              title="Upcoming"
-              right={
-                <button
-                  type="button"
-                  onClick={() => setScreen("calendar")}
-                  style={secondaryButtonStyle}
-                >
-                  Full Calendar
-                </button>
-              }
-            />
-            <div style={upcomingListStyle}>
-              {upcomingEvents.slice(0, 7).map((event) => {
-                const eventColor = colorForEvent(event);
-                const dayLabel = upcomingDayLabel(event.date);
-                return (
-                  <button
-                    key={event.instanceId || event.id}
-                    type="button"
-                    onClick={() => {
-                      openCalendarItem(event);
-                      if (event.source !== "work-order") setScreen("calendar");
-                    }}
-                    style={upcomingItemStyle}
-                  >
-                    <span style={{ ...upcomingDotStyle, background: eventColor.hex }} />
-                    <div style={upcomingInfoStyle}>
-                      <strong>{event.title}</strong>
-                      <p style={mutedSmallStyle}>
-                        {formatDate(event.date)} · {event.allDay ? "All day" : event.time || "No time"}
-                      </p>
-                    </div>
-                    {dayLabel ? (
-                      <span
-                        style={{
-                          ...upcomingDayPillStyle,
-                          ...(dayLabel === "Today" ? upcomingTodayPillStyle : {}),
-                        }}
-                      >
-                        {dayLabel}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        </div>
+          </div>
+        </section>
 
         <div
           style={{
