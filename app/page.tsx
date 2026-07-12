@@ -8561,6 +8561,18 @@ export default function AtlasPage() {
     return `${hours}h ${mins}m`;
   }
 
+  function formatPlannerTime(value: string) {
+    const match = /^(\d{2}):(\d{2})$/.exec(value);
+    if (!match) return value;
+
+    const hour24 = Number(match[1]);
+    const minute = match[2];
+    const hour12 = hour24 % 12 || 12;
+    const meridiem = hour24 < 12 ? "AM" : "PM";
+
+    return `${hour12}:${minute} ${meridiem}`;
+  }
+
   function normalizePlannerText(value: string) {
     return value
       .toLowerCase()
@@ -8865,7 +8877,7 @@ export default function AtlasPage() {
 
             const displayTitle =
               task.recurring && taskTime
-                ? `${task.title} · ${formatTime(taskTime)}`
+                ? `${task.title} · ${formatPlannerTime(taskTime)}`
                 : task.title;
 
             const record = normalizeCalendar({
