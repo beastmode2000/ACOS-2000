@@ -4365,7 +4365,12 @@ export default function AtlasPage() {
   useEffect(() => {
     if (!ready) return;
 
-    const builtInLogoValues = new Set(Object.values(WORKLINK_LOGOS));
+    const builtInLogoValues = new Set<string>(
+      Object.values(WORKLINK_LOGOS).filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0
+      )
+    );
     const compactWorkLinks = workLinks.map((link) => ({
       ...link,
       // Built-in logos already ship with Atlas. Do not duplicate hundreds of
