@@ -3706,6 +3706,7 @@ export default function AtlasPage() {
   const [workPlanInput, setWorkPlanInput] = useState("");
   const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>([]);
   const [workPlanTargetHours, setWorkPlanTargetHours] = useState(7);
+  const [workPlanSaving, setWorkPlanSaving] = useState(false);
   const [workPlanMessage, setWorkPlanMessage] = useState(
     "Paste one task per line, then build a balanced weekly plan.",
   );
