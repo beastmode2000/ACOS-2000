@@ -8610,7 +8610,7 @@ export default function AtlasPage() {
                     const total = scheduledMinutes[day] || 0;
                     const buffer = Math.max(0, 8 * 60 - total);
                     return (
-                      <div key={day} style={{ ...subtleCardStyle, minHeight: 130 }}>
+                      <div key={day} style={{ ...cardStyle, minHeight: 130, padding: 12 }}>
                         <strong>{day}</strong>
                         <p style={mutedSmallStyle}>
                           {minutesLabel(total)} planned · {minutesLabel(buffer)} open
