@@ -3709,6 +3709,7 @@ export default function AtlasPage() {
   const [workPlanMessage, setWorkPlanMessage] = useState(
     "Paste one task per line, then build a balanced weekly plan.",
   );
+  const [workPlanSaving, setWorkPlanSaving] = useState(false);
 
   useEffect(() => {
     const stored = readStoredArray<WorkPlanTask>(["atlas-work-plan-tasks-v1"], []);
@@ -8744,99 +8745,108 @@ export default function AtlasPage() {
   }
 
   async function approveWorkPlan() {
+    if (workPlanSaving) return;
+
     const scheduled = workPlanTasks.filter((task) => task.scheduledDate && task.scheduledDay);
     if (!scheduled.length) {
-      setWorkPlanMessage("Build the weekly plan before adding it to the Calendar.");
+      setWorkPlanMessage("Build My Week first, then approve the planned tasks.");
+      showSaveToast("Build My Week before adding tasks to the Calendar.", "warning");
       return;
     }
-    if (!window.confirm(`Add ${scheduled.length} planned tasks to the Atlas Calendar?`)) return;
 
-    const byDay = workPlanDays.reduce<Record<WorkPlanDay, WorkPlanTask[]>>((acc, day) => {
-      acc[day] = scheduled.filter((task) => task.scheduledDay === day);
-      return acc;
-    }, {} as Record<WorkPlanDay, WorkPlanTask[]>);
+    setWorkPlanSaving(true);
+    setWorkPlanMessage(`Adding ${scheduled.length} planned task${scheduled.length === 1 ? "" : "s"} to the Calendar...`);
 
-    const records: CalendarItem[] = [];
-    for (const day of workPlanDays) {
-      let minuteOfDay = 8 * 60;
-      for (const task of byDay[day]) {
-        const taskTime = task.fixedTime || `${String(Math.floor(minuteOfDay / 60)).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`;
-        const [hours, minutes] = taskTime.split(":");
-        const locationName = locations.find((item) => item.id === task.locationId)?.name || "General";
-        const record = normalizeCalendar({
-          id: uid("planned"),
-          title: task.title,
-          area: "Planned Work",
-          categoryLabel: "Planned Work",
-          date: task.scheduledDate || todayISO(),
-          time: `${hours}:${minutes}`,
-          allDay: false,
-          repeat: task.recurring ? "Weekly" : "None",
-          reminder: "Morning of",
-          notes: [
-            `Estimated time: ${minutesLabel(task.minutes)}`,
-            `Priority: ${task.priority}`,
-            `Type: ${task.category}`,
-            `Location: ${locationName}`,
-            task.locked ? "Locked: Yes" : "",
-            task.recurring ? "Repeats: Weekly" : "",
-            task.notes || "",
-          ].filter(Boolean).join("\n"),
-          linkedType: task.locationId !== "general" ? "Location" : "None",
-          linkedId: task.locationId !== "general" ? task.locationId : "",
-          linkedName: task.locationId !== "general" ? locationName : "",
-          completed: false,
-          source: "manual",
-        });
-        const duplicate = calendarItems.some(
-          (item) => item.date === record.date && item.title.trim().toLowerCase() === record.title.trim().toLowerCase(),
-        );
-        if (!duplicate) records.push(record);
-        minuteOfDay += task.minutes + 10;
+    try {
+      const byDay = workPlanDays.reduce<Record<WorkPlanDay, WorkPlanTask[]>>((acc, day) => {
+        acc[day] = scheduled.filter((task) => task.scheduledDay === day);
+        return acc;
+      }, {} as Record<WorkPlanDay, WorkPlanTask[]>);
+
+      const records: CalendarItem[] = [];
+      for (const day of workPlanDays) {
+        let minuteOfDay = 8 * 60;
+        for (const task of byDay[day]) {
+          const taskTime = task.fixedTime || `${String(Math.floor(minuteOfDay / 60)).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`;
+          const [hours, minutes] = taskTime.split(":");
+          const locationName = locations.find((item) => item.id === task.locationId)?.name || "General";
+          const record = normalizeCalendar({
+            id: uid("planned"),
+            title: task.title,
+            area: "Planned Work",
+            categoryLabel: "Planned Work",
+            date: task.scheduledDate || todayISO(),
+            time: `${hours}:${minutes}`,
+            allDay: false,
+            repeat: task.recurring ? "Weekly" : "None",
+            reminder: "Morning of",
+            notes: [
+              `Estimated time: ${minutesLabel(task.minutes)}`,
+              `Priority: ${task.priority}`,
+              `Type: ${task.category}`,
+              `Location: ${locationName}`,
+              task.locked ? "Locked: Yes" : "",
+              task.recurring ? "Repeats: Weekly" : "",
+              task.notes || "",
+            ].filter(Boolean).join("\n"),
+            linkedType: task.locationId !== "general" ? "Location" : "None",
+            linkedId: task.locationId !== "general" ? task.locationId : "",
+            linkedName: task.locationId !== "general" ? locationName : "",
+            completed: false,
+            source: "manual",
+          });
+
+          const duplicate = calendarItems.some((item) =>
+            item.date === record.date &&
+            item.time === record.time &&
+            item.title.trim().toLowerCase() === record.title.trim().toLowerCase(),
+          );
+          if (!duplicate) records.push(record);
+          minuteOfDay += task.minutes + 10;
+        }
       }
-    }
 
-    if (!records.length) {
-      setWorkPlanMessage("Those tasks already appear on the Calendar. No duplicates were added.");
-      return;
-    }
-    // Update the on-screen calendar immediately, then save in small batches.
-    // Sending dozens of calendar requests at once can overload the browser or route.
-    setCalendarItems((current) => byTitle([...records, ...current]));
+      if (!records.length) {
+        setWorkPlanMessage("Those tasks already appear on the Calendar. No duplicates were added.");
+        showSaveToast("Those tasks are already on the Calendar.", "warning");
+        return;
+      }
 
-    let savedCount = 0;
-    let failedCount = 0;
-    const batchSize = 3;
+      setCalendarItems((current) => byTitle([...records, ...current]));
+      setSelectedCalendarDate(records[0].date);
 
-    for (let index = 0; index < records.length; index += batchSize) {
-      const batch = records.slice(index, index + batchSize);
-      const results = await Promise.all(
-        batch.map(async (record) => {
-          try {
-            return await postAtlasRecord("calendar", record);
-          } catch {
-            return false;
-          }
-        }),
+      let savedCount = 0;
+      let failedCount = 0;
+      for (const record of records) {
+        const saved = await postAtlasRecord("calendar", record);
+        if (saved) savedCount += 1;
+        else failedCount += 1;
+      }
+
+      const duplicateCount = scheduled.length - records.length;
+      const summaryParts = [
+        `${records.length} planned task${records.length === 1 ? "" : "s"} added to the Calendar`,
+        duplicateCount > 0 ? `${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"} skipped` : "",
+        failedCount > 0 ? `${failedCount} database save${failedCount === 1 ? "" : "s"} need retrying` : "",
+      ].filter(Boolean);
+
+      setWorkPlanMessage(`${summaryParts.join(". ")}. Opening Calendar...`);
+      showSaveToast(
+        failedCount > 0
+          ? `Calendar updated. ${savedCount} saved to the database; ${failedCount} need retrying.`
+          : `${savedCount} planned task${savedCount === 1 ? "" : "s"} added to the Calendar.`,
+        failedCount > 0 ? "warning" : "success",
       );
-      savedCount += results.filter(Boolean).length;
-      failedCount += results.filter((result) => !result).length;
+
+      setScreen("calendar");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Calendar save failed.";
+      setWorkPlanMessage(`Could not add the plan to the Calendar: ${message}`);
+      showSaveToast(`Could not add the plan to the Calendar: ${message}`, "warning");
+    } finally {
+      setWorkPlanSaving(false);
     }
-
-    const duplicateCount = scheduled.length - records.length;
-    const summaryParts = [
-      `${records.length} planned task${records.length === 1 ? "" : "s"} added to the Calendar`,
-      duplicateCount > 0 ? `${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"} skipped` : "",
-      failedCount > 0 ? `${failedCount} API save${failedCount === 1 ? "" : "s"} need retrying` : "",
-    ].filter(Boolean);
-
-    setWorkPlanMessage(`${summaryParts.join(". ")}.`);
-    showSaveToast(
-      failedCount > 0
-        ? `Calendar updated in Atlas. ${savedCount} saved to the database; ${failedCount} need retrying.`
-        : `${savedCount} planned task${savedCount === 1 ? "" : "s"} added to the Calendar.`,
-      failedCount > 0 ? "warning" : "success",
-    );
   }
 
   function renderWorkPlanner() {
@@ -8957,7 +8967,14 @@ export default function AtlasPage() {
               <div style={{ ...buttonRowStyle, marginTop: 12 }}>
                 <button type="button" onClick={() => { if (window.confirm("Clear all planner tasks?")) setWorkPlanTasks([]); }} style={dangerButtonStyle}>Clear Planner</button>
                 <button type="button" onClick={buildWorkPlan} style={secondaryButtonStyle}>Rebalance Week</button>
-                <button type="button" onClick={approveWorkPlan} style={goldButtonStyle}>Approve & Add to Calendar</button>
+                <button
+                  type="button"
+                  onClick={() => void approveWorkPlan()}
+                  disabled={workPlanSaving}
+                  style={{ ...goldButtonStyle, opacity: workPlanSaving ? 0.65 : 1, cursor: workPlanSaving ? "wait" : "pointer" }}
+                >
+                  {workPlanSaving ? "Adding to Calendar..." : "Approve & Add to Calendar"}
+                </button>
               </div>
             </section>
           </>
