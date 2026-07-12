@@ -3757,6 +3757,17 @@ export default function AtlasPage() {
 
     if (typeof window === "undefined") return;
 
+    if (next === "planner") {
+      const safeUrl = urlForScreen("dashboard");
+      window.history.replaceState(
+        { atlasScreen: "dashboard", atlasOverlay: "planner" },
+        "",
+        safeUrl,
+      );
+      atlasScreenHistoryReadyRef.current = true;
+      return;
+    }
+
     const nextUrl = urlForScreen(next);
     const currentHash = decodeURIComponent(
       window.location.hash.replace(/^#\/?/, ""),
@@ -8919,6 +8930,57 @@ export default function AtlasPage() {
     }
   }
 
+
+  function updateWorkPlanTask(
+    taskId: string,
+    patch: Partial<WorkPlanTask>,
+  ) {
+    setWorkPlanTasks((current) =>
+      current.map((item) =>
+        item.id === taskId ? { ...item, ...patch } : item,
+      ),
+    );
+  }
+
+  function cyclePlannerPriority(priority: WorkOrderPriority) {
+    if (priority === "High") return "Medium" as WorkOrderPriority;
+    if (priority === "Medium") return "Low" as WorkOrderPriority;
+    return "High" as WorkOrderPriority;
+  }
+
+  function cyclePlannerLocation(locationId: string) {
+    const ids = ["general", ...locations.map((location) => location.id)];
+    const currentIndex = Math.max(0, ids.indexOf(locationId));
+    return ids[(currentIndex + 1) % ids.length];
+  }
+
+  function cyclePlannerDay(day: WorkPlanDay | "Auto" | undefined) {
+    const days: Array<WorkPlanDay | "Auto"> = ["Auto", ...workPlanDays];
+    const currentIndex = Math.max(0, days.indexOf(day || "Auto"));
+    return days[(currentIndex + 1) % days.length];
+  }
+
+  function shiftPlannerTime(current: string | undefined, minutes: number) {
+    const base = /^([01]\d|2[0-3]):[0-5]\d$/.test(current || "")
+      ? current!
+      : "08:00";
+    const [hour, minute] = base.split(":").map(Number);
+    const total = Math.max(
+      0,
+      Math.min(23 * 60 + 45, hour * 60 + minute + minutes),
+    );
+    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
+      total % 60,
+    ).padStart(2, "0")}`;
+  }
+
+  function plannerLocationName(locationId: string) {
+    return (
+      locations.find((location) => location.id === locationId)?.name ||
+      "General"
+    );
+  }
+
   function renderWorkPlanner() {
     const scheduledMinutes = workPlanDays.reduce<Record<WorkPlanDay, number>>((acc, day) => {
       acc[day] = workPlanTasks
@@ -8980,12 +9042,27 @@ export default function AtlasPage() {
             </div>
             <div style={{ display: "grid", alignContent: "start", gap: 10 }}>
               <label style={fieldLabelStyle}>Scheduled work per day</label>
-              <select value={workPlanTargetHours} onChange={(event) => setWorkPlanTargetHours(Number(event.currentTarget.value))} style={inputStyle}>
-                <option value={6}>6 hours · 2h buffer</option>
-                <option value={6.5}>6.5 hours · 1.5h buffer</option>
-                <option value={7}>7 hours · 1h buffer</option>
-                <option value={7.5}>7.5 hours · 30m buffer</option>
-              </select>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                {[6, 6.5, 7, 7.5].map((hours) => (
+                  <button
+                    key={hours}
+                    type="button"
+                    onClick={() => setWorkPlanTargetHours(hours)}
+                    style={{
+                      ...secondaryButtonStyle,
+                      padding: "8px 6px",
+                      background:
+                        workPlanTargetHours === hours ? colors.gold : colors.card,
+                      color:
+                        workPlanTargetHours === hours ? colors.navy : colors.text,
+                      borderColor:
+                        workPlanTargetHours === hours ? colors.gold : colors.line,
+                    }}
+                  >
+                    {hours}h
+                  </button>
+                ))}
+              </div>
               <button type="button" onClick={importWorkPlanTasks} style={secondaryButtonStyle}>Import Tasks</button>
               <button type="button" onClick={buildWorkPlan} style={goldButtonStyle}>Build My Week</button>
             </div>
@@ -9034,36 +9111,207 @@ export default function AtlasPage() {
               <SectionHeader eyebrow="Review" title="Tasks & Commitments" detail="Edit estimates, lock fixed items, and set recurring weekly tasks before approval." />
               <div style={{ maxHeight: 430, overflowY: "auto", border: `1px solid ${colors.line}`, borderRadius: 12 }}>
                 {workPlanTasks.map((task) => (
-                  <div key={task.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(210px,1fr) 80px 100px 120px 130px 95px 90px", gap: 8, padding: 10, borderBottom: `1px solid ${colors.line}`, alignItems: "center" }}>
-                    <input value={task.title} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, title: event.currentTarget.value } : item))} style={inputStyle} />
-                    <input type="number" min={15} step={15} value={task.minutes} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, minutes: Math.max(15, Number(event.currentTarget.value) || 15) } : item))} style={inputStyle} title="Estimated minutes" />
-                    <select value={task.priority} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, priority: event.currentTarget.value as WorkOrderPriority } : item))} style={inputStyle}><option>High</option><option>Medium</option><option>Low</option></select>
-                    <select value={task.locationId} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, locationId: event.currentTarget.value } : item))} style={inputStyle}><option value="general">General</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
-                    <select value={task.scheduledDay || task.preferredDay} onChange={(event) => { const day = event.currentTarget.value as WorkPlanDay | "Auto"; setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, preferredDay: day, scheduledDay: day === "Auto" ? undefined : day, scheduledDate: day === "Auto" ? undefined : nextWorkWeekDates()[day] } : item)); }} style={inputStyle}><option value="Auto">Auto</option>{workPlanDays.map((day) => <option key={day}>{day}</option>)}</select>
-                    <select
-                      value={task.fixedTime || ""}
-                      onChange={(event) => {
-                        const fixedTime = event.currentTarget.value;
-                        setWorkPlanTasks((current) =>
-                          current.map((item) =>
-                            item.id === task.id ? { ...item, fixedTime } : item,
-                          ),
-                        );
-                      }}
+                  <div
+                    key={task.id}
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                      padding: 10,
+                      borderBottom: `1px solid ${colors.line}`,
+                      background: colors.card,
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      value={task.title}
+                      onChange={(event) =>
+                        updateWorkPlanTask(task.id, {
+                          title: event.currentTarget.value,
+                        })
+                      }
                       style={inputStyle}
-                      title="Fixed time"
+                    />
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "1fr 1fr"
+                          : "repeat(7, minmax(95px, 1fr))",
+                        gap: 7,
+                      }}
                     >
-                      <option value="">Auto time</option>
-                      {workPlanTimeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <div style={{ display: "grid", gap: 5 }}>
-                      <label style={{ ...mutedSmallStyle, display: "flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={Boolean(task.locked)} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, locked: event.currentTarget.checked } : item))} /> Locked</label>
-                      <label style={{ ...mutedSmallStyle, display: "flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={Boolean(task.recurring)} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, recurring: event.currentTarget.checked } : item))} /> Weekly</label>
+                      <div style={plannerControlCardStyle}>
+                        <span style={plannerControlLabelStyle}>Minutes</span>
+                        <strong>{task.minutes}</strong>
+                        <div style={plannerControlButtonsStyle}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateWorkPlanTask(task.id, {
+                                minutes: Math.max(15, task.minutes - 15),
+                              })
+                            }
+                            style={plannerMiniButtonStyle}
+                          >
+                            −15
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateWorkPlanTask(task.id, {
+                                minutes: task.minutes + 15,
+                              })
+                            }
+                            style={plannerMiniButtonStyle}
+                          >
+                            +15
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateWorkPlanTask(task.id, {
+                            priority: cyclePlannerPriority(task.priority),
+                          })
+                        }
+                        style={plannerControlButtonStyle}
+                      >
+                        <span style={plannerControlLabelStyle}>Priority</span>
+                        <strong>{task.priority}</strong>
+                        <small>Tap to change</small>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateWorkPlanTask(task.id, {
+                            locationId: cyclePlannerLocation(task.locationId),
+                          })
+                        }
+                        style={plannerControlButtonStyle}
+                      >
+                        <span style={plannerControlLabelStyle}>Location</span>
+                        <strong>{plannerLocationName(task.locationId)}</strong>
+                        <small>Tap to change</small>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextDay = cyclePlannerDay(
+                            task.scheduledDay || task.preferredDay,
+                          );
+                          updateWorkPlanTask(task.id, {
+                            preferredDay: nextDay,
+                            scheduledDay:
+                              nextDay === "Auto" ? undefined : nextDay,
+                            scheduledDate:
+                              nextDay === "Auto"
+                                ? undefined
+                                : nextWorkWeekDates()[nextDay],
+                          });
+                        }}
+                        style={plannerControlButtonStyle}
+                      >
+                        <span style={plannerControlLabelStyle}>Day</span>
+                        <strong>
+                          {task.scheduledDay || task.preferredDay || "Auto"}
+                        </strong>
+                        <small>Tap to change</small>
+                      </button>
+
+                      <div style={plannerControlCardStyle}>
+                        <span style={plannerControlLabelStyle}>Time</span>
+                        <strong>{task.fixedTime || "Auto"}</strong>
+                        <div style={plannerControlButtonsStyle}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateWorkPlanTask(task.id, {
+                                fixedTime: shiftPlannerTime(
+                                  task.fixedTime,
+                                  -15,
+                                ),
+                              })
+                            }
+                            style={plannerMiniButtonStyle}
+                          >
+                            −15
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateWorkPlanTask(task.id, {
+                                fixedTime: shiftPlannerTime(
+                                  task.fixedTime,
+                                  15,
+                                ),
+                              })
+                            }
+                            style={plannerMiniButtonStyle}
+                          >
+                            +15
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateWorkPlanTask(task.id, { fixedTime: "" })
+                            }
+                            style={plannerMiniButtonStyle}
+                          >
+                            Auto
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateWorkPlanTask(task.id, {
+                            locked: !task.locked,
+                          })
+                        }
+                        style={{
+                          ...plannerControlButtonStyle,
+                          background: task.locked
+                            ? "#FFF4D8"
+                            : colors.card,
+                          borderColor: task.locked
+                            ? colors.gold
+                            : colors.line,
+                        }}
+                      >
+                        <span style={plannerControlLabelStyle}>Locked</span>
+                        <strong>{task.locked ? "Yes" : "No"}</strong>
+                        <small>Tap to toggle</small>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateWorkPlanTask(task.id, {
+                            recurring: !task.recurring,
+                          })
+                        }
+                        style={{
+                          ...plannerControlButtonStyle,
+                          background: task.recurring
+                            ? "#EEF6FF"
+                            : colors.card,
+                          borderColor: task.recurring
+                            ? colors.navy3
+                            : colors.line,
+                        }}
+                      >
+                        <span style={plannerControlLabelStyle}>Weekly</span>
+                        <strong>{task.recurring ? "Yes" : "No"}</strong>
+                        <small>Tap to toggle</small>
+                      </button>
                     </div>
+                  </div>
                   </div>
                 ))}
               </div>
@@ -16484,6 +16732,58 @@ export default function AtlasPage() {
     </main>
   );
 }
+
+
+const plannerControlCardStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 5,
+  alignContent: "start",
+  minHeight: 88,
+  padding: 9,
+  borderRadius: 10,
+  border: `1px solid ${colors.line}`,
+  background: colors.panel,
+};
+
+const plannerControlButtonStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 4,
+  alignContent: "start",
+  minHeight: 88,
+  padding: 9,
+  borderRadius: 10,
+  border: `1px solid ${colors.line}`,
+  background: colors.card,
+  color: colors.text,
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const plannerControlLabelStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 10,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+};
+
+const plannerControlButtonsStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 4,
+};
+
+const plannerMiniButtonStyle: React.CSSProperties = {
+  minHeight: 28,
+  padding: "4px 7px",
+  borderRadius: 7,
+  border: `1px solid ${colors.line}`,
+  background: colors.card,
+  color: colors.navy,
+  fontSize: 11,
+  fontWeight: 850,
+  cursor: "pointer",
+};
 
 const quickToolsOverlayStyle: React.CSSProperties = {
   position: "fixed",
