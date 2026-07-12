@@ -4128,11 +4128,10 @@ export default function AtlasPage() {
           for (const item of browserCalendar) {
             if (!item.id || apiIds.has(item.id)) continue;
             void postAtlasRecord("calendar", {
-              id: item.id,
-              date: item.date,
-              title: item.title,
-              area: item.area || "General",
-              status: item.status || (item.completed ? "Completed" : "Scheduled"),
+              ...item,
+              status:
+                item.status ||
+                (item.completed ? "Completed" : "Scheduled"),
             });
           }
         }
@@ -8972,10 +8971,7 @@ export default function AtlasPage() {
       let failed = 0;
       for (const record of records) {
         const ok = await postAtlasRecord("calendar", {
-          id: record.id,
-          date: record.date,
-          title: record.title,
-          area: record.area || "Planned Work",
+          ...record,
           status: record.status || "Scheduled",
         });
         if (!ok) failed += 1;
