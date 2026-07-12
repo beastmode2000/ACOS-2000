@@ -451,22 +451,22 @@ const colors = {
 
 const screens: { id: Screen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
-  { id: "locations", label: "Locations" },
-  { id: "assets", label: "Assets" },
-  { id: "history", label: "Work Orders" },
+  { id: "inbox", label: "Inbox" },
   { id: "requests", label: "Requests" },
+  { id: "calendar", label: "Calendar" },
+  { id: "history", label: "Work Orders" },
+  { id: "assets", label: "Assets" },
+  { id: "locations", label: "Locations" },
   { id: "vendors", label: "Vendors" },
   { id: "contacts", label: "Contacts" },
-  { id: "calendar", label: "Calendar" },
-  { id: "weather", label: "Weather" },
   { id: "documents", label: "Documents" },
-  { id: "inbox", label: "Inbox" },
-  { id: "manuals", label: "Manuals" },
   { id: "procedures", label: "Procedures" },
+  { id: "map", label: "Map" },
+  { id: "qr", label: "QR Codes" },
   { id: "parts", label: "Parts" },
   { id: "links", label: "Work Links" },
-  { id: "qr", label: "QR Codes" },
-  { id: "map", label: "Map" },
+  { id: "weather", label: "Weather" },
+  { id: "manuals", label: "Manuals" },
   { id: "assistant", label: "Ask Atlas" },
 ];
 
@@ -3368,7 +3368,7 @@ function ListDrawerLayout(props: {
       }
     : {
         ...drawerGridStyle,
-        gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 440px)",
+        gridTemplateColumns: "minmax(240px, 32%) minmax(0, 68%)",
         height: "100%",
         minHeight: 0,
         overflow: "hidden",
@@ -8418,161 +8418,180 @@ export default function AtlasPage() {
   }
 
   function renderDashboard() {
-    const openWorkOrders = serviceRecords.filter(
-      (record) => record.status !== "Completed",
+    const openWorkOrders = serviceRecords
+      .filter((record) => record.status !== "Completed")
+      .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+    const routineTasks = openWorkOrders.filter((record) => record.recurring);
+    const projectWorkOrders = openWorkOrders.filter((record) => !record.recurring);
+    const highPriority = openWorkOrders.filter(
+      (record) => record.priority === "High",
     );
-    const highPriority = serviceRecords.filter(
-      (record) => record.priority === "High" && record.status !== "Completed",
-    );
+
+    const renderDashboardWorkCards = (
+      records: ServiceRecord[],
+      emptyMessage: string,
+    ) =>
+      records.length ? (
+        <div style={workOrderStripStyle}>
+          {records.slice(0, 6).map((record) => (
+            <button
+              key={record.id}
+              type="button"
+              onClick={() => {
+                setSelectedServiceId(record.id);
+                setScreen("history");
+              }}
+              style={workOrderCardStyle}
+            >
+              <strong>{record.title}</strong>
+              <p style={mutedSmallStyle}>
+                {formatDate(record.date)} · {assetName(record.assetId)}
+              </p>
+              <div style={buttonRowStyle}>
+                <span style={badgeStyle(record.status)}>{record.status}</span>
+                <span style={badgeStyle(record.priority ?? "Medium")}>
+                  {record.priority ?? "Medium"}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div style={noticeStyle}>{emptyMessage}</div>
+      );
 
     return (
       <div style={dashboardStackStyle}>
-        <div style={statGridStyle}>
-          <StatCard
-            label="Assets"
-            value={assetRecords.length}
-            onClick={() => setScreen("assets")}
-          />
-          <StatCard
-            label="Vendors"
-            value={vendorRecords.length}
-            onClick={() => setScreen("vendors")}
-          />
-          <StatCard
-            label="Open Work Orders"
-            value={openWorkOrders.length}
-            onClick={() => setScreen("history")}
-          />
-          <StatCard
-            label="High Priority"
-            value={highPriority.length}
-            onClick={() => setScreen("history")}
-          />
-        </div>
-
-        <section style={sectionStyle}>
-          <SectionHeader
-            eyebrow="Quick Actions"
-            title="Scan and Tools"
-            detail="Open the QR scanner, use the calculator, or add a Work Link without leaving the Dashboard."
-          />
+        <section
+          style={{
+            ...sectionStyle,
+            background:
+              "linear-gradient(135deg, rgba(7,27,47,1) 0%, rgba(18,61,99,1) 100%)",
+            color: "#FFFFFF",
+            border: "1px solid rgba(201,154,61,0.45)",
+          }}
+        >
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: isMobile
-                ? "1fr"
-                : "repeat(4, minmax(0, 1fr))",
-              gap: 10,
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              justifyContent: "space-between",
+              alignItems: isMobile ? "stretch" : "center",
+              gap: 14,
             }}
           >
-            <button
-              type="button"
-              onClick={() => setScreen("scan")}
-              style={goldButtonStyle}
-            >
-              Scan QR Code
-            </button>
-            <button
-              type="button"
-              onClick={() => setScreen("inbox")}
-              style={secondaryButtonStyle}
-            >
-              Atlas Inbox
-            </button>
-            <button
-              type="button"
-              onClick={() => setQuickToolsOpen(true)}
-              style={secondaryButtonStyle}
-            >
-              Quick Calculator
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setScreen("links");
-                openNewWorkLink();
-              }}
-              style={secondaryButtonStyle}
-            >
-              Add Work Link
-            </button>
+            <div>
+              <div style={{ ...eyebrowStyle, color: colors.gold2 }}>
+                Daily Operations
+              </div>
+              <h2 style={{ ...sectionTitleStyle, color: "#FFFFFF", marginBottom: 4 }}>
+                Today at 2000
+              </h2>
+              <p style={{ ...mutedSmallStyle, color: "rgba(255,255,255,0.78)" }}>
+                {todayEvents.length} scheduled · {routineTasks.length} routine · {projectWorkOrders.length} work orders · {highPriority.length} high priority
+              </p>
+            </div>
+            <div style={buttonRowStyle}>
+              <button
+                type="button"
+                onClick={() => setScreen("inbox")}
+                style={goldButtonStyle}
+              >
+                + Add Anything
+              </button>
+              <button
+                type="button"
+                onClick={() => setScreen("assistant")}
+                style={{
+                  ...secondaryButtonStyle,
+                  background: "rgba(255,255,255,0.08)",
+                  borderColor: "rgba(255,255,255,0.28)",
+                  color: "#FFFFFF",
+                }}
+              >
+                Ask Atlas
+              </button>
+            </div>
           </div>
         </section>
+
+        {renderDashboardWeather()}
 
         <div
           style={{
             ...dashboardTopGridStyle,
-            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
             alignItems: "start",
           }}
         >
-          <div style={{ display: "grid", gap: 16 }}>
-            <section style={sectionStyle}>
-              <SectionHeader
-                eyebrow="Calendar / Property Focus"
-                title="Today"
-              />
-              <div style={listStyle}>
-                {todayEvents.length ? (
-                  todayEvents.map((event) => {
-                    const eventColor = colorForEvent(event);
-                    return (
-                      <button
-                        key={event.instanceId || event.id}
-                        type="button"
-                        onClick={() => {
-                          openCalendarItem(event);
-                          if (event.source !== "work-order")
-                            setScreen("calendar");
-                        }}
-                        style={{
-                          ...todayEventStyle,
-                          borderLeftColor: eventColor.hex,
-                        }}
-                      >
-                        <div>
-                          <strong>{event.title}</strong>
-                          <p style={mutedSmallStyle}>
-                            {formatDate(event.date)} ·{" "}
-                            {event.allDay ? "All day" : event.time || "No time"}{" "}
-                            · {categoryForEvent(event)}
-                          </p>
-                        </div>
-                        <span
-                          style={{
-                            ...eventColorPillStyle,
-                            borderColor: eventColor.hex,
-                            color: eventColor.hex,
-                          }}
-                        >
-                          {eventColor.label}
-                        </span>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div style={noticeStyle}>
-                    No calendar items listed for today.
-                  </div>
-                )}
-
+          <section style={sectionStyle}>
+            <SectionHeader
+              eyebrow="Today"
+              title="Today's Schedule"
+              right={
                 <button
                   type="button"
                   onClick={() => addCalendarItem(todayISO())}
-                  style={{ ...goldButtonStyle, width: "100%" }}
+                  style={goldButtonStyle}
                 >
-                  Add today event
+                  + Event
                 </button>
-              </div>
-            </section>
-
-            {renderCalendarIntakeCard()}
-          </div>
+              }
+            />
+            <div style={listStyle}>
+              {todayEvents.length ? (
+                todayEvents.map((event) => {
+                  const eventColor = colorForEvent(event);
+                  return (
+                    <button
+                      key={event.instanceId || event.id}
+                      type="button"
+                      onClick={() => {
+                        openCalendarItem(event);
+                        if (event.source !== "work-order") setScreen("calendar");
+                      }}
+                      style={{ ...todayEventStyle, borderLeftColor: eventColor.hex }}
+                    >
+                      <div>
+                        <strong>{event.title}</strong>
+                        <p style={mutedSmallStyle}>
+                          {event.allDay ? "All day" : event.time || "No time"} · {categoryForEvent(event)}
+                        </p>
+                      </div>
+                      <span
+                        style={{
+                          ...eventColorPillStyle,
+                          borderColor: eventColor.hex,
+                          color: eventColor.hex,
+                        }}
+                      >
+                        {eventColor.label}
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <div style={noticeStyle}>Nothing is scheduled for today.</div>
+              )}
+            </div>
+          </section>
 
           <section style={sectionStyle}>
-            <SectionHeader eyebrow="Next Scheduled Items" title="Upcoming" />
+            <SectionHeader
+              eyebrow="Next"
+              title="Upcoming"
+              right={
+                <button
+                  type="button"
+                  onClick={() => setScreen("calendar")}
+                  style={secondaryButtonStyle}
+                >
+                  Full Calendar
+                </button>
+              }
+            />
             <div style={upcomingListStyle}>
-              {upcomingEvents.map((event) => {
+              {upcomingEvents.slice(0, 7).map((event) => {
                 const eventColor = colorForEvent(event);
                 const dayLabel = upcomingDayLabel(event.date);
                 return (
@@ -8585,27 +8604,18 @@ export default function AtlasPage() {
                     }}
                     style={upcomingItemStyle}
                   >
-                    <span
-                      style={{
-                        ...upcomingDotStyle,
-                        background: eventColor.hex,
-                      }}
-                    />
+                    <span style={{ ...upcomingDotStyle, background: eventColor.hex }} />
                     <div style={upcomingInfoStyle}>
                       <strong>{event.title}</strong>
                       <p style={mutedSmallStyle}>
-                        {formatDate(event.date)} ·{" "}
-                        {event.allDay ? "All day" : event.time || "No time"} ·{" "}
-                        {eventColor.label}
+                        {formatDate(event.date)} · {event.allDay ? "All day" : event.time || "No time"}
                       </p>
                     </div>
                     {dayLabel ? (
                       <span
                         style={{
                           ...upcomingDayPillStyle,
-                          ...(dayLabel === "Today"
-                            ? upcomingTodayPillStyle
-                            : {}),
+                          ...(dayLabel === "Today" ? upcomingTodayPillStyle : {}),
                         }}
                       >
                         {dayLabel}
@@ -8618,49 +8628,107 @@ export default function AtlasPage() {
           </section>
         </div>
 
-        {renderDashboardWeather()}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.35fr) minmax(300px, 0.65fr)",
+            gap: 16,
+            alignItems: "start",
+          }}
+        >
+          <section style={sectionStyle}>
+            <SectionHeader
+              eyebrow="Calendar"
+              title="Plan the Week"
+              detail="Open the full calendar for month, week, holidays, weather, and event editing."
+              right={
+                <button
+                  type="button"
+                  onClick={() => setScreen("calendar")}
+                  style={goldButtonStyle}
+                >
+                  Open Calendar
+                </button>
+              }
+            />
+            <div style={statGridStyle}>
+              <StatCard label="Today" value={todayEvents.length} onClick={() => setScreen("calendar")} />
+              <StatCard label="Upcoming" value={upcomingEvents.length} onClick={() => setScreen("calendar")} />
+              <StatCard label="Routine" value={routineTasks.length} onClick={() => setScreen("history")} />
+              <StatCard label="Work Orders" value={projectWorkOrders.length} onClick={() => setScreen("history")} />
+            </div>
+          </section>
 
-        {renderDashboardWorkLinks()}
+          {renderCalendarIntakeCard()}
+        </div>
 
         <section style={sectionStyle}>
           <SectionHeader
-            eyebrow="Open / Monitor"
-            title="Work Orders"
+            eyebrow="Routine"
+            title="Daily & Recurring Tasks"
+            detail="Regular property work stays separate from new repairs and one-time work orders."
             right={
-              <button
-                type="button"
-                onClick={() => setScreen("history")}
-                style={secondaryButtonStyle}
-              >
+              <button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>
+                Open Tasks
+              </button>
+            }
+          />
+          {renderDashboardWorkCards(routineTasks, "No recurring tasks are currently open.")}
+        </section>
+
+        <section style={sectionStyle}>
+          <SectionHeader
+            eyebrow="Open / Scheduled"
+            title="Work Orders"
+            detail="Repairs, projects, vendor work, and other non-routine items."
+            right={
+              <button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>
                 Open Work Orders
               </button>
             }
           />
-          <div style={workOrderStripStyle}>
-            {filteredServices.slice(0, 6).map((record) => (
-              <button
-                key={record.id}
-                type="button"
-                onClick={() => {
-                  setSelectedServiceId(record.id);
-                  setScreen("history");
-                }}
-                style={workOrderCardStyle}
-              >
-                <strong>{record.title}</strong>
-                <p style={mutedSmallStyle}>
-                  {formatDate(record.date)} · {assetName(record.assetId)}
-                </p>
-                <div style={buttonRowStyle}>
-                  <span style={badgeStyle(record.status)}>{record.status}</span>
-                  <span style={badgeStyle(record.priority ?? "Medium")}>
-                    {record.priority ?? "Medium"}
-                  </span>
-                </div>
-              </button>
-            ))}
+          {renderDashboardWorkCards(projectWorkOrders, "No open work orders are currently listed.")}
+        </section>
+
+        <section style={sectionStyle}>
+          <SectionHeader
+            eyebrow="Atlas AI"
+            title="Ask Atlas"
+            detail="Search your property records or ask for help without leaving the Dashboard."
+          />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) auto",
+              gap: 10,
+            }}
+          >
+            <input
+              value={assistantQuestion}
+              onChange={(event) => setAssistantQuestion(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !assistantLoading) {
+                  setScreen("assistant");
+                  void askAtlas();
+                }
+              }}
+              placeholder="Ask about assets, work orders, procedures, documents, or today's work..."
+              style={{ ...inputStyle, width: "100%" }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setScreen("assistant");
+                if (assistantQuestion.trim()) void askAtlas();
+              }}
+              style={goldButtonStyle}
+            >
+              {assistantLoading ? "Working..." : "Ask Atlas"}
+            </button>
           </div>
         </section>
+
+        {renderDashboardWorkLinks()}
       </div>
     );
   }
@@ -15218,58 +15286,102 @@ export default function AtlasPage() {
 
               <div
                 style={{
-                  position: "relative",
-                  width: isMobile ? "100%" : 480,
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "minmax(260px, 1fr) minmax(260px, 1fr)",
+                  gap: 10,
+                  width: isMobile ? "100%" : 680,
                   maxWidth: "100%",
                 }}
-                onBlur={() => {
-                  window.setTimeout(() => {
-                    setQuery("");
-                    setSearchOpen(false);
-                  }, 120);
-                }}
               >
-                <input
-                  value={query}
-                  onFocus={() => setSearchOpen(true)}
-                  onChange={(event) => {
-                    setQuery(event.currentTarget.value);
-                    setSearchOpen(true);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
+                <div
+                  style={{ position: "relative", minWidth: 0 }}
+                  onBlur={() => {
+                    window.setTimeout(() => {
                       setQuery("");
                       setSearchOpen(false);
-                    }
+                    }, 120);
                   }}
-                  placeholder="Search Atlas..."
+                >
+                  <input
+                    value={query}
+                    onFocus={() => setSearchOpen(true)}
+                    onChange={(event) => {
+                      setQuery(event.currentTarget.value);
+                      setSearchOpen(true);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setQuery("");
+                        setSearchOpen(false);
+                      }
+                    }}
+                    placeholder="Search Atlas records..."
+                    aria-label="Search Atlas records"
+                    style={{
+                      ...inputStyle,
+                      width: "100%",
+                      minHeight: isMobile ? 46 : undefined,
+                    }}
+                  />
+                  {searchOpen && searchResults.length ? (
+                    <div style={searchDropStyle}>
+                      {searchResults.map((result) => (
+                        <button
+                          key={result.id}
+                          type="button"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            openSearchResult(result);
+                            setSearchOpen(false);
+                          }}
+                          style={searchResultStyle}
+                        >
+                          <strong>{result.title}</strong>
+                          <span style={mutedSmallStyle}>
+                            {result.type} · {result.subtitle}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div
                   style={{
-                    ...inputStyle,
-                    width: "100%",
-                    minHeight: isMobile ? 46 : undefined,
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                    gap: 8,
+                    minWidth: 0,
                   }}
-                />
-                {searchOpen && searchResults.length ? (
-                  <div style={searchDropStyle}>
-                    {searchResults.map((result) => (
-                      <button
-                        key={result.id}
-                        type="button"
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          openSearchResult(result);
-                          setSearchOpen(false);
-                        }}
-                        style={searchResultStyle}
-                      >
-                        <strong>{result.title}</strong>
-                        <span style={mutedSmallStyle}>
-                          {result.type} · {result.subtitle}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+                >
+                  <input
+                    value={assistantQuestion}
+                    onChange={(event) => setAssistantQuestion(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !assistantLoading) {
+                        setScreen("assistant");
+                        void askAtlas();
+                      }
+                    }}
+                    placeholder="Ask Atlas AI..."
+                    aria-label="Ask Atlas AI"
+                    style={{
+                      ...inputStyle,
+                      width: "100%",
+                      minHeight: isMobile ? 46 : undefined,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScreen("assistant");
+                      if (assistantQuestion.trim()) void askAtlas();
+                    }}
+                    style={{ ...goldButtonStyle, paddingInline: 14 }}
+                  >
+                    Ask
+                  </button>
+                </div>
               </div>
             </div>
           </header>
