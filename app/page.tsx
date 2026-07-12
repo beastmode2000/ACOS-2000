@@ -807,7 +807,15 @@ function readStoredArray<T>(keys: string[], fallback: T[]): T[] {
 
 function saveStoredArray<T>(key: string, value: T[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    // Atlas may already be near the browser storage limit because photos and
+    // documents are preserved locally. A storage-quota error must never crash
+    // the page when a user edits a field or changes a dropdown.
+    console.warn(`Atlas could not save local data for ${key}.`, error);
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
