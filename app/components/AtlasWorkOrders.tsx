@@ -1,3 +1,4 @@
+// ATLAS WORK ORDERS — VERIFIED BUILD FIX 2026-07-12
 "use client";
 
 import React from "react";
@@ -9,6 +10,45 @@ import type {
   WorkOrderRecurrenceUnit,
   WorkSeason,
 } from "../lib/atlas-types";
+
+
+function localISODate(date = new Date()) {
+  const offsetDate = new Date(
+    date.getTime() - date.getTimezoneOffset() * 60000,
+  );
+  return offsetDate.toISOString().slice(0, 10);
+}
+
+function calendarDateValue(date: string) {
+  return new Date(`${date}T12:00:00`);
+}
+
+function seasonForDate(dateValue = localISODate()): WorkSeason {
+  const date = calendarDateValue(dateValue);
+  const month = date.getMonth();
+
+  if (month >= 2 && month <= 4) return "Spring";
+  if (month >= 5 && month <= 7) return "Summer";
+  if (month >= 8 && month <= 10) return "Fall";
+  return "Winter";
+}
+
+function workSeasonDescription(season: WorkSeason | "All") {
+  if (season === "All") return "Every work order";
+  if (season === "Spring") {
+    return "Landscaping, cleanup, irrigation, reopening and de-winterizing watercraft and outdoor systems.";
+  }
+  if (season === "Summer") {
+    return "Water and family fun, outdoor safety, lawn and irrigation, and high-use property operations.";
+  }
+  if (season === "Fall") {
+    return "Leaves, landscape cleanup, gutters, winterizing watercraft, and preparing outdoor systems.";
+  }
+  if (season === "Winter") {
+    return "Slower season for organizing, inventory, indoor preventive maintenance, and planning.";
+  }
+  return "Core safety, inspections, cleaning, and routine operations that continue all year.";
+}
 
 type AtlasWorkOrdersProps = {
   ListDrawerLayout: any;
