@@ -2,6 +2,57 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import type {
+  Screen,
+  Status,
+  ServiceStatus,
+  WorkOrderPriority,
+  WorkOrderRecurrenceUnit,
+  WorkSeason,
+  Priority,
+  PartStatus,
+  UploadedFileRecord,
+  LocationRecord,
+  MapDetailBox,
+  MapLabelRecord,
+  VendorRecord,
+  ContactRecord,
+  AssetRecord,
+  ServiceRecord,
+  ProcedureRecord,
+  RequestStatus,
+  OwnerRequestRecord,
+  IntakeTargetKind,
+  FastIntakeKind,
+  FastIntakeSaveMode,
+  InboxStatus,
+  InboxReviewDraft,
+  InboxItemRecord,
+  DocumentRecord,
+  ManualCategory,
+  ManualRecord,
+  PartRecord,
+  WorkLinkRecord,
+  QrKind,
+  QrRecord,
+  CalendarColorName,
+  CalendarRepeat,
+  CalendarReminder,
+  CalendarLinkType,
+  CalendarSource,
+  CalendarColor,
+  CalendarItem,
+  WorkPlanDay,
+  WorkPlanTask,
+  PhotoRecord,
+  WeatherDay,
+  AtlasApiPayload,
+  AtlasTable,
+  SearchResult,
+  ManualCandidate,
+} from "./lib/atlas-types";
+
+
 const WORKLINK_LOGOS = {
   landscapeHelpAdmin: "",
   landscapeHelp: "",
@@ -10,456 +61,6 @@ const WORKLINK_LOGOS = {
   ramp: "",
   metaViewer: "",
 } as const;
-
-type Screen =
-  | "dashboard"
-  | "map"
-  | "locations"
-  | "assets"
-  | "history"
-  | "requests"
-  | "inbox"
-  | "vendors"
-  | "contacts"
-  | "calendar"
-  | "planner"
-  | "weather"
-  | "documents"
-  | "manuals"
-  | "intake"
-  | "procedures"
-  | "parts"
-  | "links"
-  | "qr"
-  | "scan"
-  | "assistant";
-
-type Status = "Online" | "Offline" | "Seasonal" | "Monitor";
-type ServiceStatus = "Open" | "Scheduled" | "Completed" | "Monitor";
-type WorkOrderPriority = "Low" | "Medium" | "High";
-type WorkOrderRecurrenceUnit = "Days" | "Weeks" | "Months" | "Years";
-type WorkSeason = "Year-Round" | "Spring" | "Summer" | "Fall" | "Winter";
-type Priority = "High" | "Normal" | "Seasonal";
-type PartStatus = "In Stock" | "Low" | "Out" | "Order";
-
-type UploadedFileRecord = {
-  id: string;
-  name: string;
-  type?: string;
-  dataUrl?: string;
-  url?: string;
-  createdAt?: string;
-};
-
-type LocationRecord = {
-  id: string;
-  name: string;
-  type: string;
-  zone: string;
-  notes: string;
-};
-
-type MapDetailBox = {
-  id: string;
-  title: string;
-  body: string;
-};
-
-type MapLabelRecord = {
-  id: string;
-  label: string;
-  category: string;
-  x: number;
-  y: number;
-  notes: string;
-  photos: UploadedFileRecord[];
-  coverPhotoId?: string;
-  vendorIds?: string[];
-  detailBoxes?: MapDetailBox[];
-  installer?: string;
-  paintColor?: string;
-  specs?: string;
-  documentNotes?: string;
-  photoNotes?: string;
-  maintenanceNotes?: string;
-};
-
-type VendorRecord = {
-  id: string;
-  name: string;
-  category: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-  notes: string;
-};
-
-type ContactRecord = {
-  id: string;
-  name: string;
-  organization: string;
-  role: string;
-  category: string;
-  phone: string;
-  email: string;
-  address: string;
-  website: string;
-  notes: string;
-};
-
-type AssetRecord = {
-  id: string;
-  name: string;
-  locationId: string;
-  category: string;
-  status: Status;
-  make?: string;
-  model?: string;
-  serial?: string;
-  notes: string;
-  vendorIds: string[];
-};
-
-type ServiceRecord = {
-  id: string;
-  assetId: string;
-  vendorId?: string;
-  procedureId?: string;
-  date: string;
-  title: string;
-  status: ServiceStatus;
-  priority?: WorkOrderPriority;
-  notes: string;
-  followUpDate?: string;
-  recurring?: boolean;
-  recurrenceInterval?: number;
-  recurrenceUnit?: WorkOrderRecurrenceUnit;
-  recurrenceEndDate?: string;
-  season?: WorkSeason;
-  lastCompletedDate?: string;
-  completionHistory?: string[];
-  photos?: UploadedFileRecord[];
-  documents?: UploadedFileRecord[];
-};
-
-type ProcedureRecord = {
-  id: string;
-  title: string;
-  area: string;
-  priority: Priority;
-  steps: string[];
-};
-
-type RequestStatus =
-  | "New"
-  | "Under Review"
-  | "Approved"
-  | "Converted to Work Order"
-  | "Declined"
-  | "Closed";
-
-type OwnerRequestRecord = {
-  id: string;
-  requesterName: string;
-  requesterContact: string;
-  title: string;
-  description: string;
-  locationName: string;
-  assetName: string;
-  priority: WorkOrderPriority;
-  preferredTiming: string;
-  status: RequestStatus;
-  photos: UploadedFileRecord[];
-  adminNotes: string;
-  convertedWorkOrderId: string;
-  submittedAt: string;
-  updatedAt: string;
-};
-
-type IntakeTargetKind =
-  "General" | "Asset" | "Location" | "Vendor" | "Work Order" | "Map Label";
-
-type FastIntakeKind =
-  | "Asset Label"
-  | "Invoice / Receipt"
-  | "Work Order Issue"
-  | "Document"
-  | "Gauge / Meter Reading"
-  | "General Photo";
-
-type FastIntakeSaveMode =
-  | "Attach to Existing"
-  | "Create Work Order"
-  | "Create Asset"
-  | "Create Vendor"
-  | "Document Only";
-
-
-
-type InboxStatus =
-  | "New"
-  | "Analyzed"
-  | "Needs Review"
-  | "Approved"
-  | "Saved"
-  | "Archived"
-  | "Error";
-
-type InboxReviewDraft = {
-  documentType: string;
-  summary: string;
-  manufacturer: string;
-  model: string;
-  serial: string;
-  invoiceNumber: string;
-  amount: string;
-  date: string;
-  psi: string;
-  temperature: string;
-  ph: string;
-  hours: string;
-  assetId: string;
-  locationId: string;
-  vendorId: string;
-  workOrderId: string;
-  notes: string;
-};
-
-type InboxItemRecord = {
-  id: string;
-  title: string;
-  intakeType: FastIntakeKind;
-  status: InboxStatus;
-  source: string;
-  notes: string;
-  pastedText: string;
-  files: UploadedFileRecord[];
-  targetType: IntakeTargetKind;
-  targetId: string;
-  targetName: string;
-  proposedAction: FastIntakeSaveMode;
-  extractedData: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type DocumentRecord = {
-  id: string;
-  title: string;
-  area: string;
-  type: string;
-  linkedAssetId?: string;
-  linkedVendorId?: string;
-  targetType?: IntakeTargetKind;
-  targetId?: string;
-  targetName?: string;
-  notes: string;
-  pastedText?: string;
-  files?: UploadedFileRecord[];
-  href?: string;
-  createdAt?: string;
-};
-
-
-type ManualCategory =
-  | "Operator / Owner Manuals"
-  | "Installation Manuals"
-  | "Service / Repair Manuals"
-  | "Maintenance Guides"
-  | "Parts Catalogs"
-  | "Wiring Diagrams"
-  | "Technical Specifications"
-  | "Quick Start Guides"
-  | "Warranty Documents"
-  | "Safety / Compliance Documents";
-
-type ManualRecord = {
-  id: string;
-  title: string;
-  category: ManualCategory;
-  manufacturer: string;
-  model: string;
-  documentNumber: string;
-  linkedAssetId?: string;
-  linkedAssetName?: string;
-  sourceLabel: string;
-  href: string;
-  notes: string;
-  files: UploadedFileRecord[];
-  createdAt: string;
-};
-
-type PartRecord = {
-  id: string;
-  name: string;
-  category: string;
-  locationId: string;
-  assetId?: string;
-  vendorId?: string;
-  quantity: number;
-  minQuantity: number;
-  status: PartStatus;
-  notes: string;
-};
-
-type WorkLinkRecord = {
-  id: string;
-  name: string;
-  category: string;
-  vendor?: string;
-  url: string;
-  logoText: string;
-  logoBg: string;
-  logoUrl?: string;
-  logoColor?: string;
-  notes: string;
-};
-
-type QrKind = "asset" | "location" | "vendor" | "map";
-
-type QrRecord = {
-  kind: QrKind;
-  id: string;
-  title: string;
-  subtitle: string;
-  detail: string;
-};
-
-type CalendarColorName =
-  "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "gray";
-type CalendarRepeat =
-  "None" | "Daily" | "Weekly" | "Monthly" | "Yearly" | "Custom";
-type CalendarReminder = "None" | "Morning of" | "Day before" | "Week before";
-type CalendarLinkType = "None" | "Asset" | "Location" | "Vendor" | "Work Order";
-type CalendarSource = "manual" | "us-holiday" | "jewish-holiday" | "work-order";
-
-type CalendarColor = {
-  id: string;
-  label: string;
-  hex: string;
-  colorName?: CalendarColorName;
-};
-
-type CalendarItem = {
-  id: string;
-  date: string;
-  time?: string;
-  title: string;
-  area: string;
-  categoryLabel?: string;
-  colorId?: string;
-  colorName?: CalendarColorName;
-  allDay?: boolean;
-  repeat?: CalendarRepeat;
-  reminder?: CalendarReminder;
-  notes?: string;
-  linkedType?: CalendarLinkType;
-  linkedId?: string;
-  linkedName?: string;
-  completed?: boolean;
-  source?: CalendarSource;
-  originalId?: string;
-  instanceId?: string;
-  status?: ServiceStatus;
-};
-
-type WorkPlanDay = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
-
-type WorkPlanTask = {
-  id: string;
-  title: string;
-  minutes: number;
-  priority: WorkOrderPriority;
-  category: string;
-  locationId: string;
-  preferredDay: WorkPlanDay | "Auto";
-  scheduledDay?: WorkPlanDay;
-  scheduledDate?: string;
-  locked?: boolean;
-  recurring?: boolean;
-  fixedTime?: string;
-  notes?: string;
-};
-
-type PhotoRecord = {
-  id: string;
-  assetId: string;
-  name: string;
-  dataUrl?: string;
-  url?: string;
-  createdAt?: string;
-};
-
-type WeatherDay = {
-  date: string;
-  code: number;
-  high: number;
-  low: number;
-  precipChance: number;
-  precipAmount: number;
-  windMax: number;
-  et0: number;
-};
-
-type AtlasApiPayload = {
-  ok?: boolean;
-  source?: string;
-  error?: string;
-  assetRecords?: AssetRecord[];
-  assets?: AssetRecord[];
-  vendorRecords?: VendorRecord[];
-  vendors?: VendorRecord[];
-  serviceRecords?: ServiceRecord[];
-  workOrders?: ServiceRecord[];
-  procedureRecords?: ProcedureRecord[];
-  procedures?: ProcedureRecord[];
-  calendarItems?: CalendarItem[];
-  calendar?: CalendarItem[];
-  parts?: PartRecord[];
-  partRecords?: PartRecord[];
-  photos?: PhotoRecord[];
-  assetPhotos?: PhotoRecord[];
-};
-
-type AtlasTable =
-  | "assets"
-  | "vendors"
-  | "work_orders"
-  | "procedures"
-  | "calendar"
-  | "asset_photos";
-
-type SearchResult = {
-  id: string;
-  type: string;
-  title: string;
-  subtitle: string;
-  detail: string;
-  screen: Screen;
-  locationId?: string;
-  assetId?: string;
-  vendorId?: string;
-  contactId?: string;
-  serviceId?: string;
-  mapLabelId?: string;
-  procedureId?: string;
-  calendarId?: string;
-  partId?: string;
-  manualId?: string;
-};
-
-type ManualCandidate = {
-  title: string;
-  manufacturer: string;
-  model: string;
-  url: string;
-  sourceDomain: string;
-  sourceLabel: string;
-  confidence: "High" | "Medium" | "Low";
-  reason: string;
-  assetId?: string;
-  assetName?: string;
-};
 
 const colors = {
   navy: "#071B2F",
