@@ -793,15 +793,17 @@ function readStoredArray<T>(keys: string[], fallback: T[]): T[] {
 }
 
 function saveStoredArray<T>(key: string, value: T[]) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return false;
 
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+    return window.localStorage.getItem(key) !== null;
   } catch (error) {
     // Atlas may already be near the browser storage limit because photos and
     // documents are preserved locally. A storage-quota error must never crash
     // the page when a user edits a field or changes a dropdown.
     console.warn(`Atlas could not save local data for ${key}.`, error);
+    return false;
   }
 }
 
@@ -4354,11 +4356,22 @@ export default function AtlasPage() {
 
   useEffect(() => {
     if (!ready) return;
-    try {
-      saveStoredArray(storageKeys.workLinks[0], workLinks);
-    } catch {
+
+    const builtInLogoValues = new Set(Object.values(WORKLINK_LOGOS));
+    const compactWorkLinks = workLinks.map((link) => ({
+      ...link,
+      // Built-in logos already ship with Atlas. Do not duplicate hundreds of
+      // kilobytes of base64 data in localStorage, which can block Calendar saves.
+      logoUrl:
+        link.logoUrl && builtInLogoValues.has(link.logoUrl)
+          ? undefined
+          : link.logoUrl,
+    }));
+
+    const saved = saveStoredArray(storageKeys.workLinks[0], compactWorkLinks);
+    if (!saved) {
       setWorkLinkMessage(
-        "Work Links could not be saved in this browser. Try a smaller logo image.",
+        "Work Links could not be saved in this browser. Try a smaller custom logo image.",
       );
     }
   }, [ready, workLinks]);
@@ -8898,7 +8911,7 @@ export default function AtlasPage() {
               source: "manual",
             });
 
-            const duplicate = calendarItems.some(
+            const duplicate = [...calendarItems, ...prepared.map((item) => item.record)].some(
               (item) =>
                 item.date === record.date &&
                 item.title.trim().toLowerCase() ===
@@ -8925,35 +8938,16 @@ export default function AtlasPage() {
       const records = prepared.map((item) => item.record);
       const approvedTaskIds = new Set(prepared.map((item) => item.taskId));
       const firstRecord = records[0];
+      const nextCalendar = byTitle([...records, ...calendarItems]);
 
-      // Put approved work on the Calendar immediately. Database sync happens
-      // afterward and can never prevent the Calendar from showing the result.
-      setCalendarItems((current) => {
-        const next = byTitle([...records, ...current]);
-        saveStoredArray(storageKeys.calendar[0], next);
-        return next;
-      });
+      // Save and verify browser persistence before removing imported tasks.
+      const savedLocally = saveStoredArray(storageKeys.calendar[0], nextCalendar);
+      setCalendarItems(nextCalendar);
 
       setSelectedCalendarDate(firstRecord.date);
       setSelectedCalendarId(firstRecord.id);
       setCalendarCursor(calendarDateValue(firstRecord.date));
       setCalendarDraft(firstRecord);
-
-      setWorkPlanInput("");
-      setWorkPlanTasks((current) =>
-        current.filter((task) => !approvedTaskIds.has(task.id)),
-      );
-
-      setWorkPlanMessage(
-        `${records.length} calendar item${records.length === 1 ? "" : "s"} added. Syncing with Atlas...`,
-      );
-      showSaveToast(
-        `${records.length} item${records.length === 1 ? "" : "s"} added to the Calendar.`,
-        "success",
-      );
-
-      setScreen("calendar");
-      window.scrollTo({ top: 0, behavior: "smooth" });
 
       let failed = 0;
       for (const record of records) {
@@ -8964,12 +8958,34 @@ export default function AtlasPage() {
         if (!ok) failed += 1;
       }
 
-      if (failed) {
+      const syncedToAtlas = failed === 0;
+
+      // Never discard imported tasks unless the Calendar is safely stored in
+      // this browser or every record reached Neon successfully.
+      if (savedLocally || syncedToAtlas) {
+        setWorkPlanInput("");
+        setWorkPlanTasks((current) =>
+          current.filter((task) => !approvedTaskIds.has(task.id)),
+        );
+      }
+
+      setScreen("calendar");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      if (!savedLocally && !syncedToAtlas) {
         setWorkPlanMessage(
-          `${records.length} item${records.length === 1 ? "" : "s"} are visible on this device. ${failed} did not sync to Neon and may not yet appear on another device.`,
+          "Calendar storage is full and Atlas sync failed. The imported tasks were kept so nothing is lost.",
         );
         showSaveToast(
-          `Calendar updated here; ${failed} item${failed === 1 ? "" : "s"} need database sync.`,
+          "Calendar was not saved. Imported tasks were kept.",
+          "warning",
+        );
+      } else if (failed) {
+        setWorkPlanMessage(
+          `${records.length} item${records.length === 1 ? "" : "s"} saved on this device. ${failed} did not sync to Neon yet.`,
+        );
+        showSaveToast(
+          `Calendar saved here; ${failed} item${failed === 1 ? "" : "s"} need database sync.`,
           "warning",
         );
       } else {
@@ -8977,6 +8993,10 @@ export default function AtlasPage() {
           `${records.length} calendar item${records.length === 1 ? "" : "s"} added and synced successfully.`,
         );
         setDatabaseStatus("Calendar saved to Atlas.");
+        showSaveToast(
+          `${records.length} item${records.length === 1 ? "" : "s"} added to the Calendar.`,
+          "success",
+        );
       }
     } catch (error) {
       const message =
