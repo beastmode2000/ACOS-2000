@@ -8573,7 +8573,7 @@ export default function AtlasPage() {
                   value={workPlanInput}
                   onChange={(event) => setWorkPlanInput(event.currentTarget.value)}
                   placeholder={"Clean dock after weekend | 1h | Cleanup / Prep | Monday | High\nInspect Boiler 2 | 45m | Maintenance | Mechanical Room\nWeed waterside beds | 2h | Landscaping | Tuesday"}
-                  style={{ ...textareaStyle, minHeight: 150 }}
+                  style={{ ...inputStyle, minHeight: 150, resize: "vertical" }}
                 />
                 <p style={mutedSmallStyle}>
                   Optional format: Task | time | type | day | location | priority
