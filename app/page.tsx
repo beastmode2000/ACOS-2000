@@ -8831,8 +8831,38 @@ export default function AtlasPage() {
         return;
       }
 
-      setCalendarItems((current) => byTitle([...records, ...current]));
+      const approvedTaskIds = new Set(
+        scheduled
+          .filter((task) =>
+            records.some((record) =>
+              record.date === task.scheduledDate &&
+              record.title.trim().toLowerCase() === task.title.trim().toLowerCase(),
+            ),
+          )
+          .map((task) => task.id),
+      );
+
+      setCalendarItems((current) => {
+        const next = byTitle([...records, ...current]);
+        saveStoredArray(storageKeys.calendar[0], next);
+        return next;
+      });
       setSelectedCalendarDate(records[0].date);
+      setSelectedCalendarId(records[0].id);
+
+      setWorkPlanInput("");
+      setWorkPlanTasks((current) => current.filter((task) => !approvedTaskIds.has(task.id)));
+
+      setWorkPlanMessage(
+        `${records.length} planned task${records.length === 1 ? "" : "s"} added to the Calendar. The imported task area was cleared.`,
+      );
+      showSaveToast(
+        `${records.length} planned task${records.length === 1 ? "" : "s"} added to the Calendar.`,
+        "success",
+      );
+
+      setScreen("calendar");
+      window.scrollTo({ top: 0, behavior: "smooth" });
 
       let savedCount = 0;
       let failedCount = 0;
@@ -8842,20 +8872,19 @@ export default function AtlasPage() {
         else failedCount += 1;
       }
 
-      setWorkPlanMessage(
-        failedCount
-          ? `Calendar updated in Atlas. ${savedCount} saved to the database; ${failedCount} need retrying.`
-          : `${savedCount} planned task${savedCount === 1 ? "" : "s"} added to the Calendar.`,
-      );
-      showSaveToast(
-        failedCount
-          ? `Calendar updated. ${failedCount} database save${failedCount === 1 ? "" : "s"} need retrying.`
-          : `${savedCount} planned task${savedCount === 1 ? "" : "s"} added to the Calendar.`,
-        failedCount ? "warning" : "success",
-      );
-
-      setScreen("calendar");
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (failedCount) {
+        setWorkPlanMessage(
+          `${records.length} task${records.length === 1 ? "" : "s"} are on your Calendar now. ${failedCount} database sync${failedCount === 1 ? "" : "s"} need retrying.`,
+        );
+        showSaveToast(
+          `Added to Calendar. ${failedCount} database sync${failedCount === 1 ? "" : "s"} need retrying.`,
+          "warning",
+        );
+      } else {
+        setWorkPlanMessage(
+          `${savedCount} planned task${savedCount === 1 ? "" : "s"} added to the Calendar and synced.`,
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Calendar save failed.";
       setWorkPlanMessage(`Could not add the plan to the Calendar: ${message}`);
