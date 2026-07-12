@@ -1,7 +1,15 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { WORKLINK_LOGOS } from "./lib/worklink-logos";
+
+const WORKLINK_LOGOS = {
+  landscapeHelpAdmin: "",
+  landscapeHelp: "",
+  control4: "",
+  tccHoneywell: "",
+  ramp: "",
+  metaViewer: "",
+} as const;
 
 type Screen =
   | "dashboard"
