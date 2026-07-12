@@ -8568,7 +8568,7 @@ export default function AtlasPage() {
           <div style={{ display: "grid", gap: 14 }}>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 170px", gap: 12 }}>
               <div>
-                <label style={labelStyle}>Tasks — one per line</label>
+                <label style={fieldLabelStyle}>Tasks — one per line</label>
                 <textarea
                   value={workPlanInput}
                   onChange={(event) => setWorkPlanInput(event.currentTarget.value)}
@@ -8580,7 +8580,7 @@ export default function AtlasPage() {
                 </p>
               </div>
               <div style={{ display: "grid", alignContent: "start", gap: 10 }}>
-                <label style={labelStyle}>Scheduled work per day</label>
+                <label style={fieldLabelStyle}>Scheduled work per day</label>
                 <select
                   value={workPlanTargetHours}
                   onChange={(event) => setWorkPlanTargetHours(Number(event.currentTarget.value))}
