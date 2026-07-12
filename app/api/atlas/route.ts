@@ -128,6 +128,84 @@ function cleanTable(value: unknown): AtlasTable | "" {
   return "";
 }
 
+
+async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS time text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS category_label text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS color_id text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS color_name text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS all_day boolean NOT NULL DEFAULT false
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS repeat text NOT NULL DEFAULT 'None'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS reminder text NOT NULL DEFAULT 'None'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS notes text NOT NULL DEFAULT ''
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS linked_type text NOT NULL DEFAULT 'None'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS linked_id text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS linked_name text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS completed boolean NOT NULL DEFAULT false
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS original_id text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS instance_id text
+  `;
+}
+
 async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   await sql`
     ALTER TABLE atlas_work_orders
@@ -258,8 +336,23 @@ function mapCalendarItem(row: JsonRecord) {
   return {
     id: String(row.id || ""),
     date: row.date ? String(row.date).slice(0, 10) : "",
+    time: row.time ? String(row.time) : "",
     title: String(row.title || ""),
     area: String(row.area || ""),
+    categoryLabel: row.category_label ? String(row.category_label) : "",
+    colorId: row.color_id ? String(row.color_id) : "",
+    colorName: row.color_name ? String(row.color_name) : "",
+    allDay: Boolean(row.all_day),
+    repeat: String(row.repeat || "None"),
+    reminder: String(row.reminder || "None"),
+    notes: String(row.notes || ""),
+    linkedType: String(row.linked_type || "None"),
+    linkedId: row.linked_id ? String(row.linked_id) : "",
+    linkedName: row.linked_name ? String(row.linked_name) : "",
+    completed: Boolean(row.completed),
+    source: String(row.source || "manual"),
+    originalId: row.original_id ? String(row.original_id) : "",
+    instanceId: row.instance_id ? String(row.instance_id) : "",
     status: String(row.status || "Scheduled"),
   };
 }
@@ -293,6 +386,7 @@ export async function GET() {
   try {
     const sql = getSql();
     await ensureWorkOrderColumns(sql);
+    await ensureCalendarColumns(sql);
 
     const locationRows = (await sql`
       SELECT id, name, type, zone, notes, sort_order
@@ -344,9 +438,29 @@ export async function GET() {
     `) as unknown as JsonRecord[];
 
     const calendarRows = (await sql`
-      SELECT id, date, title, area, status
+      SELECT
+        id,
+        date,
+        time,
+        title,
+        area,
+        category_label,
+        color_id,
+        color_name,
+        all_day,
+        repeat,
+        reminder,
+        notes,
+        linked_type,
+        linked_id,
+        linked_name,
+        completed,
+        source,
+        original_id,
+        instance_id,
+        status
       FROM atlas_calendar_items
-      ORDER BY date ASC, title ASC
+      ORDER BY date ASC, time ASC NULLS LAST, title ASC
     `) as unknown as JsonRecord[];
 
     const documentRows = (await sql`
@@ -620,30 +734,79 @@ export async function POST(request: NextRequest) {
     }
 
     if (table === "calendar") {
+      await ensureCalendarColumns(sql);
       const id = getId(record, "calendar");
 
       await sql`
         INSERT INTO atlas_calendar_items (
           id,
           date,
+          time,
           title,
           area,
+          category_label,
+          color_id,
+          color_name,
+          all_day,
+          repeat,
+          reminder,
+          notes,
+          linked_type,
+          linked_id,
+          linked_name,
+          completed,
+          source,
+          original_id,
+          instance_id,
           status,
           updated_at
         )
         VALUES (
           ${id},
           ${asDate(record.date)}::date,
+          ${nullableString(record.time)},
           ${asString(record.title) || "Untitled Calendar Item"},
           ${asString(record.area) || "General"},
-          ${asStatus(record.status, "Scheduled")},
+          ${nullableString(record.categoryLabel)},
+          ${nullableString(record.colorId)},
+          ${nullableString(record.colorName)},
+          ${asBoolean(record.allDay)},
+          ${asStatus(record.repeat, "None")},
+          ${asStatus(record.reminder, "None")},
+          ${asString(record.notes)},
+          ${asStatus(record.linkedType, "None")},
+          ${nullableString(record.linkedId)},
+          ${nullableString(record.linkedName)},
+          ${asBoolean(record.completed)},
+          ${asStatus(record.source, "manual")},
+          ${nullableString(record.originalId)},
+          ${nullableString(record.instanceId)},
+          ${asStatus(
+            record.status,
+            asBoolean(record.completed) ? "Completed" : "Scheduled"
+          )},
           NOW()
         )
         ON CONFLICT (id)
         DO UPDATE SET
           date = EXCLUDED.date,
+          time = EXCLUDED.time,
           title = EXCLUDED.title,
           area = EXCLUDED.area,
+          category_label = EXCLUDED.category_label,
+          color_id = EXCLUDED.color_id,
+          color_name = EXCLUDED.color_name,
+          all_day = EXCLUDED.all_day,
+          repeat = EXCLUDED.repeat,
+          reminder = EXCLUDED.reminder,
+          notes = EXCLUDED.notes,
+          linked_type = EXCLUDED.linked_type,
+          linked_id = EXCLUDED.linked_id,
+          linked_name = EXCLUDED.linked_name,
+          completed = EXCLUDED.completed,
+          source = EXCLUDED.source,
+          original_id = EXCLUDED.original_id,
+          instance_id = EXCLUDED.instance_id,
           status = EXCLUDED.status,
           updated_at = NOW()
       `;
