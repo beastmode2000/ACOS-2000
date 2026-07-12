@@ -4366,10 +4366,9 @@ export default function AtlasPage() {
     if (!ready) return;
 
     const builtInLogoValues = new Set<string>(
-      Object.values(WORKLINK_LOGOS).filter(
-        (value): value is string =>
-          typeof value === "string" && value.length > 0
-      )
+      Object.values(WORKLINK_LOGOS)
+        .map((value) => String(value))
+        .filter((value) => value.length > 0)
     );
     const compactWorkLinks = workLinks.map((link) => ({
       ...link,
