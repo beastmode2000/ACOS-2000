@@ -8973,16 +8973,65 @@ export default function AtlasPage() {
               gap: 14,
             }}
           >
-            <div>
-              <div style={{ ...eyebrowStyle, color: colors.gold2 }}>
-                Daily Operations
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                minWidth: 0,
+              }}
+            >
+              <div
+                aria-hidden="true"
+                style={{
+                  width: isMobile ? 46 : 54,
+                  height: isMobile ? 46 : 54,
+                  flex: "0 0 auto",
+                  borderRadius: 14,
+                  display: "grid",
+                  placeItems: "center",
+                  overflow: "hidden",
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(229,192,107,0.52)",
+                  boxShadow: "0 10px 24px rgba(0,0,0,0.16)",
+                }}
+              >
+                {logoIndex < logoCandidates.length ? (
+                  <img
+                    src={logoCandidates[logoIndex]}
+                    alt=""
+                    onError={() => setLogoIndex((index) => index + 1)}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      padding: 5,
+                    }}
+                  />
+                ) : (
+                  <span
+                    style={{
+                      color: colors.gold2,
+                      fontSize: 24,
+                      fontWeight: 900,
+                      lineHeight: 1,
+                    }}
+                  >
+                    A
+                  </span>
+                )}
               </div>
-              <h2 style={{ ...sectionTitleStyle, color: "#FFFFFF", marginBottom: 4 }}>
-                Today at 2000
-              </h2>
-              <p style={{ ...mutedSmallStyle, color: "rgba(255,255,255,0.78)" }}>
-                {todayEvents.length} scheduled · {routineTasks.length} routine · {projectWorkOrders.length} work orders · {highPriority.length} high priority
-              </p>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ ...eyebrowStyle, color: colors.gold2 }}>
+                  Daily Operations
+                </div>
+                <h2 style={{ ...sectionTitleStyle, color: "#FFFFFF", marginBottom: 4 }}>
+                  Today at 2000
+                </h2>
+                <p style={{ ...mutedSmallStyle, color: "rgba(255,255,255,0.78)" }}>
+                  {todayEvents.length} scheduled · {routineTasks.length} routine · {projectWorkOrders.length} work orders · {highPriority.length} high priority
+                </p>
+              </div>
             </div>
             <div style={buttonRowStyle}>
               <button
