@@ -8342,36 +8342,104 @@ export default function AtlasPage() {
     return `${hours}h ${mins}m`;
   }
 
+  function normalizePlannerText(value: string) {
+    return value
+      .toLowerCase()
+      .replace(/[–—]/g, "-")
+      .replace(/[^a-z0-9./&+\-\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function parseTaskMinutes(value: string) {
-    const text = value.trim().toLowerCase();
-    const hourMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/);
-    const minuteMatch = text.match(/(\d+)\s*(?:m|min|mins|minute|minutes)\b/);
-    if (hourMatch || minuteMatch) {
-      return Math.max(
-        15,
-        Math.round(Number(hourMatch?.[1] || 0) * 60 + Number(minuteMatch?.[1] || 0)),
-      );
+    const text = normalizePlannerText(value);
+    let total = 0;
+    let foundDuration = false;
+
+    for (const match of text.matchAll(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/g)) {
+      total += Number(match[1]) * 60;
+      foundDuration = true;
     }
+    for (const match of text.matchAll(/(\d+)\s*(?:m|min|mins|minute|minutes)\b/g)) {
+      total += Number(match[1]);
+      foundDuration = true;
+    }
+
+    const clockMatch = text.match(/\b(\d{1,2}):(\d{2})\b/);
+    if (!foundDuration && clockMatch) {
+      total = Number(clockMatch[1]) * 60 + Number(clockMatch[2]);
+      foundDuration = true;
+    }
+
+    if (foundDuration) return Math.max(15, Math.round(total));
+
     const numeric = Number(text);
     return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : 60;
   }
 
   function inferTaskDay(title: string, category: string): WorkPlanDay | "Auto" {
-    const text = `${title} ${category}`.toLowerCase();
-    if (/weekend|weekly cleanup|prep for week|monday/.test(text)) return "Monday";
-    if (/prep for weekend|final cleanup|friday/.test(text)) return "Friday";
-    if (/landscap|irrigation|lawn|garden|weeding|prun|tuesday/.test(text)) return "Tuesday";
-    if (/thursday/.test(text)) return "Thursday";
-    if (/maintenance|inspect|service|repair|mechanical|wednesday/.test(text)) return "Wednesday";
+    const text = normalizePlannerText(`${title} ${category}`);
+    const explicit = workPlanDays.find((day) =>
+      new RegExp(`\\b${day.toLowerCase()}\\b`).test(text),
+    );
+    if (explicit) return explicit;
+    if (/weekend cleanup|cleanup after weekend|prep for week|prepare for week/.test(text)) return "Monday";
+    if (/prep for weekend|prepare for weekend|final cleanup|end of week/.test(text)) return "Friday";
+    if (/landscap|irrigation|lawn|garden|weeding|prun/.test(text)) return "Tuesday";
+    if (/maintenance|inspect|service|repair|mechanical/.test(text)) return "Wednesday";
     return "Auto";
   }
 
   function inferTaskCategory(title: string) {
-    const text = title.toLowerCase();
-    if (/cleanup|clean up|prep/.test(text)) return "Cleanup / Prep";
-    if (/landscap|irrigation|lawn|garden|weed|prun/.test(text)) return "Landscaping";
-    if (/repair|service|inspect|maintenance|mechanical/.test(text)) return "Maintenance";
+    const text = normalizePlannerText(title);
+    if (/cleanup|clean up|prep|organize|restock/.test(text)) return "Cleanup / Prep";
+    if (/landscap|irrigation|lawn|garden|weed|prun|mow|edge|blow|plant/.test(text)) return "Landscaping";
+    if (/repair|service|inspect|maintenance|mechanical|check|test|replace|paint/.test(text)) return "Maintenance";
+    if (/admin|paperwork|update atlas|schedule|call|email|review/.test(text)) return "Administration";
+    if (/plan|planning|prepare list/.test(text)) return "Planning";
+    if (/walkthrough|walk through|inspection/.test(text)) return "Inspection";
     return "General";
+  }
+
+  function inferTaskPriority(value: string): WorkOrderPriority {
+    const text = normalizePlannerText(value);
+    if (/\b(urgent|critical|emergency|highest|high)\b/.test(text)) return "High";
+    if (/\b(low|whenever|optional)\b/.test(text)) return "Low";
+    return "Medium";
+  }
+
+  function inferTaskLocation(value: string) {
+    const text = normalizePlannerText(value);
+    const exact = [...locations]
+      .sort((a, b) => b.name.length - a.name.length)
+      .find((item) => text.includes(normalizePlannerText(item.name)));
+    if (exact) return exact;
+
+    const words = new Set(text.split(" ").filter((word) => word.length >= 4));
+    let best: LocationRecord | undefined;
+    let bestScore = 0;
+    for (const location of locations) {
+      const locationWords = normalizePlannerText(location.name)
+        .split(" ")
+        .filter((word) => word.length >= 4);
+      const score = locationWords.filter((word) => words.has(word)).length;
+      if (score > bestScore) {
+        best = location;
+        bestScore = score;
+      }
+    }
+    return bestScore > 0 ? best : undefined;
+  }
+
+  function cleanImportedTaskTitle(value: string) {
+    const firstSegment = value.split("|")[0]?.trim() || value.trim();
+    return firstSegment
+      .replace(/\b\d+(?:\.\d+)?\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b/gi, " ")
+      .replace(/\b(?:monday|tuesday|wednesday|thursday|friday)\b/gi, " ")
+      .replace(/\b(?:urgent|critical|emergency|highest|high|medium|normal|low)\s*(?:priority)?\b/gi, " ")
+      .replace(/\s*[-–—,:;]+\s*$/g, "")
+      .replace(/\s+/g, " ")
+      .trim() || "Untitled task";
   }
 
   function nextWorkWeekDates() {
@@ -8401,27 +8469,42 @@ export default function AtlasPage() {
     }
 
     const next = lines.map((line, index) => {
-      const parts = line.split("|").map((part) => part.trim());
-      const title = parts[0] || `Task ${index + 1}`;
-      const category = parts[2] || inferTaskCategory(title);
+      const parts = line.split("|").map((part) => part.trim()).filter(Boolean);
+      const title = cleanImportedTaskTitle(parts[0] || line) || `Task ${index + 1}`;
+      const durationSource = parts.find((part) =>
+        /\d+(?:\.\d+)?\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b/i.test(part),
+      ) || line;
+      const categoryPart = parts.find((part) =>
+        /^(cleanup\s*\/\s*prep|cleanup|prep|landscaping|maintenance|administration|planning|inspection|general)$/i.test(part),
+      );
+      const category = categoryPart
+        ? categoryPart.replace(/\b\w/g, (letter) => letter.toUpperCase())
+        : inferTaskCategory(line);
       const explicitDay = workPlanDays.find((day) =>
-        parts.some((part) => part.toLowerCase() === day.toLowerCase()),
+        new RegExp(`\\b${day.toLowerCase()}\\b`, "i").test(line),
       );
-      const location = locations.find((item) =>
-        parts.some((part) => part.toLowerCase() === item.name.toLowerCase()),
+      const location = inferTaskLocation(line);
+      const priority = inferTaskPriority(line);
+      const recognizedParts = new Set(
+        [durationSource, categoryPart, explicitDay]
+          .filter(Boolean)
+          .map((part) => String(part).toLowerCase()),
       );
-      const priorityText = parts.find((part) => /^(low|medium|high)$/i.test(part));
+      const notes = parts
+        .slice(1)
+        .filter((part) => !recognizedParts.has(part.toLowerCase()))
+        .filter((part) => !/\b(?:urgent|critical|emergency|highest|high|medium|normal|low)\s*(?:priority)?\b/i.test(part))
+        .join(" · ");
+
       return {
         id: uid("plan-task"),
         title,
-        minutes: parseTaskMinutes(parts[1] || "60"),
-        priority: (priorityText
-          ? `${priorityText[0].toUpperCase()}${priorityText.slice(1).toLowerCase()}`
-          : "Medium") as WorkOrderPriority,
+        minutes: parseTaskMinutes(durationSource),
+        priority,
         category,
         locationId: location?.id || "general",
-        preferredDay: explicitDay || inferTaskDay(title, category),
-        notes: parts.slice(3).filter((part) => part !== explicitDay && part !== priorityText).join(" · "),
+        preferredDay: explicitDay || inferTaskDay(line, category),
+        notes,
       } satisfies WorkPlanTask;
     });
 
@@ -8576,7 +8659,7 @@ export default function AtlasPage() {
                   style={{ ...inputStyle, minHeight: 150, resize: "vertical" }}
                 />
                 <p style={mutedSmallStyle}>
-                  Optional format: Task | time | type | day | location | priority
+                  Use plain language or: Task | time | type | day | location | priority. Atlas now reads entries like “Paint garage 5 hours Monday high priority.”
                 </p>
               </div>
               <div style={{ display: "grid", alignContent: "start", gap: 10 }}>
