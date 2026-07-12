@@ -9312,7 +9312,6 @@ export default function AtlasPage() {
                       </button>
                     </div>
                   </div>
-                  </div>
                 ))}
               </div>
               <div style={{ ...buttonRowStyle, marginTop: 12 }}>
