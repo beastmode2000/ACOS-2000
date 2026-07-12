@@ -353,6 +353,22 @@ type CalendarItem = {
   status?: ServiceStatus;
 };
 
+type WorkPlanDay = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
+
+type WorkPlanTask = {
+  id: string;
+  title: string;
+  minutes: number;
+  priority: WorkOrderPriority;
+  category: string;
+  locationId: string;
+  preferredDay: WorkPlanDay | "Auto";
+  scheduledDay?: WorkPlanDay;
+  scheduledDate?: string;
+  locked?: boolean;
+  notes?: string;
+};
+
 type PhotoRecord = {
   id: string;
   assetId: string;
@@ -3632,6 +3648,14 @@ export default function AtlasPage() {
   const [manualSavingUrl, setManualSavingUrl] = useState("");
   const [manualSaveMessage, setManualSaveMessage] = useState("");
   const [assistantLoading, setAssistantLoading] = useState(false);
+  const [workPlannerOpen, setWorkPlannerOpen] = useState(false);
+  const [workPlanInput, setWorkPlanInput] = useState("");
+  const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>([]);
+  const [workPlanTargetHours, setWorkPlanTargetHours] = useState(7);
+  const [workPlanMessage, setWorkPlanMessage] = useState(
+    "Paste one task per line, then build a balanced weekly plan.",
+  );
+
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
@@ -8301,6 +8325,375 @@ export default function AtlasPage() {
     setCalculatorValue((current) => `${current}${value}`);
   }
 
+  const workPlanDays: WorkPlanDay[] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+  ];
+
+  function minutesLabel(minutes: number) {
+    const safe = Math.max(0, Math.round(minutes));
+    const hours = Math.floor(safe / 60);
+    const mins = safe % 60;
+    if (!hours) return `${mins}m`;
+    if (!mins) return `${hours}h`;
+    return `${hours}h ${mins}m`;
+  }
+
+  function parseTaskMinutes(value: string) {
+    const text = value.trim().toLowerCase();
+    const hourMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/);
+    const minuteMatch = text.match(/(\d+)\s*(?:m|min|mins|minute|minutes)\b/);
+    if (hourMatch || minuteMatch) {
+      return Math.max(
+        15,
+        Math.round(Number(hourMatch?.[1] || 0) * 60 + Number(minuteMatch?.[1] || 0)),
+      );
+    }
+    const numeric = Number(text);
+    return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : 60;
+  }
+
+  function inferTaskDay(title: string, category: string): WorkPlanDay | "Auto" {
+    const text = `${title} ${category}`.toLowerCase();
+    if (/weekend|weekly cleanup|prep for week|monday/.test(text)) return "Monday";
+    if (/prep for weekend|final cleanup|friday/.test(text)) return "Friday";
+    if (/landscap|irrigation|lawn|garden|weeding|prun|tuesday/.test(text)) return "Tuesday";
+    if (/thursday/.test(text)) return "Thursday";
+    if (/maintenance|inspect|service|repair|mechanical|wednesday/.test(text)) return "Wednesday";
+    return "Auto";
+  }
+
+  function inferTaskCategory(title: string) {
+    const text = title.toLowerCase();
+    if (/cleanup|clean up|prep/.test(text)) return "Cleanup / Prep";
+    if (/landscap|irrigation|lawn|garden|weed|prun/.test(text)) return "Landscaping";
+    if (/repair|service|inspect|maintenance|mechanical/.test(text)) return "Maintenance";
+    return "General";
+  }
+
+  function nextWorkWeekDates() {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const day = today.getDay();
+    let delta = day === 0 ? 1 : day === 6 ? 2 : 1 - day;
+    if (day >= 1 && day <= 5) delta = 1 - day;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + delta);
+    return workPlanDays.reduce<Record<WorkPlanDay, string>>((acc, label, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+      acc[label] = date.toISOString().slice(0, 10);
+      return acc;
+    }, {} as Record<WorkPlanDay, string>);
+  }
+
+  function importWorkPlanTasks() {
+    const lines = workPlanInput
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!lines.length) {
+      setWorkPlanMessage("Paste at least one task, one per line.");
+      return;
+    }
+
+    const next = lines.map((line, index) => {
+      const parts = line.split("|").map((part) => part.trim());
+      const title = parts[0] || `Task ${index + 1}`;
+      const category = parts[2] || inferTaskCategory(title);
+      const explicitDay = workPlanDays.find((day) =>
+        parts.some((part) => part.toLowerCase() === day.toLowerCase()),
+      );
+      const location = locations.find((item) =>
+        parts.some((part) => part.toLowerCase() === item.name.toLowerCase()),
+      );
+      const priorityText = parts.find((part) => /^(low|medium|high)$/i.test(part));
+      return {
+        id: uid("plan-task"),
+        title,
+        minutes: parseTaskMinutes(parts[1] || "60"),
+        priority: (priorityText
+          ? `${priorityText[0].toUpperCase()}${priorityText.slice(1).toLowerCase()}`
+          : "Medium") as WorkOrderPriority,
+        category,
+        locationId: location?.id || "general",
+        preferredDay: explicitDay || inferTaskDay(title, category),
+        notes: parts.slice(3).filter((part) => part !== explicitDay && part !== priorityText).join(" · "),
+      } satisfies WorkPlanTask;
+    });
+
+    setWorkPlanTasks(next);
+    setWorkPlanMessage(`Imported ${next.length} tasks. Review estimates, then build the week.`);
+  }
+
+  function buildWorkPlan() {
+    if (!workPlanTasks.length) {
+      setWorkPlanMessage("Import tasks before building the schedule.");
+      return;
+    }
+    const dates = nextWorkWeekDates();
+    const capacity = Math.max(60, Math.round(workPlanTargetHours * 60));
+    const used = workPlanDays.reduce<Record<WorkPlanDay, number>>((acc, day) => {
+      acc[day] = 0;
+      return acc;
+    }, {} as Record<WorkPlanDay, number>);
+
+    const dayPreference: Record<string, WorkPlanDay[]> = {
+      "Cleanup / Prep": ["Monday", "Friday", "Wednesday", "Tuesday", "Thursday"],
+      Landscaping: ["Tuesday", "Thursday", "Wednesday", "Monday", "Friday"],
+      Maintenance: ["Wednesday", "Tuesday", "Thursday", "Monday", "Friday"],
+      General: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    };
+
+    const sorted = [...workPlanTasks].sort((a, b) => {
+      const priorityRank = { High: 0, Medium: 1, Low: 2 };
+      return priorityRank[a.priority] - priorityRank[b.priority] ||
+        a.locationId.localeCompare(b.locationId) ||
+        b.minutes - a.minutes;
+    });
+
+    const planned = sorted.map((task) => {
+      const candidates = task.preferredDay !== "Auto"
+        ? [task.preferredDay, ...workPlanDays.filter((day) => day !== task.preferredDay)]
+        : dayPreference[task.category] || dayPreference.General;
+      let selected = candidates.find((day) => used[day] + task.minutes <= capacity);
+      if (!selected) selected = [...workPlanDays].sort((a, b) => used[a] - used[b])[0];
+      used[selected] += task.minutes;
+      return { ...task, scheduledDay: selected, scheduledDate: dates[selected] };
+    });
+
+    setWorkPlanTasks(planned);
+    const overloaded = workPlanDays.filter((day) => used[day] > capacity);
+    setWorkPlanMessage(
+      overloaded.length
+        ? `Plan built. ${overloaded.join(", ")} exceeds the ${workPlanTargetHours}-hour target; move or shorten tasks before approval.`
+        : `Plan built with about ${8 - workPlanTargetHours} hour${8 - workPlanTargetHours === 1 ? "" : "s"} of daily buffer.`,
+    );
+  }
+
+  async function approveWorkPlan() {
+    const scheduled = workPlanTasks.filter((task) => task.scheduledDate && task.scheduledDay);
+    if (!scheduled.length) {
+      setWorkPlanMessage("Build the weekly plan before adding it to the Calendar.");
+      return;
+    }
+    if (!window.confirm(`Add ${scheduled.length} planned tasks to the Atlas Calendar?`)) return;
+
+    const byDay = workPlanDays.reduce<Record<WorkPlanDay, WorkPlanTask[]>>((acc, day) => {
+      acc[day] = scheduled.filter((task) => task.scheduledDay === day);
+      return acc;
+    }, {} as Record<WorkPlanDay, WorkPlanTask[]>);
+
+    const records: CalendarItem[] = [];
+    for (const day of workPlanDays) {
+      let minuteOfDay = 8 * 60;
+      for (const task of byDay[day]) {
+        const hours = String(Math.floor(minuteOfDay / 60)).padStart(2, "0");
+        const minutes = String(minuteOfDay % 60).padStart(2, "0");
+        const locationName = locations.find((item) => item.id === task.locationId)?.name || "General";
+        const record = normalizeCalendar({
+          id: uid("planned"),
+          title: task.title,
+          area: "Planned Work",
+          categoryLabel: "Planned Work",
+          date: task.scheduledDate || todayISO(),
+          time: `${hours}:${minutes}`,
+          allDay: false,
+          repeat: "None",
+          reminder: "Morning of",
+          notes: [
+            `Estimated time: ${minutesLabel(task.minutes)}`,
+            `Priority: ${task.priority}`,
+            `Type: ${task.category}`,
+            `Location: ${locationName}`,
+            task.notes || "",
+          ].filter(Boolean).join("\n"),
+          linkedType: task.locationId !== "general" ? "Location" : "None",
+          linkedId: task.locationId !== "general" ? task.locationId : "",
+          linkedName: task.locationId !== "general" ? locationName : "",
+          completed: false,
+          source: "manual",
+        });
+        const duplicate = calendarItems.some(
+          (item) => item.date === record.date && item.title.trim().toLowerCase() === record.title.trim().toLowerCase(),
+        );
+        if (!duplicate) records.push(record);
+        minuteOfDay += task.minutes + 10;
+      }
+    }
+
+    if (!records.length) {
+      setWorkPlanMessage("Those tasks already appear on the Calendar. No duplicates were added.");
+      return;
+    }
+    setCalendarItems((current) => byTitle([...records, ...current]));
+    await Promise.all(records.map((record) => postAtlasRecord("calendar", record)));
+    setWorkPlanMessage(`Added ${records.length} planned tasks to the Calendar. Existing duplicates were skipped.`);
+    showSaveToast(`${records.length} planned tasks were added to the Calendar.`, "success");
+  }
+
+  function renderWorkPlanner() {
+    const scheduledMinutes = workPlanDays.reduce<Record<WorkPlanDay, number>>((acc, day) => {
+      acc[day] = workPlanTasks
+        .filter((task) => task.scheduledDay === day)
+        .reduce((sum, task) => sum + task.minutes, 0);
+      return acc;
+    }, {} as Record<WorkPlanDay, number>);
+
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Weekly Planning"
+          title="Plan My Work"
+          detail="Turn a large task list into a balanced week with location grouping, daily themes, and built-in buffer time."
+          right={
+            <button
+              type="button"
+              onClick={() => setWorkPlannerOpen((current) => !current)}
+              style={workPlannerOpen ? secondaryButtonStyle : goldButtonStyle}
+            >
+              {workPlannerOpen ? "Close Planner" : "Plan My Work"}
+            </button>
+          }
+        />
+
+        {!workPlannerOpen ? (
+          <div style={noticeStyle}>
+            Paste up to dozens of tasks, add estimated time, build the week, review it, then approve it to the Calendar.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 170px", gap: 12 }}>
+              <div>
+                <label style={labelStyle}>Tasks — one per line</label>
+                <textarea
+                  value={workPlanInput}
+                  onChange={(event) => setWorkPlanInput(event.currentTarget.value)}
+                  placeholder={"Clean dock after weekend | 1h | Cleanup / Prep | Monday | High\nInspect Boiler 2 | 45m | Maintenance | Mechanical Room\nWeed waterside beds | 2h | Landscaping | Tuesday"}
+                  style={{ ...textareaStyle, minHeight: 150 }}
+                />
+                <p style={mutedSmallStyle}>
+                  Optional format: Task | time | type | day | location | priority
+                </p>
+              </div>
+              <div style={{ display: "grid", alignContent: "start", gap: 10 }}>
+                <label style={labelStyle}>Scheduled work per day</label>
+                <select
+                  value={workPlanTargetHours}
+                  onChange={(event) => setWorkPlanTargetHours(Number(event.currentTarget.value))}
+                  style={inputStyle}
+                >
+                  <option value={6}>6 hours · 2h buffer</option>
+                  <option value={6.5}>6.5 hours · 1.5h buffer</option>
+                  <option value={7}>7 hours · 1h buffer</option>
+                  <option value={7.5}>7.5 hours · 30m buffer</option>
+                </select>
+                <button type="button" onClick={importWorkPlanTasks} style={secondaryButtonStyle}>
+                  Import Tasks
+                </button>
+                <button type="button" onClick={buildWorkPlan} style={goldButtonStyle}>
+                  Build Schedule
+                </button>
+              </div>
+            </div>
+
+            <div style={noticeStyle}>{workPlanMessage}</div>
+
+            {workPlanTasks.length ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(5, minmax(0, 1fr))", gap: 10 }}>
+                  {workPlanDays.map((day) => {
+                    const tasks = workPlanTasks.filter((task) => task.scheduledDay === day);
+                    const total = scheduledMinutes[day] || 0;
+                    const buffer = Math.max(0, 8 * 60 - total);
+                    return (
+                      <div key={day} style={{ ...subtleCardStyle, minHeight: 130 }}>
+                        <strong>{day}</strong>
+                        <p style={mutedSmallStyle}>
+                          {minutesLabel(total)} planned · {minutesLabel(buffer)} open
+                        </p>
+                        <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                          {tasks.map((task) => (
+                            <div key={task.id} style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 6 }}>
+                              <strong style={{ fontSize: 12 }}>{task.title}</strong>
+                              <div style={{ ...mutedSmallStyle, fontSize: 11 }}>
+                                {minutesLabel(task.minutes)} · {task.category}
+                              </div>
+                            </div>
+                          ))}
+                          {!tasks.length ? <span style={mutedSmallStyle}>Open</span> : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ maxHeight: 320, overflowY: "auto", border: `1px solid ${colors.line}`, borderRadius: 12 }}>
+                  {workPlanTasks.map((task) => (
+                    <div key={task.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1fr) 100px 130px 150px 120px", gap: 8, padding: 10, borderBottom: `1px solid ${colors.line}`, alignItems: "center" }}>
+                      <input
+                        value={task.title}
+                        onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, title: event.currentTarget.value } : item))}
+                        style={inputStyle}
+                      />
+                      <input
+                        type="number"
+                        min={15}
+                        step={15}
+                        value={task.minutes}
+                        onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, minutes: Math.max(15, Number(event.currentTarget.value) || 15) } : item))}
+                        style={inputStyle}
+                        title="Estimated minutes"
+                      />
+                      <select
+                        value={task.priority}
+                        onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, priority: event.currentTarget.value as WorkOrderPriority } : item))}
+                        style={inputStyle}
+                      >
+                        <option>High</option><option>Medium</option><option>Low</option>
+                      </select>
+                      <select
+                        value={task.locationId}
+                        onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, locationId: event.currentTarget.value } : item))}
+                        style={inputStyle}
+                      >
+                        <option value="general">General</option>
+                        {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                      </select>
+                      <select
+                        value={task.scheduledDay || task.preferredDay}
+                        onChange={(event) => {
+                          const day = event.currentTarget.value as WorkPlanDay | "Auto";
+                          setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, preferredDay: day, scheduledDay: day === "Auto" ? undefined : day, scheduledDate: day === "Auto" ? undefined : nextWorkWeekDates()[day] } : item));
+                        }}
+                        style={inputStyle}
+                      >
+                        <option value="Auto">Auto</option>
+                        {workPlanDays.map((day) => <option key={day}>{day}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={buttonRowStyle}>
+                  <button type="button" onClick={buildWorkPlan} style={secondaryButtonStyle}>
+                    Rebalance Week
+                  </button>
+                  <button type="button" onClick={approveWorkPlan} style={goldButtonStyle}>
+                    Approve & Add to Calendar
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   function renderDashboardWorkLinks() {
     return (
       <section style={sectionStyle}>
@@ -8677,6 +9070,8 @@ export default function AtlasPage() {
 
           {renderCalendarIntakeCard()}
         </div>
+
+'        {renderWorkPlanner()}
 
         <section style={sectionStyle}>
           <SectionHeader
