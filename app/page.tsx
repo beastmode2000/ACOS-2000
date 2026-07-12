@@ -9094,22 +9094,11 @@ export default function AtlasPage() {
               >
                 + Add Anything
               </button>
-              <button
-                type="button"
-                onClick={() => setScreen("assistant")}
-                style={{
-                  ...secondaryButtonStyle,
-                  background: "rgba(255,255,255,0.08)",
-                  borderColor: "rgba(255,255,255,0.28)",
-                  color: "#FFFFFF",
-                }}
-              >
-                Ask Atlas
-              </button>
             </div>
           </div>
         </section>
 
+        {/* Main home dashboard: weather first, then Today / Upcoming. */}
         {renderDashboardWeather()}
 
         <section style={sectionStyle}>
@@ -15872,11 +15861,14 @@ export default function AtlasPage() {
                     Private Property Command Center
                   </div>
                 ) : null}
-                <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>
-                  {screen === "dashboard"
-                    ? "Atlas / 2000"
-                    : screens.find((item) => item.id === screen)?.label}
-                </h1>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  {screen === "dashboard" ? <AtlasMiniMark size={34} /> : null}
+                  <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>
+                    {screen === "dashboard"
+                      ? "Atlas / 2000"
+                      : screens.find((item) => item.id === screen)?.label}
+                  </h1>
+                </div>
                 {screen === "dashboard" && !isMobile ? (
                   <p style={headerSubStyle}>{databaseStatus}</p>
                 ) : null}
@@ -15884,10 +15876,7 @@ export default function AtlasPage() {
 
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "minmax(260px, 1fr) minmax(260px, 1fr)",
-                  gap: 10,
-                  width: isMobile ? "100%" : 680,
+                  width: isMobile ? "100%" : 430,
                   maxWidth: "100%",
                 }}
               >
@@ -15943,43 +15932,6 @@ export default function AtlasPage() {
                     </div>
                   ) : null}
                 </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) auto",
-                    gap: 8,
-                    minWidth: 0,
-                  }}
-                >
-                  <input
-                    value={assistantQuestion}
-                    onChange={(event) => setAssistantQuestion(event.currentTarget.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !assistantLoading) {
-                        setScreen("assistant");
-                        void askAtlas();
-                      }
-                    }}
-                    placeholder="Ask Atlas AI..."
-                    aria-label="Ask Atlas AI"
-                    style={{
-                      ...inputStyle,
-                      width: "100%",
-                      minHeight: isMobile ? 46 : undefined,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScreen("assistant");
-                      if (assistantQuestion.trim()) void askAtlas();
-                    }}
-                    style={{ ...goldButtonStyle, paddingInline: 14 }}
-                  >
-                    Ask
-                  </button>
-                </div>
               </div>
             </div>
           </header>
@@ -15996,27 +15948,26 @@ export default function AtlasPage() {
             type="button"
             onClick={() => setDashboardAssistantOpen(true)}
             aria-label="Open Atlas AI Assistant"
+            title="Open Atlas AI Assistant"
             style={{
               position: "fixed",
               right: isMobile ? 16 : 24,
               bottom: isMobile ? 16 : 24,
               zIndex: 120,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              minHeight: 52,
-              padding: "8px 16px 8px 9px",
-              borderRadius: 999,
+              width: isMobile ? 54 : 58,
+              height: isMobile ? 54 : 58,
+              display: "grid",
+              placeItems: "center",
+              padding: 7,
+              borderRadius: 18,
               border: `1px solid ${colors.gold2}`,
               background: colors.navy,
               color: "#FFFFFF",
               boxShadow: "0 16px 34px rgba(7,27,47,0.28)",
               cursor: "pointer",
-              fontWeight: 800,
             }}
           >
-            <AtlasMiniMark size={34} />
-            <span>Ask Atlas</span>
+            <AtlasMiniMark size={40} />
           </button>
 
           {dashboardAssistantOpen ? (
