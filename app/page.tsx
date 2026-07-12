@@ -7941,6 +7941,61 @@ export default function AtlasPage() {
       return;
     }
 
+    const normalizedQuestion = question.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    const isTodayQuestion =
+      /^(what do i need to do today|what am i doing today|what is on my schedule today|what s on my schedule today|show me today|today s work|todays work)$/.test(normalizedQuestion) ||
+      (normalizedQuestion.includes("today") &&
+        (normalizedQuestion.includes("need to do") ||
+          normalizedQuestion.includes("schedule") ||
+          normalizedQuestion.includes("work")));
+
+    if (isTodayQuestion) {
+      const today = localISODate();
+      const todayCalendar = calendarItems
+        .filter((item) => item.date === today && !item.completed)
+        .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")));
+      const todayWorkOrders = serviceRecords.filter((item) =>
+        item.status !== "Completed" &&
+        (item.date === today || item.followUpDate === today),
+      );
+      const highPriorityOpen = serviceRecords.filter(
+        (item) => item.status !== "Completed" && item.priority === "High",
+      );
+
+      const lines: string[] = [];
+      if (todayCalendar.length) {
+        lines.push("Today’s schedule:");
+        todayCalendar.forEach((item) => {
+          lines.push(`• ${item.time ? `${item.time} — ` : ""}${item.title}`);
+        });
+      } else {
+        lines.push("Nothing is scheduled on your calendar today.");
+      }
+
+      if (todayWorkOrders.length) {
+        lines.push("", "Work due today:");
+        todayWorkOrders.slice(0, 10).forEach((item) => {
+          const assetName = assetRecords.find((asset) => asset.id === item.assetId)?.name;
+          lines.push(`• ${item.title}${assetName ? ` — ${assetName}` : ""}${item.priority ? ` (${item.priority})` : ""}`);
+        });
+        if (todayWorkOrders.length > 10) {
+          lines.push(`• ${todayWorkOrders.length - 10} more`);
+        }
+      } else {
+        lines.push("", "No work orders are due today.");
+      }
+
+      if (highPriorityOpen.length) {
+        lines.push("", `${highPriorityOpen.length} high-priority open work order${highPriorityOpen.length === 1 ? "" : "s"} still need attention.`);
+      }
+
+      setAssistantAnswer(lines.join("\n"));
+      setManualCandidates([]);
+      setManualSaveMessage("");
+      setAssistantLoading(false);
+      return;
+    }
+
     const manualQuestion = /\b(manual|owner'?s manual|user guide|installation guide|service manual|pdf|documentation|spec sheet|datasheet)\b/i.test(question);
 
     const cleanText = (value: unknown, maxLength = 1200) =>
@@ -8134,19 +8189,51 @@ export default function AtlasPage() {
         }),
       });
 
-      const payload = (await response.json().catch(() => ({}))) as {
-        ok?: boolean;
-        answer?: string;
-        manuals?: ManualCandidate[];
-        error?: string;
-      };
+      const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Ask Atlas could not answer right now.");
+      const readString = (value: unknown): string =>
+        typeof value === "string" ? value.trim() : "";
+      const nestedResult =
+        payload.result && typeof payload.result === "object"
+          ? (payload.result as Record<string, unknown>)
+          : {};
+      const nestedData =
+        payload.data && typeof payload.data === "object"
+          ? (payload.data as Record<string, unknown>)
+          : {};
+      const nestedMessage =
+        payload.message && typeof payload.message === "object"
+          ? (payload.message as Record<string, unknown>)
+          : {};
+
+      const payloadError =
+        readString(payload.error) ||
+        readString(nestedResult.error) ||
+        readString(nestedData.error);
+      const payloadOk = payload.ok !== false;
+
+      if (!response.ok || !payloadOk) {
+        throw new Error(payloadError || "Ask Atlas could not answer right now.");
       }
 
-      let cleanAnswer = String(payload.answer || "").trim();
-      let cleanManuals = Array.isArray(payload.manuals) ? payload.manuals : [];
+      let cleanAnswer =
+        readString(payload.answer) ||
+        readString(payload.output_text) ||
+        readString(payload.text) ||
+        readString(payload.content) ||
+        readString(nestedResult.answer) ||
+        readString(nestedResult.output_text) ||
+        readString(nestedResult.text) ||
+        readString(nestedData.answer) ||
+        readString(nestedData.text) ||
+        readString(nestedMessage.content);
+      let cleanManuals = Array.isArray(payload.manuals)
+        ? (payload.manuals as ManualCandidate[])
+        : Array.isArray(nestedResult.manuals)
+          ? (nestedResult.manuals as ManualCandidate[])
+          : Array.isArray(nestedData.manuals)
+            ? (nestedData.manuals as ManualCandidate[])
+            : [];
 
       if (cleanAnswer.startsWith("{") || cleanAnswer.startsWith("```")) {
         try {
@@ -8171,7 +8258,7 @@ export default function AtlasPage() {
         cleanAnswer ||
           (cleanManuals.length
             ? "I found the official manual options below."
-            : "Ask Atlas did not find a verified result."),
+            : "I could not find a matching Atlas record. Try naming the asset, vendor, location, or date more specifically."),
       );
       setManualCandidates(cleanManuals.slice(0, 3));
     } catch (error) {
