@@ -8800,10 +8800,43 @@ export default function AtlasPage() {
       setWorkPlanMessage("Those tasks already appear on the Calendar. No duplicates were added.");
       return;
     }
+    // Update the on-screen calendar immediately, then save in small batches.
+    // Sending dozens of calendar requests at once can overload the browser or route.
     setCalendarItems((current) => byTitle([...records, ...current]));
-    await Promise.all(records.map((record) => postAtlasRecord("calendar", record)));
-    setWorkPlanMessage(`Added ${records.length} planned tasks to the Calendar. Existing duplicates were skipped.`);
-    showSaveToast(`${records.length} planned tasks were added to the Calendar.`, "success");
+
+    let savedCount = 0;
+    let failedCount = 0;
+    const batchSize = 3;
+
+    for (let index = 0; index < records.length; index += batchSize) {
+      const batch = records.slice(index, index + batchSize);
+      const results = await Promise.all(
+        batch.map(async (record) => {
+          try {
+            return await postAtlasRecord("calendar", record);
+          } catch {
+            return false;
+          }
+        }),
+      );
+      savedCount += results.filter(Boolean).length;
+      failedCount += results.filter((result) => !result).length;
+    }
+
+    const duplicateCount = scheduled.length - records.length;
+    const summaryParts = [
+      `${records.length} planned task${records.length === 1 ? "" : "s"} added to the Calendar`,
+      duplicateCount > 0 ? `${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"} skipped` : "",
+      failedCount > 0 ? `${failedCount} API save${failedCount === 1 ? "" : "s"} need retrying` : "",
+    ].filter(Boolean);
+
+    setWorkPlanMessage(`${summaryParts.join(". ")}.`);
+    showSaveToast(
+      failedCount > 0
+        ? `Calendar updated in Atlas. ${savedCount} saved to the database; ${failedCount} need retrying.`
+        : `${savedCount} planned task${savedCount === 1 ? "" : "s"} added to the Calendar.`,
+      failedCount > 0 ? "warning" : "success",
+    );
   }
 
   function renderWorkPlanner() {
