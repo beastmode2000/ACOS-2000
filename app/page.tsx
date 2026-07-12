@@ -3709,7 +3709,6 @@ export default function AtlasPage() {
   const [workPlanMessage, setWorkPlanMessage] = useState(
     "Paste one task per line, then build a balanced weekly plan.",
   );
-  const [workPlanSaving, setWorkPlanSaving] = useState(false);
 
   useEffect(() => {
     const stored = readStoredArray<WorkPlanTask>(["atlas-work-plan-tasks-v1"], []);
@@ -8483,6 +8482,15 @@ export default function AtlasPage() {
     "Friday",
   ];
 
+  const workPlanTimeOptions = Array.from({ length: 96 }, (_, index) => {
+    const hour = Math.floor(index / 4);
+    const minute = (index % 4) * 15;
+    const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+    const displayHour = hour % 12 || 12;
+    const meridiem = hour < 12 ? "AM" : "PM";
+    return { value, label: `${displayHour}:${String(minute).padStart(2, "0")} ${meridiem}` };
+  });
+
   function minutesLabel(minutes: number) {
     const safe = Math.max(0, Math.round(minutes));
     const hours = Math.floor(safe / 60);
@@ -8767,8 +8775,10 @@ export default function AtlasPage() {
       for (const day of workPlanDays) {
         let minuteOfDay = 8 * 60;
         for (const task of byDay[day]) {
-          const taskTime = task.fixedTime || `${String(Math.floor(minuteOfDay / 60)).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`;
-          const [hours, minutes] = taskTime.split(":");
+          const automaticTime = `${String(Math.floor(minuteOfDay / 60)).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`;
+          const taskTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(task.fixedTime || "")
+            ? task.fixedTime!
+            : automaticTime;
           const locationName = locations.find((item) => item.id === task.locationId)?.name || "General";
           const record = normalizeCalendar({
             id: uid("planned"),
@@ -8776,7 +8786,7 @@ export default function AtlasPage() {
             area: "Planned Work",
             categoryLabel: "Planned Work",
             date: task.scheduledDate || todayISO(),
-            time: `${hours}:${minutes}`,
+            time: taskTime,
             allDay: false,
             repeat: task.recurring ? "Weekly" : "None",
             reminder: "Morning of",
@@ -8823,19 +8833,16 @@ export default function AtlasPage() {
         else failedCount += 1;
       }
 
-      const duplicateCount = scheduled.length - records.length;
-      const summaryParts = [
-        `${records.length} planned task${records.length === 1 ? "" : "s"} added to the Calendar`,
-        duplicateCount > 0 ? `${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"} skipped` : "",
-        failedCount > 0 ? `${failedCount} database save${failedCount === 1 ? "" : "s"} need retrying` : "",
-      ].filter(Boolean);
-
-      setWorkPlanMessage(`${summaryParts.join(". ")}. Opening Calendar...`);
-      showSaveToast(
-        failedCount > 0
-          ? `Calendar updated. ${savedCount} saved to the database; ${failedCount} need retrying.`
+      setWorkPlanMessage(
+        failedCount
+          ? `Calendar updated in Atlas. ${savedCount} saved to the database; ${failedCount} need retrying.`
           : `${savedCount} planned task${savedCount === 1 ? "" : "s"} added to the Calendar.`,
-        failedCount > 0 ? "warning" : "success",
+      );
+      showSaveToast(
+        failedCount
+          ? `Calendar updated. ${failedCount} database save${failedCount === 1 ? "" : "s"} need retrying.`
+          : `${savedCount} planned task${savedCount === 1 ? "" : "s"} added to the Calendar.`,
+        failedCount ? "warning" : "success",
       );
 
       setScreen("calendar");
@@ -8956,7 +8963,26 @@ export default function AtlasPage() {
                     <select value={task.priority} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, priority: event.currentTarget.value as WorkOrderPriority } : item))} style={inputStyle}><option>High</option><option>Medium</option><option>Low</option></select>
                     <select value={task.locationId} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, locationId: event.currentTarget.value } : item))} style={inputStyle}><option value="general">General</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
                     <select value={task.scheduledDay || task.preferredDay} onChange={(event) => { const day = event.currentTarget.value as WorkPlanDay | "Auto"; setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, preferredDay: day, scheduledDay: day === "Auto" ? undefined : day, scheduledDate: day === "Auto" ? undefined : nextWorkWeekDates()[day] } : item)); }} style={inputStyle}><option value="Auto">Auto</option>{workPlanDays.map((day) => <option key={day}>{day}</option>)}</select>
-                    <input type="time" value={task.fixedTime || ""} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, fixedTime: event.currentTarget.value } : item))} style={inputStyle} title="Fixed time" />
+                    <select
+                      value={task.fixedTime || ""}
+                      onChange={(event) => {
+                        const fixedTime = event.currentTarget.value;
+                        setWorkPlanTasks((current) =>
+                          current.map((item) =>
+                            item.id === task.id ? { ...item, fixedTime } : item,
+                          ),
+                        );
+                      }}
+                      style={inputStyle}
+                      title="Fixed time"
+                    >
+                      <option value="">Auto time</option>
+                      {workPlanTimeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                     <div style={{ display: "grid", gap: 5 }}>
                       <label style={{ ...mutedSmallStyle, display: "flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={Boolean(task.locked)} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, locked: event.currentTarget.checked } : item))} /> Locked</label>
                       <label style={{ ...mutedSmallStyle, display: "flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={Boolean(task.recurring)} onChange={(event) => setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, recurring: event.currentTarget.checked } : item))} /> Weekly</label>
@@ -8967,14 +8993,7 @@ export default function AtlasPage() {
               <div style={{ ...buttonRowStyle, marginTop: 12 }}>
                 <button type="button" onClick={() => { if (window.confirm("Clear all planner tasks?")) setWorkPlanTasks([]); }} style={dangerButtonStyle}>Clear Planner</button>
                 <button type="button" onClick={buildWorkPlan} style={secondaryButtonStyle}>Rebalance Week</button>
-                <button
-                  type="button"
-                  onClick={() => void approveWorkPlan()}
-                  disabled={workPlanSaving}
-                  style={{ ...goldButtonStyle, opacity: workPlanSaving ? 0.65 : 1, cursor: workPlanSaving ? "wait" : "pointer" }}
-                >
-                  {workPlanSaving ? "Adding to Calendar..." : "Approve & Add to Calendar"}
-                </button>
+                <button type="button" onClick={approveWorkPlan} style={goldButtonStyle}>Approve & Add to Calendar</button>
               </div>
             </section>
           </>
