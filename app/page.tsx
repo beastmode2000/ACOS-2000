@@ -3311,21 +3311,71 @@ function StatCard(props: {
   );
 }
 
+function AtlasMiniMark({ size = 30 }: { size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: size,
+        height: size,
+        flex: "0 0 auto",
+        borderRadius: Math.max(8, Math.round(size * 0.28)),
+        display: "grid",
+        placeItems: "center",
+        overflow: "hidden",
+        position: "relative",
+        background: colors.navy,
+        border: `1px solid ${colors.gold2}`,
+        boxShadow: "0 5px 14px rgba(7,27,47,0.12)",
+      }}
+    >
+      <span
+        style={{
+          color: colors.gold2,
+          fontWeight: 900,
+          fontSize: Math.max(12, Math.round(size * 0.48)),
+          lineHeight: 1,
+        }}
+      >
+        A
+      </span>
+      <img
+        src="/atlas-logo.png"
+        alt=""
+        onError={(event) => {
+          event.currentTarget.style.display = "none";
+        }}
+        style={{
+          position: "absolute",
+          inset: 2,
+          width: `calc(100% - 4px)`,
+          height: `calc(100% - 4px)`,
+          objectFit: "contain",
+        }}
+      />
+    </span>
+  );
+}
+
 function SectionHeader(props: {
   eyebrow?: string;
   title?: string;
   detail?: string;
   right?: React.ReactNode;
+  brand?: boolean;
 }) {
   if (!props.eyebrow && !props.title && !props.detail && !props.right)
     return null;
 
   return (
     <div style={sectionHeaderStyle}>
-      <div style={{ minWidth: 0 }}>
-        {props.eyebrow ? <div style={eyebrowStyle}>{props.eyebrow}</div> : null}
-        {props.title ? <h2 style={sectionTitleStyle}>{props.title}</h2> : null}
-        {props.detail ? <p style={mutedSmallStyle}>{props.detail}</p> : null}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: props.brand ? 10 : 0, minWidth: 0 }}>
+        {props.brand ? <AtlasMiniMark size={30} /> : null}
+        <div style={{ minWidth: 0 }}>
+          {props.eyebrow ? <div style={eyebrowStyle}>{props.eyebrow}</div> : null}
+          {props.title ? <h2 style={sectionTitleStyle}>{props.title}</h2> : null}
+          {props.detail ? <p style={mutedSmallStyle}>{props.detail}</p> : null}
+        </div>
       </div>
       {props.right ? <div style={buttonRowStyle}>{props.right}</div> : null}
     </div>
@@ -3652,6 +3702,7 @@ export default function AtlasPage() {
   const [manualSavingUrl, setManualSavingUrl] = useState("");
   const [manualSaveMessage, setManualSaveMessage] = useState("");
   const [assistantLoading, setAssistantLoading] = useState(false);
+  const [dashboardAssistantOpen, setDashboardAssistantOpen] = useState(false);
   const [workPlanInput, setWorkPlanInput] = useState("");
   const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>([]);
   const [workPlanTargetHours, setWorkPlanTargetHours] = useState(7);
@@ -8682,6 +8733,7 @@ export default function AtlasPage() {
       <div style={{ display: "grid", gap: 16 }}>
         <section style={sectionStyle}>
           <SectionHeader
+            brand
             eyebrow="Weekly Operations"
             title="Operations Planner"
             detail="Lock recurring commitments first, then let Atlas build a balanced week around them."
@@ -8859,6 +8911,7 @@ export default function AtlasPage() {
     return (
       <section style={sectionStyle}>
         <SectionHeader
+          brand
           eyebrow="Weather / Irrigation"
           title="7-Day Planning Window"
           detail="Placed between Today and Work Orders for irrigation and yard-work planning."
@@ -9075,6 +9128,7 @@ export default function AtlasPage() {
               }}
             >
               <SectionHeader
+                brand
                 eyebrow="Today"
                 title="Today's Schedule"
                 right={
@@ -9135,6 +9189,7 @@ export default function AtlasPage() {
               }}
             >
               <SectionHeader
+                brand
                 eyebrow="Next"
                 title="Upcoming"
                 right={
@@ -9196,6 +9251,7 @@ export default function AtlasPage() {
         >
           <section style={sectionStyle}>
             <SectionHeader
+              brand
               eyebrow="Calendar"
               title="Plan the Week"
               detail="Open the full calendar for month, week, holidays, weather, and event editing."
@@ -9241,6 +9297,7 @@ export default function AtlasPage() {
 
         <section style={sectionStyle}>
           <SectionHeader
+            brand
             eyebrow="Routine"
             title="Daily & Recurring Tasks"
             detail="Regular property work stays separate from new repairs and one-time work orders."
@@ -9255,6 +9312,7 @@ export default function AtlasPage() {
 
         <section style={sectionStyle}>
           <SectionHeader
+            brand
             eyebrow="Open / Scheduled"
             title="Work Orders"
             detail="Repairs, projects, vendor work, and other non-routine items."
@@ -9265,44 +9323,6 @@ export default function AtlasPage() {
             }
           />
           {renderDashboardWorkCards(projectWorkOrders, "No open work orders are currently listed.")}
-        </section>
-
-        <section style={sectionStyle}>
-          <SectionHeader
-            eyebrow="Atlas AI"
-            title="Ask Atlas"
-            detail="Search your property records or ask for help without leaving the Dashboard."
-          />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) auto",
-              gap: 10,
-            }}
-          >
-            <input
-              value={assistantQuestion}
-              onChange={(event) => setAssistantQuestion(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !assistantLoading) {
-                  setScreen("assistant");
-                  void askAtlas();
-                }
-              }}
-              placeholder="Ask about assets, work orders, procedures, documents, or today's work..."
-              style={{ ...inputStyle, width: "100%" }}
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setScreen("assistant");
-                if (assistantQuestion.trim()) void askAtlas();
-              }}
-              style={goldButtonStyle}
-            >
-              {assistantLoading ? "Working..." : "Ask Atlas"}
-            </button>
-          </div>
         </section>
 
         {renderDashboardWorkLinks()}
@@ -15969,6 +15989,176 @@ export default function AtlasPage() {
           </div>
         </section>
       </div>
+
+      {screen === "dashboard" ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setDashboardAssistantOpen(true)}
+            aria-label="Open Atlas AI Assistant"
+            style={{
+              position: "fixed",
+              right: isMobile ? 16 : 24,
+              bottom: isMobile ? 16 : 24,
+              zIndex: 120,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              minHeight: 52,
+              padding: "8px 16px 8px 9px",
+              borderRadius: 999,
+              border: `1px solid ${colors.gold2}`,
+              background: colors.navy,
+              color: "#FFFFFF",
+              boxShadow: "0 16px 34px rgba(7,27,47,0.28)",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            <AtlasMiniMark size={34} />
+            <span>Ask Atlas</span>
+          </button>
+
+          {dashboardAssistantOpen ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Atlas AI Assistant"
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 140,
+                background: "rgba(7,27,47,0.48)",
+                display: "flex",
+                alignItems: isMobile ? "stretch" : "flex-end",
+                justifyContent: "flex-end",
+                padding: isMobile ? 0 : 24,
+              }}
+              onMouseDown={(event) => {
+                if (event.currentTarget === event.target) setDashboardAssistantOpen(false);
+              }}
+            >
+              <section
+                style={{
+                  width: isMobile ? "100%" : 430,
+                  maxWidth: "100%",
+                  height: isMobile ? "100%" : "min(650px, calc(100vh - 48px))",
+                  background: colors.card,
+                  borderRadius: isMobile ? 0 : 20,
+                  border: isMobile ? "none" : `1px solid ${colors.line}`,
+                  boxShadow: "0 28px 70px rgba(7,27,47,0.30)",
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <header
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "16px 18px",
+                    background: `linear-gradient(135deg, ${colors.navy} 0%, ${colors.navy3} 100%)`,
+                    color: "#FFFFFF",
+                    borderBottom: `1px solid ${colors.gold}`,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <AtlasMiniMark size={38} />
+                    <div>
+                      <div style={{ ...eyebrowStyle, color: colors.gold2 }}>Atlas AI</div>
+                      <strong style={{ fontSize: 17 }}>Property Assistant</strong>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDashboardAssistantOpen(false)}
+                    style={{
+                      ...secondaryButtonStyle,
+                      minWidth: 42,
+                      minHeight: 42,
+                      padding: 8,
+                      background: "rgba(255,255,255,0.08)",
+                      borderColor: "rgba(255,255,255,0.28)",
+                      color: "#FFFFFF",
+                    }}
+                    aria-label="Close Atlas AI"
+                  >
+                    ×
+                  </button>
+                </header>
+
+                <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
+                  <div
+                    style={{
+                      ...cardStyle,
+                      marginBottom: 14,
+                      whiteSpace: "pre-wrap",
+                      lineHeight: 1.55,
+                    }}
+                  >
+                    {assistantLoading ? "Atlas is searching your property records..." : assistantAnswer}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {["What do I need to do today?", "Show high-priority work orders", "Find an asset or manual"].map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => {
+                          setAssistantQuestion(prompt);
+                          void askAtlas(prompt);
+                        }}
+                        style={{ ...secondaryButtonStyle, padding: "8px 10px", fontSize: 12 }}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <footer style={{ padding: 14, borderTop: `1px solid ${colors.line}`, background: colors.panel }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}>
+                    <input
+                      value={assistantQuestion}
+                      onChange={(event) => setAssistantQuestion(event.currentTarget.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !assistantLoading && assistantQuestion.trim()) {
+                          void askAtlas();
+                        }
+                      }}
+                      placeholder="Ask about your property..."
+                      style={{ ...inputStyle, width: "100%", minHeight: 46 }}
+                      autoFocus={!isMobile}
+                    />
+                    <button
+                      type="button"
+                      disabled={assistantLoading || !assistantQuestion.trim()}
+                      onClick={() => void askAtlas()}
+                      style={{
+                        ...goldButtonStyle,
+                        opacity: assistantLoading || !assistantQuestion.trim() ? 0.6 : 1,
+                      }}
+                    >
+                      {assistantLoading ? "Working..." : "Ask"}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardAssistantOpen(false);
+                      setScreen("assistant");
+                    }}
+                    style={{ ...secondaryButtonStyle, width: "100%", marginTop: 8 }}
+                  >
+                    Open Full Ask Atlas
+                  </button>
+                </footer>
+              </section>
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
       {previewFile ? renderFilePreviewOverlay() : null}
 
