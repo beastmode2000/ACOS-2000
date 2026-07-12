@@ -4082,9 +4082,59 @@ export default function AtlasPage() {
           }
         }
 
-        if (apiCalendar.length) {
-          const next = byTitle(apiCalendar.map(normalizeCalendar));
-          setCalendarItems(next);
+        {
+          const apiNormalized = apiCalendar.map(normalizeCalendar);
+          const browserCalendar = readStoredArray<CalendarItem>(
+            storageKeys.calendar,
+            [],
+          ).map(normalizeCalendar);
+
+          const mergedById = new Map<string, CalendarItem>();
+
+          // API records establish the shared base.
+          for (const item of apiNormalized) {
+            if (item.id) mergedById.set(item.id, item);
+          }
+
+          // Browser records win when the same ID exists because they may contain
+          // richer fields such as time, recurrence, reminders, notes, and links.
+          for (const item of browserCalendar) {
+            if (item.id) {
+              const apiItem = mergedById.get(item.id);
+              mergedById.set(
+                item.id,
+                normalizeCalendar({
+                  ...(apiItem || {}),
+                  ...item,
+                }),
+              );
+            }
+          }
+
+          const next = byTitle(
+            Array.from(mergedById.values()).filter(
+              (item) => item.id && item.date && item.title,
+            ),
+          );
+
+          if (next.length) {
+            setCalendarItems(next);
+            saveStoredArray(storageKeys.calendar[0], next);
+          }
+
+          // Recover browser-only events into Neon. This is especially important
+          // if another device still holds meetings that a prior build hid.
+          const apiIds = new Set(apiNormalized.map((item) => item.id));
+          for (const item of browserCalendar) {
+            if (!item.id || apiIds.has(item.id)) continue;
+            void postAtlasRecord("calendar", {
+              id: item.id,
+              date: item.date,
+              title: item.title,
+              area: item.area || "General",
+              status: item.status || (item.completed ? "Completed" : "Scheduled"),
+            });
+          }
         }
 
         if (apiParts.length) {
@@ -8777,9 +8827,6 @@ export default function AtlasPage() {
     }
 
     setWorkPlanSaving(true);
-    setWorkPlanMessage(
-      `Saving ${scheduled.length} planned task${scheduled.length === 1 ? "" : "s"} to the Calendar...`,
-    );
 
     try {
       const byDay = workPlanDays.reduce<Record<WorkPlanDay, WorkPlanTask[]>>(
@@ -8790,7 +8837,7 @@ export default function AtlasPage() {
         {} as Record<WorkPlanDay, WorkPlanTask[]>,
       );
 
-      const prepared: Array<{ task: WorkPlanTask; record: CalendarItem }> = [];
+      const prepared: Array<{ taskId: string; record: CalendarItem }> = [];
 
       for (const day of workPlanDays) {
         let minuteOfDay = 8 * 60;
@@ -8809,43 +8856,62 @@ export default function AtlasPage() {
             locations.find((item) => item.id === task.locationId)?.name ||
             "General";
 
-          const record = normalizeCalendar({
-            id: uid("planned"),
-            title: task.title,
-            area: "Planned Work",
-            categoryLabel: "Planned Work",
-            date: task.scheduledDate || todayISO(),
-            time: taskTime,
-            allDay: false,
-            repeat: task.recurring ? "Weekly" : "None",
-            reminder: "Morning of",
-            notes: [
-              `Estimated time: ${minutesLabel(task.minutes)}`,
-              `Priority: ${task.priority}`,
-              `Type: ${task.category}`,
-              `Location: ${locationName}`,
-              task.locked ? "Locked: Yes" : "",
-              task.recurring ? "Repeats: Weekly" : "",
-              task.notes || "",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            linkedType: task.locationId !== "general" ? "Location" : "None",
-            linkedId: task.locationId !== "general" ? task.locationId : "",
-            linkedName: task.locationId !== "general" ? locationName : "",
-            completed: false,
-            source: "manual",
-          });
+          const occurrenceCount = task.recurring ? 52 : 1;
 
-          const duplicate = calendarItems.some(
-            (item) =>
-              item.date === record.date &&
-              item.time === record.time &&
-              item.title.trim().toLowerCase() ===
-                record.title.trim().toLowerCase(),
-          );
+          for (let occurrence = 0; occurrence < occurrenceCount; occurrence += 1) {
+            const occurrenceDate = new Date(`${task.scheduledDate}T12:00:00`);
+            occurrenceDate.setDate(occurrenceDate.getDate() + occurrence * 7);
+            const date = occurrenceDate.toISOString().slice(0, 10);
 
-          if (!duplicate) prepared.push({ task, record });
+            const displayTitle =
+              task.recurring && taskTime
+                ? `${task.title} · ${formatTime(taskTime)}`
+                : task.title;
+
+            const record = normalizeCalendar({
+              id:
+                occurrence === 0
+                  ? uid("planned")
+                  : uid(`planned-week-${occurrence}`),
+              title: displayTitle,
+              area: "Planned Work",
+              categoryLabel: "Planned Work",
+              date,
+              time: taskTime,
+              allDay: false,
+              repeat: "None",
+              reminder: "Morning of",
+              notes: [
+                `Estimated time: ${minutesLabel(task.minutes)}`,
+                `Priority: ${task.priority}`,
+                `Type: ${task.category}`,
+                `Location: ${locationName}`,
+                task.locked ? "Locked: Yes" : "",
+                task.recurring ? "Recurring weekly planner task" : "",
+                task.notes || "",
+              ]
+                .filter(Boolean)
+                .join("\n"),
+              linkedType: task.locationId !== "general" ? "Location" : "None",
+              linkedId: task.locationId !== "general" ? task.locationId : "",
+              linkedName: task.locationId !== "general" ? locationName : "",
+              completed: false,
+              status: "Scheduled",
+              source: "manual",
+            });
+
+            const duplicate = calendarItems.some(
+              (item) =>
+                item.date === record.date &&
+                item.title.trim().toLowerCase() ===
+                  record.title.trim().toLowerCase(),
+            );
+
+            if (!duplicate) {
+              prepared.push({ taskId: task.id, record });
+            }
+          }
+
           minuteOfDay += task.minutes + 10;
         }
       }
@@ -8858,78 +8924,76 @@ export default function AtlasPage() {
         return;
       }
 
-      const saved: Array<{ task: WorkPlanTask; record: CalendarItem }> = [];
-      const failed: Array<{ task: WorkPlanTask; record: CalendarItem }> = [];
+      const records = prepared.map((item) => item.record);
+      const approvedTaskIds = new Set(prepared.map((item) => item.taskId));
+      const firstRecord = records[0];
 
-      for (const item of prepared) {
-        const ok = await postAtlasRecord("calendar", item.record);
-        if (ok) saved.push(item);
-        else failed.push(item);
-      }
-
-      if (!saved.length) {
-        setWorkPlanMessage(
-          "Nothing was added. Atlas could not save the planned tasks to the Calendar. Your planner entries were kept so you can retry.",
-        );
-        showSaveToast(
-          "Calendar save failed. Planner entries were kept.",
-          "warning",
-        );
-        return;
-      }
-
-      const savedRecords = saved.map((item) => item.record);
-      const savedTaskIds = new Set(saved.map((item) => item.task.id));
-
+      // Put approved work on the Calendar immediately. Database sync happens
+      // afterward and can never prevent the Calendar from showing the result.
       setCalendarItems((current) => {
-        const next = byTitle([...savedRecords, ...current]);
+        const next = byTitle([...records, ...current]);
         saveStoredArray(storageKeys.calendar[0], next);
         return next;
       });
 
-      setSelectedCalendarDate(savedRecords[0].date);
-      setSelectedCalendarId(savedRecords[0].id);
+      setSelectedCalendarDate(firstRecord.date);
+      setSelectedCalendarId(firstRecord.id);
+      setCalendarCursor(calendarDateValue(firstRecord.date));
+      setCalendarDraft(firstRecord);
 
       setWorkPlanInput("");
       setWorkPlanTasks((current) =>
-        current.filter((task) => !savedTaskIds.has(task.id)),
+        current.filter((task) => !approvedTaskIds.has(task.id)),
       );
 
-      if (failed.length) {
+      setWorkPlanMessage(
+        `${records.length} calendar item${records.length === 1 ? "" : "s"} added. Syncing with Atlas...`,
+      );
+      showSaveToast(
+        `${records.length} item${records.length === 1 ? "" : "s"} added to the Calendar.`,
+        "success",
+      );
+
+      setScreen("calendar");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      let failed = 0;
+      for (const record of records) {
+        const ok = await postAtlasRecord("calendar", {
+          id: record.id,
+          date: record.date,
+          title: record.title,
+          area: record.area || "Planned Work",
+          status: record.status || "Scheduled",
+        });
+        if (!ok) failed += 1;
+      }
+
+      if (failed) {
         setWorkPlanMessage(
-          `${saved.length} task${saved.length === 1 ? "" : "s"} added to the Calendar. ${failed.length} task${failed.length === 1 ? "" : "s"} stayed in the Planner because they did not save.`,
+          `${records.length} item${records.length === 1 ? "" : "s"} are visible on this device. ${failed} did not sync to Neon and may not yet appear on another device.`,
         );
         showSaveToast(
-          `${saved.length} added to Calendar; ${failed.length} kept for retry.`,
+          `Calendar updated here; ${failed} item${failed === 1 ? "" : "s"} need database sync.`,
           "warning",
         );
       } else {
         setWorkPlanMessage(
-          `${saved.length} planned task${saved.length === 1 ? "" : "s"} added to the Calendar. The approved Planner entries were cleared.`,
+          `${records.length} calendar item${records.length === 1 ? "" : "s"} added and synced successfully.`,
         );
-        showSaveToast(
-          `${saved.length} planned task${saved.length === 1 ? "" : "s"} added to the Calendar.`,
-          "success",
-        );
+        setDatabaseStatus("Calendar saved to Atlas.");
       }
-
-      setScreen("calendar");
-      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Calendar save failed.";
+        error instanceof Error ? error.message : "Calendar approval failed.";
       setWorkPlanMessage(
-        `Could not add the plan to the Calendar: ${message}. Planner entries were kept.`,
+        `Planner could not finish: ${message}. Your imported tasks were kept unless they already appeared on the Calendar.`,
       );
-      showSaveToast(
-        `Could not add the plan to the Calendar: ${message}`,
-        "warning",
-      );
+      showSaveToast(`Planner error: ${message}`, "warning");
     } finally {
       setWorkPlanSaving(false);
     }
   }
-
 
   function updateWorkPlanTask(
     taskId: string,
