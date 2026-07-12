@@ -94,7 +94,9 @@ export default function OperationsPlanner(props: OperationsPlannerProps) {
     StatCard
   } = props;
 
-    const scheduledMinutes = workPlanDays.reduce<Record<WorkPlanDay, number>>((acc, day) => {
+    const scheduledMinutes = (workPlanDays as WorkPlanDay[]).reduce<
+      Record<WorkPlanDay, number>
+    >((acc, day) => {
       acc[day] = workPlanTasks
         .filter((task) => task.scheduledDay === day)
         .reduce((sum, task) => sum + task.minutes, 0);
@@ -451,4 +453,3 @@ export default function OperationsPlanner(props: OperationsPlannerProps) {
     );
   
 }
-
