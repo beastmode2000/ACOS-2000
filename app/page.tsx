@@ -15655,7 +15655,7 @@ export default function AtlasPage() {
     let content: React.ReactNode;
 
     if (screen === "dashboard") content = renderDashboard();
-    if (screen === "planner") content = renderWorkPlanner();
+    else if (screen === "planner") content = renderWorkPlanner();
     else if (screen === "map") content = renderMap();
     else if (screen === "locations") content = renderLocations();
     else if (screen === "assets") content = renderAssets();
