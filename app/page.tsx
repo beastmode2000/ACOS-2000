@@ -9121,6 +9121,7 @@ export default function AtlasPage() {
         title="Property Map"
         detail="Click a label for details. Click and hold a label to move it."
         isMobile={isMobile}
+        drawerResetKey={selectedMapLabelId || "map-empty"}
         right={
           <>
             {selectedMapLabel.id ? (
@@ -9492,6 +9493,7 @@ export default function AtlasPage() {
         eyebrow="Property Areas"
         title="Locations"
         isMobile={isMobile}
+        drawerResetKey={selectedLocationId || "location-empty"}
         list={
           <div style={listStyle}>
             {filteredLocations.map((location) => (
@@ -10181,6 +10183,7 @@ export default function AtlasPage() {
         title="Contacts"
         detail="Coworkers, vendors, carriers, contractors, and other useful contacts in alphabetical order."
         isMobile={isMobile}
+        drawerResetKey={selectedContactId || "contact-new"}
         right={
           <button
             type="button"
@@ -10441,6 +10444,7 @@ export default function AtlasPage() {
         eyebrow="Property Records"
         title="Vendors"
         isMobile={isMobile}
+        drawerResetKey={selectedVendorId || "vendor-new"}
         right={
           <button type="button" onClick={addVendor} style={goldButtonStyle}>
             Add Vendor
@@ -10810,6 +10814,7 @@ export default function AtlasPage() {
         title="Work Orders"
         detail="Editable one-time and recurring work, organized around how the property changes through the year."
         isMobile={isMobile}
+        drawerResetKey={selectedServiceId || "work-order-new"}
         right={
           <button type="button" onClick={addWorkOrder} style={goldButtonStyle}>
             Add Work Order
@@ -11563,6 +11568,7 @@ export default function AtlasPage() {
         title="Manuals"
         detail="Manuals listed alphabetically with their attached asset and a direct Open button."
         isMobile={isMobile}
+        drawerResetKey={selectedManualId || "manual-new"}
         right={
           <>
             <button
@@ -11818,6 +11824,7 @@ export default function AtlasPage() {
         title="Documents / Photos"
         detail="Search, open, edit, delete, zoom, and sync paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots between phone and desktop."
         isMobile={isMobile}
+        drawerResetKey={selectedDocumentId || "document-new"}
         right={
           <>
             <button
@@ -13769,6 +13776,7 @@ export default function AtlasPage() {
         eyebrow="Inventory"
         title="Parts"
         isMobile={isMobile}
+        drawerResetKey={selectedPartId || "part-new"}
         list={
           <div style={listStyle}>
             {filteredParts.map((part) => (
@@ -15064,7 +15072,7 @@ export default function AtlasPage() {
         </section>
       </div>
 
-      {screen === "dashboard" ? (
+      {true ? (
         <>
           <button
             type="button"
@@ -16049,8 +16057,10 @@ const calendarNavyShellStyle: React.CSSProperties = {
   background: colors.navy,
   border: `1px solid ${colors.navy3}`,
   borderRadius: 24,
-  padding: 18,
+  padding: 12,
   boxShadow: "0 22px 55px rgba(7,27,47,0.22)",
+  width: "100%",
+  maxWidth: "none",
 };
 
 const sectionNavyBackdropStyle: React.CSSProperties = {
@@ -16074,9 +16084,11 @@ const calendarWhitePanelStyle: React.CSSProperties = {
 
 const calendarMonthWhitePanelStyle: React.CSSProperties = {
   ...calendarWhitePanelStyle,
-  padding: 10,
-  overflowY: "hidden",
+  padding: 8,
+  overflowY: "visible",
   overflowX: "hidden",
+  width: "100%",
+  maxWidth: "none",
 };
 
 const calendarMonthViewportStyle: React.CSSProperties = {
@@ -17863,7 +17875,7 @@ const calendarGridStyle: React.CSSProperties = {
 };
 
 const calendarCellStyle: React.CSSProperties = {
-  minHeight: 120,
+  minHeight: 150,
   border: `1px solid ${colors.line}`,
   borderRadius: 16,
   background: "#FFFFFF",
