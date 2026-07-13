@@ -10964,7 +10964,7 @@ export default function AtlasPage() {
         locationRecords={locations}
         contactRecords={contactRecords}
         procedureRecords={procedureRecords}
-        documentRecords={documentRecords}
+        documentRecords={intakeDocs}
         detailSectionHeaderStyle={detailSectionHeaderStyle}
         recurrenceToggleStyle={recurrenceToggleStyle}
         recurrenceGridStyle={recurrenceGridStyle}
