@@ -3024,63 +3024,99 @@ function ListDrawerLayout(props: {
     };
   }, [props.drawerResetKey]);
 
+  const isCalendarLayout = props.outerStyle === calendarNavyShellStyle;
+
   const desktopOuterStyle: React.CSSProperties = props.isMobile
     ? sectionStyle
-    : {
-        ...sectionStyle,
-        height: "calc(100vh - 154px)",
-        minHeight: 560,
-        display: "grid",
-        gridTemplateRows: "auto minmax(0, 1fr)",
-        overflow: "hidden",
-      };
+    : isCalendarLayout
+      ? {
+          ...sectionStyle,
+          height: "auto",
+          minHeight: 0,
+          display: "grid",
+          gridTemplateRows: "auto auto",
+          overflow: "visible",
+        }
+      : {
+          ...sectionStyle,
+          height: "calc(100vh - 154px)",
+          minHeight: 560,
+          display: "grid",
+          gridTemplateRows: "auto minmax(0, 1fr)",
+          overflow: "hidden",
+        };
 
   const outerStyle = props.outerStyle
     ? { ...desktopOuterStyle, ...props.outerStyle }
     : desktopOuterStyle;
-
-  const isCalendarLayout = props.outerStyle === calendarNavyShellStyle;
 
   const desktopGridStyle: React.CSSProperties = props.isMobile
     ? {
         ...drawerGridStyle,
         gridTemplateColumns: "1fr",
       }
-    : {
-        ...drawerGridStyle,
-        gridTemplateColumns: isCalendarLayout
-          ? "minmax(0, 74%) minmax(280px, 26%)"
-          : "minmax(240px, 32%) minmax(0, 68%)",
-        gap: isCalendarLayout ? 14 : drawerGridStyle.gap,
-        height: "100%",
-        minHeight: 0,
-        overflow: "hidden",
-      };
+    : isCalendarLayout
+      ? {
+          ...drawerGridStyle,
+          gridTemplateColumns: "minmax(0, 86%) minmax(210px, 14%)",
+          gap: 12,
+          height: "auto",
+          minHeight: 0,
+          overflow: "visible",
+          alignItems: "start",
+        }
+      : {
+          ...drawerGridStyle,
+          gridTemplateColumns: "minmax(240px, 32%) minmax(0, 68%)",
+          height: "100%",
+          minHeight: 0,
+          overflow: "hidden",
+        };
 
   const desktopListStyle: React.CSSProperties = props.isMobile
     ? listPanelStyle
-    : {
-        ...listPanelStyle,
-        height: "100%",
-        minHeight: 0,
-        overflowY: "auto",
-        overflowX: "hidden",
-        paddingRight: 6,
-        overscrollBehavior: "contain",
-      };
+    : isCalendarLayout
+      ? {
+          ...listPanelStyle,
+          height: "auto",
+          minHeight: 0,
+          overflowY: "visible",
+          overflowX: "hidden",
+          paddingRight: 0,
+        }
+      : {
+          ...listPanelStyle,
+          height: "100%",
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: 6,
+          overscrollBehavior: "contain",
+        };
 
   const desktopDrawerStyle: React.CSSProperties = props.isMobile
     ? drawerStyle
-    : {
-        ...drawerStyle,
-        position: "relative",
-        top: "auto",
-        height: "100%",
-        maxHeight: "none",
-        minHeight: 0,
-        overflowY: "auto",
-        overflowX: "hidden",
-      };
+    : isCalendarLayout
+      ? {
+          ...drawerStyle,
+          position: "sticky",
+          top: 12,
+          height: "auto",
+          maxHeight: "calc(100vh - 32px)",
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+        }
+      : {
+          ...drawerStyle,
+          position: "relative",
+          top: "auto",
+          height: "100%",
+          maxHeight: "none",
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+        };
 
   return (
     <section style={outerStyle}>
@@ -16066,6 +16102,9 @@ const calendarNavyShellStyle: React.CSSProperties = {
   boxShadow: "0 22px 55px rgba(7,27,47,0.22)",
   width: "100%",
   maxWidth: "none",
+  height: "auto",
+  minHeight: 0,
+  overflow: "visible",
 };
 
 const sectionNavyBackdropStyle: React.CSSProperties = {
@@ -16090,7 +16129,9 @@ const calendarWhitePanelStyle: React.CSSProperties = {
 const calendarMonthWhitePanelStyle: React.CSSProperties = {
   ...calendarWhitePanelStyle,
   padding: 12,
-  overflowY: "hidden",
+  height: "auto",
+  minHeight: 0,
+  overflowY: "visible",
   overflowX: "hidden",
   width: "100%",
   maxWidth: "none",
@@ -16108,7 +16149,8 @@ const calendarMonthViewportStyle: React.CSSProperties = {
 const calendarWhiteDrawerStyle: React.CSSProperties = {
   background: "#FFFFFF",
   border: `1px solid ${colors.line}`,
-  borderRadius: 22,
+  borderRadius: 18,
+  padding: 10,
   boxShadow: "0 18px 42px rgba(0,0,0,0.12)",
 };
 
@@ -17892,12 +17934,12 @@ const calendarCellStyle: React.CSSProperties = {
 };
 
 const calendarCompactCellStyle: React.CSSProperties = {
-  minHeight: 0,
-  height: "100%",
-  padding: 8,
+  minHeight: 142,
+  height: "auto",
+  padding: 10,
   borderRadius: 12,
-  fontSize: 13,
-  lineHeight: 1.25,
+  fontSize: 14,
+  lineHeight: 1.3,
 };
 
 const calendarPillStyle: React.CSSProperties = {
