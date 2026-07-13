@@ -70,6 +70,18 @@ type WorkEffort =
   | "Full Day"
   | "Multi-Day";
 
+type WorkChecklistItem = {
+  id: string;
+  text: string;
+  completed: boolean;
+};
+
+type WorkNoteEntry = {
+  id: string;
+  text: string;
+  createdAt: string;
+};
+
 type AtlasServiceRecord = ServiceRecord & {
   workType?: WorkItemType;
   workCategory?: string;
@@ -78,6 +90,8 @@ type AtlasServiceRecord = ServiceRecord & {
   emoji?: string;
   assignedTo?: string;
   locationId?: string;
+  checklist?: WorkChecklistItem[];
+  notesHistory?: WorkNoteEntry[];
 };
 
 const WORKLINK_LOGOS = {
@@ -313,7 +327,9 @@ function isServiceStatus(value: unknown): value is ServiceStatus {
     value === "Open" ||
     value === "Scheduled" ||
     value === "Completed" ||
-    value === "Monitor"
+    value === "Monitor" ||
+    value === "In Progress" ||
+    value === "Waiting"
   );
 }
 
@@ -1028,6 +1044,20 @@ function normalizeService(record: Partial<AtlasServiceRecord>): AtlasServiceReco
     emoji: String(record.emoji || ""),
     assignedTo: String(record.assignedTo || ""),
     locationId: String(record.locationId || ""),
+    checklist: Array.isArray(record.checklist)
+      ? record.checklist.map((item) => ({
+          id: String(item.id || uid("check")),
+          text: String(item.text || ""),
+          completed: Boolean(item.completed),
+        }))
+      : [],
+    notesHistory: Array.isArray(record.notesHistory)
+      ? record.notesHistory.map((entry) => ({
+          id: String(entry.id || uid("note")),
+          text: String(entry.text || ""),
+          createdAt: String(entry.createdAt || new Date().toISOString()),
+        }))
+      : [],
     photos: Array.isArray(record.photos) ? record.photos : [],
     documents: Array.isArray(record.documents) ? record.documents : [],
   };
@@ -4494,6 +4524,8 @@ export default function AtlasPage() {
       emoji: "🔧",
       assignedTo: "",
       locationId: "",
+      checklist: [],
+      notesHistory: [],
       photos: [],
       documents: [],
     });
@@ -9012,6 +9044,7 @@ export default function AtlasPage() {
                         </strong>
                         <small>Tap to change</small>
                       </button>
+
                       <div style={plannerControlCardStyle}>
                         <span style={plannerControlLabelStyle}>Time</span>
                         <strong>{task.fixedTime || "Auto"}</strong>
@@ -10930,6 +10963,8 @@ export default function AtlasPage() {
         vendorRecords={vendorRecords}
         locationRecords={locations}
         contactRecords={contactRecords}
+        procedureRecords={procedureRecords}
+        documentRecords={documentRecords}
         detailSectionHeaderStyle={detailSectionHeaderStyle}
         recurrenceToggleStyle={recurrenceToggleStyle}
         recurrenceGridStyle={recurrenceGridStyle}
