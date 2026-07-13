@@ -37,6 +37,12 @@ type PhotoLike = {
   createdAt?: string;
 };
 
+type ChecklistItem = {
+  id: string;
+  text: string;
+  completed: boolean;
+};
+
 const DEFAULT_CATEGORIES = [
   "🔧 Maintenance",
   "🧹 Cleaning",
