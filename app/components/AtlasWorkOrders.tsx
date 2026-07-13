@@ -238,7 +238,7 @@ type AtlasWorkOrdersProps = {
   Field: any;
   SelectField?: any;
   isMobile: boolean;
-  addWorkOrder: () => void;
+  addWorkOrder: (initial?: Record<string, unknown>) => void;
   goldButtonStyle: React.CSSProperties;
   stackStyle: React.CSSProperties;
   eyebrowStyle: React.CSSProperties;
@@ -271,6 +271,8 @@ type AtlasWorkOrdersProps = {
   contactRecords?: any[];
   procedureRecords?: any[];
   documentRecords?: any[];
+  calendarItems?: any[];
+  weatherDays?: any[];
   detailSectionHeaderStyle: React.CSSProperties;
   recurrenceToggleStyle: React.CSSProperties;
   recurrenceGridStyle: React.CSSProperties;
@@ -323,6 +325,8 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     contactRecords = [],
     procedureRecords = [],
     documentRecords = [],
+    calendarItems = [],
+    weatherDays = [],
     detailSectionHeaderStyle,
     recurrenceToggleStyle,
     recurrenceGridStyle,
@@ -340,6 +344,11 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [sections, setSections] = useState<WorkSection[]>(DEFAULT_SECTIONS);
   const [activeSectionId, setActiveSectionId] = useState("my-work");
   const [categoryFilter, setCategoryFilter] = useState("All");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [locationFilter, setLocationFilter] = useState("All");
+  const [assetFilter, setAssetFilter] = useState("All");
+  const [assignedFilter, setAssignedFilter] = useState("All");
   const [localSearch, setLocalSearch] = useState("");
   const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
@@ -452,6 +461,16 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const category = categoryLabel(record);
     const matchesCategory =
       categoryFilter === "All" || category === categoryFilter;
+    const matchesType =
+      typeFilter === "All" || itemType(record) === typeFilter;
+    const matchesStatus =
+      statusFilter === "All" || String(record.status || "Open") === statusFilter;
+    const matchesLocation =
+      locationFilter === "All" || String(record.locationId || "") === locationFilter;
+    const matchesAsset =
+      assetFilter === "All" || String(record.assetId || "") === assetFilter;
+    const matchesAssigned =
+      assignedFilter === "All" || String(record.assignedTo || "") === assignedFilter;
     const matchesSearch =
       !search ||
       [
@@ -472,7 +491,15 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         .join(" ")
         .toLowerCase()
         .includes(search);
-    return matchesCategory && matchesSearch;
+    return (
+      matchesCategory &&
+      matchesType &&
+      matchesStatus &&
+      matchesLocation &&
+      matchesAsset &&
+      matchesAssigned &&
+      matchesSearch
+    );
   };
 
   const visibleRecords = useMemo(() => {
@@ -490,6 +517,11 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }, [
     activeSection,
     categoryFilter,
+    typeFilter,
+    statusFilter,
+    locationFilter,
+    assetFilter,
+    assignedFilter,
     filteredServices,
     localSearch,
     assetName,
@@ -718,6 +750,48 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setPendingPhotoRecordId(record.id);
   }
 
+  function quickTask() {
+    addWorkOrder({
+      workType: "Quick Task",
+      workCategory: "🧹 Cleaning",
+      effort: "15 minutes",
+      date: new Date().toISOString().slice(0, 10),
+      status: "Open",
+      recurring: false,
+    } as any);
+  }
+
+  function tomorrowDate() {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function nextWeekDate() {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function duplicateWork(record: any) {
+    addWorkOrder({
+      ...record,
+      id: undefined,
+      title: `${record.title || "Work"} Copy`,
+      status: "Open",
+      lastCompletedDate: "",
+      completionHistory: [],
+      serviceHistory: [],
+      photos: [],
+      documents: [],
+      checklist: (record.checklist || []).map((item: ChecklistItem) => ({
+        ...item,
+        id: uid("check"),
+        completed: false,
+      })),
+    });
+  }
+
   function effortMinutes(value: string) {
     if (value === "5 minutes") return 5;
     if (value === "15 minutes") return 15;
@@ -729,17 +803,37 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     return 30;
   }
 
+  const planContext = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const todayCalendar = calendarItems.filter((item: any) => item.date === today);
+    const todayWeather = weatherDays.find((day: any) => day.date === today);
+    const rainRisk = Number(todayWeather?.precipChance || 0) >= 50;
+    return { todayCalendar, todayWeather, rainRisk };
+  }, [calendarItems, weatherDays]);
+
   const dayPlan = useMemo(() => {
+    const outdoorCategory = (record: any) => {
+      const value = categoryLabel(record).toLowerCase();
+      return ["landscap", "irrigation", "dock", "marine", "exterior", "vehicle"].some((term) => value.includes(term));
+    };
     const candidates = serviceRecords
       .filter((record: any) => record.status !== "Completed")
       .map((record: any) => ({
         ...record,
         minutes: effortMinutes(String(record.effort || "30 minutes")),
         distance: record.date ? dayDistance(String(record.date)) : 999,
+        weatherPenalty: planContext.rainRisk && outdoorCategory(record) ? 3 : 0,
+        inProgressRank: record.status === "In Progress" ? -2 : 0,
       }))
       .sort((a: any, b: any) => {
         const priority = (value: string) => value === "High" ? 0 : value === "Medium" ? 1 : 2;
-        return priority(a.priority) - priority(b.priority) || a.distance - b.distance || String(a.locationId || "").localeCompare(String(b.locationId || ""));
+        return (
+          a.inProgressRank - b.inProgressRank ||
+          a.weatherPenalty - b.weatherPenalty ||
+          priority(a.priority) - priority(b.priority) ||
+          a.distance - b.distance ||
+          String(a.locationId || "").localeCompare(String(b.locationId || ""))
+        );
       });
     let used = 0;
     return candidates.filter((record: any) => {
@@ -747,7 +841,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       used += Math.min(record.minutes, 480);
       return true;
     });
-  }, [serviceRecords]);
+  }, [serviceRecords, planContext]);
 
   function addChecklistItem() {
     const text = newChecklistText.trim();
@@ -895,6 +989,27 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           </button>
           <button
             type="button"
+            onClick={() => selectAndPatch(record, { date: tomorrowDate(), status: "Scheduled" })}
+            style={miniButtonStyle}
+          >
+            Tomorrow
+          </button>
+          <button
+            type="button"
+            onClick={() => selectAndPatch(record, { date: nextWeekDate(), status: "Scheduled" })}
+            style={miniButtonStyle}
+          >
+            Next Week
+          </button>
+          <button
+            type="button"
+            onClick={() => duplicateWork(record)}
+            style={miniButtonStyle}
+          >
+            Duplicate
+          </button>
+          <button
+            type="button"
             onClick={() => void deleteWorkOrderRecord(record)}
             style={{ ...dangerButtonStyle, padding: "7px 10px", minHeight: 36 }}
           >
@@ -1018,7 +1133,14 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             </button>
             <button
               type="button"
-              onClick={addWorkOrder}
+              onClick={quickTask}
+              style={secondaryButtonStyle}
+            >
+              + Quick Task
+            </button>
+            <button
+              type="button"
+              onClick={() => addWorkOrder()}
               style={goldButtonStyle}
             >
               Add Work
@@ -1033,6 +1155,10 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <div>
                     <div style={eyebrowStyle}>Smart Daily Plan</div>
                     <strong>Prioritized for roughly 8 hours</strong>
+                    <div style={mutedSmallStyle}>
+                      {planContext.todayCalendar.length} calendar item{planContext.todayCalendar.length === 1 ? "" : "s"}
+                      {planContext.todayWeather ? ` · ${Math.round(Number(planContext.todayWeather.high || 0))}° high · ${Math.round(Number(planContext.todayWeather.precipChance || 0))}% rain` : ""}
+                    </div>
                   </div>
                   <span style={recurringBadgeStyle}>{dayPlan.length} items</span>
                 </div>
@@ -1211,33 +1337,45 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "minmax(0, 1fr) 220px",
+                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
                   gap: 10,
                 }}
               >
                 <input
                   value={localSearch}
-                  onChange={(event) =>
-                    setLocalSearch(event.currentTarget.value)
-                  }
+                  onChange={(event) => setLocalSearch(event.currentTarget.value)}
                   placeholder="Search work, asset, vendor, category..."
                   style={controlStyle}
                 />
-                <select
-                  value={categoryFilter}
-                  onChange={(event) =>
-                    setCategoryFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category === "All" ? "All Categories" : category}
-                    </option>
-                  ))}
+                <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.currentTarget.value)} style={controlStyle}>
+                  {categories.map((category) => <option key={category} value={category}>{category === "All" ? "All Categories" : category}</option>)}
                 </select>
+                <select value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)} style={controlStyle}>
+                  <option value="All">All Types</option>
+                  <option value="Quick Task">Tasks</option>
+                  <option value="Work Order">Work Orders</option>
+                  <option value="Preventive Maintenance">Preventive Maintenance</option>
+                  <option value="Project">Projects</option>
+                </select>
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value)} style={controlStyle}>
+                  <option value="All">All Statuses</option>
+                  {['Open','Scheduled','In Progress','Waiting','Monitor','Completed'].map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+                <select value={locationFilter} onChange={(event) => setLocationFilter(event.currentTarget.value)} style={controlStyle}>
+                  <option value="All">All Locations</option>
+                  {byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                </select>
+                <select value={assetFilter} onChange={(event) => setAssetFilter(event.currentTarget.value)} style={controlStyle}>
+                  <option value="All">All Assets</option>
+                  {byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                </select>
+                <select value={assignedFilter} onChange={(event) => setAssignedFilter(event.currentTarget.value)} style={controlStyle}>
+                  <option value="All">Anyone Assigned</option>
+                  {byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}
+                </select>
+                <button type="button" onClick={() => { setLocalSearch(""); setCategoryFilter("All"); setTypeFilter("All"); setStatusFilter("All"); setLocationFilter("All"); setAssetFilter("All"); setAssignedFilter("All"); }} style={secondaryButtonStyle}>
+                  Clear Filters
+                </button>
               </div>
             </section>
 
@@ -1693,6 +1831,27 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     or surrounding area.
                   </p>
                 )}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Service History</div>
+                    <strong>{(selectedService.serviceHistory || []).length} saved completion snapshot{(selectedService.serviceHistory || []).length === 1 ? "" : "s"}</strong>
+                  </div>
+                </div>
+                {(selectedService.serviceHistory || []).length ? (
+                  <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+                    {(selectedService.serviceHistory || []).map((entry: any) => (
+                      <div key={entry.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10, background: "#F8FAFC" }}>
+                        <strong>{new Date(entry.completedAt).toLocaleString()}</strong>
+                        <div style={mutedSmallStyle}>Due {formatDate(entry.dueDate)} · {entry.statusBefore}</div>
+                        <div style={mutedSmallStyle}>{(entry.checklist || []).filter((item: any) => item.completed).length}/{(entry.checklist || []).length} checklist items complete · {(entry.photos || []).length} photo(s)</div>
+                        {entry.notes ? <p style={{ marginBottom: 0 }}>{entry.notes}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : <p style={mutedSmallStyle}>Completed work will be saved here with its notes, checklist, photos, and links.</p>}
               </section>
 
               <section style={detailSectionStyle}>
