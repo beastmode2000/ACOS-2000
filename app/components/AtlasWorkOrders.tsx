@@ -129,6 +129,24 @@ function myWorkGroup(record: any) {
   return "upcoming";
 }
 
+
+function workSortValue(record: any) {
+  const priorityRank = record.priority === "High" ? 0 : record.priority === "Medium" ? 1 : 2;
+  const due = parseDate(String(record.date || ""));
+  const dueTime = due ? due.getTime() : Number.MAX_SAFE_INTEGER;
+  return { priorityRank, dueTime, title: String(record.title || "") };
+}
+
+function sortWorkRecords(records: any[]) {
+  return [...records].sort((a, b) => {
+    const left = workSortValue(a);
+    const right = workSortValue(b);
+    if (left.priorityRank !== right.priorityRank) return left.priorityRank - right.priorityRank;
+    if (left.dueTime !== right.dueTime) return left.dueTime - right.dueTime;
+    return left.title.localeCompare(right.title);
+  });
+}
+
 function safeReadSections(): WorkSection[] {
   if (typeof window === "undefined") return DEFAULT_SECTIONS;
   try {
@@ -311,6 +329,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [categoryChoices, setCategoryChoices] = useState<string[]>(DEFAULT_CATEGORIES);
   const [newCategory, setNewCategory] = useState("");
   const [photoMessage, setPhotoMessage] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -441,7 +460,13 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       const group = myWorkGroup(record);
       if (group && group in groups) groups[group as keyof typeof groups].push(record);
     });
-    return groups;
+    return {
+      today: sortWorkRecords(groups.today),
+      week: sortWorkRecords(groups.week),
+      upcoming: sortWorkRecords(groups.upcoming),
+      maintenance: sortWorkRecords(groups.maintenance),
+      projects: sortWorkRecords(groups.projects),
+    };
   }, [visibleRecords]);
 
   const tabCounts = useMemo(() => {
@@ -655,27 +680,47 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               background: "#FFFFFF",
             }}
           >
-            <div
+            <button
+              type="button"
+              onClick={() =>
+                setCollapsedGroups((current) => ({
+                  ...current,
+                  [group.id]: !current[group.id],
+                }))
+              }
               style={{
+                width: "100%",
                 display: "flex",
                 justifyContent: "space-between",
+                alignItems: "center",
                 gap: 10,
                 padding: "11px 13px",
-                borderBottom: `1px solid ${colors.line}`,
+                border: 0,
+                borderBottom: collapsedGroups[group.id]
+                  ? 0
+                  : `1px solid ${colors.line}`,
                 background: "#F8FAFC",
+                color: colors.text,
+                cursor: "pointer",
+                textAlign: "left",
               }}
             >
               <strong>{group.label}</strong>
-              <span style={recurringBadgeStyle}>{group.records.length}</span>
-            </div>
-            <div style={listStyle}>
-              {group.records.map(renderWorkRow)}
-              {!group.records.length ? (
-                <div style={{ ...noticeStyle, margin: 10 }}>
-                  Nothing in this section.
-                </div>
-              ) : null}
-            </div>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={recurringBadgeStyle}>{group.records.length}</span>
+                <span aria-hidden="true">{collapsedGroups[group.id] ? "▸" : "▾"}</span>
+              </span>
+            </button>
+            {!collapsedGroups[group.id] ? (
+              <div style={listStyle}>
+                {group.records.map(renderWorkRow)}
+                {!group.records.length ? (
+                  <div style={{ ...noticeStyle, margin: 10 }}>
+                    Nothing in this section.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
         ))}
       </div>
