@@ -10863,56 +10863,67 @@ export default function AtlasPage() {
         }
         list={
           <div style={stackStyle}>
-            <section style={seasonPlannerStyle}>
-              <div>
-                <div style={eyebrowStyle}>Seasonal Property Plan</div>
-                <strong>
-                  Current season: {currentSeason}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+                padding: "10px 12px",
+                border: `1px solid ${colors.line}`,
+                borderRadius: 14,
+                background: "#FFFFFF",
+              }}
+            >
+              <div style={{ display: "grid", gap: 2 }}>
+                <strong style={{ color: colors.navy, fontSize: 13 }}>
+                  Filter work orders
                 </strong>
+                <small style={mutedSmallStyle}>
+                  Current season: {currentSeason}
+                </small>
               </div>
 
-              <div style={seasonCardGridStyle}>
-                {seasons.map((season) => {
-                  const count =
-                    season === "All"
-                      ? serviceRecords.length
-                      : serviceRecords.filter(
-                          (record) => record.season === season,
-                        ).length;
-                  const selected = workOrderSeasonFilter === season;
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  minWidth: 220,
+                }}
+              >
+                <span style={fieldLabelStyle}>Season</span>
+                <select
+                  value={workOrderSeasonFilter}
+                  onChange={(event) =>
+                    setWorkOrderSeasonFilter(
+                      event.currentTarget.value as WorkSeason | "All",
+                    )
+                  }
+                  style={{
+                    ...inputStyle,
+                    minWidth: 150,
+                    padding: "9px 11px",
+                  }}
+                >
+                  {seasons.map((season) => {
+                    const count =
+                      season === "All"
+                        ? serviceRecords.length
+                        : serviceRecords.filter(
+                            (record) => record.season === season,
+                          ).length;
 
-                  return (
-                    <button
-                      key={season}
-                      type="button"
-                      onClick={() => setWorkOrderSeasonFilter(season)}
-                      style={{
-                        ...seasonCardStyle,
-                        borderColor: selected
-                          ? colors.gold
-                          : colors.line,
-                        background: selected
-                          ? "#FFF8E8"
-                          : "#FFFFFF",
-                      }}
-                    >
-                      <span style={seasonCardTitleStyle}>
-                        {season}
-                        {season === currentSeason ? (
-                          <small style={currentSeasonTagStyle}>Current</small>
-                        ) : null}
-                      </span>
-                      <strong>{count}</strong>
-                      <small style={seasonCardDescriptionStyle}>
-                        {season === "All"
-                          ? "Every work order"
-                          : workSeasonDescription(season)}
-                      </small>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+                    return (
+                      <option key={season} value={season}>
+                        {season} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            </div>
 
             <div style={listStyle}>
               {filteredServices.map((record) => (
