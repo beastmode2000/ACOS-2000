@@ -3,7 +3,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasDashboard from "./components/AtlasDashboard";
-import AtlasWorkOrders from "./components/AtlasWorkOrders";
 
 import type {
   Screen,
@@ -55,27 +54,6 @@ import type {
   ManualCandidate,
 } from "./lib/atlas-types";
 
-type WorkItemType =
-  | "Quick Task"
-  | "Work Order"
-  | "Preventive Maintenance"
-  | "Project";
-
-type WorkEffort =
-  | "5 minutes"
-  | "15 minutes"
-  | "30 minutes"
-  | "1 hour"
-  | "Half Day"
-  | "Full Day"
-  | "Multi-Day";
-
-type AtlasServiceRecord = ServiceRecord & {
-  workType?: WorkItemType;
-  workCategory?: string;
-  effort?: WorkEffort;
-  responsibilityArea?: string;
-};
 
 const WORKLINK_LOGOS = {
   landscapeHelpAdmin: "",
@@ -977,7 +955,7 @@ function blankContact(): ContactRecord {
   });
 }
 
-function normalizeService(record: Partial<AtlasServiceRecord>): AtlasServiceRecord {
+function normalizeService(record: Partial<ServiceRecord>): ServiceRecord {
   const title = String(record.title ?? "Untitled Work Order");
   return {
     id: String(record.id || slugify(title)),
@@ -1006,22 +984,6 @@ function normalizeService(record: Partial<AtlasServiceRecord>): AtlasServiceReco
     completionHistory: Array.isArray(record.completionHistory)
       ? record.completionHistory.map(String).filter(Boolean)
       : [],
-    workType:
-      record.workType === "Quick Task" ||
-      record.workType === "Work Order" ||
-      record.workType === "Preventive Maintenance" ||
-      record.workType === "Project"
-        ? record.workType
-        : record.recurring
-          ? "Preventive Maintenance"
-          : "Work Order",
-    workCategory: String(
-      record.workCategory ||
-        (record as AtlasServiceRecord & { category?: string }).category ||
-        "🔧 Maintenance",
-    ),
-    effort: record.effort || undefined,
-    responsibilityArea: String(record.responsibilityArea || ""),
     photos: Array.isArray(record.photos) ? record.photos : [],
     documents: Array.isArray(record.documents) ? record.documents : [],
   };
@@ -2205,7 +2167,7 @@ const fallbackAssets: AssetRecord[] = [
   },
 ];
 
-const fallbackWorkOrders: AtlasServiceRecord[] = [
+const fallbackWorkOrders: ServiceRecord[] = [
   {
     id: "wo-pool-weekly",
     assetId: "boiler-2",
@@ -3254,7 +3216,7 @@ export default function AtlasPage() {
   const [contactSearch, setContactSearch] = useState("");
   const [contactMessage, setContactMessage] = useState("");
   const [serviceRecords, setServiceRecords] =
-    useState<AtlasServiceRecord[]>(fallbackWorkOrders);
+    useState<ServiceRecord[]>(fallbackWorkOrders);
   const [workOrderSeasonFilter, setWorkOrderSeasonFilter] = useState<
     WorkSeason | "All"
   >("All");
@@ -4481,10 +4443,6 @@ export default function AtlasPage() {
       season: seasonForDate(),
       lastCompletedDate: "",
       completionHistory: [],
-      workType: "Work Order",
-      workCategory: "🔧 Maintenance",
-      effort: "30 minutes",
-      responsibilityArea: "",
       photos: [],
       documents: [],
     });
@@ -6720,10 +6678,6 @@ export default function AtlasPage() {
       season: seasonForDate(),
       lastCompletedDate: "",
       completionHistory: [],
-      workType: "Work Order",
-      workCategory: "🔧 Maintenance",
-      effort: "30 minutes",
-      responsibilityArea: "",
       photos: [],
       documents: [],
     });
@@ -6733,7 +6687,7 @@ export default function AtlasPage() {
     setScreen("history");
   }
 
-  function updateWorkOrder(patch: Partial<AtlasServiceRecord>) {
+  function updateWorkOrder(patch: Partial<ServiceRecord>) {
     markRecordDirty("work_order", selectedService.id);
     setServiceRecords((current) =>
       byTitle(
@@ -6760,7 +6714,7 @@ export default function AtlasPage() {
     setDatabaseStatus(`Saved ${prepared.title || "work order"}.`);
   }
 
-  async function completeWorkOrder(record: AtlasServiceRecord) {
+  async function completeWorkOrder(record: ServiceRecord) {
     const completedDate = todayISO();
     const history = Array.from(
       new Set([...(record.completionHistory || []), completedDate]),
@@ -10885,53 +10839,403 @@ export default function AtlasPage() {
   }
 
   function renderWorkOrders() {
+    const seasons: Array<WorkSeason | "All"> = [
+      "All",
+      "Spring",
+      "Summer",
+      "Fall",
+      "Winter",
+      "Year-Round",
+    ];
+    const currentSeason = seasonForDate();
+
     return (
-      <AtlasWorkOrders
-        ListDrawerLayout={ListDrawerLayout}
-        Field={Field}
-        SelectField={SelectField}
+      <ListDrawerLayout
+        eyebrow="Open / Monitor"
+        title="Work Orders"
+        detail="Editable one-time and recurring work, organized around how the property changes through the year."
         isMobile={isMobile}
-        addWorkOrder={addWorkOrder}
-        goldButtonStyle={goldButtonStyle}
-        stackStyle={stackStyle}
-        eyebrowStyle={eyebrowStyle}
-        serviceRecords={serviceRecords}
-        colors={colors}
-        filteredServices={filteredServices}
-        listStyle={listStyle}
-        setSelectedServiceId={setSelectedServiceId}
-        rowButtonStyle={rowButtonStyle}
-        selectedService={selectedService}
-        mutedSmallStyle={mutedSmallStyle}
-        formatDate={formatDate}
-        assetName={assetName}
-        vendorName={vendorName}
-        recurrenceLabel={recurrenceLabel}
-        workOrderListBadgesStyle={workOrderListBadgesStyle}
-        recurringBadgeStyle={recurringBadgeStyle}
-        badgeStyle={badgeStyle}
-        noticeStyle={noticeStyle}
-        editorHeaderStyle={editorHeaderStyle}
-        detailSectionStyle={detailSectionStyle}
-        formGridStyle={formGridStyle}
-        updateWorkOrder={updateWorkOrder}
-        fieldLabelStyle={fieldLabelStyle}
-        inputStyle={inputStyle}
-        byName={byName}
-        assetRecords={assetRecords}
-        vendorRecords={vendorRecords}
-        detailSectionHeaderStyle={detailSectionHeaderStyle}
-        recurrenceToggleStyle={recurrenceToggleStyle}
-        recurrenceGridStyle={recurrenceGridStyle}
-        recurrenceHistoryStyle={recurrenceHistoryStyle}
-        buttonRowStyle={buttonRowStyle}
-        isRecordDirty={isRecordDirty}
-        saveWorkOrderRecord={saveWorkOrderRecord}
-        completeWorkOrder={completeWorkOrder}
-        secondaryButtonStyle={secondaryButtonStyle}
-        deleteWorkOrderRecord={deleteWorkOrderRecord}
-        dangerButtonStyle={dangerButtonStyle}
-        renderLinkedDocuments={renderLinkedDocuments}
+        drawerResetKey={selectedServiceId || "work-order-new"}
+        right={
+          <button type="button" onClick={addWorkOrder} style={goldButtonStyle}>
+            Add Work Order
+          </button>
+        }
+        list={
+          <div style={stackStyle}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+                padding: "10px 12px",
+                border: `1px solid ${colors.line}`,
+                borderRadius: 14,
+                background: "#FFFFFF",
+              }}
+            >
+              <div style={{ display: "grid", gap: 2 }}>
+                <strong style={{ color: colors.navy, fontSize: 13 }}>
+                  Filter work orders
+                </strong>
+                <small style={mutedSmallStyle}>
+                  Current season: {currentSeason}
+                </small>
+              </div>
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  minWidth: 220,
+                }}
+              >
+                <span style={fieldLabelStyle}>Season</span>
+                <select
+                  value={workOrderSeasonFilter}
+                  onChange={(event) =>
+                    setWorkOrderSeasonFilter(
+                      event.currentTarget.value as WorkSeason | "All",
+                    )
+                  }
+                  style={{
+                    ...inputStyle,
+                    minWidth: 150,
+                    padding: "9px 11px",
+                  }}
+                >
+                  {seasons.map((season) => {
+                    const count =
+                      season === "All"
+                        ? serviceRecords.length
+                        : serviceRecords.filter(
+                            (record) => record.season === season,
+                          ).length;
+
+                    return (
+                      <option key={season} value={season}>
+                        {season} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            </div>
+
+            <div style={listStyle}>
+              {filteredServices.map((record) => (
+                <button
+                  key={record.id}
+                  type="button"
+                  onClick={() => setSelectedServiceId(record.id)}
+                  style={{
+                    ...rowButtonStyle,
+                    borderColor:
+                      record.id === selectedService.id
+                        ? colors.gold
+                        : colors.line,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <strong>{record.title}</strong>
+                    <p style={mutedSmallStyle}>
+                      {record.recurring ? "Next due" : "Due"}{" "}
+                      {formatDate(record.date)} · {assetName(record.assetId)} ·{" "}
+                      {vendorName(record.vendorId)}
+                    </p>
+                    <p style={mutedSmallStyle}>
+                      {record.season || "Year-Round"} ·{" "}
+                      {recurrenceLabel(record)}
+                    </p>
+                  </div>
+                  <div style={workOrderListBadgesStyle}>
+                    {record.recurring ? (
+                      <span style={recurringBadgeStyle}>Recurring</span>
+                    ) : null}
+                    <span style={badgeStyle(record.status)}>
+                      {record.status}
+                    </span>
+                  </div>
+                </button>
+              ))}
+
+              {!filteredServices.length ? (
+                <div style={noticeStyle}>
+                  No work orders are assigned to this season or search.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        }
+        drawer={
+          selectedService.id ? (
+            <div style={stackStyle}>
+              <div>
+                <h3 style={editorHeaderStyle}>
+                  {selectedService.title.trim() || "New Work Order"}
+                </h3>
+                <p style={mutedSmallStyle}>
+                  {selectedService.season || "Year-Round"} ·{" "}
+                  {recurrenceLabel(selectedService)}
+                </p>
+              </div>
+
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Work Order Information</div>
+                <div style={formGridStyle}>
+                  <Field
+                    label="Title"
+                    value={selectedService.title}
+                    onChange={(value) => updateWorkOrder({ title: value })}
+                  />
+                  <Field
+                    label={selectedService.recurring ? "Next Due" : "Due Date"}
+                    value={selectedService.date}
+                    onChange={(value) => updateWorkOrder({ date: value })}
+                  />
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Season</span>
+                    <select
+                      value={selectedService.season || "Year-Round"}
+                      onChange={(event) =>
+                        updateWorkOrder({
+                          season: event.currentTarget.value as WorkSeason,
+                        })
+                      }
+                      style={inputStyle}
+                    >
+                      {(
+                        [
+                          "Year-Round",
+                          "Spring",
+                          "Summer",
+                          "Fall",
+                          "Winter",
+                        ] as WorkSeason[]
+                      ).map((season) => (
+                        <option key={season} value={season}>
+                          {season}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Asset</span>
+                    <select
+                      value={selectedService.assetId}
+                      onChange={(event) =>
+                        updateWorkOrder({
+                          assetId: event.currentTarget.value,
+                        })
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="">No asset</option>
+                      {byName(assetRecords).map((asset) => (
+                        <option key={asset.id} value={asset.id}>
+                          {asset.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Vendor</span>
+                    <select
+                      value={selectedService.vendorId ?? ""}
+                      onChange={(event) =>
+                        updateWorkOrder({
+                          vendorId: event.currentTarget.value,
+                        })
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="">No vendor</option>
+                      {byName(vendorRecords).map((vendor) => (
+                        <option key={vendor.id} value={vendor.id}>
+                          {vendor.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <SelectField
+                    label="Status"
+                    value={selectedService.status}
+                    onChange={(value) => updateWorkOrder({ status: value })}
+                    options={
+                      ["Open", "Scheduled", "Completed", "Monitor"] as const
+                    }
+                  />
+                  <SelectField
+                    label="Priority"
+                    value={selectedService.priority ?? "Medium"}
+                    onChange={(value) => updateWorkOrder({ priority: value })}
+                    options={["Low", "Medium", "High"] as const}
+                  />
+                  <Field
+                    label="Follow-up Date"
+                    value={selectedService.followUpDate ?? ""}
+                    onChange={(value) =>
+                      updateWorkOrder({ followUpDate: value })
+                    }
+                  />
+                  <Field
+                    label="Notes"
+                    value={selectedService.notes}
+                    onChange={(value) => updateWorkOrder({ notes: value })}
+                    multiline
+                  />
+                </div>
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Recurrence</div>
+                    <strong>{recurrenceLabel(selectedService)}</strong>
+                  </div>
+                  <label style={recurrenceToggleStyle}>
+                    <input
+                      type="checkbox"
+                      checked={!!selectedService.recurring}
+                      onChange={(event) =>
+                        updateWorkOrder({
+                          recurring: event.currentTarget.checked,
+                        })
+                      }
+                    />
+                    Repeat this work order
+                  </label>
+                </div>
+
+                {selectedService.recurring ? (
+                  <div style={recurrenceGridStyle}>
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Repeat Every</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={selectedService.recurrenceInterval || 1}
+                        onChange={(event) =>
+                          updateWorkOrder({
+                            recurrenceInterval: Math.max(
+                              1,
+                              Number(event.currentTarget.value) || 1,
+                            ),
+                          })
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Unit</span>
+                      <select
+                        value={selectedService.recurrenceUnit || "Weeks"}
+                        onChange={(event) =>
+                          updateWorkOrder({
+                            recurrenceUnit:
+                              event.currentTarget
+                                .value as WorkOrderRecurrenceUnit,
+                          })
+                        }
+                        style={inputStyle}
+                      >
+                        {(
+                          [
+                            "Days",
+                            "Weeks",
+                            "Months",
+                            "Years",
+                          ] as WorkOrderRecurrenceUnit[]
+                        ).map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <Field
+                      label="Stop Repeating After"
+                      value={selectedService.recurrenceEndDate || ""}
+                      onChange={(value) =>
+                        updateWorkOrder({ recurrenceEndDate: value })
+                      }
+                      placeholder="Optional end date"
+                    />
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    This is a one-time work order. Turn recurrence on for
+                    weekly, monthly, yearly, or custom intervals.
+                  </p>
+                )}
+
+                {selectedService.lastCompletedDate ? (
+                  <div style={recurrenceHistoryStyle}>
+                    <strong>
+                      Last completed{" "}
+                      {formatDate(selectedService.lastCompletedDate)}
+                    </strong>
+                    <span style={mutedSmallStyle}>
+                      {(selectedService.completionHistory || []).length} total
+                      recorded completion
+                      {(selectedService.completionHistory || []).length === 1
+                        ? ""
+                        : "s"}
+                    </span>
+                  </div>
+                ) : null}
+              </section>
+
+              <div style={buttonRowStyle}>
+                {isRecordDirty("work_order", selectedService.id) ? (
+                  <button
+                    type="button"
+                    onClick={() => void saveWorkOrderRecord()}
+                    style={goldButtonStyle}
+                  >
+                    Save Work Order
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => void completeWorkOrder(selectedService)}
+                  style={selectedService.recurring ? goldButtonStyle : secondaryButtonStyle}
+                >
+                  {selectedService.recurring
+                    ? "Complete & Move to Next Due"
+                    : "Mark Completed"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void deleteWorkOrderRecord(selectedService)
+                  }
+                  style={dangerButtonStyle}
+                >
+                  Delete Work Order
+                </button>
+              </div>
+
+              {renderLinkedDocuments("Work Order", selectedService.id)}
+            </div>
+          ) : (
+            <div style={noticeStyle}>
+              <strong>Select a work order or add a new one.</strong>
+              <p style={mutedSmallStyle}>
+                Work orders can be one-time, recurring, and assigned to a
+                property season.
+              </p>
+            </div>
+          )
+        }
       />
     );
   }
