@@ -11218,6 +11218,388 @@ export default function AtlasPage() {
       />
     );
   }
+  async function createInboxItemFromDraft() {
+    if (!intakeFiles.length && !intakePastedText.trim() && !intakeNotes.trim()) {
+      setIntakeMessage("Add a file, pasted text, or notes before saving to the Inbox.");
+      return;
+    }
+
+    const title =
+      intakeTitle.trim() ||
+      fastIntakeRecordName.trim() ||
+      intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") ||
+      intakePastedText.trim().slice(0, 48) ||
+      "Untitled Inbox item";
+
+    setIntakeMessage("Saving to the permanent Atlas Inbox...");
+
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          intakeType: fastIntakeKind,
+          status: "New",
+          source: "Fast Intake",
+          notes: intakeNotes.trim(),
+          pastedText: intakePastedText.trim(),
+          files: intakeFiles,
+          targetType: intakeTargetKind,
+          targetId: intakeTargetKind === "General" ? "" : intakeTargetId,
+          targetName: targetNameFor(intakeTargetKind, intakeTargetId),
+          proposedAction: fastIntakeSaveMode,
+          extractedData: {},
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Inbox save failed.");
+      }
+
+      const saved = payload.item as InboxItemRecord;
+      setInboxItems((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      setSelectedInboxId(saved.id);
+      setIntakeMessage("Saved to Atlas Inbox. Nothing else was changed.");
+      resetIntakeDraft();
+      setScreen("inbox");
+    } catch (error) {
+      setIntakeMessage(error instanceof Error ? error.message : "Inbox save failed.");
+    }
+  }
+
+  async function updateInboxItem(
+    id: string,
+    patch: Partial<InboxItemRecord>,
+  ) {
+    setInboxMessage("Saving Inbox item...");
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Inbox update failed.");
+      }
+      const saved = payload.item as InboxItemRecord;
+      setInboxItems((current) =>
+        current.map((item) => (item.id === saved.id ? saved : item)),
+      );
+      setInboxMessage("Inbox item saved.");
+    } catch (error) {
+      setInboxMessage(error instanceof Error ? error.message : "Inbox update failed.");
+    }
+  }
+
+  async function deleteInboxItem(item: InboxItemRecord) {
+    if (!window.confirm(`Delete \"${item.title}\" from the Atlas Inbox?`)) return;
+
+    setInboxMessage("Deleting Inbox item...");
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Inbox delete failed.");
+      }
+      setInboxItems((current) => current.filter((entry) => entry.id !== item.id));
+      setSelectedInboxId((current) => (current === item.id ? "" : current));
+      setInboxMessage("Inbox item deleted.");
+    } catch (error) {
+      setInboxMessage(error instanceof Error ? error.message : "Inbox delete failed.");
+    }
+  }
+
+  function inboxAnalysisText(value: unknown) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function inboxAnalysisTokens(value: string) {
+    return Array.from(
+      new Set(
+        value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .split(" ")
+          .map((token) => token.trim())
+          .filter((token) => token.length >= 3),
+      ),
+    );
+  }
+
+  function firstInboxMatch(text: string, pattern: RegExp) {
+    const match = text.match(pattern);
+    return match?.[1]?.trim() || "";
+  }
+
+  function buildInboxReviewDraft(data: Record<string, unknown>): InboxReviewDraft {
+    const readingData = (data.readings || {}) as Record<string, unknown>;
+    return {
+      documentType: inboxAnalysisText(data.documentType) || inboxAnalysisText(data.type),
+      summary: inboxAnalysisText(data.summary),
+      manufacturer: inboxAnalysisText(data.manufacturer),
+      model: inboxAnalysisText(data.model),
+      serial: inboxAnalysisText(data.serial),
+      invoiceNumber: inboxAnalysisText(data.invoiceNumber),
+      amount: inboxAnalysisText(data.amount),
+      date: inboxAnalysisText(data.date),
+      psi: inboxAnalysisText(readingData.psi),
+      temperature: inboxAnalysisText(readingData.temperature),
+      ph: inboxAnalysisText(readingData.ph),
+      hours: inboxAnalysisText(readingData.hours),
+      assetId: "",
+      locationId: "",
+      vendorId: "",
+      workOrderId: "",
+      notes: "",
+    };
+  }
+
+  function openInboxReview(item: InboxItemRecord) {
+    setSelectedInboxId(item.id);
+    setInboxReviewDraft(buildInboxReviewDraft((item.extractedData || {}) as Record<string, unknown>));
+    setInboxReviewOpen(true);
+  }
+
+  async function analyzeInboxItem(item: InboxItemRecord) {
+    if (analyzingInboxId) return;
+
+    const usableFiles = (item.files || [])
+      .filter((file) => Boolean(file.dataUrl || file.url))
+      .slice(0, 3)
+      .map((file) => ({
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        dataUrl: file.dataUrl || "",
+        url: file.url || "",
+      }));
+
+    const fileNames = usableFiles.map((file) => file.name).join("\n");
+    const existingText = [item.title, item.notes, item.pastedText, fileNames]
+      .filter(Boolean)
+      .join("\n");
+
+    if (!existingText.trim() && !usableFiles.length) {
+      setInboxMessage("Add a file, title, notes, or pasted text before analyzing.");
+      return;
+    }
+
+    setAnalyzingInboxId(item.id);
+    setInboxReviewDraft(buildInboxReviewDraft((item.extractedData || {}) as Record<string, unknown>));
+    setInboxReviewOpen(true);
+    setInboxMessage("Atlas is reading the selected file and preparing suggestions...");
+
+    let visionData: Record<string, unknown> = {};
+    try {
+      const response = await fetch("/api/atlas-inbox-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item: {
+            id: item.id,
+            title: item.title,
+            intakeType: item.intakeType,
+            notes: item.notes,
+            pastedText: item.pastedText,
+            files: usableFiles,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Photo/PDF analysis failed.");
+      }
+      visionData = (payload.analysis || {}) as Record<string, unknown>;
+    } catch (error) {
+      setInboxMessage(
+        error instanceof Error ? error.message : "Photo/PDF analysis failed.",
+      );
+      setAnalyzingInboxId("");
+      return;
+    }
+
+    const aiReadings = (visionData.readings || {}) as Record<string, unknown>;
+    const rawText = inboxAnalysisText(visionData.rawText);
+    const combinedText = [
+      existingText,
+      rawText,
+      inboxAnalysisText(visionData.manufacturer),
+      inboxAnalysisText(visionData.model),
+      inboxAnalysisText(visionData.serial),
+      inboxAnalysisText(visionData.invoiceNumber),
+      inboxAnalysisText(visionData.vendorName),
+      inboxAnalysisText(visionData.assetName),
+      inboxAnalysisText(visionData.locationName),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const serial =
+      inboxAnalysisText(visionData.serial) ||
+      firstInboxMatch(
+        combinedText,
+        /(?:serial(?:\s*(?:number|no\.?))?|s\s*\/\s*n|\bsn\b)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{3,})/i,
+      );
+    const model =
+      inboxAnalysisText(visionData.model) ||
+      firstInboxMatch(
+        combinedText,
+        /(?:model(?:\s*(?:number|no\.?))?|m\s*\/\s*n)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
+      );
+    const invoiceNumber =
+      inboxAnalysisText(visionData.invoiceNumber) ||
+      firstInboxMatch(
+        combinedText,
+        /(?:invoice|inv(?:oice)?)(?:\s*(?:number|no\.?))?\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
+      );
+    const amount =
+      inboxAnalysisText(visionData.amount) ||
+      firstInboxMatch(combinedText, /(\$\s?\d[\d,]*(?:\.\d{2})?)/i);
+    const date =
+      inboxAnalysisText(visionData.date) ||
+      firstInboxMatch(
+        combinedText,
+        /\b((?:0?[1-9]|1[0-2])[\/-](?:0?[1-9]|[12]\d|3[01])[\/-](?:19|20)?\d{2})\b/,
+      );
+    const psi =
+      inboxAnalysisText(aiReadings.psi) ||
+      firstInboxMatch(combinedText, /\b(\d+(?:\.\d+)?)\s*psi\b/i);
+    const temperature =
+      inboxAnalysisText(aiReadings.temperature) ||
+      firstInboxMatch(
+        combinedText,
+        /\b(\d+(?:\.\d+)?)\s*(?:°\s*)?(?:f|fahrenheit)\b/i,
+      );
+    const ph =
+      inboxAnalysisText(aiReadings.ph) ||
+      firstInboxMatch(combinedText, /\bph\s*[:=]?\s*(\d+(?:\.\d+)?)\b/i);
+    const hours =
+      inboxAnalysisText(aiReadings.hours) ||
+      firstInboxMatch(combinedText, /\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/i);
+
+    const knownManufacturers = [
+      "Viessmann", "Carrier", "Honeywell", "Mitsubishi", "Pentair",
+      "Sundance", "Sunstream", "Bosch", "Electrolux", "Kohler",
+      "Cobalt", "Sea-Doo", "Fisher & Paykel", "Desert Aire", "Hunter",
+      "Hydrawise", "Starlink",
+    ];
+    const manufacturer =
+      inboxAnalysisText(visionData.manufacturer) ||
+      knownManufacturers.find((name) =>
+        combinedText.toLowerCase().includes(name.toLowerCase()),
+      ) || "";
+
+    const sourceTokens = inboxAnalysisTokens(combinedText);
+    const normalizedSerial = serial.toLowerCase();
+    const normalizedModel = model.toLowerCase();
+
+    const assetMatches = assetRecords
+      .map((asset) => {
+        const searchable = [asset.name, asset.make, asset.model, asset.serial, asset.category, asset.notes]
+          .filter(Boolean).join(" ");
+        const assetTokens = inboxAnalysisTokens(searchable);
+        let score = sourceTokens.filter((token) => assetTokens.includes(token)).length;
+        const reasons: string[] = [];
+        if (normalizedSerial && asset.serial?.toLowerCase() === normalizedSerial) {
+          score += 20; reasons.push("Exact serial number");
+        }
+        if (normalizedModel && asset.model?.toLowerCase().includes(normalizedModel)) {
+          score += 10; reasons.push("Matching model");
+        }
+        if (manufacturer && asset.make?.toLowerCase().includes(manufacturer.toLowerCase())) {
+          score += 6; reasons.push("Matching manufacturer");
+        }
+        if (combinedText.toLowerCase().includes(asset.name.toLowerCase())) {
+          score += 8; reasons.push("Asset name appears in analysis");
+        }
+        return { asset, score, reasons };
+      })
+      .filter((match) => match.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const vendorMatches = vendorRecords
+      .map((vendor) => {
+        const vendorText = [vendor.name, vendor.category, vendor.notes].filter(Boolean).join(" ");
+        const vendorTokens = inboxAnalysisTokens(vendorText);
+        let score = sourceTokens.filter((token) => vendorTokens.includes(token)).length;
+        if (combinedText.toLowerCase().includes(vendor.name.toLowerCase())) score += 10;
+        return { vendor, score };
+      })
+      .filter((match) => match.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const workOrderMatches = serviceRecords
+      .map((workOrder) => {
+        const workOrderText = [workOrder.title, workOrder.notes, workOrder.date].filter(Boolean).join(" ");
+        const workOrderTokens = inboxAnalysisTokens(workOrderText);
+        const score = sourceTokens.filter((token) => workOrderTokens.includes(token)).length;
+        return { workOrder, score };
+      })
+      .filter((match) => match.score >= 2)
+      .sort((a, b) => b.score - a.score);
+
+    const bestAsset = assetMatches[0];
+    const bestVendor = vendorMatches[0];
+    const bestWorkOrder = workOrderMatches[0];
+    const bestScore = Math.max(bestAsset?.score || 0, bestVendor?.score || 0, bestWorkOrder?.score || 0);
+    const confidence = bestScore >= 20 ? "High" : bestScore >= 8 ? "Medium" : bestScore > 0 ? "Low" : "None";
+
+    const suggestedMatch = bestAsset && bestAsset.score === bestScore
+      ? { type: "Asset", id: bestAsset.asset.id, name: bestAsset.asset.name, confidence, reasons: bestAsset.reasons }
+      : bestVendor && bestVendor.score === bestScore
+        ? { type: "Vendor", id: bestVendor.vendor.id, name: bestVendor.vendor.name, confidence, reasons: ["Vendor name or related terms appear in analysis"] }
+        : bestWorkOrder && bestWorkOrder.score === bestScore
+          ? { type: "Work Order", id: bestWorkOrder.workOrder.id, name: bestWorkOrder.workOrder.title, confidence, reasons: ["Related work-order terms appear in analysis"] }
+          : null;
+
+    const extractedData: Record<string, unknown> = {
+      ...visionData,
+      analyzedAt: new Date().toISOString(),
+      analyzer: "Atlas secure photo/PDF analyzer",
+      manufacturer,
+      model,
+      serial,
+      invoiceNumber,
+      amount,
+      date,
+      readings: { psi, temperature, ph, hours },
+      suggestedMatch,
+      candidateAssets: assetMatches.slice(0, 3).map((match) => ({ id: match.asset.id, name: match.asset.name, score: match.score })),
+      candidateVendors: vendorMatches.slice(0, 3).map((match) => ({ id: match.vendor.id, name: match.vendor.name, score: match.score })),
+      candidateWorkOrders: workOrderMatches.slice(0, 3).map((match) => ({ id: match.workOrder.id, name: match.workOrder.title, score: match.score })),
+    };
+
+    setInboxItems((current) =>
+      current.map((entry) => entry.id === item.id
+        ? { ...entry, extractedData, status: "Analyzed", updatedAt: new Date().toISOString() }
+        : entry),
+    );
+    await updateInboxItem(item.id, { extractedData, status: "Analyzed" });
+    setInboxReviewDraft(buildInboxReviewDraft(extractedData));
+    setInboxReviewOpen(true);
+    setInboxMessage("Analysis complete. Review the detected information before approving anything.");
+    setAnalyzingInboxId("");
+  }
+
+  function openInboxItemInFastIntake(item: InboxItemRecord) {
+    setFastIntakeKind(item.intakeType || "Document");
+    setFastIntakeSaveMode(item.proposedAction || "Attach to Existing");
+    setIntakeTitle(item.title || "");
+    setIntakeNotes(item.notes || "");
+    setIntakePastedText(item.pastedText || "");
+    setIntakeFiles(Array.isArray(item.files) ? item.files : []);
+    setIntakeTargetKind(item.targetType || "General");
+    setIntakeTargetId(item.targetId || "");
+    setIntakeMessage("Loaded from Atlas Inbox. Review everything before saving.");
+    void updateInboxItem(item.id, { status: "Needs Review" });
+    setScreen("intake");
+  }
+
   function renderInbox() {
     const filtered = inboxItems.filter((item) => {
       const haystack = [
