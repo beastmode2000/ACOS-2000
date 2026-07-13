@@ -264,6 +264,137 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
       ? `${Math.round(workloadMinutes / 60)}h+`
       : `${Math.floor(workloadMinutes / 60)}h ${workloadMinutes % 60}m`;
 
+  const dashboardIntelligence = useMemo(() => {
+    const vendorEvents = [...todayEvents, ...upcomingEvents]
+      .filter((event: any) => {
+        const haystack = [
+          event.title,
+          event.area,
+          event.categoryLabel,
+          event.linkedType,
+          event.linkedName,
+          event.notes,
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return (
+          event.linkedType === "Vendor" ||
+          haystack.includes("vendor") ||
+          haystack.includes("service") ||
+          haystack.includes("onsite") ||
+          haystack.includes("on-site")
+        );
+      })
+      .slice(0, 6);
+
+    const weatherImpacts: string[] = [];
+    const todayWeather = weatherDays[0];
+    const tomorrowWeather = weatherDays[1];
+
+    if (todayWeather) {
+      if (todayWeather.precipChance >= 70 || todayWeather.precipAmount >= 0.2) {
+        weatherImpacts.push("Rain likely today — prioritize indoor and covered work.");
+      } else if (todayWeather.high >= 85) {
+        weatherImpacts.push("Hot day — schedule strenuous outdoor work early.");
+      } else if (todayWeather.windMax >= 20) {
+        weatherImpacts.push("High wind — avoid spraying and unsecured outdoor work.");
+      } else {
+        weatherImpacts.push("Weather supports normal outdoor maintenance today.");
+      }
+    }
+
+    if (
+      tomorrowWeather &&
+      (tomorrowWeather.precipChance >= 65 ||
+        tomorrowWeather.precipAmount >= 0.2)
+    ) {
+      weatherImpacts.push("Rain risk tomorrow — finish exposed outdoor work today.");
+    }
+
+    const criticalItems = [
+      ...dashboardData.overdue,
+      ...dashboardData.highPriority.filter(
+        (record: any) =>
+          !dashboardData.overdue.some((item: any) => item.id === record.id),
+      ),
+    ].slice(0, 6);
+
+    const healthPenalty =
+      dashboardData.overdue.length * 6 +
+      dashboardData.highPriority.length * 3 +
+      dashboardData.inProgress.length * 1;
+
+    const propertyHealth = Math.max(0, Math.min(100, 100 - healthPenalty));
+
+    const recommendations: Array<{
+      title: string;
+      detail: string;
+      record?: any;
+      action?: "history" | "calendar" | "weather";
+    }> = [];
+
+    if (dashboardData.overdue[0]) {
+      recommendations.push({
+        title: `Start overdue: ${dashboardData.overdue[0].title}`,
+        detail: `${categoryLabel(dashboardData.overdue[0])} · ${formatDate(
+          dashboardData.overdue[0].date,
+        )}`,
+        record: dashboardData.overdue[0],
+      });
+    }
+
+    if (dashboardData.inProgress[0]) {
+      recommendations.push({
+        title: `Continue: ${dashboardData.inProgress[0].title}`,
+        detail: `${categoryLabel(
+          dashboardData.inProgress[0],
+        )} · already in progress`,
+        record: dashboardData.inProgress[0],
+      });
+    }
+
+    if (vendorEvents[0]) {
+      recommendations.push({
+        title: `Prepare for ${vendorEvents[0].title}`,
+        detail: `${formatDate(vendorEvents[0].date)} · ${
+          vendorEvents[0].time || "No time"
+        }`,
+        action: "calendar",
+      });
+    }
+
+    if (weatherImpacts[0]) {
+      recommendations.push({
+        title: "Use the weather window",
+        detail: weatherImpacts[0],
+        action: "weather",
+      });
+    }
+
+    if (!recommendations.length) {
+      recommendations.push({
+        title: "Review My Work",
+        detail: "No urgent exceptions detected. Continue with the planned workload.",
+        action: "history",
+      });
+    }
+
+    return {
+      vendorEvents,
+      weatherImpacts,
+      criticalItems,
+      propertyHealth,
+      recommendations: recommendations.slice(0, 5),
+    };
+  }, [
+    dashboardData,
+    formatDate,
+    todayEvents,
+    upcomingEvents,
+    weatherDays,
+  ]);
+
   const commandGridStyle: React.CSSProperties = {
     display: "grid",
     gridTemplateColumns: isMobile
@@ -329,6 +460,48 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     setSelectedServiceId(record.id);
     setScreen("history");
   }
+
+  const intelligenceGridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "1fr"
+      : "repeat(3, minmax(0, 1fr))",
+    gap: 14,
+    alignItems: "start",
+  };
+
+  const intelligenceCardStyle: React.CSSProperties = {
+    border: `1px solid ${colors.line}`,
+    borderRadius: 14,
+    background: "#FFFFFF",
+    padding: 14,
+    display: "grid",
+    gap: 10,
+    minHeight: 180,
+  };
+
+  const healthRingStyle: React.CSSProperties = {
+    width: 94,
+    height: 94,
+    borderRadius: "50%",
+    display: "grid",
+    placeItems: "center",
+    margin: "0 auto",
+    background: `conic-gradient(${colors.gold} ${dashboardIntelligence.propertyHealth * 3.6}deg, #E8EEF4 0deg)`,
+    position: "relative",
+  };
+
+  const healthInnerStyle: React.CSSProperties = {
+    width: 72,
+    height: 72,
+    borderRadius: "50%",
+    display: "grid",
+    placeItems: "center",
+    background: "#FFFFFF",
+    border: `1px solid ${colors.line}`,
+    fontWeight: 900,
+    fontSize: 22,
+  };
 
   function renderCompactWork(records: any[], empty: string) {
     if (!records.length) return <div style={noticeStyle}>{empty}</div>;
@@ -632,6 +805,119 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
         </div>
       </section>
 
+      <section style={sectionStyle}>
+        <SectionHeader
+          brand
+          eyebrow="Atlas Intelligence"
+          title="Property Health & Recommended Actions"
+          detail="A live operational summary based on work status, calendar activity, and weather."
+        />
+
+        <div style={intelligenceGridStyle}>
+          <div style={intelligenceCardStyle}>
+            <div style={eyebrowStyle}>Property Health</div>
+            <div style={healthRingStyle}>
+              <div style={healthInnerStyle}>
+                {dashboardIntelligence.propertyHealth}
+              </div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <strong>
+                {dashboardIntelligence.propertyHealth >= 85
+                  ? "Strong"
+                  : dashboardIntelligence.propertyHealth >= 65
+                    ? "Needs Attention"
+                    : "High Workload Risk"}
+              </strong>
+              <p style={mutedSmallStyle}>
+                Based on overdue, high-priority, and active work.
+              </p>
+            </div>
+          </div>
+
+          <div style={intelligenceCardStyle}>
+            <div style={eyebrowStyle}>Critical Items</div>
+            {dashboardIntelligence.criticalItems.length ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                {dashboardIntelligence.criticalItems.map((record: any) => (
+                  <button
+                    key={record.id}
+                    type="button"
+                    onClick={() => openWork(record)}
+                    style={{
+                      ...compactWorkButtonStyle,
+                      padding: "9px 10px",
+                    }}
+                  >
+                    <span style={{ minWidth: 0 }}>
+                      <strong>{record.title}</strong>
+                      <span
+                        style={{ ...mutedSmallStyle, display: "block" }}
+                      >
+                        {categoryLabel(record)} · {formatDate(record.date)}
+                      </span>
+                    </span>
+                    <span style={badgeStyle(record.priority || record.status)}>
+                      {record.priority || record.status}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={noticeStyle}>No critical work detected.</div>
+            )}
+          </div>
+
+          <div style={intelligenceCardStyle}>
+            <div style={eyebrowStyle}>Recommended Next</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {dashboardIntelligence.recommendations.map(
+                (item: any, index: number) => (
+                  <button
+                    key={`${item.title}-${index}`}
+                    type="button"
+                    onClick={() => {
+                      if (item.record) {
+                        openWork(item.record);
+                        return;
+                      }
+                      if (item.action) setScreen(item.action);
+                    }}
+                    style={{
+                      ...compactWorkButtonStyle,
+                      gridTemplateColumns: "30px minmax(0, 1fr)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 9,
+                        display: "grid",
+                        placeItems: "center",
+                        background: colors.panel,
+                        border: `1px solid ${colors.line}`,
+                        fontWeight: 900,
+                      }}
+                    >
+                      {index + 1}
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong>{item.title}</strong>
+                      <span
+                        style={{ ...mutedSmallStyle, display: "block" }}
+                      >
+                        {item.detail}
+                      </span>
+                    </span>
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div
         style={{
           display: "grid",
@@ -840,6 +1126,111 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           </div>
         </div>
       </section>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile
+            ? "1fr"
+            : "repeat(2, minmax(0, 1fr))",
+          gap: 16,
+          alignItems: "start",
+        }}
+      >
+        <section style={sectionStyle}>
+          <SectionHeader
+            eyebrow="Appointments"
+            title="Vendor Visits"
+            right={
+              <button
+                type="button"
+                onClick={() => setScreen("calendar")}
+                style={secondaryButtonStyle}
+              >
+                Open Calendar
+              </button>
+            }
+          />
+
+          {dashboardIntelligence.vendorEvents.length ? (
+            <div style={compactWorkListStyle}>
+              {dashboardIntelligence.vendorEvents.map((event: any) => (
+                <button
+                  key={event.instanceId || event.id}
+                  type="button"
+                  onClick={() => {
+                    openCalendarItem(event);
+                    setScreen("calendar");
+                  }}
+                  style={compactWorkButtonStyle}
+                >
+                  <span style={{ minWidth: 0 }}>
+                    <strong>{event.title}</strong>
+                    <span
+                      style={{ ...mutedSmallStyle, display: "block" }}
+                    >
+                      {formatDate(event.date)} · {event.time || "No time"}
+                    </span>
+                  </span>
+                  <span style={badgeStyle("Scheduled")}>Scheduled</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={noticeStyle}>No vendor visits detected.</div>
+          )}
+        </section>
+
+        <section style={sectionStyle}>
+          <SectionHeader
+            eyebrow="Weather Impact"
+            title="Work Planning Alerts"
+            right={
+              <button
+                type="button"
+                onClick={() => setScreen("weather")}
+                style={secondaryButtonStyle}
+              >
+                Open Weather
+              </button>
+            }
+          />
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {dashboardIntelligence.weatherImpacts.length ? (
+              dashboardIntelligence.weatherImpacts.map(
+                (message: string, index: number) => (
+                  <div
+                    key={`${message}-${index}`}
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 12,
+                      background: colors.panel,
+                      padding: 12,
+                      display: "grid",
+                      gridTemplateColumns: "28px minmax(0, 1fr)",
+                      gap: 9,
+                      alignItems: "start",
+                    }}
+                  >
+                    <span>{index === 0 ? "🌤️" : "📅"}</span>
+                    <span>
+                      <strong>{index === 0 ? "Today" : "Next Window"}</strong>
+                      <span
+                        style={{ ...mutedSmallStyle, display: "block" }}
+                      >
+                        {message}
+                      </span>
+                    </span>
+                  </div>
+                ),
+              )
+            ) : (
+              <div style={noticeStyle}>No weather alerts available.</div>
+            )}
+          </div>
+        </section>
+      </div>
 
       <section style={sectionStyle}>
         <SectionHeader
