@@ -1,5 +1,10 @@
 "use client";
 
+// UI-only calendar component.
+// IMPORTANT: all events, including Operations Planner records, come from
+// expandedCalendarItems / selectedDayEvents supplied by app/page.tsx.
+// This component never owns, replaces, filters, or persists calendar data.
+
 import React from "react";
 import type {
   CalendarColorName,
@@ -211,7 +216,21 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     weekCells,
   } = props;
 
-  const [editorOpen, setEditorOpen] = React.useState(false);
+  const [editorOpen, setEditorOpen] = React.useState(
+    Boolean(selectedCalendarId),
+  );
+
+  React.useEffect(() => {
+    if (selectedCalendarId) {
+      setEditorOpen(true);
+    }
+  }, [selectedCalendarId]);
+
+  React.useEffect(() => {
+    if (!selectedCalendarId) {
+      setEditorOpen(false);
+    }
+  }, [selectedCalendarDate, selectedCalendarId]);
 
   const hasSelectedEvent = Boolean(selectedCalendarId);
   const cells = calendarView === "week" ? weekCells : monthCells;
@@ -261,7 +280,6 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
   function showDay(date: string) {
     setSelectedCalendarDate(date);
     setSelectedCalendarId("");
-    setCalendarDraft(blankCalendarItem(date));
     setEditorOpen(false);
   }
 
