@@ -82,6 +82,22 @@ type WorkNoteEntry = {
   createdAt: string;
 };
 
+type WorkCompletionEntry = {
+  id: string;
+  completedAt: string;
+  statusBefore: string;
+  dueDate: string;
+  notes: string;
+  notesHistory: WorkNoteEntry[];
+  checklist: WorkChecklistItem[];
+  photos: UploadedFileRecord[];
+  documents: UploadedFileRecord[];
+  assetId: string;
+  vendorId: string;
+  procedureId: string;
+  locationId: string;
+};
+
 type AtlasServiceRecord = ServiceRecord & {
   workType?: WorkItemType;
   workCategory?: string;
@@ -92,6 +108,7 @@ type AtlasServiceRecord = ServiceRecord & {
   locationId?: string;
   checklist?: WorkChecklistItem[];
   notesHistory?: WorkNoteEntry[];
+  serviceHistory?: WorkCompletionEntry[];
 };
 
 const WORKLINK_LOGOS = {
@@ -1056,6 +1073,23 @@ function normalizeService(record: Partial<AtlasServiceRecord>): AtlasServiceReco
           id: String(entry.id || uid("note")),
           text: String(entry.text || ""),
           createdAt: String(entry.createdAt || new Date().toISOString()),
+        }))
+      : [],
+    serviceHistory: Array.isArray(record.serviceHistory)
+      ? record.serviceHistory.map((entry) => ({
+          id: String(entry.id || uid("completion")),
+          completedAt: String(entry.completedAt || new Date().toISOString()),
+          statusBefore: String(entry.statusBefore || "Open"),
+          dueDate: String(entry.dueDate || ""),
+          notes: String(entry.notes || ""),
+          notesHistory: Array.isArray(entry.notesHistory) ? entry.notesHistory : [],
+          checklist: Array.isArray(entry.checklist) ? entry.checklist : [],
+          photos: Array.isArray(entry.photos) ? entry.photos : [],
+          documents: Array.isArray(entry.documents) ? entry.documents : [],
+          assetId: String(entry.assetId || ""),
+          vendorId: String(entry.vendorId || ""),
+          procedureId: String(entry.procedureId || ""),
+          locationId: String(entry.locationId || ""),
         }))
       : [],
     photos: Array.isArray(record.photos) ? record.photos : [],
@@ -6742,9 +6776,8 @@ export default function AtlasPage() {
     setContactMessage("");
   }
 
-  function addWorkOrder() {
+  function addWorkOrder(initial: Partial<AtlasServiceRecord> = {}) {
     const record = normalizeService({
-      id: uid("wo"),
       title: "",
       date: "",
       status: "Open",
@@ -6767,6 +6800,11 @@ export default function AtlasPage() {
       responsibilityArea: "",
       photos: [],
       documents: [],
+      checklist: [],
+      notesHistory: [],
+      serviceHistory: [],
+      ...initial,
+      id: initial.id || uid("wo"),
     });
     setServiceRecords((current) => byTitle([record, ...current]));
     setSelectedServiceId(record.id);
@@ -6806,6 +6844,25 @@ export default function AtlasPage() {
     const history = Array.from(
       new Set([...(record.completionHistory || []), completedDate]),
     ).sort();
+    const completionEntry: WorkCompletionEntry = {
+      id: uid("completion"),
+      completedAt: new Date().toISOString(),
+      statusBefore: String(record.status || "Open"),
+      dueDate: String(record.date || ""),
+      notes: String(record.notes || ""),
+      notesHistory: Array.isArray(record.notesHistory) ? record.notesHistory : [],
+      checklist: Array.isArray(record.checklist) ? record.checklist : [],
+      photos: Array.isArray(record.photos) ? record.photos : [],
+      documents: Array.isArray(record.documents) ? record.documents : [],
+      assetId: String(record.assetId || ""),
+      vendorId: String(record.vendorId || ""),
+      procedureId: String(record.procedureId || ""),
+      locationId: String(record.locationId || ""),
+    };
+    const serviceHistory = [
+      completionEntry,
+      ...(Array.isArray(record.serviceHistory) ? record.serviceHistory : []),
+    ];
 
     if (!record.recurring) {
       const completed = normalizeService({
@@ -6813,6 +6870,7 @@ export default function AtlasPage() {
         status: "Completed",
         lastCompletedDate: completedDate,
         completionHistory: history,
+        serviceHistory,
       });
 
       setServiceRecords((current) =>
@@ -6847,6 +6905,11 @@ export default function AtlasPage() {
       date: scheduleEnded ? record.date : nextDate,
       lastCompletedDate: completedDate,
       completionHistory: history,
+      serviceHistory,
+      checklist: (record.checklist || []).map((item) => ({
+        ...item,
+        completed: false,
+      })),
     });
 
     setServiceRecords((current) =>
@@ -10965,6 +11028,8 @@ export default function AtlasPage() {
         contactRecords={contactRecords}
         procedureRecords={procedureRecords}
         documentRecords={intakeDocs}
+        calendarItems={calendarItems}
+        weatherDays={weatherDays}
         detailSectionHeaderStyle={detailSectionHeaderStyle}
         recurrenceToggleStyle={recurrenceToggleStyle}
         recurrenceGridStyle={recurrenceGridStyle}
