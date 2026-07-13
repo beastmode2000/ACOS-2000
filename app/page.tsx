@@ -10138,7 +10138,7 @@ export default function AtlasPage() {
                   ) : null}
                   <button
                     type="button"
-                    onClick={addWorkOrder}
+                    onClick={() => addWorkOrder()}
                     style={secondaryButtonStyle}
                   >
                     Create Work Order
