@@ -73,6 +73,7 @@ const DEFAULT_SECTIONS: WorkSection[] = [
 ];
 
 const SECTION_STORAGE_KEY = "atlas-work-section-settings-v1";
+const CATEGORY_STORAGE_KEY = "atlas-work-category-settings-v1";
 
 function itemType(record: any): WorkItemType {
   if (
@@ -151,6 +152,30 @@ function safeSaveSections(sections: WorkSection[]) {
   } catch {
     // Section labels are optional UI preferences; a storage error must not
     // interrupt the work-order screen.
+  }
+}
+
+
+function safeReadCategories() {
+  if (typeof window === "undefined") return DEFAULT_CATEGORIES;
+  try {
+    const raw = window.localStorage.getItem(CATEGORY_STORAGE_KEY);
+    if (!raw) return DEFAULT_CATEGORIES;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_CATEGORIES;
+    const cleaned = parsed.map(String).map((item) => item.trim()).filter(Boolean);
+    return Array.from(new Set([...DEFAULT_CATEGORIES, ...cleaned]));
+  } catch {
+    return DEFAULT_CATEGORIES;
+  }
+}
+
+function safeSaveCategories(categories: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(categories));
+  } catch {
+    // Category settings are optional UI preferences.
   }
 }
 
@@ -277,12 +302,16 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [localSearch, setLocalSearch] = useState("");
   const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [categoryChoices, setCategoryChoices] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [newCategory, setNewCategory] = useState("");
   const [photoMessage, setPhotoMessage] = useState("");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const loaded = safeReadSections();
     setSections(loaded);
+    setCategoryChoices(safeReadCategories());
     if (!loaded.some((section) => section.id === activeSectionId)) {
       setActiveSectionId(loaded[0]?.id || "my-work");
     }
@@ -292,13 +321,56 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     sections.find((section) => section.id === activeSectionId) || sections[0];
 
   const categories = useMemo(() => {
-    const values = new Set(DEFAULT_CATEGORIES);
+    const values = new Set(categoryChoices);
     serviceRecords.forEach((record: any) => {
       const category = categoryLabel(record).trim();
       if (category) values.add(category);
     });
     return ["All", ...Array.from(values)];
-  }, [serviceRecords]);
+  }, [categoryChoices, serviceRecords]);
+
+  function addCategory() {
+    const value = newCategory.trim();
+    if (!value) return;
+    const next = Array.from(new Set([...categoryChoices, value]));
+    setCategoryChoices(next);
+    safeSaveCategories(next);
+    setNewCategory("");
+  }
+
+  function renameCategory(category: string) {
+    const nextName = window.prompt("Rename category", category)?.trim();
+    if (!nextName || nextName === category) return;
+    const next = Array.from(
+      new Set(categoryChoices.map((item) => (item === category ? nextName : item))),
+    );
+    setCategoryChoices(next);
+    safeSaveCategories(next);
+    if (categoryFilter === category) setCategoryFilter(nextName);
+    serviceRecords
+      .filter((record: any) => categoryLabel(record) === category)
+      .forEach((record: any) => {
+        if (record.id === selectedService.id) {
+          updateWorkOrder({ workCategory: nextName });
+        }
+      });
+  }
+
+  function removeCategory(category: string) {
+    if (!window.confirm(`Remove ${category} from the category menu? Existing records keep their current category.`)) {
+      return;
+    }
+    const next = categoryChoices.filter((item) => item !== category);
+    setCategoryChoices(next);
+    safeSaveCategories(next);
+    if (categoryFilter === category) setCategoryFilter("All");
+  }
+
+  function restoreDefaultCategories() {
+    setCategoryChoices(DEFAULT_CATEGORIES);
+    safeSaveCategories(DEFAULT_CATEGORIES);
+    setCategoryFilter("All");
+  }
 
   const matchesCommonFilters = (record: any) => {
     const search = localSearch.trim().toLowerCase();
@@ -617,6 +689,13 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           >
             Edit Sections
           </button>
+          <button
+            type="button"
+            onClick={() => setManageCategoriesOpen((current) => !current)}
+            style={secondaryButtonStyle}
+          >
+            Edit Categories
+          </button>
           <button type="button" onClick={addWorkOrder} style={goldButtonStyle}>
             Add Work
           </button>
@@ -687,6 +766,85 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   style={secondaryButtonStyle}
                 >
                   Restore Default Sections
+                </button>
+              </div>
+            ) : null}
+
+            {manageCategoriesOpen ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 10,
+                  padding: 10,
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 12,
+                  background: "#FFFFFF",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) auto",
+                    gap: 8,
+                  }}
+                >
+                  <input
+                    value={newCategory}
+                    onChange={(event) => setNewCategory(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addCategory();
+                      }
+                    }}
+                    placeholder="Type emoji and category name, for example 🪿 Wildlife Cleanup"
+                    style={controlStyle}
+                  />
+                  <button type="button" onClick={addCategory} style={goldButtonStyle}>
+                    Add Category
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gap: 7 }}>
+                  {categoryChoices.map((category) => (
+                    <div
+                      key={category}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        padding: "8px 0",
+                        borderBottom: `1px solid ${colors.line}`,
+                      }}
+                    >
+                      <strong>{category}</strong>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => renameCategory(category)}
+                          style={miniButtonStyle}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeCategory(category)}
+                          style={{ ...dangerButtonStyle, padding: "7px 10px" }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={restoreDefaultCategories}
+                  style={secondaryButtonStyle}
+                >
+                  Restore Default Categories
                 </button>
               </div>
             ) : null}
@@ -784,20 +942,33 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                   <span style={fieldLabelStyle}>Category</span>
-                  <input
-                    list="atlas-work-categories"
+                  <select
                     value={categoryLabel(selectedService)}
                     onChange={(event) =>
                       updateWorkOrder({ workCategory: event.currentTarget.value })
                     }
-                    placeholder="Choose or type an emoji category"
                     style={inputStyle}
-                  />
-                  <datalist id="atlas-work-categories">
-                    {DEFAULT_CATEGORIES.map((category) => (
-                      <option key={category} value={category} />
-                    ))}
-                  </datalist>
+                  >
+                    {!categories.includes(categoryLabel(selectedService)) ? (
+                      <option value={categoryLabel(selectedService)}>
+                        {categoryLabel(selectedService)}
+                      </option>
+                    ) : null}
+                    {categories
+                      .filter((category) => category !== "All")
+                      .map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setManageCategoriesOpen(true)}
+                    style={{ ...miniButtonStyle, justifySelf: "start" }}
+                  >
+                    Add or Edit Categories
+                  </button>
                 </label>
 
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
