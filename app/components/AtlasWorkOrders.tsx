@@ -1,11 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import type {
-  WorkOrderRecurrenceUnit,
-  WorkSeason,
-} from "../lib/atlas-types";
+import type { WorkOrderRecurrenceUnit } from "../lib/atlas-types";
 
 type WorkItemType =
   | "Quick Task"
@@ -22,35 +19,60 @@ type WorkEffort =
   | "Full Day"
   | "Multi-Day";
 
+type WorkSection = {
+  id: string;
+  label: string;
+  kind:
+    | "my-work"
+    | "Quick Task"
+    | "Work Order"
+    | "Preventive Maintenance"
+    | "Project"
+    | "completed";
+};
+
+type PhotoLike = {
+  id: string;
+  name: string;
+  type?: string;
+  dataUrl?: string;
+  url?: string;
+  createdAt?: string;
+};
+
 const DEFAULT_CATEGORIES = [
-  "🧹 Cleaning",
   "🔧 Maintenance",
-  "🌳 Landscaping",
+  "🧹 Cleaning",
+  "🌿 Landscaping",
+  "🚿 Pool & Spa",
   "💧 Irrigation",
   "⚡ Electrical",
-  "🚿 Plumbing",
+  "🚰 Plumbing",
   "❄️ HVAC",
-  "🔥 Boilers",
-  "🏊 Pool & Spa",
-  "🚤 Dock / Marine",
+  "🚤 Dock & Marine",
   "🚗 Vehicles",
-  "🏠 Interior",
-  "🏡 Exterior",
-  "🎨 Painting",
-  "🔍 Inspection",
-  "🛡️ Safety",
-  "📦 Parts / Ordering",
-  "🤝 Vendor Coordination",
-  "🗂️ Administrative",
+  "🏠 House",
+  "📦 Inventory",
+  "📋 Project",
+  "✅ Inspection",
+  "🚨 Safety",
+  "📄 Admin",
 ];
 
-const TYPE_TABS: Array<{ id: string; label: string }> = [
-  { id: "my-work", label: "📋 My Work" },
-  { id: "Quick Task", label: "✅ Tasks" },
-  { id: "Work Order", label: "🛠️ Work Orders" },
-  { id: "Preventive Maintenance", label: "🔁 Maintenance" },
-  { id: "completed", label: "📚 Completed" },
+const DEFAULT_SECTIONS: WorkSection[] = [
+  { id: "my-work", label: "🏠 My Work", kind: "my-work" },
+  { id: "tasks", label: "📌 Tasks", kind: "Quick Task" },
+  { id: "work-orders", label: "🛠️ Work Orders", kind: "Work Order" },
+  {
+    id: "maintenance",
+    label: "🔁 Preventive Maintenance",
+    kind: "Preventive Maintenance",
+  },
+  { id: "projects", label: "🏗️ Projects", kind: "Project" },
+  { id: "completed", label: "📚 Completed", kind: "completed" },
 ];
+
+const SECTION_STORAGE_KEY = "atlas-work-section-settings-v1";
 
 function itemType(record: any): WorkItemType {
   if (
@@ -69,74 +91,135 @@ function categoryLabel(record: any) {
   return String(record.workCategory || record.category || "🔧 Maintenance");
 }
 
-function isDueNow(record: any) {
-  if (record.status === "Completed") return false;
-  if (!record.date) return true;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(`${record.date}T12:00:00`);
-  const soon = new Date(today);
-  soon.setDate(soon.getDate() + 7);
-  return due <= soon;
+function parseDate(value: string) {
+  if (!value) return null;
+  const parsed = new Date(`${value}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function startOfToday() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function dayDistance(dateValue: string) {
+  const due = parseDate(dateValue);
+  if (!due) return Number.POSITIVE_INFINITY;
+  const oneDay = 24 * 60 * 60 * 1000;
+  return Math.round((due.getTime() - startOfToday().getTime()) / oneDay);
+}
+
+function myWorkGroup(record: any) {
+  if (record.status === "Completed") return "";
+  const type = itemType(record);
+  if (type === "Project") return "projects";
+  if (type === "Preventive Maintenance" || record.recurring) {
+    return "maintenance";
+  }
+  const distance = dayDistance(String(record.date || ""));
+  if (distance <= 0) return "today";
+  if (distance <= 7) return "week";
+  return "upcoming";
+}
+
+function safeReadSections(): WorkSection[] {
+  if (typeof window === "undefined") return DEFAULT_SECTIONS;
+  try {
+    const raw = window.localStorage.getItem(SECTION_STORAGE_KEY);
+    if (!raw) return DEFAULT_SECTIONS;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.length) return DEFAULT_SECTIONS;
+    return parsed
+      .filter(
+        (section): section is WorkSection =>
+          section &&
+          typeof section.id === "string" &&
+          typeof section.label === "string" &&
+          typeof section.kind === "string",
+      )
+      .map((section) => ({ ...section }));
+  } catch {
+    return DEFAULT_SECTIONS;
+  }
+}
+
+function safeSaveSections(sections: WorkSection[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(sections));
+  } catch {
+    // Section labels are optional UI preferences; a storage error must not
+    // interrupt the work-order screen.
+  }
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("Photo could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function photoSource(photo: PhotoLike) {
+  return String(photo.dataUrl || photo.url || "");
+}
+
+function uid(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 type AtlasWorkOrdersProps = {
   ListDrawerLayout: any;
   Field: any;
-  SelectField: any;
-  isMobile: any;
-  addWorkOrder: any;
-  goldButtonStyle: any;
-  stackStyle: any;
-  eyebrowStyle: any;
-  serviceRecords: any;
+  SelectField?: any;
+  isMobile: boolean;
+  addWorkOrder: () => void;
+  goldButtonStyle: React.CSSProperties;
+  stackStyle: React.CSSProperties;
+  eyebrowStyle: React.CSSProperties;
+  serviceRecords: any[];
   colors: any;
-  filteredServices: any;
-  listStyle: any;
-  setSelectedServiceId: any;
-  rowButtonStyle: any;
+  filteredServices: any[];
+  listStyle: React.CSSProperties;
+  setSelectedServiceId: (id: string) => void;
+  rowButtonStyle: React.CSSProperties;
   selectedService: any;
-  mutedSmallStyle: any;
-  formatDate: any;
-  assetName: any;
-  vendorName: any;
-  recurrenceLabel: any;
-  workOrderListBadgesStyle: any;
-  recurringBadgeStyle: any;
-  badgeStyle: any;
-  noticeStyle: any;
-  editorHeaderStyle: any;
-  detailSectionStyle: any;
-  formGridStyle: any;
-  updateWorkOrder: any;
-  fieldLabelStyle: any;
-  inputStyle: any;
-  byName: any;
-  assetRecords: any;
-  vendorRecords: any;
-  detailSectionHeaderStyle: any;
-  recurrenceToggleStyle: any;
-  recurrenceGridStyle: any;
-  recurrenceHistoryStyle: any;
-  buttonRowStyle: any;
-  isRecordDirty: any;
-  saveWorkOrderRecord: any;
-  completeWorkOrder: any;
-  secondaryButtonStyle: any;
-  deleteWorkOrderRecord: any;
-  dangerButtonStyle: any;
-  renderLinkedDocuments: any;
-
-  // Old seasonal props remain optional so app/page.tsx does not need to be
-  // changed just to render this replacement component.
-  seasonPlannerStyle?: any;
-  seasonCardGridStyle?: any;
-  workOrderSeasonFilter?: any;
-  setWorkOrderSeasonFilter?: any;
-  seasonCardStyle?: any;
-  seasonCardTitleStyle?: any;
-  currentSeasonTagStyle?: any;
-  seasonCardDescriptionStyle?: any;
+  mutedSmallStyle: React.CSSProperties;
+  formatDate: (date: string) => string;
+  assetName: (id: string) => string;
+  vendorName: (id: string) => string;
+  recurrenceLabel: (record: any) => string;
+  workOrderListBadgesStyle: React.CSSProperties;
+  recurringBadgeStyle: React.CSSProperties;
+  badgeStyle: (value: string) => React.CSSProperties;
+  noticeStyle: React.CSSProperties;
+  editorHeaderStyle: React.CSSProperties;
+  detailSectionStyle: React.CSSProperties;
+  formGridStyle: React.CSSProperties;
+  updateWorkOrder: (patch: Record<string, unknown>) => void;
+  fieldLabelStyle: React.CSSProperties;
+  inputStyle: React.CSSProperties;
+  byName: (records: any[]) => any[];
+  assetRecords: any[];
+  vendorRecords: any[];
+  locationRecords?: any[];
+  contactRecords?: any[];
+  detailSectionHeaderStyle: React.CSSProperties;
+  recurrenceToggleStyle: React.CSSProperties;
+  recurrenceGridStyle: React.CSSProperties;
+  recurrenceHistoryStyle: React.CSSProperties;
+  buttonRowStyle: React.CSSProperties;
+  isRecordDirty: (type: string, id: string) => boolean;
+  saveWorkOrderRecord: () => Promise<void> | void;
+  completeWorkOrder: (record: any) => Promise<void> | void;
+  secondaryButtonStyle: React.CSSProperties;
+  deleteWorkOrderRecord: (record: any) => Promise<void> | void;
+  dangerButtonStyle: React.CSSProperties;
+  renderLinkedDocuments: (type: string, id: string) => React.ReactNode;
 };
 
 export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
@@ -173,6 +256,8 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     byName,
     assetRecords,
     vendorRecords,
+    locationRecords = [],
+    contactRecords = [],
     detailSectionHeaderStyle,
     recurrenceToggleStyle,
     recurrenceGridStyle,
@@ -187,9 +272,24 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     renderLinkedDocuments,
   } = props;
 
-  const [activeView, setActiveView] = useState("my-work");
+  const [sections, setSections] = useState<WorkSection[]>(DEFAULT_SECTIONS);
+  const [activeSectionId, setActiveSectionId] = useState("my-work");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [localSearch, setLocalSearch] = useState("");
+  const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
+  const [photoMessage, setPhotoMessage] = useState("");
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const loaded = safeReadSections();
+    setSections(loaded);
+    if (!loaded.some((section) => section.id === activeSectionId)) {
+      setActiveSectionId(loaded[0]?.id || "my-work");
+    }
+  }, []);
+
+  const activeSection =
+    sections.find((section) => section.id === activeSectionId) || sections[0];
 
   const categories = useMemo(() => {
     const values = new Set(DEFAULT_CATEGORIES);
@@ -200,46 +300,48 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     return ["All", ...Array.from(values)];
   }, [serviceRecords]);
 
-  const visibleRecords = useMemo(() => {
+  const matchesCommonFilters = (record: any) => {
     const search = localSearch.trim().toLowerCase();
+    const category = categoryLabel(record);
+    const matchesCategory =
+      categoryFilter === "All" || category === categoryFilter;
+    const matchesSearch =
+      !search ||
+      [
+        record.title,
+        record.notes,
+        record.status,
+        record.priority,
+        record.date,
+        itemType(record),
+        category,
+        record.emoji,
+        record.effort,
+        record.responsibilityArea,
+        record.assignedTo,
+        assetName(record.assetId),
+        vendorName(record.vendorId),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(search);
+    return matchesCategory && matchesSearch;
+  };
 
+  const visibleRecords = useMemo(() => {
+    if (!activeSection) return [];
     return filteredServices.filter((record: any) => {
       const type = itemType(record);
-      const category = categoryLabel(record);
-
-      const matchesView =
-        activeView === "my-work"
-          ? isDueNow(record)
-          : activeView === "completed"
+      const matchesSection =
+        activeSection.kind === "my-work"
+          ? record.status !== "Completed"
+          : activeSection.kind === "completed"
             ? record.status === "Completed"
-            : record.status !== "Completed" && type === activeView;
-
-      const matchesCategory =
-        categoryFilter === "All" || category === categoryFilter;
-
-      const matchesSearch =
-        !search ||
-        [
-          record.title,
-          record.notes,
-          record.status,
-          record.priority,
-          record.date,
-          type,
-          category,
-          record.effort,
-          record.responsibilityArea,
-          assetName(record.assetId),
-          vendorName(record.vendorId),
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(search);
-
-      return matchesView && matchesCategory && matchesSearch;
+            : record.status !== "Completed" && type === activeSection.kind;
+      return matchesSection && matchesCommonFilters(record);
     });
   }, [
-    activeView,
+    activeSection,
     categoryFilter,
     filteredServices,
     localSearch,
@@ -247,16 +349,32 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     vendorName,
   ]);
 
-  const tabCounts = useMemo(() => {
-    const count = (id: string) =>
-      filteredServices.filter((record: any) => {
-        if (id === "my-work") return isDueNow(record);
-        if (id === "completed") return record.status === "Completed";
-        return record.status !== "Completed" && itemType(record) === id;
-      }).length;
+  const myWorkGroups = useMemo(() => {
+    const groups = {
+      today: [] as any[],
+      week: [] as any[],
+      upcoming: [] as any[],
+      maintenance: [] as any[],
+      projects: [] as any[],
+    };
+    visibleRecords.forEach((record: any) => {
+      const group = myWorkGroup(record);
+      if (group && group in groups) groups[group as keyof typeof groups].push(record);
+    });
+    return groups;
+  }, [visibleRecords]);
 
-    return Object.fromEntries(TYPE_TABS.map((tab) => [tab.id, count(tab.id)]));
-  }, [filteredServices]);
+  const tabCounts = useMemo(() => {
+    const result: Record<string, number> = {};
+    sections.forEach((section) => {
+      result[section.id] = filteredServices.filter((record: any) => {
+        if (section.kind === "my-work") return record.status !== "Completed";
+        if (section.kind === "completed") return record.status === "Completed";
+        return record.status !== "Completed" && itemType(record) === section.kind;
+      }).length;
+    });
+    return result;
+  }, [filteredServices, sections]);
 
   const controlStyle: React.CSSProperties = {
     width: "100%",
@@ -297,40 +415,288 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     cursor: "pointer",
   });
 
+  const miniButtonStyle: React.CSSProperties = {
+    ...secondaryButtonStyle,
+    padding: "7px 10px",
+    minHeight: 36,
+  };
+
+  const photoGridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "repeat(2, minmax(0, 1fr))"
+      : "repeat(3, minmax(0, 1fr))",
+    gap: 10,
+  };
+
+  function saveSections(next: WorkSection[]) {
+    setSections(next);
+    safeSaveSections(next);
+    if (!next.some((section) => section.id === activeSectionId)) {
+      setActiveSectionId(next[0]?.id || "my-work");
+    }
+  }
+
+  function renameSection(section: WorkSection) {
+    const nextName = window.prompt("Rename this section", section.label);
+    if (nextName === null) return;
+    const trimmed = nextName.trim();
+    if (!trimmed) return;
+    saveSections(
+      sections.map((item) =>
+        item.id === section.id ? { ...item, label: trimmed } : item,
+      ),
+    );
+  }
+
+  function deleteSection(section: WorkSection) {
+    if (sections.length <= 1) return;
+    if (
+      !window.confirm(
+        `Remove the section “${section.label}” from this screen? Work records will not be deleted.`,
+      )
+    ) {
+      return;
+    }
+    saveSections(sections.filter((item) => item.id !== section.id));
+  }
+
+  function resetSections() {
+    saveSections(DEFAULT_SECTIONS.map((section) => ({ ...section })));
+    setActiveSectionId("my-work");
+  }
+
+  async function addPhotos(files: FileList | null) {
+    if (!files?.length || !selectedService?.id) return;
+    setPhotoMessage("Adding photos...");
+    try {
+      const incoming: PhotoLike[] = [];
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) continue;
+        const dataUrl = await fileToDataUrl(file);
+        incoming.push({
+          id: uid("work-photo"),
+          name: file.name || "Work photo",
+          type: file.type,
+          dataUrl,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      updateWorkOrder({
+        photos: [...(selectedService.photos || []), ...incoming],
+      });
+      setPhotoMessage(
+        incoming.length
+          ? `Added ${incoming.length} photo${incoming.length === 1 ? "" : "s"}. Save the work item to keep them.`
+          : "No image files were selected.",
+      );
+    } catch (error) {
+      setPhotoMessage(
+        error instanceof Error ? error.message : "Photos could not be added.",
+      );
+    } finally {
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  }
+
+  function removePhoto(photoId: string) {
+    updateWorkOrder({
+      photos: (selectedService.photos || []).filter(
+        (photo: PhotoLike) => photo.id !== photoId,
+      ),
+    });
+  }
+
+  function renderWorkRow(record: any) {
+    const type = itemType(record);
+    const category = categoryLabel(record);
+    const emoji = String(record.emoji || "").trim();
+    return (
+      <button
+        key={record.id}
+        type="button"
+        onClick={() => setSelectedServiceId(record.id)}
+        style={{
+          ...rowButtonStyle,
+          borderColor:
+            record.id === selectedService.id ? colors.gold : colors.line,
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <strong>
+            {emoji ? `${emoji} ` : ""}
+            {record.title || "Untitled Work"}
+          </strong>
+          <p style={mutedSmallStyle}>
+            {category} · {type}
+          </p>
+          <p style={mutedSmallStyle}>
+            {record.recurring ? "Next due" : "Due"} {formatDate(record.date)} ·{" "}
+            {assetName(record.assetId)} · {vendorName(record.vendorId)}
+          </p>
+        </div>
+        <div style={workOrderListBadgesStyle}>
+          {record.effort ? (
+            <span style={recurringBadgeStyle}>{record.effort}</span>
+          ) : null}
+          {record.assignedTo ? (
+            <span style={recurringBadgeStyle}>{record.assignedTo}</span>
+          ) : null}
+          {record.recurring ? (
+            <span style={recurringBadgeStyle}>Recurring</span>
+          ) : null}
+          <span style={badgeStyle(record.status)}>{record.status}</span>
+        </div>
+      </button>
+    );
+  }
+
+  function renderMyWorkList() {
+    const groupDefinitions = [
+      { id: "today", label: "🔴 Today", records: myWorkGroups.today },
+      { id: "week", label: "🟡 This Week", records: myWorkGroups.week },
+      { id: "upcoming", label: "🟢 Upcoming", records: myWorkGroups.upcoming },
+      {
+        id: "maintenance",
+        label: "🔁 Recurring Maintenance",
+        records: myWorkGroups.maintenance,
+      },
+      { id: "projects", label: "📋 Projects", records: myWorkGroups.projects },
+    ];
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        {groupDefinitions.map((group) => (
+          <section
+            key={group.id}
+            style={{
+              border: `1px solid ${colors.line}`,
+              borderRadius: 14,
+              overflow: "hidden",
+              background: "#FFFFFF",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                padding: "11px 13px",
+                borderBottom: `1px solid ${colors.line}`,
+                background: "#F8FAFC",
+              }}
+            >
+              <strong>{group.label}</strong>
+              <span style={recurringBadgeStyle}>{group.records.length}</span>
+            </div>
+            <div style={listStyle}>
+              {group.records.map(renderWorkRow)}
+              {!group.records.length ? (
+                <div style={{ ...noticeStyle, margin: 10 }}>
+                  Nothing in this section.
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <ListDrawerLayout
       eyebrow="Organize / Complete"
-      title="My Work"
-      detail="Quick tasks, tracked work orders, preventive maintenance, projects, and completed history in one searchable system."
+      title={activeSection?.label || "My Work"}
+      detail="Daily tasks, tracked work orders, recurring maintenance, projects, and completed history in one searchable system."
       isMobile={isMobile}
       right={
-        <button type="button" onClick={addWorkOrder} style={goldButtonStyle}>
-          Add Work
-        </button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setManageSectionsOpen((current) => !current)}
+            style={secondaryButtonStyle}
+          >
+            Edit Sections
+          </button>
+          <button type="button" onClick={addWorkOrder} style={goldButtonStyle}>
+            Add Work
+          </button>
+        </div>
       }
       list={
         <div style={stackStyle}>
           <section style={filterPanelStyle}>
             <div style={tabRowStyle}>
-              {TYPE_TABS.map((tab) => {
-                const selected = activeView === tab.id;
+              {sections.map((section) => {
+                const selected = activeSectionId === section.id;
                 return (
                   <button
-                    key={tab.id}
+                    key={section.id}
                     type="button"
-                    onClick={() => setActiveView(tab.id)}
+                    onClick={() => setActiveSectionId(section.id)}
                     style={tabButtonStyle(selected)}
                   >
-                    {tab.label} ({tabCounts[tab.id] || 0})
+                    {section.label} ({tabCounts[section.id] || 0})
                   </button>
                 );
               })}
             </div>
 
+            {manageSectionsOpen ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  padding: 10,
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 12,
+                  background: "#FFFFFF",
+                }}
+              >
+                {sections.map((section) => (
+                  <div
+                    key={section.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <strong>{section.label}</strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => renameSection(section)}
+                        style={miniButtonStyle}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteSection(section)}
+                        style={{ ...dangerButtonStyle, padding: "7px 10px" }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={resetSections}
+                  style={secondaryButtonStyle}
+                >
+                  Restore Default Sections
+                </button>
+              </div>
+            ) : null}
+
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 220px",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "minmax(0, 1fr) 220px",
                 gap: 10,
               }}
             >
@@ -340,7 +706,6 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 placeholder="Search work, asset, vendor, category..."
                 style={controlStyle}
               />
-
               <select
                 value={categoryFilter}
                 onChange={(event) => setCategoryFilter(event.currentTarget.value)}
@@ -355,57 +720,18 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             </div>
           </section>
 
-          <div style={listStyle}>
-            {visibleRecords.map((record: any) => {
-              const type = itemType(record);
-              const category = categoryLabel(record);
-
-              return (
-                <button
-                  key={record.id}
-                  type="button"
-                  onClick={() => setSelectedServiceId(record.id)}
-                  style={{
-                    ...rowButtonStyle,
-                    borderColor:
-                      record.id === selectedService.id
-                        ? colors.gold
-                        : colors.line,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <strong>{record.title || "Untitled Work"}</strong>
-                    <p style={mutedSmallStyle}>
-                      {category} · {type}
-                    </p>
-                    <p style={mutedSmallStyle}>
-                      {record.recurring ? "Next due" : "Due"}{" "}
-                      {formatDate(record.date)} · {assetName(record.assetId)} ·{" "}
-                      {vendorName(record.vendorId)}
-                    </p>
-                  </div>
-
-                  <div style={workOrderListBadgesStyle}>
-                    {record.effort ? (
-                      <span style={recurringBadgeStyle}>{record.effort}</span>
-                    ) : null}
-                    {record.recurring ? (
-                      <span style={recurringBadgeStyle}>Recurring</span>
-                    ) : null}
-                    <span style={badgeStyle(record.status)}>
-                      {record.status}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-
-            {!visibleRecords.length ? (
-              <div style={noticeStyle}>
-                No work matches this view, category, or search.
-              </div>
-            ) : null}
-          </div>
+          {activeSection?.kind === "my-work" ? (
+            renderMyWorkList()
+          ) : (
+            <div style={listStyle}>
+              {visibleRecords.map(renderWorkRow)}
+              {!visibleRecords.length ? (
+                <div style={noticeStyle}>
+                  No work matches this section, category, or search.
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
       }
       drawer={
@@ -413,6 +739,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           <div style={stackStyle}>
             <div>
               <h3 style={editorHeaderStyle}>
+                {selectedService.emoji ? `${selectedService.emoji} ` : ""}
                 {selectedService.title.trim() || "New Work"}
               </h3>
               <p style={mutedSmallStyle}>
@@ -422,8 +749,14 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
             <section style={detailSectionStyle}>
               <div style={eyebrowStyle}>Work Classification</div>
-
               <div style={formGridStyle}>
+                <Field
+                  label="Emoji"
+                  value={selectedService.emoji || ""}
+                  onChange={(value: string) => updateWorkOrder({ emoji: value })}
+                  placeholder="🔧"
+                />
+
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                   <span style={fieldLabelStyle}>Work Type</span>
                   <select
@@ -440,12 +773,12 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     }}
                     style={inputStyle}
                   >
-                    <option value="Quick Task">✅ Quick Task</option>
+                    <option value="Quick Task">📌 Task</option>
                     <option value="Work Order">🛠️ Work Order</option>
                     <option value="Preventive Maintenance">
                       🔁 Preventive Maintenance
                     </option>
-                    <option value="Project">📐 Project</option>
+                    <option value="Project">🏗️ Project</option>
                   </select>
                 </label>
 
@@ -455,9 +788,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     list="atlas-work-categories"
                     value={categoryLabel(selectedService)}
                     onChange={(event) =>
-                      updateWorkOrder({
-                        workCategory: event.currentTarget.value,
-                      })
+                      updateWorkOrder({ workCategory: event.currentTarget.value })
                     }
                     placeholder="Choose or type an emoji category"
                     style={inputStyle}
@@ -470,7 +801,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </label>
 
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                  <span style={fieldLabelStyle}>Estimated Effort</span>
+                  <span style={fieldLabelStyle}>Estimated Time</span>
                   <select
                     value={selectedService.effort || ""}
                     onChange={(event) =>
@@ -503,8 +834,26 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   onChange={(value: string) =>
                     updateWorkOrder({ responsibilityArea: value })
                   }
-                  placeholder="Estate, Grounds, Waterfront, Pool & Spa..."
+                  placeholder="Estate, Grounds, Waterfront..."
                 />
+
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Assigned To</span>
+                  <input
+                    list="atlas-work-assignees"
+                    value={selectedService.assignedTo || ""}
+                    onChange={(event) =>
+                      updateWorkOrder({ assignedTo: event.currentTarget.value })
+                    }
+                    placeholder="Nick, Patrick, vendor..."
+                    style={inputStyle}
+                  />
+                  <datalist id="atlas-work-assignees">
+                    {contactRecords.map((contact: any) => (
+                      <option key={contact.id} value={contact.name} />
+                    ))}
+                  </datalist>
+                </label>
               </div>
             </section>
 
@@ -512,7 +861,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <div style={eyebrowStyle}>Work Information</div>
               <div style={formGridStyle}>
                 <Field
-                  label="Title"
+                  label="Title / Rename"
                   value={selectedService.title}
                   onChange={(value: string) => updateWorkOrder({ title: value })}
                 />
@@ -551,6 +900,24 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <option value="High">High</option>
                     <option value="Medium">Normal</option>
                     <option value="Low">Low</option>
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Location</span>
+                  <select
+                    value={selectedService.locationId || ""}
+                    onChange={(event) =>
+                      updateWorkOrder({ locationId: event.currentTarget.value })
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="">No linked location</option>
+                    {byName(locationRecords).map((location: any) => (
+                      <option key={location.id} value={location.id}>
+                        {location.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
 
@@ -603,14 +970,13 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
-                  <div style={eyebrowStyle}>Recurring Schedule</div>
+                  <div style={eyebrowStyle}>Repeat Schedule</div>
                   <strong>
                     {selectedService.recurring
                       ? recurrenceLabel(selectedService)
                       : "One-time work"}
                   </strong>
                 </div>
-
                 <label style={recurrenceToggleStyle}>
                   <input
                     type="checkbox"
@@ -650,8 +1016,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       onChange={(event) =>
                         updateWorkOrder({
                           recurrenceUnit:
-                            event.currentTarget
-                              .value as WorkOrderRecurrenceUnit,
+                            event.currentTarget.value as WorkOrderRecurrenceUnit,
                         })
                       }
                       style={inputStyle}
@@ -699,6 +1064,82 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             </section>
 
             <section style={detailSectionStyle}>
+              <div style={detailSectionHeaderStyle}>
+                <div>
+                  <div style={eyebrowStyle}>Photos</div>
+                  <strong>{(selectedService.photos || []).length} attached</strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  style={secondaryButtonStyle}
+                >
+                  Add Photos
+                </button>
+              </div>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) => void addPhotos(event.currentTarget.files)}
+                style={{ display: "none" }}
+              />
+              {photoMessage ? <p style={mutedSmallStyle}>{photoMessage}</p> : null}
+              {(selectedService.photos || []).length ? (
+                <div style={photoGridStyle}>
+                  {(selectedService.photos || []).map((photo: PhotoLike) => {
+                    const source = photoSource(photo);
+                    return (
+                      <div
+                        key={photo.id}
+                        style={{
+                          display: "grid",
+                          gap: 7,
+                          padding: 8,
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 12,
+                          background: "#FFFFFF",
+                        }}
+                      >
+                        {source ? (
+                          <a href={source} target="_blank" rel="noreferrer">
+                            <img
+                              src={source}
+                              alt={photo.name || "Work photo"}
+                              style={{
+                                display: "block",
+                                width: "100%",
+                                aspectRatio: "4 / 3",
+                                objectFit: "cover",
+                                borderRadius: 8,
+                              }}
+                            />
+                          </a>
+                        ) : (
+                          <div style={noticeStyle}>Photo unavailable</div>
+                        )}
+                        <small style={mutedSmallStyle}>{photo.name}</small>
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(photo.id)}
+                          style={{ ...dangerButtonStyle, padding: "7px 9px" }}
+                        >
+                          Remove Photo
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p style={mutedSmallStyle}>
+                  Add photos of the issue, repair, completed work, equipment, or
+                  surrounding area.
+                </p>
+              )}
+            </section>
+
+            <section style={detailSectionStyle}>
               <div style={eyebrowStyle}>Notes</div>
               <textarea
                 value={selectedService.notes || ""}
@@ -740,7 +1181,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 onClick={() => void deleteWorkOrderRecord(selectedService)}
                 style={dangerButtonStyle}
               >
-                Delete
+                Delete Work Item
               </button>
             </div>
 
@@ -750,8 +1191,8 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           <div style={noticeStyle}>
             <strong>Select work or add a new item.</strong>
             <p style={mutedSmallStyle}>
-              Use Quick Tasks for small jobs, Work Orders for tracked repairs,
-              and Preventive Maintenance for recurring service.
+              Use Tasks for small work, Preventive Maintenance for recurring
+              service, and Projects for larger multi-step work.
             </p>
           </div>
         )
@@ -759,4 +1200,3 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     />
   );
 }
-
