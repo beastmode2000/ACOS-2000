@@ -3,6 +3,9 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasDashboard from "./components/AtlasDashboard";
+import AtlasWorkOrders from "./components/AtlasWorkOrders";
+import AtlasDocuments from "./components/AtlasDocuments";
+import AtlasManuals from "./components/AtlasManuals";
 
 import type {
   Screen,
@@ -10794,395 +10797,64 @@ export default function AtlasPage() {
   }
 
   function renderWorkOrders() {
-    const seasons: Array<WorkSeason | "All"> = [
-      "All",
-      "Spring",
-      "Summer",
-      "Fall",
-      "Winter",
-      "Year-Round",
-    ];
-    const currentSeason = seasonForDate();
-
     return (
-      <ListDrawerLayout
-        eyebrow="Open / Monitor"
-        title="Work Orders"
-        detail="Editable one-time and recurring work, organized around how the property changes through the year."
+      <AtlasWorkOrders
+        ListDrawerLayout={ListDrawerLayout}
+        Field={Field}
+        SelectField={SelectField}
         isMobile={isMobile}
-        right={
-          <button type="button" onClick={addWorkOrder} style={goldButtonStyle}>
-            Add Work Order
-          </button>
-        }
-        list={
-          <div style={stackStyle}>
-            <section style={seasonPlannerStyle}>
-              <div>
-                <div style={eyebrowStyle}>Seasonal Property Plan</div>
-                <strong>
-                  Current season: {currentSeason}
-                </strong>
-              </div>
-
-              <div style={seasonCardGridStyle}>
-                {seasons.map((season) => {
-                  const count =
-                    season === "All"
-                      ? serviceRecords.length
-                      : serviceRecords.filter(
-                          (record) => record.season === season,
-                        ).length;
-                  const selected = workOrderSeasonFilter === season;
-
-                  return (
-                    <button
-                      key={season}
-                      type="button"
-                      onClick={() => setWorkOrderSeasonFilter(season)}
-                      style={{
-                        ...seasonCardStyle,
-                        borderColor: selected
-                          ? colors.gold
-                          : colors.line,
-                        background: selected
-                          ? "#FFF8E8"
-                          : "#FFFFFF",
-                      }}
-                    >
-                      <span style={seasonCardTitleStyle}>
-                        {season}
-                        {season === currentSeason ? (
-                          <small style={currentSeasonTagStyle}>Current</small>
-                        ) : null}
-                      </span>
-                      <strong>{count}</strong>
-                      <small style={seasonCardDescriptionStyle}>
-                        {season === "All"
-                          ? "Every work order"
-                          : workSeasonDescription(season)}
-                      </small>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            <div style={listStyle}>
-              {filteredServices.map((record) => (
-                <button
-                  key={record.id}
-                  type="button"
-                  onClick={() => setSelectedServiceId(record.id)}
-                  style={{
-                    ...rowButtonStyle,
-                    borderColor:
-                      record.id === selectedService.id
-                        ? colors.gold
-                        : colors.line,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <strong>{record.title}</strong>
-                    <p style={mutedSmallStyle}>
-                      {record.recurring ? "Next due" : "Due"}{" "}
-                      {formatDate(record.date)} · {assetName(record.assetId)} ·{" "}
-                      {vendorName(record.vendorId)}
-                    </p>
-                    <p style={mutedSmallStyle}>
-                      {record.season || "Year-Round"} ·{" "}
-                      {recurrenceLabel(record)}
-                    </p>
-                  </div>
-                  <div style={workOrderListBadgesStyle}>
-                    {record.recurring ? (
-                      <span style={recurringBadgeStyle}>Recurring</span>
-                    ) : null}
-                    <span style={badgeStyle(record.status)}>
-                      {record.status}
-                    </span>
-                  </div>
-                </button>
-              ))}
-
-              {!filteredServices.length ? (
-                <div style={noticeStyle}>
-                  No work orders are assigned to this season or search.
-                </div>
-              ) : null}
-            </div>
-          </div>
-        }
-        drawer={
-          selectedService.id ? (
-            <div style={stackStyle}>
-              <div>
-                <h3 style={editorHeaderStyle}>
-                  {selectedService.title.trim() || "New Work Order"}
-                </h3>
-                <p style={mutedSmallStyle}>
-                  {selectedService.season || "Year-Round"} ·{" "}
-                  {recurrenceLabel(selectedService)}
-                </p>
-              </div>
-
-              <section style={detailSectionStyle}>
-                <div style={eyebrowStyle}>Work Order Information</div>
-                <div style={formGridStyle}>
-                  <Field
-                    label="Title"
-                    value={selectedService.title}
-                    onChange={(value) => updateWorkOrder({ title: value })}
-                  />
-                  <Field
-                    label={selectedService.recurring ? "Next Due" : "Due Date"}
-                    value={selectedService.date}
-                    onChange={(value) => updateWorkOrder({ date: value })}
-                  />
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Season</span>
-                    <select
-                      value={selectedService.season || "Year-Round"}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          season: event.currentTarget.value as WorkSeason,
-                        })
-                      }
-                      style={inputStyle}
-                    >
-                      {(
-                        [
-                          "Year-Round",
-                          "Spring",
-                          "Summer",
-                          "Fall",
-                          "Winter",
-                        ] as WorkSeason[]
-                      ).map((season) => (
-                        <option key={season} value={season}>
-                          {season}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Asset</span>
-                    <select
-                      value={selectedService.assetId}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          assetId: event.currentTarget.value,
-                        })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="">No asset</option>
-                      {byName(assetRecords).map((asset) => (
-                        <option key={asset.id} value={asset.id}>
-                          {asset.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Vendor</span>
-                    <select
-                      value={selectedService.vendorId ?? ""}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          vendorId: event.currentTarget.value,
-                        })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="">No vendor</option>
-                      {byName(vendorRecords).map((vendor) => (
-                        <option key={vendor.id} value={vendor.id}>
-                          {vendor.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <SelectField
-                    label="Status"
-                    value={selectedService.status}
-                    onChange={(value) => updateWorkOrder({ status: value })}
-                    options={
-                      ["Open", "Scheduled", "Completed", "Monitor"] as const
-                    }
-                  />
-                  <SelectField
-                    label="Priority"
-                    value={selectedService.priority ?? "Medium"}
-                    onChange={(value) => updateWorkOrder({ priority: value })}
-                    options={["Low", "Medium", "High"] as const}
-                  />
-                  <Field
-                    label="Follow-up Date"
-                    value={selectedService.followUpDate ?? ""}
-                    onChange={(value) =>
-                      updateWorkOrder({ followUpDate: value })
-                    }
-                  />
-                  <Field
-                    label="Notes"
-                    value={selectedService.notes}
-                    onChange={(value) => updateWorkOrder({ notes: value })}
-                    multiline
-                  />
-                </div>
-              </section>
-
-              <section style={detailSectionStyle}>
-                <div style={detailSectionHeaderStyle}>
-                  <div>
-                    <div style={eyebrowStyle}>Recurrence</div>
-                    <strong>{recurrenceLabel(selectedService)}</strong>
-                  </div>
-                  <label style={recurrenceToggleStyle}>
-                    <input
-                      type="checkbox"
-                      checked={!!selectedService.recurring}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          recurring: event.currentTarget.checked,
-                        })
-                      }
-                    />
-                    Repeat this work order
-                  </label>
-                </div>
-
-                {selectedService.recurring ? (
-                  <div style={recurrenceGridStyle}>
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Repeat Every</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={365}
-                        value={selectedService.recurrenceInterval || 1}
-                        onChange={(event) =>
-                          updateWorkOrder({
-                            recurrenceInterval: Math.max(
-                              1,
-                              Number(event.currentTarget.value) || 1,
-                            ),
-                          })
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
-
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Unit</span>
-                      <select
-                        value={selectedService.recurrenceUnit || "Weeks"}
-                        onChange={(event) =>
-                          updateWorkOrder({
-                            recurrenceUnit:
-                              event.currentTarget
-                                .value as WorkOrderRecurrenceUnit,
-                          })
-                        }
-                        style={inputStyle}
-                      >
-                        {(
-                          [
-                            "Days",
-                            "Weeks",
-                            "Months",
-                            "Years",
-                          ] as WorkOrderRecurrenceUnit[]
-                        ).map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <Field
-                      label="Stop Repeating After"
-                      value={selectedService.recurrenceEndDate || ""}
-                      onChange={(value) =>
-                        updateWorkOrder({ recurrenceEndDate: value })
-                      }
-                      placeholder="Optional end date"
-                    />
-                  </div>
-                ) : (
-                  <p style={mutedSmallStyle}>
-                    This is a one-time work order. Turn recurrence on for
-                    weekly, monthly, yearly, or custom intervals.
-                  </p>
-                )}
-
-                {selectedService.lastCompletedDate ? (
-                  <div style={recurrenceHistoryStyle}>
-                    <strong>
-                      Last completed{" "}
-                      {formatDate(selectedService.lastCompletedDate)}
-                    </strong>
-                    <span style={mutedSmallStyle}>
-                      {(selectedService.completionHistory || []).length} total
-                      recorded completion
-                      {(selectedService.completionHistory || []).length === 1
-                        ? ""
-                        : "s"}
-                    </span>
-                  </div>
-                ) : null}
-              </section>
-
-              <div style={buttonRowStyle}>
-                {isRecordDirty("work_order", selectedService.id) ? (
-                  <button
-                    type="button"
-                    onClick={() => void saveWorkOrderRecord()}
-                    style={goldButtonStyle}
-                  >
-                    Save Work Order
-                  </button>
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={() => void completeWorkOrder(selectedService)}
-                  style={selectedService.recurring ? goldButtonStyle : secondaryButtonStyle}
-                >
-                  {selectedService.recurring
-                    ? "Complete & Move to Next Due"
-                    : "Mark Completed"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    void deleteWorkOrderRecord(selectedService)
-                  }
-                  style={dangerButtonStyle}
-                >
-                  Delete Work Order
-                </button>
-              </div>
-
-              {renderLinkedDocuments("Work Order", selectedService.id)}
-            </div>
-          ) : (
-            <div style={noticeStyle}>
-              <strong>Select a work order or add a new one.</strong>
-              <p style={mutedSmallStyle}>
-                Work orders can be one-time, recurring, and assigned to a
-                property season.
-              </p>
-            </div>
-          )
-        }
+        addWorkOrder={addWorkOrder}
+        goldButtonStyle={goldButtonStyle}
+        stackStyle={stackStyle}
+        seasonPlannerStyle={seasonPlannerStyle}
+        eyebrowStyle={eyebrowStyle}
+        seasonCardGridStyle={seasonCardGridStyle}
+        serviceRecords={serviceRecords}
+        workOrderSeasonFilter={workOrderSeasonFilter}
+        setWorkOrderSeasonFilter={setWorkOrderSeasonFilter}
+        colors={colors}
+        seasonCardStyle={seasonCardStyle}
+        seasonCardTitleStyle={seasonCardTitleStyle}
+        currentSeasonTagStyle={currentSeasonTagStyle}
+        seasonCardDescriptionStyle={seasonCardDescriptionStyle}
+        filteredServices={filteredServices}
+        listStyle={listStyle}
+        setSelectedServiceId={setSelectedServiceId}
+        rowButtonStyle={rowButtonStyle}
+        selectedService={selectedService}
+        mutedSmallStyle={mutedSmallStyle}
+        formatDate={formatDate}
+        assetName={assetName}
+        vendorName={vendorName}
+        recurrenceLabel={recurrenceLabel}
+        workOrderListBadgesStyle={workOrderListBadgesStyle}
+        recurringBadgeStyle={recurringBadgeStyle}
+        badgeStyle={badgeStyle}
+        noticeStyle={noticeStyle}
+        editorHeaderStyle={editorHeaderStyle}
+        detailSectionStyle={detailSectionStyle}
+        formGridStyle={formGridStyle}
+        updateWorkOrder={updateWorkOrder}
+        fieldLabelStyle={fieldLabelStyle}
+        inputStyle={inputStyle}
+        byName={byName}
+        assetRecords={assetRecords}
+        vendorRecords={vendorRecords}
+        detailSectionHeaderStyle={detailSectionHeaderStyle}
+        recurrenceToggleStyle={recurrenceToggleStyle}
+        recurrenceGridStyle={recurrenceGridStyle}
+        recurrenceHistoryStyle={recurrenceHistoryStyle}
+        buttonRowStyle={buttonRowStyle}
+        isRecordDirty={isRecordDirty}
+        saveWorkOrderRecord={saveWorkOrderRecord}
+        completeWorkOrder={completeWorkOrder}
+        secondaryButtonStyle={secondaryButtonStyle}
+        deleteWorkOrderRecord={deleteWorkOrderRecord}
+        dangerButtonStyle={dangerButtonStyle}
+        renderLinkedDocuments={renderLinkedDocuments}
       />
     );
   }
-
   function renderCalendar() {
     return (
       <AtlasCalendar
@@ -11446,1117 +11118,106 @@ export default function AtlasPage() {
   }
 
   function renderManuals() {
-    const normalizedSearch = manualSearch.trim().toLowerCase();
-
-    const filteredManuals = [...allManualRecords]
-      .filter((manual) => {
-        if (!normalizedSearch) return true;
-        return [
-          manual.title,
-          manual.linkedAssetName,
-          manual.manufacturer,
-          manual.model,
-          manual.documentNumber,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedSearch);
-      })
-      .sort((a, b) => a.title.localeCompare(b.title));
-
-    function startNewManual() {
-      setSelectedManualId("");
-      setManualDraft(blankManual());
-      setManualAddOpen(true);
-      setManualMessage("");
-    }
-
-    function updateManualDraft(patch: Partial<ManualRecord>) {
-      setManualDraft((current) =>
-        normalizeManualRecord({ ...current, ...patch, id: "" }),
-      );
-    }
-
-    async function saveManual() {
-      const prepared = normalizeManualRecord({
-        ...manualDraft,
-        id: `manual-${Date.now()}`,
-        linkedAssetName:
-          assetRecords.find((asset) => asset.id === manualDraft.linkedAssetId)
-            ?.name ||
-          manualDraft.linkedAssetName ||
-          "",
-      });
-
-      if (!prepared.title.trim()) {
-        setManualMessage("Add a manual title before saving.");
-        return;
-      }
-
-      const next = [prepared, ...manualRecords];
-      setManualRecords(next);
-      saveStoredArray(storageKeys.manuals[0], next);
-
-      const linkedAsset = prepared.linkedAssetId
-        ? assetRecords.find(
-            (asset) => asset.id === prepared.linkedAssetId,
-          )
-        : undefined;
-      const documentRecord = normalizeDocument({
-        id: uid("doc"),
-        title: prepared.title,
-        area: linkedAsset
-          ? locationName(linkedAsset.locationId)
-          : prepared.linkedAssetName || "General",
-        type: prepared.category,
-        targetType: linkedAsset ? "Asset" : "General",
-        targetId: linkedAsset?.id || "",
-        targetName: linkedAsset?.name || "General",
-        linkedAssetId: linkedAsset?.id,
-        notes: [
-          prepared.manufacturer
-            ? `Manufacturer: ${prepared.manufacturer}`
-            : "",
-          prepared.model ? `Model: ${prepared.model}` : "",
-          prepared.documentNumber
-            ? `Document number: ${prepared.documentNumber}`
-            : "",
-          prepared.sourceLabel
-            ? `Source: ${prepared.sourceLabel}`
-            : "",
-          prepared.notes,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        href: prepared.href,
-        files: prepared.files,
-        createdAt: prepared.createdAt,
-      });
-
-      replaceDocumentInVault(documentRecord);
-      try {
-        await postDocumentToAtlasVault(documentRecord);
-        setManualMessage("Manual saved and synced to Atlas.");
-      } catch {
-        setManualMessage(
-          "Manual saved on this browser. Atlas document sync did not complete.",
-        );
-      }
-
-      setManualDraft(blankManual());
-      setManualAddOpen(false);
-    }
-
-    async function addManualFiles(fileList: FileList | null) {
-      if (!fileList?.length) return;
-      const records = await Promise.all(
-        Array.from(fileList).map(fileToUploadedRecord),
-      );
-      updateManualDraft({
-        files: [...(manualDraft.files || []), ...records],
-      });
-    }
-
     return (
-      <ListDrawerLayout
-        eyebrow="Manual Library"
-        title="Manuals"
-        detail="Manuals listed alphabetically with their attached asset and a direct Open button."
+      <AtlasManuals
+        Field={Field}
+        ListDrawerLayout={ListDrawerLayout}
+        allManualRecords={allManualRecords}
+        assetRecords={assetRecords}
+        blankManual={blankManual}
+        buttonRowStyle={buttonRowStyle}
+        byName={byName}
+        cardStyle={cardStyle}
+        deleteManualRecord={deleteManualRecord}
+        fieldLabelStyle={fieldLabelStyle}
+        fileToUploadedRecord={fileToUploadedRecord}
+        formGridStyle={formGridStyle}
+        goldButtonStyle={goldButtonStyle}
+        inputStyle={inputStyle}
         isMobile={isMobile}
-        right={
-          <>
-            <button
-              type="button"
-              onClick={() => setScreen("documents")}
-              style={secondaryButtonStyle}
-            >
-              Back to Documents
-            </button>
-            <button
-              type="button"
-              onClick={startNewManual}
-              style={goldButtonStyle}
-            >
-              Add Manual
-            </button>
-          </>
-        }
-        list={
-          <div style={stackStyle}>
-            <div style={cardStyle}>
-              <input
-                value={manualSearch}
-                onChange={(event) =>
-                  setManualSearch(event.currentTarget.value)
-                }
-                placeholder="Search manuals or assets..."
-                style={inputStyle}
-              />
-            </div>
-
-            {manualAddOpen ? (
-              <div style={cardStyle}>
-                <div style={manualInlineFormHeaderStyle}>
-                  <strong>Add Manual</strong>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setManualAddOpen(false);
-                      setManualDraft(blankManual());
-                      setManualMessage("");
-                    }}
-                    style={smallSubtleButtonStyle}
-                  >
-                    Close
-                  </button>
-                </div>
-
-                {manualMessage ? (
-                  <p style={mutedSmallStyle}>{manualMessage}</p>
-                ) : null}
-
-                <div style={formGridStyle}>
-                  <Field
-                    label="Manual title"
-                    value={manualDraft.title}
-                    onChange={(title) => updateManualDraft({ title })}
-                    placeholder="Official manual title"
-                  />
-
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={fieldLabelStyle}>Attached asset</span>
-                    <select
-                      value={manualDraft.linkedAssetId || ""}
-                      onChange={(event) => {
-                        const asset = assetRecords.find(
-                          (item) => item.id === event.currentTarget.value,
-                        );
-                        updateManualDraft({
-                          linkedAssetId: event.currentTarget.value,
-                          linkedAssetName: asset?.name || "",
-                        });
-                      }}
-                      style={inputStyle}
-                    >
-                      <option value="">Not linked</option>
-                      {byName(assetRecords).map((asset) => (
-                        <option key={asset.id} value={asset.id}>
-                          {asset.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <Field
-                    label="PDF / manual link"
-                    value={manualDraft.href}
-                    onChange={(href) => updateManualDraft({ href })}
-                    placeholder="Paste the online PDF URL"
-                  />
-
-                  <Field
-                    label="Manufacturer"
-                    value={manualDraft.manufacturer}
-                    onChange={(manufacturer) =>
-                      updateManualDraft({ manufacturer })
-                    }
-                  />
-
-                  <Field
-                    label="Model"
-                    value={manualDraft.model}
-                    onChange={(model) => updateManualDraft({ model })}
-                  />
-
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={fieldLabelStyle}>Upload PDF</span>
-                    <input
-                      type="file"
-                      accept="application/pdf"
-                      onChange={(event) =>
-                        void addManualFiles(event.currentTarget.files)
-                      }
-                      style={inputStyle}
-                    />
-                  </label>
-                </div>
-
-                <div style={{ ...buttonRowStyle, marginTop: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => void saveManual()}
-                    style={goldButtonStyle}
-                  >
-                    Save Manual
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            <div style={manualSimpleTableStyle}>
-              <div style={manualListHeaderStyle}>
-                <span>Manual</span>
-                <span>Asset</span>
-                <span>Actions</span>
-              </div>
-
-              {filteredManuals.length ? (
-                <div style={manualCompactListStyle}>
-                  {filteredManuals.map((manual) => {
-                    const manualOpenUrl = openManualUrl(manual);
-
-                    return (
-                      <div key={manual.id} style={manualSimpleRowStyle}>
-                        <span style={manualSimpleTitleStyle}>
-                          {manual.title}
-                        </span>
-
-                        <span style={manualCompactAssetStyle}>
-                          {manual.linkedAssetName || "Not linked"}
-                        </span>
-
-                        <div style={manualActionRowStyle}>
-                          {manualOpenUrl ? (
-                            <a
-                              href={manualOpenUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={manualCompactFileStyle}
-                              aria-label={`Open ${manual.title}`}
-                            >
-                              Open
-                            </a>
-                          ) : (
-                            <span style={manualNoPdfStyle}>—</span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void deleteManualRecord(manual)}
-                            style={manualDeleteButtonStyle}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p style={{ ...mutedSmallStyle, padding: 16 }}>
-                  No manuals match this search.
-                </p>
-              )}
-            </div>
-          </div>
-        }
-        drawer={undefined}
+        locationName={locationName}
+        manualActionRowStyle={manualActionRowStyle}
+        manualAddOpen={manualAddOpen}
+        manualCompactAssetStyle={manualCompactAssetStyle}
+        manualCompactFileStyle={manualCompactFileStyle}
+        manualCompactListStyle={manualCompactListStyle}
+        manualDeleteButtonStyle={manualDeleteButtonStyle}
+        manualDraft={manualDraft}
+        manualInlineFormHeaderStyle={manualInlineFormHeaderStyle}
+        manualListHeaderStyle={manualListHeaderStyle}
+        manualMessage={manualMessage}
+        manualNoPdfStyle={manualNoPdfStyle}
+        manualRecords={manualRecords}
+        manualSearch={manualSearch}
+        manualSimpleRowStyle={manualSimpleRowStyle}
+        manualSimpleTableStyle={manualSimpleTableStyle}
+        manualSimpleTitleStyle={manualSimpleTitleStyle}
+        mutedSmallStyle={mutedSmallStyle}
+        normalizeDocument={normalizeDocument}
+        normalizeManualRecord={normalizeManualRecord}
+        openManualUrl={openManualUrl}
+        postDocumentToAtlasVault={postDocumentToAtlasVault}
+        replaceDocumentInVault={replaceDocumentInVault}
+        saveStoredArray={saveStoredArray}
+        secondaryButtonStyle={secondaryButtonStyle}
+        setManualAddOpen={setManualAddOpen}
+        setManualDraft={setManualDraft}
+        setManualMessage={setManualMessage}
+        setManualRecords={setManualRecords}
+        setManualSearch={setManualSearch}
+        setScreen={setScreen}
+        setSelectedManualId={setSelectedManualId}
+        smallSubtleButtonStyle={smallSubtleButtonStyle}
+        stackStyle={stackStyle}
+        storageKeys={storageKeys}
+        uid={uid}
       />
     );
   }
-
   function renderDocuments() {
-    const normalizedDocumentSearch = documentSearch.trim().toLowerCase();
-    const sortedDocuments = [...allDocuments].sort(
-      (a, b) =>
-        a.title.localeCompare(b.title) ||
-        String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
-    );
-    const searchableDocuments = sortedDocuments.filter((doc) => {
-      if (!normalizedDocumentSearch) return true;
-      const fileNames = (doc.files || []).map((file) => file.name).join(" ");
-      return [
-        doc.title,
-        doc.type,
-        doc.area,
-        doc.targetType,
-        doc.targetName,
-        doc.notes,
-        doc.pastedText,
-        fileNames,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedDocumentSearch);
-    });
-
-    const selectedDocument =
-      searchableDocuments.find((doc) => doc.id === selectedDocumentId) || null;
-    const selectedTargetKind = (selectedDocument?.targetType ||
-      "General") as IntakeTargetKind;
-    const selectedTargetOptions = documentTargetOptionsFor(selectedTargetKind);
-
-    function retargetSelectedDocument(kind: IntakeTargetKind) {
-      if (!selectedDocument) return;
-      const options = documentTargetOptionsFor(kind);
-      const nextId = kind === "General" ? "" : options[0]?.id || "";
-      const nextName = targetNameFor(kind, nextId);
-      updateSelectedDocument(selectedDocument.id, {
-        targetType: kind,
-        targetId: nextId,
-        targetName: nextName,
-        area: nextName,
-        linkedAssetId: kind === "Asset" ? nextId : undefined,
-        linkedVendorId: kind === "Vendor" ? nextId : undefined,
-      });
-    }
-
-    function retargetSelectedRecord(id: string) {
-      if (!selectedDocument) return;
-      const nextName = targetNameFor(selectedTargetKind, id);
-      updateSelectedDocument(selectedDocument.id, {
-        targetId: id,
-        targetName: nextName,
-        area: nextName,
-        linkedAssetId: selectedTargetKind === "Asset" ? id : undefined,
-        linkedVendorId: selectedTargetKind === "Vendor" ? id : undefined,
-      });
-    }
-
     return (
-      <ListDrawerLayout
-        eyebrow="Document Vault"
-        title="Documents / Photos"
-        detail="Search, open, edit, delete, zoom, and sync paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots between phone and desktop."
+      <AtlasDocuments
+        Field={Field}
+        ListDrawerLayout={ListDrawerLayout}
+        allDocuments={allDocuments}
+        buttonRowStyle={buttonRowStyle}
+        cardStyle={cardStyle}
+        colors={colors}
+        deleteSelectedDocument={deleteSelectedDocument}
+        documentSearch={documentSearch}
+        documentSyncStatus={documentSyncStatus}
+        documentTargetOptionsFor={documentTargetOptionsFor}
+        editorHeaderStyle={editorHeaderStyle}
+        eyebrowStyle={eyebrowStyle}
+        fieldLabelStyle={fieldLabelStyle}
+        fileTileStyle={fileTileStyle}
+        formGridStyle={formGridStyle}
+        goldButtonStyle={goldButtonStyle}
+        inputStyle={inputStyle}
         isMobile={isMobile}
-        right={
-          <>
-            <button
-              type="button"
-              onClick={() => setScreen("manuals")}
-              style={secondaryButtonStyle}
-            >
-              Manual Library
-            </button>
-            <button
-              type="button"
-              onClick={() => setScreen("intake")}
-              style={goldButtonStyle}
-            >
-              Add Document
-            </button>
-          </>
-        }
-        list={
-          <div style={stackStyle}>
-            <div style={cardStyle}>
-              <div style={eyebrowStyle}>Look Up Documents</div>
-              <input
-                value={documentSearch}
-                onChange={(event) =>
-                  setDocumentSearch(event.currentTarget.value)
-                }
-                placeholder="Search title, vendor, asset, notes, file name..."
-                style={inputStyle}
-              />
-              <div style={{ ...buttonRowStyle, marginTop: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => void refreshDocumentVault()}
-                  style={secondaryButtonStyle}
-                >
-                  Refresh Vault
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScreen("intake")}
-                  style={goldButtonStyle}
-                >
-                  Add Document
-                </button>
-              </div>
-              <p style={mutedSmallStyle}>
-                {searchableDocuments.length} matching document(s), sorted A–Z.
-              </p>
-              <p style={mutedSmallStyle}>{documentSyncStatus}</p>
-            </div>
-
-            {!searchableDocuments.length ? (
-              <div style={noticeStyle}>
-                <strong>No saved documents found.</strong>
-                <p style={mutedSmallStyle}>
-                  Use Add Document to take a phone photo, upload a PDF/image, or
-                  paste notes and link them to an Atlas record.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setScreen("intake")}
-                  style={goldButtonStyle}
-                >
-                  Add Document
-                </button>
-              </div>
-            ) : (
-              <div style={listStyle}>
-                {searchableDocuments.map((document) => {
-                  const fileCount = (document.files || []).length;
-                  const hasPreview =
-                    fileCount > 0 ||
-                    Boolean(document.pastedText || document.href);
-                  return (
-                    <button
-                      key={document.id}
-                      type="button"
-                      onClick={() => setSelectedDocumentId(document.id)}
-                      style={{
-                        ...rowButtonStyle,
-                        borderColor:
-                          selectedDocument?.id === document.id
-                            ? colors.gold
-                            : colors.line,
-                        boxShadow:
-                          selectedDocument?.id === document.id
-                            ? "0 14px 30px rgba(201,154,61,0.18)"
-                            : rowButtonStyle.boxShadow,
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <strong>{document.title}</strong>
-                        <p style={mutedSmallStyle}>
-                          {document.type} · {document.area}
-                        </p>
-                        {document.targetType ? (
-                          <p style={mutedSmallStyle}>
-                            Linked to {document.targetType}:{" "}
-                            {document.targetName || document.area}
-                          </p>
-                        ) : null}
-                        <p style={mutedSmallStyle}>
-                          {hasPreview
-                            ? `${fileCount} file(s) / preview available`
-                            : "Text-only record"}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        }
-        drawer={
-          <div>
-            {selectedDocument ? (
-              <div style={stackStyle}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    gap: 12,
-                  }}
-                >
-                  <div>
-                    <h3 style={editorHeaderStyle}>
-                      {selectedDocument.title.trim() || "Document"}
-                    </h3>
-                    <p style={mutedSmallStyle}>
-                      {selectedDocument.createdAt
-                        ? `Saved ${new Date(selectedDocument.createdAt).toLocaleString()}`
-                        : "Saved document"}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void deleteSelectedDocument(selectedDocument)
-                    }
-                    style={tinyDangerButtonStyle}
-                    title="Delete document"
-                  >
-                    × Delete
-                  </button>
-                </div>
-
-                <div style={formGridStyle}>
-                  <Field
-                    label="Title"
-                    value={selectedDocument.title}
-                    onChange={(value) =>
-                      updateSelectedDocument(selectedDocument.id, {
-                        title: value,
-                      })
-                    }
-                  />
-                  <Field
-                    label="Type"
-                    value={selectedDocument.type}
-                    onChange={(value) =>
-                      updateSelectedDocument(selectedDocument.id, {
-                        type: value,
-                      })
-                    }
-                    placeholder="Invoice, Manual, Photo, Receipt, Estimate..."
-                  />
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Linked section</span>
-                    <select
-                      value={selectedTargetKind}
-                      onChange={(event) =>
-                        retargetSelectedDocument(
-                          event.currentTarget.value as IntakeTargetKind,
-                        )
-                      }
-                      style={inputStyle}
-                    >
-                      {(
-                        [
-                          "Asset",
-                          "Location",
-                          "Vendor",
-                          "Work Order",
-                          "Map Label",
-                          "General",
-                        ] as IntakeTargetKind[]
-                      ).map((kind) => (
-                        <option key={kind} value={kind}>
-                          {kind}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {selectedTargetKind !== "General" ? (
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Linked record</span>
-                      <select
-                        value={selectedDocument.targetId || ""}
-                        onChange={(event) =>
-                          retargetSelectedRecord(event.currentTarget.value)
-                        }
-                        style={inputStyle}
-                      >
-                        {selectedTargetOptions.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : null}
-                  <Field
-                    label="Notes"
-                    value={selectedDocument.notes || ""}
-                    onChange={(value) =>
-                      updateSelectedDocument(selectedDocument.id, {
-                        notes: value,
-                      })
-                    }
-                    multiline
-                    placeholder="What is this, why it matters, follow-up needed..."
-                  />
-                  <Field
-                    label="Pasted text / copied paperwork"
-                    value={selectedDocument.pastedText || ""}
-                    onChange={(value) =>
-                      updateSelectedDocument(selectedDocument.id, {
-                        pastedText: value,
-                      })
-                    }
-                    multiline
-                    placeholder="Paste copied text, email content, invoice notes, serial info, etc."
-                  />
-                </div>
-
-                <div style={buttonRowStyle}>
-                  <button
-                    type="button"
-                    onClick={() => void saveSelectedDocument(selectedDocument)}
-                    style={goldButtonStyle}
-                  >
-                    Save Changes
-                  </button>
-                  {selectedDocument.targetType &&
-                  selectedDocument.targetType !== "General" ? (
-                    <button
-                      type="button"
-                      onClick={() => openDocumentTarget(selectedDocument)}
-                      style={secondaryButtonStyle}
-                    >
-                      Open Linked Record
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDocumentId("")}
-                    style={secondaryButtonStyle}
-                  >
-                    Close
-                  </button>
-                </div>
-
-                {selectedDocument.files?.length ? (
-                  <div>
-                    <div style={eyebrowStyle}>Files</div>
-                    <div style={photoGridStyle}>
-                      {selectedDocument.files.map((file) => (
-                        <div key={file.id} style={photoCardStyle}>
-                          <button
-                            type="button"
-                            onClick={() => openUploadedFile(file)}
-                            style={{
-                              border: 0,
-                              background: "transparent",
-                              padding: 0,
-                              textAlign: "left",
-                              cursor: "pointer",
-                            }}
-                          >
-                            {file.dataUrl?.startsWith("data:image/") ? (
-                              <img
-                                src={file.dataUrl}
-                                alt={file.name}
-                                style={photoStyle}
-                              />
-                            ) : (
-                              <div style={fileTileStyle}>
-                                {file.type?.includes("pdf") ? "PDF" : "FILE"}
-                              </div>
-                            )}
-                            <strong>{file.name}</strong>
-                            <span style={mutedSmallStyle}>
-                              Open zoom preview
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateSelectedDocument(selectedDocument.id, {
-                                files: (selectedDocument.files || []).filter(
-                                  (item) => item.id !== file.id,
-                                ),
-                              })
-                            }
-                            style={tinyDangerButtonStyle}
-                          >
-                            Remove file
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={noticeStyle}>
-                    <strong>No file attached.</strong>
-                    <p style={mutedSmallStyle}>
-                      This record can still hold notes/pasted text. Add a new
-                      document if you need to attach a photo, PDF, or file.
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={noticeStyle}>
-                <strong>Select a document from the list.</strong>
-                <p style={mutedSmallStyle}>
-                  After you save a new upload, this info area closes so it is
-                  ready for the next item. Click any document to view, edit,
-                  zoom, or delete it.
-                </p>
-                <div style={buttonRowStyle}>
-                  <button
-                    type="button"
-                    onClick={() => setScreen("intake")}
-                    style={goldButtonStyle}
-                  >
-                    Add Document
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void refreshDocumentVault()}
-                    style={secondaryButtonStyle}
-                  >
-                    Refresh Vault
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        }
+        listStyle={listStyle}
+        mutedSmallStyle={mutedSmallStyle}
+        noticeStyle={noticeStyle}
+        openDocumentTarget={openDocumentTarget}
+        openUploadedFile={openUploadedFile}
+        photoCardStyle={photoCardStyle}
+        photoGridStyle={photoGridStyle}
+        photoStyle={photoStyle}
+        refreshDocumentVault={refreshDocumentVault}
+        rowButtonStyle={rowButtonStyle}
+        saveSelectedDocument={saveSelectedDocument}
+        secondaryButtonStyle={secondaryButtonStyle}
+        selectedDocumentId={selectedDocumentId}
+        setDocumentSearch={setDocumentSearch}
+        setScreen={setScreen}
+        setSelectedDocumentId={setSelectedDocumentId}
+        stackStyle={stackStyle}
+        targetNameFor={targetNameFor}
+        tinyDangerButtonStyle={tinyDangerButtonStyle}
+        updateSelectedDocument={updateSelectedDocument}
       />
     );
   }
-
-  async function createInboxItemFromDraft() {
-    if (!intakeFiles.length && !intakePastedText.trim() && !intakeNotes.trim()) {
-      setIntakeMessage("Add a file, pasted text, or notes before saving to the Inbox.");
-      return;
-    }
-
-    const title =
-      intakeTitle.trim() ||
-      fastIntakeRecordName.trim() ||
-      intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") ||
-      intakePastedText.trim().slice(0, 48) ||
-      "Untitled Inbox item";
-
-    setIntakeMessage("Saving to the permanent Atlas Inbox...");
-
-    try {
-      const response = await fetch("/api/atlas-inbox", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          intakeType: fastIntakeKind,
-          status: "New",
-          source: "Fast Intake",
-          notes: intakeNotes.trim(),
-          pastedText: intakePastedText.trim(),
-          files: intakeFiles,
-          targetType: intakeTargetKind,
-          targetId: intakeTargetKind === "General" ? "" : intakeTargetId,
-          targetName: targetNameFor(intakeTargetKind, intakeTargetId),
-          proposedAction: fastIntakeSaveMode,
-          extractedData: {},
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) {
-        throw new Error(payload?.error || "Inbox save failed.");
-      }
-
-      const saved = payload.item as InboxItemRecord;
-      setInboxItems((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
-      setSelectedInboxId(saved.id);
-      setIntakeMessage("Saved to Atlas Inbox. Nothing else was changed.");
-      resetIntakeDraft();
-      setScreen("inbox");
-    } catch (error) {
-      setIntakeMessage(error instanceof Error ? error.message : "Inbox save failed.");
-    }
-  }
-
-  async function updateInboxItem(
-    id: string,
-    patch: Partial<InboxItemRecord>,
-  ) {
-    setInboxMessage("Saving Inbox item...");
-    try {
-      const response = await fetch("/api/atlas-inbox", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...patch }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) {
-        throw new Error(payload?.error || "Inbox update failed.");
-      }
-      const saved = payload.item as InboxItemRecord;
-      setInboxItems((current) =>
-        current.map((item) => (item.id === saved.id ? saved : item)),
-      );
-      setInboxMessage("Inbox item saved.");
-    } catch (error) {
-      setInboxMessage(error instanceof Error ? error.message : "Inbox update failed.");
-    }
-  }
-
-  async function deleteInboxItem(item: InboxItemRecord) {
-    if (!window.confirm(`Delete \"${item.title}\" from the Atlas Inbox?`)) return;
-
-    setInboxMessage("Deleting Inbox item...");
-    try {
-      const response = await fetch("/api/atlas-inbox", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) {
-        throw new Error(payload?.error || "Inbox delete failed.");
-      }
-      setInboxItems((current) => current.filter((entry) => entry.id !== item.id));
-      setSelectedInboxId((current) => (current === item.id ? "" : current));
-      setInboxMessage("Inbox item deleted.");
-    } catch (error) {
-      setInboxMessage(error instanceof Error ? error.message : "Inbox delete failed.");
-    }
-  }
-
-  function inboxAnalysisText(value: unknown) {
-    return typeof value === "string" ? value.trim() : "";
-  }
-
-  function inboxAnalysisTokens(value: string) {
-    return Array.from(
-      new Set(
-        value
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, " ")
-          .split(" ")
-          .map((token) => token.trim())
-          .filter((token) => token.length >= 3),
-      ),
-    );
-  }
-
-  function firstInboxMatch(text: string, pattern: RegExp) {
-    const match = text.match(pattern);
-    return match?.[1]?.trim() || "";
-  }
-
-  function buildInboxReviewDraft(data: Record<string, unknown>): InboxReviewDraft {
-    const readingData = (data.readings || {}) as Record<string, unknown>;
-    return {
-      documentType: inboxAnalysisText(data.documentType) || inboxAnalysisText(data.type),
-      summary: inboxAnalysisText(data.summary),
-      manufacturer: inboxAnalysisText(data.manufacturer),
-      model: inboxAnalysisText(data.model),
-      serial: inboxAnalysisText(data.serial),
-      invoiceNumber: inboxAnalysisText(data.invoiceNumber),
-      amount: inboxAnalysisText(data.amount),
-      date: inboxAnalysisText(data.date),
-      psi: inboxAnalysisText(readingData.psi),
-      temperature: inboxAnalysisText(readingData.temperature),
-      ph: inboxAnalysisText(readingData.ph),
-      hours: inboxAnalysisText(readingData.hours),
-      assetId: "",
-      locationId: "",
-      vendorId: "",
-      workOrderId: "",
-      notes: "",
-    };
-  }
-
-  function openInboxReview(item: InboxItemRecord) {
-    setSelectedInboxId(item.id);
-    setInboxReviewDraft(buildInboxReviewDraft((item.extractedData || {}) as Record<string, unknown>));
-    setInboxReviewOpen(true);
-  }
-
-  async function analyzeInboxItem(item: InboxItemRecord) {
-    if (analyzingInboxId) return;
-
-    const usableFiles = (item.files || [])
-      .filter((file) => Boolean(file.dataUrl || file.url))
-      .slice(0, 3)
-      .map((file) => ({
-        name: file.name,
-        type: file.type || "application/octet-stream",
-        dataUrl: file.dataUrl || "",
-        url: file.url || "",
-      }));
-
-    const fileNames = usableFiles.map((file) => file.name).join("\n");
-    const existingText = [item.title, item.notes, item.pastedText, fileNames]
-      .filter(Boolean)
-      .join("\n");
-
-    if (!existingText.trim() && !usableFiles.length) {
-      setInboxMessage("Add a file, title, notes, or pasted text before analyzing.");
-      return;
-    }
-
-    setAnalyzingInboxId(item.id);
-    setInboxReviewDraft(buildInboxReviewDraft((item.extractedData || {}) as Record<string, unknown>));
-    setInboxReviewOpen(true);
-    setInboxMessage("Atlas is reading the selected file and preparing suggestions...");
-
-    let visionData: Record<string, unknown> = {};
-    try {
-      const response = await fetch("/api/atlas-inbox-analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          item: {
-            id: item.id,
-            title: item.title,
-            intakeType: item.intakeType,
-            notes: item.notes,
-            pastedText: item.pastedText,
-            files: usableFiles,
-          },
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) {
-        throw new Error(payload?.error || "Photo/PDF analysis failed.");
-      }
-      visionData = (payload.analysis || {}) as Record<string, unknown>;
-    } catch (error) {
-      setInboxMessage(
-        error instanceof Error ? error.message : "Photo/PDF analysis failed.",
-      );
-      setAnalyzingInboxId("");
-      return;
-    }
-
-    const aiReadings = (visionData.readings || {}) as Record<string, unknown>;
-    const rawText = inboxAnalysisText(visionData.rawText);
-    const combinedText = [
-      existingText,
-      rawText,
-      inboxAnalysisText(visionData.manufacturer),
-      inboxAnalysisText(visionData.model),
-      inboxAnalysisText(visionData.serial),
-      inboxAnalysisText(visionData.invoiceNumber),
-      inboxAnalysisText(visionData.vendorName),
-      inboxAnalysisText(visionData.assetName),
-      inboxAnalysisText(visionData.locationName),
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    const serial =
-      inboxAnalysisText(visionData.serial) ||
-      firstInboxMatch(
-        combinedText,
-        /(?:serial(?:\s*(?:number|no\.?))?|s\s*\/\s*n|\bsn\b)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{3,})/i,
-      );
-    const model =
-      inboxAnalysisText(visionData.model) ||
-      firstInboxMatch(
-        combinedText,
-        /(?:model(?:\s*(?:number|no\.?))?|m\s*\/\s*n)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
-      );
-    const invoiceNumber =
-      inboxAnalysisText(visionData.invoiceNumber) ||
-      firstInboxMatch(
-        combinedText,
-        /(?:invoice|inv(?:oice)?)(?:\s*(?:number|no\.?))?\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
-      );
-    const amount =
-      inboxAnalysisText(visionData.amount) ||
-      firstInboxMatch(combinedText, /(\$\s?\d[\d,]*(?:\.\d{2})?)/i);
-    const date =
-      inboxAnalysisText(visionData.date) ||
-      firstInboxMatch(
-        combinedText,
-        /\b((?:0?[1-9]|1[0-2])[\/-](?:0?[1-9]|[12]\d|3[01])[\/-](?:19|20)?\d{2})\b/,
-      );
-    const psi =
-      inboxAnalysisText(aiReadings.psi) ||
-      firstInboxMatch(combinedText, /\b(\d+(?:\.\d+)?)\s*psi\b/i);
-    const temperature =
-      inboxAnalysisText(aiReadings.temperature) ||
-      firstInboxMatch(
-        combinedText,
-        /\b(\d+(?:\.\d+)?)\s*(?:°\s*)?(?:f|fahrenheit)\b/i,
-      );
-    const ph =
-      inboxAnalysisText(aiReadings.ph) ||
-      firstInboxMatch(combinedText, /\bph\s*[:=]?\s*(\d+(?:\.\d+)?)\b/i);
-    const hours =
-      inboxAnalysisText(aiReadings.hours) ||
-      firstInboxMatch(combinedText, /\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/i);
-
-    const knownManufacturers = [
-      "Viessmann", "Carrier", "Honeywell", "Mitsubishi", "Pentair",
-      "Sundance", "Sunstream", "Bosch", "Electrolux", "Kohler",
-      "Cobalt", "Sea-Doo", "Fisher & Paykel", "Desert Aire", "Hunter",
-      "Hydrawise", "Starlink",
-    ];
-    const manufacturer =
-      inboxAnalysisText(visionData.manufacturer) ||
-      knownManufacturers.find((name) =>
-        combinedText.toLowerCase().includes(name.toLowerCase()),
-      ) || "";
-
-    const sourceTokens = inboxAnalysisTokens(combinedText);
-    const normalizedSerial = serial.toLowerCase();
-    const normalizedModel = model.toLowerCase();
-
-    const assetMatches = assetRecords
-      .map((asset) => {
-        const searchable = [asset.name, asset.make, asset.model, asset.serial, asset.category, asset.notes]
-          .filter(Boolean).join(" ");
-        const assetTokens = inboxAnalysisTokens(searchable);
-        let score = sourceTokens.filter((token) => assetTokens.includes(token)).length;
-        const reasons: string[] = [];
-        if (normalizedSerial && asset.serial?.toLowerCase() === normalizedSerial) {
-          score += 20; reasons.push("Exact serial number");
-        }
-        if (normalizedModel && asset.model?.toLowerCase().includes(normalizedModel)) {
-          score += 10; reasons.push("Matching model");
-        }
-        if (manufacturer && asset.make?.toLowerCase().includes(manufacturer.toLowerCase())) {
-          score += 6; reasons.push("Matching manufacturer");
-        }
-        if (combinedText.toLowerCase().includes(asset.name.toLowerCase())) {
-          score += 8; reasons.push("Asset name appears in analysis");
-        }
-        return { asset, score, reasons };
-      })
-      .filter((match) => match.score > 0)
-      .sort((a, b) => b.score - a.score);
-
-    const vendorMatches = vendorRecords
-      .map((vendor) => {
-        const vendorText = [vendor.name, vendor.category, vendor.notes].filter(Boolean).join(" ");
-        const vendorTokens = inboxAnalysisTokens(vendorText);
-        let score = sourceTokens.filter((token) => vendorTokens.includes(token)).length;
-        if (combinedText.toLowerCase().includes(vendor.name.toLowerCase())) score += 10;
-        return { vendor, score };
-      })
-      .filter((match) => match.score > 0)
-      .sort((a, b) => b.score - a.score);
-
-    const workOrderMatches = serviceRecords
-      .map((workOrder) => {
-        const workOrderText = [workOrder.title, workOrder.notes, workOrder.date].filter(Boolean).join(" ");
-        const workOrderTokens = inboxAnalysisTokens(workOrderText);
-        const score = sourceTokens.filter((token) => workOrderTokens.includes(token)).length;
-        return { workOrder, score };
-      })
-      .filter((match) => match.score >= 2)
-      .sort((a, b) => b.score - a.score);
-
-    const bestAsset = assetMatches[0];
-    const bestVendor = vendorMatches[0];
-    const bestWorkOrder = workOrderMatches[0];
-    const bestScore = Math.max(bestAsset?.score || 0, bestVendor?.score || 0, bestWorkOrder?.score || 0);
-    const confidence = bestScore >= 20 ? "High" : bestScore >= 8 ? "Medium" : bestScore > 0 ? "Low" : "None";
-
-    const suggestedMatch = bestAsset && bestAsset.score === bestScore
-      ? { type: "Asset", id: bestAsset.asset.id, name: bestAsset.asset.name, confidence, reasons: bestAsset.reasons }
-      : bestVendor && bestVendor.score === bestScore
-        ? { type: "Vendor", id: bestVendor.vendor.id, name: bestVendor.vendor.name, confidence, reasons: ["Vendor name or related terms appear in analysis"] }
-        : bestWorkOrder && bestWorkOrder.score === bestScore
-          ? { type: "Work Order", id: bestWorkOrder.workOrder.id, name: bestWorkOrder.workOrder.title, confidence, reasons: ["Related work-order terms appear in analysis"] }
-          : null;
-
-    const extractedData: Record<string, unknown> = {
-      ...visionData,
-      analyzedAt: new Date().toISOString(),
-      analyzer: "Atlas secure photo/PDF analyzer",
-      manufacturer,
-      model,
-      serial,
-      invoiceNumber,
-      amount,
-      date,
-      readings: { psi, temperature, ph, hours },
-      suggestedMatch,
-      candidateAssets: assetMatches.slice(0, 3).map((match) => ({ id: match.asset.id, name: match.asset.name, score: match.score })),
-      candidateVendors: vendorMatches.slice(0, 3).map((match) => ({ id: match.vendor.id, name: match.vendor.name, score: match.score })),
-      candidateWorkOrders: workOrderMatches.slice(0, 3).map((match) => ({ id: match.workOrder.id, name: match.workOrder.title, score: match.score })),
-    };
-
-    setInboxItems((current) =>
-      current.map((entry) => entry.id === item.id
-        ? { ...entry, extractedData, status: "Analyzed", updatedAt: new Date().toISOString() }
-        : entry),
-    );
-    await updateInboxItem(item.id, { extractedData, status: "Analyzed" });
-    setInboxReviewDraft(buildInboxReviewDraft(extractedData));
-    setInboxReviewOpen(true);
-    setInboxMessage("Analysis complete. Review the detected information before approving anything.");
-    setAnalyzingInboxId("");
-  }
-
-  function openInboxItemInFastIntake(item: InboxItemRecord) {
-    setFastIntakeKind(item.intakeType || "Document");
-    setFastIntakeSaveMode(item.proposedAction || "Attach to Existing");
-    setIntakeTitle(item.title || "");
-    setIntakeNotes(item.notes || "");
-    setIntakePastedText(item.pastedText || "");
-    setIntakeFiles(Array.isArray(item.files) ? item.files : []);
-    setIntakeTargetKind(item.targetType || "General");
-    setIntakeTargetId(item.targetId || "");
-    setIntakeMessage("Loaded from Atlas Inbox. Review everything before saving.");
-    void updateInboxItem(item.id, { status: "Needs Review" });
-    setScreen("intake");
-  }
-
   function renderInbox() {
     const filtered = inboxItems.filter((item) => {
       const haystack = [
