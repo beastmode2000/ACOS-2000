@@ -219,6 +219,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
   const [editorOpen, setEditorOpen] = React.useState(
     Boolean(selectedCalendarId),
   );
+  const [expandedPastWeeks, setExpandedPastWeeks] = React.useState<number[]>(
+    [],
+  );
 
   React.useEffect(() => {
     if (selectedCalendarId) {
@@ -238,9 +241,38 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     calendarView === "week"
       ? `Week of ${formatDate(weekCells[0]?.date || selectedCalendarDate)}`
       : monthName(calendarCursor);
-  const calendarRowCount = Math.max(1, Math.ceil(cells.length / 7));
   const compactMonthView = calendarView === "month" && !isMobile;
   const visibleEventLimit = compactMonthView ? 3 : 4;
+  const todayKey = todayISO();
+
+  const monthWeeks = React.useMemo(() => {
+    const weeks: any[][] = [];
+    for (let index = 0; index < monthCells.length; index += 7) {
+      weeks.push(monthCells.slice(index, index + 7));
+    }
+    return weeks;
+  }, [monthCells]);
+
+  React.useEffect(() => {
+    setExpandedPastWeeks([]);
+  }, [calendarCursor.getFullYear(), calendarCursor.getMonth(), calendarView]);
+
+  function pastWeekIsCollapsed(week: any[], weekIndex: number) {
+    if (!compactMonthView) return false;
+    if (expandedPastWeeks.includes(weekIndex)) return false;
+
+    const datedCells = week.filter((cell: any) => cell.date);
+    const lastDate = datedCells[datedCells.length - 1]?.date || "";
+    return Boolean(lastDate && lastDate < todayKey);
+  }
+
+  function togglePastWeek(weekIndex: number) {
+    setExpandedPastWeeks((current) =>
+      current.includes(weekIndex)
+        ? current.filter((index) => index !== weekIndex)
+        : [...current, weekIndex],
+    );
+  }
 
   const linkedOptions = React.useMemo(() => {
     if (selectedCalendar.linkedType === "Asset") {
@@ -297,6 +329,152 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     setSelectedCalendarId("");
     setCalendarDraft(blankCalendarItem(selectedCalendarDate));
     setEditorOpen(false);
+  }
+
+  function renderCalendarCell(cell: any, collapsed = false) {
+    const events = cell.date
+      ? expandedCalendarItems.filter(
+          (item: any) => item.date === cell.date,
+        )
+      : [];
+    const isToday = cell.date === todayKey;
+    const isSelected = cell.date === selectedCalendarDate;
+    const dayWeather = cell.date
+      ? weatherByDate.get(cell.date)
+      : undefined;
+
+    return (
+      <button
+        key={cell.key}
+        type="button"
+        disabled={!cell.date || collapsed}
+        onClick={() => {
+          if (cell.date) showDay(cell.date);
+        }}
+        style={{
+          ...calendarCellStyle,
+          ...(compactMonthView ? calendarCompactCellStyle : {}),
+          ...(collapsed
+            ? {
+                minHeight: 42,
+                height: 42,
+                padding: "7px 9px",
+                overflow: "hidden",
+                pointerEvents: "none",
+              }
+            : {}),
+          opacity: cell.outside ? 0.55 : collapsed ? 0.45 : 1,
+          filter: collapsed ? "blur(0.35px)" : "none",
+          borderColor: isSelected
+            ? colors.gold
+            : isToday
+              ? colors.gold2
+              : colors.line,
+          background: isSelected
+            ? "#FFFAEB"
+            : isToday
+              ? "#FFFDF3"
+              : "#FFFFFF",
+          boxShadow: isSelected
+            ? "0 12px 28px rgba(201,154,61,0.18)"
+            : "none",
+          transition:
+            "height 180ms ease, min-height 180ms ease, opacity 180ms ease",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
+          <strong>{cell.day ?? ""}</strong>
+          {!collapsed && dayWeather ? (
+            <span
+              title={weatherText(dayWeather.code)}
+              style={calendarWeatherIconStyle}
+            >
+              {weatherIcon(dayWeather.code)}
+            </span>
+          ) : null}
+        </div>
+
+        {!collapsed ? (
+          <div
+            style={{
+              display: "grid",
+              gap: compactMonthView ? 3 : 4,
+              marginTop: compactMonthView ? 6 : 8,
+              minHeight: 0,
+            }}
+          >
+            {events.slice(0, visibleEventLimit).map((event: any) => {
+              const eventColor = colorForEvent(event);
+              return (
+                <span
+                  key={event.instanceId || event.id}
+                  onClick={(mouseEvent) => {
+                    mouseEvent.stopPropagation();
+                    editEvent(event);
+                  }}
+                  style={{
+                    ...calendarPillStyle,
+                    ...(compactMonthView
+                      ? calendarCompactPillStyle
+                      : {}),
+                    borderLeft: `${
+                      compactMonthView ? 3 : 5
+                    }px solid ${eventColor.hex}`,
+                    color: event.completed
+                      ? colors.muted
+                      : eventColor.hex,
+                    background: event.completed
+                      ? "#EEF2F6"
+                      : "#F8FAFC",
+                    opacity: event.completed ? 0.58 : 1,
+                  }}
+                >
+                  <span style={calendarPillContentStyle}>
+                    <span
+                      style={{
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        textDecoration: event.completed
+                          ? "line-through"
+                          : "none",
+                      }}
+                    >
+                      {event.completed ? "✓ " : ""}
+                      {event.title}
+                    </span>
+                    {event.completed ? (
+                      <span style={calendarDoneMiniStyle}>Done</span>
+                    ) : null}
+                  </span>
+                </span>
+              );
+            })}
+
+            {events.length > visibleEventLimit ? (
+              <span
+                style={{
+                  ...calendarMoreStyle,
+                  ...(compactMonthView
+                    ? calendarCompactMoreStyle
+                    : {}),
+                }}
+              >
+                +{events.length - visibleEventLimit} more
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </button>
+    );
   }
 
   return (
@@ -474,150 +652,81 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
             ))}
           </div>
 
-          <div
-            style={{
-              ...calendarGridStyle,
-              ...(compactMonthView
-                ? {
-                    height: "auto",
-                    minHeight: 0,
-                    gridTemplateRows: `repeat(${calendarRowCount}, minmax(142px, auto))`,
-                  }
-                : {}),
-            }}
-          >
-            {cells.map((cell: any) => {
-              const events = cell.date
-                ? expandedCalendarItems.filter(
-                    (item: any) => item.date === cell.date,
-                  )
-                : [];
-              const isToday = cell.date === todayISO();
-              const isSelected = cell.date === selectedCalendarDate;
-              const dayWeather = cell.date
-                ? weatherByDate.get(cell.date)
-                : undefined;
+          {compactMonthView ? (
+            <div style={{ display: "grid", gap: 6 }}>
+              {monthWeeks.map((week, weekIndex) => {
+                const collapsed = pastWeekIsCollapsed(week, weekIndex);
 
-              return (
-                <button
-                  key={cell.key}
-                  type="button"
-                  disabled={!cell.date}
-                  onClick={() => {
-                    if (cell.date) showDay(cell.date);
-                  }}
-                  style={{
-                    ...calendarCellStyle,
-                    ...(compactMonthView ? calendarCompactCellStyle : {}),
-                    opacity: cell.outside ? 0.55 : 1,
-                    borderColor: isSelected
-                      ? colors.gold
-                      : isToday
-                        ? colors.gold2
-                        : colors.line,
-                    background: isSelected
-                      ? "#FFFAEB"
-                      : isToday
-                        ? "#FFFDF3"
-                        : "#FFFFFF",
-                    boxShadow: isSelected
-                      ? "0 12px 28px rgba(201,154,61,0.18)"
-                      : "none",
-                  }}
-                >
+                return (
                   <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <strong>{cell.day ?? ""}</strong>
-                    {dayWeather ? (
-                      <span
-                        title={weatherText(dayWeather.code)}
-                        style={calendarWeatherIconStyle}
-                      >
-                        {weatherIcon(dayWeather.code)}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div
+                    key={`month-week-${weekIndex}`}
+                    role={collapsed ? "button" : undefined}
+                    tabIndex={collapsed ? 0 : undefined}
+                    onClick={
+                      collapsed
+                        ? () => togglePastWeek(weekIndex)
+                        : undefined
+                    }
+                    onKeyDown={
+                      collapsed
+                        ? (event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              togglePastWeek(weekIndex);
+                            }
+                          }
+                        : undefined
+                    }
+                    title={
+                      collapsed
+                        ? "Past week — click to expand"
+                        : undefined
+                    }
                     style={{
                       display: "grid",
-                      gap: compactMonthView ? 3 : 4,
-                      marginTop: compactMonthView ? 6 : 8,
-                      minHeight: 0,
+                      gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                      gap: 6,
+                      position: "relative",
+                      cursor: collapsed ? "pointer" : "default",
+                      borderRadius: 12,
+                      outline: "none",
                     }}
                   >
-                    {events.slice(0, visibleEventLimit).map((event: any) => {
-                      const eventColor = colorForEvent(event);
-                      return (
-                        <span
-                          key={event.instanceId || event.id}
-                          onClick={(mouseEvent) => {
-                            mouseEvent.stopPropagation();
-                            editEvent(event);
-                          }}
-                          style={{
-                            ...calendarPillStyle,
-                            ...(compactMonthView
-                              ? calendarCompactPillStyle
-                              : {}),
-                            borderLeft: `${
-                              compactMonthView ? 3 : 5
-                            }px solid ${eventColor.hex}`,
-                            color: event.completed
-                              ? colors.muted
-                              : eventColor.hex,
-                            background: event.completed
-                              ? "#EEF2F6"
-                              : "#F8FAFC",
-                            opacity: event.completed ? 0.58 : 1,
-                          }}
-                        >
-                          <span style={calendarPillContentStyle}>
-                            <span
-                              style={{
-                                minWidth: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                textDecoration: event.completed
-                                  ? "line-through"
-                                  : "none",
-                              }}
-                            >
-                              {event.completed ? "✓ " : ""}
-                              {event.title}
-                            </span>
-                            {event.completed ? (
-                              <span style={calendarDoneMiniStyle}>Done</span>
-                            ) : null}
-                          </span>
-                        </span>
-                      );
-                    })}
+                    {week.map((cell: any) =>
+                      renderCalendarCell(cell, collapsed),
+                    )}
 
-                    {events.length > visibleEventLimit ? (
-                      <span
+                    {collapsed ? (
+                      <div
                         style={{
-                          ...calendarMoreStyle,
-                          ...(compactMonthView
-                            ? calendarCompactMoreStyle
-                            : {}),
+                          position: "absolute",
+                          inset: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          pointerEvents: "none",
+                          borderRadius: 12,
+                          background:
+                            "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(7,27,47,0.10))",
+                          color: colors.navy3,
+                          fontSize: 11,
+                          fontWeight: 900,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
                         }}
                       >
-                        +{events.length - visibleEventLimit} more
-                      </span>
+                        Past week · click to expand
+                      </div>
                     ) : null}
                   </div>
-                </button>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={calendarGridStyle}>
+              {cells.map((cell: any) => renderCalendarCell(cell))}
+            </div>
+          )}
         </div>
       }
       drawer={
