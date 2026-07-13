@@ -263,6 +263,8 @@ type AtlasWorkOrdersProps = {
   vendorRecords: any[];
   locationRecords?: any[];
   contactRecords?: any[];
+  procedureRecords?: any[];
+  documentRecords?: any[];
   detailSectionHeaderStyle: React.CSSProperties;
   recurrenceToggleStyle: React.CSSProperties;
   recurrenceGridStyle: React.CSSProperties;
@@ -313,6 +315,8 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     vendorRecords,
     locationRecords = [],
     contactRecords = [],
+    procedureRecords = [],
+    documentRecords = [],
     detailSectionHeaderStyle,
     recurrenceToggleStyle,
     recurrenceGridStyle,
@@ -347,6 +351,9 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [pendingPhotoRecordId, setPendingPhotoRecordId] = useState("");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const quickPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [newChecklistText, setNewChecklistText] = useState("");
+  const [newHistoryNote, setNewHistoryNote] = useState("");
 
   useEffect(() => {
     const loaded = safeReadSections();
@@ -705,6 +712,66 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setPendingPhotoRecordId(record.id);
   }
 
+  function effortMinutes(value: string) {
+    if (value === "5 minutes") return 5;
+    if (value === "15 minutes") return 15;
+    if (value === "30 minutes") return 30;
+    if (value === "1 hour") return 60;
+    if (value === "Half Day") return 240;
+    if (value === "Full Day") return 480;
+    if (value === "Multi-Day") return 960;
+    return 30;
+  }
+
+  const dayPlan = useMemo(() => {
+    const candidates = serviceRecords
+      .filter((record: any) => record.status !== "Completed")
+      .map((record: any) => ({
+        ...record,
+        minutes: effortMinutes(String(record.effort || "30 minutes")),
+        distance: record.date ? dayDistance(String(record.date)) : 999,
+      }))
+      .sort((a: any, b: any) => {
+        const priority = (value: string) => value === "High" ? 0 : value === "Medium" ? 1 : 2;
+        return priority(a.priority) - priority(b.priority) || a.distance - b.distance || String(a.locationId || "").localeCompare(String(b.locationId || ""));
+      });
+    let used = 0;
+    return candidates.filter((record: any) => {
+      if (used >= 480) return false;
+      used += Math.min(record.minutes, 480);
+      return true;
+    });
+  }, [serviceRecords]);
+
+  function addChecklistItem() {
+    const text = newChecklistText.trim();
+    if (!text) return;
+    const checklist = [...(selectedService.checklist || []), { id: uid("check"), text, completed: false }];
+    updateWorkOrder({ checklist });
+    setNewChecklistText("");
+  }
+
+  function toggleChecklistItem(id: string) {
+    updateWorkOrder({
+      checklist: (selectedService.checklist || []).map((item: ChecklistItem) =>
+        item.id === id ? { ...item, completed: !item.completed } : item,
+      ),
+    });
+  }
+
+  function deleteChecklistItem(id: string) {
+    updateWorkOrder({ checklist: (selectedService.checklist || []).filter((item: ChecklistItem) => item.id !== id) });
+  }
+
+  function addHistoryNote() {
+    const text = newHistoryNote.trim();
+    if (!text) return;
+    updateWorkOrder({
+      notesHistory: [{ id: uid("note"), text, createdAt: new Date().toISOString() }, ...(selectedService.notesHistory || [])],
+    });
+    setNewHistoryNote("");
+  }
+
   function renderWorkRow(record: any) {
     const type = itemType(record);
     const category = categoryLabel(record);
@@ -938,6 +1005,13 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             </button>
             <button
               type="button"
+              onClick={() => setPlanOpen((current) => !current)}
+              style={secondaryButtonStyle}
+            >
+              Plan My Day
+            </button>
+            <button
+              type="button"
               onClick={addWorkOrder}
               style={goldButtonStyle}
             >
@@ -947,6 +1021,26 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         }
         list={
           <div style={stackStyle}>
+            {planOpen ? (
+              <section style={{ ...filterPanelStyle, background: "#FFFFFF" }}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Smart Daily Plan</div>
+                    <strong>Prioritized for roughly 8 hours</strong>
+                  </div>
+                  <span style={recurringBadgeStyle}>{dayPlan.length} items</span>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {dayPlan.map((record: any, index: number) => (
+                    <button key={record.id} type="button" onClick={() => setSelectedServiceId(record.id)} style={{ ...rowButtonStyle, display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span><strong>{index + 1}. {categoryEmoji(categoryLabel(record))} {record.title || "Untitled Work"}</strong><br/><small style={mutedSmallStyle}>{record.effort || "30 minutes"} · {record.locationId || assetName(record.assetId)} · {formatDate(record.date)}</small></span>
+                      <span style={badgeStyle(record.priority)}>{record.priority}</span>
+                    </button>
+                  ))}
+                  {!dayPlan.length ? <div style={noticeStyle}>No open work to plan.</div> : null}
+                </div>
+              </section>
+            ) : null}
             <section style={filterPanelStyle}>
               <div style={tabRowStyle}>
                 {sections.map((section) => {
