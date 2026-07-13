@@ -3039,6 +3039,8 @@ function ListDrawerLayout(props: {
     ? { ...desktopOuterStyle, ...props.outerStyle }
     : desktopOuterStyle;
 
+  const isCalendarLayout = props.outerStyle === calendarNavyShellStyle;
+
   const desktopGridStyle: React.CSSProperties = props.isMobile
     ? {
         ...drawerGridStyle,
@@ -3046,7 +3048,10 @@ function ListDrawerLayout(props: {
       }
     : {
         ...drawerGridStyle,
-        gridTemplateColumns: "minmax(240px, 32%) minmax(0, 68%)",
+        gridTemplateColumns: isCalendarLayout
+          ? "minmax(0, 74%) minmax(280px, 26%)"
+          : "minmax(240px, 32%) minmax(0, 68%)",
+        gap: isCalendarLayout ? 14 : drawerGridStyle.gap,
         height: "100%",
         minHeight: 0,
         overflow: "hidden",
@@ -16084,8 +16089,8 @@ const calendarWhitePanelStyle: React.CSSProperties = {
 
 const calendarMonthWhitePanelStyle: React.CSSProperties = {
   ...calendarWhitePanelStyle,
-  padding: 8,
-  overflowY: "visible",
+  padding: 12,
+  overflowY: "hidden",
   overflowX: "hidden",
   width: "100%",
   maxWidth: "none",
@@ -17889,9 +17894,10 @@ const calendarCellStyle: React.CSSProperties = {
 const calendarCompactCellStyle: React.CSSProperties = {
   minHeight: 0,
   height: "100%",
-  padding: 5,
-  borderRadius: 10,
-  fontSize: 11,
+  padding: 8,
+  borderRadius: 12,
+  fontSize: 13,
+  lineHeight: 1.25,
 };
 
 const calendarPillStyle: React.CSSProperties = {
@@ -17908,15 +17914,17 @@ const calendarPillStyle: React.CSSProperties = {
 };
 
 const calendarCompactPillStyle: React.CSSProperties = {
-  padding: "2px 4px",
-  borderRadius: 6,
-  fontSize: 8,
-  lineHeight: 1.15,
+  padding: "3px 6px",
+  borderRadius: 7,
+  fontSize: 10,
+  lineHeight: 1.2,
+  fontWeight: 900,
 };
 
 const calendarCompactMoreStyle: React.CSSProperties = {
-  fontSize: 8,
-  lineHeight: 1.1,
+  fontSize: 10,
+  lineHeight: 1.2,
+  fontWeight: 850,
 };
 
 const calendarPillContentStyle: React.CSSProperties = {
