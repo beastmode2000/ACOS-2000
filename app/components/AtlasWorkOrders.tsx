@@ -92,12 +92,6 @@ function categoryLabel(record: any) {
   return String(record.workCategory || record.category || "🔧 Maintenance");
 }
 
-function categoryEmoji(category: string) {
-  const value = String(category || "").trim();
-  const match = value.match(/^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u);
-  return match?.[1] || "🔧";
-}
-
 function parseDate(value: string) {
   if (!value) return null;
   const parsed = new Date(`${value}T12:00:00`);
@@ -357,10 +351,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       .filter((record: any) => categoryLabel(record) === category)
       .forEach((record: any) => {
         if (record.id === selectedService.id) {
-          updateWorkOrder({
-            workCategory: nextName,
-            emoji: categoryEmoji(nextName),
-          });
+          updateWorkOrder({ workCategory: nextName });
         }
       });
   }
@@ -591,7 +582,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   function renderWorkRow(record: any) {
     const type = itemType(record);
     const category = categoryLabel(record);
-    const emoji = categoryEmoji(category);
+    const emoji = String(record.emoji || "").trim();
     return (
       <button
         key={record.id}
@@ -906,7 +897,8 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           <div style={stackStyle}>
             <div>
               <h3 style={editorHeaderStyle}>
-                {categoryEmoji(categoryLabel(selectedService))} {selectedService.title.trim() || "New Work"}
+                {selectedService.emoji ? `${selectedService.emoji} ` : ""}
+                {selectedService.title.trim() || "New Work"}
               </h3>
               <p style={mutedSmallStyle}>
                 {categoryLabel(selectedService)} · {itemType(selectedService)}
@@ -916,6 +908,13 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             <section style={detailSectionStyle}>
               <div style={eyebrowStyle}>Work Classification</div>
               <div style={formGridStyle}>
+                <Field
+                  label="Emoji"
+                  value={selectedService.emoji || ""}
+                  onChange={(value: string) => updateWorkOrder({ emoji: value })}
+                  placeholder="🔧"
+                />
+
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                   <span style={fieldLabelStyle}>Work Type</span>
                   <select
@@ -945,13 +944,9 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <span style={fieldLabelStyle}>Category</span>
                   <select
                     value={categoryLabel(selectedService)}
-                    onChange={(event) => {
-                      const workCategory = event.target.value;
-                      updateWorkOrder({
-                        workCategory,
-                        emoji: categoryEmoji(workCategory),
-                      });
-                    }}
+                    onChange={(event) =>
+                      updateWorkOrder({ workCategory: event.currentTarget.value })
+                    }
                     style={inputStyle}
                   >
                     {!categories.includes(categoryLabel(selectedService)) ? (
@@ -974,9 +969,6 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   >
                     Add or Edit Categories
                   </button>
-                  <span style={mutedSmallStyle}>
-                    The category emoji is used automatically.
-                  </span>
                 </label>
 
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
