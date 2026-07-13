@@ -395,6 +395,56 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     weatherDays,
   ]);
 
+  const dashboardPolish = useMemo(() => {
+    const openRecurring = dashboardData.recurring;
+    const completedRecurring = serviceRecords.filter(
+      (record: any) =>
+        record.status === "Completed" &&
+        (record.recurring || workType(record) === "Preventive Maintenance"),
+    );
+
+    const recurringTotal = openRecurring.length + completedRecurring.length;
+    const recurringPercent = recurringTotal
+      ? Math.round((completedRecurring.length / recurringTotal) * 100)
+      : 0;
+
+    const dueCountdowns = dashboardData.open
+      .filter((record: any) => record.date)
+      .map((record: any) => ({
+        record,
+        days: dayDistance(today, record.date),
+      }))
+      .sort((a: any, b: any) => a.days - b.days)
+      .slice(0, 6);
+
+    const recentPhotos: Array<{
+      id: string;
+      src: string;
+      title: string;
+      record: any;
+    }> = [];
+
+    serviceRecords.forEach((record: any) => {
+      const photos = Array.isArray(record.photos) ? record.photos : [];
+      photos.forEach((photo: any, index: number) => {
+        const src = photo.dataUrl || photo.url || "";
+        if (!src) return;
+        recentPhotos.push({
+          id: `${record.id}-${photo.id || index}`,
+          src,
+          title: record.title,
+          record,
+        });
+      });
+    });
+
+    return {
+      recurringPercent,
+      dueCountdowns,
+      recentPhotos: recentPhotos.slice(-6).reverse(),
+    };
+  }, [dashboardData.open, dashboardData.recurring, serviceRecords, today]);
+
   const commandGridStyle: React.CSSProperties = {
     display: "grid",
     gridTemplateColumns: isMobile
@@ -412,12 +462,55 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     gap: 8,
     textAlign: "left",
     color: colors.text,
+    cursor: "pointer",
+    transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
   };
 
   const commandNumberStyle: React.CSSProperties = {
     fontSize: 28,
     lineHeight: 1,
     fontWeight: 900,
+  };
+
+  const progressTrackStyle: React.CSSProperties = {
+    height: 9,
+    borderRadius: 999,
+    background: "#E8EEF4",
+    overflow: "hidden",
+  };
+
+  const progressFillStyle: React.CSSProperties = {
+    height: "100%",
+    borderRadius: 999,
+    background: `linear-gradient(90deg, ${colors.gold}, ${colors.gold2})`,
+  };
+
+  const countdownGridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "1fr"
+      : "repeat(3, minmax(0, 1fr))",
+    gap: 10,
+  };
+
+  const countdownCardStyle: React.CSSProperties = {
+    border: `1px solid ${colors.line}`,
+    borderRadius: 12,
+    background: "#FFFFFF",
+    padding: 12,
+    display: "grid",
+    gap: 6,
+    textAlign: "left",
+    color: colors.text,
+    cursor: "pointer",
+  };
+
+  const photoGridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "repeat(2, minmax(0, 1fr))"
+      : "repeat(3, minmax(0, 1fr))",
+    gap: 10,
   };
 
   const compactWorkListStyle: React.CSSProperties = {
@@ -443,7 +536,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
   const timelineStyle: React.CSSProperties = {
     display: "grid",
     gap: 0,
-    maxHeight: 560,
+    maxHeight: 480,
     overflowY: "auto",
     paddingRight: 4,
   };
@@ -754,7 +847,13 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           <button
             type="button"
             onClick={() => setScreen("history")}
-            style={commandCardStyle}
+            style={{
+              ...commandCardStyle,
+              borderColor:
+                dashboardData.overdue.length > 0 ? "#F1B8B8" : colors.line,
+              background:
+                dashboardData.overdue.length > 0 ? "#FFF6F6" : "#FFFFFF",
+            }}
           >
             <span style={{ fontSize: 20 }}>🔴</span>
             <span style={commandNumberStyle}>
@@ -767,7 +866,13 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           <button
             type="button"
             onClick={() => setScreen("history")}
-            style={commandCardStyle}
+            style={{
+              ...commandCardStyle,
+              borderColor:
+                dashboardData.dueToday.length > 0 ? "#F4D99A" : colors.line,
+              background:
+                dashboardData.dueToday.length > 0 ? "#FFFBF0" : "#FFFFFF",
+            }}
           >
             <span style={{ fontSize: 20 }}>🟡</span>
             <span style={commandNumberStyle}>
@@ -780,7 +885,13 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           <button
             type="button"
             onClick={() => setScreen("history")}
-            style={commandCardStyle}
+            style={{
+              ...commandCardStyle,
+              borderColor:
+                dashboardData.inProgress.length > 0 ? "#B9D4F5" : colors.line,
+              background:
+                dashboardData.inProgress.length > 0 ? "#F5F9FF" : "#FFFFFF",
+            }}
           >
             <span style={{ fontSize: 20 }}>🔵</span>
             <span style={commandNumberStyle}>
@@ -793,7 +904,13 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           <button
             type="button"
             onClick={() => setScreen("history")}
-            style={commandCardStyle}
+            style={{
+              ...commandCardStyle,
+              borderColor:
+                dashboardData.recurring.length > 0 ? "#BFE4D0" : colors.line,
+              background:
+                dashboardData.recurring.length > 0 ? "#F4FBF7" : "#FFFFFF",
+            }}
           >
             <span style={{ fontSize: 20 }}>🔁</span>
             <span style={commandNumberStyle}>
@@ -1231,6 +1348,209 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           </div>
         </section>
       </div>
+
+      <section style={sectionStyle}>
+        <SectionHeader
+          brand
+          eyebrow="Maintenance Performance"
+          title="Recurring Maintenance Progress"
+          detail="A quick view of completed versus open recurring service."
+          right={
+            <button
+              type="button"
+              onClick={() => setScreen("history")}
+              style={secondaryButtonStyle}
+            >
+              Open Maintenance
+            </button>
+          }
+        />
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "180px minmax(0, 1fr)",
+            gap: 16,
+            alignItems: "center",
+          }}
+        >
+          <div
+            style={{
+              border: `1px solid ${colors.line}`,
+              borderRadius: 14,
+              padding: 16,
+              textAlign: "center",
+              background: colors.panel,
+            }}
+          >
+            <div style={{ fontSize: 34, fontWeight: 900 }}>
+              {dashboardPolish.recurringPercent}%
+            </div>
+            <div style={mutedSmallStyle}>Recurring work completed</div>
+          </div>
+
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={progressTrackStyle}>
+              <div
+                style={{
+                  ...progressFillStyle,
+                  width: `${dashboardPolish.recurringPercent}%`,
+                }}
+              />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <span style={mutedSmallStyle}>
+                {serviceRecords.filter(
+                  (record: any) =>
+                    record.status === "Completed" &&
+                    (record.recurring ||
+                      workType(record) === "Preventive Maintenance"),
+                ).length} completed
+              </span>
+              <span style={mutedSmallStyle}>
+                {dashboardData.recurring.length} still open
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Next Due"
+          title="Upcoming Service Countdown"
+          detail="The closest due dates across active work."
+          right={
+            <button
+              type="button"
+              onClick={() => setScreen("history")}
+              style={secondaryButtonStyle}
+            >
+              View All Work
+            </button>
+          }
+        />
+
+        {dashboardPolish.dueCountdowns.length ? (
+          <div style={countdownGridStyle}>
+            {dashboardPolish.dueCountdowns.map((item: any) => (
+              <button
+                key={item.record.id}
+                type="button"
+                onClick={() => openWork(item.record)}
+                style={{
+                  ...countdownCardStyle,
+                  borderColor:
+                    item.days < 0
+                      ? "#F1B8B8"
+                      : item.days <= 7
+                        ? "#F4D99A"
+                        : colors.line,
+                  background:
+                    item.days < 0
+                      ? "#FFF6F6"
+                      : item.days <= 7
+                        ? "#FFFBF0"
+                        : "#FFFFFF",
+                }}
+              >
+                <strong>{item.record.title}</strong>
+                <span style={mutedSmallStyle}>
+                  {categoryLabel(item.record)}
+                </span>
+                <span
+                  style={{
+                    fontWeight: 900,
+                    color:
+                      item.days < 0
+                        ? colors.red
+                        : item.days <= 7
+                          ? "#B54708"
+                          : colors.green,
+                  }}
+                >
+                  {item.days < 0
+                    ? `${Math.abs(item.days)} days overdue`
+                    : item.days === 0
+                      ? "Due today"
+                      : item.days === 1
+                        ? "Due tomorrow"
+                        : `Due in ${item.days} days`}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={noticeStyle}>No active due dates available.</div>
+        )}
+      </section>
+
+      {dashboardPolish.recentPhotos.length ? (
+        <section style={sectionStyle}>
+          <SectionHeader
+            eyebrow="Visual History"
+            title="Recent Work Photos"
+            detail="Quick access to the latest photos attached to work records."
+            right={
+              <button
+                type="button"
+                onClick={() => setScreen("history")}
+                style={secondaryButtonStyle}
+              >
+                Open Work Orders
+              </button>
+            }
+          />
+
+          <div style={photoGridStyle}>
+            {dashboardPolish.recentPhotos.map((photo: any) => (
+              <button
+                key={photo.id}
+                type="button"
+                onClick={() => openWork(photo.record)}
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 13,
+                  background: "#FFFFFF",
+                  padding: 0,
+                  overflow: "hidden",
+                  color: colors.text,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <img
+                  src={photo.src}
+                  alt=""
+                  style={{
+                    width: "100%",
+                    aspectRatio: "16 / 9",
+                    display: "block",
+                    objectFit: "cover",
+                    background: colors.panel,
+                  }}
+                />
+                <span
+                  style={{
+                    display: "block",
+                    padding: "10px 11px",
+                    fontWeight: 800,
+                  }}
+                >
+                  {photo.title}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section style={sectionStyle}>
         <SectionHeader
