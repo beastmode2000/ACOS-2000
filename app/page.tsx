@@ -75,6 +75,9 @@ type AtlasServiceRecord = ServiceRecord & {
   workCategory?: string;
   effort?: WorkEffort;
   responsibilityArea?: string;
+  emoji?: string;
+  assignedTo?: string;
+  locationId?: string;
 };
 
 const WORKLINK_LOGOS = {
@@ -1022,6 +1025,9 @@ function normalizeService(record: Partial<AtlasServiceRecord>): AtlasServiceReco
     ),
     effort: record.effort || undefined,
     responsibilityArea: String(record.responsibilityArea || ""),
+    emoji: String(record.emoji || ""),
+    assignedTo: String(record.assignedTo || ""),
+    locationId: String(record.locationId || ""),
     photos: Array.isArray(record.photos) ? record.photos : [],
     documents: Array.isArray(record.documents) ? record.documents : [],
   };
@@ -4485,6 +4491,9 @@ export default function AtlasPage() {
       workCategory: "🔧 Maintenance",
       effort: "30 minutes",
       responsibilityArea: "",
+      emoji: "🔧",
+      assignedTo: "",
+      locationId: "",
       photos: [],
       documents: [],
     });
@@ -9003,7 +9012,6 @@ export default function AtlasPage() {
                         </strong>
                         <small>Tap to change</small>
                       </button>
-
                       <div style={plannerControlCardStyle}>
                         <span style={plannerControlLabelStyle}>Time</span>
                         <strong>{task.fixedTime || "Auto"}</strong>
@@ -10920,6 +10928,8 @@ export default function AtlasPage() {
         byName={byName}
         assetRecords={assetRecords}
         vendorRecords={vendorRecords}
+        locationRecords={locations}
+        contactRecords={contactRecords}
         detailSectionHeaderStyle={detailSectionHeaderStyle}
         recurrenceToggleStyle={recurrenceToggleStyle}
         recurrenceGridStyle={recurrenceGridStyle}
