@@ -6,16 +6,18 @@ type AtlasDashboardProps = {
   [key: string]: any;
 };
 
-function dateValue(value?: string) {
+function dateTime(value?: string) {
   if (!value) return Number.POSITIVE_INFINITY;
-  const parsed = new Date(`${value}T12:00:00`).getTime();
-  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+  const parsed = new Date(value.includes("T") ? value : `${value}T12:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? Number.POSITIVE_INFINITY
+    : parsed.getTime();
 }
 
-function dayDistance(from: string, to?: string) {
-  if (!to) return Number.POSITIVE_INFINITY;
-  const start = new Date(`${from}T12:00:00`).getTime();
-  const end = new Date(`${to}T12:00:00`).getTime();
+function daysFromToday(today: string, value?: string) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const start = new Date(`${today}T12:00:00`).getTime();
+  const end = new Date(`${value}T12:00:00`).getTime();
   return Math.round((end - start) / 86_400_000);
 }
 
@@ -28,21 +30,9 @@ function categoryLabel(record: any) {
   return String(record.workCategory || record.category || "🔧 Maintenance");
 }
 
-function timelineDate(value?: string) {
-  if (!value) return "";
-  const parsed = new Date(value.includes("T") ? value : `${value}T12:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 export default function AtlasDashboard(props: AtlasDashboardProps) {
   const {
     SectionHeader,
-    StatCard,
     addCalendarItem,
     assetName,
     badgeStyle,
@@ -63,15 +53,11 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     goldButtonStyle,
     irrigationAdvice,
     isMobile,
-    listStyle,
     logoCandidates,
     logoIndex,
     mutedSmallStyle,
     noticeStyle,
     openCalendarItem,
-    quickLinkCardStyle,
-    quickLinksGridStyle,
-    renderCalendarIntakeCard,
     secondaryButtonStyle,
     sectionStyle,
     sectionTitleStyle,
@@ -79,7 +65,6 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     setLogoIndex,
     setScreen,
     setSelectedServiceId,
-    statGridStyle,
     todayEventStyle,
     todayEvents = [],
     todayISO,
@@ -94,459 +79,66 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     weatherDays = [],
     weatherIcon,
     weatherStatus,
-    workLinkLogoFallbackStyle,
-    workLinkLogoImageStyle,
-    workLinkLogoStyle,
-    workLinkOpenStyle,
-    workLinkTextStyle,
-    workLinks = [],
-    workOrderCardStyle,
-    workOrderStripStyle,
-    workPlanTargetHours,
-    workPlanTasks = [],
     eyebrowStyle,
   } = props;
 
   const today = todayISO();
 
-  const dashboardData = useMemo(() => {
+  const daily = useMemo(() => {
     const open = serviceRecords
       .filter((record: any) => record.status !== "Completed")
-      .sort((a: any, b: any) => dateValue(a.date) - dateValue(b.date));
+      .sort((a: any, b: any) => dateTime(a.date) - dateTime(b.date));
 
     const overdue = open.filter(
-      (record: any) => record.date && dayDistance(today, record.date) < 0,
+      (record: any) => record.date && daysFromToday(today, record.date) < 0,
     );
     const dueToday = open.filter(
-      (record: any) => record.date && dayDistance(today, record.date) === 0,
+      (record: any) => record.date && daysFromToday(today, record.date) === 0,
     );
-    const dueThisWeek = open.filter((record: any) => {
-      const distance = dayDistance(today, record.date);
-      return distance >= 1 && distance <= 7;
-    });
     const inProgress = open.filter(
       (record: any) => record.status === "In Progress",
     );
-    const recurring = open.filter(
+    const maintenance = open.filter(
       (record: any) =>
         record.recurring || workType(record) === "Preventive Maintenance",
     );
-    const projects = open.filter(
-      (record: any) => workType(record) === "Project",
-    );
-    const highPriority = open.filter(
-      (record: any) => record.priority === "High",
-    );
 
-    return {
-      open,
-      overdue,
-      dueToday,
-      dueThisWeek,
-      inProgress,
-      recurring,
-      projects,
-      highPriority,
-    };
+    return { open, overdue, dueToday, inProgress, maintenance };
   }, [serviceRecords, today]);
 
-  const timelineEntries = useMemo(() => {
-    const entries: any[] = [];
-
-    serviceRecords.forEach((record: any) => {
-      const snapshots = Array.isArray(record.completionSnapshots)
-        ? record.completionSnapshots
-        : [];
-
-      snapshots.forEach((snapshot: any, index: number) => {
-        entries.push({
-          id: `${record.id}-snapshot-${snapshot.id || index}`,
-          date:
-            snapshot.completedAt ||
-            snapshot.completedDate ||
-            snapshot.date ||
-            record.lastCompletedDate,
-          title: snapshot.title || record.title,
-          description:
-            snapshot.notes ||
-            `${categoryLabel(record)} · ${assetName(record.assetId)}`,
-          kind: "Completed Work",
-          icon: "✅",
-          recordId: record.id,
-        });
-      });
-
-      const history = Array.isArray(record.completionHistory)
-        ? record.completionHistory
-        : [];
-
-      history.forEach((date: string, index: number) => {
-        const alreadyIncluded = snapshots.some((snapshot: any) =>
-          String(
-            snapshot.completedAt ||
-              snapshot.completedDate ||
-              snapshot.date ||
-              "",
-          ).startsWith(String(date)),
-        );
-
-        if (!alreadyIncluded) {
-          entries.push({
-            id: `${record.id}-history-${index}`,
-            date,
-            title: record.title,
-            description: `${categoryLabel(record)} · ${assetName(record.assetId)}`,
-            kind: "Completed Work",
-            icon: "✅",
-            recordId: record.id,
-          });
-        }
-      });
-
-      const notes = Array.isArray(record.workNotes) ? record.workNotes : [];
-      notes.forEach((note: any, index: number) => {
-        entries.push({
-          id: `${record.id}-note-${note.id || index}`,
-          date: note.createdAt || note.date,
-          title: record.title,
-          description: note.text || note.note || note.body || "Work note added",
-          kind: "Work Note",
-          icon: "📝",
-          recordId: record.id,
-        });
-      });
-    });
-
-    [...todayEvents, ...upcomingEvents].forEach((event: any) => {
-      entries.push({
-        id: `event-${event.instanceId || event.id}`,
-        date: event.date,
-        title: event.title,
-        description: `${event.time || (event.allDay ? "All day" : "No time")} · ${categoryForEvent(event)}`,
-        kind: "Calendar",
-        icon: "📅",
-        event,
-      });
-    });
-
-    return entries
-      .filter((entry) => entry.date)
-      .sort((a, b) => dateValue(String(b.date).slice(0, 10)) - dateValue(String(a.date).slice(0, 10)))
-      .slice(0, 30);
-  }, [
-    assetName,
-    categoryForEvent,
-    serviceRecords,
-    todayEvents,
-    upcomingEvents,
-  ]);
-
-  const workloadMinutes = useMemo(() => {
-    const effortMinutes: Record<string, number> = {
-      "5 minutes": 5,
-      "15 minutes": 15,
-      "30 minutes": 30,
-      "1 hour": 60,
-      "Half Day": 240,
-      "Full Day": 480,
-      "Multi-Day": 960,
-    };
-
-    return [...dashboardData.overdue, ...dashboardData.dueToday].reduce(
-      (total: number, record: any) =>
-        total + (effortMinutes[String(record.effort || "")] || 30),
-      0,
-    );
-  }, [dashboardData.dueToday, dashboardData.overdue]);
-
-  const workloadLabel =
-    workloadMinutes >= 480
-      ? `${Math.round(workloadMinutes / 60)}h+`
-      : `${Math.floor(workloadMinutes / 60)}h ${workloadMinutes % 60}m`;
-
-  const dashboardIntelligence = useMemo(() => {
-    const vendorEvents = [...todayEvents, ...upcomingEvents]
-      .filter((event: any) => {
-        const haystack = [
-          event.title,
-          event.area,
-          event.categoryLabel,
-          event.linkedType,
-          event.linkedName,
-          event.notes,
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        return (
-          event.linkedType === "Vendor" ||
-          haystack.includes("vendor") ||
-          haystack.includes("service") ||
-          haystack.includes("onsite") ||
-          haystack.includes("on-site")
-        );
-      })
-      .slice(0, 6);
-
-    const weatherImpacts: string[] = [];
-    const todayWeather = weatherDays[0];
-    const tomorrowWeather = weatherDays[1];
-
-    if (todayWeather) {
-      if (todayWeather.precipChance >= 70 || todayWeather.precipAmount >= 0.2) {
-        weatherImpacts.push("Rain likely today — prioritize indoor and covered work.");
-      } else if (todayWeather.high >= 85) {
-        weatherImpacts.push("Hot day — schedule strenuous outdoor work early.");
-      } else if (todayWeather.windMax >= 20) {
-        weatherImpacts.push("High wind — avoid spraying and unsecured outdoor work.");
-      } else {
-        weatherImpacts.push("Weather supports normal outdoor maintenance today.");
-      }
-    }
-
-    if (
-      tomorrowWeather &&
-      (tomorrowWeather.precipChance >= 65 ||
-        tomorrowWeather.precipAmount >= 0.2)
-    ) {
-      weatherImpacts.push("Rain risk tomorrow — finish exposed outdoor work today.");
-    }
-
-    const criticalItems = [
-      ...dashboardData.overdue,
-      ...dashboardData.highPriority.filter(
-        (record: any) =>
-          !dashboardData.overdue.some((item: any) => item.id === record.id),
-      ),
-    ].slice(0, 6);
-
-    const healthPenalty =
-      dashboardData.overdue.length * 6 +
-      dashboardData.highPriority.length * 3 +
-      dashboardData.inProgress.length * 1;
-
-    const propertyHealth = Math.max(0, Math.min(100, 100 - healthPenalty));
-
-    const recommendations: Array<{
-      title: string;
-      detail: string;
-      record?: any;
-      action?: "history" | "calendar" | "weather";
-    }> = [];
-
-    if (dashboardData.overdue[0]) {
-      recommendations.push({
-        title: `Start overdue: ${dashboardData.overdue[0].title}`,
-        detail: `${categoryLabel(dashboardData.overdue[0])} · ${formatDate(
-          dashboardData.overdue[0].date,
-        )}`,
-        record: dashboardData.overdue[0],
-      });
-    }
-
-    if (dashboardData.inProgress[0]) {
-      recommendations.push({
-        title: `Continue: ${dashboardData.inProgress[0].title}`,
-        detail: `${categoryLabel(
-          dashboardData.inProgress[0],
-        )} · already in progress`,
-        record: dashboardData.inProgress[0],
-      });
-    }
-
-    if (vendorEvents[0]) {
-      recommendations.push({
-        title: `Prepare for ${vendorEvents[0].title}`,
-        detail: `${formatDate(vendorEvents[0].date)} · ${
-          vendorEvents[0].time || "No time"
-        }`,
-        action: "calendar",
-      });
-    }
-
-    if (weatherImpacts[0]) {
-      recommendations.push({
-        title: "Use the weather window",
-        detail: weatherImpacts[0],
-        action: "weather",
-      });
-    }
-
-    if (!recommendations.length) {
-      recommendations.push({
-        title: "Review My Work",
-        detail: "No urgent exceptions detected. Continue with the planned workload.",
-        action: "history",
-      });
-    }
-
-    return {
-      vendorEvents,
-      weatherImpacts,
-      criticalItems,
-      propertyHealth,
-      recommendations: recommendations.slice(0, 5),
-    };
-  }, [
-    dashboardData,
-    formatDate,
-    todayEvents,
-    upcomingEvents,
-    weatherDays,
-  ]);
-
-  const dashboardPolish = useMemo(() => {
-    const openRecurring = dashboardData.recurring;
-    const completedRecurring = serviceRecords.filter(
-      (record: any) =>
-        record.status === "Completed" &&
-        (record.recurring || workType(record) === "Preventive Maintenance"),
-    );
-
-    const recurringTotal = openRecurring.length + completedRecurring.length;
-    const recurringPercent = recurringTotal
-      ? Math.round((completedRecurring.length / recurringTotal) * 100)
-      : 0;
-
-    const dueCountdowns = dashboardData.open
-      .filter((record: any) => record.date)
-      .map((record: any) => ({
-        record,
-        days: dayDistance(today, record.date),
-      }))
-      .sort((a: any, b: any) => a.days - b.days)
-      .slice(0, 6);
-
-    const recentPhotos: Array<{
-      id: string;
-      src: string;
-      title: string;
-      record: any;
-    }> = [];
-
-    serviceRecords.forEach((record: any) => {
-      const photos = Array.isArray(record.photos) ? record.photos : [];
-      photos.forEach((photo: any, index: number) => {
-        const src = photo.dataUrl || photo.url || "";
-        if (!src) return;
-        recentPhotos.push({
-          id: `${record.id}-${photo.id || index}`,
-          src,
-          title: record.title,
-          record,
-        });
-      });
-    });
-
-    return {
-      recurringPercent,
-      dueCountdowns,
-      recentPhotos: recentPhotos.slice(-6).reverse(),
-    };
-  }, [dashboardData.open, dashboardData.recurring, serviceRecords, today]);
-
-  const commandGridStyle: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: isMobile
-      ? "1fr"
-      : "repeat(4, minmax(0, 1fr))",
-    gap: 12,
-  };
-
-  const commandCardStyle: React.CSSProperties = {
-    border: `1px solid ${colors.line}`,
-    borderRadius: 14,
-    background: "#FFFFFF",
-    padding: 14,
-    display: "grid",
-    gap: 8,
-    textAlign: "left",
-    color: colors.text,
-    cursor: "pointer",
-    transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
-  };
-
-  const commandNumberStyle: React.CSSProperties = {
-    fontSize: 28,
-    lineHeight: 1,
-    fontWeight: 900,
-  };
-
-  const progressTrackStyle: React.CSSProperties = {
-    height: 9,
-    borderRadius: 999,
-    background: "#E8EEF4",
-    overflow: "hidden",
-  };
-
-  const progressFillStyle: React.CSSProperties = {
-    height: "100%",
-    borderRadius: 999,
-    background: `linear-gradient(90deg, ${colors.gold}, ${colors.gold2})`,
-  };
-
-  const countdownGridStyle: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: isMobile
-      ? "1fr"
-      : "repeat(3, minmax(0, 1fr))",
-    gap: 10,
-  };
-
-  const countdownCardStyle: React.CSSProperties = {
-    border: `1px solid ${colors.line}`,
-    borderRadius: 12,
-    background: "#FFFFFF",
-    padding: 12,
-    display: "grid",
-    gap: 6,
-    textAlign: "left",
-    color: colors.text,
-    cursor: "pointer",
-  };
-
-  const photoGridStyle: React.CSSProperties = {
+  const cardGrid: React.CSSProperties = {
     display: "grid",
     gridTemplateColumns: isMobile
       ? "repeat(2, minmax(0, 1fr))"
-      : "repeat(3, minmax(0, 1fr))",
+      : "repeat(4, minmax(0, 1fr))",
     gap: 10,
   };
 
-  const compactWorkListStyle: React.CSSProperties = {
+  const statCard: React.CSSProperties = {
+    border: `1px solid ${colors.line}`,
+    borderRadius: 13,
+    background: "#FFFFFF",
+    padding: 13,
     display: "grid",
-    gap: 8,
+    gap: 5,
+    textAlign: "left",
+    color: colors.text,
+    cursor: "pointer",
   };
 
-  const compactWorkButtonStyle: React.CSSProperties = {
+  const workButton: React.CSSProperties = {
     width: "100%",
     border: `1px solid ${colors.line}`,
     borderRadius: 12,
     background: "#FFFFFF",
-    padding: "11px 12px",
+    padding: "10px 11px",
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
-    gap: 10,
-    textAlign: "left",
+    gap: 9,
     color: colors.text,
+    textAlign: "left",
     cursor: "pointer",
-  };
-
-  const timelineStyle: React.CSSProperties = {
-    display: "grid",
-    gap: 0,
-    maxHeight: 480,
-    overflowY: "auto",
-    paddingRight: 4,
-  };
-
-  const timelineRowStyle: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "34px minmax(0, 1fr)",
-    gap: 10,
-    borderBottom: `1px solid ${colors.line}`,
-    padding: "12px 2px",
   };
 
   function openWork(record: any) {
@@ -554,81 +146,238 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     setScreen("history");
   }
 
-  const intelligenceGridStyle: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: isMobile
-      ? "1fr"
-      : "repeat(3, minmax(0, 1fr))",
-    gap: 14,
-    alignItems: "start",
-  };
-
-  const intelligenceCardStyle: React.CSSProperties = {
-    border: `1px solid ${colors.line}`,
-    borderRadius: 14,
-    background: "#FFFFFF",
-    padding: 14,
-    display: "grid",
-    gap: 10,
-    minHeight: 180,
-  };
-
-  const healthRingStyle: React.CSSProperties = {
-    width: 94,
-    height: 94,
-    borderRadius: "50%",
-    display: "grid",
-    placeItems: "center",
-    margin: "0 auto",
-    background: `conic-gradient(${colors.gold} ${dashboardIntelligence.propertyHealth * 3.6}deg, #E8EEF4 0deg)`,
-    position: "relative",
-  };
-
-  const healthInnerStyle: React.CSSProperties = {
-    width: 72,
-    height: 72,
-    borderRadius: "50%",
-    display: "grid",
-    placeItems: "center",
-    background: "#FFFFFF",
-    border: `1px solid ${colors.line}`,
-    fontWeight: 900,
-    fontSize: 22,
-  };
-
-  function renderCompactWork(records: any[], empty: string) {
+  function renderWorkList(records: any[], empty: string) {
     if (!records.length) return <div style={noticeStyle}>{empty}</div>;
 
     return (
-      <div style={compactWorkListStyle}>
-        {records.slice(0, 6).map((record: any) => (
-          <button
-            key={record.id}
-            type="button"
-            onClick={() => openWork(record)}
-            style={compactWorkButtonStyle}
-          >
-            <span style={{ minWidth: 0 }}>
-              <strong>{record.title}</strong>
-              <span style={{ ...mutedSmallStyle, display: "block" }}>
-                {categoryLabel(record)} · {formatDate(record.date)}
-              </span>
-            </span>
-            <span style={badgeStyle(record.status)}>{record.status}</span>
-          </button>
-        ))}
-      </div>
-    );
-  }
+    <div style={dashboardStackStyle}>
+      <section
+        style={{
+          ...sectionStyle,
+          background:
+            "linear-gradient(135deg, rgba(7,27,47,1) 0%, rgba(18,61,99,1) 100%)",
+          color: "#FFFFFF",
+          border: "1px solid rgba(201,154,61,0.45)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            justifyContent: "space-between",
+            alignItems: isMobile ? "stretch" : "center",
+            gap: 14,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 13,
+                overflow: "hidden",
+                display: "grid",
+                placeItems: "center",
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(229,192,107,0.52)",
+              }}
+            >
+              {logoIndex < logoCandidates.length ? (
+                <img
+                  src={logoCandidates[logoIndex]}
+                  alt=""
+                  onError={() => setLogoIndex((index: number) => index + 1)}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    padding: 5,
+                  }}
+                />
+              ) : (
+                <span style={{ color: colors.gold2, fontWeight: 900 }}>A</span>
+              )}
+            </div>
 
-  function renderDashboardWeather() {
-    return (
+            <div>
+              <div style={{ ...eyebrowStyle, color: colors.gold2 }}>
+                Estate Command Center
+              </div>
+              <h2
+                style={{
+                  ...sectionTitleStyle,
+                  color: "#FFFFFF",
+                  marginBottom: 4,
+                }}
+              >
+                Today at 2000
+              </h2>
+              <p
+                style={{
+                  ...mutedSmallStyle,
+                  color: "rgba(255,255,255,0.78)",
+                }}
+              >
+                Daily schedule, upcoming commitments, and weather.
+              </p>
+            </div>
+          </div>
+
+          <div style={buttonRowStyle}>
+            <button
+              type="button"
+              onClick={() => setScreen("history")}
+              style={goldButtonStyle}
+            >
+              Plan My Day
+            </button>
+            <button
+              type="button"
+              onClick={() => setScreen("inbox")}
+              style={secondaryButtonStyle}
+            >
+              + Add Anything
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
+            gap: 18,
+          }}
+        >
+          <div>
+            <SectionHeader
+              brand
+              eyebrow="Today"
+              title="Today's Schedule"
+              right={
+                <button
+                  type="button"
+                  onClick={() => addCalendarItem(today)}
+                  style={goldButtonStyle}
+                >
+                  + Event
+                </button>
+              }
+            />
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {todayEvents.length ? (
+                todayEvents.map((event: any) => {
+                  const eventColor = colorForEvent(event);
+                  return (
+                    <button
+                      key={event.instanceId || event.id}
+                      type="button"
+                      onClick={() => {
+                        openCalendarItem(event);
+                        if (event.source !== "work-order") setScreen("calendar");
+                      }}
+                      style={{
+                        ...todayEventStyle,
+                        borderLeftColor: eventColor.hex,
+                      }}
+                    >
+                      <div>
+                        <strong>{event.title}</strong>
+                        <p style={mutedSmallStyle}>
+                          {event.allDay ? "All day" : event.time || "No time"} ·{" "}
+                          {categoryForEvent(event)}
+                        </p>
+                      </div>
+                      <span
+                        style={{
+                          ...eventColorPillStyle,
+                          borderColor: eventColor.hex,
+                          color: eventColor.hex,
+                        }}
+                      >
+                        {eventColor.label}
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <div style={noticeStyle}>Nothing is scheduled for today.</div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <SectionHeader
+              brand
+              eyebrow="Next"
+              title="Upcoming"
+              right={
+                <button
+                  type="button"
+                  onClick={() => setScreen("calendar")}
+                  style={secondaryButtonStyle}
+                >
+                  Full Calendar
+                </button>
+              }
+            />
+
+            <div style={upcomingListStyle}>
+              {upcomingEvents.slice(0, 7).map((event: any) => {
+                const eventColor = colorForEvent(event);
+                const dayLabel = upcomingDayLabel(event.date);
+
+                return (
+                  <button
+                    key={event.instanceId || event.id}
+                    type="button"
+                    onClick={() => {
+                      openCalendarItem(event);
+                      if (event.source !== "work-order") setScreen("calendar");
+                    }}
+                    style={upcomingItemStyle}
+                  >
+                    <span
+                      style={{
+                        ...upcomingDotStyle,
+                        background: eventColor.hex,
+                      }}
+                    />
+                    <div style={upcomingInfoStyle}>
+                      <strong>{event.title}</strong>
+                      <p style={mutedSmallStyle}>
+                        {formatDate(event.date)} ·{" "}
+                        {event.allDay ? "All day" : event.time || "No time"}
+                      </p>
+                    </div>
+                    {dayLabel ? (
+                      <span
+                        style={{
+                          ...upcomingDayPillStyle,
+                          ...(dayLabel === "Today"
+                            ? upcomingTodayPillStyle
+                            : {}),
+                        }}
+                      >
+                        {dayLabel}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section style={sectionStyle}>
         <SectionHeader
           brand
           eyebrow="Weather / Irrigation"
           title="7-Day Planning Window"
-          detail="Use weather and irrigation conditions to prioritize outdoor work."
+          detail="Weather conditions for outdoor work."
           right={
             <button
               type="button"
@@ -674,1068 +423,6 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           )}
         </div>
       </section>
-    );
-  }
-
-  function renderWorkLinks() {
-    return (
-      <section style={sectionStyle}>
-        <SectionHeader
-          eyebrow="Quick Access"
-          title="Work Links"
-          right={
-            <button
-              type="button"
-              onClick={() => setScreen("links")}
-              style={secondaryButtonStyle}
-            >
-              Open All Links
-            </button>
-          }
-        />
-
-        <div style={quickLinksGridStyle}>
-          {workLinks.map((link: any) => (
-            <a
-              key={link.id}
-              href={link.url}
-              target="_blank"
-              rel="noreferrer"
-              style={quickLinkCardStyle}
-            >
-              <span
-                style={{
-                  ...workLinkLogoStyle,
-                  background: link.logoBg,
-                  color: link.logoColor || colors.navy,
-                }}
-              >
-                <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
-                {link.logoUrl ? (
-                  <img
-                    src={link.logoUrl}
-                    alt=""
-                    onError={(event) => {
-                      event.currentTarget.style.display = "none";
-                    }}
-                    style={workLinkLogoImageStyle}
-                  />
-                ) : null}
-              </span>
-              <span style={workLinkTextStyle}>
-                <strong>{link.name}</strong>
-                <span>
-                  {link.category}
-                  {link.vendor ? ` · ${link.vendor}` : ""}
-                </span>
-              </span>
-              <span style={workLinkOpenStyle}>Open</span>
-            </a>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <div style={dashboardStackStyle}>
-      <section
-        style={{
-          ...sectionStyle,
-          background:
-            "linear-gradient(135deg, rgba(7,27,47,1) 0%, rgba(18,61,99,1) 100%)",
-          color: "#FFFFFF",
-          border: "1px solid rgba(201,154,61,0.45)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: isMobile ? "column" : "row",
-            justifyContent: "space-between",
-            alignItems: isMobile ? "stretch" : "center",
-            gap: 14,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div
-              style={{
-                width: isMobile ? 46 : 56,
-                height: isMobile ? 46 : 56,
-                borderRadius: 14,
-                overflow: "hidden",
-                display: "grid",
-                placeItems: "center",
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(229,192,107,0.52)",
-              }}
-            >
-              {logoIndex < logoCandidates.length ? (
-                <img
-                  src={logoCandidates[logoIndex]}
-                  alt=""
-                  onError={() => setLogoIndex((index: number) => index + 1)}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "contain",
-                    padding: 5,
-                  }}
-                />
-              ) : (
-                <span style={{ color: colors.gold2, fontSize: 24, fontWeight: 900 }}>
-                  A
-                </span>
-              )}
-            </div>
-
-            <div>
-              <div style={{ ...eyebrowStyle, color: colors.gold2 }}>
-                Estate Command Center
-              </div>
-              <h2
-                style={{
-                  ...sectionTitleStyle,
-                  color: "#FFFFFF",
-                  marginBottom: 4,
-                }}
-              >
-                Today at 2000
-              </h2>
-              <p
-                style={{
-                  ...mutedSmallStyle,
-                  color: "rgba(255,255,255,0.78)",
-                }}
-              >
-                {dashboardData.overdue.length} overdue ·{" "}
-                {dashboardData.dueToday.length} due today ·{" "}
-                {dashboardData.inProgress.length} in progress · workload{" "}
-                {workloadLabel}
-              </p>
-            </div>
-          </div>
-
-          <div style={buttonRowStyle}>
-            <button
-              type="button"
-              onClick={() => setScreen("history")}
-              style={goldButtonStyle}
-            >
-              Plan My Day
-            </button>
-            <button
-              type="button"
-              onClick={() => setScreen("inbox")}
-              style={secondaryButtonStyle}
-            >
-              + Add Anything
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <SectionHeader
-          brand
-          eyebrow="Daily Command"
-          title="What Needs Attention"
-          detail="The most important workload signals in one place."
-        />
-
-        <div style={commandGridStyle}>
-          <button
-            type="button"
-            onClick={() => setScreen("history")}
-            style={{
-              ...commandCardStyle,
-              borderColor:
-                dashboardData.overdue.length > 0 ? "#F1B8B8" : colors.line,
-              background:
-                dashboardData.overdue.length > 0 ? "#FFF6F6" : "#FFFFFF",
-            }}
-          >
-            <span style={{ fontSize: 20 }}>🔴</span>
-            <span style={commandNumberStyle}>
-              {dashboardData.overdue.length}
-            </span>
-            <strong>Overdue</strong>
-            <span style={mutedSmallStyle}>Needs attention first</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setScreen("history")}
-            style={{
-              ...commandCardStyle,
-              borderColor:
-                dashboardData.dueToday.length > 0 ? "#F4D99A" : colors.line,
-              background:
-                dashboardData.dueToday.length > 0 ? "#FFFBF0" : "#FFFFFF",
-            }}
-          >
-            <span style={{ fontSize: 20 }}>🟡</span>
-            <span style={commandNumberStyle}>
-              {dashboardData.dueToday.length}
-            </span>
-            <strong>Due Today</strong>
-            <span style={mutedSmallStyle}>Scheduled daily work</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setScreen("history")}
-            style={{
-              ...commandCardStyle,
-              borderColor:
-                dashboardData.inProgress.length > 0 ? "#B9D4F5" : colors.line,
-              background:
-                dashboardData.inProgress.length > 0 ? "#F5F9FF" : "#FFFFFF",
-            }}
-          >
-            <span style={{ fontSize: 20 }}>🔵</span>
-            <span style={commandNumberStyle}>
-              {dashboardData.inProgress.length}
-            </span>
-            <strong>In Progress</strong>
-            <span style={mutedSmallStyle}>Work already started</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setScreen("history")}
-            style={{
-              ...commandCardStyle,
-              borderColor:
-                dashboardData.recurring.length > 0 ? "#BFE4D0" : colors.line,
-              background:
-                dashboardData.recurring.length > 0 ? "#F4FBF7" : "#FFFFFF",
-            }}
-          >
-            <span style={{ fontSize: 20 }}>🔁</span>
-            <span style={commandNumberStyle}>
-              {dashboardData.recurring.length}
-            </span>
-            <strong>Maintenance</strong>
-            <span style={mutedSmallStyle}>Open recurring service</span>
-          </button>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <SectionHeader
-          brand
-          eyebrow="Atlas Intelligence"
-          title="Property Health & Recommended Actions"
-          detail="A live operational summary based on work status, calendar activity, and weather."
-        />
-
-        <div style={intelligenceGridStyle}>
-          <div style={intelligenceCardStyle}>
-            <div style={eyebrowStyle}>Property Health</div>
-            <div style={healthRingStyle}>
-              <div style={healthInnerStyle}>
-                {dashboardIntelligence.propertyHealth}
-              </div>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <strong>
-                {dashboardIntelligence.propertyHealth >= 85
-                  ? "Strong"
-                  : dashboardIntelligence.propertyHealth >= 65
-                    ? "Needs Attention"
-                    : "High Workload Risk"}
-              </strong>
-              <p style={mutedSmallStyle}>
-                Based on overdue, high-priority, and active work.
-              </p>
-            </div>
-          </div>
-
-          <div style={intelligenceCardStyle}>
-            <div style={eyebrowStyle}>Critical Items</div>
-            {dashboardIntelligence.criticalItems.length ? (
-              <div style={{ display: "grid", gap: 8 }}>
-                {dashboardIntelligence.criticalItems.map((record: any) => (
-                  <button
-                    key={record.id}
-                    type="button"
-                    onClick={() => openWork(record)}
-                    style={{
-                      ...compactWorkButtonStyle,
-                      padding: "9px 10px",
-                    }}
-                  >
-                    <span style={{ minWidth: 0 }}>
-                      <strong>{record.title}</strong>
-                      <span
-                        style={{ ...mutedSmallStyle, display: "block" }}
-                      >
-                        {categoryLabel(record)} · {formatDate(record.date)}
-                      </span>
-                    </span>
-                    <span style={badgeStyle(record.priority || record.status)}>
-                      {record.priority || record.status}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div style={noticeStyle}>No critical work detected.</div>
-            )}
-          </div>
-
-          <div style={intelligenceCardStyle}>
-            <div style={eyebrowStyle}>Recommended Next</div>
-            <div style={{ display: "grid", gap: 8 }}>
-              {dashboardIntelligence.recommendations.map(
-                (item: any, index: number) => (
-                  <button
-                    key={`${item.title}-${index}`}
-                    type="button"
-                    onClick={() => {
-                      if (item.record) {
-                        openWork(item.record);
-                        return;
-                      }
-                      if (item.action) setScreen(item.action);
-                    }}
-                    style={{
-                      ...compactWorkButtonStyle,
-                      gridTemplateColumns: "30px minmax(0, 1fr)",
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 9,
-                        display: "grid",
-                        placeItems: "center",
-                        background: colors.panel,
-                        border: `1px solid ${colors.line}`,
-                        fontWeight: 900,
-                      }}
-                    >
-                      {index + 1}
-                    </span>
-                    <span style={{ minWidth: 0 }}>
-                      <strong>{item.title}</strong>
-                      <span
-                        style={{ ...mutedSmallStyle, display: "block" }}
-                      >
-                        {item.detail}
-                      </span>
-                    </span>
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile
-            ? "1fr"
-            : "repeat(2, minmax(0, 1fr))",
-          gap: 16,
-          alignItems: "start",
-        }}
-      >
-        <section style={sectionStyle}>
-          <SectionHeader
-            eyebrow="Priority"
-            title="Overdue & Today"
-            right={
-              <button
-                type="button"
-                onClick={() => setScreen("history")}
-                style={secondaryButtonStyle}
-              >
-                Open My Work
-              </button>
-            }
-          />
-          {renderCompactWork(
-            [...dashboardData.overdue, ...dashboardData.dueToday],
-            "No overdue or due-today work.",
-          )}
-        </section>
-
-        <section style={sectionStyle}>
-          <SectionHeader
-            eyebrow="Moving"
-            title="In Progress"
-            right={
-              <button
-                type="button"
-                onClick={() => setScreen("history")}
-                style={secondaryButtonStyle}
-              >
-                View All
-              </button>
-            }
-          />
-          {renderCompactWork(
-            dashboardData.inProgress,
-            "No work is currently marked In Progress.",
-          )}
-        </section>
-      </div>
-
-      {renderDashboardWeather()}
-
-      <section style={sectionStyle}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
-            alignItems: "stretch",
-          }}
-        >
-          <div
-            style={{
-              minWidth: 0,
-              paddingRight: isMobile ? 0 : 18,
-              paddingBottom: isMobile ? 18 : 0,
-            }}
-          >
-            <SectionHeader
-              brand
-              eyebrow="Today"
-              title="Today's Schedule"
-              right={
-                <button
-                  type="button"
-                  onClick={() => addCalendarItem(today)}
-                  style={goldButtonStyle}
-                >
-                  + Event
-                </button>
-              }
-            />
-
-            <div style={listStyle}>
-              {todayEvents.length ? (
-                todayEvents.map((event: any) => {
-                  const eventColor = colorForEvent(event);
-                  return (
-                    <button
-                      key={event.instanceId || event.id}
-                      type="button"
-                      onClick={() => {
-                        openCalendarItem(event);
-                        if (event.source !== "work-order") {
-                          setScreen("calendar");
-                        }
-                      }}
-                      style={{
-                        ...todayEventStyle,
-                        borderLeftColor: eventColor.hex,
-                      }}
-                    >
-                      <div>
-                        <strong>{event.title}</strong>
-                        <p style={mutedSmallStyle}>
-                          {event.allDay
-                            ? "All day"
-                            : event.time || "No time"}{" "}
-                          · {categoryForEvent(event)}
-                        </p>
-                      </div>
-                      <span
-                        style={{
-                          ...eventColorPillStyle,
-                          borderColor: eventColor.hex,
-                          color: eventColor.hex,
-                        }}
-                      >
-                        {eventColor.label}
-                      </span>
-                    </button>
-                  );
-                })
-              ) : (
-                <div style={noticeStyle}>Nothing is scheduled for today.</div>
-              )}
-            </div>
-          </div>
-
-          <div
-            style={{
-              minWidth: 0,
-              borderLeft: isMobile
-                ? "none"
-                : `1px solid ${colors.line}`,
-              borderTop: isMobile
-                ? `1px solid ${colors.line}`
-                : "none",
-              paddingLeft: isMobile ? 0 : 18,
-              paddingTop: isMobile ? 18 : 0,
-            }}
-          >
-            <SectionHeader
-              brand
-              eyebrow="Next"
-              title="Upcoming"
-              right={
-                <button
-                  type="button"
-                  onClick={() => setScreen("calendar")}
-                  style={secondaryButtonStyle}
-                >
-                  Full Calendar
-                </button>
-              }
-            />
-
-            <div style={upcomingListStyle}>
-              {upcomingEvents.slice(0, 7).map((event: any) => {
-                const eventColor = colorForEvent(event);
-                const dayLabel = upcomingDayLabel(event.date);
-
-                return (
-                  <button
-                    key={event.instanceId || event.id}
-                    type="button"
-                    onClick={() => {
-                      openCalendarItem(event);
-                      if (event.source !== "work-order") {
-                        setScreen("calendar");
-                      }
-                    }}
-                    style={upcomingItemStyle}
-                  >
-                    <span
-                      style={{
-                        ...upcomingDotStyle,
-                        background: eventColor.hex,
-                      }}
-                    />
-                    <div style={upcomingInfoStyle}>
-                      <strong>{event.title}</strong>
-                      <p style={mutedSmallStyle}>
-                        {formatDate(event.date)} ·{" "}
-                        {event.allDay
-                          ? "All day"
-                          : event.time || "No time"}
-                      </p>
-                    </div>
-                    {dayLabel ? (
-                      <span
-                        style={{
-                          ...upcomingDayPillStyle,
-                          ...(dayLabel === "Today"
-                            ? upcomingTodayPillStyle
-                            : {}),
-                        }}
-                      >
-                        {dayLabel}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile
-            ? "1fr"
-            : "repeat(2, minmax(0, 1fr))",
-          gap: 16,
-          alignItems: "start",
-        }}
-      >
-        <section style={sectionStyle}>
-          <SectionHeader
-            eyebrow="Appointments"
-            title="Vendor Visits"
-            right={
-              <button
-                type="button"
-                onClick={() => setScreen("calendar")}
-                style={secondaryButtonStyle}
-              >
-                Open Calendar
-              </button>
-            }
-          />
-
-          {dashboardIntelligence.vendorEvents.length ? (
-            <div style={compactWorkListStyle}>
-              {dashboardIntelligence.vendorEvents.map((event: any) => (
-                <button
-                  key={event.instanceId || event.id}
-                  type="button"
-                  onClick={() => {
-                    openCalendarItem(event);
-                    setScreen("calendar");
-                  }}
-                  style={compactWorkButtonStyle}
-                >
-                  <span style={{ minWidth: 0 }}>
-                    <strong>{event.title}</strong>
-                    <span
-                      style={{ ...mutedSmallStyle, display: "block" }}
-                    >
-                      {formatDate(event.date)} · {event.time || "No time"}
-                    </span>
-                  </span>
-                  <span style={badgeStyle("Scheduled")}>Scheduled</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div style={noticeStyle}>No vendor visits detected.</div>
-          )}
-        </section>
-
-        <section style={sectionStyle}>
-          <SectionHeader
-            eyebrow="Weather Impact"
-            title="Work Planning Alerts"
-            right={
-              <button
-                type="button"
-                onClick={() => setScreen("weather")}
-                style={secondaryButtonStyle}
-              >
-                Open Weather
-              </button>
-            }
-          />
-
-          <div style={{ display: "grid", gap: 10 }}>
-            {dashboardIntelligence.weatherImpacts.length ? (
-              dashboardIntelligence.weatherImpacts.map(
-                (message: string, index: number) => (
-                  <div
-                    key={`${message}-${index}`}
-                    style={{
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 12,
-                      background: colors.panel,
-                      padding: 12,
-                      display: "grid",
-                      gridTemplateColumns: "28px minmax(0, 1fr)",
-                      gap: 9,
-                      alignItems: "start",
-                    }}
-                  >
-                    <span>{index === 0 ? "🌤️" : "📅"}</span>
-                    <span>
-                      <strong>{index === 0 ? "Today" : "Next Window"}</strong>
-                      <span
-                        style={{ ...mutedSmallStyle, display: "block" }}
-                      >
-                        {message}
-                      </span>
-                    </span>
-                  </div>
-                ),
-              )
-            ) : (
-              <div style={noticeStyle}>No weather alerts available.</div>
-            )}
-          </div>
-        </section>
-      </div>
-
-      <section style={sectionStyle}>
-        <SectionHeader
-          brand
-          eyebrow="Maintenance Performance"
-          title="Recurring Maintenance Progress"
-          detail="A quick view of completed versus open recurring service."
-          right={
-            <button
-              type="button"
-              onClick={() => setScreen("history")}
-              style={secondaryButtonStyle}
-            >
-              Open Maintenance
-            </button>
-          }
-        />
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "180px minmax(0, 1fr)",
-            gap: 16,
-            alignItems: "center",
-          }}
-        >
-          <div
-            style={{
-              border: `1px solid ${colors.line}`,
-              borderRadius: 14,
-              padding: 16,
-              textAlign: "center",
-              background: colors.panel,
-            }}
-          >
-            <div style={{ fontSize: 34, fontWeight: 900 }}>
-              {dashboardPolish.recurringPercent}%
-            </div>
-            <div style={mutedSmallStyle}>Recurring work completed</div>
-          </div>
-
-          <div style={{ display: "grid", gap: 10 }}>
-            <div style={progressTrackStyle}>
-              <div
-                style={{
-                  ...progressFillStyle,
-                  width: `${dashboardPolish.recurringPercent}%`,
-                }}
-              />
-            </div>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                justifyContent: "space-between",
-                gap: 8,
-              }}
-            >
-              <span style={mutedSmallStyle}>
-                {serviceRecords.filter(
-                  (record: any) =>
-                    record.status === "Completed" &&
-                    (record.recurring ||
-                      workType(record) === "Preventive Maintenance"),
-                ).length} completed
-              </span>
-              <span style={mutedSmallStyle}>
-                {dashboardData.recurring.length} still open
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <SectionHeader
-          eyebrow="Next Due"
-          title="Upcoming Service Countdown"
-          detail="The closest due dates across active work."
-          right={
-            <button
-              type="button"
-              onClick={() => setScreen("history")}
-              style={secondaryButtonStyle}
-            >
-              View All Work
-            </button>
-          }
-        />
-
-        {dashboardPolish.dueCountdowns.length ? (
-          <div style={countdownGridStyle}>
-            {dashboardPolish.dueCountdowns.map((item: any) => (
-              <button
-                key={item.record.id}
-                type="button"
-                onClick={() => openWork(item.record)}
-                style={{
-                  ...countdownCardStyle,
-                  borderColor:
-                    item.days < 0
-                      ? "#F1B8B8"
-                      : item.days <= 7
-                        ? "#F4D99A"
-                        : colors.line,
-                  background:
-                    item.days < 0
-                      ? "#FFF6F6"
-                      : item.days <= 7
-                        ? "#FFFBF0"
-                        : "#FFFFFF",
-                }}
-              >
-                <strong>{item.record.title}</strong>
-                <span style={mutedSmallStyle}>
-                  {categoryLabel(item.record)}
-                </span>
-                <span
-                  style={{
-                    fontWeight: 900,
-                    color:
-                      item.days < 0
-                        ? colors.red
-                        : item.days <= 7
-                          ? "#B54708"
-                          : colors.green,
-                  }}
-                >
-                  {item.days < 0
-                    ? `${Math.abs(item.days)} days overdue`
-                    : item.days === 0
-                      ? "Due today"
-                      : item.days === 1
-                        ? "Due tomorrow"
-                        : `Due in ${item.days} days`}
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div style={noticeStyle}>No active due dates available.</div>
-        )}
-      </section>
-
-      {dashboardPolish.recentPhotos.length ? (
-        <section style={sectionStyle}>
-          <SectionHeader
-            eyebrow="Visual History"
-            title="Recent Work Photos"
-            detail="Quick access to the latest photos attached to work records."
-            right={
-              <button
-                type="button"
-                onClick={() => setScreen("history")}
-                style={secondaryButtonStyle}
-              >
-                Open Work Orders
-              </button>
-            }
-          />
-
-          <div style={photoGridStyle}>
-            {dashboardPolish.recentPhotos.map((photo: any) => (
-              <button
-                key={photo.id}
-                type="button"
-                onClick={() => openWork(photo.record)}
-                style={{
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 13,
-                  background: "#FFFFFF",
-                  padding: 0,
-                  overflow: "hidden",
-                  color: colors.text,
-                  textAlign: "left",
-                  cursor: "pointer",
-                }}
-              >
-                <img
-                  src={photo.src}
-                  alt=""
-                  style={{
-                    width: "100%",
-                    aspectRatio: "16 / 9",
-                    display: "block",
-                    objectFit: "cover",
-                    background: colors.panel,
-                  }}
-                />
-                <span
-                  style={{
-                    display: "block",
-                    padding: "10px 11px",
-                    fontWeight: 800,
-                  }}
-                >
-                  {photo.title}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section style={sectionStyle}>
-        <SectionHeader
-          brand
-          eyebrow="Permanent Operations History"
-          title="Estate Timeline"
-          detail="Completed work, service history, dated notes, and calendar activity in one chronological feed."
-          right={
-            <button
-              type="button"
-              onClick={() => setScreen("history")}
-              style={secondaryButtonStyle}
-            >
-              Open Work History
-            </button>
-          }
-        />
-
-        {timelineEntries.length ? (
-          <div style={timelineStyle}>
-            {timelineEntries.map((entry: any) => (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => {
-                  if (entry.recordId) {
-                    setSelectedServiceId(entry.recordId);
-                    setScreen("history");
-                    return;
-                  }
-
-                  if (entry.event) {
-                    openCalendarItem(entry.event);
-                    setScreen("calendar");
-                  }
-                }}
-                style={{
-                  ...timelineRowStyle,
-                  width: "100%",
-                  borderTop: "none",
-                  borderLeft: "none",
-                  borderRight: "none",
-                  background: "transparent",
-                  color: colors.text,
-                  textAlign: "left",
-                  cursor: "pointer",
-                }}
-              >
-                <span
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 10,
-                    display: "grid",
-                    placeItems: "center",
-                    background: colors.panel,
-                    border: `1px solid ${colors.line}`,
-                  }}
-                >
-                  {entry.icon}
-                </span>
-
-                <span style={{ minWidth: 0 }}>
-                  <span
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      justifyContent: "space-between",
-                      gap: 8,
-                    }}
-                  >
-                    <strong>{entry.title}</strong>
-                    <small style={mutedSmallStyle}>
-                      {timelineDate(entry.date)}
-                    </small>
-                  </span>
-                  <span style={{ ...mutedSmallStyle, display: "block" }}>
-                    {entry.kind} · {entry.description}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div style={noticeStyle}>
-            Complete work, add dated notes, or schedule events to build the Estate Timeline.
-          </div>
-        )}
-      </section>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile
-            ? "1fr"
-            : "minmax(0, 1.35fr) minmax(300px, 0.65fr)",
-          gap: 16,
-          alignItems: "start",
-        }}
-      >
-        <section style={sectionStyle}>
-          <SectionHeader
-            brand
-            eyebrow="Calendar"
-            title="Plan the Week"
-            detail="Month, week, holidays, weather, and event editing."
-            right={
-              <button
-                type="button"
-                onClick={() => setScreen("calendar")}
-                style={goldButtonStyle}
-              >
-                Open Calendar
-              </button>
-            }
-          />
-
-          <div style={statGridStyle}>
-            <StatCard
-              label="Today"
-              value={todayEvents.length}
-              onClick={() => setScreen("calendar")}
-            />
-            <StatCard
-              label="This Week"
-              value={dashboardData.dueThisWeek.length}
-              onClick={() => setScreen("history")}
-            />
-            <StatCard
-              label="High Priority"
-              value={dashboardData.highPriority.length}
-              onClick={() => setScreen("history")}
-            />
-            <StatCard
-              label="Projects"
-              value={dashboardData.projects.length}
-              onClick={() => setScreen("history")}
-            />
-          </div>
-        </section>
-
-        {renderCalendarIntakeCard()}
-      </div>
-
-      <section style={sectionStyle}>
-        <SectionHeader
-          eyebrow="Weekly Operations"
-          title="Operations Planner"
-          detail="Build the week around commitments, priorities, locations, and daily buffer."
-          right={
-            <button
-              type="button"
-              onClick={() => setScreen("planner")}
-              style={goldButtonStyle}
-            >
-              Open Planner
-            </button>
-          }
-        />
-
-        <div style={statGridStyle}>
-          <StatCard
-            label="Tasks"
-            value={workPlanTasks.length}
-            onClick={() => setScreen("planner")}
-          />
-          <StatCard
-            label="Locked"
-            value={workPlanTasks.filter((task: any) => task.locked).length}
-            onClick={() => setScreen("planner")}
-          />
-          <StatCard
-            label="Weekly"
-            value={workPlanTasks.filter((task: any) => task.recurring).length}
-            onClick={() => setScreen("planner")}
-          />
-          <StatCard
-            label="Target"
-            value={`${workPlanTargetHours}h/day`}
-            onClick={() => setScreen("planner")}
-          />
-        </div>
-      </section>
-
-      {renderWorkLinks()}
     </div>
   );
 }
