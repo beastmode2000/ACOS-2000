@@ -14046,6 +14046,85 @@ export default function AtlasPage() {
       map: "Map Labels",
     };
 
+    const responsiveQrCardStyle: React.CSSProperties = isMobile
+      ? {
+          ...qrCardStyle,
+          width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
+          gridTemplateColumns: "108px minmax(0, 1fr)",
+          gap: 10,
+          padding: 10,
+          border: "1px solid #E7EDF3",
+          borderRadius: 16,
+          boxShadow: "none",
+          overflow: "hidden",
+        }
+      : qrCardStyle;
+
+    const responsiveQrImageShellStyle: React.CSSProperties = isMobile
+      ? {
+          ...qrImageShellStyle,
+          width: 108,
+          height: 108,
+          minWidth: 108,
+          border: "1px solid #EDF2F7",
+          borderRadius: 14,
+        }
+      : qrImageShellStyle;
+
+    const responsiveQrImageStyle: React.CSSProperties = isMobile
+      ? { ...qrImageStyle, width: 98, height: 98 }
+      : qrImageStyle;
+
+    const responsiveQrBodyStyle: React.CSSProperties = {
+      ...qrCardBodyStyle,
+      minWidth: 0,
+      maxWidth: "100%",
+      overflow: "hidden",
+    };
+
+    const qrActionRowStyle: React.CSSProperties = isMobile
+      ? {
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "nowrap",
+          gap: 16,
+          minWidth: 0,
+          marginTop: 2,
+        }
+      : buttonRowStyle;
+
+    const ownerQrActionRowStyle: React.CSSProperties = isMobile
+      ? { ...qrActionRowStyle, flexWrap: "wrap", rowGap: 8 }
+      : buttonRowStyle;
+
+    const qrTextActionStyle: React.CSSProperties = isMobile
+      ? {
+          appearance: "none",
+          border: 0,
+          outline: 0,
+          background: "transparent",
+          color: colors.navy,
+          padding: 0,
+          margin: 0,
+          minWidth: "max-content",
+          boxShadow: "none",
+          fontSize: 13,
+          lineHeight: 1.2,
+          fontWeight: 900,
+          textDecoration: "none",
+          whiteSpace: "nowrap",
+          cursor: "pointer",
+        }
+      : secondaryButtonStyle;
+
+    const qrWrappedTextStyle: React.CSSProperties = {
+      overflowWrap: "anywhere",
+      wordBreak: "normal",
+    };
+
     return (
       <section style={sectionStyle}>
         <SectionHeader
@@ -14075,9 +14154,9 @@ export default function AtlasPage() {
         {requestPortalToken && typeof window !== "undefined" ? (
           <article
             className="atlas-qr-print-card"
-            style={{ ...qrCardStyle, marginBottom: 18 }}
+            style={{ ...responsiveQrCardStyle, marginBottom: 18 }}
           >
-            <div style={qrImageShellStyle}>
+            <div style={responsiveQrImageShellStyle}>
               <img
                 src={qrImageUrl(
                   `${window.location.origin}/request?token=${encodeURIComponent(
@@ -14086,11 +14165,11 @@ export default function AtlasPage() {
                   320,
                 )}
                 alt="Owner Request QR code"
-                style={qrImageStyle}
+                style={responsiveQrImageStyle}
               />
             </div>
 
-            <div style={qrCardBodyStyle}>
+            <div style={responsiveQrBodyStyle}>
               <div>
                 <div style={eyebrowStyle}>Owner Request</div>
                 <h3 style={qrCardTitleStyle}>Request Service</h3>
@@ -14099,14 +14178,14 @@ export default function AtlasPage() {
                 </p>
               </div>
 
-              <div className="atlas-no-print" style={buttonRowStyle}>
+              <div className="atlas-no-print" style={ownerQrActionRowStyle}>
                 <a
                   href={`${window.location.origin}/request?token=${encodeURIComponent(
                     requestPortalToken,
                   )}`}
                   target="_blank"
                   rel="noreferrer"
-                  style={secondaryButtonStyle}
+                  style={qrTextActionStyle}
                 >
                   Open
                 </a>
@@ -14120,7 +14199,7 @@ export default function AtlasPage() {
                     );
                     setRequestMessage("Owner request link copied.");
                   }}
-                  style={secondaryButtonStyle}
+                  style={qrTextActionStyle}
                 >
                   Copy Link
                 </button>
@@ -14133,13 +14212,21 @@ export default function AtlasPage() {
                       )}`,
                     )
                   }
-                  style={secondaryButtonStyle}
+                  style={qrTextActionStyle}
                 >
                   Copy QR Image
                 </button>
               </div>
 
-              <small style={qrUrlStyle}>
+              <small
+                style={{
+                  ...qrUrlStyle,
+                  display: "block",
+                  maxWidth: "100%",
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
                 {`${window.location.origin}/request?token=${encodeURIComponent(
                   requestPortalToken,
                 )}`}
@@ -14190,7 +14277,7 @@ export default function AtlasPage() {
           </p>
         </div>
 
-        <div style={qrGridStyle}>
+        <div style={{ ...qrGridStyle, minWidth: 0, width: "100%" }}>
           {qrRecords.map((record) => {
             const targetUrl = recordQrUrl(record.kind, record.id);
 
@@ -14198,35 +14285,47 @@ export default function AtlasPage() {
               <article
                 key={`${record.kind}-${record.id}`}
                 className="atlas-qr-print-card"
-                style={qrCardStyle}
+                style={responsiveQrCardStyle}
               >
-                <div style={qrImageShellStyle}>
+                <div style={responsiveQrImageShellStyle}>
                   <img
                     src={qrImageUrl(targetUrl)}
                     alt={`QR code for ${record.title}`}
-                    style={qrImageStyle}
+                    style={responsiveQrImageStyle}
                   />
                 </div>
 
-                <div style={qrCardBodyStyle}>
-                  <div>
+                <div style={responsiveQrBodyStyle}>
+                  <div style={{ minWidth: 0 }}>
                     <div style={eyebrowStyle}>
                       {qrKindLabel[record.kind].slice(0, -1)}
                     </div>
-                    <h3 style={qrCardTitleStyle}>{record.title}</h3>
-                    <p style={mutedSmallStyle}>{record.subtitle}</p>
+                    <h3 style={{ ...qrCardTitleStyle, ...qrWrappedTextStyle }}>
+                      {record.title}
+                    </h3>
+                    <p
+                      style={{
+                        ...mutedSmallStyle,
+                        margin: 0,
+                        ...qrWrappedTextStyle,
+                      }}
+                    >
+                      {record.subtitle}
+                    </p>
                   </div>
 
                   {record.detail ? (
-                    <p style={qrDetailStyle}>{record.detail}</p>
+                    <p style={{ ...qrDetailStyle, ...qrWrappedTextStyle }}>
+                      {record.detail}
+                    </p>
                   ) : null}
 
-                  <div className="atlas-no-print" style={buttonRowStyle}>
+                  <div className="atlas-no-print" style={qrActionRowStyle}>
                     <a
                       href={targetUrl}
                       target="_blank"
                       rel="noreferrer"
-                      style={secondaryButtonStyle}
+                      style={qrTextActionStyle}
                     >
                       Open
                     </a>
@@ -14235,13 +14334,23 @@ export default function AtlasPage() {
                       onClick={() => {
                         void navigator.clipboard?.writeText(targetUrl);
                       }}
-                      style={secondaryButtonStyle}
+                      style={qrTextActionStyle}
                     >
                       Copy Link
                     </button>
                   </div>
 
-                  <small style={qrUrlStyle}>{targetUrl}</small>
+                  <small
+                    style={{
+                      ...qrUrlStyle,
+                      display: "block",
+                      maxWidth: "100%",
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {targetUrl}
+                  </small>
                 </div>
               </article>
             );
