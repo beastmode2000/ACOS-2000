@@ -141,15 +141,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     cursor: "pointer",
   };
 
-  function openWork(record: any) {
-    setSelectedServiceId(record.id);
-    setScreen("history");
-  }
-
-  function renderWorkList(records: any[], empty: string) {
-    if (!records.length) return <div style={noticeStyle}>{empty}</div>;
-
-    return (
+  return (
     <div style={dashboardStackStyle}>
       <section
         style={{
