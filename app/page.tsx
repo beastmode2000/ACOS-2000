@@ -7073,12 +7073,45 @@ export default function AtlasPage() {
     });
 
     setCalendarItems((current) => {
-      const exists = current.some((item) => item.id === record.id);
-      if (exists)
-        return byTitle(
-          current.map((item) => (item.id === record.id ? record : item)),
-        );
-      return byTitle([record, ...current]);
+      const original = current.find((item) => item.id === record.id);
+      const exists = Boolean(original);
+
+      if (!exists) return byTitle([record, ...current]);
+
+      const originalRepeats =
+        original?.repeat && original.repeat !== "None";
+      const titleChanged =
+        String(original?.title || "") !== String(record.title || "");
+
+      return byTitle(
+        current.map((item) => {
+          if (item.id === record.id) return record;
+
+          if (!originalRepeats || !titleChanged) return item;
+
+          const sameExplicitSeries =
+            Boolean((original as any)?.seriesId) &&
+            (item as any)?.seriesId === (original as any)?.seriesId;
+
+          const sameLegacyRecurringSeries =
+            item.source === "manual" &&
+            item.repeat === original.repeat &&
+            item.title === original.title &&
+            String(item.linkedType || "") ===
+              String(original.linkedType || "") &&
+            String(item.linkedId || "") ===
+              String(original.linkedId || "");
+
+          if (!sameExplicitSeries && !sameLegacyRecurringSeries) {
+            return item;
+          }
+
+          return {
+            ...item,
+            title: record.title,
+          };
+        }),
+      );
     });
 
     const labelExists = calendarColors.some(
