@@ -4,6 +4,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasDashboard from "./components/AtlasDashboard";
 import AtlasWorkOrders from "./components/AtlasWorkOrders";
+import AtlasInsightsTimeline from "./components/AtlasInsightsTimeline";
 
 import type {
   Screen,
@@ -54,6 +55,8 @@ import type {
   SearchResult,
   ManualCandidate,
 } from "./lib/atlas-types";
+
+type AtlasScreen = Screen | "timeline" | "insights";
 
 type WorkItemType =
   | "Quick Task"
@@ -136,8 +139,10 @@ const colors = {
   green: "#087443",
 };
 
-const screens: { id: Screen; label: string }[] = [
+const screens: { id: AtlasScreen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "timeline", label: "Timeline" },
+  { id: "insights", label: "Insights" },
   { id: "inbox", label: "Inbox" },
   { id: "requests", label: "Requests" },
   { id: "calendar", label: "Calendar" },
@@ -3289,7 +3294,7 @@ function ListDrawerLayout(props: {
 
 export default function AtlasPage() {
   const [ready, setReady] = useState(false);
-  const [screen, setScreenState] = useState<Screen>("dashboard");
+  const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -3477,11 +3482,11 @@ export default function AtlasPage() {
   const qrScannerElementId = "atlas-qr-reader";
   const atlasScreenHistoryReadyRef = useRef(false);
 
-  function isAtlasScreen(value: string | null): value is Screen {
+  function isAtlasScreen(value: string | null): value is AtlasScreen {
     return Boolean(value && screens.some((item) => item.id === value));
   }
 
-  function screenFromUrl(): Screen | null {
+  function screenFromUrl(): AtlasScreen | null {
     if (typeof window === "undefined") return null;
     const hash = decodeURIComponent(
       window.location.hash.replace(/^#\/?/, ""),
@@ -3494,14 +3499,14 @@ export default function AtlasPage() {
     return null;
   }
 
-  function urlForScreen(next: Screen) {
+  function urlForScreen(next: AtlasScreen) {
     if (typeof window === "undefined") return "";
     const params = new URLSearchParams(window.location.search);
     const query = params.toString();
     return `${window.location.pathname}${query ? `?${query}` : ""}#${next}`;
   }
 
-  function setScreen(next: Screen, options?: { replace?: boolean }) {
+  function setScreen(next: AtlasScreen, options?: { replace?: boolean }) {
     setScreenState(next);
 
     if (typeof window === "undefined") return;
@@ -9295,6 +9300,34 @@ export default function AtlasPage() {
     );
   }
 
+  function renderTimelineOrInsights(
+    mode: "timeline" | "insights",
+  ) {
+    return (
+      <AtlasInsightsTimeline
+        mode={mode}
+        serviceRecords={serviceRecords}
+        todayEvents={todayEvents}
+        upcomingEvents={upcomingEvents}
+        weatherDays={weatherDays}
+        colors={colors}
+        sectionStyle={sectionStyle}
+        noticeStyle={noticeStyle}
+        mutedSmallStyle={mutedSmallStyle}
+        secondaryButtonStyle={secondaryButtonStyle}
+        goldButtonStyle={goldButtonStyle}
+        badgeStyle={badgeStyle}
+        formatDate={formatDate}
+        assetName={assetName}
+        vendorName={vendorName}
+        locationName={locationName}
+        setScreen={setScreen}
+        setSelectedServiceId={setSelectedServiceId}
+        openCalendarItem={openCalendarItem}
+      />
+    );
+  }
+
   function renderMap() {
     const selectedMapVendors = vendorRecords.filter((vendor) =>
       (selectedMapLabel.vendorIds || []).includes(vendor.id),
@@ -14643,6 +14676,8 @@ export default function AtlasPage() {
     let content: React.ReactNode;
 
     if (screen === "dashboard") content = renderDashboard();
+    else if (screen === "timeline") content = renderTimelineOrInsights("timeline");
+    else if (screen === "insights") content = renderTimelineOrInsights("insights");
     else if (screen === "planner") content = renderWorkPlanner();
     else if (screen === "map") content = renderMap();
     else if (screen === "locations") content = renderLocations();
