@@ -3118,6 +3118,42 @@ function ListDrawerLayout(props: {
   drawerResetKey?: string | number;
 }) {
   const drawerScrollRef = useRef<HTMLDivElement>(null);
+  const firstDrawerKeyRef = useRef(true);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!props.isMobile) {
+      setMobileDrawerOpen(false);
+      firstDrawerKeyRef.current = true;
+      return;
+    }
+
+    if (firstDrawerKeyRef.current) {
+      firstDrawerKeyRef.current = false;
+      return;
+    }
+
+    if (props.drawerResetKey !== undefined && props.drawerResetKey !== null) {
+      setMobileDrawerOpen(true);
+    }
+  }, [props.drawerResetKey, props.isMobile]);
+
+  useEffect(() => {
+    if (!mobileDrawerOpen || !props.isMobile) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileDrawerOpen(false);
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobileDrawerOpen, props.isMobile]);
 
   useLayoutEffect(() => {
     const resetDrawerScroll = () => {
@@ -3277,17 +3313,89 @@ function ListDrawerLayout(props: {
         >
           {props.list}
         </div>
-        <div
-          ref={drawerScrollRef}
-          style={
-            props.drawerStyleOverride
-              ? { ...desktopDrawerStyle, ...props.drawerStyleOverride }
-              : desktopDrawerStyle
-          }
-        >
-          {props.drawer}
-        </div>
+        {!props.isMobile ? (
+          <div
+            ref={drawerScrollRef}
+            style={
+              props.drawerStyleOverride
+                ? { ...desktopDrawerStyle, ...props.drawerStyleOverride }
+                : desktopDrawerStyle
+            }
+          >
+            {props.drawer}
+          </div>
+        ) : null}
       </div>
+
+      {props.isMobile && mobileDrawerOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={props.title ? `${props.title} information` : "Record information"}
+          onClick={() => setMobileDrawerOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2000,
+            background: "rgba(7, 27, 47, 0.72)",
+            backdropFilter: "blur(3px)",
+            display: "grid",
+            alignItems: "end",
+            padding: "max(12px, env(safe-area-inset-top)) 10px max(12px, env(safe-area-inset-bottom))",
+          }}
+        >
+          <div
+            ref={drawerScrollRef}
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              ...drawerStyle,
+              position: "relative",
+              width: "100%",
+              maxWidth: 720,
+              maxHeight: "calc(100dvh - 24px)",
+              margin: "0 auto",
+              overflowY: "auto",
+              overflowX: "hidden",
+              padding: "58px 16px 24px",
+              borderRadius: 22,
+              border: `1px solid ${colors.line}`,
+              background: colors.card,
+              boxShadow: "0 24px 70px rgba(0,0,0,0.34)",
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
+            <button
+              type="button"
+              aria-label="Close information"
+              onClick={() => setMobileDrawerOpen(false)}
+              style={{
+                position: "sticky",
+                top: 0,
+                float: "right",
+                zIndex: 2,
+                width: 42,
+                height: 42,
+                marginTop: -46,
+                marginRight: -4,
+                border: `1px solid ${colors.line}`,
+                borderRadius: 999,
+                background: "#FFFFFF",
+                color: colors.navy,
+                fontSize: 24,
+                lineHeight: 1,
+                fontWeight: 900,
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+                boxShadow: "0 6px 18px rgba(15,23,42,0.14)",
+              }}
+            >
+              ×
+            </button>
+            <div style={{ clear: "both" }}>{props.drawer}</div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -13957,26 +14065,53 @@ export default function AtlasPage() {
           </div>
         ) : null}
 
-        <div style={workLinksPageGridStyle}>
+        <div
+          style={{
+            ...workLinksPageGridStyle,
+            gridTemplateColumns: isMobile
+              ? "minmax(0, 1fr)"
+              : workLinksPageGridStyle.gridTemplateColumns,
+          }}
+        >
           {filteredWorkLinks.map((link) => (
-            <article key={link.id} style={{ ...workLinkPageCardStyle, position: "relative" }}>
+            <article
+              key={link.id}
+              style={{
+                ...workLinkPageCardStyle,
+                position: "relative",
+                minHeight: isMobile ? 154 : undefined,
+                padding: isMobile ? 14 : workLinkPageCardStyle.padding,
+                borderWidth: 1,
+                boxShadow: isMobile ? "none" : workLinkPageCardStyle.boxShadow,
+                overflow: "hidden",
+              }}
+            >
               <a
                 href={link.url}
                 target="_blank"
                 rel="noreferrer"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "auto minmax(0, 1fr) auto",
+                  gridTemplateColumns: isMobile
+                    ? "64px minmax(0, 1fr)"
+                    : "auto minmax(0, 1fr) auto",
+                  gridTemplateRows: isMobile ? "auto auto" : undefined,
                   alignItems: "center",
-                  gap: 14,
+                  gap: isMobile ? "10px 14px" : 14,
+                  paddingRight: isMobile ? 0 : 58,
                   color: "inherit",
                   textDecoration: "none",
                   minWidth: 0,
+                  width: "100%",
                 }}
               >
                 <span
                   style={{
                     ...workLinkLogoLargeStyle,
+                    width: isMobile ? 64 : workLinkLogoLargeStyle.width,
+                    height: isMobile ? 64 : workLinkLogoLargeStyle.height,
+                    borderRadius: isMobile ? 18 : workLinkLogoLargeStyle.borderRadius,
+                    gridRow: isMobile ? "1 / 2" : undefined,
                     background: link.logoBg,
                     color: link.logoColor || colors.navy,
                   }}
@@ -13994,16 +14129,37 @@ export default function AtlasPage() {
                   ) : null}
                 </span>
 
-                <span style={workLinkPageBodyStyle}>
-                  <strong>{link.name}</strong>
-                  <span>
+                <span
+                  style={{
+                    ...workLinkPageBodyStyle,
+                    paddingRight: isMobile ? 64 : 0,
+                    overflowWrap: "break-word",
+                    wordBreak: "normal",
+                  }}
+                >
+                  <strong style={{ fontSize: isMobile ? 17 : undefined, lineHeight: 1.2 }}>
+                    {link.name}
+                  </strong>
+                  <span style={{ lineHeight: 1.35 }}>
                     {link.category}
                     {link.vendor ? ` · ${link.vendor}` : ""}
                   </span>
-                  <small>{link.notes}</small>
+                  <small style={{ lineHeight: 1.45, overflowWrap: "break-word" }}>
+                    {link.notes}
+                  </small>
                 </span>
 
-                <span style={workLinkOpenLargeStyle}>Open</span>
+                <span
+                  style={{
+                    ...workLinkOpenLargeStyle,
+                    gridColumn: isMobile ? "1 / -1" : undefined,
+                    justifySelf: isMobile ? "start" : undefined,
+                    marginLeft: isMobile ? 78 : 0,
+                    padding: isMobile ? "8px 16px" : workLinkOpenLargeStyle.padding,
+                  }}
+                >
+                  Open
+                </span>
               </a>
 
               <button
@@ -14014,12 +14170,16 @@ export default function AtlasPage() {
                 style={{
                   ...secondaryButtonStyle,
                   position: "absolute",
-                  top: 10,
-                  right: 10,
-                  width: 42,
-                  minWidth: 42,
-                  padding: 8,
+                  top: 12,
+                  right: 12,
+                  width: "auto",
+                  minWidth: 58,
+                  padding: "8px 13px",
                   borderRadius: 999,
+                  whiteSpace: "nowrap",
+                  lineHeight: 1,
+                  wordBreak: "keep-all",
+                  overflowWrap: "normal",
                 }}
               >
                 Edit
@@ -14044,85 +14204,6 @@ export default function AtlasPage() {
       location: "Locations",
       vendor: "Vendors",
       map: "Map Labels",
-    };
-
-    const responsiveQrCardStyle: React.CSSProperties = isMobile
-      ? {
-          ...qrCardStyle,
-          width: "100%",
-          maxWidth: "100%",
-          minWidth: 0,
-          boxSizing: "border-box",
-          gridTemplateColumns: "108px minmax(0, 1fr)",
-          gap: 10,
-          padding: 10,
-          border: "1px solid #E7EDF3",
-          borderRadius: 16,
-          boxShadow: "none",
-          overflow: "hidden",
-        }
-      : qrCardStyle;
-
-    const responsiveQrImageShellStyle: React.CSSProperties = isMobile
-      ? {
-          ...qrImageShellStyle,
-          width: 108,
-          height: 108,
-          minWidth: 108,
-          border: "1px solid #EDF2F7",
-          borderRadius: 14,
-        }
-      : qrImageShellStyle;
-
-    const responsiveQrImageStyle: React.CSSProperties = isMobile
-      ? { ...qrImageStyle, width: 98, height: 98 }
-      : qrImageStyle;
-
-    const responsiveQrBodyStyle: React.CSSProperties = {
-      ...qrCardBodyStyle,
-      minWidth: 0,
-      maxWidth: "100%",
-      overflow: "hidden",
-    };
-
-    const qrActionRowStyle: React.CSSProperties = isMobile
-      ? {
-          display: "flex",
-          alignItems: "center",
-          flexWrap: "nowrap",
-          gap: 16,
-          minWidth: 0,
-          marginTop: 2,
-        }
-      : buttonRowStyle;
-
-    const ownerQrActionRowStyle: React.CSSProperties = isMobile
-      ? { ...qrActionRowStyle, flexWrap: "wrap", rowGap: 8 }
-      : buttonRowStyle;
-
-    const qrTextActionStyle: React.CSSProperties = isMobile
-      ? {
-          appearance: "none",
-          border: 0,
-          outline: 0,
-          background: "transparent",
-          color: colors.navy,
-          padding: 0,
-          margin: 0,
-          minWidth: "max-content",
-          boxShadow: "none",
-          fontSize: 13,
-          lineHeight: 1.2,
-          fontWeight: 900,
-          textDecoration: "none",
-          whiteSpace: "nowrap",
-          cursor: "pointer",
-        }
-      : secondaryButtonStyle;
-
-    const qrWrappedTextStyle: React.CSSProperties = {
-      overflowWrap: "anywhere",
-      wordBreak: "normal",
     };
 
     return (
@@ -14154,9 +14235,9 @@ export default function AtlasPage() {
         {requestPortalToken && typeof window !== "undefined" ? (
           <article
             className="atlas-qr-print-card"
-            style={{ ...responsiveQrCardStyle, marginBottom: 18 }}
+            style={{ ...qrCardStyle, marginBottom: 18 }}
           >
-            <div style={responsiveQrImageShellStyle}>
+            <div style={qrImageShellStyle}>
               <img
                 src={qrImageUrl(
                   `${window.location.origin}/request?token=${encodeURIComponent(
@@ -14165,11 +14246,11 @@ export default function AtlasPage() {
                   320,
                 )}
                 alt="Owner Request QR code"
-                style={responsiveQrImageStyle}
+                style={qrImageStyle}
               />
             </div>
 
-            <div style={responsiveQrBodyStyle}>
+            <div style={qrCardBodyStyle}>
               <div>
                 <div style={eyebrowStyle}>Owner Request</div>
                 <h3 style={qrCardTitleStyle}>Request Service</h3>
@@ -14178,14 +14259,14 @@ export default function AtlasPage() {
                 </p>
               </div>
 
-              <div className="atlas-no-print" style={ownerQrActionRowStyle}>
+              <div className="atlas-no-print" style={buttonRowStyle}>
                 <a
                   href={`${window.location.origin}/request?token=${encodeURIComponent(
                     requestPortalToken,
                   )}`}
                   target="_blank"
                   rel="noreferrer"
-                  style={qrTextActionStyle}
+                  style={secondaryButtonStyle}
                 >
                   Open
                 </a>
@@ -14199,7 +14280,7 @@ export default function AtlasPage() {
                     );
                     setRequestMessage("Owner request link copied.");
                   }}
-                  style={qrTextActionStyle}
+                  style={secondaryButtonStyle}
                 >
                   Copy Link
                 </button>
@@ -14212,21 +14293,13 @@ export default function AtlasPage() {
                       )}`,
                     )
                   }
-                  style={qrTextActionStyle}
+                  style={secondaryButtonStyle}
                 >
                   Copy QR Image
                 </button>
               </div>
 
-              <small
-                style={{
-                  ...qrUrlStyle,
-                  display: "block",
-                  maxWidth: "100%",
-                  overflowWrap: "anywhere",
-                  wordBreak: "break-word",
-                }}
-              >
+              <small style={qrUrlStyle}>
                 {`${window.location.origin}/request?token=${encodeURIComponent(
                   requestPortalToken,
                 )}`}
@@ -14277,7 +14350,7 @@ export default function AtlasPage() {
           </p>
         </div>
 
-        <div style={{ ...qrGridStyle, minWidth: 0, width: "100%" }}>
+        <div style={qrGridStyle}>
           {qrRecords.map((record) => {
             const targetUrl = recordQrUrl(record.kind, record.id);
 
@@ -14285,47 +14358,35 @@ export default function AtlasPage() {
               <article
                 key={`${record.kind}-${record.id}`}
                 className="atlas-qr-print-card"
-                style={responsiveQrCardStyle}
+                style={qrCardStyle}
               >
-                <div style={responsiveQrImageShellStyle}>
+                <div style={qrImageShellStyle}>
                   <img
                     src={qrImageUrl(targetUrl)}
                     alt={`QR code for ${record.title}`}
-                    style={responsiveQrImageStyle}
+                    style={qrImageStyle}
                   />
                 </div>
 
-                <div style={responsiveQrBodyStyle}>
-                  <div style={{ minWidth: 0 }}>
+                <div style={qrCardBodyStyle}>
+                  <div>
                     <div style={eyebrowStyle}>
                       {qrKindLabel[record.kind].slice(0, -1)}
                     </div>
-                    <h3 style={{ ...qrCardTitleStyle, ...qrWrappedTextStyle }}>
-                      {record.title}
-                    </h3>
-                    <p
-                      style={{
-                        ...mutedSmallStyle,
-                        margin: 0,
-                        ...qrWrappedTextStyle,
-                      }}
-                    >
-                      {record.subtitle}
-                    </p>
+                    <h3 style={qrCardTitleStyle}>{record.title}</h3>
+                    <p style={mutedSmallStyle}>{record.subtitle}</p>
                   </div>
 
                   {record.detail ? (
-                    <p style={{ ...qrDetailStyle, ...qrWrappedTextStyle }}>
-                      {record.detail}
-                    </p>
+                    <p style={qrDetailStyle}>{record.detail}</p>
                   ) : null}
 
-                  <div className="atlas-no-print" style={qrActionRowStyle}>
+                  <div className="atlas-no-print" style={buttonRowStyle}>
                     <a
                       href={targetUrl}
                       target="_blank"
                       rel="noreferrer"
-                      style={qrTextActionStyle}
+                      style={secondaryButtonStyle}
                     >
                       Open
                     </a>
@@ -14334,23 +14395,13 @@ export default function AtlasPage() {
                       onClick={() => {
                         void navigator.clipboard?.writeText(targetUrl);
                       }}
-                      style={qrTextActionStyle}
+                      style={secondaryButtonStyle}
                     >
                       Copy Link
                     </button>
                   </div>
 
-                  <small
-                    style={{
-                      ...qrUrlStyle,
-                      display: "block",
-                      maxWidth: "100%",
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {targetUrl}
-                  </small>
+                  <small style={qrUrlStyle}>{targetUrl}</small>
                 </div>
               </article>
             );
