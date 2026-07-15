@@ -1029,7 +1029,7 @@ function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
     colorNameFromLegacyColorId(rawColorId)) as CalendarColorName;
 
   return {
-    id: String(record.id || slugify(title)),
+    id: (() => { const v = String(record.id || slugify(title)); if (!record.id) console.warn("[CAL NORM] empty id slugified to", v, "title:", title); return v; })(),
     date: String(record.date ?? todayISO()),
     time: String(record.time || ""),
     title,
@@ -3602,49 +3602,40 @@ export default function AtlasPage() {
 
         {
           const apiNormalized = apiCalendar.map(normalizeCalendar);
-          const apiIds = new Set(apiNormalized.map((item) => item.id));
-          let localOnlyForRecovery: CalendarItem[] = [];
+          const browserCalendar = readStoredArray<CalendarItem>(
+            storageKeys.calendar,
+            [],
+          ).map(normalizeCalendar);
 
-          // Merge onto the LIVE calendarItems state (via the functional
-          // updater) instead of a fresh, independent localStorage read.
-          // This fetch started at mount and can resolve a second or more
-          // later; reconciling against a stale disk snapshot instead of
-          // current state was overwriting events created/edited after
-          // mount but before this response arrived. Neon still wins for
-          // any id it already has — this only stops the process from
-          // discarding local records the snapshot didn't know about yet.
-          setCalendarItems((current) => {
-            const mergedById = new Map<string, CalendarItem>();
+          const mergedById = new Map<string, CalendarItem>();
 
-            for (const item of current) {
-              if (item.id) mergedById.set(item.id, item);
-            }
+          // Browser-only records are retained long enough to migrate them,
+          // but Neon is the shared source of truth whenever the same ID exists.
+          for (const item of browserCalendar) {
+            if (item.id) mergedById.set(item.id, item);
+          }
 
-            // Neon is the shared source of truth whenever the same id
-            // already exists.
-            for (const item of apiNormalized) {
-              if (item.id) mergedById.set(item.id, item);
-            }
+          for (const item of apiNormalized) {
+            if (item.id) mergedById.set(item.id, item);
+          }
 
-            const next = byTitle(
-              Array.from(mergedById.values()).filter(
-                (item) => item.id && item.date && item.title,
-              ),
-            );
+          const next = byTitle(
+            Array.from(mergedById.values()).filter(
+              (item) => item.id && item.date && item.title,
+            ),
+          );
 
-            localOnlyForRecovery = current.filter(
-              (item) => item.id && !apiIds.has(item.id),
-            );
-
-            if (!next.length) return current;
-
+          if (next.length) {
+            console.log("[CAL B] setCalendarItems count:", next.length, "ids:", next.map(i => i.id));
+            setCalendarItems(next);
             saveStoredArray(storageKeys.calendar[0], next);
-            return next;
-          });
+          }
 
           // Recover browser-only events into Neon. This is especially important
           // if another device still holds meetings that a prior build hid.
-          for (const item of localOnlyForRecovery) {
+          const apiIds = new Set(apiNormalized.map((item) => item.id));
+          for (const item of browserCalendar) {
+            if (!item.id || apiIds.has(item.id)) continue;
             void postAtlasRecord("calendar", {
               ...item,
               status:
@@ -3716,6 +3707,7 @@ export default function AtlasPage() {
           .filter((item) => item.id && item.date && item.title);
 
         setCalendarItems((current) => {
+          console.log("[CAL C] current:", current.length, "incoming:", sharedCalendar.length);
           if (!sharedCalendar.length) {
             return current;
           }
@@ -6912,6 +6904,7 @@ export default function AtlasPage() {
     });
 
     setCalendarItems((current) => {
+      console.log("[CAL SAVE] current:", current.length, "saving id:", record.id, "date:", record.date);
       const original = current.find((item) => item.id === record.id);
       const exists = Boolean(original);
 
