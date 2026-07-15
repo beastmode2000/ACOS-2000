@@ -1,24 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const USERS = [
-  {
-    id: "atlas-master",
-    name: "Nick Thornton",
-    email: "nthornton87@yahoo.com",
-    password: "Atlas2000Temp!",
-    role: "master",
-  },
-  {
-    id: "atlas-admin-kenji",
-    name: "Kenji",
-    email: "kenjij@arcticmgnt.com",
-    password: "KenjiAtlas2026!",
-    role: "admin",
-  },
-];
+type AtlasUser = {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: "master" | "admin";
+};
 
-function createLoginResponse(user: (typeof USERS)[number]) {
-  const res = NextResponse.json({
+function getUsers(): AtlasUser[] {
+  return [
+    {
+      id: "atlas-master",
+      name: "Nick Thornton",
+      email: "nthornton87@yahoo.com",
+      password: process.env.ATLAS_MASTER_PASSWORD || "",
+      role: "master",
+    },
+    {
+      id: "atlas-admin-steve",
+      name: "Steve",
+      email: "stevem@arcticmgnt.com",
+      password: process.env.ATLAS_STEVE_PASSWORD || "",
+      role: "admin",
+    },
+    {
+      id: "atlas-admin-kenji",
+      name: "Kenji",
+      email: "kenjij@arcticmgnt.com",
+      password: process.env.ATLAS_KENJI_PASSWORD || "",
+      role: "admin",
+    },
+  ];
+}
+
+function createLoginResponse(user: AtlasUser) {
+  const response = NextResponse.json({
     ok: true,
     success: true,
     authenticated: true,
@@ -31,35 +48,31 @@ function createLoginResponse(user: (typeof USERS)[number]) {
     },
   });
 
-  res.cookies.set("atlas_master_session", "active", {
+  const cookieOptions = {
     httpOnly: true,
-    sameSite: "lax",
-    secure: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
-  });
+  };
 
-  res.cookies.set("atlas_user_email", user.email, {
+  response.cookies.set("atlas_master_session", "active", cookieOptions);
+
+  response.cookies.set("atlas_user_email", user.email, {
+    ...cookieOptions,
     httpOnly: false,
-    sameSite: "lax",
-    secure: true,
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
   });
 
-  res.cookies.set("atlas_user_role", user.role, {
+  response.cookies.set("atlas_user_role", user.role, {
+    ...cookieOptions,
     httpOnly: false,
-    sameSite: "lax",
-    secure: true,
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
   });
 
-  return res;
+  return response;
 }
 
 export async function POST(req: NextRequest) {
-  let body: any = {};
+  let body: Record<string, unknown> = {};
 
   try {
     body = await req.json();
@@ -73,30 +86,31 @@ export async function POST(req: NextRequest) {
 
   const password = String(body.password || body.Password || "");
 
-  const user = USERS.find(
+  const user = getUsers().find(
     (item) =>
+      item.password.length > 0 &&
       item.email.toLowerCase() === email &&
       item.password === password
   );
 
-  if (user) {
-    return createLoginResponse(user);
+  if (!user) {
+    return NextResponse.json(
+      {
+        ok: false,
+        success: false,
+        authenticated: false,
+        error: "Invalid email or password.",
+      },
+      { status: 401 }
+    );
   }
 
-  return NextResponse.json(
-    {
-      ok: false,
-      success: false,
-      authenticated: false,
-      error: "Invalid email or password.",
-    },
-    { status: 401 }
-  );
+  return createLoginResponse(user);
 }
 
 export async function GET(req: NextRequest) {
   const session = req.cookies.get("atlas_master_session")?.value;
-  const email = req.cookies.get("atlas_user_email")?.value;
+  const email = req.cookies.get("atlas_user_email")?.value?.toLowerCase();
 
   if (session !== "active" || !email) {
     return NextResponse.json(
@@ -108,8 +122,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const user = USERS.find(
-    (item) => item.email.toLowerCase() === email.toLowerCase()
+  const user = getUsers().find(
+    (item) => item.email.toLowerCase() === email
   );
 
   if (!user) {
