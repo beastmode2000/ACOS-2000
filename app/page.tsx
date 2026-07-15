@@ -3602,37 +3602,39 @@ export default function AtlasPage() {
 
         {
           const apiNormalized = apiCalendar.map(normalizeCalendar);
+
+          if (apiNormalized.length) {
+            setCalendarItems((current) => {
+              console.log("[CAL B] setCalendarItems current:", current.length, "api:", apiNormalized.length);
+              const mergedById = new Map<string, CalendarItem>();
+
+              for (const item of current) {
+                if (item.id) mergedById.set(item.id, item);
+              }
+
+              for (const item of apiNormalized) {
+                if (item.id) mergedById.set(item.id, item);
+              }
+
+              const next = byTitle(
+                Array.from(mergedById.values()).filter(
+                  (item) => item.id && item.date && item.title,
+                ),
+              );
+
+              console.log("[CAL B] result:", next.length, "ids:", next.map(i => i.id));
+              saveStoredArray(storageKeys.calendar[0], next);
+              return next;
+            });
+          } else {
+            console.log("[CAL B] api returned 0 calendar items, keeping current state");
+          }
+
           const browserCalendar = readStoredArray<CalendarItem>(
             storageKeys.calendar,
             [],
           ).map(normalizeCalendar);
 
-          const mergedById = new Map<string, CalendarItem>();
-
-          // Browser-only records are retained long enough to migrate them,
-          // but Neon is the shared source of truth whenever the same ID exists.
-          for (const item of browserCalendar) {
-            if (item.id) mergedById.set(item.id, item);
-          }
-
-          for (const item of apiNormalized) {
-            if (item.id) mergedById.set(item.id, item);
-          }
-
-          const next = byTitle(
-            Array.from(mergedById.values()).filter(
-              (item) => item.id && item.date && item.title,
-            ),
-          );
-
-          if (next.length) {
-            console.log("[CAL B] setCalendarItems count:", next.length, "ids:", next.map(i => i.id));
-            setCalendarItems(next);
-            saveStoredArray(storageKeys.calendar[0], next);
-          }
-
-          // Recover browser-only events into Neon. This is especially important
-          // if another device still holds meetings that a prior build hid.
           const apiIds = new Set(apiNormalized.map((item) => item.id));
           for (const item of browserCalendar) {
             if (!item.id || apiIds.has(item.id)) continue;
