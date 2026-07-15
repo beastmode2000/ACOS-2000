@@ -3958,18 +3958,12 @@ export default function AtlasPage() {
             if (item.id) mergedById.set(item.id, item);
           }
 
-          // Browser records win when the same ID exists because they may contain
-          // richer fields such as time, recurrence, reminders, notes, and links.
+          // Shared API records win when the same ID exists so stale browser data
+          // on one device cannot overwrite a newer edit made on another device.
+          // Browser-only records are still preserved and uploaded below.
           for (const item of browserCalendar) {
-            if (item.id) {
-              const apiItem = mergedById.get(item.id);
-              mergedById.set(
-                item.id,
-                normalizeCalendar({
-                  ...(apiItem || {}),
-                  ...item,
-                }),
-              );
+            if (item.id && !mergedById.has(item.id)) {
+              mergedById.set(item.id, item);
             }
           }
 
@@ -4028,6 +4022,134 @@ export default function AtlasPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+
+    let cancelled = false;
+    let syncing = false;
+
+    async function syncSharedCalendar() {
+      if (syncing || cancelled) return;
+      syncing = true;
+
+      try {
+        const response = await fetch("/api/atlas", { cache: "no-store" });
+        if (!response.ok) throw new Error(`Calendar sync returned ${response.status}`);
+
+        const payload = (await response.json()) as AtlasApiPayload;
+        if (cancelled) return;
+
+        const rawApiCalendar = Array.isArray(payload.calendarItems)
+          ? payload.calendarItems
+          : Array.isArray(payload.calendar)
+            ? payload.calendar
+            : [];
+        const apiCalendar = rawApiCalendar
+          .map(normalizeCalendar)
+          .filter((item) => item.id && item.date && item.title);
+        const browserCalendar = readStoredArray<CalendarItem>(
+          storageKeys.calendar,
+          [],
+        )
+          .map(normalizeCalendar)
+          .filter((item) => item.id && item.date && item.title);
+
+        const mergedById = new Map<string, CalendarItem>();
+        for (const item of apiCalendar) mergedById.set(item.id, item);
+        for (const item of browserCalendar) {
+          if (!mergedById.has(item.id)) mergedById.set(item.id, item);
+        }
+
+        const next = byTitle(Array.from(mergedById.values()));
+        setCalendarItems((current) => {
+          const currentKey = JSON.stringify(current);
+          const nextKey = JSON.stringify(next);
+          return currentKey === nextKey ? current : next;
+        });
+        saveStoredArray(storageKeys.calendar[0], next);
+
+        const apiIds = new Set(apiCalendar.map((item) => item.id));
+        for (const item of browserCalendar) {
+          if (apiIds.has(item.id)) continue;
+          await postAtlasRecord("calendar", {
+            ...item,
+            status: item.completed ? "Completed" : "Scheduled",
+          });
+        }
+
+        setDatabaseStatus(`Calendar synced across devices: ${apiCalendar.length} shared event${apiCalendar.length === 1 ? "" : "s"}.`);
+      } catch (error) {
+        if (!cancelled) {
+          setDatabaseStatus(
+            error instanceof Error
+              ? `Calendar is using this device until sync reconnects: ${error.message}`
+              : "Calendar is using this device until sync reconnects.",
+          );
+        }
+      } finally {
+        syncing = false;
+      }
+    }
+
+    const onFocus = () => void syncSharedCalendar();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void syncSharedCalendar();
+    };
+
+    void syncSharedCalendar();
+    const intervalId = window.setInterval(() => {
+      void syncSharedCalendar();
+    }, 20000);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [ready]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const path = window.location.pathname.toLowerCase();
+    const title = path.startsWith("/landscape-admin")
+      ? "Landscape Admin | Atlas 2000"
+      : path.startsWith("/landscape-help")
+        ? "Landscape Help | Atlas 2000"
+        : path.startsWith("/requests")
+          ? "Request Service | Atlas 2000"
+          : "Atlas 2000";
+    const description = path.startsWith("/landscape-help")
+      ? "Landscape Help checklist and property landscaping updates."
+      : path.startsWith("/landscape-admin")
+        ? "Landscape Help administration for Atlas 2000."
+        : path.startsWith("/requests")
+          ? "Submit and review property service requests."
+          : "Private estate operations and maintenance management.";
+
+    document.title = title;
+
+    const setMeta = (selector: string, attribute: "name" | "property", key: string, content: string) => {
+      let element = document.head.querySelector<HTMLMetaElement>(selector);
+      if (!element) {
+        element = document.createElement("meta");
+        element.setAttribute(attribute, key);
+        document.head.appendChild(element);
+      }
+      element.content = content;
+    };
+
+    setMeta('meta[name="description"]', "name", "description", description);
+    setMeta('meta[property="og:title"]', "property", "og:title", title);
+    setMeta('meta[property="og:description"]', "property", "og:description", description);
+    setMeta('meta[property="og:url"]', "property", "og:url", window.location.href);
+    setMeta('meta[name="twitter:title"]', "name", "twitter:title", title);
+    setMeta('meta[name="twitter:description"]', "name", "twitter:description", description);
   }, []);
 
   useEffect(() => {
