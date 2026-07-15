@@ -11570,8 +11570,8 @@ export default function AtlasPage() {
     return (
       <ListDrawerLayout
         eyebrow="Document Vault"
-        title="Documents / Photos"
-        detail="Search, open, edit, delete, zoom, and sync paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots between phone and desktop."
+        title={isMobile ? "Documents" : "Documents / Photos"}
+        detail={isMobile ? "Tap a document to open it." : "Search, open, edit, delete, zoom, and sync paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots between phone and desktop."}
         isMobile={isMobile}
         drawerResetKey={selectedDocumentId || "document-new"}
         right={
@@ -11652,7 +11652,14 @@ export default function AtlasPage() {
                     <button
                       key={document.id}
                       type="button"
-                      onClick={() => setSelectedDocumentId(document.id)}
+                      onClick={() => {
+                        const firstFile = document.files?.[0];
+                        if (isMobile && firstFile) {
+                          openUploadedFile(firstFile);
+                          return;
+                        }
+                        setSelectedDocumentId(document.id);
+                      }}
                       style={{
                         ...rowButtonStyle,
                         borderColor:
@@ -11667,20 +11674,30 @@ export default function AtlasPage() {
                     >
                       <div style={{ minWidth: 0 }}>
                         <strong>{document.title}</strong>
-                        <p style={mutedSmallStyle}>
-                          {document.type} · {document.area}
-                        </p>
-                        {document.targetType ? (
+                        {!isMobile ? (
+                          <>
+                            <p style={mutedSmallStyle}>
+                              {document.type} · {document.area}
+                            </p>
+                            {document.targetType ? (
+                              <p style={mutedSmallStyle}>
+                                Linked to {document.targetType}:{" "}
+                                {document.targetName || document.area}
+                              </p>
+                            ) : null}
+                            <p style={mutedSmallStyle}>
+                              {hasPreview
+                                ? `${fileCount} file(s) / preview available`
+                                : "Text-only record"}
+                            </p>
+                          </>
+                        ) : (
                           <p style={mutedSmallStyle}>
-                            Linked to {document.targetType}:{" "}
-                            {document.targetName || document.area}
+                            {fileCount
+                              ? "Tap to open document"
+                              : "Tap to view document details"}
                           </p>
-                        ) : null}
-                        <p style={mutedSmallStyle}>
-                          {hasPreview
-                            ? `${fileCount} file(s) / preview available`
-                            : "Text-only record"}
-                        </p>
+                        )}
                       </div>
                     </button>
                   );
