@@ -3705,9 +3705,26 @@ export default function AtlasPage() {
           .map(normalizeCalendar)
           .filter((item) => item.id && item.date && item.title);
 
-        const next = byTitle(sharedCalendar);
-        setCalendarItems(next);
-        saveStoredArray(storageKeys.calendar[0], next);
+        setCalendarItems((current) => {
+          if (!sharedCalendar.length) {
+            return current;
+          }
+
+          const merged = new Map<string, CalendarItem>();
+
+          current.forEach((item) => {
+            if (item.id) merged.set(item.id, item);
+          });
+
+          sharedCalendar.forEach((item) => {
+            if (item.id) merged.set(item.id, item);
+          });
+
+          const next = byTitle(Array.from(merged.values()));
+          saveStoredArray(storageKeys.calendar[0], next);
+
+          return next;
+        });
       } catch {
         // Keep the current calendar visible if the shared API is unavailable.
       } finally {
