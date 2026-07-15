@@ -5,6 +5,16 @@ import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasDashboard from "./components/AtlasDashboard";
 import AtlasWorkOrders from "./components/AtlasWorkOrders";
 import AtlasInsightsTimeline from "./components/AtlasInsightsTimeline";
+import { Field, SelectField, StatCard, AtlasMiniMark, SectionHeader } from "./components/AtlasUiPrimitives";
+
+import {
+  WORKLINK_LOGOS,
+  colors,
+  screens,
+  logoCandidates,
+  storageKeys,
+} from "./lib/atlas-page-config";
+import type { AtlasScreen } from "./lib/atlas-page-config";
 
 import type {
   Screen,
@@ -55,8 +65,6 @@ import type {
   SearchResult,
   ManualCandidate,
 } from "./lib/atlas-types";
-
-type AtlasScreen = Screen | "timeline" | "insights";
 
 type WorkItemType =
   | "Quick Task"
@@ -112,113 +120,6 @@ type AtlasServiceRecord = ServiceRecord & {
   checklist?: WorkChecklistItem[];
   notesHistory?: WorkNoteEntry[];
   serviceHistory?: WorkCompletionEntry[];
-};
-
-const WORKLINK_LOGOS = {
-  landscapeHelpAdmin: "",
-  landscapeHelp: "",
-  control4: "",
-  tccHoneywell: "",
-  ramp: "",
-  metaViewer: "",
-} as const;
-
-const colors = {
-  navy: "#071B2F",
-  navy2: "#0B2742",
-  navy3: "#123D63",
-  gold: "#C99A3D",
-  gold2: "#E5C06B",
-  bg: "#F4F7FB",
-  card: "#FFFFFF",
-  panel: "#F8FAFC",
-  line: "#DDE7F0",
-  text: "#172331",
-  muted: "#64748B",
-  red: "#B42318",
-  green: "#087443",
-};
-
-const screens: { id: AtlasScreen; label: string }[] = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "timeline", label: "Timeline" },
-  { id: "insights", label: "Insights" },
-  { id: "inbox", label: "Inbox" },
-  { id: "requests", label: "Requests" },
-  { id: "calendar", label: "Calendar" },
-  { id: "planner", label: "Operations Planner" },
-  { id: "history", label: "Work Orders" },
-  { id: "assets", label: "Assets" },
-  { id: "locations", label: "Locations" },
-  { id: "vendors", label: "Vendors" },
-  { id: "contacts", label: "Contacts" },
-  { id: "documents", label: "Documents" },
-  { id: "procedures", label: "Procedures" },
-  { id: "map", label: "Map" },
-  { id: "qr", label: "QR Codes" },
-  { id: "parts", label: "Parts" },
-  { id: "links", label: "Work Links" },
-  { id: "weather", label: "Weather" },
-  { id: "manuals", label: "Manuals" },
-  { id: "assistant", label: "Ask Atlas" },
-];
-
-const logoCandidates = [
-  "/atlas-logo.png",
-  "/atlas-logo.svg",
-  "/logo.png",
-  "/icon-512.png",
-  "/icon-192.png",
-  "/apple-touch-icon.png",
-];
-
-const storageKeys = {
-  mapLabels: ["atlas-map-labels-v2", "atlas_2000_labels_safe_v1"],
-  assets: [
-    "atlas-asset-records-v3",
-    "atlas-asset-records-v2",
-    "atlas-asset-records-v1",
-    "atlas_2000_assets_safe_v1",
-  ],
-  vendors: [
-    "atlas-vendor-records-v3",
-    "atlas-vendor-records-v2",
-    "atlas-vendor-records-v1",
-    "atlas_2000_vendors_safe_v1",
-  ],
-  contacts: ["atlas-contact-records-v1"],
-  workOrders: [
-    "atlas-service-records-v11",
-    "atlas-service-records-v10",
-    "atlas-service-records-v9",
-    "atlas-service-records-v8",
-    "atlas-service-records-v7",
-    "atlas-service-records-v6",
-  ],
-  calendar: [
-    "atlas-calendar-v13",
-    "atlas-calendar-v12",
-    "atlas-calendar-v11",
-    "atlas-calendar-v10",
-    "atlas-calendar-v9",
-    "atlas-calendar-v8",
-    "atlas-calendar-v7",
-    "atlas-calendar-v6",
-    "atlas_2000_calendar_safe_v1",
-  ],
-  calendarColors: ["atlas-calendar-colors-v2", "atlas-calendar-colors-v1"],
-  parts: ["atlas-part-records-v2"],
-  procedures: ["atlas-procedure-records-v1", "atlas_2000_procedures_safe_v1"],
-  photos: [
-    "atlas-photo-records-v10",
-    "atlas-photo-records-v9",
-    "atlas-photo-records-v8",
-    "atlas-photo-records-v7",
-    "atlas-photo-records-v6",
-  ],
-  intakeDocs: ["atlas-intake-documents-v1"],
-  manuals: ["atlas-manual-records-v1"],
-  workLinks: ["atlas-work-links-v1"],
 };
 
 function localISODate(date = new Date()) {
@@ -2966,143 +2867,6 @@ function normalizeManualRecord(record: Partial<ManualRecord>): ManualRecord {
 }
 
 
-function Field(props: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  multiline?: boolean;
-  placeholder?: string;
-}) {
-  return (
-    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-      <span style={fieldLabelStyle}>{props.label}</span>
-      {props.multiline ? (
-        <textarea
-          value={props.value}
-          onChange={(event) => props.onChange(event.currentTarget.value)}
-          placeholder={props.placeholder}
-          style={{ ...inputStyle, minHeight: 110, resize: "vertical" }}
-        />
-      ) : (
-        <input
-          value={props.value}
-          onChange={(event) => props.onChange(event.currentTarget.value)}
-          placeholder={props.placeholder}
-          style={inputStyle}
-        />
-      )}
-    </label>
-  );
-}
-
-function SelectField<T extends string>(props: {
-  label: string;
-  value: T;
-  onChange: (value: T) => void;
-  options: readonly T[];
-}) {
-  return (
-    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-      <span style={fieldLabelStyle}>{props.label}</span>
-      <select
-        value={props.value}
-        onChange={(event) => props.onChange(event.currentTarget.value as T)}
-        style={inputStyle}
-      >
-        {props.options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function StatCard(props: {
-  label: string;
-  value: string | number;
-  onClick?: () => void;
-}) {
-  return (
-    <button type="button" onClick={props.onClick} style={modernStatStyle}>
-      <div style={statValueStyle}>{props.value}</div>
-      <div style={statLabelStyle}>{props.label}</div>
-    </button>
-  );
-}
-
-function AtlasMiniMark({ size = 30 }: { size?: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        width: size,
-        height: size,
-        flex: "0 0 auto",
-        borderRadius: Math.max(8, Math.round(size * 0.28)),
-        display: "grid",
-        placeItems: "center",
-        overflow: "hidden",
-        position: "relative",
-        background: colors.navy,
-        border: `1px solid ${colors.gold2}`,
-        boxShadow: "0 5px 14px rgba(7,27,47,0.12)",
-      }}
-    >
-      <span
-        style={{
-          color: colors.gold2,
-          fontWeight: 900,
-          fontSize: Math.max(12, Math.round(size * 0.48)),
-          lineHeight: 1,
-        }}
-      >
-        A
-      </span>
-      <img
-        src="/atlas-logo.png"
-        alt=""
-        onError={(event) => {
-          event.currentTarget.style.display = "none";
-        }}
-        style={{
-          position: "absolute",
-          inset: 2,
-          width: `calc(100% - 4px)`,
-          height: `calc(100% - 4px)`,
-          objectFit: "contain",
-        }}
-      />
-    </span>
-  );
-}
-
-function SectionHeader(props: {
-  eyebrow?: string;
-  title?: string;
-  detail?: string;
-  right?: React.ReactNode;
-  brand?: boolean;
-}) {
-  if (!props.eyebrow && !props.title && !props.detail && !props.right)
-    return null;
-
-  return (
-    <div style={sectionHeaderStyle}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: props.brand ? 10 : 0, minWidth: 0 }}>
-        {props.brand ? <AtlasMiniMark size={30} /> : null}
-        <div style={{ minWidth: 0 }}>
-          {props.eyebrow ? <div style={eyebrowStyle}>{props.eyebrow}</div> : null}
-          {props.title ? <h2 style={sectionTitleStyle}>{props.title}</h2> : null}
-          {props.detail ? <p style={mutedSmallStyle}>{props.detail}</p> : null}
-        </div>
-      </div>
-      {props.right ? <div style={buttonRowStyle}>{props.right}</div> : null}
-    </div>
-  );
-}
-
 function ListDrawerLayout(props: {
   eyebrow?: string;
   title?: string;
@@ -3942,9 +3706,23 @@ export default function AtlasPage() {
           .filter((item) => item.id && item.date && item.title);
 
         if (sharedCalendar.length) {
-          const next = byTitle(sharedCalendar);
-          setCalendarItems(next);
-          saveStoredArray(storageKeys.calendar[0], next);
+          setCalendarItems((current) => {
+            const merged = new Map<string, CalendarItem>();
+
+            current
+              .map(normalizeCalendar)
+              .filter((item) => item.id && item.date && item.title)
+              .forEach((item) => merged.set(item.id, item));
+
+            sharedCalendar.forEach((item) => {
+              const existing = merged.get(item.id);
+              merged.set(item.id, existing ? { ...existing, ...item } : item);
+            });
+
+            const next = byTitle(Array.from(merged.values()));
+            saveStoredArray(storageKeys.calendar[0], next);
+            return next;
+          });
         }
 
         const sharedPhotos = (
