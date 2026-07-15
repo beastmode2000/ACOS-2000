@@ -132,6 +132,18 @@ function cleanTable(value: unknown): AtlasTable | "" {
 async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
   await sql`
     ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS item_date date
+  `;
+
+  await sql`
+    UPDATE atlas_calendar_items
+    SET item_date = date
+    WHERE item_date IS NULL
+      AND date IS NOT NULL
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
     ADD COLUMN IF NOT EXISTS time text
   `;
 
@@ -305,7 +317,11 @@ function mapWorkOrder(row: JsonRecord) {
     assetId: String(row.asset_id || ""),
     vendorId: row.vendor_id ? String(row.vendor_id) : "",
     procedureId: row.procedure_id ? String(row.procedure_id) : "",
-    date: row.date ? String(row.date).slice(0, 10) : "",
+    date: row.item_date
+      ? String(row.item_date).slice(0, 10)
+      : row.date
+        ? String(row.date).slice(0, 10)
+        : "",
     title: String(row.title || ""),
     status: String(row.status || "Open"),
     priority: String(row.priority || "Medium"),
@@ -335,7 +351,11 @@ function mapWorkOrder(row: JsonRecord) {
 function mapCalendarItem(row: JsonRecord) {
   return {
     id: String(row.id || ""),
-    date: row.date ? String(row.date).slice(0, 10) : "",
+    date: row.item_date
+      ? String(row.item_date).slice(0, 10)
+      : row.date
+        ? String(row.date).slice(0, 10)
+        : "",
     time: row.time ? String(row.time) : "",
     title: String(row.title || ""),
     area: String(row.area || ""),
@@ -440,6 +460,7 @@ export async function GET() {
     const calendarRows = (await sql`
       SELECT
         id,
+        item_date,
         date,
         time,
         title,
@@ -460,7 +481,7 @@ export async function GET() {
         instance_id,
         status
       FROM atlas_calendar_items
-      ORDER BY date ASC, time ASC NULLS LAST, title ASC
+      ORDER BY COALESCE(item_date, date) ASC, time ASC NULLS LAST, title ASC
     `) as unknown as JsonRecord[];
 
     const documentRows = (await sql`
@@ -740,6 +761,7 @@ export async function POST(request: NextRequest) {
       await sql`
         INSERT INTO atlas_calendar_items (
           id,
+          item_date,
           date,
           time,
           title,
@@ -763,6 +785,7 @@ export async function POST(request: NextRequest) {
         )
         VALUES (
           ${id},
+          ${asDate(record.date)}::date,
           ${asDate(record.date)}::date,
           ${nullableString(record.time)},
           ${asString(record.title) || "Untitled Calendar Item"},
@@ -789,6 +812,7 @@ export async function POST(request: NextRequest) {
         )
         ON CONFLICT (id)
         DO UPDATE SET
+          item_date = EXCLUDED.item_date,
           date = EXCLUDED.date,
           time = EXCLUDED.time,
           title = EXCLUDED.title,
