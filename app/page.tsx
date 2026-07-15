@@ -3118,42 +3118,6 @@ function ListDrawerLayout(props: {
   drawerResetKey?: string | number;
 }) {
   const drawerScrollRef = useRef<HTMLDivElement>(null);
-  const firstDrawerKeyRef = useRef(true);
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-
-  useEffect(() => {
-    if (!props.isMobile) {
-      setMobileDrawerOpen(false);
-      firstDrawerKeyRef.current = true;
-      return;
-    }
-
-    if (firstDrawerKeyRef.current) {
-      firstDrawerKeyRef.current = false;
-      return;
-    }
-
-    if (props.drawerResetKey !== undefined && props.drawerResetKey !== null) {
-      setMobileDrawerOpen(true);
-    }
-  }, [props.drawerResetKey, props.isMobile]);
-
-  useEffect(() => {
-    if (!mobileDrawerOpen || !props.isMobile) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileDrawerOpen(false);
-    };
-
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [mobileDrawerOpen, props.isMobile]);
 
   useLayoutEffect(() => {
     const resetDrawerScroll = () => {
@@ -3313,89 +3277,17 @@ function ListDrawerLayout(props: {
         >
           {props.list}
         </div>
-        {!props.isMobile ? (
-          <div
-            ref={drawerScrollRef}
-            style={
-              props.drawerStyleOverride
-                ? { ...desktopDrawerStyle, ...props.drawerStyleOverride }
-                : desktopDrawerStyle
-            }
-          >
-            {props.drawer}
-          </div>
-        ) : null}
-      </div>
-
-      {props.isMobile && mobileDrawerOpen ? (
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={props.title ? `${props.title} information` : "Record information"}
-          onClick={() => setMobileDrawerOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 2000,
-            background: "rgba(7, 27, 47, 0.72)",
-            backdropFilter: "blur(3px)",
-            display: "grid",
-            alignItems: "end",
-            padding: "max(12px, env(safe-area-inset-top)) 10px max(12px, env(safe-area-inset-bottom))",
-          }}
+          ref={drawerScrollRef}
+          style={
+            props.drawerStyleOverride
+              ? { ...desktopDrawerStyle, ...props.drawerStyleOverride }
+              : desktopDrawerStyle
+          }
         >
-          <div
-            ref={drawerScrollRef}
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              ...drawerStyle,
-              position: "relative",
-              width: "100%",
-              maxWidth: 720,
-              maxHeight: "calc(100dvh - 24px)",
-              margin: "0 auto",
-              overflowY: "auto",
-              overflowX: "hidden",
-              padding: "58px 16px 24px",
-              borderRadius: 22,
-              border: `1px solid ${colors.line}`,
-              background: colors.card,
-              boxShadow: "0 24px 70px rgba(0,0,0,0.34)",
-              WebkitOverflowScrolling: "touch",
-            }}
-          >
-            <button
-              type="button"
-              aria-label="Close information"
-              onClick={() => setMobileDrawerOpen(false)}
-              style={{
-                position: "sticky",
-                top: 0,
-                float: "right",
-                zIndex: 2,
-                width: 42,
-                height: 42,
-                marginTop: -46,
-                marginRight: -4,
-                border: `1px solid ${colors.line}`,
-                borderRadius: 999,
-                background: "#FFFFFF",
-                color: colors.navy,
-                fontSize: 24,
-                lineHeight: 1,
-                fontWeight: 900,
-                display: "grid",
-                placeItems: "center",
-                cursor: "pointer",
-                boxShadow: "0 6px 18px rgba(15,23,42,0.14)",
-              }}
-            >
-              ×
-            </button>
-            <div style={{ clear: "both" }}>{props.drawer}</div>
-          </div>
+          {props.drawer}
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }
@@ -3953,18 +3845,14 @@ export default function AtlasPage() {
 
           const mergedById = new Map<string, CalendarItem>();
 
-          // API records establish the shared base.
-          for (const item of apiNormalized) {
+          // Browser-only records are retained long enough to migrate them,
+          // but Neon is the shared source of truth whenever the same ID exists.
+          for (const item of browserCalendar) {
             if (item.id) mergedById.set(item.id, item);
           }
 
-          // Shared API records win when the same ID exists so stale browser data
-          // on one device cannot overwrite a newer edit made on another device.
-          // Browser-only records are still preserved and uploaded below.
-          for (const item of browserCalendar) {
-            if (item.id && !mergedById.has(item.id)) {
-              mergedById.set(item.id, item);
-            }
+          for (const item of apiNormalized) {
+            if (item.id) mergedById.set(item.id, item);
           }
 
           const next = byTitle(
@@ -4028,129 +3916,85 @@ export default function AtlasPage() {
     if (!ready) return;
 
     let cancelled = false;
-    let syncing = false;
+    let running = false;
 
-    async function syncSharedCalendar() {
-      if (syncing || cancelled) return;
-      syncing = true;
+    async function refreshSharedCalendarAndPhotos() {
+      if (running || cancelled) return;
+      running = true;
 
       try {
-        const response = await fetch("/api/atlas", { cache: "no-store" });
-        if (!response.ok) throw new Error(`Calendar sync returned ${response.status}`);
+        const response = await fetch(`/api/atlas?sync=${Date.now()}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error(`API returned ${response.status}`);
 
         const payload = (await response.json()) as AtlasApiPayload;
-        if (cancelled) return;
+        if (cancelled || payload?.ok === false) return;
 
-        const rawApiCalendar = Array.isArray(payload.calendarItems)
-          ? payload.calendarItems
-          : Array.isArray(payload.calendar)
-            ? payload.calendar
-            : [];
-        const apiCalendar = rawApiCalendar
-          .map(normalizeCalendar)
-          .filter((item) => item.id && item.date && item.title);
-        const browserCalendar = readStoredArray<CalendarItem>(
-          storageKeys.calendar,
-          [],
+        const sharedCalendar = (
+          Array.isArray(payload.calendarItems)
+            ? payload.calendarItems
+            : Array.isArray(payload.calendar)
+              ? payload.calendar
+              : []
         )
           .map(normalizeCalendar)
           .filter((item) => item.id && item.date && item.title);
 
-        const mergedById = new Map<string, CalendarItem>();
-        for (const item of apiCalendar) mergedById.set(item.id, item);
-        for (const item of browserCalendar) {
-          if (!mergedById.has(item.id)) mergedById.set(item.id, item);
+        if (sharedCalendar.length) {
+          const next = byTitle(sharedCalendar);
+          setCalendarItems(next);
+          saveStoredArray(storageKeys.calendar[0], next);
         }
 
-        const next = byTitle(Array.from(mergedById.values()));
-        setCalendarItems((current) => {
-          const currentKey = JSON.stringify(current);
-          const nextKey = JSON.stringify(next);
-          return currentKey === nextKey ? current : next;
-        });
-        saveStoredArray(storageKeys.calendar[0], next);
+        const sharedPhotos = (
+          Array.isArray(payload.photos)
+            ? payload.photos
+            : Array.isArray(payload.assetPhotos)
+              ? payload.assetPhotos
+              : []
+        )
+          .map(normalizePhotoRecord)
+          .filter((photo) => photo.id && photo.assetId);
 
-        const apiIds = new Set(apiCalendar.map((item) => item.id));
-        for (const item of browserCalendar) {
-          if (apiIds.has(item.id)) continue;
-          await postAtlasRecord("calendar", {
-            ...item,
-            status: item.completed ? "Completed" : "Scheduled",
+        if (sharedPhotos.length) {
+          await cachePhotoRecords(sharedPhotos);
+          setPhotos((current) => {
+            const next = mergePhotoRecords(sharedPhotos, current);
+            persistPhotoRecords(next);
+            return next;
           });
         }
-
-        setDatabaseStatus(`Calendar synced across devices: ${apiCalendar.length} shared event${apiCalendar.length === 1 ? "" : "s"}.`);
-      } catch (error) {
-        if (!cancelled) {
-          setDatabaseStatus(
-            error instanceof Error
-              ? `Calendar is using this device until sync reconnects: ${error.message}`
-              : "Calendar is using this device until sync reconnects.",
-          );
-        }
+      } catch {
+        // Keep the current browser copy visible while the shared API is unavailable.
       } finally {
-        syncing = false;
+        running = false;
       }
     }
 
-    const onFocus = () => void syncSharedCalendar();
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") void syncSharedCalendar();
+      if (document.visibilityState === "visible") {
+        void refreshSharedCalendarAndPhotos();
+      }
     };
 
-    void syncSharedCalendar();
-    const intervalId = window.setInterval(() => {
-      void syncSharedCalendar();
-    }, 20000);
+    const onFocus = () => void refreshSharedCalendarAndPhotos();
+    const interval = window.setInterval(
+      () => void refreshSharedCalendarAndPhotos(),
+      20000,
+    );
+
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibilityChange);
+    void refreshSharedCalendarAndPhotos();
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [ready]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const path = window.location.pathname.toLowerCase();
-    const title = path.startsWith("/landscape-admin")
-      ? "Landscape Admin | Atlas 2000"
-      : path.startsWith("/landscape-help")
-        ? "Landscape Help | Atlas 2000"
-        : path.startsWith("/requests")
-          ? "Request Service | Atlas 2000"
-          : "Atlas 2000";
-    const description = path.startsWith("/landscape-help")
-      ? "Landscape Help checklist and property landscaping updates."
-      : path.startsWith("/landscape-admin")
-        ? "Landscape Help administration for Atlas 2000."
-        : path.startsWith("/requests")
-          ? "Submit and review property service requests."
-          : "Private estate operations and maintenance management.";
-
-    document.title = title;
-
-    const setMeta = (selector: string, attribute: "name" | "property", key: string, content: string) => {
-      let element = document.head.querySelector<HTMLMetaElement>(selector);
-      if (!element) {
-        element = document.createElement("meta");
-        element.setAttribute(attribute, key);
-        document.head.appendChild(element);
-      }
-      element.content = content;
-    };
-
-    setMeta('meta[name="description"]', "name", "description", description);
-    setMeta('meta[property="og:title"]', "property", "og:title", title);
-    setMeta('meta[property="og:description"]', "property", "og:description", description);
-    setMeta('meta[property="og:url"]', "property", "og:url", window.location.href);
-    setMeta('meta[name="twitter:title"]', "name", "twitter:title", title);
-    setMeta('meta[name="twitter:description"]', "name", "twitter:description", description);
-  }, []);
 
   useEffect(() => {
     if (!ready || !photos.length) return;
@@ -14187,53 +14031,26 @@ export default function AtlasPage() {
           </div>
         ) : null}
 
-        <div
-          style={{
-            ...workLinksPageGridStyle,
-            gridTemplateColumns: isMobile
-              ? "minmax(0, 1fr)"
-              : workLinksPageGridStyle.gridTemplateColumns,
-          }}
-        >
+        <div style={workLinksPageGridStyle}>
           {filteredWorkLinks.map((link) => (
-            <article
-              key={link.id}
-              style={{
-                ...workLinkPageCardStyle,
-                position: "relative",
-                minHeight: isMobile ? 154 : undefined,
-                padding: isMobile ? 14 : workLinkPageCardStyle.padding,
-                borderWidth: 1,
-                boxShadow: isMobile ? "none" : workLinkPageCardStyle.boxShadow,
-                overflow: "hidden",
-              }}
-            >
+            <article key={link.id} style={{ ...workLinkPageCardStyle, position: "relative" }}>
               <a
                 href={link.url}
                 target="_blank"
                 rel="noreferrer"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "64px minmax(0, 1fr)"
-                    : "auto minmax(0, 1fr) auto",
-                  gridTemplateRows: isMobile ? "auto auto" : undefined,
+                  gridTemplateColumns: "auto minmax(0, 1fr) auto",
                   alignItems: "center",
-                  gap: isMobile ? "10px 14px" : 14,
-                  paddingRight: isMobile ? 0 : 58,
+                  gap: 14,
                   color: "inherit",
                   textDecoration: "none",
                   minWidth: 0,
-                  width: "100%",
                 }}
               >
                 <span
                   style={{
                     ...workLinkLogoLargeStyle,
-                    width: isMobile ? 64 : workLinkLogoLargeStyle.width,
-                    height: isMobile ? 64 : workLinkLogoLargeStyle.height,
-                    borderRadius: isMobile ? 18 : workLinkLogoLargeStyle.borderRadius,
-                    gridRow: isMobile ? "1 / 2" : undefined,
                     background: link.logoBg,
                     color: link.logoColor || colors.navy,
                   }}
@@ -14251,37 +14068,16 @@ export default function AtlasPage() {
                   ) : null}
                 </span>
 
-                <span
-                  style={{
-                    ...workLinkPageBodyStyle,
-                    paddingRight: isMobile ? 64 : 0,
-                    overflowWrap: "break-word",
-                    wordBreak: "normal",
-                  }}
-                >
-                  <strong style={{ fontSize: isMobile ? 17 : undefined, lineHeight: 1.2 }}>
-                    {link.name}
-                  </strong>
-                  <span style={{ lineHeight: 1.35 }}>
+                <span style={workLinkPageBodyStyle}>
+                  <strong>{link.name}</strong>
+                  <span>
                     {link.category}
                     {link.vendor ? ` · ${link.vendor}` : ""}
                   </span>
-                  <small style={{ lineHeight: 1.45, overflowWrap: "break-word" }}>
-                    {link.notes}
-                  </small>
+                  <small>{link.notes}</small>
                 </span>
 
-                <span
-                  style={{
-                    ...workLinkOpenLargeStyle,
-                    gridColumn: isMobile ? "1 / -1" : undefined,
-                    justifySelf: isMobile ? "start" : undefined,
-                    marginLeft: isMobile ? 78 : 0,
-                    padding: isMobile ? "8px 16px" : workLinkOpenLargeStyle.padding,
-                  }}
-                >
-                  Open
-                </span>
+                <span style={workLinkOpenLargeStyle}>Open</span>
               </a>
 
               <button
@@ -14292,16 +14088,12 @@ export default function AtlasPage() {
                 style={{
                   ...secondaryButtonStyle,
                   position: "absolute",
-                  top: 12,
-                  right: 12,
-                  width: "auto",
-                  minWidth: 58,
-                  padding: "8px 13px",
+                  top: 10,
+                  right: 10,
+                  width: 42,
+                  minWidth: 42,
+                  padding: 8,
                   borderRadius: 999,
-                  whiteSpace: "nowrap",
-                  lineHeight: 1,
-                  wordBreak: "keep-all",
-                  overflowWrap: "normal",
                 }}
               >
                 Edit
