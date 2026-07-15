@@ -3677,17 +3677,17 @@ export default function AtlasPage() {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || screen !== "calendar") return;
 
     let cancelled = false;
     let running = false;
 
-    async function refreshSharedCalendarAndPhotos() {
+    async function refreshSharedCalendar() {
       if (running || cancelled) return;
       running = true;
 
       try {
-        const response = await fetch(`/api/atlas?sync=${Date.now()}`, {
+        const response = await fetch(`/api/atlas?calendarSync=${Date.now()}`, {
           cache: "no-store",
         });
         if (!response.ok) throw new Error(`API returned ${response.status}`);
@@ -3705,33 +3705,11 @@ export default function AtlasPage() {
           .map(normalizeCalendar)
           .filter((item) => item.id && item.date && item.title);
 
-        // Neon is the shared source of truth. Once the API responds,
-        // every device uses the same calendar rows instead of retaining a
-        // separate browser-only calendar.
-        const nextSharedCalendar = byTitle(sharedCalendar);
-        setCalendarItems(nextSharedCalendar);
-        saveStoredArray(storageKeys.calendar[0], nextSharedCalendar);
-
-        const sharedPhotos = (
-          Array.isArray(payload.photos)
-            ? payload.photos
-            : Array.isArray(payload.assetPhotos)
-              ? payload.assetPhotos
-              : []
-        )
-          .map(normalizePhotoRecord)
-          .filter((photo) => photo.id && photo.assetId);
-
-        if (sharedPhotos.length) {
-          await cachePhotoRecords(sharedPhotos);
-          setPhotos((current) => {
-            const next = mergePhotoRecords(sharedPhotos, current);
-            persistPhotoRecords(next);
-            return next;
-          });
-        }
+        const next = byTitle(sharedCalendar);
+        setCalendarItems(next);
+        saveStoredArray(storageKeys.calendar[0], next);
       } catch {
-        // Keep the current browser copy visible while the shared API is unavailable.
+        // Keep the current calendar visible if the shared API is unavailable.
       } finally {
         running = false;
       }
@@ -3739,27 +3717,22 @@ export default function AtlasPage() {
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void refreshSharedCalendarAndPhotos();
+        void refreshSharedCalendar();
       }
     };
 
-    const onFocus = () => void refreshSharedCalendarAndPhotos();
-    const interval = window.setInterval(
-      () => void refreshSharedCalendarAndPhotos(),
-      20000,
-    );
+    const onFocus = () => void refreshSharedCalendar();
 
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    void refreshSharedCalendarAndPhotos();
+    void refreshSharedCalendar();
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [ready]);
+  }, [ready, screen]);
 
   useEffect(() => {
     if (!ready || !photos.length) return;
@@ -6983,42 +6956,8 @@ export default function AtlasPage() {
       return;
     }
 
-    try {
-      const response = await fetch(`/api/atlas?calendarVerify=${Date.now()}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error(`Verification returned ${response.status}`);
-      }
-
-      const payload = (await response.json()) as AtlasApiPayload;
-      const sharedCalendar = (
-        Array.isArray(payload.calendarItems)
-          ? payload.calendarItems
-          : Array.isArray(payload.calendar)
-            ? payload.calendar
-            : []
-      )
-        .map(normalizeCalendar)
-        .filter((item) => item.id && item.date && item.title);
-
-      const verified = sharedCalendar.some((item) => item.id === record.id);
-      if (!verified) {
-        throw new Error("The saved event was not returned by the shared database.");
-      }
-
-      const next = byTitle(sharedCalendar);
-      setCalendarItems(next);
-      saveStoredArray(storageKeys.calendar[0], next);
-      setDatabaseStatus("Calendar event saved and verified in shared Atlas.");
-      resetCalendarEntryForm(record.date);
-    } catch (error) {
-      setDatabaseStatus(
-        error instanceof Error
-          ? `Calendar save could not be verified: ${error.message}`
-          : "Calendar save could not be verified.",
-      );
-    }
+    setDatabaseStatus("Calendar event saved to shared Atlas.");
+    resetCalendarEntryForm(record.date);
   }
 
   async function deleteCalendarItem(id: string) {
