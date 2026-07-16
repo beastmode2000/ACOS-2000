@@ -1029,7 +1029,7 @@ function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
     colorNameFromLegacyColorId(rawColorId)) as CalendarColorName;
 
   return {
-    id: (() => { const v = String(record.id || slugify(title)); if (!record.id) console.warn("[CAL NORM] empty id slugified to", v, "title:", title); return v; })(),
+    id: String(record.id || slugify(title)),
     date: String(record.date ?? todayISO()),
     time: String(record.time || ""),
     title,
@@ -3605,7 +3605,6 @@ export default function AtlasPage() {
 
           if (apiNormalized.length) {
             setCalendarItems((current) => {
-              console.log("[CAL B] setCalendarItems current:", current.length, "api:", apiNormalized.length);
               const mergedById = new Map<string, CalendarItem>();
 
               for (const item of current) {
@@ -3622,12 +3621,9 @@ export default function AtlasPage() {
                 ),
               );
 
-              console.log("[CAL B] result:", next.length, "ids:", next.map(i => i.id));
               saveStoredArray(storageKeys.calendar[0], next);
               return next;
             });
-          } else {
-            console.log("[CAL B] api returned 0 calendar items, keeping current state");
           }
 
           const browserCalendar = readStoredArray<CalendarItem>(
@@ -3709,7 +3705,6 @@ export default function AtlasPage() {
           .filter((item) => item.id && item.date && item.title);
 
         setCalendarItems((current) => {
-          console.log("[CAL C] current:", current.length, "incoming:", sharedCalendar.length);
           if (!sharedCalendar.length) {
             return current;
           }
@@ -6906,7 +6901,6 @@ export default function AtlasPage() {
     });
 
     setCalendarItems((current) => {
-      console.log("[CAL SAVE] current:", current.length, "saving id:", record.id, "date:", record.date);
       const original = current.find((item) => item.id === record.id);
       const exists = Boolean(original);
 
