@@ -112,6 +112,25 @@ type AtlasCalendarProps = {
   weekCells: any;
 };
 
+function calendarDateKey(value: unknown): string {
+  if (!value) return "";
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? ""
+      : value.toISOString().slice(0, 10);
+  }
+
+  const text = String(value).trim();
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime())
+    ? ""
+    : parsed.toISOString().slice(0, 10);
+}
+
 export default function AtlasCalendar(props: AtlasCalendarProps) {
   const {
     Field,
@@ -210,7 +229,6 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     weekCells,
   } = props;
 
-  console.log("[CAL GRID] expandedCalendarItems count:", expandedCalendarItems?.length, "sample date:", expandedCalendarItems?.[0]?.date);
 
   const [detailExpanded, setDetailExpanded] = React.useState(false);
   const [editorOpen, setEditorOpen] = React.useState(Boolean(selectedCalendarId));
@@ -324,25 +342,25 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
   }
 
   function renderCalendarCell(cell: any, collapsed = false) {
-    const events = cell.date
-      ? expandedCalendarItems.filter((item: any) => item.date === cell.date)
+    const cellDateKey = calendarDateKey(cell.date);
+    const events = cellDateKey
+      ? expandedCalendarItems.filter(
+          (item: any) => calendarDateKey(item.date) === cellDateKey,
+        )
       : [];
-    if (cell.date && expandedCalendarItems.length > 0) {
-      const sample = expandedCalendarItems[0];
-      if (cell.date === sample.date) {
-        console.log("[CAL GRID] match found cellDate:", cell.date, "itemDate:", sample.date, "title:", sample.title);
-      }
-    }
-    const isToday = cell.date === todayKey;
-    const isSelected = cell.date === selectedCalendarDate;
-    const dayWeather = cell.date ? weatherByDate.get(cell.date) : undefined;
+    const isToday = cellDateKey === calendarDateKey(todayKey);
+    const isSelected =
+      cellDateKey === calendarDateKey(selectedCalendarDate);
+    const dayWeather = cellDateKey
+      ? weatherByDate.get(cellDateKey)
+      : undefined;
 
     return (
       <button
         key={cell.key}
         type="button"
-        disabled={!cell.date || collapsed}
-        onClick={() => cell.date && showDay(cell.date)}
+        disabled={!cellDateKey || collapsed}
+        onClick={() => cellDateKey && showDay(cellDateKey)}
         style={{
           ...calendarCellStyle,
           ...(compactMonthView ? calendarCompactCellStyle : {}),
