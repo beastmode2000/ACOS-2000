@@ -1005,12 +1005,59 @@ function normalizeService(record: Partial<AtlasServiceRecord>): AtlasServiceReco
 
 function normalizeProcedure(record: Partial<ProcedureRecord>): ProcedureRecord {
   const title = String(record.title ?? "Untitled Procedure");
+  const steps = Array.isArray(record.steps) ? record.steps.map(String) : [];
+  const checklist = Array.isArray(record.checklist)
+    ? record.checklist.map((item, index) => ({
+        id: String(item.id || uid("procedure-step")),
+        text: String(item.text || steps[index] || ""),
+        completed: Boolean(item.completed),
+        order: Number.isFinite(Number(item.order)) ? Number(item.order) : index,
+      }))
+    : steps.map((text, index) => ({
+        id: uid("procedure-step"),
+        text,
+        completed: false,
+        order: index,
+      }));
+
   return {
     id: String(record.id || slugify(title)),
     title,
     area: String(record.area ?? "2000"),
+    category: String(record.category || "Maintenance"),
     priority: isProcedurePriority(record.priority) ? record.priority : "Normal",
-    steps: Array.isArray(record.steps) ? record.steps.map(String) : [],
+    status:
+      record.status === "Draft" ||
+      record.status === "SOP" ||
+      record.status === "Preventive Maintenance" ||
+      record.status === "Landscaping"
+        ? record.status
+        : "Draft",
+    purpose: String(record.purpose || ""),
+    safetyNotes: String(record.safetyNotes || ""),
+    toolsParts: String(record.toolsParts || ""),
+    requiredTools: Array.isArray(record.requiredTools)
+      ? record.requiredTools.map(String).filter(Boolean)
+      : [],
+    requiredParts: Array.isArray(record.requiredParts)
+      ? record.requiredParts.map(String).filter(Boolean)
+      : [],
+    estimatedTime: String(record.estimatedTime || ""),
+    steps: checklist.map((item) => item.text).filter(Boolean),
+    checklist,
+    linkedAssetIds: Array.isArray(record.linkedAssetIds)
+      ? record.linkedAssetIds.map(String)
+      : [],
+    linkedLocationIds: Array.isArray(record.linkedLocationIds)
+      ? record.linkedLocationIds.map(String)
+      : [],
+    linkedVendorIds: Array.isArray(record.linkedVendorIds)
+      ? record.linkedVendorIds.map(String)
+      : [],
+    photos: Array.isArray(record.photos) ? record.photos : [],
+    documents: Array.isArray(record.documents) ? record.documents : [],
+    createdAt: String(record.createdAt || new Date().toISOString()),
+    updatedAt: String(record.updatedAt || new Date().toISOString()),
   };
 }
 
@@ -3218,11 +3265,29 @@ export default function AtlasPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isMobile || screen !== "procedures" || !selectedProcedureId) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscroll;
+    };
+  }, [isMobile, screen, selectedProcedureId]);
+
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState("");
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [selectedProcedureId, setSelectedProcedureId] = useState("");
+  const [procedureDraftNotes, setProcedureDraftNotes] = useState("");
+  const [procedureMessage, setProcedureMessage] = useState("");
+  const procedureListScrollYRef = useRef(0);
+  const procedureOverlayScrollRef = useRef<HTMLDivElement>(null);
   const [selectedPartId, setSelectedPartId] = useState("");
   const [dirtyRecords, setDirtyRecords] = useState<Record<string, boolean>>({});
   const [qrKind, setQrKind] = useState<QrKind>("asset");
@@ -4439,8 +4504,22 @@ export default function AtlasPage() {
       id: "",
       title: "",
       area: "",
+      category: "Maintenance",
       priority: "Normal",
+      status: "Draft",
+      purpose: "",
+      safetyNotes: "",
+      toolsParts: "",
+      requiredTools: [],
+      requiredParts: [],
+      estimatedTime: "",
       steps: [],
+      checklist: [],
+      linkedAssetIds: [],
+      linkedLocationIds: [],
+      linkedVendorIds: [],
+      photos: [],
+      documents: [],
     });
   const selectedRequest =
     requestRecords.find((request) => request.id === selectedRequestId) ??
@@ -4782,7 +4861,19 @@ export default function AtlasPage() {
     const sorted = byTitle(procedureRecords);
     if (!q) return sorted;
     return sorted.filter((item) =>
-      [item.title, item.area, item.priority, item.steps.join(" ")]
+      [
+        item.title,
+        item.area,
+        item.category,
+        item.priority,
+        item.status,
+        item.purpose,
+        item.safetyNotes,
+        item.toolsParts,
+        item.requiredTools?.join(" "),
+        item.requiredParts?.join(" "),
+        item.steps.join(" "),
+      ]
         .join(" ")
         .toLowerCase()
         .includes(q),
@@ -7460,6 +7551,166 @@ export default function AtlasPage() {
         ),
       ),
     );
+  }
+
+  function createProcedureRecord() {
+    const record = normalizeProcedure({
+      id: uid("procedure"),
+      title: "",
+      area: "2000",
+      category: "Maintenance",
+      priority: "Normal",
+      status: "Draft",
+      purpose: "",
+      safetyNotes: "",
+      toolsParts: "",
+      requiredTools: [],
+      requiredParts: [],
+      estimatedTime: "",
+      steps: [],
+      checklist: [],
+      linkedAssetIds: [],
+      linkedLocationIds: [],
+      linkedVendorIds: [],
+      photos: [],
+      documents: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    setProcedureRecords((current) => byTitle([...current, record]));
+    setSelectedProcedureId(record.id);
+    markRecordDirty("procedure", record.id);
+    setProcedureDraftNotes("");
+    setProcedureMessage("New procedure ready.");
+    procedureOverlayScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  function duplicateProcedureRecord(record: ProcedureRecord) {
+    const copy = normalizeProcedure({
+      ...record,
+      id: uid("procedure"),
+      title: `${record.title || "Procedure"} Copy`,
+      status: "Draft",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      checklist: (record.checklist || []).map((item, index) => ({
+        ...item,
+        id: uid("procedure-step"),
+        completed: false,
+        order: index,
+      })),
+    });
+    setProcedureRecords((current) => byTitle([...current, copy]));
+    setSelectedProcedureId(copy.id);
+    markRecordDirty("procedure", copy.id);
+    setProcedureMessage("Procedure duplicated. Review and save it.");
+  }
+
+  function updateProcedureSteps(nextSteps: string[]) {
+    const cleaned = nextSteps.map((item) => item.trim()).filter(Boolean);
+    const existing = selectedProcedure.checklist || [];
+    updateProcedure({
+      steps: cleaned,
+      checklist: cleaned.map((text, index) => ({
+        id: existing[index]?.id || uid("procedure-step"),
+        text,
+        completed: Boolean(existing[index]?.completed),
+        order: index,
+      })),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  function moveProcedureStep(index: number, direction: -1 | 1) {
+    const next = [...selectedProcedure.steps];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    updateProcedureSteps(next);
+  }
+
+  function toggleProcedureLink(
+    field: "linkedAssetIds" | "linkedLocationIds" | "linkedVendorIds",
+    id: string,
+  ) {
+    const current = selectedProcedure[field] || [];
+    updateProcedure({
+      [field]: current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async function uploadProcedureFiles(
+    kind: "photos" | "documents",
+    files: FileList | null,
+  ) {
+    if (!files?.length) return;
+    const uploaded = await Promise.all(
+      Array.from(files).map((file) => fileToUploadedRecord(file)),
+    );
+    updateProcedure({
+      [kind]: mergeUploadedFiles(uploaded, selectedProcedure[kind] || []),
+      updatedAt: new Date().toISOString(),
+    });
+    setProcedureMessage(
+      `${uploaded.length} ${kind === "photos" ? "photo" : "document"}${uploaded.length === 1 ? "" : "s"} added.`,
+    );
+  }
+
+  function generateProcedureDraft() {
+    const source = procedureDraftNotes.trim();
+    if (!source) {
+      setProcedureMessage("Paste notes or describe the work first.");
+      return;
+    }
+
+    const lines = source
+      .split(/\n|(?<=[.!?])\s+/)
+      .map((line) => line.replace(/^[-*\d.)\s]+/, "").trim())
+      .filter((line) => line.length > 2);
+    const safetyLines = lines.filter((line) =>
+      /safety|caution|warning|disconnect|shut off|ppe|glove|eye protection|hazard/i.test(line),
+    );
+    const toolMatches = source.match(/(?:tools?|equipment)\s*[:\-]\s*([^\n.]+)/i);
+    const partMatches = source.match(/(?:parts?|materials?|supplies)\s*[:\-]\s*([^\n.]+)/i);
+    const timeMatch = source.match(/(?:estimated time|duration|takes?)\s*[:\-]?\s*([^\n.]+)/i);
+    const stepLines = lines.filter(
+      (line) =>
+        !safetyLines.includes(line) &&
+        !/^(tools?|equipment|parts?|materials?|supplies|estimated time|duration)\b/i.test(line),
+    );
+
+    updateProcedure({
+      purpose: selectedProcedure.purpose || lines[0] || source.slice(0, 240),
+      safetyNotes: safetyLines.join("\n") || selectedProcedure.safetyNotes || "Review the work area, isolate energy or water sources when applicable, and use appropriate PPE.",
+      requiredTools: toolMatches
+        ? toolMatches[1].split(/,|;/).map((item) => item.trim()).filter(Boolean)
+        : selectedProcedure.requiredTools || [],
+      requiredParts: partMatches
+        ? partMatches[1].split(/,|;/).map((item) => item.trim()).filter(Boolean)
+        : selectedProcedure.requiredParts || [],
+      estimatedTime: timeMatch?.[1]?.trim() || selectedProcedure.estimatedTime || "30–60 minutes",
+      status: selectedProcedure.status || "Draft",
+      updatedAt: new Date().toISOString(),
+    });
+    if (stepLines.length) updateProcedureSteps(stepLines);
+    setProcedureMessage("Atlas built a procedure draft. Review it, then save.");
+  }
+
+  function closeProcedureViewer() {
+    setSelectedProcedureId("");
+    setProcedureMessage("");
+    if (isMobile) {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({
+          top: procedureListScrollYRef.current,
+          left: 0,
+          behavior: "auto",
+        });
+      });
+    }
   }
 
   function updatePart(patch: Partial<PartRecord>) {
@@ -13775,106 +14026,160 @@ export default function AtlasPage() {
   }
 
   function renderProcedures() {
-    return (
-      <ListDrawerLayout
-        eyebrow="Procedures"
-        title="Procedures"
-        isMobile={isMobile}
-        drawerResetKey={selectedProcedure.id || "procedure-new"}
-        list={
-          <div style={listStyle}>
-            {filteredProcedures.map((procedure) => (
-              <button
-                key={procedure.id}
-                type="button"
-                onClick={() => setSelectedProcedureId(procedure.id)}
-                style={{
-                  ...rowButtonStyle,
-                  borderColor:
-                    procedure.id === selectedProcedure.id
-                      ? colors.gold
-                      : colors.line,
-                }}
-              >
-                <div>
-                  <strong>{procedure.title}</strong>
-                  <p style={mutedSmallStyle}>
-                    {procedure.area} · {procedure.steps.length} steps
-                  </p>
-                </div>
-                <span style={badgeStyle(procedure.priority)}>
-                  {procedure.priority}
-                </span>
-              </button>
-            ))}
-          </div>
-        }
-        drawer={
-          <>
-            <h3 style={editorHeaderStyle}>
+    const procedureEditor = selectedProcedureId ? (
+      <div style={{ display: "grid", gap: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={eyebrowStyle}>Procedure Builder</div>
+            <h3 style={{ ...editorHeaderStyle, marginBottom: 4 }}>
               {selectedProcedure.title.trim() || "New Procedure"}
             </h3>
-            <div style={formGridStyle}>
-              <Field
-                label="Title"
-                value={selectedProcedure.title}
-                onChange={(value) => updateProcedure({ title: value })}
-              />
-              <Field
-                label="Area"
-                value={selectedProcedure.area}
-                onChange={(value) => updateProcedure({ area: value })}
-              />
-              <SelectField
-                label="Priority"
-                value={selectedProcedure.priority}
-                onChange={(value) => updateProcedure({ priority: value })}
-                options={["High", "Normal", "Seasonal"] as const}
-              />
-              <Field
-                label="Steps, one per line"
-                value={selectedProcedure.steps.join("\n")}
-                onChange={(value) =>
-                  updateProcedure({
-                    steps: value
-                      .split("\n")
-                      .map((item) => item.trim())
-                      .filter(Boolean),
-                  })
-                }
-                multiline
-              />
+            <p style={mutedSmallStyle}>
+              {selectedProcedure.status || "Draft"} · {selectedProcedure.steps.length} steps
+            </p>
+          </div>
+          <div style={buttonRowStyle}>
+            <button
+              type="button"
+              onClick={() => duplicateProcedureRecord(selectedProcedure)}
+              style={secondaryButtonStyle}
+            >
+              Duplicate
+            </button>
+            {selectedProcedure.id ? (
+              <button
+                type="button"
+                onClick={() => void deleteProcedureRecord(selectedProcedure)}
+                style={tinyDangerButtonStyle}
+              >
+                Delete
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div style={{ ...cardStyle, background: "#F8FAFC" }}>
+          <div style={eyebrowStyle}>Build Draft from Notes</div>
+          <Field
+            label="Paste notes, a manual excerpt, work-order details, or a photo description"
+            value={procedureDraftNotes}
+            onChange={setProcedureDraftNotes}
+            multiline
+          />
+          <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+            <button type="button" onClick={generateProcedureDraft} style={goldButtonStyle}>
+              Generate Procedure Draft
+            </button>
+          </div>
+          {procedureMessage ? <p style={{ ...mutedSmallStyle, marginTop: 8 }}>{procedureMessage}</p> : null}
+        </div>
+
+        <div style={formGridStyle}>
+          <Field label="Title" value={selectedProcedure.title} onChange={(value) => updateProcedure({ title: value, updatedAt: new Date().toISOString() })} />
+          <Field label="Area" value={selectedProcedure.area} onChange={(value) => updateProcedure({ area: value, updatedAt: new Date().toISOString() })} />
+          <Field label="Category" value={selectedProcedure.category || ""} onChange={(value) => updateProcedure({ category: value, updatedAt: new Date().toISOString() })} />
+          <SelectField label="Status" value={selectedProcedure.status || "Draft"} onChange={(value) => updateProcedure({ status: value as ProcedureRecord["status"], updatedAt: new Date().toISOString() })} options={["Draft", "SOP", "Preventive Maintenance", "Landscaping"] as const} />
+          <SelectField label="Priority" value={selectedProcedure.priority} onChange={(value) => updateProcedure({ priority: value, updatedAt: new Date().toISOString() })} options={["High", "Normal", "Seasonal"] as const} />
+          <Field label="Estimated Time" value={selectedProcedure.estimatedTime || ""} onChange={(value) => updateProcedure({ estimatedTime: value, updatedAt: new Date().toISOString() })} />
+          <Field label="Purpose" value={selectedProcedure.purpose || ""} onChange={(value) => updateProcedure({ purpose: value, updatedAt: new Date().toISOString() })} multiline />
+          <Field label="Safety Notes" value={selectedProcedure.safetyNotes || ""} onChange={(value) => updateProcedure({ safetyNotes: value, updatedAt: new Date().toISOString() })} multiline />
+          <Field label="Tools / Parts Overview" value={selectedProcedure.toolsParts || ""} onChange={(value) => updateProcedure({ toolsParts: value, updatedAt: new Date().toISOString() })} multiline />
+          <Field label="Required Tools, one per line" value={(selectedProcedure.requiredTools || []).join("\n")} onChange={(value) => updateProcedure({ requiredTools: value.split("\n").map((item) => item.trim()).filter(Boolean), updatedAt: new Date().toISOString() })} multiline />
+          <Field label="Required Parts, one per line" value={(selectedProcedure.requiredParts || []).join("\n")} onChange={(value) => updateProcedure({ requiredParts: value.split("\n").map((item) => item.trim()).filter(Boolean), updatedAt: new Date().toISOString() })} multiline />
+        </div>
+
+        <div style={cardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
+            <div>
+              <div style={eyebrowStyle}>Checklist</div>
+              <strong>{selectedProcedure.steps.length} steps</strong>
             </div>
-            <div style={buttonRowStyle}>
-              {isRecordDirty("procedure", selectedProcedure.id) ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void saveDirtyRecord(
-                      "procedures",
-                      selectedProcedure,
-                      "procedure",
-                      selectedProcedure.id,
-                    )
-                  }
-                  style={goldButtonStyle}
-                >
-                  Save Procedure
-                </button>
-              ) : null}
-              {selectedProcedure.id ? (
-                <button
-                  type="button"
-                  onClick={() => void deleteProcedureRecord(selectedProcedure)}
-                  style={dangerButtonStyle}
-                >
-                  Delete Procedure
-                </button>
-              ) : null}
+            <button type="button" onClick={() => updateProcedureSteps([...selectedProcedure.steps, "New step"])} style={smallSubtleButtonStyle}>Add Step</button>
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {selectedProcedure.steps.map((step, index) => (
+              <div key={`${selectedProcedure.id}-step-${index}`} style={{ display: "grid", gridTemplateColumns: "32px minmax(0, 1fr) auto", gap: 8, alignItems: "center" }}>
+                <strong style={{ textAlign: "center" }}>{index + 1}</strong>
+                <input value={step} onChange={(event) => { const next = [...selectedProcedure.steps]; next[index] = event.currentTarget.value; updateProcedureSteps(next); }} style={inputStyle} />
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button type="button" onClick={() => moveProcedureStep(index, -1)} disabled={index === 0} style={smallSubtleButtonStyle}>↑</button>
+                  <button type="button" onClick={() => moveProcedureStep(index, 1)} disabled={index === selectedProcedure.steps.length - 1} style={smallSubtleButtonStyle}>↓</button>
+                  <button type="button" onClick={() => updateProcedureSteps(selectedProcedure.steps.filter((_, itemIndex) => itemIndex !== index))} style={tinyDangerButtonStyle}>×</button>
+                </div>
+              </div>
+            ))}
+            {!selectedProcedure.steps.length ? <div style={noticeStyle}>Add the first checklist step.</div> : null}
+          </div>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={eyebrowStyle}>Linked Records</div>
+          <div style={{ display: "grid", gap: 12 }}>
+            <div><strong>Assets</strong><div style={{ ...buttonRowStyle, marginTop: 6 }}>{assetRecords.map((asset) => <button key={asset.id} type="button" onClick={() => toggleProcedureLink("linkedAssetIds", asset.id)} style={(selectedProcedure.linkedAssetIds || []).includes(asset.id) ? goldButtonStyle : smallSubtleButtonStyle}>{asset.name}</button>)}</div></div>
+            <div><strong>Locations</strong><div style={{ ...buttonRowStyle, marginTop: 6 }}>{locations.map((location) => <button key={location.id} type="button" onClick={() => toggleProcedureLink("linkedLocationIds", location.id)} style={(selectedProcedure.linkedLocationIds || []).includes(location.id) ? goldButtonStyle : smallSubtleButtonStyle}>{location.name}</button>)}</div></div>
+            <div><strong>Vendors</strong><div style={{ ...buttonRowStyle, marginTop: 6 }}>{vendorRecords.map((vendor) => <button key={vendor.id} type="button" onClick={() => toggleProcedureLink("linkedVendorIds", vendor.id)} style={(selectedProcedure.linkedVendorIds || []).includes(vendor.id) ? goldButtonStyle : smallSubtleButtonStyle}>{vendor.name}</button>)}</div></div>
+          </div>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={eyebrowStyle}>Photos and Documents</div>
+          <div style={buttonRowStyle}>
+            <label style={{ ...secondaryButtonStyle, cursor: "pointer" }}>Add Photos<input type="file" accept="image/*" multiple onChange={(event) => void uploadProcedureFiles("photos", event.currentTarget.files)} style={{ display: "none" }} /></label>
+            <label style={{ ...secondaryButtonStyle, cursor: "pointer" }}>Add Documents<input type="file" multiple onChange={(event) => void uploadProcedureFiles("documents", event.currentTarget.files)} style={{ display: "none" }} /></label>
+          </div>
+          {(selectedProcedure.photos || []).length ? <div style={{ ...photoGridStyle, marginTop: 12 }}>{(selectedProcedure.photos || []).map((photo) => <button key={photo.id} type="button" onClick={() => setPreviewFile(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 14, overflow: "hidden", padding: 0, background: "#FFFFFF" }}><img src={photo.dataUrl || photo.url} alt={photo.name} style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }} /><span style={{ display: "block", padding: 8 }}>{photo.name}</span></button>)}</div> : null}
+          {(selectedProcedure.documents || []).length ? <div style={{ display: "grid", gap: 8, marginTop: 12 }}>{(selectedProcedure.documents || []).map((document) => <button key={document.id} type="button" onClick={() => openUploadedFile(document)} style={secondaryButtonStyle}>{document.name}</button>)}</div> : null}
+        </div>
+
+        <div style={buttonRowStyle}>
+          {isRecordDirty("procedure", selectedProcedure.id) ? (
+            <button type="button" onClick={() => void saveDirtyRecord("procedures", selectedProcedure, "procedure", selectedProcedure.id)} style={goldButtonStyle}>Save Procedure</button>
+          ) : <span style={badgeStyle("Completed")}>Saved</span>}
+          {isMobile ? <button type="button" onClick={closeProcedureViewer} style={secondaryButtonStyle}>Close</button> : null}
+        </div>
+      </div>
+    ) : (
+      <div style={noticeStyle}><strong>Select a procedure.</strong><p style={mutedSmallStyle}>Choose one from the list or add a new procedure.</p></div>
+    );
+
+    return (
+      <>
+        <ListDrawerLayout
+          eyebrow="Procedures"
+          title="Procedures"
+          detail="Create reusable SOPs, preventive-maintenance instructions, and landscaping procedures."
+          isMobile={isMobile}
+          drawerResetKey={selectedProcedure.id || "procedure-new"}
+          right={<button type="button" onClick={createProcedureRecord} style={goldButtonStyle}>Add Procedure</button>}
+          list={<div style={listStyle}>{filteredProcedures.map((procedure) => (
+            <button key={procedure.id} type="button" onClick={() => { procedureListScrollYRef.current = window.scrollY; setSelectedProcedureId(procedure.id); setProcedureDraftNotes(""); setProcedureMessage(""); }} style={{ ...rowButtonStyle, borderColor: procedure.id === selectedProcedure.id ? colors.gold : colors.line }}>
+              <div><strong>{procedure.title}</strong><p style={mutedSmallStyle}>{procedure.area} · {procedure.category || "General"} · {procedure.steps.length} steps</p></div>
+              <span style={badgeStyle(procedure.priority)}>{procedure.status || procedure.priority}</span>
+            </button>
+          ))}</div>}
+          drawer={isMobile ? undefined : procedureEditor}
+        />
+
+        {isMobile && selectedProcedureId ? (
+          <div role="dialog" aria-modal="true" aria-label={`Procedure editor: ${selectedProcedure.title || "New Procedure"}`} onClick={closeProcedureViewer} style={{ position: "fixed", inset: 0, zIndex: 1600, background: "rgba(7, 23, 47, 0.76)", padding: "max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom))", display: "flex", alignItems: "stretch", justifyContent: "center" }}>
+            <div onClick={(event) => event.stopPropagation()} style={{ width: "100%", maxWidth: 760, height: "calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom))", minHeight: 0, borderRadius: 20, overflow: "hidden", background: "#FFFFFF", boxShadow: "0 24px 80px rgba(0,0,0,0.38)", display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 10px 10px 14px", borderBottom: `1px solid ${colors.line}`, background: "#FFFFFF" }}>
+                <strong style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedProcedure.title || "New Procedure"}</strong>
+                <button type="button" onClick={closeProcedureViewer} style={{ width: 42, height: 42, borderRadius: 999, border: `1px solid ${colors.line}`, background: colors.navy3, color: "#FFFFFF", fontSize: 22, fontWeight: 900, lineHeight: 1, cursor: "pointer" }} aria-label="Close procedure editor">×</button>
+              </div>
+              <div ref={procedureOverlayScrollRef} style={{ minHeight: 0, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", padding: 12 }}>{procedureEditor}</div>
             </div>
-          </>
-        }
-      />
+          </div>
+        ) : null}
+      </>
     );
   }
 
