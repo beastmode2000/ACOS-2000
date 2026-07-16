@@ -325,9 +325,52 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     const events = cell.date
       ? expandedCalendarItems.filter((item: any) => item.date === cell.date)
       : [];
+
+    const normalizedDateEvents = cell.date
+      ? expandedCalendarItems.filter(
+          (item: any) =>
+            String(item.date || "").slice(0, 10) ===
+            String(cell.date || "").slice(0, 10),
+        )
+      : [];
+
     const isToday = cell.date === todayKey;
     const isSelected = cell.date === selectedCalendarDate;
     const dayWeather = cell.date ? weatherByDate.get(cell.date) : undefined;
+
+    if (
+      isToday ||
+      isSelected ||
+      normalizedDateEvents.some((item: any) =>
+        String(item.title || "").toLowerCase().includes("test"),
+      )
+    ) {
+      console.log("[CAL GRID] cell:", cell.date, {
+        collapsed,
+        strictMatches: events.length,
+        normalizedMatches: normalizedDateEvents.length,
+        strictEvents: events.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          date: item.date,
+        })),
+        normalizedEvents: normalizedDateEvents.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          date: item.date,
+        })),
+      });
+
+      console.log("[CAL GRID FINAL]", {
+        cellDate: cell.date,
+        collapsed,
+        eventsFound: events.length,
+        visibleEventLimit,
+        titlesThatShouldRender: events
+          .slice(0, visibleEventLimit)
+          .map((item: any) => item.title),
+      });
+    }
 
     return (
       <button
@@ -361,6 +404,20 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
         {!collapsed ? (
           <div style={{ display: "grid", gap: compactMonthView ? 3 : 4, marginTop: compactMonthView ? 6 : 8, minHeight: 0 }}>
             {events.slice(0, visibleEventLimit).map((event: any) => {
+              if (
+                isToday ||
+                String(event.title || "").toLowerCase().includes("test")
+              ) {
+                console.log("[CAL GRID RENDER]", {
+                  cellDate: cell.date,
+                  eventId: event.id,
+                  eventTitle: event.title,
+                  eventDate: event.date,
+                  visibleEventLimit,
+                  totalEventsForCell: events.length,
+                });
+              }
+
               const eventColor = colorForEvent(event);
               return (
                 <span
