@@ -3265,20 +3265,6 @@ export default function AtlasPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!isMobile || screen !== "procedures" || !selectedProcedureId) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const previousOverscroll = document.body.style.overscrollBehavior;
-    document.body.style.overflow = "hidden";
-    document.body.style.overscrollBehavior = "none";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.overscrollBehavior = previousOverscroll;
-    };
-  }, [isMobile, screen, selectedProcedureId]);
-
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState("");
@@ -3298,6 +3284,20 @@ export default function AtlasPage() {
   );
   const [scannerManualValue, setScannerManualValue] = useState("");
   const [lastScannedQr, setLastScannedQr] = useState("");
+
+  useEffect(() => {
+    if (!isMobile || screen !== "procedures" || !selectedProcedureId) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscroll;
+    };
+  }, [isMobile, screen, selectedProcedureId]);
 
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
