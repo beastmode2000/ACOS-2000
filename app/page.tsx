@@ -11551,10 +11551,24 @@ export default function AtlasPage() {
     });
 
     const selectedDocument =
-      searchableDocuments.find((doc) => doc.id === selectedDocumentId) || null;
+      allDocuments.find((doc) => doc.id === selectedDocumentId) || null;
     const selectedTargetKind = (selectedDocument?.targetType ||
       "General") as IntakeTargetKind;
     const selectedTargetOptions = documentTargetOptionsFor(selectedTargetKind);
+    const primaryFile = selectedDocument?.files?.[0] || null;
+    const primarySource = primaryFile?.dataUrl || primaryFile?.url || "";
+    const primaryType = String(primaryFile?.type || "").toLowerCase();
+    const primaryName = String(primaryFile?.name || "").toLowerCase();
+    const primaryIsImage =
+      primaryType.startsWith("image/") ||
+      primarySource.startsWith("data:image/") ||
+      /\.(png|jpe?g|gif|webp|avif|svg)$/.test(primaryName);
+    const primaryIsPdf =
+      primaryType.includes("pdf") ||
+      primarySource.startsWith("data:application/pdf") ||
+      primaryName.endsWith(".pdf") ||
+      selectedDocument?.href?.toLowerCase().includes(".pdf");
+    const documentHref = primarySource || selectedDocument?.href || "";
 
     function retargetSelectedDocument(kind: IntakeTargetKind) {
       if (!selectedDocument) return;
@@ -11586,8 +11600,8 @@ export default function AtlasPage() {
     return (
       <ListDrawerLayout
         eyebrow="Document Vault"
-        title={isMobile ? "Documents" : "Documents / Photos"}
-        detail={isMobile ? "Tap a document to open it." : "Search, open, edit, delete, zoom, and sync paperwork, photos, scans, PDFs, receipts, invoices, notes, and screenshots between phone and desktop."}
+        title="Documents"
+        detail="Search the list, then click once to open the document or photo in the viewer."
         isMobile={isMobile}
         drawerResetKey={selectedDocumentId || "document-new"}
         right={
@@ -11609,141 +11623,203 @@ export default function AtlasPage() {
           </>
         }
         list={
-          <div style={stackStyle}>
-            <div style={cardStyle}>
-              <div style={eyebrowStyle}>Look Up Documents</div>
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ ...cardStyle, padding: 12 }}>
               <input
                 value={documentSearch}
                 onChange={(event) =>
                   setDocumentSearch(event.currentTarget.value)
                 }
-                placeholder="Search title, vendor, asset, notes, file name..."
+                placeholder="Search documents and photos..."
                 style={inputStyle}
+                aria-label="Search documents and photos"
               />
-              <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 8,
+                }}
+              >
+                <span style={mutedSmallStyle}>
+                  {searchableDocuments.length} item
+                  {searchableDocuments.length === 1 ? "" : "s"}
+                </span>
                 <button
                   type="button"
                   onClick={() => void refreshDocumentVault()}
-                  style={secondaryButtonStyle}
+                  style={smallSubtleButtonStyle}
                 >
-                  Refresh Vault
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScreen("intake")}
-                  style={goldButtonStyle}
-                >
-                  Add Document
+                  Refresh
                 </button>
               </div>
-              <p style={mutedSmallStyle}>
-                {searchableDocuments.length} matching document(s), sorted A–Z.
-              </p>
-              <p style={mutedSmallStyle}>{documentSyncStatus}</p>
             </div>
 
             {!searchableDocuments.length ? (
               <div style={noticeStyle}>
-                <strong>No saved documents found.</strong>
-                <p style={mutedSmallStyle}>
-                  Use Add Document to take a phone photo, upload a PDF/image, or
-                  paste notes and link them to an Atlas record.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setScreen("intake")}
-                  style={goldButtonStyle}
-                >
-                  Add Document
-                </button>
+                <strong>No matching documents.</strong>
               </div>
             ) : (
-              <div style={listStyle}>
-                {searchableDocuments.map((document) => {
-                  const fileCount = (document.files || []).length;
-                  const hasPreview =
-                    fileCount > 0 ||
-                    Boolean(document.pastedText || document.href);
-                  return (
-                    <button
-                      key={document.id}
-                      type="button"
-                      onClick={() => {
-                        const firstFile = document.files?.[0];
-                        if (isMobile && firstFile) {
-                          openUploadedFile(firstFile);
-                          return;
-                        }
-                        setSelectedDocumentId(document.id);
-                      }}
+              <div
+                style={{
+                  display: "grid",
+                  gap: 6,
+                  alignContent: "start",
+                }}
+              >
+                {searchableDocuments.map((document) => (
+                  <button
+                    key={document.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDocumentId(document.id);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    style={{
+                      ...rowButtonStyle,
+                      padding: "13px 14px",
+                      minHeight: 48,
+                      borderColor:
+                        selectedDocument?.id === document.id
+                          ? colors.gold
+                          : colors.line,
+                      background:
+                        selectedDocument?.id === document.id
+                          ? "#FFFAEB"
+                          : "#FFFFFF",
+                      boxShadow:
+                        selectedDocument?.id === document.id
+                          ? "0 10px 22px rgba(201,154,61,0.16)"
+                          : rowButtonStyle.boxShadow,
+                    }}
+                  >
+                    <strong
                       style={{
-                        ...rowButtonStyle,
-                        borderColor:
-                          selectedDocument?.id === document.id
-                            ? colors.gold
-                            : colors.line,
-                        boxShadow:
-                          selectedDocument?.id === document.id
-                            ? "0 14px 30px rgba(201,154,61,0.18)"
-                            : rowButtonStyle.boxShadow,
+                        display: "block",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      <div style={{ minWidth: 0 }}>
-                        <strong>{document.title}</strong>
-                        {!isMobile ? (
-                          <>
-                            <p style={mutedSmallStyle}>
-                              {document.type} · {document.area}
-                            </p>
-                            {document.targetType ? (
-                              <p style={mutedSmallStyle}>
-                                Linked to {document.targetType}:{" "}
-                                {document.targetName || document.area}
-                              </p>
-                            ) : null}
-                            <p style={mutedSmallStyle}>
-                              {hasPreview
-                                ? `${fileCount} file(s) / preview available`
-                                : "Text-only record"}
-                            </p>
-                          </>
-                        ) : (
-                          <p style={mutedSmallStyle}>
-                            {fileCount
-                              ? "Tap to open document"
-                              : "Tap to view document details"}
-                          </p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+                      {document.title}
+                    </strong>
+                  </button>
+                ))}
               </div>
             )}
           </div>
         }
         drawer={
-          <div>
-            {selectedDocument ? (
-              <div style={stackStyle}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    gap: 12,
-                  }}
-                >
-                  <div>
-                    <h3 style={editorHeaderStyle}>
-                      {selectedDocument.title.trim() || "Document"}
-                    </h3>
+          selectedDocument ? (
+            <div style={{ display: "grid", gap: 16 }}>
+              <div
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 18,
+                  overflow: "hidden",
+                  background: "#F8FAFC",
+                  minHeight: isMobile ? 300 : 470,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {documentHref && primaryIsImage ? (
+                  <img
+                    src={documentHref}
+                    alt={selectedDocument.title}
+                    style={{
+                      width: "100%",
+                      height: isMobile ? "auto" : 520,
+                      maxHeight: isMobile ? "70vh" : 520,
+                      objectFit: "contain",
+                      display: "block",
+                      background: "#FFFFFF",
+                    }}
+                  />
+                ) : documentHref && primaryIsPdf ? (
+                  <iframe
+                    src={documentHref}
+                    title={selectedDocument.title}
+                    style={{
+                      width: "100%",
+                      height: isMobile ? "68vh" : 560,
+                      border: 0,
+                      background: "#FFFFFF",
+                    }}
+                  />
+                ) : documentHref ? (
+                  <div style={{ padding: 24, textAlign: "center" }}>
+                    <div style={{ ...fileTileStyle, margin: "0 auto 12px" }}>
+                      FILE
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        primaryFile
+                          ? openUploadedFile(primaryFile)
+                          : window.open(documentHref, "_blank", "noopener,noreferrer")
+                      }
+                      style={goldButtonStyle}
+                    >
+                      Open File
+                    </button>
+                  </div>
+                ) : selectedDocument.pastedText ? (
+                  <div
+                    style={{
+                      width: "100%",
+                      alignSelf: "stretch",
+                      padding: 22,
+                      whiteSpace: "pre-wrap",
+                      lineHeight: 1.6,
+                      overflow: "auto",
+                      background: "#FFFFFF",
+                    }}
+                  >
+                    {selectedDocument.pastedText}
+                  </div>
+                ) : (
+                  <div style={{ padding: 24, textAlign: "center" }}>
+                    <strong>No preview available.</strong>
                     <p style={mutedSmallStyle}>
-                      {selectedDocument.createdAt
-                        ? `Saved ${new Date(selectedDocument.createdAt).toLocaleString()}`
-                        : "Saved document"}
+                      This record currently contains details only.
                     </p>
                   </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <h3 style={{ ...editorHeaderStyle, marginBottom: 4 }}>
+                    {selectedDocument.title.trim() || "Document"}
+                  </h3>
+                  <p style={mutedSmallStyle}>
+                    {selectedDocument.createdAt
+                      ? `Saved ${new Date(selectedDocument.createdAt).toLocaleString()}`
+                      : "Saved document"}
+                  </p>
+                </div>
+                <div style={buttonRowStyle}>
+                  {primaryFile ? (
+                    <button
+                      type="button"
+                      onClick={() => openUploadedFile(primaryFile)}
+                      style={secondaryButtonStyle}
+                    >
+                      Full Screen
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() =>
@@ -11752,10 +11828,43 @@ export default function AtlasPage() {
                     style={tinyDangerButtonStyle}
                     title="Delete document"
                   >
-                    × Delete
+                    Delete
                   </button>
                 </div>
+              </div>
 
+              {selectedDocument.files && selectedDocument.files.length > 1 ? (
+                <div>
+                  <div style={eyebrowStyle}>Attached Files</div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    {selectedDocument.files.map((file) => (
+                      <button
+                        key={file.id}
+                        type="button"
+                        onClick={() => openUploadedFile(file)}
+                        style={{
+                          ...secondaryButtonStyle,
+                          minHeight: 44,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {file.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={cardStyle}>
+                <div style={eyebrowStyle}>Document Information</div>
                 <div style={formGridStyle}>
                   <Field
                     label="Title"
@@ -11774,7 +11883,6 @@ export default function AtlasPage() {
                         type: value,
                       })
                     }
-                    placeholder="Invoice, Manual, Photo, Receipt, Estimate..."
                   />
                   <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                     <span style={fieldLabelStyle}>Linked section</span>
@@ -11830,10 +11938,9 @@ export default function AtlasPage() {
                       })
                     }
                     multiline
-                    placeholder="What is this, why it matters, follow-up needed..."
                   />
                   <Field
-                    label="Pasted text / copied paperwork"
+                    label="Pasted text"
                     value={selectedDocument.pastedText || ""}
                     onChange={(value) =>
                       updateSelectedDocument(selectedDocument.id, {
@@ -11841,11 +11948,10 @@ export default function AtlasPage() {
                       })
                     }
                     multiline
-                    placeholder="Paste copied text, email content, invoice notes, serial info, etc."
                   />
                 </div>
 
-                <div style={buttonRowStyle}>
+                <div style={{ ...buttonRowStyle, marginTop: 12 }}>
                   <button
                     type="button"
                     onClick={() => void saveSelectedDocument(selectedDocument)}
@@ -11871,94 +11977,16 @@ export default function AtlasPage() {
                     Close
                   </button>
                 </div>
-
-                {selectedDocument.files?.length ? (
-                  <div>
-                    <div style={eyebrowStyle}>Files</div>
-                    <div style={photoGridStyle}>
-                      {selectedDocument.files.map((file) => (
-                        <div key={file.id} style={photoCardStyle}>
-                          <button
-                            type="button"
-                            onClick={() => openUploadedFile(file)}
-                            style={{
-                              border: 0,
-                              background: "transparent",
-                              padding: 0,
-                              textAlign: "left",
-                              cursor: "pointer",
-                            }}
-                          >
-                            {file.dataUrl?.startsWith("data:image/") ? (
-                              <img
-                                src={file.dataUrl}
-                                alt={file.name}
-                                style={photoStyle}
-                              />
-                            ) : (
-                              <div style={fileTileStyle}>
-                                {file.type?.includes("pdf") ? "PDF" : "FILE"}
-                              </div>
-                            )}
-                            <strong>{file.name}</strong>
-                            <span style={mutedSmallStyle}>
-                              Open zoom preview
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateSelectedDocument(selectedDocument.id, {
-                                files: (selectedDocument.files || []).filter(
-                                  (item) => item.id !== file.id,
-                                ),
-                              })
-                            }
-                            style={tinyDangerButtonStyle}
-                          >
-                            Remove file
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={noticeStyle}>
-                    <strong>No file attached.</strong>
-                    <p style={mutedSmallStyle}>
-                      This record can still hold notes/pasted text. Add a new
-                      document if you need to attach a photo, PDF, or file.
-                    </p>
-                  </div>
-                )}
               </div>
-            ) : (
-              <div style={noticeStyle}>
-                <strong>Select a document from the list.</strong>
-                <p style={mutedSmallStyle}>
-                  After you save a new upload, this info area closes so it is
-                  ready for the next item. Click any document to view, edit,
-                  zoom, or delete it.
-                </p>
-                <div style={buttonRowStyle}>
-                  <button
-                    type="button"
-                    onClick={() => setScreen("intake")}
-                    style={goldButtonStyle}
-                  >
-                    Add Document
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void refreshDocumentVault()}
-                    style={secondaryButtonStyle}
-                  >
-                    Refresh Vault
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div style={noticeStyle}>
+              <strong>Select a document or photo.</strong>
+              <p style={mutedSmallStyle}>
+                The full preview and all information will appear here.
+              </p>
+            </div>
+          )
         }
       />
     );
