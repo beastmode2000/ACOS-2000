@@ -3182,6 +3182,22 @@ export default function AtlasPage() {
   const [previewZoom, setPreviewZoom] = useState(100);
   const [documentSearch, setDocumentSearch] = useState("");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const documentListScrollYRef = useRef(0);
+  const documentOverlayScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isMobile || screen !== "documents" || !selectedDocumentId) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscroll;
+    };
+  }, [isMobile, screen, selectedDocumentId]);
 
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
@@ -11597,7 +11613,311 @@ export default function AtlasPage() {
       });
     }
 
+    const selectedDocumentIndex = selectedDocument
+      ? searchableDocuments.findIndex((document) => document.id === selectedDocument.id)
+      : -1;
+
+    function closeDocumentViewer() {
+      setSelectedDocumentId("");
+      if (isMobile) {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({
+            top: documentListScrollYRef.current,
+            left: 0,
+            behavior: "auto",
+          });
+        });
+      }
+    }
+
+    function openDocumentByOffset(offset: number) {
+      if (!searchableDocuments.length || selectedDocumentIndex < 0) return;
+      const nextIndex = selectedDocumentIndex + offset;
+      if (nextIndex < 0 || nextIndex >= searchableDocuments.length) return;
+      setSelectedDocumentId(searchableDocuments[nextIndex].id);
+      window.requestAnimationFrame(() => {
+        documentOverlayScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+      });
+    }
+
+    const documentViewer = selectedDocument ? (
+  <div style={{ display: "grid", gap: 16 }}>
+    <div
+      style={{
+        border: `1px solid ${colors.line}`,
+        borderRadius: 18,
+        overflow: "hidden",
+        background: "#F8FAFC",
+        minHeight: isMobile ? 300 : 470,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {documentHref && primaryIsImage ? (
+        <img
+          src={documentHref}
+          alt={selectedDocument.title}
+          style={{
+            width: "100%",
+            height: isMobile ? "auto" : 520,
+            maxHeight: isMobile ? "70vh" : 520,
+            objectFit: "contain",
+            display: "block",
+            background: "#FFFFFF",
+          }}
+        />
+      ) : documentHref && primaryIsPdf ? (
+        <iframe
+          src={documentHref}
+          title={selectedDocument.title}
+          style={{
+            width: "100%",
+            height: isMobile ? "68vh" : 560,
+            border: 0,
+            background: "#FFFFFF",
+          }}
+        />
+      ) : documentHref ? (
+        <div style={{ padding: 24, textAlign: "center" }}>
+          <div style={{ ...fileTileStyle, margin: "0 auto 12px" }}>
+            FILE
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              primaryFile
+                ? openUploadedFile(primaryFile)
+                : window.open(documentHref, "_blank", "noopener,noreferrer")
+            }
+            style={goldButtonStyle}
+          >
+            Open File
+          </button>
+        </div>
+      ) : selectedDocument.pastedText ? (
+        <div
+          style={{
+            width: "100%",
+            alignSelf: "stretch",
+            padding: 22,
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.6,
+            overflow: "auto",
+            background: "#FFFFFF",
+          }}
+        >
+          {selectedDocument.pastedText}
+        </div>
+      ) : (
+        <div style={{ padding: 24, textAlign: "center" }}>
+          <strong>No preview available.</strong>
+          <p style={mutedSmallStyle}>
+            This record currently contains details only.
+          </p>
+        </div>
+      )}
+    </div>
+
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: 12,
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <h3 style={{ ...editorHeaderStyle, marginBottom: 4 }}>
+          {selectedDocument.title.trim() || "Document"}
+        </h3>
+        <p style={mutedSmallStyle}>
+          {selectedDocument.createdAt
+            ? `Saved ${new Date(selectedDocument.createdAt).toLocaleString()}`
+            : "Saved document"}
+        </p>
+      </div>
+      <div style={buttonRowStyle}>
+        {primaryFile ? (
+          <button
+            type="button"
+            onClick={() => openUploadedFile(primaryFile)}
+            style={secondaryButtonStyle}
+          >
+            Full Screen
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() =>
+            void deleteSelectedDocument(selectedDocument)
+          }
+          style={tinyDangerButtonStyle}
+          title="Delete document"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+
+    {selectedDocument.files && selectedDocument.files.length > 1 ? (
+      <div>
+        <div style={eyebrowStyle}>Attached Files</div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+            gap: 10,
+          }}
+        >
+          {selectedDocument.files.map((file) => (
+            <button
+              key={file.id}
+              type="button"
+              onClick={() => openUploadedFile(file)}
+              style={{
+                ...secondaryButtonStyle,
+                minHeight: 44,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {file.name}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null}
+
+    <div style={cardStyle}>
+      <div style={eyebrowStyle}>Document Information</div>
+      <div style={formGridStyle}>
+        <Field
+          label="Title"
+          value={selectedDocument.title}
+          onChange={(value) =>
+            updateSelectedDocument(selectedDocument.id, {
+              title: value,
+            })
+          }
+        />
+        <Field
+          label="Type"
+          value={selectedDocument.type}
+          onChange={(value) =>
+            updateSelectedDocument(selectedDocument.id, {
+              type: value,
+            })
+          }
+        />
+        <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+          <span style={fieldLabelStyle}>Linked section</span>
+          <select
+            value={selectedTargetKind}
+            onChange={(event) =>
+              retargetSelectedDocument(
+                event.currentTarget.value as IntakeTargetKind,
+              )
+            }
+            style={inputStyle}
+          >
+            {(
+              [
+                "Asset",
+                "Location",
+                "Vendor",
+                "Work Order",
+                "Map Label",
+                "General",
+              ] as IntakeTargetKind[]
+            ).map((kind) => (
+              <option key={kind} value={kind}>
+                {kind}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedTargetKind !== "General" ? (
+          <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+            <span style={fieldLabelStyle}>Linked record</span>
+            <select
+              value={selectedDocument.targetId || ""}
+              onChange={(event) =>
+                retargetSelectedRecord(event.currentTarget.value)
+              }
+              style={inputStyle}
+            >
+              {selectedTargetOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <Field
+          label="Notes"
+          value={selectedDocument.notes || ""}
+          onChange={(value) =>
+            updateSelectedDocument(selectedDocument.id, {
+              notes: value,
+            })
+          }
+          multiline
+        />
+        <Field
+          label="Pasted text"
+          value={selectedDocument.pastedText || ""}
+          onChange={(value) =>
+            updateSelectedDocument(selectedDocument.id, {
+              pastedText: value,
+            })
+          }
+          multiline
+        />
+      </div>
+
+      <div style={{ ...buttonRowStyle, marginTop: 12 }}>
+        <button
+          type="button"
+          onClick={() => void saveSelectedDocument(selectedDocument)}
+          style={goldButtonStyle}
+        >
+          Save Changes
+        </button>
+        {selectedDocument.targetType &&
+        selectedDocument.targetType !== "General" ? (
+          <button
+            type="button"
+            onClick={() => openDocumentTarget(selectedDocument)}
+            style={secondaryButtonStyle}
+          >
+            Open Linked Record
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={closeDocumentViewer}
+          style={secondaryButtonStyle}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+) : (
+  <div style={noticeStyle}>
+    <strong>Select a document or photo.</strong>
+    <p style={mutedSmallStyle}>
+      The full preview and all information will appear here.
+    </p>
+  </div>
+);
+
     return (
+      <>
       <ListDrawerLayout
         eyebrow="Document Vault"
         title="Documents"
@@ -11674,8 +11994,11 @@ export default function AtlasPage() {
                     key={document.id}
                     type="button"
                     onClick={() => {
+                      documentListScrollYRef.current = window.scrollY;
                       setSelectedDocumentId(document.id);
-                      window.scrollTo({ top: 0, behavior: "smooth" });
+                      if (!isMobile) {
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }
                     }}
                     style={{
                       ...rowButtonStyle,
@@ -11711,284 +12034,127 @@ export default function AtlasPage() {
             )}
           </div>
         }
-        drawer={
-          selectedDocument ? (
-            <div style={{ display: "grid", gap: 16 }}>
-              <div
-                style={{
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  background: "#F8FAFC",
-                  minHeight: isMobile ? 300 : 470,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {documentHref && primaryIsImage ? (
-                  <img
-                    src={documentHref}
-                    alt={selectedDocument.title}
-                    style={{
-                      width: "100%",
-                      height: isMobile ? "auto" : 520,
-                      maxHeight: isMobile ? "70vh" : 520,
-                      objectFit: "contain",
-                      display: "block",
-                      background: "#FFFFFF",
-                    }}
-                  />
-                ) : documentHref && primaryIsPdf ? (
-                  <iframe
-                    src={documentHref}
-                    title={selectedDocument.title}
-                    style={{
-                      width: "100%",
-                      height: isMobile ? "68vh" : 560,
-                      border: 0,
-                      background: "#FFFFFF",
-                    }}
-                  />
-                ) : documentHref ? (
-                  <div style={{ padding: 24, textAlign: "center" }}>
-                    <div style={{ ...fileTileStyle, margin: "0 auto 12px" }}>
-                      FILE
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        primaryFile
-                          ? openUploadedFile(primaryFile)
-                          : window.open(documentHref, "_blank", "noopener,noreferrer")
-                      }
-                      style={goldButtonStyle}
-                    >
-                      Open File
-                    </button>
-                  </div>
-                ) : selectedDocument.pastedText ? (
-                  <div
-                    style={{
-                      width: "100%",
-                      alignSelf: "stretch",
-                      padding: 22,
-                      whiteSpace: "pre-wrap",
-                      lineHeight: 1.6,
-                      overflow: "auto",
-                      background: "#FFFFFF",
-                    }}
-                  >
-                    {selectedDocument.pastedText}
-                  </div>
-                ) : (
-                  <div style={{ padding: 24, textAlign: "center" }}>
-                    <strong>No preview available.</strong>
-                    <p style={mutedSmallStyle}>
-                      This record currently contains details only.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <h3 style={{ ...editorHeaderStyle, marginBottom: 4 }}>
-                    {selectedDocument.title.trim() || "Document"}
-                  </h3>
-                  <p style={mutedSmallStyle}>
-                    {selectedDocument.createdAt
-                      ? `Saved ${new Date(selectedDocument.createdAt).toLocaleString()}`
-                      : "Saved document"}
-                  </p>
-                </div>
-                <div style={buttonRowStyle}>
-                  {primaryFile ? (
-                    <button
-                      type="button"
-                      onClick={() => openUploadedFile(primaryFile)}
-                      style={secondaryButtonStyle}
-                    >
-                      Full Screen
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void deleteSelectedDocument(selectedDocument)
-                    }
-                    style={tinyDangerButtonStyle}
-                    title="Delete document"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-
-              {selectedDocument.files && selectedDocument.files.length > 1 ? (
-                <div>
-                  <div style={eyebrowStyle}>Attached Files</div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                      gap: 10,
-                    }}
-                  >
-                    {selectedDocument.files.map((file) => (
-                      <button
-                        key={file.id}
-                        type="button"
-                        onClick={() => openUploadedFile(file)}
-                        style={{
-                          ...secondaryButtonStyle,
-                          minHeight: 44,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {file.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div style={cardStyle}>
-                <div style={eyebrowStyle}>Document Information</div>
-                <div style={formGridStyle}>
-                  <Field
-                    label="Title"
-                    value={selectedDocument.title}
-                    onChange={(value) =>
-                      updateSelectedDocument(selectedDocument.id, {
-                        title: value,
-                      })
-                    }
-                  />
-                  <Field
-                    label="Type"
-                    value={selectedDocument.type}
-                    onChange={(value) =>
-                      updateSelectedDocument(selectedDocument.id, {
-                        type: value,
-                      })
-                    }
-                  />
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Linked section</span>
-                    <select
-                      value={selectedTargetKind}
-                      onChange={(event) =>
-                        retargetSelectedDocument(
-                          event.currentTarget.value as IntakeTargetKind,
-                        )
-                      }
-                      style={inputStyle}
-                    >
-                      {(
-                        [
-                          "Asset",
-                          "Location",
-                          "Vendor",
-                          "Work Order",
-                          "Map Label",
-                          "General",
-                        ] as IntakeTargetKind[]
-                      ).map((kind) => (
-                        <option key={kind} value={kind}>
-                          {kind}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {selectedTargetKind !== "General" ? (
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Linked record</span>
-                      <select
-                        value={selectedDocument.targetId || ""}
-                        onChange={(event) =>
-                          retargetSelectedRecord(event.currentTarget.value)
-                        }
-                        style={inputStyle}
-                      >
-                        {selectedTargetOptions.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : null}
-                  <Field
-                    label="Notes"
-                    value={selectedDocument.notes || ""}
-                    onChange={(value) =>
-                      updateSelectedDocument(selectedDocument.id, {
-                        notes: value,
-                      })
-                    }
-                    multiline
-                  />
-                  <Field
-                    label="Pasted text"
-                    value={selectedDocument.pastedText || ""}
-                    onChange={(value) =>
-                      updateSelectedDocument(selectedDocument.id, {
-                        pastedText: value,
-                      })
-                    }
-                    multiline
-                  />
-                </div>
-
-                <div style={{ ...buttonRowStyle, marginTop: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => void saveSelectedDocument(selectedDocument)}
-                    style={goldButtonStyle}
-                  >
-                    Save Changes
-                  </button>
-                  {selectedDocument.targetType &&
-                  selectedDocument.targetType !== "General" ? (
-                    <button
-                      type="button"
-                      onClick={() => openDocumentTarget(selectedDocument)}
-                      style={secondaryButtonStyle}
-                    >
-                      Open Linked Record
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDocumentId("")}
-                    style={secondaryButtonStyle}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={noticeStyle}>
-              <strong>Select a document or photo.</strong>
-              <p style={mutedSmallStyle}>
-                The full preview and all information will appear here.
-              </p>
-            </div>
-          )
-        }
+        drawer={isMobile ? undefined : documentViewer}
       />
+
+      {isMobile && selectedDocument ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Document viewer: ${selectedDocument.title}`}
+          onClick={closeDocumentViewer}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1600,
+            background: "rgba(7, 23, 47, 0.76)",
+            padding: "max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom))",
+            display: "flex",
+            alignItems: "stretch",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 760,
+              height: "calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+              minHeight: 0,
+              borderRadius: 20,
+              overflow: "hidden",
+              background: "#FFFFFF",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.38)",
+              display: "grid",
+              gridTemplateRows: "auto minmax(0, 1fr)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                padding: "10px 10px 10px 14px",
+                borderBottom: `1px solid ${colors.line}`,
+                background: "#FFFFFF",
+              }}
+            >
+              <strong
+                style={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {selectedDocument.title}
+              </strong>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => openDocumentByOffset(-1)}
+                  disabled={selectedDocumentIndex <= 0}
+                  style={{ ...smallSubtleButtonStyle, opacity: selectedDocumentIndex <= 0 ? 0.45 : 1 }}
+                  aria-label="Previous document"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openDocumentByOffset(1)}
+                  disabled={selectedDocumentIndex < 0 || selectedDocumentIndex >= searchableDocuments.length - 1}
+                  style={{
+                    ...smallSubtleButtonStyle,
+                    opacity:
+                      selectedDocumentIndex < 0 || selectedDocumentIndex >= searchableDocuments.length - 1
+                        ? 0.45
+                        : 1,
+                  }}
+                  aria-label="Next document"
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  onClick={closeDocumentViewer}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 999,
+                    border: `1px solid ${colors.line}`,
+                    background: colors.navy3,
+                    color: "#FFFFFF",
+                    fontSize: 22,
+                    fontWeight: 900,
+                    lineHeight: 1,
+                    cursor: "pointer",
+                  }}
+                  aria-label="Close document viewer"
+                  title="Close"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div
+              ref={documentOverlayScrollRef}
+              style={{
+                minHeight: 0,
+                overflowY: "auto",
+                overflowX: "hidden",
+                overscrollBehavior: "contain",
+                WebkitOverflowScrolling: "touch",
+                padding: 12,
+              }}
+            >
+              {documentViewer}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      </>
     );
   }
 
