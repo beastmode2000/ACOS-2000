@@ -260,6 +260,25 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   `;
 }
 
+async function ensureProcedureColumns(sql: ReturnType<typeof neon>) {
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS category text`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS status text DEFAULT 'Draft'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS purpose text`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS safety_notes text`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS tools_parts text`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS required_tools text[] DEFAULT '{}'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS required_parts text[] DEFAULT '{}'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS estimated_time text`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS checklist jsonb DEFAULT '[]'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS linked_asset_ids text[] DEFAULT '{}'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS linked_location_ids text[] DEFAULT '{}'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS linked_vendor_ids text[] DEFAULT '{}'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS photos jsonb DEFAULT '[]'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS documents jsonb DEFAULT '[]'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT NOW()`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT NOW()`;
+}
+
 function mapLocation(row: JsonRecord) {
   return {
     id: String(row.id || ""),
@@ -306,8 +325,24 @@ function mapProcedure(row: JsonRecord) {
     id: String(row.id || ""),
     title: String(row.title || ""),
     area: String(row.area || ""),
+    category: row.category ? String(row.category) : "",
     priority: String(row.priority || "Normal"),
+    status: row.status ? String(row.status) : "Draft",
+    purpose: row.purpose ? String(row.purpose) : "",
+    safetyNotes: row.safety_notes ? String(row.safety_notes) : "",
+    toolsParts: row.tools_parts ? String(row.tools_parts) : "",
+    requiredTools: asStringArray(row.required_tools),
+    requiredParts: asStringArray(row.required_parts),
+    estimatedTime: row.estimated_time ? String(row.estimated_time) : "",
     steps: asStringArray(row.steps),
+    checklist: asArray(row.checklist),
+    linkedAssetIds: asStringArray(row.linked_asset_ids),
+    linkedLocationIds: asStringArray(row.linked_location_ids),
+    linkedVendorIds: asStringArray(row.linked_vendor_ids),
+    photos: asArray(row.photos),
+    documents: asArray(row.documents),
+    createdAt: row.created_at ? String(row.created_at) : "",
+    updatedAt: row.updated_at ? String(row.updated_at) : "",
   };
 }
 
@@ -317,11 +352,7 @@ function mapWorkOrder(row: JsonRecord) {
     assetId: String(row.asset_id || ""),
     vendorId: row.vendor_id ? String(row.vendor_id) : "",
     procedureId: row.procedure_id ? String(row.procedure_id) : "",
-    date: row.item_date
-      ? String(row.item_date).slice(0, 10)
-      : row.date
-        ? String(row.date).slice(0, 10)
-        : "",
+    date: databaseDateKey(row.item_date || row.date),
     title: String(row.title || ""),
     status: String(row.status || "Open"),
     priority: String(row.priority || "Medium"),
@@ -348,14 +379,30 @@ function mapWorkOrder(row: JsonRecord) {
   };
 }
 
+
+function databaseDateKey(value: unknown) {
+  if (!value) return "";
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? ""
+      : value.toISOString().slice(0, 10);
+  }
+
+  const text = String(value).trim();
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime())
+    ? ""
+    : parsed.toISOString().slice(0, 10);
+}
+
 function mapCalendarItem(row: JsonRecord) {
   return {
     id: String(row.id || ""),
-    date: row.item_date
-      ? String(row.item_date).slice(0, 10)
-      : row.date
-        ? String(row.date).slice(0, 10)
-        : "",
+    date: databaseDateKey(row.item_date || row.date),
     time: row.time ? String(row.time) : "",
     title: String(row.title || ""),
     area: String(row.area || ""),
@@ -426,11 +473,42 @@ export async function GET() {
       ORDER BY name ASC
     `) as unknown as JsonRecord[];
 
-    const procedureRows = (await sql`
-      SELECT id, title, area, priority, steps
-      FROM atlas_procedures
-      ORDER BY title ASC
-    `) as unknown as JsonRecord[];
+    let procedureRows: JsonRecord[];
+    try {
+      await ensureProcedureColumns(sql);
+      procedureRows = (await sql`
+        SELECT
+          id,
+          title,
+          area,
+          category,
+          priority,
+          status,
+          purpose,
+          safety_notes,
+          tools_parts,
+          required_tools,
+          required_parts,
+          estimated_time,
+          steps,
+          checklist,
+          linked_asset_ids,
+          linked_location_ids,
+          linked_vendor_ids,
+          photos,
+          documents,
+          created_at,
+          updated_at
+        FROM atlas_procedures
+        ORDER BY title ASC
+      `) as unknown as JsonRecord[];
+    } catch {
+      procedureRows = (await sql`
+        SELECT id, title, area, priority, steps
+        FROM atlas_procedures
+        ORDER BY title ASC
+      `) as unknown as JsonRecord[];
+    }
 
     const workOrderRows = (await sql`
       SELECT
@@ -644,6 +722,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (table === "procedures") {
+      await ensureProcedureColumns(sql);
       const id = getId(record, "procedure");
 
       await sql`
@@ -651,28 +730,90 @@ export async function POST(request: NextRequest) {
           id,
           title,
           area,
+          category,
           priority,
+          status,
+          purpose,
+          safety_notes,
+          tools_parts,
+          required_tools,
+          required_parts,
+          estimated_time,
           steps,
+          checklist,
+          linked_asset_ids,
+          linked_location_ids,
+          linked_vendor_ids,
+          photos,
+          documents,
           updated_at
         )
         VALUES (
           ${id},
           ${asString(record.title) || "Untitled Procedure"},
           ${asString(record.area) || "General"},
-          ${asString(record.priority) || "Normal"},
+          ${nullableString(record.category)},
+          ${asStatus(record.priority, "Normal")},
+          ${asStatus(record.status, "Draft")},
+          ${nullableString(record.purpose)},
+          ${nullableString(record.safetyNotes)},
+          ${nullableString(record.toolsParts)},
+          ARRAY(
+            SELECT jsonb_array_elements_text(
+              ${jsonArray(record.requiredTools)}::jsonb
+            )
+          ),
+          ARRAY(
+            SELECT jsonb_array_elements_text(
+              ${jsonArray(record.requiredParts)}::jsonb
+            )
+          ),
+          ${nullableString(record.estimatedTime)},
           ARRAY(
             SELECT jsonb_array_elements_text(
               ${jsonArray(record.steps)}::jsonb
             )
           ),
+          ${jsonArray(record.checklist)}::jsonb,
+          ARRAY(
+            SELECT jsonb_array_elements_text(
+              ${jsonArray(record.linkedAssetIds)}::jsonb
+            )
+          ),
+          ARRAY(
+            SELECT jsonb_array_elements_text(
+              ${jsonArray(record.linkedLocationIds)}::jsonb
+            )
+          ),
+          ARRAY(
+            SELECT jsonb_array_elements_text(
+              ${jsonArray(record.linkedVendorIds)}::jsonb
+            )
+          ),
+          ${jsonArray(record.photos)}::jsonb,
+          ${jsonArray(record.documents)}::jsonb,
           NOW()
         )
         ON CONFLICT (id)
         DO UPDATE SET
           title = EXCLUDED.title,
           area = EXCLUDED.area,
+          category = EXCLUDED.category,
           priority = EXCLUDED.priority,
+          status = EXCLUDED.status,
+          purpose = EXCLUDED.purpose,
+          safety_notes = EXCLUDED.safety_notes,
+          tools_parts = EXCLUDED.tools_parts,
+          required_tools = EXCLUDED.required_tools,
+          required_parts = EXCLUDED.required_parts,
+          estimated_time = EXCLUDED.estimated_time,
           steps = EXCLUDED.steps,
+          checklist = EXCLUDED.checklist,
+          linked_asset_ids = EXCLUDED.linked_asset_ids,
+          linked_location_ids = EXCLUDED.linked_location_ids,
+          linked_vendor_ids = EXCLUDED.linked_vendor_ids,
+          photos = EXCLUDED.photos,
+          documents = EXCLUDED.documents,
           updated_at = NOW()
       `;
 
