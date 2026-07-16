@@ -5054,14 +5054,28 @@ export default function AtlasPage() {
 
   const searchResults = useMemo(() => {
     if (!q) return [];
+
     return buildSearchIndex()
-      .filter((item) =>
-        [item.type, item.title, item.subtitle, item.detail]
+      .map((item) => {
+        const title = item.title.toLowerCase();
+        const type = item.type.toLowerCase();
+        const haystack = [item.type, item.title, item.subtitle, item.detail]
           .join(" ")
-          .toLowerCase()
-          .includes(q),
-      )
-      .slice(0, 12);
+          .toLowerCase();
+
+        let score = 0;
+        if (title === q) score += 100;
+        else if (title.startsWith(q)) score += 70;
+        else if (title.includes(q)) score += 45;
+        if (type === q) score += 30;
+        if (haystack.includes(q)) score += 10;
+
+        return { item, score, matches: haystack.includes(q) };
+      })
+      .filter((entry) => entry.matches)
+      .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title))
+      .slice(0, 20)
+      .map((entry) => entry.item);
   }, [
     q,
     mapLabels,
@@ -5075,6 +5089,8 @@ export default function AtlasPage() {
     calendarColors,
     allDocuments,
     allManualRecords,
+    workLinks,
+    photos,
   ]);
 
   const monthCells = useMemo(() => {
@@ -5215,6 +5231,15 @@ export default function AtlasPage() {
         detail: `${item.notes} ${item.pastedText || ""} ${item.targetName || ""}`,
         screen: "documents" as Screen,
       })),
+      ...photos.map((item) => ({
+        id: `photo-${item.id}`,
+        type: "Photo",
+        title: item.name || "Asset photo",
+        subtitle: assetName(item.assetId),
+        detail: `${assetName(item.assetId)} ${item.createdAt || ""}`,
+        screen: "assets" as Screen,
+        assetId: item.assetId,
+      })),
       ...allManualRecords.map((item) => ({
         id: `manual-${item.id}`,
         type: "Manual",
@@ -5224,7 +5249,7 @@ export default function AtlasPage() {
         screen: "manuals" as Screen,
         manualId: item.id,
       })),
-      ...defaultWorkLinks.map((item) => ({
+      ...workLinks.map((item) => ({
         id: `link-${item.id}`,
         type: "Work Link",
         title: item.name,
@@ -5258,6 +5283,19 @@ export default function AtlasPage() {
     if (result.manualId) {
       setSelectedManualId(result.manualId);
       setManualSearch("");
+    }
+    if (result.id.startsWith("document-")) {
+      const documentId = result.id.slice("document-".length);
+      setSelectedDocumentId(documentId);
+      setDocumentSearch("");
+    }
+    if (result.id.startsWith("link-")) {
+      const workLinkId = result.id.slice("link-".length);
+      const link = workLinks.find((item) => item.id === workLinkId);
+      if (link) {
+        setWorkLinkDraft({ ...link });
+        setWorkLinkEditorOpen(true);
+      }
     }
     setScreen(result.screen);
     setQuery("");
@@ -15009,6 +15047,10 @@ export default function AtlasPage() {
                         setQuery("");
                         setSearchOpen(false);
                       }
+                      if (event.key === "Enter" && searchResults[0]) {
+                        event.preventDefault();
+                        openSearchResult(searchResults[0]);
+                      }
                     }}
                     placeholder="Search Atlas records..."
                     aria-label="Search Atlas records"
@@ -15018,25 +15060,29 @@ export default function AtlasPage() {
                       minHeight: isMobile ? 46 : undefined,
                     }}
                   />
-                  {searchOpen && searchResults.length ? (
+                  {searchOpen && query.trim() ? (
                     <div style={searchDropStyle}>
-                      {searchResults.map((result) => (
-                        <button
-                          key={result.id}
-                          type="button"
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            openSearchResult(result);
-                            setSearchOpen(false);
-                          }}
-                          style={searchResultStyle}
-                        >
-                          <strong>{result.title}</strong>
-                          <span style={mutedSmallStyle}>
-                            {result.type} · {result.subtitle}
-                          </span>
-                        </button>
-                      ))}
+                      {searchResults.length ? (
+                        searchResults.map((result) => (
+                          <button
+                            key={result.id}
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              openSearchResult(result);
+                            }}
+                            style={searchResultStyle}
+                          >
+                            <span style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                              <strong>{result.title}</strong>
+                              <span style={searchTypeBadgeStyle}>{result.type}</span>
+                            </span>
+                            <span style={mutedSmallStyle}>{result.subtitle}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div style={searchEmptyStyle}>No Atlas records match “{query.trim()}”.</div>
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -17102,6 +17148,23 @@ const searchResultStyle: React.CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   color: colors.text,
+};
+
+const searchTypeBadgeStyle: React.CSSProperties = {
+  borderRadius: 999,
+  background: "#EEF4FF",
+  color: colors.navy3,
+  padding: "3px 8px",
+  fontSize: 10,
+  fontWeight: 900,
+  whiteSpace: "nowrap",
+};
+
+const searchEmptyStyle: React.CSSProperties = {
+  padding: 16,
+  color: colors.muted,
+  fontSize: 13,
+  textAlign: "center",
 };
 
 const photoManageCardStyle: React.CSSProperties = {
