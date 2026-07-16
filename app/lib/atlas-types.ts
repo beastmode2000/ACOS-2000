@@ -141,12 +141,31 @@ export type ServiceRecord = {
   documents?: UploadedFileRecord[];
 };
 
+export type ProcedureStatus =
+  | "Draft"
+  | "SOP"
+  | "Preventive Maintenance"
+  | "Landscaping";
+
 export type ProcedureRecord = {
   id: string;
   title: string;
   area: string;
+  category?: string;
   priority: Priority;
+  status?: ProcedureStatus;
+  purpose?: string;
+  safetyNotes?: string;
+  toolsParts?: string;
+  estimatedTime?: string;
   steps: string[];
+  linkedAssetIds?: string[];
+  linkedLocationIds?: string[];
+  linkedVendorIds?: string[];
+  photos?: UploadedFileRecord[];
+  documents?: UploadedFileRecord[];
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type RequestStatus =
