@@ -147,6 +147,13 @@ export type ProcedureStatus =
   | "Preventive Maintenance"
   | "Landscaping";
 
+export type ChecklistItem = {
+  id: string;
+  text: string;
+  completed: boolean;
+  order: number;
+};
+
 export type ProcedureRecord = {
   id: string;
   title: string;
@@ -157,8 +164,11 @@ export type ProcedureRecord = {
   purpose?: string;
   safetyNotes?: string;
   toolsParts?: string;
+  requiredTools?: string[];
+  requiredParts?: string[];
   estimatedTime?: string;
   steps: string[];
+  checklist?: ChecklistItem[];
   linkedAssetIds?: string[];
   linkedLocationIds?: string[];
   linkedVendorIds?: string[];
