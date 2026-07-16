@@ -317,11 +317,7 @@ function mapWorkOrder(row: JsonRecord) {
     assetId: String(row.asset_id || ""),
     vendorId: row.vendor_id ? String(row.vendor_id) : "",
     procedureId: row.procedure_id ? String(row.procedure_id) : "",
-    date: row.item_date
-      ? String(row.item_date).slice(0, 10)
-      : row.date
-        ? String(row.date).slice(0, 10)
-        : "",
+    date: databaseDateKey(row.item_date || row.date),
     title: String(row.title || ""),
     status: String(row.status || "Open"),
     priority: String(row.priority || "Medium"),
@@ -348,14 +344,30 @@ function mapWorkOrder(row: JsonRecord) {
   };
 }
 
+
+function databaseDateKey(value: unknown) {
+  if (!value) return "";
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? ""
+      : value.toISOString().slice(0, 10);
+  }
+
+  const text = String(value).trim();
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime())
+    ? ""
+    : parsed.toISOString().slice(0, 10);
+}
+
 function mapCalendarItem(row: JsonRecord) {
   return {
     id: String(row.id || ""),
-    date: row.item_date
-      ? String(row.item_date).slice(0, 10)
-      : row.date
-        ? String(row.date).slice(0, 10)
-        : "",
+    date: databaseDateKey(row.item_date || row.date),
     time: row.time ? String(row.time) : "",
     title: String(row.title || ""),
     area: String(row.area || ""),
