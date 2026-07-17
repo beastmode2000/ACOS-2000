@@ -3153,7 +3153,7 @@ export default function AtlasPage() {
   const [requestPortalToken, setRequestPortalToken] = useState("");
   const [requestMessage, setRequestMessage] = useState("Loading requests...");
   const [calendarItems, setCalendarItems] =
-    useState<CalendarItem[]>(fallbackCalendar);
+    useState<CalendarItem[]>([]);
   const [calendarColors, setCalendarColors] = useState<CalendarColor[]>(
     defaultCalendarColors,
   );
@@ -3235,20 +3235,6 @@ export default function AtlasPage() {
   const documentOverlayScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isMobile || screen !== "documents" || !selectedDocumentId) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const previousOverscroll = document.body.style.overscrollBehavior;
-    document.body.style.overflow = "hidden";
-    document.body.style.overscrollBehavior = "none";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.overscrollBehavior = previousOverscroll;
-    };
-  }, [isMobile, screen, selectedDocumentId]);
-
-  useEffect(() => {
     try {
       const stored = window.localStorage.getItem("atlas_recent_searches_v1");
       const parsed = stored ? JSON.parse(stored) : [];
@@ -3286,7 +3272,12 @@ export default function AtlasPage() {
   const [lastScannedQr, setLastScannedQr] = useState("");
 
   useEffect(() => {
-    if (!isMobile || screen !== "procedures" || !selectedProcedureId) return;
+    const mobileDetailOpen =
+      isMobile &&
+      ((screen === "documents" && Boolean(selectedDocumentId)) ||
+        (screen === "procedures" && Boolean(selectedProcedureId)));
+
+    if (!mobileDetailOpen) return;
 
     const previousOverflow = document.body.style.overflow;
     const previousOverscroll = document.body.style.overscrollBehavior;
@@ -3297,7 +3288,7 @@ export default function AtlasPage() {
       document.body.style.overflow = previousOverflow;
       document.body.style.overscrollBehavior = previousOverscroll;
     };
-  }, [isMobile, screen, selectedProcedureId]);
+  }, [isMobile, screen, selectedDocumentId, selectedProcedureId]);
 
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
@@ -3555,9 +3546,10 @@ export default function AtlasPage() {
     setProcedureRecords(
       storedProcedures.length ? byTitle(storedProcedures) : fallbackProcedures,
     );
-    setCalendarItems(
-      storedCalendar.length ? byTitle(storedCalendar) : fallbackCalendar,
-    );
+    // Keep the visible calendar empty until shared Atlas data loads.
+    // Browser records remain available for safe recovery, but obsolete
+    // hardcoded seeds no longer flash during startup.
+    setCalendarItems([]);
     setCalendarColors(mergeCalendarColors(storedCalendarColors));
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
     setWorkLinks(
@@ -3726,10 +3718,15 @@ export default function AtlasPage() {
             });
           }
 
+          const obsoleteFallbackIds = new Set(
+            fallbackCalendar.map((item) => item.id).filter(Boolean),
+          );
           const browserCalendar = readStoredArray<CalendarItem>(
             storageKeys.calendar,
             [],
-          ).map(normalizeCalendar);
+          )
+            .map(normalizeCalendar)
+            .filter((item) => !obsoleteFallbackIds.has(item.id));
 
           const apiIds = new Set(apiNormalized.map((item) => item.id));
           for (const item of browserCalendar) {
@@ -3820,8 +3817,21 @@ export default function AtlasPage() {
           });
 
           const next = byTitle(Array.from(merged.values()));
-          saveStoredArray(storageKeys.calendar[0], next);
+          const signature = (items: CalendarItem[]) =>
+            items
+              .map(
+                (item) =>
+                  `${item.id}|${item.date}|${item.time || ""}|${item.title}|${
+                    item.completed ? "1" : "0"
+                  }`,
+              )
+              .join("\n");
 
+          if (signature(current) === signature(next)) {
+            return current;
+          }
+
+          saveStoredArray(storageKeys.calendar[0], next);
           return next;
         });
       } catch {
