@@ -3,7 +3,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasDashboard from "./components/AtlasDashboard";
-import AtlasWorkOrders from "./components/AtlasWorkOrders";
+import { AtlasWorkOrders } from "./components/AtlasWorkOrders";
 import AtlasInsightsTimeline from "./components/AtlasInsightsTimeline";
 import { Field, SelectField, StatCard, AtlasMiniMark, SectionHeader } from "./components/AtlasUiPrimitives";
 
