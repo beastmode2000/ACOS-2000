@@ -219,6 +219,11 @@ async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
 }
 
 async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ALTER COLUMN asset_id DROP NOT NULL
+  `;
+
   // Canonical nullable due-date storage. The legacy `date` column may still be
   // constrained or managed by older database objects, so Atlas no longer relies on it
   // to represent a cleared due date.
