@@ -258,6 +258,56 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS completion_history jsonb NOT NULL DEFAULT '[]'::jsonb
   `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS location_id text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS work_type text NOT NULL DEFAULT 'Work Order'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS work_category text NOT NULL DEFAULT 'Maintenance'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS effort text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS responsibility_area text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS emoji text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS assigned_to text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS checklist jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS notes_history jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS service_history jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
 }
 
 async function ensureProcedureColumns(sql: ReturnType<typeof neon>) {
@@ -349,31 +399,37 @@ function mapProcedure(row: JsonRecord) {
 function mapWorkOrder(row: JsonRecord) {
   return {
     id: String(row.id || ""),
-    assetId: String(row.asset_id || ""),
+    assetId: row.asset_id ? String(row.asset_id) : "",
     vendorId: row.vendor_id ? String(row.vendor_id) : "",
     procedureId: row.procedure_id ? String(row.procedure_id) : "",
-    date: databaseDateKey(row.item_date || row.date),
+    locationId: row.location_id ? String(row.location_id) : "",
+    date: databaseDateKey(row.date),
     title: String(row.title || ""),
     status: String(row.status || "Open"),
     priority: String(row.priority || "Medium"),
     notes: String(row.notes || ""),
-    followUpDate: row.follow_up_date
-      ? String(row.follow_up_date).slice(0, 10)
-      : "",
+    followUpDate: databaseDateKey(row.follow_up_date),
     recurring: Boolean(row.recurring),
     recurrenceInterval: Math.max(
       1,
       Number(row.recurrence_interval || 1),
     ),
     recurrenceUnit: String(row.recurrence_unit || "Weeks"),
-    recurrenceEndDate: row.recurrence_end_date
-      ? String(row.recurrence_end_date).slice(0, 10)
-      : "",
+    recurrenceEndDate: databaseDateKey(row.recurrence_end_date),
     season: String(row.season || "Year-Round"),
-    lastCompletedDate: row.last_completed_date
-      ? String(row.last_completed_date).slice(0, 10)
-      : "",
+    lastCompletedDate: databaseDateKey(row.last_completed_date),
     completionHistory: asArray(row.completion_history).map(String),
+    workType: String(row.work_type || "Work Order"),
+    workCategory: String(row.work_category || "Maintenance"),
+    effort: row.effort ? String(row.effort) : "",
+    responsibilityArea: row.responsibility_area
+      ? String(row.responsibility_area)
+      : "",
+    emoji: row.emoji ? String(row.emoji) : "",
+    assignedTo: row.assigned_to ? String(row.assigned_to) : "",
+    checklist: asArray(row.checklist),
+    notesHistory: asArray(row.notes_history),
+    serviceHistory: asArray(row.service_history),
     photos: asArray(row.photos),
     documents: asArray(row.documents),
   };
@@ -516,6 +572,7 @@ export async function GET() {
         asset_id,
         vendor_id,
         procedure_id,
+        location_id,
         date,
         title,
         status,
@@ -529,6 +586,15 @@ export async function GET() {
         season,
         last_completed_date,
         completion_history,
+        work_type,
+        work_category,
+        effort,
+        responsibility_area,
+        emoji,
+        assigned_to,
+        checklist,
+        notes_history,
+        service_history,
         photos,
         documents
       FROM atlas_work_orders
@@ -830,6 +896,7 @@ export async function POST(request: NextRequest) {
           asset_id,
           vendor_id,
           procedure_id,
+          location_id,
           date,
           title,
           status,
@@ -843,15 +910,25 @@ export async function POST(request: NextRequest) {
           season,
           last_completed_date,
           completion_history,
+          work_type,
+          work_category,
+          effort,
+          responsibility_area,
+          emoji,
+          assigned_to,
+          checklist,
+          notes_history,
+          service_history,
           photos,
           documents,
           updated_at
         )
         VALUES (
           ${id},
-          ${asString(record.assetId) || "general"},
+          ${nullableString(record.assetId)},
           ${nullableString(record.vendorId)},
           ${nullableString(record.procedureId)},
+          ${nullableString(record.locationId)},
           ${asDate(record.date)}::date,
           ${asString(record.title) || "Untitled Work Order"},
           ${asStatus(record.status, "Open")},
@@ -865,6 +942,15 @@ export async function POST(request: NextRequest) {
           ${asStatus(record.season, "Year-Round")},
           ${asDate(record.lastCompletedDate)}::date,
           ${jsonArray(record.completionHistory)}::jsonb,
+          ${asStatus(record.workType, "Work Order")},
+          ${asStatus(record.workCategory, "Maintenance")},
+          ${nullableString(record.effort)},
+          ${nullableString(record.responsibilityArea)},
+          ${nullableString(record.emoji)},
+          ${nullableString(record.assignedTo)},
+          ${jsonArray(record.checklist)}::jsonb,
+          ${jsonArray(record.notesHistory)}::jsonb,
+          ${jsonArray(record.serviceHistory)}::jsonb,
           ${jsonArray(record.photos)}::jsonb,
           ${jsonArray(record.documents)}::jsonb,
           NOW()
@@ -874,6 +960,7 @@ export async function POST(request: NextRequest) {
           asset_id = EXCLUDED.asset_id,
           vendor_id = EXCLUDED.vendor_id,
           procedure_id = EXCLUDED.procedure_id,
+          location_id = EXCLUDED.location_id,
           date = EXCLUDED.date,
           title = EXCLUDED.title,
           status = EXCLUDED.status,
@@ -887,6 +974,15 @@ export async function POST(request: NextRequest) {
           season = EXCLUDED.season,
           last_completed_date = EXCLUDED.last_completed_date,
           completion_history = EXCLUDED.completion_history,
+          work_type = EXCLUDED.work_type,
+          work_category = EXCLUDED.work_category,
+          effort = EXCLUDED.effort,
+          responsibility_area = EXCLUDED.responsibility_area,
+          emoji = EXCLUDED.emoji,
+          assigned_to = EXCLUDED.assigned_to,
+          checklist = EXCLUDED.checklist,
+          notes_history = EXCLUDED.notes_history,
+          service_history = EXCLUDED.service_history,
           photos = EXCLUDED.photos,
           documents = EXCLUDED.documents,
           updated_at = NOW()
