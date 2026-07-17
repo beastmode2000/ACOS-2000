@@ -74,6 +74,38 @@ type AssistantTurn = {
   createdAt: string;
 };
 
+type PendingAssistantAction =
+  | {
+      id: string;
+      kind: "work-order";
+      title: string;
+      notes: string;
+      priority: "Low" | "Medium" | "High";
+      assetId: string;
+      vendorId: string;
+    }
+  | {
+      id: string;
+      kind: "calendar";
+      title: string;
+      notes: string;
+      date: string;
+      time: string;
+      allDay: boolean;
+      linkedId: string;
+      linkedName: string;
+      linkedType: "None" | "Asset" | "Vendor" | "Work Order";
+    }
+  | {
+      id: string;
+      kind: "procedure";
+      title: string;
+      purpose: string;
+      linkedAssetIds: string[];
+      linkedLocationIds: string[];
+      linkedVendorIds: string[];
+    };
+
 type WorkItemType =
   | "Quick Task"
   | "Work Order"
@@ -3330,6 +3362,9 @@ export default function AtlasPage() {
   const [assistantTurns, setAssistantTurns] = useState<AssistantTurn[]>([]);
   const [assistantRecordResults, setAssistantRecordResults] = useState<SearchResult[]>([]);
   const [selectedRelationshipId, setSelectedRelationshipId] = useState("");
+  const [pendingAssistantAction, setPendingAssistantAction] =
+    useState<PendingAssistantAction | null>(null);
+  const [assistantActionSaving, setAssistantActionSaving] = useState(false);
   const [dashboardAssistantOpen, setDashboardAssistantOpen] = useState(false);
   const [workPlanInput, setWorkPlanInput] = useState("");
   const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>([]);
@@ -8214,6 +8249,219 @@ export default function AtlasPage() {
     setSelectedRelationshipId(matches[0]?.id || "");
   }
 
+  function inferAssistantRecord(question: string) {
+    const matches = searchAtlas(buildSearchIndex(), question, 8);
+    const asset = matches.find((item) => item.type === "Asset");
+    const vendor = matches.find((item) => item.type === "Vendor");
+    const location = matches.find((item) => item.type === "Location");
+    return { matches, asset, vendor, location };
+  }
+
+  function cleanAssistantActionTitle(question: string, fallback: string) {
+    const cleaned = question
+      .replace(
+        /\b(create|make|add|prepare|draft|schedule|put|new|a|an|the|work order|calendar event|event|procedure|for|on my calendar)\b/gi,
+        " ",
+      )
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^[,.:;-]+|[,.:;-]+$/g, "");
+
+    if (!cleaned) return fallback;
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+
+  function prepareAssistantAction(question: string) {
+    const normalized = question.toLowerCase();
+    const { asset, vendor, location } = inferAssistantRecord(question);
+
+    if (
+      /\b(create|make|add|prepare|draft)\b/.test(normalized) &&
+      /\bwork order\b/.test(normalized)
+    ) {
+      const title = cleanAssistantActionTitle(
+        question,
+        asset ? `Service ${asset.title}` : "New Work Order",
+      );
+      const priority: "Low" | "Medium" | "High" =
+        /\b(urgent|high priority|emergency|asap)\b/.test(normalized)
+          ? "High"
+          : /\blow priority\b/.test(normalized)
+            ? "Low"
+            : "Medium";
+
+      setPendingAssistantAction({
+        id: uid("assistant-action"),
+        kind: "work-order",
+        title,
+        notes: `Prepared by Ask Atlas from: "${question}"`,
+        priority,
+        assetId: asset?.assetId || "",
+        vendorId: vendor?.vendorId || "",
+      });
+      return true;
+    }
+
+    if (
+      /\b(schedule|add|put|create|make)\b/.test(normalized) &&
+      /\b(calendar|event|appointment|visit|meeting|tomorrow|today|next week)\b/.test(
+        normalized,
+      )
+    ) {
+      const date =
+        /\btomorrow\b/.test(normalized)
+          ? addDays(todayISO(), 1)
+          : /\bnext week\b/.test(normalized)
+            ? addDays(todayISO(), 7)
+            : todayISO();
+
+      const timeMatch = question.match(
+        /\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(am|pm)\b/i,
+      );
+      let time = "";
+      if (timeMatch) {
+        let hour = Number(timeMatch[1]);
+        const minute = timeMatch[2] || "00";
+        const meridiem = timeMatch[3].toLowerCase();
+        if (meridiem === "pm" && hour !== 12) hour += 12;
+        if (meridiem === "am" && hour === 12) hour = 0;
+        time = `${String(hour).padStart(2, "0")}:${minute}`;
+      }
+
+      const linkedType: "None" | "Asset" | "Vendor" | "Work Order" =
+        asset ? "Asset" : vendor ? "Vendor" : "None";
+      const linkedId = asset?.assetId || vendor?.vendorId || "";
+      const linkedName = asset?.title || vendor?.title || "";
+
+      setPendingAssistantAction({
+        id: uid("assistant-action"),
+        kind: "calendar",
+        title: cleanAssistantActionTitle(
+          question,
+          asset ? `${asset.title} follow-up` : "New Calendar Event",
+        ),
+        notes: `Prepared by Ask Atlas from: "${question}"`,
+        date,
+        time,
+        allDay: !time,
+        linkedId,
+        linkedName,
+        linkedType,
+      });
+      return true;
+    }
+
+    if (
+      /\b(create|make|prepare|draft)\b/.test(normalized) &&
+      /\bprocedure|checklist|sop\b/.test(normalized)
+    ) {
+      setPendingAssistantAction({
+        id: uid("assistant-action"),
+        kind: "procedure",
+        title: cleanAssistantActionTitle(
+          question,
+          asset ? `${asset.title} Procedure` : "New Procedure",
+        ),
+        purpose: `Prepared by Ask Atlas from: "${question}"`,
+        linkedAssetIds: asset?.assetId ? [asset.assetId] : [],
+        linkedLocationIds: location?.locationId ? [location.locationId] : [],
+        linkedVendorIds: vendor?.vendorId ? [vendor.vendorId] : [],
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  async function approveAssistantAction() {
+    if (!pendingAssistantAction || assistantActionSaving) return;
+    setAssistantActionSaving(true);
+
+    try {
+      if (pendingAssistantAction.kind === "work-order") {
+        const record = normalizeService({
+          id: uid("wo"),
+          title: pendingAssistantAction.title,
+          date: todayISO(),
+          status: "Open",
+          priority: pendingAssistantAction.priority,
+          notes: pendingAssistantAction.notes,
+          assetId: pendingAssistantAction.assetId,
+          vendorId: pendingAssistantAction.vendorId,
+          workType: "Work Order",
+          workCategory: "🔧 Maintenance",
+          effort: "30 minutes",
+          photos: [],
+          documents: [],
+          checklist: [],
+          notesHistory: [],
+          serviceHistory: [],
+        });
+        const saved = await postAtlasRecord("work_orders", record);
+        if (!saved) throw new Error("The work order did not save.");
+        setServiceRecords((current) => byTitle([record, ...current]));
+        setSelectedServiceId(record.id);
+        finishAssistantAnswer(`Created work order: ${record.title}`);
+      }
+
+      if (pendingAssistantAction.kind === "calendar") {
+        const record = normalizeCalendar({
+          id: uid("cal"),
+          title: pendingAssistantAction.title,
+          notes: pendingAssistantAction.notes,
+          date: pendingAssistantAction.date,
+          time: pendingAssistantAction.time,
+          allDay: pendingAssistantAction.allDay,
+          linkedId: pendingAssistantAction.linkedId,
+          linkedName: pendingAssistantAction.linkedName,
+          linkedType: pendingAssistantAction.linkedType,
+          source: "manual",
+          completed: false,
+        });
+        const saved = await postAtlasRecord("calendar", record);
+        if (!saved) throw new Error("The calendar event did not save.");
+        setCalendarItems((current) => byTitle([record, ...current]));
+        finishAssistantAnswer(
+          `Scheduled ${record.title} for ${formatDate(record.date)}${
+            record.time ? ` at ${record.time}` : ""
+          }.`,
+        );
+      }
+
+      if (pendingAssistantAction.kind === "procedure") {
+        const record = normalizeProcedure({
+          id: uid("procedure"),
+          title: pendingAssistantAction.title,
+          status: "Draft",
+          category: "Maintenance",
+          purpose: pendingAssistantAction.purpose,
+          linkedAssetIds: pendingAssistantAction.linkedAssetIds,
+          linkedLocationIds: pendingAssistantAction.linkedLocationIds,
+          linkedVendorIds: pendingAssistantAction.linkedVendorIds,
+          checklist: [],
+          steps: [],
+          photos: [],
+          documents: [],
+        });
+        const saved = await postAtlasRecord("procedures", record);
+        if (!saved) throw new Error("The procedure did not save.");
+        setProcedureRecords((current) => byTitle([record, ...current]));
+        setSelectedProcedureId(record.id);
+        finishAssistantAnswer(`Created draft procedure: ${record.title}`);
+      }
+
+      setPendingAssistantAction(null);
+    } catch (error) {
+      finishAssistantAnswer(
+        error instanceof Error
+          ? error.message
+          : "Atlas could not complete that action.",
+      );
+    } finally {
+      setAssistantActionSaving(false);
+    }
+  }
+
   async function askAtlas(questionOverride?: string) {
     const question = String(questionOverride ?? assistantQuestion).trim();
     if (questionOverride) setAssistantQuestion(question);
@@ -8225,6 +8473,16 @@ export default function AtlasPage() {
 
     addAssistantTurn("user", question);
     refreshAssistantRecordResults(question);
+
+    if (prepareAssistantAction(question)) {
+      finishAssistantAnswer(
+        "I prepared the action below. Review it and approve before Atlas saves anything.",
+      );
+      setManualCandidates([]);
+      setManualSaveMessage("");
+      setAssistantLoading(false);
+      return;
+    }
 
     const normalizedQuestion = question.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
     const isTodayQuestion =
@@ -15228,6 +15486,7 @@ export default function AtlasPage() {
                   setAssistantTurns([]);
                   setAssistantRecordResults([]);
                   setSelectedRelationshipId("");
+                  setPendingAssistantAction(null);
                   setManualCandidates([]);
                   setManualSaveMessage("");
                   setAssistantQuestion("");
@@ -15372,6 +15631,96 @@ export default function AtlasPage() {
                 </button>
               ))}
             </div>
+
+            {pendingAssistantAction ? (
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: 16,
+                  border: `2px solid ${colors.gold}`,
+                  display: "grid",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div style={eyebrowStyle}>Prepared Atlas Action</div>
+                  <h3 style={{ margin: "4px 0 6px", fontSize: 20 }}>
+                    {pendingAssistantAction.kind === "work-order"
+                      ? "Create Work Order"
+                      : pendingAssistantAction.kind === "calendar"
+                        ? "Schedule Calendar Event"
+                        : "Create Draft Procedure"}
+                  </h3>
+                  <div style={{ fontWeight: 900 }}>
+                    {pendingAssistantAction.title}
+                  </div>
+                </div>
+
+                {pendingAssistantAction.kind === "work-order" ? (
+                  <div style={mutedSmallStyle}>
+                    Priority: {pendingAssistantAction.priority}
+                    {pendingAssistantAction.assetId
+                      ? ` • Asset: ${
+                          assetRecords.find(
+                            (item) => item.id === pendingAssistantAction.assetId,
+                          )?.name || "Linked asset"
+                        }`
+                      : ""}
+                  </div>
+                ) : null}
+
+                {pendingAssistantAction.kind === "calendar" ? (
+                  <div style={mutedSmallStyle}>
+                    {formatDate(pendingAssistantAction.date)}
+                    {pendingAssistantAction.time
+                      ? ` • ${pendingAssistantAction.time}`
+                      : " • All day"}
+                    {pendingAssistantAction.linkedName
+                      ? ` • ${pendingAssistantAction.linkedName}`
+                      : ""}
+                  </div>
+                ) : null}
+
+                {pendingAssistantAction.kind === "procedure" ? (
+                  <div style={mutedSmallStyle}>
+                    Draft procedure
+                    {pendingAssistantAction.linkedAssetIds.length
+                      ? ` • ${
+                          assetRecords.find(
+                            (item) =>
+                              item.id === pendingAssistantAction.linkedAssetIds[0],
+                          )?.name || "Linked asset"
+                        }`
+                      : ""}
+                  </div>
+                ) : null}
+
+                <div style={buttonRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() => void approveAssistantAction()}
+                    disabled={assistantActionSaving}
+                    style={{
+                      ...goldButtonStyle,
+                      opacity: assistantActionSaving ? 0.6 : 1,
+                    }}
+                  >
+                    {assistantActionSaving ? "Saving…" : "Approve and Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingAssistantAction(null);
+                      addAssistantTurn("assistant", "Action canceled. Nothing was changed.");
+                    }}
+                    disabled={assistantActionSaving}
+                    style={secondaryButtonStyle}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {manualCandidates.length ? (
               <div style={stackStyle}>
@@ -15566,8 +15915,8 @@ export default function AtlasPage() {
               <div style={eyebrowStyle}>Safe Actions</div>
               <h3 style={{ margin: "4px 0 8px", fontSize: 18 }}>Approval required</h3>
               <p style={{ ...mutedSmallStyle, lineHeight: 1.55, margin: 0 }}>
-                Ask Atlas can find and prepare records now. Creating, changing, or deleting
-                Atlas data still requires your direct approval.
+                Ask Atlas can now prepare work orders, calendar events, and draft
+                procedures. Nothing is saved until you press Approve and Save.
               </p>
             </div>
           </aside>
