@@ -890,105 +890,137 @@ export async function POST(request: NextRequest) {
       await ensureWorkOrderColumns(sql);
       const id = getId(record, "work-order");
 
-      await sql`
-        INSERT INTO atlas_work_orders (
-          id,
-          asset_id,
-          vendor_id,
-          procedure_id,
-          location_id,
-          date,
-          title,
-          status,
-          priority,
-          notes,
-          follow_up_date,
-          recurring,
-          recurrence_interval,
-          recurrence_unit,
-          recurrence_end_date,
-          season,
-          last_completed_date,
-          completion_history,
-          work_type,
-          work_category,
-          effort,
-          responsibility_area,
-          emoji,
-          assigned_to,
-          checklist,
-          notes_history,
-          service_history,
-          photos,
-          documents,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${nullableString(record.assetId)},
-          ${nullableString(record.vendorId)},
-          ${nullableString(record.procedureId)},
-          ${nullableString(record.locationId)},
-          ${asDate(record.date)}::date,
-          ${asString(record.title) || "Untitled Work Order"},
-          ${asStatus(record.status, "Open")},
-          ${asStatus(record.priority, "Medium")},
-          ${asString(record.notes)},
-          ${asDate(record.followUpDate)}::date,
-          ${asBoolean(record.recurring)},
-          ${asPositiveInteger(record.recurrenceInterval, 1)},
-          ${asStatus(record.recurrenceUnit, "Weeks")},
-          ${asDate(record.recurrenceEndDate)}::date,
-          ${asStatus(record.season, "Year-Round")},
-          ${asDate(record.lastCompletedDate)}::date,
-          ${jsonArray(record.completionHistory)}::jsonb,
-          ${asStatus(record.workType, "Work Order")},
-          ${asStatus(record.workCategory, "Maintenance")},
-          ${nullableString(record.effort)},
-          ${nullableString(record.responsibilityArea)},
-          ${nullableString(record.emoji)},
-          ${nullableString(record.assignedTo)},
-          ${jsonArray(record.checklist)}::jsonb,
-          ${jsonArray(record.notesHistory)}::jsonb,
-          ${jsonArray(record.serviceHistory)}::jsonb,
-          ${jsonArray(record.photos)}::jsonb,
-          ${jsonArray(record.documents)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          asset_id = EXCLUDED.asset_id,
-          vendor_id = EXCLUDED.vendor_id,
-          procedure_id = EXCLUDED.procedure_id,
-          location_id = EXCLUDED.location_id,
-          date = EXCLUDED.date,
-          title = EXCLUDED.title,
-          status = EXCLUDED.status,
-          priority = EXCLUDED.priority,
-          notes = EXCLUDED.notes,
-          follow_up_date = EXCLUDED.follow_up_date,
-          recurring = EXCLUDED.recurring,
-          recurrence_interval = EXCLUDED.recurrence_interval,
-          recurrence_unit = EXCLUDED.recurrence_unit,
-          recurrence_end_date = EXCLUDED.recurrence_end_date,
-          season = EXCLUDED.season,
-          last_completed_date = EXCLUDED.last_completed_date,
-          completion_history = EXCLUDED.completion_history,
-          work_type = EXCLUDED.work_type,
-          work_category = EXCLUDED.work_category,
-          effort = EXCLUDED.effort,
-          responsibility_area = EXCLUDED.responsibility_area,
-          emoji = EXCLUDED.emoji,
-          assigned_to = EXCLUDED.assigned_to,
-          checklist = EXCLUDED.checklist,
-          notes_history = EXCLUDED.notes_history,
-          service_history = EXCLUDED.service_history,
-          photos = EXCLUDED.photos,
-          documents = EXCLUDED.documents,
-          updated_at = NOW()
-      `;
+      const savedDate = asDate(record.date);
+      const savedFollowUpDate = asDate(record.followUpDate);
+      const savedRecurrenceEndDate = asDate(record.recurrenceEndDate);
+      const savedLastCompletedDate = asDate(record.lastCompletedDate);
 
-      return NextResponse.json({ ok: true, id });
+      const updatedRows = (await sql`
+        UPDATE atlas_work_orders
+        SET
+          asset_id = ${nullableString(record.assetId)},
+          vendor_id = ${nullableString(record.vendorId)},
+          procedure_id = ${nullableString(record.procedureId)},
+          location_id = ${nullableString(record.locationId)},
+          date = ${savedDate}::date,
+          title = ${asString(record.title) || "Untitled Work Order"},
+          status = ${asStatus(record.status, "Open")},
+          priority = ${asStatus(record.priority, "Medium")},
+          notes = ${asString(record.notes)},
+          follow_up_date = ${savedFollowUpDate}::date,
+          recurring = ${asBoolean(record.recurring)},
+          recurrence_interval = ${asPositiveInteger(record.recurrenceInterval, 1)},
+          recurrence_unit = ${asStatus(record.recurrenceUnit, "Weeks")},
+          recurrence_end_date = ${savedRecurrenceEndDate}::date,
+          season = ${asStatus(record.season, "Year-Round")},
+          last_completed_date = ${savedLastCompletedDate}::date,
+          completion_history = ${jsonArray(record.completionHistory)}::jsonb,
+          work_type = ${asStatus(record.workType, "Work Order")},
+          work_category = ${asStatus(record.workCategory, "Maintenance")},
+          effort = ${nullableString(record.effort)},
+          responsibility_area = ${nullableString(record.responsibilityArea)},
+          emoji = ${nullableString(record.emoji)},
+          assigned_to = ${nullableString(record.assignedTo)},
+          checklist = ${jsonArray(record.checklist)}::jsonb,
+          notes_history = ${jsonArray(record.notesHistory)}::jsonb,
+          service_history = ${jsonArray(record.serviceHistory)}::jsonb,
+          photos = ${jsonArray(record.photos)}::jsonb,
+          documents = ${jsonArray(record.documents)}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${id}
+        RETURNING id, date
+      `) as unknown as JsonRecord[];
+
+      if (!updatedRows.length) {
+        await sql`
+          INSERT INTO atlas_work_orders (
+            id,
+            asset_id,
+            vendor_id,
+            procedure_id,
+            location_id,
+            date,
+            title,
+            status,
+            priority,
+            notes,
+            follow_up_date,
+            recurring,
+            recurrence_interval,
+            recurrence_unit,
+            recurrence_end_date,
+            season,
+            last_completed_date,
+            completion_history,
+            work_type,
+            work_category,
+            effort,
+            responsibility_area,
+            emoji,
+            assigned_to,
+            checklist,
+            notes_history,
+            service_history,
+            photos,
+            documents,
+            updated_at
+          )
+          VALUES (
+            ${id},
+            ${nullableString(record.assetId)},
+            ${nullableString(record.vendorId)},
+            ${nullableString(record.procedureId)},
+            ${nullableString(record.locationId)},
+            ${savedDate}::date,
+            ${asString(record.title) || "Untitled Work Order"},
+            ${asStatus(record.status, "Open")},
+            ${asStatus(record.priority, "Medium")},
+            ${asString(record.notes)},
+            ${savedFollowUpDate}::date,
+            ${asBoolean(record.recurring)},
+            ${asPositiveInteger(record.recurrenceInterval, 1)},
+            ${asStatus(record.recurrenceUnit, "Weeks")},
+            ${savedRecurrenceEndDate}::date,
+            ${asStatus(record.season, "Year-Round")},
+            ${savedLastCompletedDate}::date,
+            ${jsonArray(record.completionHistory)}::jsonb,
+            ${asStatus(record.workType, "Work Order")},
+            ${asStatus(record.workCategory, "Maintenance")},
+            ${nullableString(record.effort)},
+            ${nullableString(record.responsibilityArea)},
+            ${nullableString(record.emoji)},
+            ${nullableString(record.assignedTo)},
+            ${jsonArray(record.checklist)}::jsonb,
+            ${jsonArray(record.notesHistory)}::jsonb,
+            ${jsonArray(record.serviceHistory)}::jsonb,
+            ${jsonArray(record.photos)}::jsonb,
+            ${jsonArray(record.documents)}::jsonb,
+            NOW()
+          )
+        `;
+      }
+
+      const verifiedRows = (await sql`
+        SELECT id, date
+        FROM atlas_work_orders
+        WHERE id = ${id}
+        LIMIT 1
+      `) as unknown as JsonRecord[];
+
+      const verified = verifiedRows[0];
+      const verifiedDate = databaseDateKey(verified?.date);
+
+      if (verifiedDate !== (savedDate || "")) {
+        throw new Error(
+          `Work order save verification failed. Expected date "${savedDate || ""}" but database returned "${verifiedDate}".`,
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        id,
+        savedDate: verifiedDate,
+      });
     }
 
     if (table === "calendar") {
