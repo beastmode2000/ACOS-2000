@@ -1540,13 +1540,21 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     }
                   />
 
-                  <Field
-                    label={selectedService.recurring ? "Next Due" : "Due Date"}
-                    value={selectedService.date}
-                    onChange={(value: string) =>
-                      updateWorkOrder({ date: value })
-                    }
-                  />
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>
+                      {selectedService.recurring ? "Next Due" : "Due Date"}
+                    </span>
+                    <input
+                      type="date"
+                      value={String(selectedService.date || "")}
+                      onChange={(event) =>
+                        updateWorkOrder({
+                          date: event.currentTarget.value || "",
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </label>
 
                   <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                     <span style={fieldLabelStyle}>Status</span>
