@@ -1240,98 +1240,6 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               ) : null}
 
-              {manageCategoriesOpen ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 10,
-                    padding: 10,
-                    border: `1px solid ${colors.line}`,
-                    borderRadius: 12,
-                    background: "#FFFFFF",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: isMobile
-                        ? "1fr"
-                        : "minmax(0, 1fr) auto",
-                      gap: 8,
-                    }}
-                  >
-                    <input
-                      value={newCategory}
-                      onChange={(event) =>
-                        setNewCategory(event.currentTarget.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          addCategory();
-                        }
-                      }}
-                      placeholder="Type emoji and category name, for example 🪿 Wildlife Cleanup"
-                      style={controlStyle}
-                    />
-                    <button
-                      type="button"
-                      onClick={addCategory}
-                      style={goldButtonStyle}
-                    >
-                      Add Category
-                    </button>
-                  </div>
-
-                  <div style={{ display: "grid", gap: 7 }}>
-                    {categoryChoices.map((category) => (
-                      <div
-                        key={category}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 10,
-                          padding: "8px 0",
-                          borderBottom: `1px solid ${colors.line}`,
-                        }}
-                      >
-                        <strong>{category}</strong>
-                        <div
-                          style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => renameCategory(category)}
-                            style={miniButtonStyle}
-                          >
-                            Rename
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeCategory(category)}
-                            style={{
-                              ...dangerButtonStyle,
-                              padding: "7px 10px",
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={restoreDefaultCategories}
-                    style={secondaryButtonStyle}
-                  >
-                    Restore Default Categories
-                  </button>
-                </div>
-              ) : null}
-
               <div
                 style={{
                   display: "grid",
@@ -1489,129 +1397,6 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               </div>
 
               <section style={detailSectionStyle}>
-                <div style={eyebrowStyle}>Work Classification</div>
-                <div style={formGridStyle}>
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Work Type</span>
-                    <select
-                      value={itemType(selectedService)}
-                      onChange={(event) => {
-                        const workType = event.currentTarget
-                          .value as WorkItemType;
-                        updateWorkOrder({
-                          workType,
-                          recurring:
-                            workType === "Preventive Maintenance"
-                              ? true
-                              : selectedService.recurring,
-                        });
-                      }}
-                      style={inputStyle}
-                    >
-                      <option value="Quick Task">📌 Task</option>
-                      <option value="Work Order">🛠️ Work Order</option>
-                      <option value="Preventive Maintenance">
-                        🔁 Preventive Maintenance
-                      </option>
-                      <option value="Project">🏗️ Project</option>
-                    </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Category</span>
-                    <select
-                      value={categoryLabel(selectedService)}
-                      onChange={(event) => {
-                        const workCategory = event.currentTarget.value;
-                        updateWorkOrder({
-                          workCategory,
-                          emoji: categoryEmoji(workCategory),
-                        });
-                      }}
-                      style={inputStyle}
-                    >
-                      {!categories.includes(categoryLabel(selectedService)) ? (
-                        <option value={categoryLabel(selectedService)}>
-                          {categoryLabel(selectedService)}
-                        </option>
-                      ) : null}
-                      {categories
-                        .filter((category) => category !== "All")
-                        .map((category) => (
-                          <option key={category} value={category}>
-                            {category}
-                          </option>
-                        ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setManageCategoriesOpen(true)}
-                      style={{ ...miniButtonStyle, justifySelf: "start" }}
-                    >
-                      Add or Edit Categories
-                    </button>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Estimated Time</span>
-                    <select
-                      value={selectedService.effort || ""}
-                      onChange={(event) =>
-                        updateWorkOrder({ effort: event.currentTarget.value })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="">Not set</option>
-                      {(
-                        [
-                          "5 minutes",
-                          "15 minutes",
-                          "30 minutes",
-                          "1 hour",
-                          "Half Day",
-                          "Full Day",
-                          "Multi-Day",
-                        ] as WorkEffort[]
-                      ).map((effort) => (
-                        <option key={effort} value={effort}>
-                          {effort}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <Field
-                    label="Responsibility Area"
-                    value={selectedService.responsibilityArea || ""}
-                    onChange={(value: string) =>
-                      updateWorkOrder({ responsibilityArea: value })
-                    }
-                    placeholder="Estate, Grounds, Waterfront..."
-                  />
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Assigned To</span>
-                    <input
-                      list="atlas-work-assignees"
-                      value={selectedService.assignedTo || ""}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          assignedTo: event.currentTarget.value,
-                        })
-                      }
-                      placeholder="Nick, Patrick, vendor..."
-                      style={inputStyle}
-                    />
-                    <datalist id="atlas-work-assignees">
-                      {contactRecords.map((contact: any) => (
-                        <option key={contact.id} value={contact.name} />
-                      ))}
-                    </datalist>
-                  </label>
-                </div>
-              </section>
-
-              <section style={detailSectionStyle}>
                 <div style={eyebrowStyle}>Work Information</div>
                 <div style={formGridStyle}>
                   <Field
@@ -1735,110 +1520,6 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     }
                   />
                 </div>
-              </section>
-
-              <section style={detailSectionStyle}>
-                <div style={detailSectionHeaderStyle}>
-                  <div>
-                    <div style={eyebrowStyle}>Repeat Schedule</div>
-                    <strong>
-                      {selectedService.recurring
-                        ? recurrenceLabel(selectedService)
-                        : "One-time work"}
-                    </strong>
-                  </div>
-                  <label style={recurrenceToggleStyle}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selectedService.recurring)}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          recurring: event.currentTarget.checked,
-                        })
-                      }
-                    />
-                    Recurring
-                  </label>
-                </div>
-
-                {selectedService.recurring ? (
-                  <div style={recurrenceGridStyle}>
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Every</span>
-                      <input
-                        type="number"
-                        min={1}
-                        value={selectedService.recurrenceInterval || 1}
-                        onChange={(event) =>
-                          updateWorkOrder({
-                            recurrenceInterval: Math.max(
-                              1,
-                              Number(event.currentTarget.value) || 1,
-                            ),
-                          })
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
-
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Unit</span>
-                      <select
-                        value={selectedService.recurrenceUnit || "Weeks"}
-                        onChange={(event) =>
-                          updateWorkOrder({
-                            recurrenceUnit: event.currentTarget
-                              .value as WorkOrderRecurrenceUnit,
-                          })
-                        }
-                        style={inputStyle}
-                      >
-                        {(
-                          [
-                            "Days",
-                            "Weeks",
-                            "Months",
-                            "Years",
-                          ] as WorkOrderRecurrenceUnit[]
-                        ).map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <Field
-                      label="Stop Repeating After"
-                      value={selectedService.recurrenceEndDate || ""}
-                      onChange={(value: string) =>
-                        updateWorkOrder({ recurrenceEndDate: value })
-                      }
-                      placeholder="Optional end date"
-                    />
-                  </div>
-                ) : (
-                  <p style={mutedSmallStyle}>
-                    Turn recurrence on for weekly, monthly, yearly, or custom
-                    preventive maintenance.
-                  </p>
-                )}
-
-                {selectedService.lastCompletedDate ? (
-                  <div style={recurrenceHistoryStyle}>
-                    <strong>
-                      Last completed{" "}
-                      {formatDate(selectedService.lastCompletedDate)}
-                    </strong>
-                    <span style={mutedSmallStyle}>
-                      {(selectedService.completionHistory || []).length}{" "}
-                      recorded completion
-                      {(selectedService.completionHistory || []).length === 1
-                        ? ""
-                        : "s"}
-                    </span>
-                  </div>
-                ) : null}
               </section>
 
               <section style={detailSectionStyle}>
@@ -1999,6 +1680,173 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 />
               </section>
 
+              <details style={detailSectionStyle}>
+                <summary
+                  style={{
+                    cursor: "pointer",
+                    fontWeight: 800,
+                    listStyle: "none",
+                  }}
+                >
+                  Category & Type
+                </summary>
+
+                <div style={{ ...formGridStyle, marginTop: 12 }}>
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Work Type</span>
+                    <select
+                      value={itemType(selectedService)}
+                      onChange={(event) => {
+                        const workType = event.currentTarget
+                          .value as WorkItemType;
+                        updateWorkOrder({
+                          workType,
+                          recurring:
+                            workType === "Preventive Maintenance"
+                              ? true
+                              : selectedService.recurring,
+                        });
+                      }}
+                      style={inputStyle}
+                    >
+                      <option value="Quick Task">Task</option>
+                      <option value="Work Order">Work Order</option>
+                      <option value="Preventive Maintenance">
+                        Preventive Maintenance
+                      </option>
+                      <option value="Project">Project</option>
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Category</span>
+                    <select
+                      value={categoryLabel(selectedService)}
+                      onChange={(event) => {
+                        const workCategory = event.currentTarget.value;
+                        updateWorkOrder({
+                          workCategory,
+                          emoji: categoryEmoji(workCategory),
+                        });
+                      }}
+                      style={inputStyle}
+                    >
+                      {!categories.includes(categoryLabel(selectedService)) ? (
+                        <option value={categoryLabel(selectedService)}>
+                          {categoryDisplayLabel(categoryLabel(selectedService))}
+                        </option>
+                      ) : null}
+                      {categories
+                        .filter((category) => category !== "All")
+                        .map((category) => (
+                          <option key={category} value={category}>
+                            {categoryDisplayLabel(category)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setManageCategoriesOpen((open) => !open)}
+                  style={{ ...miniButtonStyle, marginTop: 10 }}
+                >
+                  {manageCategoriesOpen ? "Close Category Manager" : "Manage Categories"}
+                </button>
+
+                {manageCategoriesOpen ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 10,
+                      marginTop: 10,
+                      paddingTop: 10,
+                      borderTop: `1px solid ${colors.line}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "1fr"
+                          : "minmax(0, 1fr) auto",
+                        gap: 8,
+                      }}
+                    >
+                      <input
+                        value={newCategory}
+                        onChange={(event) =>
+                          setNewCategory(event.currentTarget.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            addCategory();
+                          }
+                        }}
+                        placeholder="New category name"
+                        style={controlStyle}
+                      />
+                      <button
+                        type="button"
+                        onClick={addCategory}
+                        style={goldButtonStyle}
+                      >
+                        Add Category
+                      </button>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 7 }}>
+                      {categoryChoices.map((category) => (
+                        <div
+                          key={category}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            padding: "8px 0",
+                            borderBottom: `1px solid ${colors.line}`,
+                          }}
+                        >
+                          <strong>{categoryDisplayLabel(category)}</strong>
+                          <div
+                            style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => renameCategory(category)}
+                              style={miniButtonStyle}
+                            >
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeCategory(category)}
+                              style={{
+                                ...dangerButtonStyle,
+                                padding: "7px 10px",
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={restoreDefaultCategories}
+                      style={secondaryButtonStyle}
+                    >
+                      Restore Default Categories
+                    </button>
+                  </div>
+                ) : null}
+              </details>
+
               <section style={detailSectionStyle}>
                 <div style={eyebrowStyle}>Work Order Actions</div>
                 <div style={buttonRowStyle}>
@@ -2085,6 +1933,25 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     </>
                   )}
 
+                  <label
+                    style={{
+                      ...recurrenceToggleStyle,
+                      minHeight: 42,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(selectedService.recurring)}
+                      onChange={(event) =>
+                        updateWorkOrder({
+                          recurring: event.currentTarget.checked,
+                        })
+                      }
+                    />
+                    Recurring
+                  </label>
+
                   <button
                     type="button"
                     onClick={() => quickAddPhoto(selectedService)}
@@ -2107,6 +1974,70 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     Delete
                   </button>
                 </div>
+
+                {selectedService.recurring ? (
+                  <div
+                    style={{
+                      ...recurrenceGridStyle,
+                      marginTop: 12,
+                      paddingTop: 12,
+                      borderTop: `1px solid ${colors.line}`,
+                    }}
+                  >
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Repeat Every</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={selectedService.recurrenceInterval || 1}
+                        onChange={(event) =>
+                          updateWorkOrder({
+                            recurrenceInterval: Math.max(
+                              1,
+                              Number(event.currentTarget.value) || 1,
+                            ),
+                          })
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Unit</span>
+                      <select
+                        value={selectedService.recurrenceUnit || "Weeks"}
+                        onChange={(event) =>
+                          updateWorkOrder({
+                            recurrenceUnit: event.currentTarget
+                              .value as WorkOrderRecurrenceUnit,
+                          })
+                        }
+                        style={inputStyle}
+                      >
+                        {(
+                          [
+                            "Days",
+                            "Weeks",
+                            "Months",
+                            "Years",
+                          ] as WorkOrderRecurrenceUnit[]
+                        ).map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <Field
+                      label="Stop Repeating After"
+                      value={selectedService.recurrenceEndDate || ""}
+                      onChange={(value: string) =>
+                        updateWorkOrder({ recurrenceEndDate: value })
+                      }
+                    />
+                  </div>
+                ) : null}
               </section>
 
               {renderLinkedDocuments("Work Order", selectedService.id)}
