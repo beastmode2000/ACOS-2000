@@ -16,6 +16,14 @@ import {
 } from "./lib/atlas-page-config";
 import type { AtlasScreen } from "./lib/atlas-page-config";
 import { searchAtlas } from "./lib/atlas-search";
+import AskAtlasWorkspace from "./components/ai/AskAtlasWorkspace";
+import RelationshipPanel from "./components/ai/RelationshipPanel";
+import ActionApprovalCard from "./components/ai/ActionApprovalCard";
+import { findRelatedRecords } from "./lib/ai/relationship-engine";
+import {
+  planAssistantAction,
+  type PendingAssistantAction,
+} from "./lib/ai/action-planner";
 
 import type {
   Screen,
@@ -74,37 +82,6 @@ type AssistantTurn = {
   createdAt: string;
 };
 
-type PendingAssistantAction =
-  | {
-      id: string;
-      kind: "work-order";
-      title: string;
-      notes: string;
-      priority: "Low" | "Medium" | "High";
-      assetId: string;
-      vendorId: string;
-    }
-  | {
-      id: string;
-      kind: "calendar";
-      title: string;
-      notes: string;
-      date: string;
-      time: string;
-      allDay: boolean;
-      linkedId: string;
-      linkedName: string;
-      linkedType: "None" | "Asset" | "Vendor" | "Work Order";
-    }
-  | {
-      id: string;
-      kind: "procedure";
-      title: string;
-      purpose: string;
-      linkedAssetIds: string[];
-      linkedLocationIds: string[];
-      linkedVendorIds: string[];
-    };
 
 type WorkItemType =
   | "Quick Task"
@@ -5485,117 +5462,8 @@ export default function AtlasPage() {
     void askAtlas(question);
   }
 
-  function relationshipTokens(value: string) {
-    const ignored = new Set([
-      "the",
-      "and",
-      "for",
-      "with",
-      "from",
-      "this",
-      "that",
-      "general",
-      "online",
-      "open",
-      "completed",
-      "scheduled",
-      "medium",
-      "high",
-      "low",
-      "document",
-      "manual",
-      "asset",
-      "vendor",
-      "location",
-      "procedure",
-      "calendar",
-      "work",
-      "order",
-      "photo",
-    ]);
-
-    return Array.from(
-      new Set(
-        value
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, " ")
-          .split(/\s+/)
-          .filter((token) => token.length >= 3 && !ignored.has(token)),
-      ),
-    );
-  }
-
   function relatedRecordsFor(source: SearchResult) {
-    const allRecords = buildSearchIndex();
-    const sourceText = `${source.title} ${source.subtitle} ${source.detail}`;
-    const sourceTokens = relationshipTokens(sourceText);
-
-    const sourceIds = new Set(
-      [
-        source.locationId,
-        source.assetId,
-        source.vendorId,
-        source.contactId,
-        source.serviceId,
-        source.mapLabelId,
-        source.procedureId,
-        source.calendarId,
-        source.partId,
-        source.manualId,
-      ].filter(Boolean),
-    );
-
-    return allRecords
-      .filter((candidate) => candidate.id !== source.id)
-      .map((candidate) => {
-        let score = 0;
-
-        const candidateIds = [
-          candidate.locationId,
-          candidate.assetId,
-          candidate.vendorId,
-          candidate.contactId,
-          candidate.serviceId,
-          candidate.mapLabelId,
-          candidate.procedureId,
-          candidate.calendarId,
-          candidate.partId,
-          candidate.manualId,
-        ].filter(Boolean);
-
-        if (candidateIds.some((id) => sourceIds.has(id))) score += 12;
-
-        const candidateText =
-          `${candidate.title} ${candidate.subtitle} ${candidate.detail}`.toLowerCase();
-
-        for (const token of sourceTokens) {
-          if (candidateText.includes(token)) score += token.length >= 7 ? 3 : 2;
-        }
-
-        if (
-          source.title.length >= 4 &&
-          candidateText.includes(source.title.toLowerCase())
-        ) {
-          score += 8;
-        }
-
-        if (
-          candidate.title.length >= 4 &&
-          sourceText.toLowerCase().includes(candidate.title.toLowerCase())
-        ) {
-          score += 6;
-        }
-
-        return { candidate, score };
-      })
-      .filter((entry) => entry.score >= 4)
-      .sort(
-        (left, right) =>
-          right.score - left.score ||
-          left.candidate.title.localeCompare(right.candidate.title),
-      )
-      .slice(0, 10)
-      .map((entry) => entry.candidate);
+    return findRelatedRecords(source, buildSearchIndex(), 10);
   }
 
   function openSearchResult(result: SearchResult) {
@@ -8278,105 +8146,18 @@ export default function AtlasPage() {
   }
 
   function prepareAssistantAction(question: string) {
-    const normalized = question.toLowerCase();
-    const { asset, vendor, location } = inferAssistantRecord(question);
+    const matches = searchAtlas(buildSearchIndex(), question, 8);
+    const action = planAssistantAction({
+      question,
+      matches,
+      today: todayISO(),
+      addDays: addDaysToISO,
+      createId: uid,
+    });
 
-    if (
-      /\b(create|make|add|prepare|draft)\b/.test(normalized) &&
-      /\bwork order\b/.test(normalized)
-    ) {
-      const title = cleanAssistantActionTitle(
-        question,
-        asset ? `Service ${asset.title}` : "New Work Order",
-      );
-      const priority: "Low" | "Medium" | "High" =
-        /\b(urgent|high priority|emergency|asap)\b/.test(normalized)
-          ? "High"
-          : /\blow priority\b/.test(normalized)
-            ? "Low"
-            : "Medium";
-
-      setPendingAssistantAction({
-        id: uid("assistant-action"),
-        kind: "work-order",
-        title,
-        notes: `Prepared by Ask Atlas from: "${question}"`,
-        priority,
-        assetId: asset?.assetId || "",
-        vendorId: vendor?.vendorId || "",
-      });
-      return true;
-    }
-
-    if (
-      /\b(schedule|add|put|create|make)\b/.test(normalized) &&
-      /\b(calendar|event|appointment|visit|meeting|tomorrow|today|next week)\b/.test(
-        normalized,
-      )
-    ) {
-      const date =
-        /\btomorrow\b/.test(normalized)
-          ? addDays(todayISO(), 1)
-          : /\bnext week\b/.test(normalized)
-            ? addDays(todayISO(), 7)
-            : todayISO();
-
-      const timeMatch = question.match(
-        /\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(am|pm)\b/i,
-      );
-      let time = "";
-      if (timeMatch) {
-        let hour = Number(timeMatch[1]);
-        const minute = timeMatch[2] || "00";
-        const meridiem = timeMatch[3].toLowerCase();
-        if (meridiem === "pm" && hour !== 12) hour += 12;
-        if (meridiem === "am" && hour === 12) hour = 0;
-        time = `${String(hour).padStart(2, "0")}:${minute}`;
-      }
-
-      const linkedType: "None" | "Asset" | "Vendor" | "Work Order" =
-        asset ? "Asset" : vendor ? "Vendor" : "None";
-      const linkedId = asset?.assetId || vendor?.vendorId || "";
-      const linkedName = asset?.title || vendor?.title || "";
-
-      setPendingAssistantAction({
-        id: uid("assistant-action"),
-        kind: "calendar",
-        title: cleanAssistantActionTitle(
-          question,
-          asset ? `${asset.title} follow-up` : "New Calendar Event",
-        ),
-        notes: `Prepared by Ask Atlas from: "${question}"`,
-        date,
-        time,
-        allDay: !time,
-        linkedId,
-        linkedName,
-        linkedType,
-      });
-      return true;
-    }
-
-    if (
-      /\b(create|make|prepare|draft)\b/.test(normalized) &&
-      /\bprocedure|checklist|sop\b/.test(normalized)
-    ) {
-      setPendingAssistantAction({
-        id: uid("assistant-action"),
-        kind: "procedure",
-        title: cleanAssistantActionTitle(
-          question,
-          asset ? `${asset.title} Procedure` : "New Procedure",
-        ),
-        purpose: `Prepared by Ask Atlas from: "${question}"`,
-        linkedAssetIds: asset?.assetId ? [asset.assetId] : [],
-        linkedLocationIds: location?.locationId ? [location.locationId] : [],
-        linkedVendorIds: vendor?.vendorId ? [vendor.vendorId] : [],
-      });
-      return true;
-    }
-
-    return false;
+    if (!action) return false;
+    setPendingAssistantAction(action);
+    return true;
   }
 
   async function approveAssistantAction() {
@@ -15508,15 +15289,10 @@ export default function AtlasPage() {
           }
         />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.45fr) minmax(300px, 0.8fr)",
-            gap: 16,
-            alignItems: "start",
-          }}
-        >
-          <div style={{ display: "grid", gap: 14 }}>
+        <AskAtlasWorkspace
+          isMobile={isMobile}
+          main={
+            <>
             <div
               style={{
                 ...cardStyle,
@@ -15639,93 +15415,36 @@ export default function AtlasPage() {
             </div>
 
             {pendingAssistantAction ? (
-              <div
-                style={{
-                  ...cardStyle,
-                  padding: 16,
-                  border: `2px solid ${colors.gold}`,
-                  display: "grid",
-                  gap: 12,
+              <ActionApprovalCard
+                action={pendingAssistantAction}
+                saving={assistantActionSaving}
+                assetName={
+                  pendingAssistantAction.kind === "work-order"
+                    ? assetRecords.find(
+                        (item) => item.id === pendingAssistantAction.assetId,
+                      )?.name
+                    : pendingAssistantAction.kind === "procedure"
+                      ? assetRecords.find(
+                          (item) =>
+                            item.id === pendingAssistantAction.linkedAssetIds[0],
+                        )?.name
+                      : undefined
+                }
+                formattedDate={
+                  pendingAssistantAction.kind === "calendar"
+                    ? formatDate(pendingAssistantAction.date)
+                    : undefined
+                }
+                colors={colors}
+                onApprove={() => void approveAssistantAction()}
+                onCancel={() => {
+                  setPendingAssistantAction(null);
+                  addAssistantTurn(
+                    "assistant",
+                    "Action canceled. Nothing was changed.",
+                  );
                 }}
-              >
-                <div>
-                  <div style={eyebrowStyle}>Prepared Atlas Action</div>
-                  <h3 style={{ margin: "4px 0 6px", fontSize: 20 }}>
-                    {pendingAssistantAction.kind === "work-order"
-                      ? "Create Work Order"
-                      : pendingAssistantAction.kind === "calendar"
-                        ? "Schedule Calendar Event"
-                        : "Create Draft Procedure"}
-                  </h3>
-                  <div style={{ fontWeight: 900 }}>
-                    {pendingAssistantAction.title}
-                  </div>
-                </div>
-
-                {pendingAssistantAction.kind === "work-order" ? (
-                  <div style={mutedSmallStyle}>
-                    Priority: {pendingAssistantAction.priority}
-                    {pendingAssistantAction.assetId
-                      ? ` • Asset: ${
-                          assetRecords.find(
-                            (item) => item.id === pendingAssistantAction.assetId,
-                          )?.name || "Linked asset"
-                        }`
-                      : ""}
-                  </div>
-                ) : null}
-
-                {pendingAssistantAction.kind === "calendar" ? (
-                  <div style={mutedSmallStyle}>
-                    {formatDate(pendingAssistantAction.date)}
-                    {pendingAssistantAction.time
-                      ? ` • ${pendingAssistantAction.time}`
-                      : " • All day"}
-                    {pendingAssistantAction.linkedName
-                      ? ` • ${pendingAssistantAction.linkedName}`
-                      : ""}
-                  </div>
-                ) : null}
-
-                {pendingAssistantAction.kind === "procedure" ? (
-                  <div style={mutedSmallStyle}>
-                    Draft procedure
-                    {pendingAssistantAction.linkedAssetIds.length
-                      ? ` • ${
-                          assetRecords.find(
-                            (item) =>
-                              item.id === pendingAssistantAction.linkedAssetIds[0],
-                          )?.name || "Linked asset"
-                        }`
-                      : ""}
-                  </div>
-                ) : null}
-
-                <div style={buttonRowStyle}>
-                  <button
-                    type="button"
-                    onClick={() => void approveAssistantAction()}
-                    disabled={assistantActionSaving}
-                    style={{
-                      ...goldButtonStyle,
-                      opacity: assistantActionSaving ? 0.6 : 1,
-                    }}
-                  >
-                    {assistantActionSaving ? "Saving…" : "Approve and Save"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingAssistantAction(null);
-                      addAssistantTurn("assistant", "Action canceled. Nothing was changed.");
-                    }}
-                    disabled={assistantActionSaving}
-                    style={secondaryButtonStyle}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
+              />
             ) : null}
 
             {manualCandidates.length ? (
@@ -15768,9 +15487,10 @@ export default function AtlasPage() {
                 {manualSaveMessage ? <div style={noticeStyle}>{manualSaveMessage}</div> : null}
               </div>
             ) : null}
-          </div>
-
-          <aside style={{ display: "grid", gap: 14 }}>
+            </>
+          }
+          sidebar={
+            <>
             <div style={{ ...cardStyle, padding: 16 }}>
               <div style={eyebrowStyle}>Matching Atlas Records</div>
               <h3 style={{ margin: "4px 0 12px", fontSize: 20 }}>
@@ -15849,72 +15569,26 @@ export default function AtlasPage() {
               </div>
 
               {selectedRelationshipId ? (
-                <div
-                  style={{
-                    marginTop: 16,
-                    paddingTop: 16,
-                    borderTop: `1px solid ${colors.line}`,
-                  }}
-                >
-                  {(() => {
-                    const selected = assistantRecordResults.find(
+                <RelationshipPanel
+                  selected={assistantRecordResults.find(
+                    (result) => result.id === selectedRelationshipId,
+                  )}
+                  related={
+                    assistantRecordResults.find(
                       (result) => result.id === selectedRelationshipId,
-                    );
-                    const related = selected ? relatedRecordsFor(selected) : [];
-
-                    return (
-                      <>
-                        <div style={eyebrowStyle}>Relationship Engine</div>
-                        <h3 style={{ margin: "4px 0 10px", fontSize: 18 }}>
-                          {selected ? `Connected to ${selected.title}` : "Related records"}
-                        </h3>
-
-                        {related.length ? (
-                          <div style={{ display: "grid", gap: 8 }}>
-                            {related.map((result) => (
-                              <button
-                                key={result.id}
-                                type="button"
-                                onClick={() => openSearchResult(result)}
-                                style={{
-                                  ...searchResultStyle,
-                                  border: `1px solid ${colors.line}`,
-                                  borderRadius: 10,
-                                  background: colors.panel,
-                                  padding: 10,
-                                  textAlign: "left",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    gap: 8,
-                                  }}
-                                >
-                                  <strong>{result.title}</strong>
-                                  <span style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>
-                                    {result.type}
-                                  </span>
-                                </div>
-                                {result.subtitle ? (
-                                  <div style={{ ...mutedSmallStyle, marginTop: 4 }}>
-                                    {result.subtitle}
-                                  </div>
-                                ) : null}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={noticeStyle}>
-                            No reliable connected records were found yet.
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
+                    )
+                      ? relatedRecordsFor(
+                          assistantRecordResults.find(
+                            (result) => result.id === selectedRelationshipId,
+                          )!,
+                        )
+                      : []
+                  }
+                  onOpen={openSearchResult}
+                  colors={colors}
+                />
               ) : null}
+
             </div>
 
             <div style={{ ...cardStyle, padding: 16 }}>
@@ -15925,8 +15599,9 @@ export default function AtlasPage() {
                 procedures. Nothing is saved until you press Approve and Save.
               </p>
             </div>
-          </aside>
-        </div>
+            </>
+          }
+        />
       </section>
     );
   }
