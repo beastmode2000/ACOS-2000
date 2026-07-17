@@ -3329,6 +3329,7 @@ export default function AtlasPage() {
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantTurns, setAssistantTurns] = useState<AssistantTurn[]>([]);
   const [assistantRecordResults, setAssistantRecordResults] = useState<SearchResult[]>([]);
+  const [selectedRelationshipId, setSelectedRelationshipId] = useState("");
   const [dashboardAssistantOpen, setDashboardAssistantOpen] = useState(false);
   const [workPlanInput, setWorkPlanInput] = useState("");
   const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>([]);
@@ -5441,6 +5442,119 @@ export default function AtlasPage() {
     setQuery("");
     setSearchOpen(false);
     void askAtlas(question);
+  }
+
+  function relationshipTokens(value: string) {
+    const ignored = new Set([
+      "the",
+      "and",
+      "for",
+      "with",
+      "from",
+      "this",
+      "that",
+      "general",
+      "online",
+      "open",
+      "completed",
+      "scheduled",
+      "medium",
+      "high",
+      "low",
+      "document",
+      "manual",
+      "asset",
+      "vendor",
+      "location",
+      "procedure",
+      "calendar",
+      "work",
+      "order",
+      "photo",
+    ]);
+
+    return Array.from(
+      new Set(
+        value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .split(/\s+/)
+          .filter((token) => token.length >= 3 && !ignored.has(token)),
+      ),
+    );
+  }
+
+  function relatedRecordsFor(source: SearchResult) {
+    const allRecords = buildSearchIndex();
+    const sourceText = `${source.title} ${source.subtitle} ${source.detail}`;
+    const sourceTokens = relationshipTokens(sourceText);
+
+    const sourceIds = new Set(
+      [
+        source.locationId,
+        source.assetId,
+        source.vendorId,
+        source.contactId,
+        source.serviceId,
+        source.mapLabelId,
+        source.procedureId,
+        source.calendarId,
+        source.partId,
+        source.manualId,
+      ].filter(Boolean),
+    );
+
+    return allRecords
+      .filter((candidate) => candidate.id !== source.id)
+      .map((candidate) => {
+        let score = 0;
+
+        const candidateIds = [
+          candidate.locationId,
+          candidate.assetId,
+          candidate.vendorId,
+          candidate.contactId,
+          candidate.serviceId,
+          candidate.mapLabelId,
+          candidate.procedureId,
+          candidate.calendarId,
+          candidate.partId,
+          candidate.manualId,
+        ].filter(Boolean);
+
+        if (candidateIds.some((id) => sourceIds.has(id))) score += 12;
+
+        const candidateText =
+          `${candidate.title} ${candidate.subtitle} ${candidate.detail}`.toLowerCase();
+
+        for (const token of sourceTokens) {
+          if (candidateText.includes(token)) score += token.length >= 7 ? 3 : 2;
+        }
+
+        if (
+          source.title.length >= 4 &&
+          candidateText.includes(source.title.toLowerCase())
+        ) {
+          score += 8;
+        }
+
+        if (
+          candidate.title.length >= 4 &&
+          sourceText.toLowerCase().includes(candidate.title.toLowerCase())
+        ) {
+          score += 6;
+        }
+
+        return { candidate, score };
+      })
+      .filter((entry) => entry.score >= 4)
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          left.candidate.title.localeCompare(right.candidate.title),
+      )
+      .slice(0, 10)
+      .map((entry) => entry.candidate);
   }
 
   function openSearchResult(result: SearchResult) {
@@ -8097,6 +8211,7 @@ export default function AtlasPage() {
   function refreshAssistantRecordResults(question: string) {
     const matches = searchAtlas(buildSearchIndex(), question, 8);
     setAssistantRecordResults(matches);
+    setSelectedRelationshipId(matches[0]?.id || "");
   }
 
   async function askAtlas(questionOverride?: string) {
@@ -15112,6 +15227,7 @@ export default function AtlasPage() {
                 onClick={() => {
                   setAssistantTurns([]);
                   setAssistantRecordResults([]);
+                  setSelectedRelationshipId("");
                   setManualCandidates([]);
                   setManualSaveMessage("");
                   setAssistantQuestion("");
@@ -15309,49 +15425,141 @@ export default function AtlasPage() {
               </h3>
 
               <div style={{ display: "grid", gap: 8 }}>
-                {assistantRecordResults.map((result) => (
-                  <button
-                    key={result.id}
-                    type="button"
-                    onClick={() => openSearchResult(result)}
-                    style={{
-                      ...searchResultStyle,
-                      width: "100%",
-                      textAlign: "left",
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 12,
-                      background: colors.card,
-                      padding: 12,
-                    }}
-                  >
+                {assistantRecordResults.map((result) => {
+                  const isSelected = selectedRelationshipId === result.id;
+                  const relatedCount = relatedRecordsFor(result).length;
+
+                  return (
                     <div
+                      key={result.id}
                       style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        gap: 10,
+                        border: `1px solid ${
+                          isSelected ? colors.gold : colors.line
+                        }`,
+                        borderRadius: 12,
+                        background: colors.card,
+                        padding: 12,
+                        display: "grid",
+                        gap: 9,
                       }}
                     >
-                      <strong>{result.title}</strong>
-                      <span
+                      <div
                         style={{
-                          borderRadius: 999,
-                          background: colors.panel,
-                          padding: "3px 7px",
-                          fontSize: 10,
-                          fontWeight: 900,
-                          whiteSpace: "nowrap",
+                          display: "flex",
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          gap: 10,
                         }}
                       >
-                        {result.type}
-                      </span>
+                        <strong>{result.title}</strong>
+                        <span
+                          style={{
+                            borderRadius: 999,
+                            background: colors.panel,
+                            padding: "3px 7px",
+                            fontSize: 10,
+                            fontWeight: 900,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {result.type}
+                        </span>
+                      </div>
+
+                      {result.subtitle ? (
+                        <div style={mutedSmallStyle}>{result.subtitle}</div>
+                      ) : null}
+
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => openSearchResult(result)}
+                          style={{ ...secondaryButtonStyle, padding: "7px 10px", fontSize: 11 }}
+                        >
+                          Open Record
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedRelationshipId(isSelected ? "" : result.id)
+                          }
+                          style={{ ...secondaryButtonStyle, padding: "7px 10px", fontSize: 11 }}
+                        >
+                          {isSelected ? "Hide Related" : `Related (${relatedCount})`}
+                        </button>
+                      </div>
                     </div>
-                    {result.subtitle ? (
-                      <div style={{ ...mutedSmallStyle, marginTop: 5 }}>{result.subtitle}</div>
-                    ) : null}
-                  </button>
-                ))}
+                  );
+                })}
               </div>
+
+              {selectedRelationshipId ? (
+                <div
+                  style={{
+                    marginTop: 16,
+                    paddingTop: 16,
+                    borderTop: `1px solid ${colors.line}`,
+                  }}
+                >
+                  {(() => {
+                    const selected = assistantRecordResults.find(
+                      (result) => result.id === selectedRelationshipId,
+                    );
+                    const related = selected ? relatedRecordsFor(selected) : [];
+
+                    return (
+                      <>
+                        <div style={eyebrowStyle}>Relationship Engine</div>
+                        <h3 style={{ margin: "4px 0 10px", fontSize: 18 }}>
+                          {selected ? `Connected to ${selected.title}` : "Related records"}
+                        </h3>
+
+                        {related.length ? (
+                          <div style={{ display: "grid", gap: 8 }}>
+                            {related.map((result) => (
+                              <button
+                                key={result.id}
+                                type="button"
+                                onClick={() => openSearchResult(result)}
+                                style={{
+                                  ...searchResultStyle,
+                                  border: `1px solid ${colors.line}`,
+                                  borderRadius: 10,
+                                  background: colors.panel,
+                                  padding: 10,
+                                  textAlign: "left",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 8,
+                                  }}
+                                >
+                                  <strong>{result.title}</strong>
+                                  <span style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>
+                                    {result.type}
+                                  </span>
+                                </div>
+                                {result.subtitle ? (
+                                  <div style={{ ...mutedSmallStyle, marginTop: 4 }}>
+                                    {result.subtitle}
+                                  </div>
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={noticeStyle}>
+                            No reliable connected records were found yet.
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : null}
             </div>
 
             <div style={{ ...cardStyle, padding: 16 }}>
@@ -19037,4 +19245,3 @@ const linkStyle: React.CSSProperties = {
   fontWeight: 950,
   textDecoration: "underline",
 };
-      
