@@ -1,5 +1,3 @@
-FILE: app/api/atlas/route.ts
-```ts
 import { neon } from "@neondatabase/serverless";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -1220,24 +1218,27 @@ export async function POST(request: NextRequest) {
         ? error.message
         : "Unknown Atlas database save error";
 
-    const postgresError = error as {
-      detail?: unknown;
-      hint?: unknown;
-      code?: unknown;
-    };
+    const postgresError =
+      error && typeof error === "object"
+        ? (error as {
+            detail?: unknown;
+            hint?: unknown;
+            code?: unknown;
+          })
+        : {};
 
     const detail =
-      typeof postgresError?.detail === "string"
+      typeof postgresError.detail === "string"
         ? postgresError.detail
         : undefined;
 
     const hint =
-      typeof postgresError?.hint === "string"
+      typeof postgresError.hint === "string"
         ? postgresError.hint
         : undefined;
 
     const pgCode =
-      typeof postgresError?.code === "string"
+      typeof postgresError.code === "string"
         ? postgresError.code
         : undefined;
 
@@ -1367,4 +1368,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-```
