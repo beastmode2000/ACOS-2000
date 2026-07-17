@@ -63,16 +63,16 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_SECTIONS: WorkSection[] = [
-  { id: "my-work", label: "🏠 My Work", kind: "my-work" },
-  { id: "tasks", label: "📌 Tasks", kind: "Quick Task" },
-  { id: "work-orders", label: "🛠️ Work Orders", kind: "Work Order" },
+  { id: "my-work", label: "My Work", kind: "my-work" },
+  { id: "tasks", label: "Tasks", kind: "Quick Task" },
+  { id: "work-orders", label: "Work Orders", kind: "Work Order" },
   {
     id: "maintenance",
-    label: "🔁 Preventive Maintenance",
+    label: "Preventive Maintenance",
     kind: "Preventive Maintenance",
   },
-  { id: "projects", label: "🏗️ Projects", kind: "Project" },
-  { id: "completed", label: "📚 Completed", kind: "completed" },
+  { id: "projects", label: "Projects", kind: "Project" },
+  { id: "completed", label: "Completed", kind: "completed" },
 ];
 
 const SECTION_STORAGE_KEY = "atlas-work-section-settings-v1";
@@ -102,6 +102,14 @@ function categoryEmoji(category: string) {
       /^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u,
     );
   return match?.[1] || "🔧";
+}
+
+function categoryDisplayLabel(category: string) {
+  return (
+    String(category || "Maintenance")
+      .replace(/^(?:\p{Extended_Pictographic}|\uFE0F|\u200D)+\s*/u, "")
+      .trim() || "Maintenance"
+  );
 }
 
 function parseDate(value: string) {
@@ -461,16 +469,18 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const category = categoryLabel(record);
     const matchesCategory =
       categoryFilter === "All" || category === categoryFilter;
-    const matchesType =
-      typeFilter === "All" || itemType(record) === typeFilter;
+    const matchesType = typeFilter === "All" || itemType(record) === typeFilter;
     const matchesStatus =
-      statusFilter === "All" || String(record.status || "Open") === statusFilter;
+      statusFilter === "All" ||
+      String(record.status || "Open") === statusFilter;
     const matchesLocation =
-      locationFilter === "All" || String(record.locationId || "") === locationFilter;
+      locationFilter === "All" ||
+      String(record.locationId || "") === locationFilter;
     const matchesAsset =
       assetFilter === "All" || String(record.assetId || "") === assetFilter;
     const matchesAssigned =
-      assignedFilter === "All" || String(record.assignedTo || "") === assignedFilter;
+      assignedFilter === "All" ||
+      String(record.assignedTo || "") === assignedFilter;
     const matchesSearch =
       !search ||
       [
@@ -607,6 +617,8 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     ...secondaryButtonStyle,
     padding: "7px 10px",
     minHeight: 36,
+    whiteSpace: "nowrap",
+    flex: "0 0 auto",
   };
 
   const photoGridStyle: React.CSSProperties = {
@@ -805,7 +817,9 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   const planContext = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
-    const todayCalendar = calendarItems.filter((item: any) => item.date === today);
+    const todayCalendar = calendarItems.filter(
+      (item: any) => item.date === today,
+    );
     const todayWeather = weatherDays.find((day: any) => day.date === today);
     const rainRisk = Number(todayWeather?.precipChance || 0) >= 50;
     return { todayCalendar, todayWeather, rainRisk };
@@ -814,7 +828,14 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const dayPlan = useMemo(() => {
     const outdoorCategory = (record: any) => {
       const value = categoryLabel(record).toLowerCase();
-      return ["landscap", "irrigation", "dock", "marine", "exterior", "vehicle"].some((term) => value.includes(term));
+      return [
+        "landscap",
+        "irrigation",
+        "dock",
+        "marine",
+        "exterior",
+        "vehicle",
+      ].some((term) => value.includes(term));
     };
     const candidates = serviceRecords
       .filter((record: any) => record.status !== "Completed")
@@ -826,7 +847,8 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         inProgressRank: record.status === "In Progress" ? -2 : 0,
       }))
       .sort((a: any, b: any) => {
-        const priority = (value: string) => value === "High" ? 0 : value === "Medium" ? 1 : 2;
+        const priority = (value: string) =>
+          value === "High" ? 0 : value === "Medium" ? 1 : 2;
         return (
           a.inProgressRank - b.inProgressRank ||
           a.weatherPenalty - b.weatherPenalty ||
@@ -846,7 +868,10 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   function addChecklistItem() {
     const text = newChecklistText.trim();
     if (!text) return;
-    const checklist = [...(selectedService.checklist || []), { id: uid("check"), text, completed: false }];
+    const checklist = [
+      ...(selectedService.checklist || []),
+      { id: uid("check"), text, completed: false },
+    ];
     updateWorkOrder({ checklist });
     setNewChecklistText("");
   }
@@ -860,14 +885,21 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function deleteChecklistItem(id: string) {
-    updateWorkOrder({ checklist: (selectedService.checklist || []).filter((item: ChecklistItem) => item.id !== id) });
+    updateWorkOrder({
+      checklist: (selectedService.checklist || []).filter(
+        (item: ChecklistItem) => item.id !== id,
+      ),
+    });
   }
 
   function addHistoryNote() {
     const text = newHistoryNote.trim();
     if (!text) return;
     updateWorkOrder({
-      notesHistory: [{ id: uid("note"), text, createdAt: new Date().toISOString() }, ...(selectedService.notesHistory || [])],
+      notesHistory: [
+        { id: uid("note"), text, createdAt: new Date().toISOString() },
+        ...(selectedService.notesHistory || []),
+      ],
     });
     setNewHistoryNote("");
   }
@@ -875,7 +907,6 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   function renderWorkRow(record: any) {
     const type = itemType(record);
     const category = categoryLabel(record);
-    const emoji = categoryEmoji(category);
     const overdue =
       record.status !== "Completed" &&
       Boolean(record.date) &&
@@ -914,17 +945,25 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           }}
         >
           <div style={{ minWidth: 0 }}>
-            <strong>
-              {emoji ? `${emoji} ` : ""}
+            <strong style={{ display: "block", lineHeight: 1.35 }}>
               {record.title || "Untitled Work"}
             </strong>
-            <p style={mutedSmallStyle}>
-              {category} · {type}
+            <p style={{ ...mutedSmallStyle, marginTop: 4 }}>
+              {categoryDisplayLabel(category)} · {type}
             </p>
-            <p style={mutedSmallStyle}>
-              {record.recurring ? "Next due" : "Due"} {formatDate(record.date)}{" "}
-              · {assetName(record.assetId)} · {vendorName(record.vendorId)}
+            <p style={{ ...mutedSmallStyle, marginTop: 2 }}>
+              {record.date
+                ? `${record.recurring ? "Next due" : "Due"} ${formatDate(record.date)}`
+                : "No due date"}
+              {record.priority ? ` · ${record.priority} priority` : ""}
             </p>
+            {record.assetId || record.vendorId ? (
+              <p style={{ ...mutedSmallStyle, marginTop: 2 }}>
+                {record.assetId ? assetName(record.assetId) : ""}
+                {record.assetId && record.vendorId ? " · " : ""}
+                {record.vendorId ? vendorName(record.vendorId) : ""}
+              </p>
+            ) : null}
           </div>
           <div style={workOrderListBadgesStyle}>
             {overdue ? <span style={badgeStyle("High")}>Overdue</span> : null}
@@ -937,7 +976,12 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             {record.recurring ? (
               <span style={recurringBadgeStyle}>Recurring</span>
             ) : null}
-            <span style={badgeStyle(record.status)}>{record.status}</span>
+            {record.priority ? (
+              <span style={badgeStyle(record.priority)}>{record.priority}</span>
+            ) : null}
+            <span style={badgeStyle(record.status || "Open")}>
+              {record.status || "Open"}
+            </span>
           </div>
         </div>
 
@@ -945,62 +989,92 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           style={{ display: "flex", gap: 7, flexWrap: "wrap" }}
           onClick={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            onClick={() => selectAndPatch(record, { status: "In Progress" })}
-            style={miniButtonStyle}
-          >
-            Start
-          </button>
-          <button
-            type="button"
-            onClick={() => void completeWorkOrder(record)}
-            style={miniButtonStyle}
-          >
-            Done
-          </button>
-          <button
-            type="button"
-            onClick={() => quickReschedule(record)}
-            style={miniButtonStyle}
-          >
-            Reschedule
-          </button>
-          <button
-            type="button"
-            onClick={() => quickConvert(record)}
-            style={miniButtonStyle}
-          >
-            Convert
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedServiceId(record.id)}
-            style={miniButtonStyle}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => quickAddPhoto(record)}
-            style={miniButtonStyle}
-          >
-            Add Photo
-          </button>
-          <button
-            type="button"
-            onClick={() => selectAndPatch(record, { date: tomorrowDate(), status: "Scheduled" })}
-            style={miniButtonStyle}
-          >
-            Tomorrow
-          </button>
-          <button
-            type="button"
-            onClick={() => selectAndPatch(record, { date: nextWeekDate(), status: "Scheduled" })}
-            style={miniButtonStyle}
-          >
-            Next Week
-          </button>
+          {record.status === "Completed" ? (
+            <button
+              type="button"
+              onClick={() =>
+                selectAndPatch(record, { status: "Open", completedAt: "" })
+              }
+              style={miniButtonStyle}
+            >
+              Reopen
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  selectAndPatch(record, { status: "In Progress" })
+                }
+                style={miniButtonStyle}
+              >
+                Start
+              </button>
+              <button
+                type="button"
+                onClick={() => void completeWorkOrder(record)}
+                style={miniButtonStyle}
+              >
+                Done
+              </button>
+            </>
+          )}
+          {record.status !== "Completed" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => quickReschedule(record)}
+                style={miniButtonStyle}
+              >
+                Reschedule
+              </button>
+              <button
+                type="button"
+                onClick={() => quickConvert(record)}
+                style={miniButtonStyle}
+              >
+                Convert
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedServiceId(record.id)}
+                style={miniButtonStyle}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => quickAddPhoto(record)}
+                style={miniButtonStyle}
+              >
+                Add Photo
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  selectAndPatch(record, {
+                    date: tomorrowDate(),
+                    status: "Scheduled",
+                  })
+                }
+                style={miniButtonStyle}
+              >
+                Tomorrow
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  selectAndPatch(record, {
+                    date: nextWeekDate(),
+                    status: "Scheduled",
+                  })
+                }
+                style={miniButtonStyle}
+              >
+                Next Week
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             onClick={() => duplicateWork(record)}
@@ -1106,7 +1180,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       <ListDrawerLayout
         eyebrow="Organize / Complete"
         title={activeSection?.label || "My Work"}
-        detail="Daily tasks, tracked work orders, recurring maintenance, projects, and completed history in one searchable system."
+        detail="Track active work, recurring maintenance, projects, and completed history."
         isMobile={isMobile}
         right={
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -1156,20 +1230,49 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <div style={eyebrowStyle}>Smart Daily Plan</div>
                     <strong>Prioritized for roughly 8 hours</strong>
                     <div style={mutedSmallStyle}>
-                      {planContext.todayCalendar.length} calendar item{planContext.todayCalendar.length === 1 ? "" : "s"}
-                      {planContext.todayWeather ? ` · ${Math.round(Number(planContext.todayWeather.high || 0))}° high · ${Math.round(Number(planContext.todayWeather.precipChance || 0))}% rain` : ""}
+                      {planContext.todayCalendar.length} calendar item
+                      {planContext.todayCalendar.length === 1 ? "" : "s"}
+                      {planContext.todayWeather
+                        ? ` · ${Math.round(Number(planContext.todayWeather.high || 0))}° high · ${Math.round(Number(planContext.todayWeather.precipChance || 0))}% rain`
+                        : ""}
                     </div>
                   </div>
-                  <span style={recurringBadgeStyle}>{dayPlan.length} items</span>
+                  <span style={recurringBadgeStyle}>
+                    {dayPlan.length} items
+                  </span>
                 </div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {dayPlan.map((record: any, index: number) => (
-                    <button key={record.id} type="button" onClick={() => setSelectedServiceId(record.id)} style={{ ...rowButtonStyle, display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <span><strong>{index + 1}. {categoryEmoji(categoryLabel(record))} {record.title || "Untitled Work"}</strong><br/><small style={mutedSmallStyle}>{record.effort || "30 minutes"} · {record.locationId || assetName(record.assetId)} · {formatDate(record.date)}</small></span>
-                      <span style={badgeStyle(record.priority)}>{record.priority}</span>
+                    <button
+                      key={record.id}
+                      type="button"
+                      onClick={() => setSelectedServiceId(record.id)}
+                      style={{
+                        ...rowButtonStyle,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                      }}
+                    >
+                      <span>
+                        <strong>
+                          {index + 1}. {record.title || "Untitled Work"}
+                        </strong>
+                        <br />
+                        <small style={mutedSmallStyle}>
+                          {record.effort || "30 minutes"} ·{" "}
+                          {record.locationId || assetName(record.assetId)} ·{" "}
+                          {formatDate(record.date)}
+                        </small>
+                      </span>
+                      <span style={badgeStyle(record.priority)}>
+                        {record.priority}
+                      </span>
                     </button>
                   ))}
-                  {!dayPlan.length ? <div style={noticeStyle}>No open work to plan.</div> : null}
+                  {!dayPlan.length ? (
+                    <div style={noticeStyle}>No open work to plan.</div>
+                  ) : null}
                 </div>
               </section>
             ) : null}
@@ -1337,43 +1440,127 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(3, minmax(0, 1fr))",
                   gap: 10,
                 }}
               >
                 <input
                   value={localSearch}
-                  onChange={(event) => setLocalSearch(event.currentTarget.value)}
+                  onChange={(event) =>
+                    setLocalSearch(event.currentTarget.value)
+                  }
                   placeholder="Search work, asset, vendor, category..."
                   style={controlStyle}
                 />
-                <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.currentTarget.value)} style={controlStyle}>
-                  {categories.map((category) => <option key={category} value={category}>{category === "All" ? "All Categories" : category}</option>)}
+                <select
+                  value={categoryFilter}
+                  onChange={(event) =>
+                    setCategoryFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category === "All"
+                        ? "All Categories"
+                        : categoryDisplayLabel(category)}
+                    </option>
+                  ))}
                 </select>
-                <select value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)} style={controlStyle}>
+                <select
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.currentTarget.value)}
+                  style={controlStyle}
+                >
                   <option value="All">All Types</option>
                   <option value="Quick Task">Tasks</option>
                   <option value="Work Order">Work Orders</option>
-                  <option value="Preventive Maintenance">Preventive Maintenance</option>
+                  <option value="Preventive Maintenance">
+                    Preventive Maintenance
+                  </option>
                   <option value="Project">Projects</option>
                 </select>
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value)} style={controlStyle}>
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
                   <option value="All">All Statuses</option>
-                  {['Open','Scheduled','In Progress','Waiting','Monitor','Completed'].map((status) => <option key={status} value={status}>{status}</option>)}
+                  {[
+                    "Open",
+                    "Scheduled",
+                    "In Progress",
+                    "Waiting",
+                    "Monitor",
+                    "Completed",
+                  ].map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
                 </select>
-                <select value={locationFilter} onChange={(event) => setLocationFilter(event.currentTarget.value)} style={controlStyle}>
+                <select
+                  value={locationFilter}
+                  onChange={(event) =>
+                    setLocationFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
                   <option value="All">All Locations</option>
-                  {byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                  {byName(locationRecords).map((location: any) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
                 </select>
-                <select value={assetFilter} onChange={(event) => setAssetFilter(event.currentTarget.value)} style={controlStyle}>
+                <select
+                  value={assetFilter}
+                  onChange={(event) =>
+                    setAssetFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
                   <option value="All">All Assets</option>
-                  {byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                  {byName(assetRecords).map((asset: any) => (
+                    <option key={asset.id} value={asset.id}>
+                      {asset.name}
+                    </option>
+                  ))}
                 </select>
-                <select value={assignedFilter} onChange={(event) => setAssignedFilter(event.currentTarget.value)} style={controlStyle}>
+                <select
+                  value={assignedFilter}
+                  onChange={(event) =>
+                    setAssignedFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
                   <option value="All">Anyone Assigned</option>
-                  {byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}
+                  {byName(contactRecords).map((contact: any) => (
+                    <option
+                      key={contact.id || contact.name}
+                      value={contact.name}
+                    >
+                      {contact.name}
+                    </option>
+                  ))}
                 </select>
-                <button type="button" onClick={() => { setLocalSearch(""); setCategoryFilter("All"); setTypeFilter("All"); setStatusFilter("All"); setLocationFilter("All"); setAssetFilter("All"); setAssignedFilter("All"); }} style={secondaryButtonStyle}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocalSearch("");
+                    setCategoryFilter("All");
+                    setTypeFilter("All");
+                    setStatusFilter("All");
+                    setLocationFilter("All");
+                    setAssetFilter("All");
+                    setAssignedFilter("All");
+                  }}
+                  style={secondaryButtonStyle}
+                >
                   Clear Filters
                 </button>
               </div>
@@ -1398,11 +1585,11 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             <div style={stackStyle}>
               <div>
                 <h3 style={editorHeaderStyle}>
-                  {categoryEmoji(categoryLabel(selectedService))}{" "}
                   {selectedService.title.trim() || "New Work"}
                 </h3>
                 <p style={mutedSmallStyle}>
-                  {categoryLabel(selectedService)} · {itemType(selectedService)}
+                  {categoryDisplayLabel(categoryLabel(selectedService))} ·{" "}
+                  {itemType(selectedService)}
                 </p>
               </div>
 
@@ -1845,21 +2032,64 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 <div style={detailSectionHeaderStyle}>
                   <div>
                     <div style={eyebrowStyle}>Service History</div>
-                    <strong>{(selectedService.serviceHistory || []).length} saved completion snapshot{(selectedService.serviceHistory || []).length === 1 ? "" : "s"}</strong>
+                    <strong>
+                      {(selectedService.serviceHistory || []).length} saved
+                      completion snapshot
+                      {(selectedService.serviceHistory || []).length === 1
+                        ? ""
+                        : "s"}
+                    </strong>
                   </div>
                 </div>
                 {(selectedService.serviceHistory || []).length ? (
-                  <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-                    {(selectedService.serviceHistory || []).map((entry: any) => (
-                      <div key={entry.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10, background: "#F8FAFC" }}>
-                        <strong>{new Date(entry.completedAt).toLocaleString()}</strong>
-                        <div style={mutedSmallStyle}>Due {formatDate(entry.dueDate)} · {entry.statusBefore}</div>
-                        <div style={mutedSmallStyle}>{(entry.checklist || []).filter((item: any) => item.completed).length}/{(entry.checklist || []).length} checklist items complete · {(entry.photos || []).length} photo(s)</div>
-                        {entry.notes ? <p style={{ marginBottom: 0 }}>{entry.notes}</p> : null}
-                      </div>
-                    ))}
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                      maxHeight: 260,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {(selectedService.serviceHistory || []).map(
+                      (entry: any) => (
+                        <div
+                          key={entry.id}
+                          style={{
+                            border: `1px solid ${colors.line}`,
+                            borderRadius: 10,
+                            padding: 10,
+                            background: "#F8FAFC",
+                          }}
+                        >
+                          <strong>
+                            {new Date(entry.completedAt).toLocaleString()}
+                          </strong>
+                          <div style={mutedSmallStyle}>
+                            Due {formatDate(entry.dueDate)} ·{" "}
+                            {entry.statusBefore}
+                          </div>
+                          <div style={mutedSmallStyle}>
+                            {
+                              (entry.checklist || []).filter(
+                                (item: any) => item.completed,
+                              ).length
+                            }
+                            /{(entry.checklist || []).length} checklist items
+                            complete · {(entry.photos || []).length} photo(s)
+                          </div>
+                          {entry.notes ? (
+                            <p style={{ marginBottom: 0 }}>{entry.notes}</p>
+                          ) : null}
+                        </div>
+                      ),
+                    )}
                   </div>
-                ) : <p style={mutedSmallStyle}>Completed work will be saved here with its notes, checklist, photos, and links.</p>}
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    Completed work will be saved here with its notes, checklist,
+                    photos, and links.
+                  </p>
+                )}
               </section>
 
               <section style={detailSectionStyle}>
@@ -1885,19 +2115,31 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </button>
                 ) : null}
 
-                <button
-                  type="button"
-                  onClick={() => void completeWorkOrder(selectedService)}
-                  style={
-                    selectedService.recurring
-                      ? goldButtonStyle
-                      : secondaryButtonStyle
-                  }
-                >
-                  {selectedService.recurring
-                    ? "Complete & Move to Next Due"
-                    : "Mark Completed"}
-                </button>
+                {selectedService.status === "Completed" ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateWorkOrder({ status: "Open", completedAt: "" })
+                    }
+                    style={secondaryButtonStyle}
+                  >
+                    Reopen Work
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void completeWorkOrder(selectedService)}
+                    style={
+                      selectedService.recurring
+                        ? goldButtonStyle
+                        : secondaryButtonStyle
+                    }
+                  >
+                    {selectedService.recurring
+                      ? "Complete & Move to Next Due"
+                      : "Mark Completed"}
+                  </button>
+                )}
 
                 <button
                   type="button"
