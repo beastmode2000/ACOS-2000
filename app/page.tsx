@@ -15180,7 +15180,7 @@ export default function AtlasPage() {
                               : "16px 16px 16px 4px",
                           background:
                             turn.role === "user" ? colors.navy : colors.panel,
-                          color: turn.role === "user" ? "#FFFFFF" : colors.ink,
+                          color: turn.role === "user" ? "#FFFFFF" : colors.navy,
                           border:
                             turn.role === "user"
                               ? `1px solid ${colors.navy}`
@@ -15895,7 +15895,7 @@ export default function AtlasPage() {
                                 ? "14px 14px 4px 14px"
                                 : "14px 14px 14px 4px",
                             background: turn.role === "user" ? colors.navy : colors.panel,
-                            color: turn.role === "user" ? "#FFFFFF" : colors.ink,
+                            color: turn.role === "user" ? "#FFFFFF" : colors.navy,
                             border: `1px solid ${turn.role === "user" ? colors.navy : colors.line}`,
                             whiteSpace: "pre-wrap",
                             lineHeight: 1.5,
