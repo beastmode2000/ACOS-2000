@@ -8238,6 +8238,60 @@ export default function AtlasPage() {
         finishAssistantAnswer(`Created draft procedure: ${record.title}`);
       }
 
+      if (pendingAssistantAction.kind === "work-order-update") {
+        const existing = serviceRecords.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!existing) throw new Error("Atlas could not find that work order.");
+
+        const noteToAppend = pendingAssistantAction.noteToAppend?.trim();
+        const updated = normalizeService({
+          ...existing,
+          status: pendingAssistantAction.status || existing.status,
+          priority: pendingAssistantAction.priority || existing.priority,
+          notes: noteToAppend
+            ? [existing.notes, noteToAppend].filter(Boolean).join("\n\n")
+            : existing.notes,
+          lastCompletedDate:
+            pendingAssistantAction.status === "Completed"
+              ? todayISO()
+              : existing.lastCompletedDate,
+        });
+
+        const saved = await postAtlasRecord("work_orders", updated);
+        if (!saved) throw new Error("The work order update did not save.");
+        setServiceRecords((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setSelectedServiceId(updated.id);
+        finishAssistantAnswer(`Updated work order: ${updated.title}`);
+      }
+
+      if (pendingAssistantAction.kind === "calendar-update") {
+        const existing = calendarItems.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!existing) throw new Error("Atlas could not find that calendar event.");
+
+        const updated = normalizeCalendar({
+          ...existing,
+          date: pendingAssistantAction.date,
+          time: pendingAssistantAction.time,
+          allDay: pendingAssistantAction.allDay,
+        });
+
+        const saved = await postAtlasRecord("calendar", updated);
+        if (!saved) throw new Error("The calendar update did not save.");
+        setCalendarItems((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        finishAssistantAnswer(
+          `Rescheduled ${updated.title} for ${formatDate(updated.date)}${
+            updated.time ? ` at ${updated.time}` : ""
+          }.`,
+        );
+      }
+
       setPendingAssistantAction(null);
     } catch (error) {
       finishAssistantAnswer(
@@ -15454,7 +15508,8 @@ export default function AtlasPage() {
                       : undefined
                 }
                 formattedDate={
-                  pendingAssistantAction.kind === "calendar"
+                  pendingAssistantAction.kind === "calendar" ||
+                  pendingAssistantAction.kind === "calendar-update"
                     ? formatDate(pendingAssistantAction.date)
                     : undefined
                 }
