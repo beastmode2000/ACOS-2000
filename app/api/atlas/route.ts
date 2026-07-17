@@ -219,12 +219,25 @@ async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
 }
 
 async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
-  // Work orders are allowed to have no due date.
-  // Older Atlas schemas made this column NOT NULL, which caused cleared dates
-  // to be rejected even though the API received the blank value correctly.
+  // Canonical nullable due-date storage. The legacy `date` column may still be
+  // constrained or managed by older database objects, so Atlas no longer relies on it
+  // to represent a cleared due date.
   await sql`
     ALTER TABLE atlas_work_orders
-    ALTER COLUMN date DROP NOT NULL
+    ADD COLUMN IF NOT EXISTS due_date_value date
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS due_date_initialized boolean NOT NULL DEFAULT false
+  `;
+
+  await sql`
+    UPDATE atlas_work_orders
+    SET
+      due_date_value = date,
+      due_date_initialized = true
+    WHERE due_date_initialized = false
   `;
 
   await sql`
@@ -411,7 +424,7 @@ function mapWorkOrder(row: JsonRecord) {
     vendorId: row.vendor_id ? String(row.vendor_id) : "",
     procedureId: row.procedure_id ? String(row.procedure_id) : "",
     locationId: row.location_id ? String(row.location_id) : "",
-    date: databaseDateKey(row.date),
+    date: databaseDateKey(row.due_date_initialized ? row.due_date_value : row.date),
     title: String(row.title || ""),
     status: String(row.status || "Open"),
     priority: String(row.priority || "Medium"),
@@ -582,6 +595,8 @@ export async function GET() {
         procedure_id,
         location_id,
         date,
+        due_date_value,
+        due_date_initialized,
         title,
         status,
         priority,
@@ -606,7 +621,7 @@ export async function GET() {
         photos,
         documents
       FROM atlas_work_orders
-      ORDER BY date ASC NULLS LAST, title ASC
+      ORDER BY (CASE WHEN due_date_initialized THEN due_date_value ELSE date END) ASC NULLS LAST, title ASC
     `) as unknown as JsonRecord[];
 
     const calendarRows = (await sql`
@@ -910,7 +925,8 @@ export async function POST(request: NextRequest) {
           vendor_id = ${nullableString(record.vendorId)},
           procedure_id = ${nullableString(record.procedureId)},
           location_id = ${nullableString(record.locationId)},
-          date = ${savedDate}::date,
+          due_date_value = ${savedDate}::date,
+          due_date_initialized = true,
           title = ${asString(record.title) || "Untitled Work Order"},
           status = ${asStatus(record.status, "Open")},
           priority = ${asStatus(record.priority, "Medium")},
@@ -936,7 +952,7 @@ export async function POST(request: NextRequest) {
           documents = ${jsonArray(record.documents)}::jsonb,
           updated_at = NOW()
         WHERE id = ${id}
-        RETURNING id, date
+        RETURNING id, due_date_value, due_date_initialized
       `) as unknown as JsonRecord[];
 
       if (!updatedRows.length) {
@@ -948,6 +964,8 @@ export async function POST(request: NextRequest) {
             procedure_id,
             location_id,
             date,
+            due_date_value,
+            due_date_initialized,
             title,
             status,
             priority,
@@ -979,7 +997,9 @@ export async function POST(request: NextRequest) {
             ${nullableString(record.vendorId)},
             ${nullableString(record.procedureId)},
             ${nullableString(record.locationId)},
+            COALESCE(${savedDate}::date, CURRENT_DATE),
             ${savedDate}::date,
+            true,
             ${asString(record.title) || "Untitled Work Order"},
             ${asStatus(record.status, "Open")},
             ${asStatus(record.priority, "Medium")},
@@ -1009,14 +1029,16 @@ export async function POST(request: NextRequest) {
       }
 
       const verifiedRows = (await sql`
-        SELECT id, date
+        SELECT id, date, due_date_value, due_date_initialized
         FROM atlas_work_orders
         WHERE id = ${id}
         LIMIT 1
       `) as unknown as JsonRecord[];
 
       const verified = verifiedRows[0];
-      const verifiedDate = databaseDateKey(verified?.date);
+      const verifiedDate = databaseDateKey(
+        verified?.due_date_initialized ? verified?.due_date_value : verified?.date,
+      );
 
       if (verifiedDate !== (savedDate || "")) {
         throw new Error(
