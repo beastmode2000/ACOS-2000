@@ -19,6 +19,7 @@ import { searchAtlas } from "./lib/atlas-search";
 import AskAtlasWorkspace from "./components/ai/AskAtlasWorkspace";
 import RelationshipPanel from "./components/ai/RelationshipPanel";
 import ActionApprovalCard from "./components/ai/ActionApprovalCard";
+import DailyOperationsManager from "./components/ai/DailyOperationsManager";
 import { findRelatedRecords } from "./lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -9690,7 +9691,28 @@ export default function AtlasPage() {
 
   function renderDashboard() {
     return (
-      <AtlasDashboard
+      <>
+        <DailyOperationsManager
+          assets={assetRecords}
+          calendarItems={calendarItems}
+          procedures={procedureRecords}
+          serviceRecords={serviceRecords}
+          weatherDays={weatherDays}
+          today={todayISO()}
+          isMobile={isMobile}
+          colors={colors}
+          onOpenCalendar={openCalendarItem}
+          onOpenWorkOrder={(id) => {
+            setSelectedServiceId(id);
+            setScreen("work-orders");
+          }}
+          onAskAtlas={(prompt) => {
+            setAssistantQuestion(prompt);
+            setScreen("assistant");
+            window.setTimeout(() => void askAtlas(prompt), 0);
+          }}
+        />
+        <AtlasDashboard
         SectionHeader={SectionHeader}
         StatCard={StatCard}
         addCalendarItem={addCalendarItem}
@@ -9756,6 +9778,7 @@ export default function AtlasPage() {
         workPlanTasks={workPlanTasks}
         eyebrowStyle={eyebrowStyle}
       />
+      </>
     );
   }
 
