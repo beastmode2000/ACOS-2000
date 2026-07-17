@@ -30,7 +30,11 @@ export default function ActionApprovalCard({
       ? "Create Work Order"
       : action.kind === "calendar"
         ? "Schedule Calendar Event"
-        : "Create Draft Procedure";
+        : action.kind === "procedure"
+          ? "Create Draft Procedure"
+          : action.kind === "work-order-update"
+            ? "Update Work Order"
+            : "Reschedule Calendar Event";
 
   return (
     <div
@@ -55,7 +59,9 @@ export default function ActionApprovalCard({
           Prepared Atlas Action
         </div>
         <h3 style={{ margin: "4px 0 6px", fontSize: 20 }}>{heading}</h3>
-        <div style={{ fontWeight: 900 }}>{action.title}</div>
+        <div style={{ fontWeight: 900 }}>
+          {"title" in action ? action.title : action.targetTitle}
+        </div>
       </div>
 
       {action.kind === "work-order" ? (
@@ -76,6 +82,21 @@ export default function ActionApprovalCard({
       {action.kind === "procedure" ? (
         <div style={{ fontSize: 12, opacity: 0.72 }}>
           Draft procedure{assetName ? ` • ${assetName}` : ""}
+        </div>
+      ) : null}
+
+      {action.kind === "work-order-update" ? (
+        <div style={{ display: "grid", gap: 5, fontSize: 12, opacity: 0.78 }}>
+          {action.status ? <div>Status → {action.status}</div> : null}
+          {action.priority ? <div>Priority → {action.priority}</div> : null}
+          {action.noteToAppend ? <div>Add note → {action.noteToAppend}</div> : null}
+        </div>
+      ) : null}
+
+      {action.kind === "calendar-update" ? (
+        <div style={{ fontSize: 12, opacity: 0.72 }}>
+          Move to {formattedDate || action.date}
+          {action.time ? ` • ${action.time}` : " • All day"}
         </div>
       ) : null}
 
@@ -115,4 +136,3 @@ export default function ActionApprovalCard({
     </div>
   );
 }
-
