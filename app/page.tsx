@@ -15285,7 +15285,7 @@ export default function AtlasPage() {
                       </a>
                       <button
                         type="button"
-                        onClick={() => void saveManualCandidate(candidate)}
+                        onClick={() => void saveManualToAtlas(candidate)}
                         disabled={manualSavingUrl === candidate.url}
                         style={goldButtonStyle}
                       >
@@ -19037,3 +19037,4 @@ const linkStyle: React.CSSProperties = {
   fontWeight: 950,
   textDecoration: "underline",
 };
+      
