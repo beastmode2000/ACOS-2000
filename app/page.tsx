@@ -67,6 +67,13 @@ import type {
   ManualCandidate,
 } from "./lib/atlas-types";
 
+type AssistantTurn = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  createdAt: string;
+};
+
 type WorkItemType =
   | "Quick Task"
   | "Work Order"
@@ -3320,6 +3327,8 @@ export default function AtlasPage() {
   const [manualSavingUrl, setManualSavingUrl] = useState("");
   const [manualSaveMessage, setManualSaveMessage] = useState("");
   const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantTurns, setAssistantTurns] = useState<AssistantTurn[]>([]);
+  const [assistantRecordResults, setAssistantRecordResults] = useState<SearchResult[]>([]);
   const [dashboardAssistantOpen, setDashboardAssistantOpen] = useState(false);
   const [workPlanInput, setWorkPlanInput] = useState("");
   const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>([]);
@@ -8066,14 +8075,41 @@ export default function AtlasPage() {
     }
   }
 
+  function addAssistantTurn(role: AssistantTurn["role"], value: string) {
+    const clean = value.trim();
+    if (!clean) return;
+    setAssistantTurns((current) => [
+      ...current.slice(-19),
+      {
+        id: uid(`assistant-${role}`),
+        role,
+        text: clean,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  }
+
+  function finishAssistantAnswer(value: string) {
+    setAssistantAnswer(value);
+    addAssistantTurn("assistant", value);
+  }
+
+  function refreshAssistantRecordResults(question: string) {
+    const matches = searchAtlas(buildSearchIndex(), question, 8);
+    setAssistantRecordResults(matches);
+  }
+
   async function askAtlas(questionOverride?: string) {
     const question = String(questionOverride ?? assistantQuestion).trim();
     if (questionOverride) setAssistantQuestion(question);
 
     if (!question) {
-      setAssistantAnswer("Type a question first.");
+      finishAssistantAnswer("Type a question first.");
       return;
     }
+
+    addAssistantTurn("user", question);
+    refreshAssistantRecordResults(question);
 
     const normalizedQuestion = question.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
     const isTodayQuestion =
@@ -8123,7 +8159,7 @@ export default function AtlasPage() {
         lines.push("", `${highPriorityOpen.length} high-priority open work order${highPriorityOpen.length === 1 ? "" : "s"} still need attention.`);
       }
 
-      setAssistantAnswer(lines.join("\n"));
+      finishAssistantAnswer(lines.join("\n"));
       setManualCandidates([]);
       setManualSaveMessage("");
       setAssistantLoading(false);
@@ -8388,7 +8424,7 @@ export default function AtlasPage() {
         }
       }
 
-      setAssistantAnswer(
+      finishAssistantAnswer(
         cleanAnswer ||
           (cleanManuals.length
             ? "I found the official manual options below."
@@ -8396,7 +8432,7 @@ export default function AtlasPage() {
       );
       setManualCandidates(cleanManuals.slice(0, 3));
     } catch (error) {
-      setAssistantAnswer(
+      finishAssistantAnswer(
         error instanceof Error
           ? error.message
           : "Ask Atlas could not answer right now.",
@@ -15056,129 +15092,277 @@ export default function AtlasPage() {
   }
 
   function renderAssistant() {
+    const suggestedPrompts = [
+      "What do I need to do today?",
+      "Show high-priority work orders",
+      "Find everything related to irrigation",
+      "Show procedures and manuals for the boilers",
+    ];
+
     return (
       <section style={sectionStyle}>
         <SectionHeader
           eyebrow="Ask Atlas"
-          title="AI Property Assistant"
-          detail="Search Atlas records, or ask Atlas to find an official equipment manual online and save it to Documents."
+          title="AI Property Workspace"
+          detail="Ask a question, review matching Atlas records, and open the exact item without leaving the workspace."
+          right={
+            assistantTurns.length ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setAssistantTurns([]);
+                  setAssistantRecordResults([]);
+                  setManualCandidates([]);
+                  setManualSaveMessage("");
+                  setAssistantQuestion("");
+                  setAssistantAnswer(
+                    "Ask Atlas about assets, locations, vendors, contacts, work orders, calendar items, procedures, documents, parts, or map records.",
+                  );
+                }}
+                style={secondaryButtonStyle}
+              >
+                Clear Conversation
+              </button>
+            ) : null
+          }
         />
-        <div style={stackStyle}>
-          <textarea
-            value={assistantQuestion}
-            onChange={(event) =>
-              setAssistantQuestion(event.currentTarget.value)
-            }
-            onKeyDown={(event) => {
-              if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-                event.preventDefault();
-                if (!assistantLoading) void askAtlas();
-              }
-            }}
-            placeholder="Examples: What work is due this week? Find the official PDF manual for the Hunter HCC 24-zone controller and link it to the irrigation controller asset."
-            style={{ ...inputStyle, minHeight: 130, resize: "vertical" }}
-          />
-          <div style={buttonRowStyle}>
-            <button
-              type="button"
-              onClick={() => void askAtlas()}
-              disabled={assistantLoading}
-              style={{
-                ...goldButtonStyle,
-                opacity: assistantLoading ? 0.65 : 1,
-                cursor: assistantLoading ? "wait" : "pointer",
-              }}
-            >
-              {assistantLoading ? "Searching..." : "Ask Atlas"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAssistantQuestion("");
-                setManualCandidates([]);
-                setManualSaveMessage("");
-                setAssistantAnswer(
-                  "Ask Atlas about your records, or ask it to find an official PDF manual and save it to Atlas Documents.",
-                );
-              }}
-              disabled={assistantLoading}
-              style={secondaryButtonStyle}
-            >
-              Clear
-            </button>
-          </div>
-          <div
-            style={{
-              ...noticeStyle,
-              whiteSpace: "pre-wrap",
-              lineHeight: 1.6,
-            }}
-          >
-            {assistantAnswer}
-          </div>
 
-          {manualCandidates.length ? (
-            <div style={stackStyle}>
-              <div style={{ fontWeight: 950, fontSize: 18 }}>Manuals Found</div>
-              {manualCandidates.map((candidate, index) => (
-                <article
-                  key={`${candidate.url}-${index}`}
-                  style={{
-                    ...cardStyle,
-                    padding: 16,
-                    display: "grid",
-                    gap: 10,
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 950, fontSize: 17 }}>
-                      {candidate.title}
-                    </div>
-                    <div style={mutedSmallStyle}>
-                      {[candidate.manufacturer, candidate.model, candidate.sourceDomain]
-                        .filter(Boolean)
-                        .join(" • ")}
-                    </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.45fr) minmax(300px, 0.8fr)",
+            gap: 16,
+            alignItems: "start",
+          }}
+        >
+          <div style={{ display: "grid", gap: 14 }}>
+            <div
+              style={{
+                ...cardStyle,
+                padding: 0,
+                overflow: "hidden",
+                minHeight: isMobile ? 420 : 560,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  padding: 18,
+                  display: "grid",
+                  alignContent: "start",
+                  gap: 12,
+                  maxHeight: isMobile ? "56vh" : "62vh",
+                }}
+              >
+                {!assistantTurns.length ? (
+                  <div style={{ ...noticeStyle, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+                    {assistantAnswer}
                   </div>
-                  <div style={{ lineHeight: 1.5 }}>{candidate.reason}</div>
-                  <div style={buttonRowStyle}>
-                    <a
-                      href={candidate.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ ...secondaryButtonStyle, textDecoration: "none" }}
-                    >
-                      Open PDF
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => void saveManualToAtlas(candidate)}
-                      disabled={Boolean(manualSavingUrl)}
+                ) : (
+                  assistantTurns.map((turn) => (
+                    <div
+                      key={turn.id}
                       style={{
-                        ...goldButtonStyle,
-                        opacity:
-                          manualSavingUrl && manualSavingUrl !== candidate.url
-                            ? 0.55
-                            : 1,
+                        display: "flex",
+                        justifyContent: turn.role === "user" ? "flex-end" : "flex-start",
                       }}
                     >
-                      {manualSavingUrl === candidate.url
-                        ? "Saving..."
-                        : "Save to Atlas Documents"}
-                    </button>
+                      <div
+                        style={{
+                          maxWidth: "88%",
+                          padding: "12px 14px",
+                          borderRadius:
+                            turn.role === "user"
+                              ? "16px 16px 4px 16px"
+                              : "16px 16px 16px 4px",
+                          background:
+                            turn.role === "user" ? colors.navy : colors.panel,
+                          color: turn.role === "user" ? "#FFFFFF" : colors.ink,
+                          border:
+                            turn.role === "user"
+                              ? `1px solid ${colors.navy}`
+                              : `1px solid ${colors.line}`,
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        {turn.text}
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                {assistantLoading ? (
+                  <div style={{ ...noticeStyle, lineHeight: 1.5 }}>
+                    Atlas is reviewing property records…
                   </div>
-                </article>
+                ) : null}
+              </div>
+
+              <div
+                style={{
+                  borderTop: `1px solid ${colors.line}`,
+                  padding: 14,
+                  background: colors.panel,
+                  display: "grid",
+                  gap: 10,
+                }}
+              >
+                <textarea
+                  value={assistantQuestion}
+                  onChange={(event) => setAssistantQuestion(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                      event.preventDefault();
+                      if (!assistantLoading && assistantQuestion.trim()) void askAtlas();
+                    }
+                  }}
+                  placeholder="Ask Atlas about the property, records, work, equipment, documents, or manuals…"
+                  style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                />
+                <div style={buttonRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() => void askAtlas()}
+                    disabled={assistantLoading || !assistantQuestion.trim()}
+                    style={{
+                      ...goldButtonStyle,
+                      opacity: assistantLoading || !assistantQuestion.trim() ? 0.6 : 1,
+                    }}
+                  >
+                    {assistantLoading ? "Working…" : "Ask Atlas"}
+                  </button>
+                  <span style={mutedSmallStyle}>Ctrl/⌘ + Enter to send</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {suggestedPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => {
+                    setAssistantQuestion(prompt);
+                    void askAtlas(prompt);
+                  }}
+                  disabled={assistantLoading}
+                  style={{ ...secondaryButtonStyle, fontSize: 12 }}
+                >
+                  {prompt}
+                </button>
               ))}
             </div>
-          ) : null}
 
-          {manualSaveMessage ? (
-            <div style={noticeStyle}>{manualSaveMessage}</div>
-          ) : null}
+            {manualCandidates.length ? (
+              <div style={stackStyle}>
+                <div style={{ fontWeight: 950, fontSize: 18 }}>Official Manuals Found</div>
+                {manualCandidates.map((candidate, index) => (
+                  <article
+                    key={`${candidate.url}-${index}`}
+                    style={{ ...cardStyle, padding: 16, display: "grid", gap: 10 }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 950, fontSize: 17 }}>{candidate.title}</div>
+                      <div style={mutedSmallStyle}>
+                        {[candidate.manufacturer, candidate.model, candidate.sourceDomain]
+                          .filter(Boolean)
+                          .join(" • ")}
+                      </div>
+                    </div>
+                    <div style={{ lineHeight: 1.5 }}>{candidate.reason}</div>
+                    <div style={buttonRowStyle}>
+                      <a
+                        href={candidate.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ ...secondaryButtonStyle, textDecoration: "none" }}
+                      >
+                        Open Source
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => void saveManualCandidate(candidate)}
+                        disabled={manualSavingUrl === candidate.url}
+                        style={goldButtonStyle}
+                      >
+                        {manualSavingUrl === candidate.url ? "Saving…" : "Save to Documents"}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {manualSaveMessage ? <div style={noticeStyle}>{manualSaveMessage}</div> : null}
+              </div>
+            ) : null}
+          </div>
 
-          <p style={mutedSmallStyle}>
-            Atlas prefers official manufacturer PDF manuals. Review the match before saving. Saved manuals appear in Documents with their original source link.
-          </p>
+          <aside style={{ display: "grid", gap: 14 }}>
+            <div style={{ ...cardStyle, padding: 16 }}>
+              <div style={eyebrowStyle}>Matching Atlas Records</div>
+              <h3 style={{ margin: "4px 0 12px", fontSize: 20 }}>
+                {assistantRecordResults.length
+                  ? `${assistantRecordResults.length} related record${assistantRecordResults.length === 1 ? "" : "s"}`
+                  : "Ask a question to find records"}
+              </h3>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {assistantRecordResults.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    onClick={() => openSearchResult(result)}
+                    style={{
+                      ...searchResultStyle,
+                      width: "100%",
+                      textAlign: "left",
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 12,
+                      background: colors.card,
+                      padding: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: 10,
+                      }}
+                    >
+                      <strong>{result.title}</strong>
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          background: colors.panel,
+                          padding: "3px 7px",
+                          fontSize: 10,
+                          fontWeight: 900,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {result.type}
+                      </span>
+                    </div>
+                    {result.subtitle ? (
+                      <div style={{ ...mutedSmallStyle, marginTop: 5 }}>{result.subtitle}</div>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ ...cardStyle, padding: 16 }}>
+              <div style={eyebrowStyle}>Safe Actions</div>
+              <h3 style={{ margin: "4px 0 8px", fontSize: 18 }}>Approval required</h3>
+              <p style={{ ...mutedSmallStyle, lineHeight: 1.55, margin: 0 }}>
+                Ask Atlas can find and prepare records now. Creating, changing, or deleting
+                Atlas data still requires your direct approval.
+              </p>
+            </div>
+          </aside>
         </div>
       </section>
     );
@@ -15692,17 +15876,66 @@ export default function AtlasPage() {
                   </button>
                 </header>
 
-                <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
-                  <div
-                    style={{
-                      ...cardStyle,
-                      marginBottom: 14,
-                      whiteSpace: "pre-wrap",
-                      lineHeight: 1.55,
-                    }}
-                  >
-                    {assistantLoading ? "Atlas is searching your property records..." : assistantAnswer}
-                  </div>
+                <div style={{ flex: 1, overflowY: "auto", padding: 18, display: "grid", alignContent: "start", gap: 10 }}>
+                  {assistantTurns.length ? (
+                    assistantTurns.slice(-8).map((turn) => (
+                      <div
+                        key={turn.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: turn.role === "user" ? "flex-end" : "flex-start",
+                        }}
+                      >
+                        <div
+                          style={{
+                            maxWidth: "88%",
+                            padding: "10px 12px",
+                            borderRadius:
+                              turn.role === "user"
+                                ? "14px 14px 4px 14px"
+                                : "14px 14px 14px 4px",
+                            background: turn.role === "user" ? colors.navy : colors.panel,
+                            color: turn.role === "user" ? "#FFFFFF" : colors.ink,
+                            border: `1px solid ${turn.role === "user" ? colors.navy : colors.line}`,
+                            whiteSpace: "pre-wrap",
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {turn.text}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ ...cardStyle, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
+                      {assistantAnswer}
+                    </div>
+                  )}
+
+                  {assistantLoading ? (
+                    <div style={{ ...noticeStyle }}>Atlas is searching your property records…</div>
+                  ) : null}
+
+                  {assistantRecordResults.slice(0, 4).map((result) => (
+                    <button
+                      key={result.id}
+                      type="button"
+                      onClick={() => {
+                        setDashboardAssistantOpen(false);
+                        openSearchResult(result);
+                      }}
+                      style={{
+                        ...searchResultStyle,
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 10,
+                        padding: 10,
+                        background: colors.card,
+                      }}
+                    >
+                      <strong>{result.title}</strong>
+                      <div style={mutedSmallStyle}>{result.type} · {result.subtitle}</div>
+                    </button>
+                  ))}
+
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {["What do I need to do today?", "Show high-priority work orders", "Find an asset or manual"].map((prompt) => (
                       <button
