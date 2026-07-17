@@ -15,6 +15,7 @@ import {
   storageKeys,
 } from "./lib/atlas-page-config";
 import type { AtlasScreen } from "./lib/atlas-page-config";
+import { searchAtlas } from "./lib/atlas-search";
 
 import type {
   Screen,
@@ -5173,31 +5174,10 @@ export default function AtlasPage() {
   }, [qrKind, qrSearch, assetRecords, vendorRecords, mapLabels]);
 
   const searchResults = useMemo(() => {
-    if (!q) return [];
-
-    return buildSearchIndex()
-      .map((item) => {
-        const title = item.title.toLowerCase();
-        const type = item.type.toLowerCase();
-        const haystack = [item.type, item.title, item.subtitle, item.detail]
-          .join(" ")
-          .toLowerCase();
-
-        let score = 0;
-        if (title === q) score += 100;
-        else if (title.startsWith(q)) score += 70;
-        else if (title.includes(q)) score += 45;
-        if (type === q) score += 30;
-        if (haystack.includes(q)) score += 10;
-
-        return { item, score, matches: haystack.includes(q) };
-      })
-      .filter((entry) => entry.matches)
-      .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title))
-      .slice(0, 20)
-      .map((entry) => entry.item);
+    if (!query.trim()) return [];
+    return searchAtlas(buildSearchIndex(), query, 30);
   }, [
-    q,
+    query,
     mapLabels,
     assetRecords,
     vendorRecords,
