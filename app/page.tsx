@@ -9704,7 +9704,7 @@ export default function AtlasPage() {
           onOpenCalendar={openCalendarItem}
           onOpenWorkOrder={(id) => {
             setSelectedServiceId(id);
-            setScreen("work-orders");
+            setScreen("history");
           }}
           onAskAtlas={(prompt) => {
             setAssistantQuestion(prompt);
