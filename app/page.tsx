@@ -8151,7 +8151,7 @@ export default function AtlasPage() {
       question,
       matches,
       today: todayISO(),
-      addDays: addDaysToISO,
+      addDays,
       createId: uid,
     });
 
