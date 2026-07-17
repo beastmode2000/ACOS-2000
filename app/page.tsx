@@ -20,6 +20,7 @@ import AskAtlasWorkspace from "./components/ai/AskAtlasWorkspace";
 import RelationshipPanel from "./components/ai/RelationshipPanel";
 import ActionApprovalCard from "./components/ai/ActionApprovalCard";
 import DailyOperationsManager from "./components/ai/DailyOperationsManager";
+import MaintenancePlanningIntelligence, { type MaintenanceSuggestion } from "./components/ai/MaintenancePlanningIntelligence";
 import { findRelatedRecords } from "./lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -9746,6 +9747,53 @@ export default function AtlasPage() {
   function renderDashboard() {
     return (
       <>
+        <MaintenancePlanningIntelligence
+          assets={assetRecords}
+          procedures={procedureRecords}
+          serviceRecords={serviceRecords}
+          weatherDays={weatherDays}
+          today={todayISO()}
+          isMobile={isMobile}
+          colors={colors}
+          onCreatePreventiveMaintenance={async (suggestion: MaintenanceSuggestion) => {
+            const record = normalizeService({
+              id: uid("pm"),
+              assetId: suggestion.assetId,
+              procedureId: suggestion.procedureId,
+              date: todayISO(),
+              title: suggestion.title,
+              status: "Open",
+              priority: suggestion.priority,
+              notes: `Created from preventive maintenance suggestion. ${suggestion.reason}`,
+              recurring: true,
+              recurrenceInterval: suggestion.interval,
+              recurrenceUnit: suggestion.unit,
+              season: suggestion.season,
+              workType: "Preventive Maintenance",
+              workCategory: "🔧 Maintenance",
+              photos: [],
+              documents: [],
+              checklist: [],
+              notesHistory: [],
+              serviceHistory: [],
+            });
+            const saved = await postAtlasRecord("work_orders", record);
+            if (!saved) throw new Error("The preventive maintenance record did not save.");
+            setServiceRecords((current) => byTitle([record, ...current]));
+            setSelectedServiceId(record.id);
+            setDatabaseStatus(`Created preventive maintenance: ${record.title}`);
+          }}
+          onOpenWorkOrder={(id) => {
+            setSelectedServiceId(id);
+            setScreen("history");
+          }}
+          onOpenPlanner={() => setScreen("planner")}
+          onAskAtlas={(prompt) => {
+            setAssistantQuestion(prompt);
+            setScreen("assistant");
+            window.setTimeout(() => void askAtlas(prompt), 0);
+          }}
+        />
         <DailyOperationsManager
           assets={assetRecords}
           calendarItems={calendarItems}
