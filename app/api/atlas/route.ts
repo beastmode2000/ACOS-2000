@@ -219,6 +219,14 @@ async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
 }
 
 async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
+  // Work orders are allowed to have no due date.
+  // Older Atlas schemas made this column NOT NULL, which caused cleared dates
+  // to be rejected even though the API received the blank value correctly.
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ALTER COLUMN date DROP NOT NULL
+  `;
+
   await sql`
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS priority text NOT NULL DEFAULT 'Medium'
