@@ -985,111 +985,6 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           </div>
         </div>
 
-        <div
-          style={{ display: "flex", gap: 7, flexWrap: "wrap" }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          {record.status === "Completed" ? (
-            <button
-              type="button"
-              onClick={() =>
-                selectAndPatch(record, { status: "Open", completedAt: "" })
-              }
-              style={miniButtonStyle}
-            >
-              Reopen
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() =>
-                  selectAndPatch(record, { status: "In Progress" })
-                }
-                style={miniButtonStyle}
-              >
-                Start
-              </button>
-              <button
-                type="button"
-                onClick={() => void completeWorkOrder(record)}
-                style={miniButtonStyle}
-              >
-                Done
-              </button>
-            </>
-          )}
-          {record.status !== "Completed" ? (
-            <>
-              <button
-                type="button"
-                onClick={() => quickReschedule(record)}
-                style={miniButtonStyle}
-              >
-                Reschedule
-              </button>
-              <button
-                type="button"
-                onClick={() => quickConvert(record)}
-                style={miniButtonStyle}
-              >
-                Convert
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedServiceId(record.id)}
-                style={miniButtonStyle}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => quickAddPhoto(record)}
-                style={miniButtonStyle}
-              >
-                Add Photo
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  selectAndPatch(record, {
-                    date: tomorrowDate(),
-                    status: "Scheduled",
-                  })
-                }
-                style={miniButtonStyle}
-              >
-                Tomorrow
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  selectAndPatch(record, {
-                    date: nextWeekDate(),
-                    status: "Scheduled",
-                  })
-                }
-                style={miniButtonStyle}
-              >
-                Next Week
-              </button>
-            </>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => duplicateWork(record)}
-            style={miniButtonStyle}
-          >
-            Duplicate
-          </button>
-          <button
-            type="button"
-            onClick={() => void deleteWorkOrderRecord(record)}
-            style={{ ...dangerButtonStyle, padding: "7px 10px", minHeight: 36 }}
-          >
-            Delete
-          </button>
-        </div>
       </div>
     );
   }
@@ -2104,51 +1999,115 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 />
               </section>
 
-              <div style={buttonRowStyle}>
-                {isRecordDirty("work_order", selectedService.id) ? (
-                  <button
-                    type="button"
-                    onClick={() => void saveWorkOrderRecord()}
-                    style={goldButtonStyle}
-                  >
-                    Save Work
-                  </button>
-                ) : null}
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Work Order Actions</div>
+                <div style={buttonRowStyle}>
+                  {isRecordDirty("work_order", selectedService.id) ? (
+                    <button
+                      type="button"
+                      onClick={() => void saveWorkOrderRecord()}
+                      style={goldButtonStyle}
+                    >
+                      Save Work
+                    </button>
+                  ) : null}
 
-                {selectedService.status === "Completed" ? (
+                  {selectedService.status === "Completed" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateWorkOrder({ status: "Open", completedAt: "" })
+                      }
+                      style={secondaryButtonStyle}
+                    >
+                      Reopen
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => updateWorkOrder({ status: "In Progress" })}
+                        style={secondaryButtonStyle}
+                      >
+                        Start
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void completeWorkOrder(selectedService)}
+                        style={
+                          selectedService.recurring
+                            ? goldButtonStyle
+                            : secondaryButtonStyle
+                        }
+                      >
+                        {selectedService.recurring
+                          ? "Complete & Move to Next Due"
+                          : "Done"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => quickReschedule(selectedService)}
+                        style={secondaryButtonStyle}
+                      >
+                        Reschedule
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => quickConvert(selectedService)}
+                        style={secondaryButtonStyle}
+                      >
+                        Convert
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateWorkOrder({
+                            date: tomorrowDate(),
+                            status: "Scheduled",
+                          })
+                        }
+                        style={secondaryButtonStyle}
+                      >
+                        Tomorrow
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateWorkOrder({
+                            date: nextWeekDate(),
+                            status: "Scheduled",
+                          })
+                        }
+                        style={secondaryButtonStyle}
+                      >
+                        Next Week
+                      </button>
+                    </>
+                  )}
+
                   <button
                     type="button"
-                    onClick={() =>
-                      updateWorkOrder({ status: "Open", completedAt: "" })
-                    }
+                    onClick={() => quickAddPhoto(selectedService)}
                     style={secondaryButtonStyle}
                   >
-                    Reopen Work
+                    Add Photo
                   </button>
-                ) : (
                   <button
                     type="button"
-                    onClick={() => void completeWorkOrder(selectedService)}
-                    style={
-                      selectedService.recurring
-                        ? goldButtonStyle
-                        : secondaryButtonStyle
-                    }
+                    onClick={() => duplicateWork(selectedService)}
+                    style={secondaryButtonStyle}
                   >
-                    {selectedService.recurring
-                      ? "Complete & Move to Next Due"
-                      : "Mark Completed"}
+                    Duplicate
                   </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => void deleteWorkOrderRecord(selectedService)}
-                  style={dangerButtonStyle}
-                >
-                  Delete Work Item
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => void deleteWorkOrderRecord(selectedService)}
+                    style={dangerButtonStyle}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </section>
 
               {renderLinkedDocuments("Work Order", selectedService.id)}
             </div>
