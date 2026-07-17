@@ -951,7 +951,10 @@ function normalizeService(record: Partial<AtlasServiceRecord>): AtlasServiceReco
     assetId: String(record.assetId ?? ""),
     vendorId: record.vendorId || "",
     procedureId: record.procedureId || "",
-    date: String(record.date ?? todayISO()),
+    date:
+      typeof record.date === "string"
+        ? record.date.trim()
+        : "",
     title,
     status: isServiceStatus(record.status) ? record.status : "Open",
     priority: isPriority(record.priority) ? record.priority : "Medium",
@@ -6922,9 +6925,42 @@ export default function AtlasPage() {
   }
 
   async function saveWorkOrderRecord() {
-    const prepared = normalizeService(selectedService);
-    await postAtlasRecord("work_orders", prepared);
-    clearRecordDirty("work_order", prepared.id);
+    if (!selectedService?.id) {
+      setDatabaseStatus("Save failed: no work order is selected.");
+      return;
+    }
+
+    const prepared = normalizeService({
+      ...selectedService,
+      date:
+        typeof selectedService.date === "string"
+          ? selectedService.date.trim()
+          : "",
+      followUpDate:
+        typeof selectedService.followUpDate === "string"
+          ? selectedService.followUpDate.trim()
+          : "",
+      assetId: String(selectedService.assetId || ""),
+      vendorId: String(selectedService.vendorId || ""),
+      procedureId: String(selectedService.procedureId || ""),
+      locationId: String(selectedService.locationId || ""),
+      assignedTo: String(selectedService.assignedTo || ""),
+      responsibilityArea: String(selectedService.responsibilityArea || ""),
+      notes: String(selectedService.notes || ""),
+    });
+
+    setDatabaseStatus(`Saving ${prepared.title || "work order"}...`);
+
+    const saved = await postAtlasRecord("work_orders", prepared);
+
+    if (!saved) {
+      markRecordDirty("work_order", prepared.id);
+      window.alert(
+        "Atlas could not save this work order to the shared database. Your changes are still visible. Do not refresh until the save succeeds.",
+      );
+      return;
+    }
+
     setServiceRecords((current) =>
       byTitle(
         current.map((item) =>
@@ -6932,6 +6968,7 @@ export default function AtlasPage() {
         ),
       ),
     );
+    clearRecordDirty("work_order", prepared.id);
     setDatabaseStatus(`Saved ${prepared.title || "work order"}.`);
   }
 
