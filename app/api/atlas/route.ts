@@ -1218,42 +1218,13 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[Atlas POST error]", error);
 
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unknown Atlas database save error";
-
-    const postgresError =
-      error && typeof error === "object"
-        ? (error as {
-            detail?: unknown;
-            hint?: unknown;
-            code?: unknown;
-          })
-        : {};
-
-    const detail =
-      typeof postgresError.detail === "string"
-        ? postgresError.detail
-        : undefined;
-
-    const hint =
-      typeof postgresError.hint === "string"
-        ? postgresError.hint
-        : undefined;
-
-    const pgCode =
-      typeof postgresError.code === "string"
-        ? postgresError.code
-        : undefined;
-
     return NextResponse.json(
       {
         ok: false,
-        error: message,
-        ...(detail ? { detail } : {}),
-        ...(hint ? { hint } : {}),
-        ...(pgCode ? { pgCode } : {}),
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown Atlas database save error",
       },
       { status: 500 },
     );
