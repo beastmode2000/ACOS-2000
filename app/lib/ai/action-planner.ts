@@ -30,6 +30,24 @@ export type PendingAssistantAction =
       linkedAssetIds: string[];
       linkedLocationIds: string[];
       linkedVendorIds: string[];
+    }
+  | {
+      id: string;
+      kind: "work-order-update";
+      targetId: string;
+      targetTitle: string;
+      status?: "Open" | "Scheduled" | "Completed" | "Monitor" | "In Progress" | "Waiting";
+      priority?: "Low" | "Medium" | "High";
+      noteToAppend?: string;
+    }
+  | {
+      id: string;
+      kind: "calendar-update";
+      targetId: string;
+      targetTitle: string;
+      date: string;
+      time: string;
+      allDay: boolean;
     };
 
 type PlannerOptions = {
@@ -54,6 +72,77 @@ function cleanActionTitle(question: string, fallback: string) {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
+function parseDate(question: string, today: string, addDays: (date: string, days: number) => string) {
+  const normalized = question.toLowerCase();
+  if (/\btomorrow\b/.test(normalized)) return addDays(today, 1);
+  if (/\bnext week\b/.test(normalized)) return addDays(today, 7);
+  if (/\btoday\b/.test(normalized)) return today;
+
+  const isoMatch = question.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  if (isoMatch) return isoMatch[0];
+
+  return today;
+}
+
+function parseTime(question: string) {
+  const timeMatch = question.match(
+    /\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(am|pm)\b/i,
+  );
+
+  if (!timeMatch) return "";
+
+  let hour = Number(timeMatch[1]);
+  const minute = timeMatch[2] || "00";
+  const meridiem = timeMatch[3].toLowerCase();
+  if (meridiem === "pm" && hour !== 12) hour += 12;
+  if (meridiem === "am" && hour === 12) hour = 0;
+  return `${String(hour).padStart(2, "0")}:${minute}`;
+}
+
+function parseWorkOrderStatus(question: string) {
+  const normalized = question.toLowerCase();
+
+  if (/\b(completed|complete|done|finished|close|closed)\b/.test(normalized)) {
+    return "Completed" as const;
+  }
+  if (/\b(in progress|started|start working)\b/.test(normalized)) {
+    return "In Progress" as const;
+  }
+  if (/\b(waiting|on hold)\b/.test(normalized)) {
+    return "Waiting" as const;
+  }
+  if (/\b(scheduled)\b/.test(normalized)) {
+    return "Scheduled" as const;
+  }
+  if (/\b(monitor|watch)\b/.test(normalized)) {
+    return "Monitor" as const;
+  }
+  if (/\b(reopen|open)\b/.test(normalized)) {
+    return "Open" as const;
+  }
+
+  return undefined;
+}
+
+function parsePriority(question: string) {
+  const normalized = question.toLowerCase();
+  if (/\b(high priority|urgent|emergency|asap)\b/.test(normalized)) {
+    return "High" as const;
+  }
+  if (/\b(low priority)\b/.test(normalized)) {
+    return "Low" as const;
+  }
+  if (/\b(medium priority|normal priority)\b/.test(normalized)) {
+    return "Medium" as const;
+  }
+  return undefined;
+}
+
+function parseNote(question: string) {
+  const match = question.match(/\b(?:add|append)\s+(?:a\s+)?note(?:\s+that)?\s+(.+)$/i);
+  return match?.[1]?.trim() || undefined;
+}
+
 export function planAssistantAction({
   question,
   matches,
@@ -65,6 +154,49 @@ export function planAssistantAction({
   const asset = matches.find((item) => item.type === "Asset");
   const vendor = matches.find((item) => item.type === "Vendor");
   const location = matches.find((item) => item.type === "Location");
+  const workOrder = matches.find((item) => item.type === "Work Order");
+  const calendar = matches.find((item) => item.type === "Calendar");
+
+  const requestedStatus = parseWorkOrderStatus(question);
+  const requestedPriority = parsePriority(question);
+  const requestedNote = parseNote(question);
+
+  if (
+    workOrder?.serviceId &&
+    (
+      /\b(update|edit|change|mark|set|add note|append note|reopen|close)\b/.test(normalized) ||
+      Boolean(requestedStatus || requestedPriority || requestedNote)
+    )
+  ) {
+    return {
+      id: createId("assistant-action"),
+      kind: "work-order-update",
+      targetId: workOrder.serviceId,
+      targetTitle: workOrder.title,
+      status: requestedStatus,
+      priority: requestedPriority,
+      noteToAppend: requestedNote,
+    };
+  }
+
+  if (
+    calendar?.calendarId &&
+    /\b(reschedule|move|change|update)\b/.test(normalized) &&
+    /\b(event|calendar|appointment|visit|meeting|today|tomorrow|next week|\d{1,2}\s*(am|pm))\b/.test(
+      normalized,
+    )
+  ) {
+    const time = parseTime(question);
+    return {
+      id: createId("assistant-action"),
+      kind: "calendar-update",
+      targetId: calendar.calendarId,
+      targetTitle: calendar.title,
+      date: parseDate(question, today, addDays),
+      time,
+      allDay: !time,
+    };
+  }
 
   if (
     /\b(create|make|add|prepare|draft)\b/.test(normalized) &&
@@ -97,28 +229,11 @@ export function planAssistantAction({
       normalized,
     )
   ) {
-    const date = /\btomorrow\b/.test(normalized)
-      ? addDays(today, 1)
-      : /\bnext week\b/.test(normalized)
-        ? addDays(today, 7)
-        : today;
-
-    const timeMatch = question.match(
-      /\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(am|pm)\b/i,
-    );
-
-    let time = "";
-    if (timeMatch) {
-      let hour = Number(timeMatch[1]);
-      const minute = timeMatch[2] || "00";
-      const meridiem = timeMatch[3].toLowerCase();
-      if (meridiem === "pm" && hour !== 12) hour += 12;
-      if (meridiem === "am" && hour === 12) hour = 0;
-      time = `${String(hour).padStart(2, "0")}:${minute}`;
-    }
+    const date = parseDate(question, today, addDays);
+    const time = parseTime(question);
 
     const linkedType: "None" | "Asset" | "Vendor" | "Work Order" =
-      asset ? "Asset" : vendor ? "Vendor" : "None";
+      asset ? "Asset" : vendor ? "Vendor" : workOrder ? "Work Order" : "None";
 
     return {
       id: createId("assistant-action"),
@@ -131,8 +246,8 @@ export function planAssistantAction({
       date,
       time,
       allDay: !time,
-      linkedId: asset?.assetId || vendor?.vendorId || "",
-      linkedName: asset?.title || vendor?.title || "",
+      linkedId: asset?.assetId || vendor?.vendorId || workOrder?.serviceId || "",
+      linkedName: asset?.title || vendor?.title || workOrder?.title || "",
       linkedType,
     };
   }
@@ -157,4 +272,3 @@ export function planAssistantAction({
 
   return null;
 }
-
