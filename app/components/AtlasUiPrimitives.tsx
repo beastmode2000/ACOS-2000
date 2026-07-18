@@ -1,4 +1,3 @@
-
 "use client";
 
 import React from "react";
@@ -10,10 +9,12 @@ export function Field(props: {
   onChange: (value: string) => void;
   multiline?: boolean;
   placeholder?: string;
+  type?: React.HTMLInputTypeAttribute;
 }) {
   return (
     <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
       <span style={fieldLabelStyle}>{props.label}</span>
+
       {props.multiline ? (
         <textarea
           value={props.value}
@@ -23,6 +24,7 @@ export function Field(props: {
         />
       ) : (
         <input
+          type={props.type || "text"}
           value={props.value}
           onChange={(event) => props.onChange(event.currentTarget.value)}
           placeholder={props.placeholder}
@@ -42,6 +44,7 @@ export function SelectField<T extends string>(props: {
   return (
     <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
       <span style={fieldLabelStyle}>{props.label}</span>
+
       <select
         value={props.value}
         onChange={(event) => props.onChange(event.currentTarget.value as T)}
@@ -98,6 +101,7 @@ export function AtlasMiniMark({ size = 30 }: { size?: number }) {
       >
         A
       </span>
+
       <img
         src="/atlas-logo.png"
         alt=""
@@ -123,24 +127,41 @@ export function SectionHeader(props: {
   right?: React.ReactNode;
   brand?: boolean;
 }) {
-  if (!props.eyebrow && !props.title && !props.detail && !props.right)
+  if (!props.eyebrow && !props.title && !props.detail && !props.right) {
     return null;
+  }
 
   return (
     <div style={sectionHeaderStyle}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: props.brand ? 10 : 0, minWidth: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: props.brand ? 10 : 0,
+          minWidth: 0,
+        }}
+      >
         {props.brand ? <AtlasMiniMark size={30} /> : null}
+
         <div style={{ minWidth: 0 }}>
-          {props.eyebrow ? <div style={eyebrowStyle}>{props.eyebrow}</div> : null}
-          {props.title ? <h2 style={sectionTitleStyle}>{props.title}</h2> : null}
-          {props.detail ? <p style={mutedSmallStyle}>{props.detail}</p> : null}
+          {props.eyebrow ? (
+            <div style={eyebrowStyle}>{props.eyebrow}</div>
+          ) : null}
+
+          {props.title ? (
+            <h2 style={sectionTitleStyle}>{props.title}</h2>
+          ) : null}
+
+          {props.detail ? (
+            <p style={mutedSmallStyle}>{props.detail}</p>
+          ) : null}
         </div>
       </div>
+
       {props.right ? <div style={buttonRowStyle}>{props.right}</div> : null}
     </div>
   );
 }
-
 
 const fieldLabelStyle: React.CSSProperties = {
   color: colors.navy,
