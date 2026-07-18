@@ -35,7 +35,12 @@ export type WorkOrderPriority = "Low" | "Medium" | "High";
 
 export type WorkOrderRecurrenceUnit = "Days" | "Weeks" | "Months" | "Years";
 
-export type WorkSeason = "Year-Round" | "Spring" | "Summer" | "Fall" | "Winter";
+export type WorkSeason =
+  | "Year-Round"
+  | "Spring"
+  | "Summer"
+  | "Fall"
+  | "Winter";
 
 export type Priority = "High" | "Normal" | "Seasonal";
 
@@ -103,6 +108,7 @@ export type ContactRecord = {
   email: string;
   address: string;
   website: string;
+  birthday: string;
   notes: string;
 };
 
@@ -472,6 +478,8 @@ export type AtlasApiPayload = {
   assets?: AssetRecord[];
   vendorRecords?: VendorRecord[];
   vendors?: VendorRecord[];
+  contactRecords?: ContactRecord[];
+  contacts?: ContactRecord[];
   serviceRecords?: ServiceRecord[];
   workOrders?: ServiceRecord[];
   procedureRecords?: ProcedureRecord[];
@@ -487,6 +495,7 @@ export type AtlasApiPayload = {
 export type AtlasTable =
   | "assets"
   | "vendors"
+  | "contacts"
   | "work_orders"
   | "procedures"
   | "calendar"
