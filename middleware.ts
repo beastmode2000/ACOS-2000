@@ -98,23 +98,25 @@ async function verifySessionCookie(
   expectedUsername: string,
   secret: string,
 ) {
-  if (!cookieValue) return false;
+  if (!cookieValue) return null;
   const [payloadBase64, signature] = cookieValue.split(".");
-  if (!payloadBase64 || !signature) return false;
+  if (!payloadBase64 || !signature) return null;
 
   const expectedSignature = await signSessionPayload(payloadBase64, secret);
-  if (signature !== expectedSignature) return false;
+  if (signature !== expectedSignature) return null;
 
   try {
     const payload = JSON.parse(base64UrlDecodeText(payloadBase64)) as {
       username?: string;
       expiresAt?: number;
+      email?: string;
+      role?: string;
     };
-    if (payload.username !== expectedUsername) return false;
-    if (!payload.expiresAt || Date.now() > payload.expiresAt) return false;
-    return true;
+    if (payload.username !== expectedUsername) return null;
+    if (!payload.expiresAt || Date.now() > payload.expiresAt) return null;
+    return payload;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -170,7 +172,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
-  const hasValidSession = await verifySessionCookie(
+  const session = await verifySessionCookie(
     sessionCookie,
     expectedUsername,
     expectedPassword,
@@ -180,18 +182,20 @@ export async function middleware(request: NextRequest) {
     basicAuth?.username === expectedUsername &&
     basicAuth?.password === expectedPassword;
 
-  if (hasValidSession || hasValidBasicAuth) {
+  if (session || hasValidBasicAuth) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set(
       "authorization",
       createBasicAuthHeader(expectedUsername, expectedPassword),
     );
+    requestHeaders.set("x-atlas-user-email", session?.email || "");
+    requestHeaders.set("x-atlas-user-role", session?.role || "administrator");
 
     const response = NextResponse.next({
       request: { headers: requestHeaders },
     });
 
-    if (hasValidBasicAuth && !hasValidSession) {
+    if (hasValidBasicAuth && !session) {
       const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
       const payloadBase64 = base64UrlEncodeText(
         JSON.stringify({ username: expectedUsername, expiresAt }),
