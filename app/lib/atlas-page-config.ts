@@ -1,7 +1,7 @@
 
 import type { Screen } from "./atlas-types";
 
-export type AtlasScreen = Screen | "timeline" | "insights";
+export type AtlasScreen = Screen | "timeline" | "insights" | "reports";
 
 export const WORKLINK_LOGOS = {
   landscapeHelpAdmin: "",
@@ -50,6 +50,7 @@ export const screens: { id: AtlasScreen; label: string }[] = [
   { id: "weather", label: "Weather" },
   { id: "manuals", label: "Manuals" },
   { id: "assistant", label: "Ask Atlas" },
+  { id: "reports", label: "Reports & Access" },
 ];
 
 export const logoCandidates = [
