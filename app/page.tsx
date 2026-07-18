@@ -920,6 +920,7 @@ function normalizeContact(record: Partial<ContactRecord>): ContactRecord {
     email: String(record.email ?? ""),
     address: String(record.address ?? ""),
     website: String(record.website ?? ""),
+    birthday: String(record.birthday ?? ""),
     notes: String(record.notes ?? ""),
   };
 }
@@ -935,6 +936,7 @@ function blankContact(): ContactRecord {
     email: "",
     address: "",
     website: "",
+    birthday: "",
     notes: "",
   });
 }
@@ -3670,6 +3672,11 @@ export default function AtlasPage() {
           : Array.isArray(payload.vendors)
             ? payload.vendors
             : [];
+        const apiContacts = Array.isArray(payload.contactRecords)
+          ? payload.contactRecords
+          : Array.isArray(payload.contacts)
+            ? payload.contacts
+            : [];
         const apiServices = Array.isArray(payload.serviceRecords)
           ? payload.serviceRecords
           : Array.isArray(payload.workOrders)
@@ -3716,6 +3723,16 @@ export default function AtlasPage() {
           );
         }
 
+        if (apiContacts.length) {
+          const next = byName(apiContacts.map(normalizeContact));
+          setContactRecords(next);
+          saveStoredArray(storageKeys.contacts[0], next);
+        } else {
+          for (const contact of readStoredArray<ContactRecord>(storageKeys.contacts, [])) {
+            void postAtlasRecord("contacts", contact);
+          }
+        }
+
         if (apiServices.length) {
           const next = byTitle(apiServices.map(normalizeService));
           setServiceRecords(next);
@@ -3741,8 +3758,7 @@ export default function AtlasPage() {
             void postAtlasRecord("procedures", seed);
           }
         } else {
-          setProcedureRecords(byTitle(fallbackProcedures));
-          for (const seed of fallbackProcedures) {
+          setProcedureRecords(byTitle(fallbackProcedures));          for (const seed of fallbackProcedures) {
             void postAtlasRecord("procedures", seed);
           }
         }
@@ -3751,7 +3767,8 @@ export default function AtlasPage() {
           const apiNormalized = apiCalendar.map(normalizeCalendar);
 
           if (apiNormalized.length) {
-            setCalendarItems((current) => {              const mergedById = new Map<string, CalendarItem>();
+            setCalendarItems((current) => {
+              const mergedById = new Map<string, CalendarItem>();
 
               for (const item of current) {
                 if (item.id) mergedById.set(item.id, item);
@@ -4555,10 +4572,10 @@ export default function AtlasPage() {
       lastCompletedDate: "",
       completionHistory: [],
       workType: "Work Order",
-      workCategory: "🔧 Maintenance",
+      workCategory: "ðŸ”§ Maintenance",
       effort: "30 minutes",
       responsibilityArea: "",
-      emoji: "🔧",
+      emoji: "ðŸ”§",
       assignedTo: "",
       locationId: "",
       checklist: [],
@@ -4708,14 +4725,40 @@ export default function AtlasPage() {
     [serviceRecords],
   );
 
+  const contactBirthdayItems = useMemo<CalendarItem[]>(() => {
+    const year = calendarCursor.getFullYear();
+    return contactRecords
+      .filter((contact) => /^\d{4}-\d{2}-\d{2}$/.test(String(contact.birthday || "")))
+      .map((contact) =>
+        normalizeCalendar({
+          id: `birthday-${contact.id}-${year}`,
+          date: `${year}-${String(contact.birthday).slice(5)}`,
+          title: `${contact.name} Birthday`,
+          area: "Contacts",
+          categoryLabel: "Birthday",
+          colorName: "yellow",
+          allDay: true,
+          repeat: "Yearly",
+          reminder: "Day before",
+          notes: contact.organization
+            ? `Contact: ${contact.organization}`
+            : "Contact birthday",
+          linkedType: "None",
+          completed: false,
+          source: "manual",
+        }),
+      );
+  }, [contactRecords, calendarCursor]);
+
   const baseCalendarItems = useMemo(
     () => [
       ...calendarItems,
       ...workOrderCalendarItems,
+      ...contactBirthdayItems,
       ...usHolidayItems,
       ...jewishHolidayItems,
     ],
-    [calendarItems, workOrderCalendarItems, usHolidayItems, jewishHolidayItems],
+    [calendarItems, workOrderCalendarItems, contactBirthdayItems, usHolidayItems, jewishHolidayItems],
   );
 
   const visibleCalendarItems = useMemo(
@@ -5062,7 +5105,7 @@ export default function AtlasPage() {
       return byName(assetRecords).map((asset) => ({
         id: asset.id,
         name: asset.name,
-        detail: `${asset.category} · ${locationName(asset.locationId)}`,
+        detail: `${asset.category} Â· ${locationName(asset.locationId)}`,
       }));
     if (kind === "Location")
       return [...locations]
@@ -5070,7 +5113,7 @@ export default function AtlasPage() {
         .map((location) => ({
           id: location.id,
           name: location.name,
-          detail: `${location.type} · ${location.zone}`,
+          detail: `${location.type} Â· ${location.zone}`,
         }));
     if (kind === "Vendor")
       return byName(vendorRecords).map((vendor) => ({
@@ -5082,7 +5125,7 @@ export default function AtlasPage() {
       return byTitle(serviceRecords).map((record) => ({
         id: record.id,
         name: record.title,
-        detail: `${formatDate(record.date)} · ${record.status}`,
+        detail: `${formatDate(record.date)} Â· ${record.status}`,
       }));
     if (kind === "Map Label")
       return byLabel(mapLabels).map((label) => ({
@@ -5167,7 +5210,7 @@ export default function AtlasPage() {
             kind: "asset",
             id: asset.id,
             title: asset.name,
-            subtitle: `${asset.category} · ${locationName(asset.locationId)}`,
+            subtitle: `${asset.category} Â· ${locationName(asset.locationId)}`,
             detail: [
               asset.make,
               asset.model,
@@ -5176,7 +5219,7 @@ export default function AtlasPage() {
               asset.notes,
             ]
               .filter(Boolean)
-              .join(" · "),
+              .join(" Â· "),
           }))
         : qrKind === "location"
           ? [...locations]
@@ -5185,7 +5228,7 @@ export default function AtlasPage() {
                 kind: "location",
                 id: location.id,
                 title: location.name,
-                subtitle: `${location.type} · ${location.zone}`,
+                subtitle: `${location.type} Â· ${location.zone}`,
                 detail: location.notes,
               }))
           : qrKind === "vendor"
@@ -5201,7 +5244,7 @@ export default function AtlasPage() {
                   vendor.notes,
                 ]
                   .filter(Boolean)
-                  .join(" · "),
+                  .join(" Â· "),
               }))
             : byLabel(mapLabels).map((label) => ({
                 kind: "map",
@@ -5278,7 +5321,7 @@ export default function AtlasPage() {
         id: `location-${item.id}`,
         type: "Location",
         title: item.name,
-        subtitle: `${item.type} · ${item.zone}`,
+        subtitle: `${item.type} Â· ${item.zone}`,
         detail: item.notes,
         screen: "locations" as Screen,
         locationId: item.id,
@@ -5302,7 +5345,7 @@ export default function AtlasPage() {
         id: `asset-${item.id}`,
         type: "Asset",
         title: item.name,
-        subtitle: `${item.category} · ${locationName(item.locationId)} · ${item.status}`,
+        subtitle: `${item.category} Â· ${locationName(item.locationId)} Â· ${item.status}`,
         detail: [item.make, item.model, item.serial, item.notes].join(" "),
         screen: "assets" as Screen,
         assetId: item.id,
@@ -5323,7 +5366,7 @@ export default function AtlasPage() {
         subtitle:
           [item.organization, item.role, item.category]
             .filter(Boolean)
-            .join(" · ") || "Contact",
+            .join(" Â· ") || "Contact",
         detail: [
           item.phone,
           item.email,
@@ -5338,7 +5381,7 @@ export default function AtlasPage() {
         id: `wo-${item.id}`,
         type: "Work Order",
         title: item.title,
-        subtitle: `${formatDate(item.date)} · ${item.status} · ${item.priority ?? "Medium"}`,
+        subtitle: `${formatDate(item.date)} Â· ${item.status} Â· ${item.priority ?? "Medium"}`,
         detail: `${assetName(item.assetId)} ${vendorName(item.vendorId)} ${item.notes}`,
         screen: "history" as Screen,
         serviceId: item.id,
@@ -5347,7 +5390,7 @@ export default function AtlasPage() {
         id: `procedure-${item.id}`,
         type: "Procedure",
         title: item.title,
-        subtitle: `${item.area} · ${item.priority}`,
+        subtitle: `${item.area} Â· ${item.priority}`,
         detail: item.steps.join(" "),
         screen: "procedures" as Screen,
         procedureId: item.id,
@@ -5356,7 +5399,7 @@ export default function AtlasPage() {
         id: `calendar-${item.id}`,
         type: "Calendar",
         title: item.title,
-        subtitle: `${formatDate(item.date)} · ${item.allDay ? "All day" : item.time || "No time"} · ${colorForEvent(item).label}`,
+        subtitle: `${formatDate(item.date)} Â· ${item.allDay ? "All day" : item.time || "No time"} Â· ${colorForEvent(item).label}`,
         detail: `${item.area} ${item.notes || ""} ${item.linkedName || ""}`,
         screen: "calendar" as Screen,
         calendarId: item.id,
@@ -5365,7 +5408,7 @@ export default function AtlasPage() {
         id: `part-${item.id}`,
         type: "Part",
         title: item.name,
-        subtitle: `${item.category} · Qty ${item.quantity}`,
+        subtitle: `${item.category} Â· Qty ${item.quantity}`,
         detail: item.notes,
         screen: "parts" as Screen,
         partId: item.id,
@@ -5374,7 +5417,7 @@ export default function AtlasPage() {
         id: `document-${item.id}`,
         type: "Document",
         title: item.title,
-        subtitle: `${item.type} · ${item.area}`,
+        subtitle: `${item.type} Â· ${item.area}`,
         detail: `${item.notes} ${item.pastedText || ""} ${item.targetName || ""}`,
         screen: "documents" as Screen,
       })),
@@ -5391,7 +5434,7 @@ export default function AtlasPage() {
         id: `manual-${item.id}`,
         type: "Manual",
         title: item.title,
-        subtitle: `${item.linkedAssetName || "Not linked"} · ${item.category}`,
+        subtitle: `${item.linkedAssetName || "Not linked"} Â· ${item.category}`,
         detail: `${item.manufacturer} ${item.model} ${item.documentNumber} ${item.notes}`,
         screen: "manuals" as Screen,
         manualId: item.id,
@@ -5400,7 +5443,7 @@ export default function AtlasPage() {
         id: `link-${item.id}`,
         type: "Work Link",
         title: item.name,
-        subtitle: `${item.category}${item.vendor ? ` · ${item.vendor}` : ""}`,
+        subtitle: `${item.category}${item.vendor ? ` Â· ${item.vendor}` : ""}`,
         detail: `${item.notes} ${item.url}`,
         screen: "links" as Screen,
       })),
@@ -5633,7 +5676,7 @@ export default function AtlasPage() {
     if (cleanExisting.toLowerCase().includes(cleanIncoming.toLowerCase())) {
       return cleanExisting;
     }
-    return `${cleanExisting}\n\nFast Intake — ${new Date().toLocaleDateString()}\n${cleanIncoming}`;
+    return `${cleanExisting}\n\nFast Intake â€” ${new Date().toLocaleDateString()}\n${cleanIncoming}`;
   }
 
   async function addIntakeFiles(fileList: FileList | File[] | null) {
@@ -5996,7 +6039,7 @@ export default function AtlasPage() {
 
     if (!files.length) {
       throw new Error(
-        "No image was found. On the AI picture, choose Copy image—not Copy link—then click Paste Image.",
+        "No image was found. On the AI picture, choose Copy imageâ€”not Copy linkâ€”then click Paste Image.",
       );
     }
 
@@ -6667,7 +6710,7 @@ export default function AtlasPage() {
               <div>
                 <strong>{doc.title}</strong>
                 <p style={mutedSmallStyle}>
-                  {doc.type} · {(doc.files || []).length} file(s)
+                  {doc.type} Â· {(doc.files || []).length} file(s)
                 </p>
               </div>
             </button>
@@ -6858,7 +6901,7 @@ export default function AtlasPage() {
     );
   }
 
-  function saveContact() {
+  async function saveContact() {
     const name = contactDraft.name.trim();
     if (!name) {
       setContactMessage("Add a name before saving this contact.");
@@ -6881,13 +6924,19 @@ export default function AtlasPage() {
       return sorted;
     });
 
+    const saved = await postAtlasRecord("contacts", prepared);
+    if (!saved) {
+      setContactMessage(`${prepared.name} remains in this browser, but shared saving failed.`);
+      return;
+    }
+
     setSelectedContactId("");
     setContactDraft(blankContact());
     setContactEditorOpen(true);
     setContactMessage(`Saved ${prepared.name}. Ready for the next contact.`);
   }
 
-  function deleteContact(record: ContactRecord) {
+  async function deleteContact(record: ContactRecord) {
     if (
       !record.id ||
       !window.confirm(`Delete contact ${record.name || "this contact"}?`)
@@ -6895,6 +6944,8 @@ export default function AtlasPage() {
       return;
     }
 
+    const deleted = await deleteAtlasRecord("contacts", record.id);
+    if (!deleted) return;
     setContactRecords((current) => {
       const next = current.filter((item) => item.id !== record.id);
       saveStoredArray(storageKeys.contacts[0], next);
@@ -6925,7 +6976,7 @@ export default function AtlasPage() {
       lastCompletedDate: "",
       completionHistory: [],
       workType: "Work Order",
-      workCategory: "🔧 Maintenance",
+      workCategory: "ðŸ”§ Maintenance",
       effort: "30 minutes",
       responsibilityArea: "",
       photos: [],
@@ -7481,8 +7532,7 @@ export default function AtlasPage() {
         label: "Vendor",
         colorId: "vendor",
         colorName: "purple" as CalendarColorName,
-      };
-    }
+      };    }
 
     if (/family|school|kids|personal|owner|steve|jessica|jeremy/.test(lower)) {
       return {
@@ -8553,6 +8603,7 @@ export default function AtlasPage() {
         email: cleanText(item.email, 200),
         address: cleanText(item.address, 300),
         website: cleanText(item.website, 300),
+        birthday: item.birthday,
         notes: cleanText(item.notes),
       })),
       workOrders: serviceRecords.map((item) => ({
@@ -10792,8 +10843,7 @@ export default function AtlasPage() {
                           <img
                             src={file.dataUrl || file.url}
                             alt={file.name}
-                            style={photoStyle}
-                          />
+                            style={photoStyle}                          />
                           <strong>{file.name}</strong>
                         </button>
                         <button
@@ -10815,7 +10865,8 @@ export default function AtlasPage() {
               </section>
 
               <section style={detailSectionStyle}>
-                <div style={eyebrowStyle}>Assets at this location</div>                {locationAssets.length ? (
+                <div style={eyebrowStyle}>Assets at this location</div>
+                {locationAssets.length ? (
                   <div style={compactLinkedListStyle}>
                     {locationAssets.map((asset) => (
                       <button
@@ -11501,6 +11552,12 @@ export default function AtlasPage() {
                     label="Website"
                     value={contactDraft.website}
                     onChange={(website) => updateContactDraft({ website })}
+                  />
+                  <Field
+                    label="Birthday"
+                    value={contactDraft.birthday}
+                    onChange={(birthday) => updateContactDraft({ birthday })}
+                    type="date"
                   />
                   <Field
                     label="Notes"
@@ -13969,8 +14026,7 @@ export default function AtlasPage() {
 
                 <div style={cardStyle}>
                   <div style={eyebrowStyle}>Review and Edit</div>
-                  <div style={formGridStyle}>
-                    <Field
+                  <div style={formGridStyle}>                    <Field
                       label="Title"
                       value={selected.title}
                       onChange={(value) =>
@@ -13986,7 +14042,8 @@ export default function AtlasPage() {
                     <label style={{ display: "grid", gap: 6 }}>
                       <span style={fieldLabelStyle}>Status</span>
                       <select
-                        value={selected.status}                        onChange={(event) =>
+                        value={selected.status}
+                        onChange={(event) =>
                           void updateInboxItem(selected.id, {
                             status: event.currentTarget.value as InboxStatus,
                           })
@@ -17133,8 +17190,7 @@ export default function AtlasPage() {
               </div>
             ) : source ? (
               <div style={noticeStyle}>
-                <strong>Preview not available for this file type.</strong>
-                <p style={mutedSmallStyle}>
+                <strong>Preview not available for this file type.</strong>                <p style={mutedSmallStyle}>
                   Use Open New Tab to view or download it.
                 </p>
               </div>
@@ -17142,7 +17198,8 @@ export default function AtlasPage() {
               <div style={noticeStyle}>
                 No preview URL is saved for this file.
               </div>
-            )}          </div>
+            )}
+          </div>
         </div>
       </div>
     );
