@@ -52,10 +52,23 @@ function criticalScore(record: PlannerRecord, today: string) {
   else if (record.priority === "Medium") score += 30;
   if (record.recurring) score += 45;
   if (/safety|emergency|alarm|leak|failure|offline|repair|backflow/.test(text)) score += 90;
-  if (/generator|freezer|refrigerat|boiler|hvac|heat pump|air handler|compressor/.test(text)) score += 75;
+  if (/generator/.test(text)) score += 115;
+  else if (/freezer|refrigerat|boiler|hvac|heat pump|air handler|compressor/.test(text)) score += 75;
   if (/pool|spa|irrigation|pump|water|electrical|fire|roof/.test(text)) score += 40;
   if (/clean|organize|couch|window screen|dishwasher|dryer|washer/.test(text)) score -= 55;
   return score;
+}
+
+function systemGroup(record: PlannerRecord) {
+  const text = `${record.title} ${record.notes || ""}`.toLowerCase();
+  if (/generator/.test(text)) return "Generators";
+  if (/freezer|refrigerat/.test(text)) return "Refrigeration";
+  if (/boiler|hvac|heat pump|air handler|compressor/.test(text)) return "HVAC / Boilers";
+  if (/pool|spa/.test(text)) return "Pool / Spa";
+  if (/irrigation|watering|sprinkler/.test(text)) return "Irrigation";
+  if (/roof|gutter|exterior|siding|carpentry/.test(text)) return "Building Exterior";
+  if (/electrical|fire|alarm|backflow|water/.test(text)) return "Safety / Utilities";
+  return "General Maintenance";
 }
 
 function buildDraft(
@@ -66,7 +79,7 @@ function buildDraft(
   limit: number,
 ) {
   const startDate = nextMonday(today);
-  return records
+  const ranked = records
     .filter((record) => !["Completed", "Closed", "Cancelled"].includes(record.status))
     .filter((record) => priority === "All Priorities" || record.priority === priority)
     .filter((record) => focus !== "Overdue Only" || Boolean(record.date && record.date < today))
@@ -78,7 +91,18 @@ function buildDraft(
         priorityRank(a.priority) - priorityRank(b.priority) ||
         String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31"))
       );
-    })
+    });
+
+  const groupCounts = new Map<string, number>();
+  const balanced = ranked.filter((record) => {
+    const group = systemGroup(record);
+    const count = groupCounts.get(group) || 0;
+    if (count >= 2) return false;
+    groupCounts.set(group, count + 1);
+    return true;
+  });
+
+  return balanced
     .slice(0, limit)
     .map((record, index): WeeklyMaintenancePlanItem => ({
       id: record.id,
@@ -234,7 +258,7 @@ export default function AskAtlasWeeklyMaintenancePlanner({
                 onClick={() => { setItems([]); setOpen(false); setMessage("Plan canceled. Nothing was saved."); }}
                 style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#fff", color: colors.navy, padding: "10px 14px", fontWeight: 900, cursor: "pointer" }}
               >
-                Cancel
+                Adjust Filters
               </button>
             </div>
           ) : null}
