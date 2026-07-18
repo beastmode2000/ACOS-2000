@@ -160,13 +160,19 @@ export function planAssistantAction({
   const requestedStatus = parseWorkOrderStatus(question);
   const requestedPriority = parsePriority(question);
   const requestedNote = parseNote(question);
+  const isQuestionOnly =
+    /\?$/.test(question.trim()) ||
+    /^(what|which|who|where|when|why|how|show|list|find|are|is|do|does|can|could|should|would)\b/.test(
+      normalized.trim(),
+    );
+  const hasExplicitUpdateCommand =
+    /\b(update|edit|change|mark|set|add note|append note|reopen|close)\b/.test(normalized);
 
   if (
     workOrder?.serviceId &&
-    (
-      /\b(update|edit|change|mark|set|add note|append note|reopen|close)\b/.test(normalized) ||
-      Boolean(requestedStatus || requestedPriority || requestedNote)
-    )
+    !isQuestionOnly &&
+    hasExplicitUpdateCommand &&
+    Boolean(requestedStatus || requestedPriority || requestedNote)
   ) {
     return {
       id: createId("assistant-action"),
