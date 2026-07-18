@@ -114,15 +114,33 @@ export default function MaintenancePlanningIntelligence({
   const upcomingRecurring = useMemo(
     () =>
       activeWork
-        .filter(
-          (record) =>
-            record.recurring &&
-            record.date >= today &&
-            daysBetween(today, record.date) <= 14,
-        )
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .slice(0, 6),
+        .filter((record) => record.recurring && record.date >= today)
+        .sort((a, b) => a.date.localeCompare(b.date)),
     [activeWork, today],
+  );
+
+  const dueWithin7 = useMemo(
+    () =>
+      upcomingRecurring
+        .filter((record) => daysBetween(today, record.date) <= 7)
+        .slice(0, 6),
+    [today, upcomingRecurring],
+  );
+
+  const dueWithin14 = useMemo(
+    () =>
+      upcomingRecurring
+        .filter((record) => daysBetween(today, record.date) <= 14)
+        .slice(0, 6),
+    [today, upcomingRecurring],
+  );
+
+  const dueWithin30 = useMemo(
+    () =>
+      upcomingRecurring
+        .filter((record) => daysBetween(today, record.date) <= 30)
+        .slice(0, 8),
+    [today, upcomingRecurring],
   );
 
   const suggestions = useMemo(() => {
@@ -233,8 +251,9 @@ export default function MaintenancePlanningIntelligence({
             Preventive Maintenance Center
           </h2>
           <div style={{ fontSize: 13, opacity: 0.8 }}>
-            {overdueRecurring.length} overdue · {upcomingRecurring.length} due
-            within 14 days · {suggestions.length} schedule suggestions
+            {overdueRecurring.length} overdue · {dueWithin7.length} due within
+            7 days · {dueWithin30.length} due within 30 days ·{" "}
+            {suggestions.length} schedule suggestions
           </div>
         </div>
 
@@ -278,6 +297,42 @@ export default function MaintenancePlanningIntelligence({
 
       <div
         style={{
+          padding: isMobile ? "14px 14px 0" : "18px 18px 0",
+          display: "grid",
+          gridTemplateColumns: isMobile
+            ? "repeat(2, minmax(0, 1fr))"
+            : "repeat(4, minmax(0, 1fr))",
+          gap: 10,
+        }}
+      >
+        <SummaryCard
+          label="Overdue"
+          value={overdueRecurring.length}
+          detail="Recurring maintenance"
+          colors={colors}
+        />
+        <SummaryCard
+          label="Next 7 Days"
+          value={dueWithin7.length}
+          detail="Due soon"
+          colors={colors}
+        />
+        <SummaryCard
+          label="Next 14 Days"
+          value={dueWithin14.length}
+          detail="Planning window"
+          colors={colors}
+        />
+        <SummaryCard
+          label="Next 30 Days"
+          value={dueWithin30.length}
+          detail="Upcoming workload"
+          colors={colors}
+        />
+      </div>
+
+      <div
+        style={{
           padding: isMobile ? 14 : 18,
           display: "grid",
           gridTemplateColumns: isMobile
@@ -302,9 +357,9 @@ export default function MaintenancePlanningIntelligence({
           )}
         </Panel>
 
-        <Panel title="Due Within 14 Days" colors={colors}>
-          {upcomingRecurring.length ? (
-            upcomingRecurring.map((record) => (
+        <Panel title="Due Within 7 Days" colors={colors}>
+          {dueWithin7.length ? (
+            dueWithin7.map((record) => (
               <WorkRow
                 key={record.id}
                 title={record.title}
@@ -316,7 +371,23 @@ export default function MaintenancePlanningIntelligence({
               />
             ))
           ) : (
-            <Empty>No recurring maintenance due within 14 days.</Empty>
+            <Empty>No recurring maintenance due within 7 days.</Empty>
+          )}
+        </Panel>
+
+        <Panel title="Due Within 30 Days" colors={colors}>
+          {dueWithin30.length ? (
+            dueWithin30.map((record) => (
+              <WorkRow
+                key={record.id}
+                title={record.title}
+                detail={`${record.date} · ${record.priority || "Medium"} priority`}
+                onClick={() => onOpenWorkOrder(record.id)}
+                colors={colors}
+              />
+            ))
+          ) : (
+            <Empty>No recurring maintenance due within 30 days.</Empty>
           )}
         </Panel>
 
@@ -399,6 +470,48 @@ export default function MaintenancePlanningIntelligence({
         </Panel>
       </div>
     </section>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  detail,
+  colors,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  colors: Props["colors"];
+}) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${colors.line}`,
+        borderRadius: 13,
+        background: colors.panel,
+        padding: 12,
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 950,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          opacity: 0.68,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ marginTop: 3, fontSize: 25, fontWeight: 950 }}>
+        {value}
+      </div>
+      <div style={{ marginTop: 2, fontSize: 11, opacity: 0.65 }}>
+        {detail}
+      </div>
+    </div>
   );
 }
 
