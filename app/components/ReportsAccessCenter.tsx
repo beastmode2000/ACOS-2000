@@ -13,7 +13,6 @@ type Props = {
   isMobile: boolean;
 };
 
-const STORAGE_KEY = "atlas-team-access-v1";
 const defaultTeam: Member[] = [
   { id: "nick", name: "Nick Thornton", email: "nthornton87@yahoo.com", role: "Master", active: true },
   { id: "steve", name: "Steve", email: "stevem@arcticmgnt.com", role: "Administrator", active: true },
@@ -57,12 +56,16 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null");
-      if (Array.isArray(parsed)) setTeam(parsed);
-    } catch {
-      setTeam(defaultTeam);
-    }
+    void fetch("/api/atlas-team")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!payload.ok || !Array.isArray(payload.members)) return;
+        setTeam(payload.members.map((member: Omit<Member, "role"> & { role: string }) => ({
+          ...member,
+          role: member.role === "master" ? "Master" : member.role === "administrator" ? "Administrator" : member.role === "operations" ? "Operations" : "Viewer",
+        })));
+      })
+      .catch(() => setMessage("Atlas could not load shared access settings."));
   }, []);
 
   function updateMember(id: string, patch: Partial<Member>) {
@@ -70,9 +73,17 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
     setMessage("");
   }
 
-  function saveAccess() {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(team));
-    setMessage("Access settings saved.");
+  async function saveAccess() {
+    setMessage("Saving shared access settings...");
+    const response = await fetch("/api/atlas-team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        members: team.map((member) => ({ ...member, role: member.role.toLowerCase() })),
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    setMessage(response.ok && payload.ok ? "Shared access settings saved." : String(payload.error || "Access settings could not be saved."));
   }
 
   const card = { border: `1px solid ${colors.line}`, borderRadius: 16, background: colors.card, padding: 18 };
@@ -113,11 +124,10 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
           ))}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
-          <button type="button" onClick={saveAccess} style={button}>Save Access Settings</button>
+          <button type="button" onClick={() => void saveAccess()} style={button}>Save Access Settings</button>
           {message ? <span style={{ color: colors.green, fontWeight: 850 }}>{message}</span> : null}
         </div>
       </section>
     </div>
   );
 }
-
