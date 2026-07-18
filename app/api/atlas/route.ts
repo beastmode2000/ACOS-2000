@@ -9,6 +9,7 @@ type JsonRecord = Record<string, unknown>;
 type AtlasTable =
   | "vendors"
   | "assets"
+  | "contacts"
   | "procedures"
   | "work_orders"
   | "calendar"
@@ -35,20 +36,17 @@ function asString(value: unknown) {
 
 function nullableString(value: unknown) {
   const text = asString(value);
-  if (!text) return null;
-  return text;
+  return text || null;
 }
 
 function asDate(value: unknown) {
   const text = asString(value);
-  if (!text) return null;
-  return text;
+  return text || null;
 }
 
 function asStatus(value: unknown, fallback: string) {
   const text = asString(value);
-  if (!text) return fallback;
-  return text;
+  return text || fallback;
 }
 
 function asBoolean(value: unknown) {
@@ -57,20 +55,21 @@ function asBoolean(value: unknown) {
 
 function asPositiveInteger(value: unknown, fallback = 1) {
   const parsed = Math.floor(Number(value));
-  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+
   return parsed;
 }
 
 function asArray(value: unknown) {
-  if (Array.isArray(value)) return value;
-  return [];
+  return Array.isArray(value) ? value : [];
 }
 
 function asStringArray(value: unknown) {
   if (Array.isArray(value)) {
-    return value.map(function (item) {
-      return String(item);
-    });
+    return value.map((item) => String(item));
   }
 
   if (
@@ -81,9 +80,7 @@ function asStringArray(value: unknown) {
     return value
       .slice(1, -1)
       .split(",")
-      .map(function (item) {
-        return item.replace(/^"|"$/g, "").trim();
-      })
+      .map((item) => item.replace(/^"|"$/g, "").trim())
       .filter(Boolean);
   }
 
@@ -91,11 +88,7 @@ function asStringArray(value: unknown) {
 }
 
 function jsonArray(value: unknown) {
-  if (Array.isArray(value)) {
-    return JSON.stringify(value);
-  }
-
-  return "[]";
+  return JSON.stringify(Array.isArray(value) ? value : []);
 }
 
 function makeId(prefix: string) {
@@ -109,9 +102,7 @@ function makeId(prefix: string) {
 }
 
 function getId(record: JsonRecord, prefix: string) {
-  const existingId = asString(record.id);
-  if (existingId) return existingId;
-  return makeId(prefix);
+  return asString(record.id) || makeId(prefix);
 }
 
 function cleanTable(value: unknown): AtlasTable | "" {
@@ -119,6 +110,7 @@ function cleanTable(value: unknown): AtlasTable | "" {
 
   if (table === "vendors") return "vendors";
   if (table === "assets") return "assets";
+  if (table === "contacts") return "contacts";
   if (table === "procedures") return "procedures";
   if (table === "work_orders") return "work_orders";
   if (table === "calendar") return "calendar";
@@ -127,7 +119,6 @@ function cleanTable(value: unknown): AtlasTable | "" {
 
   return "";
 }
-
 
 async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
   await sql`
@@ -218,15 +209,23 @@ async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
   `;
 }
 
+async function ensureContactsTable(sql: ReturnType<typeof neon>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_contacts (
+      id text PRIMARY KEY,
+      name text NOT NULL,
+      record jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
 async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   await sql`
     ALTER TABLE atlas_work_orders
     ALTER COLUMN asset_id DROP NOT NULL
   `;
 
-  // Canonical nullable due-date storage. The legacy `date` column may still be
-  // constrained or managed by older database objects, so Atlas no longer relies on it
-  // to represent a cleared due date.
   await sql`
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS due_date_value date
@@ -337,22 +336,85 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
 }
 
 async function ensureProcedureColumns(sql: ReturnType<typeof neon>) {
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS category text`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS status text DEFAULT 'Draft'`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS purpose text`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS safety_notes text`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS tools_parts text`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS required_tools text[] DEFAULT '{}'`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS required_parts text[] DEFAULT '{}'`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS estimated_time text`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS checklist jsonb DEFAULT '[]'`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS linked_asset_ids text[] DEFAULT '{}'`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS linked_location_ids text[] DEFAULT '{}'`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS linked_vendor_ids text[] DEFAULT '{}'`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS photos jsonb DEFAULT '[]'`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS documents jsonb DEFAULT '[]'`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT NOW()`;
-  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT NOW()`;
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS category text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS status text DEFAULT 'Draft'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS purpose text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS safety_notes text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS tools_parts text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS required_tools text[] DEFAULT '{}'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS required_parts text[] DEFAULT '{}'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS estimated_time text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS checklist jsonb DEFAULT '[]'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS linked_asset_ids text[] DEFAULT '{}'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS linked_location_ids text[] DEFAULT '{}'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS linked_vendor_ids text[] DEFAULT '{}'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS photos jsonb DEFAULT '[]'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS documents jsonb DEFAULT '[]'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT NOW()
+  `;
+
+  await sql`
+    ALTER TABLE atlas_procedures
+    ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT NOW()
+  `;
 }
 
 function mapLocation(row: JsonRecord) {
@@ -422,6 +484,27 @@ function mapProcedure(row: JsonRecord) {
   };
 }
 
+function databaseDateKey(value: unknown) {
+  if (!value) return "";
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? ""
+      : value.toISOString().slice(0, 10);
+  }
+
+  const text = String(value).trim();
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+
+  if (isoMatch) return isoMatch[1];
+
+  const parsed = new Date(text);
+
+  return Number.isNaN(parsed.getTime())
+    ? ""
+    : parsed.toISOString().slice(0, 10);
+}
+
 function mapWorkOrder(row: JsonRecord) {
   return {
     id: String(row.id || ""),
@@ -429,17 +512,16 @@ function mapWorkOrder(row: JsonRecord) {
     vendorId: row.vendor_id ? String(row.vendor_id) : "",
     procedureId: row.procedure_id ? String(row.procedure_id) : "",
     locationId: row.location_id ? String(row.location_id) : "",
-    date: databaseDateKey(row.due_date_initialized ? row.due_date_value : row.date),
+    date: databaseDateKey(
+      row.due_date_initialized ? row.due_date_value : row.date,
+    ),
     title: String(row.title || ""),
     status: String(row.status || "Open"),
     priority: String(row.priority || "Medium"),
     notes: String(row.notes || ""),
     followUpDate: databaseDateKey(row.follow_up_date),
     recurring: Boolean(row.recurring),
-    recurrenceInterval: Math.max(
-      1,
-      Number(row.recurrence_interval || 1),
-    ),
+    recurrenceInterval: Math.max(1, Number(row.recurrence_interval || 1)),
     recurrenceUnit: String(row.recurrence_unit || "Weeks"),
     recurrenceEndDate: databaseDateKey(row.recurrence_end_date),
     season: String(row.season || "Year-Round"),
@@ -459,26 +541,6 @@ function mapWorkOrder(row: JsonRecord) {
     photos: asArray(row.photos),
     documents: asArray(row.documents),
   };
-}
-
-
-function databaseDateKey(value: unknown) {
-  if (!value) return "";
-
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime())
-      ? ""
-      : value.toISOString().slice(0, 10);
-  }
-
-  const text = String(value).trim();
-  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (isoMatch) return isoMatch[1];
-
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime())
-    ? ""
-    : parsed.toISOString().slice(0, 10);
 }
 
 function mapCalendarItem(row: JsonRecord) {
@@ -534,8 +596,10 @@ function mapPhoto(row: JsonRecord) {
 export async function GET() {
   try {
     const sql = getSql();
+
     await ensureWorkOrderColumns(sql);
     await ensureCalendarColumns(sql);
+    await ensureContactsTable(sql);
 
     const locationRows = (await sql`
       SELECT id, name, type, zone, notes, sort_order
@@ -544,20 +608,48 @@ export async function GET() {
     `) as unknown as JsonRecord[];
 
     const vendorRows = (await sql`
-      SELECT id, name, category, phone, email, website, notes, logo_data_url, documents
+      SELECT
+        id,
+        name,
+        category,
+        phone,
+        email,
+        website,
+        notes,
+        logo_data_url,
+        documents
       FROM atlas_vendors
       ORDER BY name ASC
     `) as unknown as JsonRecord[];
 
+    const contactRows = (await sql`
+      SELECT record
+      FROM atlas_contacts
+      ORDER BY lower(name) ASC
+    `) as unknown as JsonRecord[];
+
     const assetRows = (await sql`
-      SELECT id, name, location_id, category, status, make, model, serial, notes, vendor_ids, documents
+      SELECT
+        id,
+        name,
+        location_id,
+        category,
+        status,
+        make,
+        model,
+        serial,
+        notes,
+        vendor_ids,
+        documents
       FROM atlas_assets
       ORDER BY name ASC
     `) as unknown as JsonRecord[];
 
     let procedureRows: JsonRecord[];
+
     try {
       await ensureProcedureColumns(sql);
+
       procedureRows = (await sql`
         SELECT
           id,
@@ -626,7 +718,14 @@ export async function GET() {
         photos,
         documents
       FROM atlas_work_orders
-      ORDER BY (CASE WHEN due_date_initialized THEN due_date_value ELSE date END) ASC NULLS LAST, title ASC
+      ORDER BY
+        (
+          CASE
+            WHEN due_date_initialized THEN due_date_value
+            ELSE date
+          END
+        ) ASC NULLS LAST,
+        title ASC
     `) as unknown as JsonRecord[];
 
     const calendarRows = (await sql`
@@ -653,7 +752,10 @@ export async function GET() {
         instance_id,
         status
       FROM atlas_calendar_items
-      ORDER BY COALESCE(item_date, date) ASC, time ASC NULLS LAST, title ASC
+      ORDER BY
+        COALESCE(item_date, date) ASC,
+        time ASC NULLS LAST,
+        title ASC
     `) as unknown as JsonRecord[];
 
     const documentRows = (await sql`
@@ -673,6 +775,7 @@ export async function GET() {
       source: "neon",
       locations: locationRows.map(mapLocation),
       vendorRecords: vendorRows.map(mapVendor),
+      contactRecords: contactRows.map((row) => row.record || {}),
       assetRecords: assetRows.map(mapAsset),
       procedureRecords: procedureRows.map(mapProcedure),
       serviceRecords: workOrderRows.map(mapWorkOrder),
@@ -697,11 +800,11 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const sql = getSql();
-    const body = (await request.json().catch(function () {
-      return {};
-    })) as JsonRecord;
+
+    const body = (await request.json().catch(() => ({}))) as JsonRecord;
 
     const table = cleanTable(body.table);
+
     const record =
       body.record && typeof body.record === "object"
         ? (body.record as JsonRecord)
@@ -715,6 +818,35 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 },
       );
+    }
+
+    if (table === "contacts") {
+      await ensureContactsTable(sql);
+
+      const id = getId(record, "contact");
+      const name = asString(record.name) || "Unnamed Contact";
+
+      await sql`
+        INSERT INTO atlas_contacts (
+          id,
+          name,
+          record,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${name},
+          ${JSON.stringify({ ...record, id, name })}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          record = EXCLUDED.record,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
     }
 
     if (table === "vendors") {
@@ -817,6 +949,7 @@ export async function POST(request: NextRequest) {
 
     if (table === "procedures") {
       await ensureProcedureColumns(sql);
+
       const id = getId(record, "procedure");
 
       await sql`
@@ -916,6 +1049,7 @@ export async function POST(request: NextRequest) {
 
     if (table === "work_orders") {
       await ensureWorkOrderColumns(sql);
+
       const id = getId(record, "work-order");
 
       const savedDate = asDate(record.date);
@@ -938,16 +1072,25 @@ export async function POST(request: NextRequest) {
           notes = ${asString(record.notes)},
           follow_up_date = ${savedFollowUpDate}::date,
           recurring = ${asBoolean(record.recurring)},
-          recurrence_interval = ${asPositiveInteger(record.recurrenceInterval, 1)},
-          recurrence_unit = ${asStatus(record.recurrenceUnit, "Weeks")},
+          recurrence_interval = ${asPositiveInteger(
+            record.recurrenceInterval,
+            1,
+          )},
+          recurrence_unit = ${asStatus(
+            record.recurrenceUnit,
+            "Weeks",
+          )},
           recurrence_end_date = ${savedRecurrenceEndDate}::date,
           season = ${asStatus(record.season, "Year-Round")},
           last_completed_date = ${savedLastCompletedDate}::date,
-          completion_history = ${jsonArray(record.completionHistory)}::jsonb,
+          completion_history =
+            ${jsonArray(record.completionHistory)}::jsonb,
           work_type = ${asStatus(record.workType, "Work Order")},
-          work_category = ${asStatus(record.workCategory, "Maintenance")},
+          work_category =
+            ${asStatus(record.workCategory, "Maintenance")},
           effort = ${nullableString(record.effort)},
-          responsibility_area = ${nullableString(record.responsibilityArea)},
+          responsibility_area =
+            ${nullableString(record.responsibilityArea)},
           emoji = ${nullableString(record.emoji)},
           assigned_to = ${nullableString(record.assignedTo)},
           checklist = ${jsonArray(record.checklist)}::jsonb,
@@ -1041,13 +1184,18 @@ export async function POST(request: NextRequest) {
       `) as unknown as JsonRecord[];
 
       const verified = verifiedRows[0];
+
       const verifiedDate = databaseDateKey(
-        verified?.due_date_initialized ? verified?.due_date_value : verified?.date,
+        verified?.due_date_initialized
+          ? verified?.due_date_value
+          : verified?.date,
       );
 
       if (verifiedDate !== (savedDate || "")) {
         throw new Error(
-          `Work order save verification failed. Expected date "${savedDate || ""}" but database returned "${verifiedDate}".`,
+          `Work order save verification failed. Expected date "${
+            savedDate || ""
+          }" but database returned "${verifiedDate}".`,
         );
       }
 
@@ -1060,6 +1208,7 @@ export async function POST(request: NextRequest) {
 
     if (table === "calendar") {
       await ensureCalendarColumns(sql);
+
       const id = getId(record, "calendar");
 
       await sql`
@@ -1110,7 +1259,7 @@ export async function POST(request: NextRequest) {
           ${nullableString(record.instanceId)},
           ${asStatus(
             record.status,
-            asBoolean(record.completed) ? "Completed" : "Scheduled"
+            asBoolean(record.completed) ? "Completed" : "Scheduled",
           )},
           NOW()
         )
@@ -1234,9 +1383,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const sql = getSql();
-    const body = (await request.json().catch(function () {
-      return {};
-    })) as JsonRecord;
+
+    const body = (await request.json().catch(() => ({}))) as JsonRecord;
 
     const table = cleanTable(body.table);
     const id = asString(body.id);
@@ -1254,6 +1402,17 @@ export async function DELETE(request: NextRequest) {
     if (table === "vendors") {
       await sql`
         DELETE FROM atlas_vendors
+        WHERE id = ${id}
+      `;
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "contacts") {
+      await ensureContactsTable(sql);
+
+      await sql`
+        DELETE FROM atlas_contacts
         WHERE id = ${id}
       `;
 
