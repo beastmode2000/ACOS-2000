@@ -3758,13 +3758,13 @@ export default function AtlasPage() {
             void postAtlasRecord("procedures", seed);
           }
         } else {
-          setProcedureRecords(byTitle(fallbackProcedures));          for (const seed of fallbackProcedures) {
+          setProcedureRecords(byTitle(fallbackProcedures));
+          for (const seed of fallbackProcedures) {
             void postAtlasRecord("procedures", seed);
           }
         }
 
-        {
-          const apiNormalized = apiCalendar.map(normalizeCalendar);
+        {          const apiNormalized = apiCalendar.map(normalizeCalendar);
 
           if (apiNormalized.length) {
             setCalendarItems((current) => {
@@ -7532,7 +7532,8 @@ export default function AtlasPage() {
         label: "Vendor",
         colorId: "vendor",
         colorName: "purple" as CalendarColorName,
-      };    }
+      };
+    }
 
     if (/family|school|kids|personal|owner|steve|jessica|jeremy/.test(lower)) {
       return {
@@ -7542,8 +7543,7 @@ export default function AtlasPage() {
       };
     }
 
-    if (/work order|wo:|maintenance|check|inspect|maintenance/.test(lower)) {
-      return {
+    if (/work order|wo:|maintenance|check|inspect|maintenance/.test(lower)) {      return {
         label: "Maintenance",
         colorId: "maintenance",
         colorName: "gray" as CalendarColorName,
@@ -8647,8 +8647,25 @@ export default function AtlasPage() {
         id: item.id,
         title: cleanText(item.title, 240),
         area: cleanText(item.area, 160),
+        category: cleanText(item.category, 120),
+        status: item.status || "Draft",
         priority: item.priority,
+        purpose: cleanText(item.purpose),
+        safetyNotes: cleanText(item.safetyNotes),
+        toolsParts: cleanText(item.toolsParts),
+        requiredTools: item.requiredTools || [],
+        requiredParts: item.requiredParts || [],
+        estimatedTime: cleanText(item.estimatedTime, 120),
         steps: item.steps.map((step) => cleanText(step, 500)),
+        linkedAssetIds: item.linkedAssetIds || [],
+        linkedLocationIds: item.linkedLocationIds || [],
+        linkedVendorIds: item.linkedVendorIds || [],
+        photoNames: (item.photos || []).map((photo) =>
+          cleanText(photo.name, 240),
+        ),
+        documentNames: (item.documents || []).map((document) =>
+          cleanText(document.name, 240),
+        ),
       })),
       parts: partRecords.map((item) => ({
         id: item.id,
@@ -8734,6 +8751,10 @@ export default function AtlasPage() {
           question,
           atlas: requestSnapshot,
           allowWebSearch: manualQuestion,
+          conversation: assistantTurns.map((turn) => ({
+            role: turn.role,
+            text: cleanText(turn.text, 1200),
+          })),
         }),
       });
 
@@ -10834,8 +10855,7 @@ export default function AtlasPage() {
                 {locationPhotos.length ? (
                   <div style={photoGridStyle}>
                     {locationPhotos.map((file) => (
-                      <div key={file.id} style={photoManageCardStyle}>
-                        <button
+                      <div key={file.id} style={photoManageCardStyle}>                        <button
                           type="button"
                           onClick={() => openUploadedFile(file)}
                           style={compactPhotoButtonStyle}
@@ -10843,7 +10863,8 @@ export default function AtlasPage() {
                           <img
                             src={file.dataUrl || file.url}
                             alt={file.name}
-                            style={photoStyle}                          />
+                            style={photoStyle}
+                          />
                           <strong>{file.name}</strong>
                         </button>
                         <button
@@ -14017,8 +14038,7 @@ export default function AtlasPage() {
                       onClick={() => openInboxReview(selected)}
                       style={secondaryButtonStyle}
                     >
-                      {analysis.analyzedAt
-                        ? "Open AI Review"
+                      {analysis.analyzedAt                        ? "Open AI Review"
                         : "Open Review Drawer"}
                     </button>
                   </div>
@@ -14026,7 +14046,8 @@ export default function AtlasPage() {
 
                 <div style={cardStyle}>
                   <div style={eyebrowStyle}>Review and Edit</div>
-                  <div style={formGridStyle}>                    <Field
+                  <div style={formGridStyle}>
+                    <Field
                       label="Title"
                       value={selected.title}
                       onChange={(value) =>
@@ -17185,12 +17206,12 @@ export default function AtlasPage() {
                 <iframe
                   src={source}
                   title={previewFile.name}
-                  style={zoomedFrameStyle}
-                />
+                  style={zoomedFrameStyle}                />
               </div>
             ) : source ? (
               <div style={noticeStyle}>
-                <strong>Preview not available for this file type.</strong>                <p style={mutedSmallStyle}>
+                <strong>Preview not available for this file type.</strong>
+                <p style={mutedSmallStyle}>
                   Use Open New Tab to view or download it.
                 </p>
               </div>
