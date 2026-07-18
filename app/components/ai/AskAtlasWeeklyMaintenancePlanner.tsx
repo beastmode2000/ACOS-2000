@@ -24,7 +24,8 @@ type Props = {
   onSave: (items: WeeklyMaintenancePlanItem[]) => Promise<void>;
 };
 
-const DAY_MS = 86_400_000;
+type PlanFocus = "Critical Systems" | "All Maintenance" | "Overdue Only" | "Recurring Only";
+type PlanPriority = "All Priorities" | WorkOrderPriority;
 
 function addDays(date: string, days: number) {
   const value = new Date(`${date}T12:00:00`);
@@ -36,25 +37,55 @@ function priorityRank(priority?: WorkOrderPriority) {
   return priority === "High" ? 0 : priority === "Medium" ? 1 : 2;
 }
 
-function buildDraft(records: PlannerRecord[], today: string) {
+function nextMonday(date: string) {
+  const value = new Date(`${date}T12:00:00`);
+  const day = value.getDay();
+  value.setDate(value.getDate() + (day === 0 ? 1 : 8 - day));
+  return value.toISOString().slice(0, 10);
+}
+
+function criticalScore(record: PlannerRecord, today: string) {
+  const text = `${record.title} ${record.notes || ""}`.toLowerCase();
+  let score = 0;
+  if (record.date && record.date < today) score += 120;
+  if (record.priority === "High") score += 100;
+  else if (record.priority === "Medium") score += 30;
+  if (record.recurring) score += 45;
+  if (/safety|emergency|alarm|leak|failure|offline|repair|backflow/.test(text)) score += 90;
+  if (/generator|freezer|refrigerat|boiler|hvac|heat pump|air handler|compressor/.test(text)) score += 75;
+  if (/pool|spa|irrigation|pump|water|electrical|fire|roof/.test(text)) score += 40;
+  if (/clean|organize|couch|window screen|dishwasher|dryer|washer/.test(text)) score -= 55;
+  return score;
+}
+
+function buildDraft(
+  records: PlannerRecord[],
+  today: string,
+  focus: PlanFocus,
+  priority: PlanPriority,
+  limit: number,
+) {
+  const startDate = nextMonday(today);
   return records
     .filter((record) => !["Completed", "Closed", "Cancelled"].includes(record.status))
+    .filter((record) => priority === "All Priorities" || record.priority === priority)
+    .filter((record) => focus !== "Overdue Only" || Boolean(record.date && record.date < today))
+    .filter((record) => focus !== "Recurring Only" || Boolean(record.recurring))
+    .filter((record) => focus !== "Critical Systems" || criticalScore(record, today) > 20)
     .sort((a, b) => {
-      const overdueA = a.date && a.date < today ? 0 : 1;
-      const overdueB = b.date && b.date < today ? 0 : 1;
       return (
-        overdueA - overdueB ||
+        criticalScore(b, today) - criticalScore(a, today) ||
         priorityRank(a.priority) - priorityRank(b.priority) ||
         String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31"))
       );
     })
-    .slice(0, 10)
+    .slice(0, limit)
     .map((record, index): WeeklyMaintenancePlanItem => ({
       id: record.id,
       title: record.title,
       priority: record.priority || "Medium",
       assignedTo: record.assignedTo || "",
-      date: addDays(today, Math.min(index, 6)),
+      date: addDays(startDate, Math.min(index, 4)),
       selected: true,
     }));
 }
@@ -71,6 +102,9 @@ export default function AskAtlasWeeklyMaintenancePlanner({
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<WeeklyMaintenancePlanItem[]>([]);
   const [message, setMessage] = useState("");
+  const [focus, setFocus] = useState<PlanFocus>("Critical Systems");
+  const [priority, setPriority] = useState<PlanPriority>("All Priorities");
+  const [limit, setLimit] = useState(7);
 
   const activeCount = useMemo(
     () => records.filter((record) => !["Completed", "Closed", "Cancelled"].includes(record.status)).length,
@@ -78,7 +112,7 @@ export default function AskAtlasWeeklyMaintenancePlanner({
   );
 
   function generatePlan() {
-    const next = buildDraft(records, today);
+    const next = buildDraft(records, today, focus, priority, limit);
     setItems(next);
     setOpen(true);
     setMessage(
@@ -87,7 +121,7 @@ export default function AskAtlasWeeklyMaintenancePlanner({
         : "No active maintenance work orders were found.",
     );
     onGenerate(
-      "Build a concise seven-day maintenance plan from my active Atlas work orders. Prioritize overdue, high-priority, recurring, safety, generator, refrigeration, boiler, HVAC, and weather-sensitive work. Explain the order only; do not create or update anything.",
+      `Build a concise seven-day maintenance plan from my active Atlas work orders. Use this focus: ${focus}. Use this priority filter: ${priority}. Limit the plan to ${limit} items. Prioritize overdue, high-priority, recurring, safety, generator, refrigeration, boiler, HVAC, and weather-sensitive work. Explain the order only; do not create or update anything.`,
     );
   }
 
@@ -178,7 +212,7 @@ export default function AskAtlasWeeklyMaintenancePlanner({
                 type="date"
                 value={item.date}
                 min={today}
-                max={addDays(today, Math.round(7 * DAY_MS / DAY_MS))}
+                max={addDays(today, 14)}
                 onChange={(event) => patchItem(item.id, { date: event.currentTarget.value })}
                 style={{ width: "100%", minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "8px 10px" }}
               />
@@ -206,7 +240,57 @@ export default function AskAtlasWeeklyMaintenancePlanner({
           ) : null}
         </div>
       ) : null}
+
+      {!open ? (
+        <div
+          style={{
+            padding: 14,
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr .7fr",
+            gap: 10,
+            background: colors.panel,
+          }}
+        >
+          <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 900 }}>
+            Focus
+            <select
+              value={focus}
+              onChange={(event) => setFocus(event.currentTarget.value as PlanFocus)}
+              style={{ minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "8px 10px", background: "#fff" }}
+            >
+              <option value="Critical Systems">Critical Systems</option>
+              <option value="All Maintenance">All Maintenance</option>
+              <option value="Overdue Only">Overdue Only</option>
+              <option value="Recurring Only">Recurring Only</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 900 }}>
+            Priority
+            <select
+              value={priority}
+              onChange={(event) => setPriority(event.currentTarget.value as PlanPriority)}
+              style={{ minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "8px 10px", background: "#fff" }}
+            >
+              <option value="All Priorities">All Priorities</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 900 }}>
+            Plan size
+            <select
+              value={limit}
+              onChange={(event) => setLimit(Number(event.currentTarget.value))}
+              style={{ minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "8px 10px", background: "#fff" }}
+            >
+              <option value={5}>5 items</option>
+              <option value={7}>7 items</option>
+              <option value={10}>10 items</option>
+            </select>
+          </label>
+        </div>
+      ) : null}
     </section>
   );
 }
-
