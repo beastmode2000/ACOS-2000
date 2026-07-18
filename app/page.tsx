@@ -11,6 +11,7 @@ import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasDashboard from "./components/AtlasDashboard";
 import { AtlasWorkOrders } from "./components/AtlasWorkOrders";
 import AtlasInsightsTimeline from "./components/AtlasInsightsTimeline";
+import ReportsAccessCenter from "./components/ReportsAccessCenter";
 import {
   Field,
   SelectField,
@@ -17701,6 +17702,31 @@ export default function AtlasPage() {
     );
   }
 
+  function renderReportsAccess() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Administration"
+          title="Reports & Access"
+          detail="Export Atlas records and manage simple team access profiles without adding dashboard clutter."
+        />
+        <ReportsAccessCenter
+          isMobile={isMobile}
+          colors={colors}
+          data={{
+            workOrders: serviceRecords,
+            assets: assetRecords,
+            vendors: vendorRecords,
+            contacts: contactRecords,
+            procedures: procedureRecords,
+            calendar: calendarItems,
+            documents: intakeDocs,
+          }}
+        />
+      </section>
+    );
+  }
+
   function renderScreen() {
     let content: React.ReactNode;
 
@@ -17728,6 +17754,7 @@ export default function AtlasPage() {
     else if (screen === "links") content = renderWorkLinks();
     else if (screen === "qr") content = renderQRCodes();
     else if (screen === "scan") content = renderQRScanner();
+    else if (screen === "reports") content = renderReportsAccess();
     else content = renderAssistant();
 
     // Calendar already has its own navy shell. Every other section uses the
