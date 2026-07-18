@@ -92,6 +92,8 @@ export default function MaintenancePlanningIntelligence({
   onAskAtlas,
 }: Props) {
   const [savingId, setSavingId] = useState("");
+  const [draftSuggestion, setDraftSuggestion] =
+    useState<MaintenanceSuggestion | null>(null);
 
   const activeWork = useMemo(
     () =>
@@ -208,9 +210,16 @@ export default function MaintenancePlanningIntelligence({
     setSavingId(suggestion.id);
     try {
       await onCreatePreventiveMaintenance(suggestion);
+      setDraftSuggestion(null);
     } finally {
       setSavingId("");
     }
+  }
+
+  function updateDraft(patch: Partial<MaintenanceSuggestion>) {
+    setDraftSuggestion((current) =>
+      current ? { ...current, ...patch } : current,
+    );
   }
 
   return (
@@ -425,7 +434,7 @@ export default function MaintenancePlanningIntelligence({
                 <button
                   type="button"
                   disabled={savingId === suggestion.id}
-                  onClick={() => void createSuggestion(suggestion)}
+                  onClick={() => setDraftSuggestion({ ...suggestion })}
                   style={{
                     marginTop: 9,
                     border: `1px solid ${colors.line}`,
@@ -441,7 +450,7 @@ export default function MaintenancePlanningIntelligence({
                 >
                   {savingId === suggestion.id
                     ? "Creating…"
-                    : "Create Preventive Maintenance"}
+                    : "Review Draft Work Order"}
                 </button>
               </div>
             ))
@@ -469,8 +478,283 @@ export default function MaintenancePlanningIntelligence({
           </div>
         </Panel>
       </div>
+
+      {draftSuggestion ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Review preventive maintenance draft"
+          onClick={() => {
+            if (!savingId) setDraftSuggestion(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10000,
+            background: "rgba(10, 22, 39, 0.62)",
+            display: "grid",
+            placeItems: "center",
+            padding: isMobile ? 12 : 24,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(620px, 100%)",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              borderRadius: 18,
+              border: `1px solid ${colors.line}`,
+              background: colors.card,
+              boxShadow: "0 22px 70px rgba(0,0,0,0.28)",
+            }}
+          >
+            <div
+              style={{
+                padding: isMobile ? 16 : 20,
+                background: colors.navy,
+                color: "#fff",
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    color: colors.gold,
+                    fontSize: 10,
+                    fontWeight: 950,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Draft Work Order
+                </div>
+                <h3 style={{ margin: "5px 0 0", fontSize: 20 }}>
+                  Review Before Saving
+                </h3>
+              </div>
+              <button
+                type="button"
+                disabled={Boolean(savingId)}
+                onClick={() => setDraftSuggestion(null)}
+                aria-label="Close draft review"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.35)",
+                  borderRadius: 9,
+                  background: "transparent",
+                  color: "#fff",
+                  minWidth: 36,
+                  height: 36,
+                  fontSize: 20,
+                  cursor: savingId ? "wait" : "pointer",
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: isMobile ? 16 : 20 }}>
+              <label style={fieldLabelStyle}>
+                Work order title
+                <input
+                  value={draftSuggestion.title}
+                  onChange={(event) => updateDraft({ title: event.target.value })}
+                  style={inputStyle(colors)}
+                />
+              </label>
+
+              <div
+                style={{
+                  marginTop: 12,
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
+                }}
+              >
+                <label style={fieldLabelStyle}>
+                  Repeat every
+                  <input
+                    type="number"
+                    min={1}
+                    value={draftSuggestion.interval}
+                    onChange={(event) =>
+                      updateDraft({
+                        interval: Math.max(1, Number(event.target.value) || 1),
+                      })
+                    }
+                    style={inputStyle(colors)}
+                  />
+                </label>
+
+                <label style={fieldLabelStyle}>
+                  Frequency
+                  <select
+                    value={draftSuggestion.unit}
+                    onChange={(event) =>
+                      updateDraft({
+                        unit: event.target.value as WorkOrderRecurrenceUnit,
+                      })
+                    }
+                    style={inputStyle(colors)}
+                  >
+                    <option value="Days">Days</option>
+                    <option value="Weeks">Weeks</option>
+                    <option value="Months">Months</option>
+                    <option value="Years">Years</option>
+                  </select>
+                </label>
+
+                <label style={fieldLabelStyle}>
+                  Season
+                  <select
+                    value={draftSuggestion.season}
+                    onChange={(event) =>
+                      updateDraft({
+                        season: event.target.value as WorkSeason,
+                      })
+                    }
+                    style={inputStyle(colors)}
+                  >
+                    <option value="Year-Round">Year-Round</option>
+                    <option value="Spring">Spring</option>
+                    <option value="Summer">Summer</option>
+                    <option value="Fall">Fall</option>
+                    <option value="Winter">Winter</option>
+                  </select>
+                </label>
+
+                <label style={fieldLabelStyle}>
+                  Priority
+                  <select
+                    value={draftSuggestion.priority}
+                    onChange={(event) =>
+                      updateDraft({
+                        priority: event.target.value as
+                          | "Low"
+                          | "Medium"
+                          | "High",
+                      })
+                    }
+                    style={inputStyle(colors)}
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                  </select>
+                </label>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 14,
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 12,
+                  background: colors.panel,
+                  padding: 12,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                }}
+              >
+                <div>
+                  <strong>Procedure:</strong> {draftSuggestion.title}
+                </div>
+                <div>
+                  <strong>Asset:</strong>{" "}
+                  {draftSuggestion.assetName || "No linked asset"}
+                </div>
+                <div>
+                  <strong>Reason:</strong> {draftSuggestion.reason}
+                </div>
+                <div>
+                  <strong>Schedule:</strong> Every {draftSuggestion.interval}{" "}
+                  {draftSuggestion.unit}
+                  {draftSuggestion.season !== "Year-Round"
+                    ? ` · ${draftSuggestion.season}`
+                    : ""}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 18,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 9,
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={Boolean(savingId)}
+                  onClick={() => setDraftSuggestion(null)}
+                  style={{
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 10,
+                    background: colors.panel,
+                    padding: "10px 13px",
+                    fontWeight: 900,
+                    cursor: savingId ? "wait" : "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    Boolean(savingId) || !draftSuggestion.title.trim()
+                  }
+                  onClick={() => void createSuggestion(draftSuggestion)}
+                  style={{
+                    border: 0,
+                    borderRadius: 10,
+                    background: colors.gold,
+                    color: colors.navy,
+                    padding: "10px 14px",
+                    fontWeight: 950,
+                    cursor: savingId ? "wait" : "pointer",
+                    opacity:
+                      savingId || !draftSuggestion.title.trim() ? 0.6 : 1,
+                  }}
+                >
+                  {savingId ? "Saving…" : "Save Preventive Maintenance"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </section>
   );
+}
+
+
+const fieldLabelStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 6,
+  fontSize: 11,
+  fontWeight: 900,
+};
+
+function inputStyle(colors: Props["colors"]): React.CSSProperties {
+  return {
+    width: "100%",
+    minHeight: 42,
+    boxSizing: "border-box",
+    border: `1px solid ${colors.line}`,
+    borderRadius: 10,
+    background: colors.panel,
+    color: "inherit",
+    padding: "9px 10px",
+    fontSize: 13,
+    fontWeight: 700,
+    outline: "none",
+  };
 }
 
 function SummaryCard({
