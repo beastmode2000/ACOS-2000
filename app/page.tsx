@@ -1103,9 +1103,15 @@ function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
   const colorName = (record.colorName ||
     colorNameFromLegacyColorId(rawColorId)) as CalendarColorName;
 
+  const baseDate = record.date ?? todayISO();
+  const normalizedDate =
+    typeof baseDate === "string" && baseDate.length >= 10
+      ? baseDate.slice(0, 10)
+      : localISODate(new Date(String(baseDate)));
+
   return {
     id: String(record.id || slugify(title)),
-    date: String(record.date ?? todayISO()),
+    date: normalizedDate,
     time: String(record.time || ""),
     title,
     area: categoryLabel,
@@ -7259,6 +7265,7 @@ export default function AtlasPage() {
     }
 
     setSelectedCalendarDate(record.date);
+    setCalendarCursor(calendarDateValue(record.date));
 
     const saved = await postAtlasRecord("calendar", {
       ...record,
