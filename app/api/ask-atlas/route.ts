@@ -32,6 +32,7 @@ type AskAtlasResult = {
 type OpenAIContent = {
   type?: string;
   text?: string;
+  refusal?: string;
 };
 
 type OpenAIOutputItem = {
@@ -44,12 +45,8 @@ type OpenAIResponsePayload = {
   status?: string;
   output_text?: string;
   output?: OpenAIOutputItem[];
-  incomplete_details?: {
-    reason?: string;
-  };
-  error?: {
-    message?: string;
-  };
+  incomplete_details?: { reason?: string };
+  error?: { message?: string };
 };
 
 type CacheEntry = {
@@ -61,18 +58,17 @@ const manualCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 function extractOutputText(payload: OpenAIResponsePayload): string {
-  if (
-    typeof payload.output_text === "string" &&
-    payload.output_text.trim()
-  ) {
+  if (typeof payload.output_text === "string" && payload.output_text.trim()) {
     return payload.output_text.trim();
   }
 
   return (payload.output || [])
     .flatMap((item) => item.content || [])
-    .map((content) =>
-      typeof content.text === "string" ? content.text : "",
-    )
+    .map((content) => {
+      if (typeof content.text === "string") return content.text;
+      if (typeof content.refusal === "string") return content.refusal;
+      return "";
+    })
     .filter(Boolean)
     .join("\n")
     .trim();
@@ -90,7 +86,6 @@ function parseJsonResponse(outputText: string): unknown | null {
   } catch {
     const firstBrace = cleaned.indexOf("{");
     const lastBrace = cleaned.lastIndexOf("}");
-
     if (firstBrace >= 0 && lastBrace > firstBrace) {
       try {
         return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
@@ -98,7 +93,6 @@ function parseJsonResponse(outputText: string): unknown | null {
         return null;
       }
     }
-
     return null;
   }
 }
@@ -111,14 +105,11 @@ function isManualQuestion(question: string): boolean {
 
 function normalizeManual(entry: unknown): ManualCandidate | null {
   if (!entry || typeof entry !== "object") return null;
-
   const item = entry as Record<string, unknown>;
   const url = String(item.url ?? "").trim();
-
   if (!/^https:\/\//i.test(url)) return null;
 
   let sourceDomain = String(item.sourceDomain ?? "").trim();
-
   try {
     sourceDomain = new URL(url).hostname.replace(/^www\./i, "");
   } catch {
@@ -126,14 +117,12 @@ function normalizeManual(entry: unknown): ManualCandidate | null {
   }
 
   const confidenceValue = String(item.confidence ?? "Medium");
-
   const confidence: ManualCandidate["confidence"] =
     confidenceValue === "High" || confidenceValue === "Low"
       ? confidenceValue
       : "Medium";
 
   const title = String(item.title ?? "").trim();
-
   if (!title) return null;
 
   return {
@@ -142,41 +131,30 @@ function normalizeManual(entry: unknown): ManualCandidate | null {
     model: String(item.model ?? "").trim(),
     url,
     sourceDomain,
-    sourceLabel:
-      String(item.sourceLabel ?? sourceDomain).trim() || sourceDomain,
+    sourceLabel: String(item.sourceLabel ?? sourceDomain).trim() || sourceDomain,
     confidence,
     reason:
-      String(
-        item.reason ?? "Review this result before saving.",
-      ).trim() || "Review this result before saving.",
+      String(item.reason ?? "Review this result before saving.").trim() ||
+      "Review this result before saving.",
     assetId: String(item.assetId ?? "").trim() || undefined,
     assetName: String(item.assetName ?? "").trim() || undefined,
   };
 }
 
 function safeResult(raw: unknown): AskAtlasResult {
-  const source =
-    raw && typeof raw === "object"
-      ? (raw as Record<string, unknown>)
-      : {};
-
+  const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const nestedAnswer = source.answer;
 
   if (typeof nestedAnswer === "string") {
     const nested = parseJsonResponse(nestedAnswer);
-
     if (nested && typeof nested === "object") {
       return safeResult(nested);
     }
   }
 
-  const manuals = (
-    Array.isArray(source.manuals) ? source.manuals : []
-  )
+  const manuals = (Array.isArray(source.manuals) ? source.manuals : [])
     .map(normalizeManual)
-    .filter(
-      (item): item is ManualCandidate => Boolean(item),
-    )
+    .filter((item): item is ManualCandidate => Boolean(item))
     .slice(0, 3);
 
   const answer = String(source.answer ?? "").trim();
@@ -185,59 +163,38 @@ function safeResult(raw: unknown): AskAtlasResult {
     answer:
       answer ||
       (manuals.length
-        ? `I found ${manuals.length} official manual option${
-            manuals.length === 1 ? "" : "s"
-          } below.`
+        ? `I found ${manuals.length} official manual option${manuals.length === 1 ? "" : "s"} below.`
         : "Atlas could not find enough information to answer."),
     manuals,
   };
 }
 
 function makeCacheKey(question: string, atlasJson: string): string {
-  const normalizedQuestion = question
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
+  const normalizedQuestion = question.toLowerCase().replace(/\s+/g, " ").trim();
   let hash = 2166136261;
   const source = `${normalizedQuestion}|${atlasJson}`;
-
   for (let index = 0; index < source.length; index += 1) {
     hash ^= source.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-
   return `${normalizedQuestion}|${hash >>> 0}`;
 }
 
 async function callOpenAI(
   apiKey: string,
   requestBody: Record<string, unknown>,
-): Promise<{
-  ok: boolean;
-  status: number;
-  payload: OpenAIResponsePayload;
-}> {
-  const response = await fetch(
-    "https://api.openai.com/v1/responses",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
+): Promise<{ ok: boolean; status: number; payload: OpenAIResponsePayload }> {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify(requestBody),
+  });
 
-  const payload =
-    (await response.json()) as OpenAIResponsePayload;
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    payload,
-  };
+  const payload = (await response.json()) as OpenAIResponsePayload;
+  return { ok: response.ok, status: response.status, payload };
 }
 
 export async function POST(request: NextRequest) {
@@ -247,74 +204,53 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "Ask Atlas is not connected. Add OPENAI_API_KEY in Vercel and redeploy.",
+        error: "Ask Atlas is not connected. Add OPENAI_API_KEY in Vercel and redeploy.",
       },
       { status: 503 },
     );
   }
 
   let body: AskAtlasRequest;
-
   try {
     body = (await request.json()) as AskAtlasRequest;
   } catch {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "The request was not valid JSON.",
-      },
+      { ok: false, error: "The request was not valid JSON." },
       { status: 400 },
     );
   }
 
   const question = String(body.question ?? "").trim();
-
   const conversation = Array.isArray(body.conversation)
     ? body.conversation.slice(-12)
     : [];
-
   if (!question) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Type a question first.",
-      },
+      { ok: false, error: "Type a question first." },
       { status: 400 },
     );
   }
 
   if (question.length > 4000) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Please shorten the question.",
-      },
+      { ok: false, error: "Please shorten the question." },
       { status: 400 },
     );
   }
 
   let atlasJson = "{}";
-
   try {
     atlasJson = JSON.stringify(body.atlas ?? {});
   } catch {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Atlas could not prepare its records.",
-      },
+      { ok: false, error: "Atlas could not prepare its records." },
       { status: 400 },
     );
   }
 
   if (atlasJson.length > 900_000) {
     return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "The Atlas snapshot is too large for one question.",
-      },
+      { ok: false, error: "The Atlas snapshot is too large for one question." },
       { status: 413 },
     );
   }
@@ -326,13 +262,8 @@ export async function POST(request: NextRequest) {
   if (manualQuestion && allowWebSearch) {
     const cacheKey = makeCacheKey(question, atlasJson);
     const cached = manualCache.get(cacheKey);
-
     if (cached && cached.expiresAt > Date.now()) {
-      return NextResponse.json({
-        ok: true,
-        ...cached.result,
-        cached: true,
-      });
+      return NextResponse.json({ ok: true, ...cached.result, cached: true });
     }
 
     const instructions = `You are the manual-finder inside Ask Atlas.
@@ -371,47 +302,26 @@ Return ONLY one JSON object:
     const response = await callOpenAI(apiKey, {
       model,
       instructions,
-      input: `QUESTION
-${question}
-
-RELEVANT ATLAS ASSETS
-${atlasJson}`,
-      tools: [
-        {
-          type: "web_search",
-          search_context_size: "low",
-        },
-      ],
+      input: `QUESTION\n${question}\n\nRELEVANT ATLAS ASSETS\n${atlasJson}`,
+      tools: [{ type: "web_search", search_context_size: "low" }],
       tool_choice: "auto",
       max_output_tokens: 1400,
     });
 
     if (!response.ok) {
-      const providerMessage =
-        response.payload.error?.message?.trim();
-
-      console.error(
-        "Ask Atlas manual search error:",
-        providerMessage || response.payload,
-      );
-
+      const providerMessage = response.payload.error?.message?.trim();
+      console.error("Ask Atlas manual search error:", providerMessage || response.payload);
       return NextResponse.json(
         {
           ok: false,
-          error:
-            providerMessage ||
-            "The manual search could not be completed.",
+          error: providerMessage || "The manual search could not be completed.",
         },
         { status: response.status },
       );
     }
 
     const outputText = extractOutputText(response.payload);
-
-    const parsed = outputText
-      ? parseJsonResponse(outputText)
-      : null;
-
+    const parsed = outputText ? parseJsonResponse(outputText) : null;
     const result = parsed
       ? safeResult(parsed)
       : {
@@ -425,59 +335,24 @@ ${atlasJson}`,
       result,
     });
 
-    return NextResponse.json({
-      ok: true,
-      ...result,
-      cached: false,
-    });
+    return NextResponse.json({ ok: true, ...result, cached: false });
   }
 
   const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas / 2000.
 
-Use only the Atlas snapshot as the authority for private property facts.
-
-Understand the relationships between locations, assets, vendors, contacts, work orders, calendar events, procedures, parts, documents, photos, manuals, and map records.
-
-Resolve record IDs to readable names whenever possible.
-
-Use recent conversation context so follow-up questions make sense.
-
-Help with:
-- Finding and explaining Atlas records
-- Connecting related records
-- Work planning and prioritization
-- Maintenance troubleshooting
-- Procedure and checklist guidance
-- Calendar and follow-up questions
-- Parts, vendor, document, and equipment research
-
-Never invent records, dates, vendors, costs, maintenance history, procedure steps, or document contents.
-
-If Atlas does not contain the answer, say so clearly.
-
-Never claim that a record was created, changed, scheduled, completed, or deleted unless Atlas separately confirms that action.
-
-Give a direct, useful answer.
+Use only the Atlas snapshot as the authority for private property facts. Resolve IDs to readable names. Never invent records, dates, vendors, costs, maintenance history, or document contents. Give a direct useful answer. If the answer is not in Atlas, say so clearly.
 
 Return ONLY one JSON object with this exact shape:
 {
-  "answer": "readable answer",
-  "manuals": []
+  "answer": "readable answer"
 }`;
 
   try {
     const response = await callOpenAI(apiKey, {
       model,
       instructions,
-      input: `RECENT CONVERSATION
-${JSON.stringify(conversation)}
-
-QUESTION
-${question}
-
-ATLAS SNAPSHOT
-${atlasJson}`,
-      max_output_tokens: 1400,
+      input: `RECENT CONVERSATION\n${JSON.stringify(conversation)}\n\nQUESTION\n${question}\n\nATLAS SNAPSHOT\n${atlasJson}`,
+      max_output_tokens: 4000,
       text: {
         format: {
           type: "json_schema",
@@ -486,64 +361,9 @@ ${atlasJson}`,
           schema: {
             type: "object",
             additionalProperties: false,
-            required: ["answer", "manuals"],
+            required: ["answer"],
             properties: {
-              answer: {
-                type: "string",
-              },
-              manuals: {
-                type: "array",
-                maxItems: 0,
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: [
-                    "title",
-                    "manufacturer",
-                    "model",
-                    "url",
-                    "sourceDomain",
-                    "sourceLabel",
-                    "confidence",
-                    "reason",
-                    "assetId",
-                    "assetName",
-                  ],
-                  properties: {
-                    title: {
-                      type: "string",
-                    },
-                    manufacturer: {
-                      type: "string",
-                    },
-                    model: {
-                      type: "string",
-                    },
-                    url: {
-                      type: "string",
-                    },
-                    sourceDomain: {
-                      type: "string",
-                    },
-                    sourceLabel: {
-                      type: "string",
-                    },
-                    confidence: {
-                      type: "string",
-                      enum: ["High", "Medium", "Low"],
-                    },
-                    reason: {
-                      type: "string",
-                    },
-                    assetId: {
-                      type: "string",
-                    },
-                    assetName: {
-                      type: "string",
-                    },
-                  },
-                },
-              },
+              answer: { type: "string" },
             },
           },
         },
@@ -551,51 +371,47 @@ ${atlasJson}`,
     });
 
     if (!response.ok) {
-      const providerMessage =
-        response.payload.error?.message?.trim();
-
-      console.error(
-        "Ask Atlas OpenAI error:",
-        providerMessage || response.payload,
-      );
-
+      const providerMessage = response.payload.error?.message?.trim();
+      console.error("Ask Atlas OpenAI error:", providerMessage || response.payload);
       return NextResponse.json(
         {
           ok: false,
-          error:
-            providerMessage ||
-            "Ask Atlas could not reach the AI service.",
+          error: providerMessage || "Ask Atlas could not reach the AI service.",
         },
         { status: response.status },
       );
     }
 
     const outputText = extractOutputText(response.payload);
+    const parsed = outputText ? parseJsonResponse(outputText) : null;
+    if (!parsed) {
+      const reason = response.payload.incomplete_details?.reason;
+      console.error("Ask Atlas unreadable response:", {
+        status: response.payload.status,
+        reason,
+        outputText,
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            reason === "max_output_tokens"
+              ? "Ask Atlas ran out of response space. Please try the question again."
+              : "Ask Atlas could not read the AI response. Please try again.",
+        },
+        { status: 502 },
+      );
+    }
 
-    const parsed = outputText
-      ? parseJsonResponse(outputText)
-      : null;
+    const result = safeResult(parsed);
 
-    const result = parsed
-      ? safeResult(parsed)
-      : {
-          answer:
-            "Ask Atlas did not return a readable answer.",
-          manuals: [],
-        };
-
-    return NextResponse.json({
-      ok: true,
-      ...result,
-    });
+    return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     console.error("Ask Atlas route error:", error);
-
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "Ask Atlas could not connect to the AI service right now.",
+        error: "Ask Atlas could not connect to the AI service right now.",
       },
       { status: 502 },
     );
