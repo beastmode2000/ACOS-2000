@@ -984,7 +984,7 @@ function normalizeService(
     workCategory: String(
       record.workCategory ||
         (record as AtlasServiceRecord & { category?: string }).category ||
-        "ðŸ”§ Maintenance",
+        "🔧 Maintenance",
     ),
     effort: record.effort || undefined,
     responsibilityArea: String(record.responsibilityArea || ""),
@@ -1248,27 +1248,27 @@ function weatherText(code: number) {
 }
 
 function weatherIcon(code: number) {
-  if ([0].includes(code)) return "â˜€ï¸";
-  if ([1, 2].includes(code)) return "ðŸŒ¤ï¸";
-  if ([3].includes(code)) return "â˜ï¸";
-  if ([45, 48].includes(code)) return "ðŸŒ«ï¸";
-  if ([51, 53, 55, 56, 57].includes(code)) return "ðŸŒ¦ï¸";
-  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "ðŸŒ§ï¸";
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return "â„ï¸";
-  if ([95, 96, 99].includes(code)) return "â›ˆï¸";
-  return "ðŸŒ¡ï¸";
+  if ([0].includes(code)) return "☀️";
+  if ([1, 2].includes(code)) return "🌤️";
+  if ([3].includes(code)) return "☁️";
+  if ([45, 48].includes(code)) return "🌫️";
+  if ([51, 53, 55, 56, 57].includes(code)) return "🌦️";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "🌧️";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "❄️";
+  if ([95, 96, 99].includes(code)) return "⛈️";
+  return "🌡️";
 }
 
 function irrigationAdvice(day: WeatherDay) {
   if (day.precipAmount >= 0.25 || day.precipChance >= 75)
-    return "Rain likely â€” skip irrigation unless pots are dry.";
+    return "Rain likely — skip irrigation unless pots are dry.";
   if (day.precipAmount >= 0.1 || day.precipChance >= 45)
-    return "Possible rain â€” check beds before watering.";
+    return "Possible rain — check beds before watering.";
   if (day.high >= 82 || day.et0 >= 0.18)
-    return "Hot/dry day â€” prioritize pots, new plantings, and exposed beds.";
+    return "Hot/dry day — prioritize pots, new plantings, and exposed beds.";
   if (day.windMax >= 18)
-    return "Windy â€” avoid spray irrigation during peak wind.";
-  return "Good yard-work window â€” normal irrigation check.";
+    return "Windy — avoid spray irrigation during peak wind.";
+  return "Good yard-work window — normal irrigation check.";
 }
 
 function weatherDayPlanning(day: WeatherDay) {
@@ -1638,13 +1638,13 @@ function makeHolidayEvent(
 
 function getUsHolidays(year: number): CalendarItem[] {
   const holidays = [
-    { title: "New Yearâ€™s Day", date: getObservedFixedHoliday(year, 0, 1) },
+    { title: "New Year’s Day", date: getObservedFixedHoliday(year, 0, 1) },
     {
       title: "Martin Luther King Jr. Day",
       date: getNthWeekdayOfMonth(year, 0, 1, 3),
     },
     {
-      title: "Washingtonâ€™s Birthday",
+      title: "Washington’s Birthday",
       date: getNthWeekdayOfMonth(year, 1, 1, 3),
     },
     { title: "Memorial Day", date: getLastWeekdayOfMonth(year, 4, 1) },
@@ -1716,7 +1716,7 @@ function jewishHolidayTitleForDate(date: Date) {
     return day === 15 ? "Pesach I" : "Pesach";
   if (month.includes("sivan") && (day === 6 || day === 7))
     return day === 6 ? "Shavuot I" : "Shavuot II";
-  if (month.includes("av") && day === 9) return "Tisha Bâ€™Av";
+  if (month.includes("av") && day === 9) return "Tisha B’Av";
 
   return "";
 }
@@ -2230,7 +2230,7 @@ const fallbackAssets: AssetRecord[] = [
   },
   {
     id: "craft-cobalt",
-    name: "Craft â€” Cobalt R7",
+    name: "Craft — Cobalt R7",
     locationId: "dock",
     category: "Watercraft",
     status: "Seasonal",
@@ -2275,7 +2275,7 @@ const fallbackWorkOrders: AtlasServiceRecord[] = [
     assetId: "irrigation-controller",
     vendorId: "peterclark",
     date: todayISO(),
-    title: "Weekly landscaping crew â€” waterside beds first",
+    title: "Weekly landscaping crew — waterside beds first",
     status: "Scheduled",
     priority: "Medium",
     notes: "Pat manages crew. Priority: waterside beds first.",
@@ -2381,7 +2381,7 @@ const fallbackProcedures: ProcedureRecord[] = [
     area: "Mechanical Room",
     priority: "High",
     steps: [
-      "DRAFT â€” review technical instructions before use.",
+      "DRAFT — review technical instructions before use.",
       "Check both boilers for faults; follow the on-screen correction steps if a fault is shown.",
       "Check the make-up water container; it should contain 6 gallons. Fill from the hose bib above if needed.",
       "Check recirculation-pump PSI. If under 20, fill the boilers using the hose bib above the make-up water container.",
@@ -2396,7 +2396,7 @@ const fallbackProcedures: ProcedureRecord[] = [
     area: "Landscaping",
     priority: "Seasonal",
     steps: [
-      "Every 6â€“8 weeks according to the soil sample.",
+      "Every 6–8 weeks according to the soil sample.",
       "Mow lawn.",
       "Fill spreader with fertilizer.",
       "Spread evenly across lawn.",
@@ -2470,7 +2470,7 @@ const fallbackProcedures: ProcedureRecord[] = [
     area: "Pool Equipment",
     priority: "High",
     steps: [
-      "DRAFT â€” confirm exact title and linked asset before use.",
+      "DRAFT — confirm exact title and linked asset before use.",
       "Replace sand in filter every 5 years.",
       "Visually inspect and clean wiring and burner system; contact vendor if damage is found.",
       "Inspect burner chamber for scaling inside tubes / heat exchanger.",
@@ -2484,7 +2484,7 @@ const fallbackProcedures: ProcedureRecord[] = [
     area: "Electrical",
     priority: "Normal",
     steps: [
-      "DRAFT â€” confirm exact inverter asset and location before use.",
+      "DRAFT — confirm exact inverter asset and location before use.",
       "Verify switches are set to Auto or On.",
       "Check wiring and electrical connections.",
       "Clean inverter of dust and debris.",
@@ -2531,7 +2531,7 @@ const fallbackProcedures: ProcedureRecord[] = [
     area: "Indoor Pool",
     priority: "High",
     steps: [
-      "DRAFT â€” chemical wording must be confirmed before activation.",
+      "DRAFT — chemical wording must be confirmed before activation.",
       "Keep 10 tabs in the reservoir.",
       "Clean both skimmer baskets.",
       "Empty the in-floor vacuum basket.",
@@ -2618,7 +2618,7 @@ const fallbackCalendar: CalendarItem[] = [
     id: "cal-flooring",
     date: "2026-07-22",
     time: "",
-    title: "5 Star Flooring / Eric â€” Evi's room",
+    title: "5 Star Flooring / Eric — Evi's room",
     area: "Vendor",
     categoryLabel: "Vendor",
     colorId: "vendor",
@@ -2646,7 +2646,7 @@ const fallbackParts: PartRecord[] = [
 const defaultWorkLinks: WorkLinkRecord[] = [
   {
     id: "landscape-help-admin",
-    name: "Landscape Help â€” Admin",
+    name: "Landscape Help — Admin",
     category: "Atlas / Admin Checklist",
     vendor: "Peter Clark Designs / Landscaping Help",
     url: "/landscape-help",
@@ -2659,7 +2659,7 @@ const defaultWorkLinks: WorkLinkRecord[] = [
   },
   {
     id: "landscape-help-crew",
-    name: "Landscape Help â€” Crew Link",
+    name: "Landscape Help — Crew Link",
     category: "Send to Crew / Public Checklist",
     vendor: "Peter Clark Designs / Landscaping Help",
     url: "https://www.atlas2000.com/landscape-help?token=878c3fa681301e6bd6c8deeb6d3818eb9bb33e5125e02048",
@@ -2865,7 +2865,7 @@ function cleanManualOpenUrl(value: string): string {
 const defaultManuals: ManualRecord[] = [
   {
     id: "manual-seadoo-219002349",
-    title: "2024 Sea-Doo GTI, GTR and Wake 170 Series Operatorâ€™s Guide",
+    title: "2024 Sea-Doo GTI, GTR and Wake 170 Series Operator’s Guide",
     category: "Operator / Owner Manuals",
     manufacturer: "BRP / Sea-Doo",
     model: "GTI SE 170",
@@ -2875,7 +2875,7 @@ const defaultManuals: ManualRecord[] = [
     sourceLabel: "Official BRP Operator Guides",
     href: seaDooManualUrl,
     notes:
-      "Official operatorâ€™s guide covering operation, safety, maintenance, troubleshooting, and specifications for the Sea-Doo GTI, GTR, and Wake 170 series.",
+      "Official operator’s guide covering operation, safety, maintenance, troubleshooting, and specifications for the Sea-Doo GTI, GTR, and Wake 170 series.",
     files: [],
     createdAt: new Date().toISOString(),
   },
@@ -3764,7 +3764,8 @@ export default function AtlasPage() {
           }
         }
 
-        {          const apiNormalized = apiCalendar.map(normalizeCalendar);
+        {
+          const apiNormalized = apiCalendar.map(normalizeCalendar);
 
           if (apiNormalized.length) {
             setCalendarItems((current) => {
@@ -4572,10 +4573,10 @@ export default function AtlasPage() {
       lastCompletedDate: "",
       completionHistory: [],
       workType: "Work Order",
-      workCategory: "ðŸ”§ Maintenance",
+      workCategory: "🔧 Maintenance",
       effort: "30 minutes",
       responsibilityArea: "",
-      emoji: "ðŸ”§",
+      emoji: "🔧",
       assignedTo: "",
       locationId: "",
       checklist: [],
@@ -5105,7 +5106,7 @@ export default function AtlasPage() {
       return byName(assetRecords).map((asset) => ({
         id: asset.id,
         name: asset.name,
-        detail: `${asset.category} Â· ${locationName(asset.locationId)}`,
+        detail: `${asset.category} · ${locationName(asset.locationId)}`,
       }));
     if (kind === "Location")
       return [...locations]
@@ -5113,7 +5114,7 @@ export default function AtlasPage() {
         .map((location) => ({
           id: location.id,
           name: location.name,
-          detail: `${location.type} Â· ${location.zone}`,
+          detail: `${location.type} · ${location.zone}`,
         }));
     if (kind === "Vendor")
       return byName(vendorRecords).map((vendor) => ({
@@ -5125,7 +5126,7 @@ export default function AtlasPage() {
       return byTitle(serviceRecords).map((record) => ({
         id: record.id,
         name: record.title,
-        detail: `${formatDate(record.date)} Â· ${record.status}`,
+        detail: `${formatDate(record.date)} · ${record.status}`,
       }));
     if (kind === "Map Label")
       return byLabel(mapLabels).map((label) => ({
@@ -5210,7 +5211,7 @@ export default function AtlasPage() {
             kind: "asset",
             id: asset.id,
             title: asset.name,
-            subtitle: `${asset.category} Â· ${locationName(asset.locationId)}`,
+            subtitle: `${asset.category} · ${locationName(asset.locationId)}`,
             detail: [
               asset.make,
               asset.model,
@@ -5219,7 +5220,7 @@ export default function AtlasPage() {
               asset.notes,
             ]
               .filter(Boolean)
-              .join(" Â· "),
+              .join(" · "),
           }))
         : qrKind === "location"
           ? [...locations]
@@ -5228,7 +5229,7 @@ export default function AtlasPage() {
                 kind: "location",
                 id: location.id,
                 title: location.name,
-                subtitle: `${location.type} Â· ${location.zone}`,
+                subtitle: `${location.type} · ${location.zone}`,
                 detail: location.notes,
               }))
           : qrKind === "vendor"
@@ -5244,7 +5245,7 @@ export default function AtlasPage() {
                   vendor.notes,
                 ]
                   .filter(Boolean)
-                  .join(" Â· "),
+                  .join(" · "),
               }))
             : byLabel(mapLabels).map((label) => ({
                 kind: "map",
@@ -5321,7 +5322,7 @@ export default function AtlasPage() {
         id: `location-${item.id}`,
         type: "Location",
         title: item.name,
-        subtitle: `${item.type} Â· ${item.zone}`,
+        subtitle: `${item.type} · ${item.zone}`,
         detail: item.notes,
         screen: "locations" as Screen,
         locationId: item.id,
@@ -5345,7 +5346,7 @@ export default function AtlasPage() {
         id: `asset-${item.id}`,
         type: "Asset",
         title: item.name,
-        subtitle: `${item.category} Â· ${locationName(item.locationId)} Â· ${item.status}`,
+        subtitle: `${item.category} · ${locationName(item.locationId)} · ${item.status}`,
         detail: [item.make, item.model, item.serial, item.notes].join(" "),
         screen: "assets" as Screen,
         assetId: item.id,
@@ -5366,7 +5367,7 @@ export default function AtlasPage() {
         subtitle:
           [item.organization, item.role, item.category]
             .filter(Boolean)
-            .join(" Â· ") || "Contact",
+            .join(" · ") || "Contact",
         detail: [
           item.phone,
           item.email,
@@ -5381,7 +5382,7 @@ export default function AtlasPage() {
         id: `wo-${item.id}`,
         type: "Work Order",
         title: item.title,
-        subtitle: `${formatDate(item.date)} Â· ${item.status} Â· ${item.priority ?? "Medium"}`,
+        subtitle: `${formatDate(item.date)} · ${item.status} · ${item.priority ?? "Medium"}`,
         detail: `${assetName(item.assetId)} ${vendorName(item.vendorId)} ${item.notes}`,
         screen: "history" as Screen,
         serviceId: item.id,
@@ -5390,7 +5391,7 @@ export default function AtlasPage() {
         id: `procedure-${item.id}`,
         type: "Procedure",
         title: item.title,
-        subtitle: `${item.area} Â· ${item.priority}`,
+        subtitle: `${item.area} · ${item.priority}`,
         detail: item.steps.join(" "),
         screen: "procedures" as Screen,
         procedureId: item.id,
@@ -5399,7 +5400,7 @@ export default function AtlasPage() {
         id: `calendar-${item.id}`,
         type: "Calendar",
         title: item.title,
-        subtitle: `${formatDate(item.date)} Â· ${item.allDay ? "All day" : item.time || "No time"} Â· ${colorForEvent(item).label}`,
+        subtitle: `${formatDate(item.date)} · ${item.allDay ? "All day" : item.time || "No time"} · ${colorForEvent(item).label}`,
         detail: `${item.area} ${item.notes || ""} ${item.linkedName || ""}`,
         screen: "calendar" as Screen,
         calendarId: item.id,
@@ -5408,7 +5409,7 @@ export default function AtlasPage() {
         id: `part-${item.id}`,
         type: "Part",
         title: item.name,
-        subtitle: `${item.category} Â· Qty ${item.quantity}`,
+        subtitle: `${item.category} · Qty ${item.quantity}`,
         detail: item.notes,
         screen: "parts" as Screen,
         partId: item.id,
@@ -5417,7 +5418,7 @@ export default function AtlasPage() {
         id: `document-${item.id}`,
         type: "Document",
         title: item.title,
-        subtitle: `${item.type} Â· ${item.area}`,
+        subtitle: `${item.type} · ${item.area}`,
         detail: `${item.notes} ${item.pastedText || ""} ${item.targetName || ""}`,
         screen: "documents" as Screen,
       })),
@@ -5434,7 +5435,7 @@ export default function AtlasPage() {
         id: `manual-${item.id}`,
         type: "Manual",
         title: item.title,
-        subtitle: `${item.linkedAssetName || "Not linked"} Â· ${item.category}`,
+        subtitle: `${item.linkedAssetName || "Not linked"} · ${item.category}`,
         detail: `${item.manufacturer} ${item.model} ${item.documentNumber} ${item.notes}`,
         screen: "manuals" as Screen,
         manualId: item.id,
@@ -5443,7 +5444,7 @@ export default function AtlasPage() {
         id: `link-${item.id}`,
         type: "Work Link",
         title: item.name,
-        subtitle: `${item.category}${item.vendor ? ` Â· ${item.vendor}` : ""}`,
+        subtitle: `${item.category}${item.vendor ? ` · ${item.vendor}` : ""}`,
         detail: `${item.notes} ${item.url}`,
         screen: "links" as Screen,
       })),
@@ -5522,6 +5523,15 @@ export default function AtlasPage() {
     setQuery("");
     setSearchOpen(false);
     void askAtlas(question);
+  }
+
+  function globalInputLooksLikeQuestion(value: string) {
+    const clean = value.trim();
+    if (!clean) return false;
+    if (clean.endsWith("?")) return true;
+    return /^(what|when|where|who|why|how|can|could|should|would|is|are|do|does|did|based on|tell me|help me|show me)\b/i.test(
+      clean,
+    );
   }
 
   function relatedRecordsFor(source: SearchResult) {
@@ -5676,7 +5686,7 @@ export default function AtlasPage() {
     if (cleanExisting.toLowerCase().includes(cleanIncoming.toLowerCase())) {
       return cleanExisting;
     }
-    return `${cleanExisting}\n\nFast Intake â€” ${new Date().toLocaleDateString()}\n${cleanIncoming}`;
+    return `${cleanExisting}\n\nFast Intake — ${new Date().toLocaleDateString()}\n${cleanIncoming}`;
   }
 
   async function addIntakeFiles(fileList: FileList | File[] | null) {
@@ -6039,7 +6049,7 @@ export default function AtlasPage() {
 
     if (!files.length) {
       throw new Error(
-        "No image was found. On the AI picture, choose Copy imageâ€”not Copy linkâ€”then click Paste Image.",
+        "No image was found. On the AI picture, choose Copy image—not Copy link—then click Paste Image.",
       );
     }
 
@@ -6710,7 +6720,7 @@ export default function AtlasPage() {
               <div>
                 <strong>{doc.title}</strong>
                 <p style={mutedSmallStyle}>
-                  {doc.type} Â· {(doc.files || []).length} file(s)
+                  {doc.type} · {(doc.files || []).length} file(s)
                 </p>
               </div>
             </button>
@@ -6976,7 +6986,7 @@ export default function AtlasPage() {
       lastCompletedDate: "",
       completionHistory: [],
       workType: "Work Order",
-      workCategory: "ðŸ”§ Maintenance",
+      workCategory: "🔧 Maintenance",
       effort: "30 minutes",
       responsibilityArea: "",
       photos: [],
@@ -7543,7 +7553,8 @@ export default function AtlasPage() {
       };
     }
 
-    if (/work order|wo:|maintenance|check|inspect|maintenance/.test(lower)) {      return {
+    if (/work order|wo:|maintenance|check|inspect|maintenance/.test(lower)) {
+      return {
         label: "Maintenance",
         colorId: "maintenance",
         colorName: "gray" as CalendarColorName,
@@ -7850,7 +7861,7 @@ export default function AtlasPage() {
       estimatedTime:
         timeMatch?.[1]?.trim() ||
         selectedProcedure.estimatedTime ||
-        "30â€“60 minutes",
+        "30–60 minutes",
       status: selectedProcedure.status || "Draft",
       updatedAt: new Date().toISOString(),
     });
@@ -8319,7 +8330,7 @@ export default function AtlasPage() {
           assetId: pendingAssistantAction.assetId,
           vendorId: pendingAssistantAction.vendorId,
           workType: "Work Order",
-          workCategory: "ðŸ”§ Maintenance",
+          workCategory: "🔧 Maintenance",
           effort: "30 minutes",
           photos: [],
           documents: [],
@@ -8449,12 +8460,13 @@ export default function AtlasPage() {
 
   async function askAtlas(questionOverride?: string) {
     const question = String(questionOverride ?? assistantQuestion).trim();
-    if (questionOverride) setAssistantQuestion(question);
 
     if (!question) {
       finishAssistantAnswer("Type a question first.");
       return;
     }
+
+    setAssistantQuestion("");
 
     addAssistantTurn("user", question);
     refreshAssistantRecordResults(question);
@@ -8501,9 +8513,9 @@ export default function AtlasPage() {
 
       const lines: string[] = [];
       if (todayCalendar.length) {
-        lines.push("Todayâ€™s schedule:");
+        lines.push("Today’s schedule:");
         todayCalendar.forEach((item) => {
-          lines.push(`â€¢ ${item.time ? `${item.time} â€” ` : ""}${item.title}`);
+          lines.push(`• ${item.time ? `${item.time} — ` : ""}${item.title}`);
         });
       } else {
         lines.push("Nothing is scheduled on your calendar today.");
@@ -8516,11 +8528,11 @@ export default function AtlasPage() {
             (asset) => asset.id === item.assetId,
           )?.name;
           lines.push(
-            `â€¢ ${item.title}${assetName ? ` â€” ${assetName}` : ""}${item.priority ? ` (${item.priority})` : ""}`,
+            `• ${item.title}${assetName ? ` — ${assetName}` : ""}${item.priority ? ` (${item.priority})` : ""}`,
           );
         });
         if (todayWorkOrders.length > 10) {
-          lines.push(`â€¢ ${todayWorkOrders.length - 10} more`);
+          lines.push(`• ${todayWorkOrders.length - 10} more`);
         }
       } else {
         lines.push("", "No work orders are due today.");
@@ -9036,7 +9048,7 @@ export default function AtlasPage() {
       setCalculatorResult("0");
       return;
     }
-    if (value === "âŒ«") {
+    if (value === "⌫") {
       setCalculatorValue((current) => current.slice(0, -1));
       return;
     }
@@ -9091,7 +9103,7 @@ export default function AtlasPage() {
   function normalizePlannerText(value: string) {
     return value
       .toLowerCase()
-      .replace(/[â€“â€”]/g, "-")
+      .replace(/[–—]/g, "-")
       .replace(/[^a-z0-9./&+\-\s]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -9217,7 +9229,7 @@ export default function AtlasPage() {
           /\b(?:urgent|critical|emergency|highest|high|medium|normal|low)\s*(?:priority)?\b/gi,
           " ",
         )
-        .replace(/\s*[-â€“â€”,:;]+\s*$/g, "")
+        .replace(/\s*[-–—,:;]+\s*$/g, "")
         .replace(/\s+/g, " ")
         .trim() || "Untitled task"
     );
@@ -9292,7 +9304,7 @@ export default function AtlasPage() {
               part,
             ),
         )
-        .join(" Â· ");
+        .join(" · ");
 
       return {
         id: uid("plan-task"),
@@ -9493,7 +9505,7 @@ export default function AtlasPage() {
 
             const displayTitle =
               task.recurring && taskTime
-                ? `${task.title} Â· ${formatPlannerTime(taskTime)}`
+                ? `${task.title} · ${formatPlannerTime(taskTime)}`
                 : task.title;
 
             const record = normalizeCalendar({
@@ -9724,7 +9736,7 @@ export default function AtlasPage() {
                   onClick={() => setScreen("dashboard")}
                   style={secondaryButtonStyle}
                 >
-                  â† Dashboard
+                  ← Dashboard
                 </button>
                 <button
                   type="button"
@@ -9753,7 +9765,7 @@ export default function AtlasPage() {
             }}
           >
             <div>
-              <label style={fieldLabelStyle}>Add tasks â€” one per line</label>
+              <label style={fieldLabelStyle}>Add tasks — one per line</label>
               <textarea
                 value={workPlanInput}
                 onChange={(event) =>
@@ -9765,7 +9777,7 @@ export default function AtlasPage() {
                 style={{ ...inputStyle, minHeight: 135, resize: "vertical" }}
               />
               <p style={mutedSmallStyle}>
-                Use plain language. Add â€œlocked,â€ â€œweekly,â€ a weekday, and a
+                Use plain language. Add “locked,” “weekly,” a weekday, and a
                 time when a commitment must not move.
               </p>
             </div>
@@ -9916,8 +9928,8 @@ export default function AtlasPage() {
                               </strong>
                             </div>
                             <div style={{ ...mutedSmallStyle, fontSize: 11 }}>
-                              {task.fixedTime ? `${task.fixedTime} Â· ` : ""}
-                              {minutesLabel(task.minutes)} Â· {task.category}
+                              {task.fixedTime ? `${task.fixedTime} · ` : ""}
+                              {minutesLabel(task.minutes)} · {task.category}
                             </div>
                           </div>
                         ))}
@@ -9989,7 +10001,7 @@ export default function AtlasPage() {
                             }
                             style={plannerMiniButtonStyle}
                           >
-                            âˆ’15
+                            −15
                           </button>
                           <button
                             type="button"
@@ -10074,7 +10086,7 @@ export default function AtlasPage() {
                             }
                             style={plannerMiniButtonStyle}
                           >
-                            âˆ’15
+                            −15
                           </button>
                           <button
                             type="button"
@@ -10208,7 +10220,7 @@ export default function AtlasPage() {
               recurrenceUnit: suggestion.unit,
               season: suggestion.season,
               workType: "Preventive Maintenance",
-              workCategory: "ðŸ”§ Maintenance",
+              workCategory: "🔧 Maintenance",
               photos: [],
               documents: [],
               checklist: [],
@@ -10453,7 +10465,7 @@ export default function AtlasPage() {
                 <h3 style={mapInfoTitleStyle}>{selectedMapLabel.label}</h3>
                 <div style={mapInfoIconRowStyle}>
                   <label title="Add header photo" style={mapIconButtonStyle}>
-                    âœŽ
+                    ✎
                     <input
                       type="file"
                       accept="image/*"
@@ -10466,7 +10478,7 @@ export default function AtlasPage() {
                     onClick={() => setActiveMapPanelTab("info")}
                     style={mapIconButtonStyle}
                   >
-                    Ã—
+                    ×
                   </button>
                 </div>
               </div>
@@ -10600,7 +10612,7 @@ export default function AtlasPage() {
                           onClick={() => toggleMapLabelVendor(vendor.id)}
                           style={mapVendorChipStyle}
                         >
-                          {vendor.name} Ã—
+                          {vendor.name} ×
                         </button>
                       ))}
                     </div>
@@ -10761,7 +10773,7 @@ export default function AtlasPage() {
                 <div>
                   <strong>{location.name}</strong>
                   <p style={mutedSmallStyle}>
-                    {location.type} Â· {location.zone}
+                    {location.type} · {location.zone}
                   </p>
                 </div>
                 <span style={badgeStyle("Monitor")}>
@@ -10798,11 +10810,11 @@ export default function AtlasPage() {
                 <div style={recordInfoGridStyle}>
                   <div style={recordInfoItemStyle}>
                     <span style={fieldLabelStyle}>Type</span>
-                    <strong>{selectedLocation.type || "â€”"}</strong>
+                    <strong>{selectedLocation.type || "—"}</strong>
                   </div>
                   <div style={recordInfoItemStyle}>
                     <span style={fieldLabelStyle}>Zone</span>
-                    <strong>{selectedLocation.zone || "â€”"}</strong>
+                    <strong>{selectedLocation.zone || "—"}</strong>
                   </div>
                 </div>
                 {selectedLocation.notes ? (
@@ -10855,7 +10867,8 @@ export default function AtlasPage() {
                 {locationPhotos.length ? (
                   <div style={photoGridStyle}>
                     {locationPhotos.map((file) => (
-                      <div key={file.id} style={photoManageCardStyle}>                        <button
+                      <div key={file.id} style={photoManageCardStyle}>
+                        <button
                           type="button"
                           onClick={() => openUploadedFile(file)}
                           style={compactPhotoButtonStyle}
@@ -10987,12 +11000,12 @@ export default function AtlasPage() {
                     <div>
                       <strong>{asset.name}</strong>
                       <p style={mutedSmallStyle}>
-                        {asset.category} Â· {locationName(asset.locationId)}
+                        {asset.category} · {locationName(asset.locationId)}
                       </p>
                       <p style={mutedSmallStyle}>
                         {[asset.make, asset.model, asset.serial]
                           .filter(Boolean)
-                          .join(" Â· ")}
+                          .join(" · ")}
                       </p>
                     </div>
                   </div>
@@ -11059,7 +11072,7 @@ export default function AtlasPage() {
                   </div>
 
                   <p style={assetHeaderMetaStyle}>
-                    {selectedAsset.category || "Uncategorized"} Â·{" "}
+                    {selectedAsset.category || "Uncategorized"} ·{" "}
                     {locationName(selectedAsset.locationId)}
                   </p>
 
@@ -11070,7 +11083,7 @@ export default function AtlasPage() {
                       selectedAsset.serial,
                     ]
                       .filter(Boolean)
-                      .join(" Â· ")}
+                      .join(" · ")}
                   </p>
                 </div>
 
@@ -11248,7 +11261,7 @@ export default function AtlasPage() {
                             <small style={mutedSmallStyle}>
                               {[manual.manufacturer, manual.model]
                                 .filter(Boolean)
-                                .join(" Â· ") || manual.category}
+                                .join(" · ") || manual.category}
                             </small>
                           </span>
                           <div style={manualActionRowStyle}>
@@ -11262,7 +11275,7 @@ export default function AtlasPage() {
                                 Open
                               </a>
                             ) : (
-                              <span style={manualNoPdfStyle}>â€”</span>
+                              <span style={manualNoPdfStyle}>—</span>
                             )}
                             <button
                               type="button"
@@ -11421,7 +11434,7 @@ export default function AtlasPage() {
     const contactSubtitle = (contact: ContactRecord) =>
       [contact.organization, contact.role, contact.category]
         .filter(Boolean)
-        .join(" Â· ");
+        .join(" · ");
 
     return (
       <ListDrawerLayout
@@ -11486,7 +11499,7 @@ export default function AtlasPage() {
                       <p style={contactSecondaryLineStyle}>
                         {[contact.phone, contact.email]
                           .filter(Boolean)
-                          .join(" Â· ") || "No phone or email saved"}
+                          .join(" · ") || "No phone or email saved"}
                       </p>
                     </div>
                   </button>
@@ -11718,7 +11731,7 @@ export default function AtlasPage() {
                       <p style={mutedSmallStyle}>
                         {[vendor.phone, vendor.email]
                           .filter(Boolean)
-                          .join(" Â· ")}
+                          .join(" · ")}
                       </p>
                     </div>
                   </div>
@@ -12253,8 +12266,8 @@ export default function AtlasPage() {
                   <div style={weatherIconStyle}>{weatherIcon(day.code)}</div>
                 </div>
 
-                <div style={weatherTempStyle}>{day.high}Â°</div>
-                <div style={weatherLowStyle}>{day.low}Â° low</div>
+                <div style={weatherTempStyle}>{day.high}°</div>
+                <div style={weatherLowStyle}>{day.low}° low</div>
 
                 <div style={weatherBarTrackStyle}>
                   <div
@@ -12303,11 +12316,11 @@ export default function AtlasPage() {
               <div style={weatherDetailGridStyle}>
                 <div style={weatherDetailMetricStyle}>
                   <span>High</span>
-                  <strong>{selectedWeather.high}Â°F</strong>
+                  <strong>{selectedWeather.high}°F</strong>
                 </div>
                 <div style={weatherDetailMetricStyle}>
                   <span>Low</span>
-                  <strong>{selectedWeather.low}Â°F</strong>
+                  <strong>{selectedWeather.low}°F</strong>
                 </div>
                 <div style={weatherDetailMetricStyle}>
                   <span>Rain chance</span>
@@ -12619,7 +12632,7 @@ export default function AtlasPage() {
                               Open
                             </a>
                           ) : (
-                            <span style={manualNoPdfStyle}>â€”</span>
+                            <span style={manualNoPdfStyle}>—</span>
                           )}
                           <button
                             type="button"
@@ -13257,7 +13270,7 @@ export default function AtlasPage() {
                     aria-label="Close document viewer"
                     title="Close"
                   >
-                    Ã—
+                    ×
                   </button>
                 </div>
               </div>
@@ -13567,7 +13580,7 @@ export default function AtlasPage() {
       inboxAnalysisText(aiReadings.temperature) ||
       firstInboxMatch(
         combinedText,
-        /\b(\d+(?:\.\d+)?)\s*(?:Â°\s*)?(?:f|fahrenheit)\b/i,
+        /\b(\d+(?:\.\d+)?)\s*(?:°\s*)?(?:f|fahrenheit)\b/i,
       );
     const ph =
       inboxAnalysisText(aiReadings.ph) ||
@@ -13839,7 +13852,7 @@ export default function AtlasPage() {
       ["PSI", readings.psi],
       [
         "Temperature",
-        readings.temperature ? `${String(readings.temperature)}Â°F` : "",
+        readings.temperature ? `${String(readings.temperature)}°F` : "",
       ],
       ["pH", readings.ph],
       ["Hours", readings.hours],
@@ -13903,7 +13916,7 @@ export default function AtlasPage() {
                       <div style={{ minWidth: 0 }}>
                         <strong>{item.title}</strong>
                         <p style={mutedSmallStyle}>
-                          {item.intakeType} Â· {item.status} Â·{" "}
+                          {item.intakeType} · {item.status} ·{" "}
                           {(item.files || []).length} file(s)
                         </p>
                       </div>
@@ -13929,7 +13942,7 @@ export default function AtlasPage() {
                     {selected.title}
                   </h3>
                   <p style={{ ...mutedSmallStyle, marginTop: 0 }}>
-                    {selected.intakeType} Â· {selected.source || "Manual"} Â·{" "}
+                    {selected.intakeType} · {selected.source || "Manual"} ·{" "}
                     {selected.status}
                   </p>
 
@@ -14038,7 +14051,8 @@ export default function AtlasPage() {
                       onClick={() => openInboxReview(selected)}
                       style={secondaryButtonStyle}
                     >
-                      {analysis.analyzedAt                        ? "Open AI Review"
+                      {analysis.analyzedAt
+                        ? "Open AI Review"
                         : "Open Review Drawer"}
                     </button>
                   </div>
@@ -14518,7 +14532,7 @@ export default function AtlasPage() {
                           Confidence: {suggestedMatch.confidence}
                           {Array.isArray(suggestedMatch.reasons) &&
                           suggestedMatch.reasons.length
-                            ? ` Â· ${suggestedMatch.reasons.join(" Â· ")}`
+                            ? ` · ${suggestedMatch.reasons.join(" · ")}`
                             : ""}
                         </p>
                         <button
@@ -15086,7 +15100,7 @@ export default function AtlasPage() {
                     <div style={{ minWidth: 0 }}>
                       <strong>{doc.title}</strong>
                       <p style={mutedSmallStyle}>
-                        {doc.type} Â· {doc.targetName || "General"} Â·{" "}
+                        {doc.type} · {doc.targetName || "General"} ·{" "}
                         {(doc.files || []).length} file(s)
                       </p>
                     </div>
@@ -15288,7 +15302,7 @@ export default function AtlasPage() {
                     <div style={{ minWidth: 0 }}>
                       <strong>{request.title || "Untitled Request"}</strong>
                       <p style={mutedSmallStyle}>
-                        {request.requesterName || "Owner"} Â·{" "}
+                        {request.requesterName || "Owner"} ·{" "}
                         {request.locationName ||
                           request.assetName ||
                           "No location"}
@@ -15540,7 +15554,7 @@ export default function AtlasPage() {
               {selectedProcedure.title.trim() || "New Procedure"}
             </h3>
             <p style={mutedSmallStyle}>
-              {selectedProcedure.status || "Draft"} Â·{" "}
+              {selectedProcedure.status || "Draft"} ·{" "}
               {selectedProcedure.steps.length} steps
             </p>
           </div>
@@ -15783,7 +15797,7 @@ export default function AtlasPage() {
                     disabled={index === 0}
                     style={smallSubtleButtonStyle}
                   >
-                    â†‘
+                    ↑
                   </button>
                   <button
                     type="button"
@@ -15791,7 +15805,7 @@ export default function AtlasPage() {
                     disabled={index === selectedProcedure.steps.length - 1}
                     style={smallSubtleButtonStyle}
                   >
-                    â†“
+                    ↓
                   </button>
                   <button
                     type="button"
@@ -15804,7 +15818,7 @@ export default function AtlasPage() {
                     }
                     style={tinyDangerButtonStyle}
                   >
-                    Ã—
+                    ×
                   </button>
                 </div>
               </div>
@@ -16020,7 +16034,7 @@ export default function AtlasPage() {
               </div>
               <div>
                 <strong>Area</strong>
-                <span>{selectedProcedure.area || "â€”"}</span>
+                <span>{selectedProcedure.area || "—"}</span>
               </div>
               <div>
                 <strong>Category</strong>
@@ -16028,14 +16042,14 @@ export default function AtlasPage() {
               </div>
               <div>
                 <strong>Estimated Time</strong>
-                <span>{selectedProcedure.estimatedTime || "â€”"}</span>
+                <span>{selectedProcedure.estimatedTime || "—"}</span>
               </div>
               <div>
                 <strong>Updated</strong>
                 <span>
                   {selectedProcedure.updatedAt
                     ? formatDate(selectedProcedure.updatedAt)
-                    : "â€”"}
+                    : "—"}
                 </span>
               </div>
             </div>
@@ -16223,7 +16237,7 @@ export default function AtlasPage() {
                   <div>
                     <strong>{procedure.title}</strong>
                     <p style={mutedSmallStyle}>
-                      {procedure.area} Â· {procedure.category || "General"} Â·{" "}
+                      {procedure.area} · {procedure.category || "General"} ·{" "}
                       {procedure.steps.length} steps
                     </p>
                   </div>
@@ -16309,7 +16323,7 @@ export default function AtlasPage() {
                   }}
                   aria-label="Close procedure editor"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
               <div
@@ -16355,7 +16369,7 @@ export default function AtlasPage() {
                 <div>
                   <strong>{part.name}</strong>
                   <p style={mutedSmallStyle}>
-                    {part.category} Â· Qty {part.quantity} / Min{" "}
+                    {part.category} · Qty {part.quantity} / Min{" "}
                     {part.minQuantity}
                   </p>
                 </div>
@@ -17079,7 +17093,7 @@ export default function AtlasPage() {
                 <span>{link.logoText}</span>
                 <strong>
                   {link.name
-                    .replace("Landscape Help â€” ", "Landscape ")
+                    .replace("Landscape Help — ", "Landscape ")
                     .replace("UniFi Protect / Ubiquiti Cameras", "Cameras")
                     .replace("Hydrawise / Irrigation", "Irrigation")
                     .replace("MaintainX Work Order", "MaintainX")}
@@ -17144,7 +17158,7 @@ export default function AtlasPage() {
                 }
                 style={secondaryButtonStyle}
               >
-                âˆ’
+                −
               </button>
               <button
                 type="button"
@@ -17206,7 +17220,8 @@ export default function AtlasPage() {
                 <iframe
                   src={source}
                   title={previewFile.name}
-                  style={zoomedFrameStyle}                />
+                  style={zoomedFrameStyle}
+                />
               </div>
             ) : source ? (
               <div style={noticeStyle}>
@@ -17337,7 +17352,7 @@ export default function AtlasPage() {
 
                   {assistantLoading ? (
                     <div style={{ ...noticeStyle, lineHeight: 1.5 }}>
-                      Atlas is reviewing property recordsâ€¦
+                      Atlas is reviewing property records...
                     </div>
                   ) : null}
                 </div>
@@ -17366,7 +17381,7 @@ export default function AtlasPage() {
                           void askAtlas();
                       }
                     }}
-                    placeholder="Ask Atlas about the property, records, work, equipment, documents, or manualsâ€¦"
+                    placeholder="Ask Atlas about the property, records, work, equipment, documents, or manuals..."
                     style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
                   />
                   <div style={buttonRowStyle}>
@@ -17382,9 +17397,9 @@ export default function AtlasPage() {
                             : 1,
                       }}
                     >
-                      {assistantLoading ? "Workingâ€¦" : "Ask Atlas"}
+                      {assistantLoading ? "Working..." : "Ask Atlas"}
                     </button>
-                    <span style={mutedSmallStyle}>Ctrl/âŒ˜ + Enter to send</span>
+                    <span style={mutedSmallStyle}>Ctrl/⌘ + Enter to send</span>
                   </div>
                 </div>
               </div>
@@ -17467,7 +17482,7 @@ export default function AtlasPage() {
                             candidate.sourceDomain,
                           ]
                             .filter(Boolean)
-                            .join(" â€¢ ")}
+                            .join(" • ")}
                         </div>
                       </div>
                       <div style={{ lineHeight: 1.5 }}>{candidate.reason}</div>
@@ -17490,7 +17505,7 @@ export default function AtlasPage() {
                           style={goldButtonStyle}
                         >
                           {manualSavingUrl === candidate.url
-                            ? "Savingâ€¦"
+                            ? "Saving…"
                             : "Save to Documents"}
                         </button>
                       </div>
@@ -18047,7 +18062,9 @@ export default function AtlasPage() {
 
                       if (event.key === "Enter") {
                         event.preventDefault();
-                        if (searchResults[searchActiveIndex]) {
+                        if (globalInputLooksLikeQuestion(query)) {
+                          askAtlasFromGlobalSearch();
+                        } else if (searchResults[searchActiveIndex]) {
                           openSearchResult(searchResults[searchActiveIndex]);
                         } else if (query.trim()) {
                           askAtlasFromGlobalSearch();
@@ -18108,7 +18125,7 @@ export default function AtlasPage() {
                             ))
                           ) : (
                             <div style={searchEmptyStyle}>
-                              No direct Atlas records match â€œ{query.trim()}â€.
+                              No direct Atlas records match “{query.trim()}”.
                             </div>
                           )}
 
@@ -18132,7 +18149,7 @@ export default function AtlasPage() {
                                 alignItems: "center",
                               }}
                             >
-                              <strong>Ask Atlas: â€œ{query.trim()}â€</strong>
+                              <strong>Ask Atlas: “{query.trim()}”</strong>
                               <span style={searchTypeBadgeStyle}>AI</span>
                             </span>
                             <span style={mutedSmallStyle}>
@@ -18307,7 +18324,7 @@ export default function AtlasPage() {
                     }}
                     aria-label="Close Atlas AI"
                   >
-                    Ã—
+                    ×
                   </button>
                 </header>
 
@@ -18366,7 +18383,7 @@ export default function AtlasPage() {
 
                   {assistantLoading ? (
                     <div style={{ ...noticeStyle }}>
-                      Atlas is searching your property recordsâ€¦
+                      Atlas is searching your property records…
                     </div>
                   ) : null}
 
@@ -18388,7 +18405,7 @@ export default function AtlasPage() {
                     >
                       <strong>{result.title}</strong>
                       <div style={mutedSmallStyle}>
-                        {result.type} Â· {result.subtitle}
+                        {result.type} · {result.subtitle}
                       </div>
                     </button>
                   ))}
@@ -18533,7 +18550,7 @@ export default function AtlasPage() {
                 "C",
                 "(",
                 ")",
-                "âŒ«",
+                "⌫",
                 "7",
                 "8",
                 "9",
@@ -18584,7 +18601,7 @@ export default function AtlasPage() {
           }}
         >
           <span style={saveToastCheckStyle}>
-            {saveToast.tone === "success" ? "âœ“" : "!"}
+            {saveToast.tone === "success" ? "✓" : "!"}
           </span>
           <div style={{ minWidth: 0 }}>
             <strong>
