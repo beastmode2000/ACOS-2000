@@ -108,7 +108,7 @@ export type ContactRecord = {
   email: string;
   address: string;
   website: string;
-  birthday: string;
+  birthday?: string;
   notes: string;
 };
 
