@@ -38,6 +38,8 @@ function isPublicPath(request: NextRequest) {
   if (pathname === "/apple-touch-icon.png") return true;
   if (pathname === "/login") return true;
   if (pathname === "/api/atlas-login") return true;
+  if (pathname === "/invite") return true;
+  if (pathname === "/api/atlas-invite") return true;
   if (pathname === "/api/atlas-logout") return true;
 
   if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(pathname)) {
