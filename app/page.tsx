@@ -11029,12 +11029,12 @@ export default function AtlasPage() {
                     <div>
                       <strong>{asset.name}</strong>
                       <p style={mutedSmallStyle}>
-                        {asset.category} Â· {locationName(asset.locationId)}
+                        {asset.category} · {locationName(asset.locationId)}
                       </p>
                       <p style={mutedSmallStyle}>
                         {[asset.make, asset.model, asset.serial]
                           .filter(Boolean)
-                          .join(" Â· ")}
+                          .join(" · ")}
                       </p>
                     </div>
                   </div>
@@ -11101,7 +11101,7 @@ export default function AtlasPage() {
                   </div>
 
                   <p style={assetHeaderMetaStyle}>
-                    {selectedAsset.category || "Uncategorized"} Â·{" "}
+                    {selectedAsset.category || "Uncategorized"} ·{" "}
                     {locationName(selectedAsset.locationId)}
                   </p>
 
@@ -11112,7 +11112,7 @@ export default function AtlasPage() {
                       selectedAsset.serial,
                     ]
                       .filter(Boolean)
-                      .join(" Â· ")}
+                      .join(" · ")}
                   </p>
                 </div>
 
@@ -11290,7 +11290,7 @@ export default function AtlasPage() {
                             <small style={mutedSmallStyle}>
                               {[manual.manufacturer, manual.model]
                                 .filter(Boolean)
-                                .join(" Â· ") || manual.category}
+                                .join(" · ") || manual.category}
                             </small>
                           </span>
                           <div style={manualActionRowStyle}>
@@ -11304,7 +11304,7 @@ export default function AtlasPage() {
                                 Open
                               </a>
                             ) : (
-                              <span style={manualNoPdfStyle}>â€”</span>
+                              <span style={manualNoPdfStyle}>—</span>
                             )}
                             <button
                               type="button"
@@ -11468,7 +11468,7 @@ export default function AtlasPage() {
     const contactSubtitle = (contact: ContactRecord) =>
       [contact.organization, contact.role, contact.category]
         .filter(Boolean)
-        .join(" Â· ");
+        .join(" · ");
 
     return (
       <ListDrawerLayout
@@ -11533,7 +11533,7 @@ export default function AtlasPage() {
                       <p style={contactSecondaryLineStyle}>
                         {[contact.phone, contact.email]
                           .filter(Boolean)
-                          .join(" Â· ") || "No phone or email saved"}
+                          .join(" · ") || "No phone or email saved"}
                       </p>
                     </div>
                   </button>
@@ -11785,7 +11785,7 @@ export default function AtlasPage() {
                       <p style={mutedSmallStyle}>
                         {[vendor.phone, vendor.email]
                           .filter(Boolean)
-                          .join(" Â· ")}
+                          .join(" · ")}
                       </p>
                     </div>
                   </div>
@@ -12373,8 +12373,8 @@ export default function AtlasPage() {
                   <div style={weatherIconStyle}>{weatherIcon(day.code)}</div>
                 </div>
 
-                <div style={weatherTempStyle}>{day.high}Â°</div>
-                <div style={weatherLowStyle}>{day.low}Â° low</div>
+                <div style={weatherTempStyle}>{day.high}°</div>
+                <div style={weatherLowStyle}>{day.low}° low</div>
 
                 <div style={weatherBarTrackStyle}>
                   <div
@@ -12423,11 +12423,11 @@ export default function AtlasPage() {
               <div style={weatherDetailGridStyle}>
                 <div style={weatherDetailMetricStyle}>
                   <span>High</span>
-                  <strong>{selectedWeather.high}Â°F</strong>
+                  <strong>{selectedWeather.high}°F</strong>
                 </div>
                 <div style={weatherDetailMetricStyle}>
                   <span>Low</span>
-                  <strong>{selectedWeather.low}Â°F</strong>
+                  <strong>{selectedWeather.low}°F</strong>
                 </div>
                 <div style={weatherDetailMetricStyle}>
                   <span>Rain chance</span>
@@ -12739,7 +12739,7 @@ export default function AtlasPage() {
                               Open
                             </a>
                           ) : (
-                            <span style={manualNoPdfStyle}>â€”</span>
+                            <span style={manualNoPdfStyle}>—</span>
                           )}
                           <button
                             type="button"
@@ -13401,7 +13401,7 @@ export default function AtlasPage() {
                     aria-label="Close document viewer"
                     title="Close"
                   >
-                    Ã—
+                    ×
                   </button>
                 </div>
               </div>
@@ -13711,7 +13711,7 @@ export default function AtlasPage() {
       inboxAnalysisText(aiReadings.temperature) ||
       firstInboxMatch(
         combinedText,
-        /\b(\d+(?:\.\d+)?)\s*(?:Â°\s*)?(?:f|fahrenheit)\b/i,
+        /\b(\d+(?:\.\d+)?)\s*(?:°\s*)?(?:f|fahrenheit)\b/i,
       );
     const ph =
       inboxAnalysisText(aiReadings.ph) ||
@@ -13983,7 +13983,7 @@ export default function AtlasPage() {
       ["PSI", readings.psi],
       [
         "Temperature",
-        readings.temperature ? `${String(readings.temperature)}Â°F` : "",
+        readings.temperature ? `${String(readings.temperature)}°F` : "",
       ],
       ["pH", readings.ph],
       ["Hours", readings.hours],
@@ -14047,7 +14047,7 @@ export default function AtlasPage() {
                       <div style={{ minWidth: 0 }}>
                         <strong>{item.title}</strong>
                         <p style={mutedSmallStyle}>
-                          {item.intakeType} Â· {item.status} Â·{" "}
+                          {item.intakeType} · {item.status} ·{" "}
                           {(item.files || []).length} file(s)
                         </p>
                       </div>
@@ -14073,7 +14073,7 @@ export default function AtlasPage() {
                     {selected.title}
                   </h3>
                   <p style={{ ...mutedSmallStyle, marginTop: 0 }}>
-                    {selected.intakeType} Â· {selected.source || "Manual"} Â·{" "}
+                    {selected.intakeType} · {selected.source || "Manual"} ·{" "}
                     {selected.status}
                   </p>
 
@@ -21836,4 +21836,5 @@ const linkStyle: React.CSSProperties = {
 };
 
       
+
 
