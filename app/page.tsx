@@ -3211,6 +3211,8 @@ export default function AtlasPage() {
     notes: "",
   }));
   const [workLinkMessage, setWorkLinkMessage] = useState("");
+  const [activeAppLink, setActiveAppLink] = useState<WorkLinkRecord | null>(null);
+  const [appQrLink, setAppQrLink] = useState<WorkLinkRecord | null>(null);
   const [quickToolsOpen, setQuickToolsOpen] = useState(false);
   const [calculatorValue, setCalculatorValue] = useState("");
   const [calculatorResult, setCalculatorResult] = useState("0");
@@ -4136,7 +4138,7 @@ export default function AtlasPage() {
     const saved = saveStoredArray(storageKeys.workLinks[0], compactWorkLinks);
     if (!saved) {
       setWorkLinkMessage(
-        "Work Links could not be saved in this browser. Try a smaller custom logo image.",
+        "Apps could not be saved in this browser. Try a smaller custom logo image.",
       );
     }
   }, [ready, workLinks]);
@@ -8981,7 +8983,7 @@ export default function AtlasPage() {
       id: workLinkDraft.id || uid("work-link"),
       name,
       url: normalizedUrl,
-      category: workLinkDraft.category.trim() || "Work Link",
+      category: workLinkDraft.category.trim() || "General",
       vendor: workLinkDraft.vendor?.trim() || "",
       logoText:
         workLinkDraft.logoText.trim().slice(0, 4).toUpperCase() ||
@@ -9004,11 +9006,11 @@ export default function AtlasPage() {
     );
     setWorkLinkEditorOpen(false);
     setWorkLinkMessage(`Saved ${next.name}.`);
-    showSaveToast(`${next.name} was saved to Work Links.`, "success");
+    showSaveToast(`${next.name} was saved to Apps.`, "success");
   }
 
   function deleteWorkLink(link: WorkLinkRecord) {
-    if (!window.confirm(`Delete ${link.name} from Work Links?`)) return;
+    if (!window.confirm(`Delete ${link.name} from Apps?`)) return;
     setWorkLinks((current) => current.filter((item) => item.id !== link.id));
     setWorkLinkEditorOpen(false);
     setWorkLinkMessage(`Deleted ${link.name}.`);
@@ -16616,23 +16618,46 @@ export default function AtlasPage() {
   }
 
   function renderWorkLinks() {
+    const groupedApps = filteredWorkLinks.reduce<Record<string, WorkLinkRecord[]>>(
+      (groups, link) => {
+        const category = link.category?.trim() || "General";
+        if (!groups[category]) groups[category] = [];
+        groups[category].push(link);
+        return groups;
+      },
+      {},
+    );
+
+    const appCategories = Object.entries(groupedApps).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+
+    const resolvedAppUrl = (link: WorkLinkRecord) => {
+      if (typeof window === "undefined") return link.url;
+      try {
+        return new URL(link.url, window.location.origin).toString();
+      } catch {
+        return link.url;
+      }
+    };
+
     return (
       <section style={sectionStyle}>
         <SectionHeader
-          eyebrow="Quick Access"
-          title="Work Links"
-          detail="Open regular work portals, add new links, and edit names, destinations, notes, and logos directly from Atlas."
+          eyebrow="Application Launcher"
+          title="Apps"
+          detail="Open estate systems, portals, mobile tools, and Atlas utilities from one organized launcher. Apps open inside Atlas when the destination allows it, with a new-tab option always available."
           right={
             <div style={buttonRowStyle}>
               <button type="button" onClick={openNewWorkLink} style={goldButtonStyle}>
-                + Add Work Link
+                + Add App
               </button>
               <button
                 type="button"
                 onClick={() => setWorkLinkChooserOpen((current) => !current)}
                 style={secondaryButtonStyle}
               >
-                Edit Work Link
+                Edit Apps
               </button>
             </div>
           }
@@ -16646,7 +16671,7 @@ export default function AtlasPage() {
 
         {workLinkChooserOpen ? (
           <div style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={eyebrowStyle}>Choose a Work Link to Edit</div>
+            <div style={eyebrowStyle}>Choose an App to Edit</div>
             <div style={{ ...buttonRowStyle, marginTop: 10 }}>
               {filteredWorkLinks.map((link) => (
                 <button
@@ -16674,9 +16699,9 @@ export default function AtlasPage() {
               }}
             >
               <div>
-                <div style={eyebrowStyle}>Work Link Editor</div>
+                <div style={eyebrowStyle}>App Editor</div>
                 <h3 style={detailTitleStyle}>
-                  {workLinkDraft.id ? "Edit" : "Add Work Link"}
+                  {workLinkDraft.id ? "Edit App" : "Add App"}
                 </h3>
               </div>
               <button
@@ -16698,14 +16723,14 @@ export default function AtlasPage() {
               }}
             >
               <Field
-                label="Name"
+                label="App name"
                 value={workLinkDraft.name}
                 onChange={(value) =>
                   setWorkLinkDraft((current) => ({ ...current, name: value }))
                 }
               />
               <Field
-                label="URL"
+                label="App URL"
                 value={workLinkDraft.url}
                 onChange={(value) =>
                   setWorkLinkDraft((current) => ({ ...current, url: value }))
@@ -16812,7 +16837,7 @@ export default function AtlasPage() {
                 onClick={saveWorkLink}
                 style={goldButtonStyle}
               >
-                Save Work Link
+                Save App
               </button>
               {workLinkDraft.id ? (
                 <button
@@ -16820,60 +16845,327 @@ export default function AtlasPage() {
                   onClick={() => deleteWorkLink(workLinkDraft)}
                   style={dangerButtonStyle}
                 >
-                  Delete Work Link
+                  Delete App
                 </button>
               ) : null}
             </div>
           </div>
         ) : null}
 
-        <div style={workLinksPageGridStyle}>
-          {filteredWorkLinks.map((link) => (
-            <article
-              key={link.id}
-              style={{ ...workLinkPageCardStyle, position: "relative" }}
-            >
-              <a
-                href={link.url}
-                target="_blank"
-                rel="noreferrer"
+        <div style={{ display: "grid", gap: 24 }}>
+          {appCategories.map(([category, links]) => (
+            <section key={category} style={{ display: "grid", gap: 12 }}>
+              <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "auto minmax(0, 1fr)",
+                  display: "flex",
                   alignItems: "center",
-                  gap: 14,
-                  color: "inherit",
-                  textDecoration: "none",
-                  minWidth: 0,
+                  justifyContent: "space-between",
+                  gap: 12,
+                  paddingBottom: 8,
+                  borderBottom: `1px solid ${colors.line}`,
                 }}
               >
-                <span
-                  style={{
-                    ...workLinkLogoLargeStyle,
-                    background: link.logoBg,
-                    color: link.logoColor || colors.navy,
-                  }}
-                >
-                  <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
-                  {link.logoUrl ? (
-                    <img
-                      src={link.logoUrl}
-                      alt=""
-                      onError={(event) => {
-                        event.currentTarget.style.display = "none";
-                      }}
-                      style={workLinkLogoImageLargeStyle}
-                    />
-                  ) : null}
+                <div>
+                  <div style={eyebrowStyle}>App Category</div>
+                  <h3 style={{ ...detailTitleStyle, margin: 0 }}>{category}</h3>
+                </div>
+                <span style={badgeStyle("Monitor")}>
+                  {links.length} {links.length === 1 ? "app" : "apps"}
                 </span>
+              </div>
 
-                <span style={workLinkPageBodyStyle}>
-                  <strong>{link.name}</strong>
-                </span>
-              </a>
-            </article>
+              <div style={workLinksPageGridStyle}>
+                {links.map((link) => (
+                  <article
+                    key={link.id}
+                    style={{
+                      ...workLinkPageCardStyle,
+                      position: "relative",
+                      display: "grid",
+                      gridTemplateRows: "1fr auto",
+                      alignItems: "stretch",
+                      gap: 12,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setActiveAppLink(link)}
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        padding: 0,
+                        margin: 0,
+                        display: "grid",
+                        justifyItems: "center",
+                        alignContent: "center",
+                        gap: 12,
+                        color: "inherit",
+                        cursor: "pointer",
+                        minWidth: 0,
+                        width: "100%",
+                        minHeight: 132,
+                      }}
+                      aria-label={`Open ${link.name}`}
+                    >
+                      <span
+                        style={{
+                          ...workLinkLogoLargeStyle,
+                          width: 68,
+                          height: 68,
+                          borderRadius: 20,
+                          background: link.logoBg,
+                          color: link.logoColor || colors.navy,
+                          boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
+                        }}
+                      >
+                        <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
+                        {link.logoUrl ? (
+                          <img
+                            src={link.logoUrl}
+                            alt=""
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                            style={{
+                              ...workLinkLogoImageLargeStyle,
+                              borderRadius: 20,
+                            }}
+                          />
+                        ) : null}
+                      </span>
+
+                      <span
+                        style={{
+                          ...workLinkPageBodyStyle,
+                          justifyItems: "center",
+                          textAlign: "center",
+                        }}
+                      >
+                        <strong style={{ fontSize: 15 }}>{link.name}</strong>
+                        {link.vendor ? (
+                          <span style={mutedSmallStyle}>{link.vendor}</span>
+                        ) : null}
+                      </span>
+                    </button>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setActiveAppLink(link)}
+                        style={{ ...goldButtonStyle, width: "100%" }}
+                      >
+                        Open App
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAppQrLink(link)}
+                        style={{
+                          ...secondaryButtonStyle,
+                          width: 42,
+                          minWidth: 42,
+                          height: 42,
+                          padding: 0,
+                          borderRadius: 12,
+                          fontSize: 20,
+                        }}
+                        aria-label={`Show phone QR code for ${link.name}`}
+                        title="Open on phone"
+                      >
+                        ▦
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
           ))}
         </div>
+
+        {activeAppLink ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`App viewer: ${activeAppLink.name}`}
+            onClick={() => setActiveAppLink(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1800,
+              background: "rgba(7, 23, 47, 0.78)",
+              padding: isMobile ? 8 : 20,
+              display: "flex",
+              alignItems: "stretch",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: "100%",
+                maxWidth: 1280,
+                minHeight: 0,
+                borderRadius: isMobile ? 18 : 22,
+                overflow: "hidden",
+                background: "#FFFFFF",
+                boxShadow: "0 28px 90px rgba(0,0,0,0.42)",
+                display: "grid",
+                gridTemplateRows: "auto minmax(0, 1fr)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "10px 12px 10px 16px",
+                  borderBottom: `1px solid ${colors.line}`,
+                  background: "#FFFFFF",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <strong
+                    style={{
+                      display: "block",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {activeAppLink.name}
+                  </strong>
+                  <span style={mutedSmallStyle}>
+                    {activeAppLink.category || "App"}
+                  </span>
+                </div>
+                <div style={{ ...buttonRowStyle, flexWrap: "nowrap" }}>
+                  <a
+                    href={resolvedAppUrl(activeAppLink)}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={secondaryButtonStyle}
+                  >
+                    New Tab
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setAppQrLink(activeAppLink)}
+                    style={secondaryButtonStyle}
+                  >
+                    Phone QR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveAppLink(null)}
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      border: `1px solid ${colors.line}`,
+                      background: colors.navy3,
+                      color: "#FFFFFF",
+                      fontSize: 22,
+                      fontWeight: 900,
+                      lineHeight: 1,
+                      cursor: "pointer",
+                    }}
+                    aria-label="Close app viewer"
+                    title="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ minHeight: 0, position: "relative", background: colors.panel }}>
+                <iframe
+                  key={activeAppLink.id}
+                  src={resolvedAppUrl(activeAppLink)}
+                  title={activeAppLink.name}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    minHeight: isMobile ? "calc(100dvh - 82px)" : "calc(100vh - 100px)",
+                    border: 0,
+                    background: "#FFFFFF",
+                  }}
+                  allow="camera; microphone; geolocation; clipboard-read; clipboard-write; fullscreen"
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {appQrLink ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Phone QR code: ${appQrLink.name}`}
+            onClick={() => setAppQrLink(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1900,
+              background: "rgba(7, 23, 47, 0.82)",
+              padding: 16,
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <div
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: "min(420px, 100%)",
+                borderRadius: 22,
+                background: "#FFFFFF",
+                padding: 20,
+                boxShadow: "0 28px 90px rgba(0,0,0,0.42)",
+                display: "grid",
+                gap: 16,
+                textAlign: "center",
+              }}
+            >
+              <div>
+                <div style={eyebrowStyle}>Open on Phone</div>
+                <h3 style={{ ...detailTitleStyle, margin: 0 }}>{appQrLink.name}</h3>
+              </div>
+              <div style={qrImageShellStyle}>
+                <img
+                  src={qrImageUrl(resolvedAppUrl(appQrLink), 360)}
+                  alt={`QR code for ${appQrLink.name}`}
+                  style={{ ...qrImageStyle, maxWidth: 320, margin: "0 auto" }}
+                />
+              </div>
+              <p style={mutedSmallStyle}>
+                Scan this code with your phone camera to open the app.
+              </p>
+              <div style={{ ...buttonRowStyle, justifyContent: "center" }}>
+                <a
+                  href={resolvedAppUrl(appQrLink)}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={goldButtonStyle}
+                >
+                  Open Link
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setAppQrLink(null)}
+                  style={secondaryButtonStyle}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     );
   }
@@ -21836,5 +22128,3 @@ const linkStyle: React.CSSProperties = {
 };
 
       
-
-
