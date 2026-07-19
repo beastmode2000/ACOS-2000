@@ -28,12 +28,12 @@ type AtlasCalendarProps = {
   calendarCompactMoreStyle: any;
   calendarCompactPillStyle: any;
   calendarControlPanelStyle: any;
-  calendarCursor: any;
+  calendarCursor: Date;
   calendarDayNameStyle: any;
   calendarDoneBadgeStyle: any;
   calendarDoneMiniStyle: any;
   calendarFilterDropdownStyle: any;
-  calendarFilterLabels: any;
+  calendarFilterLabels: string[];
   calendarFilterListItemStyle: any;
   calendarFilterListStyle: any;
   calendarFilterSummaryStyle: any;
@@ -46,11 +46,11 @@ type AtlasCalendarProps = {
   calendarNavyShellStyle: any;
   calendarPillContentStyle: any;
   calendarPillStyle: any;
-  calendarPlainColors: any;
+  calendarPlainColors: any[];
   calendarSelectedEventRowStyle: any;
   calendarTodayBoxStyle: any;
   calendarTodayItemStyle: any;
-  calendarView: any;
+  calendarView: "month" | "week";
   calendarWeatherIconStyle: any;
   calendarWeekStyle: any;
   calendarWhiteDrawerStyle: any;
@@ -63,31 +63,31 @@ type AtlasCalendarProps = {
   dangerButtonStyle: any;
   deleteCalendarItem: any;
   editorHeaderStyle: any;
-  expandedCalendarItems: any;
+  expandedCalendarItems: any[];
   eyebrowStyle: any;
   fieldLabelStyle: any;
   formGridStyle: any;
   formatDate: any;
   goldButtonStyle: any;
   inputStyle: any;
-  isMobile: any;
-  linkTypeOptions: any;
-  locations: any;
-  monthCells: any;
+  isMobile: boolean;
+  linkTypeOptions: string[];
+  locations: any[];
+  monthCells: any[];
   monthName: any;
   moveCalendarPeriod: any;
   moveCalendarYear: any;
   mutedSmallStyle: any;
   openCalendarItem: any;
-  reminderOptions: any;
-  repeatOptions: any;
+  reminderOptions: string[];
+  repeatOptions: string[];
   saveCalendarItem: any;
   secondaryButtonStyle: any;
   selectedCalendar: any;
-  selectedCalendarDate: any;
-  selectedCalendarId: any;
-  selectedDayEvents: any;
-  serviceRecords: any;
+  selectedCalendarDate: string;
+  selectedCalendarId: string;
+  selectedDayEvents: any[];
+  serviceRecords: any[];
   setCalendarCategoryFilters: any;
   setCalendarCursor: any;
   setCalendarDraft: any;
@@ -98,18 +98,18 @@ type AtlasCalendarProps = {
   setSelectedCalendarId: any;
   setShowJewishHolidays: any;
   setShowUsHolidays: any;
-  showCalendarSave: any;
-  showJewishHolidays: any;
-  showUsHolidays: any;
+  showCalendarSave: boolean;
+  showJewishHolidays: boolean;
+  showUsHolidays: boolean;
   stackStyle: any;
-  standardCalendarCategoryLabels: any;
+  standardCalendarCategoryLabels: string[];
   todayISO: any;
   updateCalendarItem: any;
-  vendorRecords: any;
-  weatherByDate: any;
+  vendorRecords: any[];
+  weatherByDate: Map<string, any>;
   weatherIcon: any;
   weatherText: any;
-  weekCells: any;
+  weekCells: any[];
 };
 
 function calendarDateKey(value: unknown): string {
@@ -136,7 +136,6 @@ function calendarDateKey(value: unknown): string {
 export default function AtlasCalendar(props: AtlasCalendarProps) {
   const {
     Field,
-    ListDrawerLayout,
     addCalendarItem,
     assetRecords,
     blankCalendarItem,
@@ -147,8 +146,6 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     calendarCellStyle,
     calendarColorDotStyle,
     calendarColors,
-    calendarCompactControlPanelStyle,
-    calendarControlPanelStyle,
     calendarCursor,
     calendarDayNameStyle,
     calendarDoneBadgeStyle,
@@ -158,7 +155,6 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     calendarFilterListStyle,
     calendarFilterSummaryStyle,
     calendarHeaderStyle,
-    calendarMonthWhitePanelStyle,
     calendarNavyShellStyle,
     calendarPlainColors,
     calendarSelectedEventRowStyle,
@@ -166,8 +162,6 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     calendarTodayItemStyle,
     calendarView,
     calendarWeatherIconStyle,
-    calendarWeekStyle,
-    calendarWhitePanelStyle,
     categoryToColorId,
     checkboxLineStyle,
     colorForEvent,
@@ -236,23 +230,38 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
   }, [selectedCalendarId]);
 
   React.useEffect(() => {
-    if (!selectedCalendarId) setEditorOpen(false);
+    if (!selectedCalendarId) {
+      setEditorOpen(false);
+    }
   }, [selectedCalendarDate, selectedCalendarId]);
 
   React.useEffect(() => {
     if (!detailExpanded) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") collapseDetail();
+      if (event.key !== "Escape") return;
+
+      setDetailExpanded(false);
+      setEditorOpen(false);
+      setSelectedCalendarId("");
+      setCalendarDraft(
+        blankCalendarItem(selectedCalendarDate),
+      );
     };
 
     window.addEventListener("keydown", onKeyDown);
 
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [detailExpanded]);
+    return () =>
+      window.removeEventListener("keydown", onKeyDown);
+  }, [
+    detailExpanded,
+    selectedCalendarDate,
+    blankCalendarItem,
+    setCalendarDraft,
+    setSelectedCalendarId,
+  ]);
 
   const hasSelectedEvent = Boolean(selectedCalendarId);
-  const cells = calendarView === "week" ? weekCells : monthCells;
 
   const calendarTitle =
     calendarView === "week"
@@ -261,13 +270,16 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
         )}`
       : monthName(calendarCursor);
 
-  const visibleEventLimit = isMobile ? 2 : 3;
   const todayKey = todayISO();
 
   const monthWeeks = React.useMemo(() => {
     const weeks: any[][] = [];
 
-    for (let index = 0; index < monthCells.length; index += 7) {
+    for (
+      let index = 0;
+      index < monthCells.length;
+      index += 7
+    ) {
       weeks.push(monthCells.slice(index, index + 7));
     }
 
@@ -284,7 +296,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
 
     if (selectedCalendar.linkedType === "Location") {
       return [...locations]
-        .sort((a: any, b: any) => a.name.localeCompare(b.name))
+        .sort((a: any, b: any) =>
+          a.name.localeCompare(b.name),
+        )
         .map((item: any) => ({
           id: item.id,
           name: item.name,
@@ -319,6 +333,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
   function showDay(date: string) {
     setSelectedCalendarDate(date);
     setSelectedCalendarId("");
+    setCalendarDraft(blankCalendarItem(date));
     setEditorOpen(false);
     setDetailExpanded(true);
   }
@@ -337,7 +352,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
 
   function closeEditor() {
     setSelectedCalendarId("");
-    setCalendarDraft(blankCalendarItem(selectedCalendarDate));
+    setCalendarDraft(
+      blankCalendarItem(selectedCalendarDate),
+    );
     setEditorOpen(false);
   }
 
@@ -345,7 +362,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     setDetailExpanded(false);
     setEditorOpen(false);
     setSelectedCalendarId("");
-    setCalendarDraft(blankCalendarItem(selectedCalendarDate));
+    setCalendarDraft(
+      blankCalendarItem(selectedCalendarDate),
+    );
   }
 
   async function deleteSelectedEvent() {
@@ -354,7 +373,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     await deleteCalendarItem(selectedCalendarId);
 
     setSelectedCalendarId("");
-    setCalendarDraft(blankCalendarItem(selectedCalendarDate));
+    setCalendarDraft(
+      blankCalendarItem(selectedCalendarDate),
+    );
     setEditorOpen(false);
     setDetailExpanded(false);
   }
@@ -373,63 +394,81 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
       cellDateKey === calendarDateKey(todayKey);
 
     const isSelected =
-      cellDateKey === calendarDateKey(selectedCalendarDate);
+      cellDateKey ===
+      calendarDateKey(selectedCalendarDate);
 
     const dayWeather = cellDateKey
       ? weatherByDate.get(cellDateKey)
       : undefined;
+
+    const visibleEventLimit = isMobile ? 2 : 4;
 
     return (
       <button
         key={cell.key}
         type="button"
         disabled={!cellDateKey}
-        onClick={() => cellDateKey && showDay(cellDateKey)}
+        onClick={() =>
+          cellDateKey && showDay(cellDateKey)
+        }
         style={{
           ...calendarCellStyle,
-          minHeight: 0,
+          display: "grid",
+          gridTemplateRows: "auto minmax(0, 1fr)",
+          alignContent: "start",
+          width: "100%",
           height: "100%",
-          padding: isMobile ? "5px 4px" : "8px",
+          minHeight: 0,
+          padding: isMobile ? "4px 3px" : "8px",
           overflow: "hidden",
-          opacity: cell.outside ? 0.45 : 1,
+          boxSizing: "border-box",
+          opacity: cell.outside ? 0.42 : 1,
           borderColor: isSelected
             ? colors.gold
             : isToday
               ? colors.gold2
               : colors.line,
+          borderWidth: isSelected ? 2 : 1,
           background: isSelected
-            ? "#FFFAEB"
+            ? "#FFF8E5"
             : isToday
               ? "#FFFDF3"
               : "#FFFFFF",
           boxShadow: isSelected
-            ? "inset 0 0 0 2px rgba(201,154,61,0.22)"
+            ? "inset 0 0 0 1px rgba(201,154,61,0.18)"
             : "none",
+          borderRadius: isMobile ? 9 : 12,
+          cursor: cellDateKey ? "pointer" : "default",
         }}
       >
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
-            gap: 4,
             alignItems: "center",
+            gap: 3,
+            minWidth: 0,
           }}
         >
           <strong
             style={{
-              fontSize: isMobile ? 11 : 13,
-              color: cell.outside ? colors.muted : colors.navy,
+              color: cell.outside
+                ? colors.muted
+                : colors.navy,
+              fontSize: isMobile ? 10 : 14,
+              lineHeight: 1,
             }}
           >
             {cell.day ?? ""}
           </strong>
 
-          {dayWeather && !isMobile ? (
+          {dayWeather ? (
             <span
               title={weatherText(dayWeather.code)}
               style={{
                 ...calendarWeatherIconStyle,
-                fontSize: 12,
+                fontSize: isMobile ? 9 : 13,
+                lineHeight: 1,
               }}
             >
               {weatherIcon(dayWeather.code)}
@@ -440,9 +479,11 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
         <div
           style={{
             display: "grid",
-            gap: isMobile ? 2 : 3,
-            marginTop: isMobile ? 3 : 5,
+            alignContent: "start",
+            gap: isMobile ? 1 : 3,
+            marginTop: isMobile ? 3 : 7,
             minHeight: 0,
+            overflow: "hidden",
           }}
         >
           {events
@@ -458,30 +499,50 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     editEvent(event);
                   }}
                   style={{
-                    display: "block",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: isMobile ? 2 : 5,
                     minWidth: 0,
                     overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    cursor: "pointer",
-                    borderRadius: 5,
-                    padding: isMobile ? "2px 3px" : "3px 5px",
-                    borderLeft: `3px solid ${eventColor.hex}`,
                     color: eventColor.hex,
                     background: event.completed
-                      ? `${eventColor.hex}22`
+                      ? `${eventColor.hex}20`
                       : `${eventColor.hex}0D`,
-                    fontSize: isMobile ? 8 : 11,
+                    borderRadius: isMobile ? 4 : 6,
+                    padding: isMobile
+                      ? "1px 2px"
+                      : "3px 5px",
+                    fontSize: isMobile ? 7 : 11,
                     fontWeight: 800,
-                    lineHeight: 1.15,
+                    lineHeight: isMobile ? 1.05 : 1.2,
                     textAlign: "left",
-                    textDecoration: event.completed
-                      ? "line-through"
-                      : "none",
+                    cursor: "pointer",
                   }}
                 >
-                  {event.completed ? "✓ " : ""}
-                  {event.title}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: isMobile ? 3 : 6,
+                      height: isMobile ? 3 : 6,
+                      flex: "0 0 auto",
+                      borderRadius: 999,
+                      background: eventColor.hex,
+                    }}
+                  />
+
+                  <span
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      textDecoration: event.completed
+                        ? "line-through"
+                        : "none",
+                    }}
+                  >
+                    {event.title}
+                  </span>
                 </span>
               );
             })}
@@ -490,9 +551,10 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
             <span
               style={{
                 color: colors.muted,
-                fontSize: isMobile ? 8 : 10,
+                fontSize: isMobile ? 7 : 10,
+                lineHeight: 1,
                 fontWeight: 900,
-                paddingLeft: 3,
+                paddingLeft: isMobile ? 1 : 4,
                 textAlign: "left",
               }}
             >
@@ -540,10 +602,12 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
             background: "#FFFFFF",
             border: `1px solid ${colors.line}`,
             borderRadius: isMobile ? 0 : 20,
-            boxShadow: "0 30px 80px rgba(7,27,47,0.34)",
+            boxShadow:
+              "0 30px 80px rgba(7,27,47,0.34)",
             overflowY: "auto",
             overscrollBehavior: "contain",
             padding: isMobile ? 16 : 22,
+            boxSizing: "border-box",
           }}
         >
           <div
@@ -561,7 +625,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
             }}
           >
             <div>
-              <div style={eyebrowStyle}>Calendar Details</div>
+              <div style={eyebrowStyle}>
+                Calendar Details
+              </div>
 
               <h2
                 style={{
@@ -583,17 +649,25 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
           </div>
 
           {!editorOpen ? (
-            <div style={{ ...stackStyle, marginTop: 16 }}>
+            <div
+              style={{
+                ...stackStyle,
+                marginTop: 16,
+              }}
+            >
               <section style={calendarTodayBoxStyle}>
                 <div style={eyebrowStyle}>Scheduled</div>
 
                 {selectedDayEvents.length ? (
                   selectedDayEvents.map((event: any) => {
-                    const eventColor = colorForEvent(event);
+                    const eventColor =
+                      colorForEvent(event);
 
                     return (
                       <button
-                        key={event.instanceId || event.id}
+                        key={
+                          event.instanceId || event.id
+                        }
                         type="button"
                         onClick={() => editEvent(event)}
                         style={{
@@ -601,12 +675,15 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                           borderColor: eventColor.hex,
                           borderLeft: `6px solid ${eventColor.hex}`,
                           background: event.completed
-                            ? `${eventColor.hex}22`
+                            ? `${eventColor.hex}20`
                             : `${eventColor.hex}0D`,
-                          color: eventColor.hex,
                         }}
                       >
-                        <div style={calendarSelectedEventRowStyle}>
+                        <div
+                          style={
+                            calendarSelectedEventRowStyle
+                          }
+                        >
                           <div
                             style={{
                               display: "flex",
@@ -627,33 +704,40 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                                 style={{
                                   display: "block",
                                   color: eventColor.hex,
-                                  textDecoration: event.completed
-                                    ? "line-through"
-                                    : "none",
+                                  textDecoration:
+                                    event.completed
+                                      ? "line-through"
+                                      : "none",
                                 }}
                               >
-                                {event.completed ? "✓ " : ""}
+                                {event.completed
+                                  ? "✓ "
+                                  : ""}
                                 {event.title}
                               </strong>
 
                               <span>
                                 {event.allDay
                                   ? "All day"
-                                  : event.time || "No time"}{" "}
+                                  : event.time ||
+                                    "No time"}{" "}
                                 · {eventColor.label}
                               </span>
 
                               {event.repeat &&
                               event.repeat !== "None" &&
                               event.source === "manual" ? (
-                                <span>Repeats {event.repeat}</span>
+                                <span>
+                                  Repeats {event.repeat}
+                                </span>
                               ) : null}
 
                               {event.linkedType &&
                               event.linkedType !== "None" &&
                               event.linkedName ? (
                                 <span>
-                                  Linked: {event.linkedName}
+                                  Linked:{" "}
+                                  {event.linkedName}
                                 </span>
                               ) : null}
                             </div>
@@ -664,7 +748,8 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                               style={{
                                 ...calendarDoneBadgeStyle,
                                 color: eventColor.hex,
-                                borderColor: eventColor.hex,
+                                borderColor:
+                                  eventColor.hex,
                                 background: `${eventColor.hex}18`,
                               }}
                             >
@@ -712,7 +797,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     margin: 0,
                   }}
                 >
-                  {hasSelectedEvent ? "Edit Event" : "Add Event"}
+                  {hasSelectedEvent
+                    ? "Edit Event"
+                    : "Add Event"}
                 </h3>
 
                 <button
@@ -729,17 +816,22 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   label="Title"
                   value={selectedCalendar.title || ""}
                   onChange={(value: string) =>
-                    updateCalendarItem({ title: value })
+                    updateCalendarItem({
+                      title: value,
+                    })
                   }
                 />
 
                 <Field
                   label="Date"
                   value={
-                    selectedCalendar.date || selectedCalendarDate
+                    selectedCalendar.date ||
+                    selectedCalendarDate
                   }
                   onChange={(value: string) => {
-                    updateCalendarItem({ date: value });
+                    updateCalendarItem({
+                      date: value,
+                    });
                     setSelectedCalendarDate(value);
                   }}
                 />
@@ -751,11 +843,15 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     minWidth: 0,
                   }}
                 >
-                  <span style={fieldLabelStyle}>Time</span>
+                  <span style={fieldLabelStyle}>
+                    Time
+                  </span>
 
                   <input
                     value={selectedCalendar.time || ""}
-                    disabled={!!selectedCalendar.allDay}
+                    disabled={
+                      !!selectedCalendar.allDay
+                    }
                     onChange={(event) =>
                       updateCalendarItem({
                         time: event.currentTarget.value,
@@ -763,9 +859,10 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     }
                     style={{
                       ...inputStyle,
-                      background: selectedCalendar.allDay
-                        ? "#EEF2F6"
-                        : "#FFFFFF",
+                      background:
+                        selectedCalendar.allDay
+                          ? "#EEF2F6"
+                          : "#FFFFFF",
                     }}
                   />
                 </label>
@@ -773,10 +870,13 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                 <label style={checkboxLineStyle}>
                   <input
                     type="checkbox"
-                    checked={!!selectedCalendar.allDay}
+                    checked={
+                      !!selectedCalendar.allDay
+                    }
                     onChange={(event) =>
                       updateCalendarItem({
-                        allDay: event.currentTarget.checked,
+                        allDay:
+                          event.currentTarget.checked,
                       })
                     }
                   />
@@ -790,7 +890,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     minWidth: 0,
                   }}
                 >
-                  <span style={fieldLabelStyle}>Category</span>
+                  <span style={fieldLabelStyle}>
+                    Category
+                  </span>
 
                   <select
                     value={
@@ -799,12 +901,14 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                       ""
                     }
                     onChange={(event) => {
-                      const nextLabel = event.currentTarget.value;
+                      const nextLabel =
+                        event.currentTarget.value;
 
-                      const matchingColor = calendarColors.find(
-                        (color: any) =>
-                          color.label === nextLabel,
-                      );
+                      const matchingColor =
+                        calendarColors.find(
+                          (color: any) =>
+                            color.label === nextLabel,
+                        );
 
                       updateCalendarItem({
                         categoryLabel: nextLabel,
@@ -812,7 +916,8 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                         colorId:
                           matchingColor?.id ||
                           categoryToColorId(nextLabel),
-                        colorName: matchingColor?.colorName,
+                        colorName:
+                          matchingColor?.colorName,
                       });
                     }}
                     style={inputStyle}
@@ -823,14 +928,20 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                       new Set<string>([
                         ...standardCalendarCategoryLabels,
                         ...calendarColors.map(
-                          (color: any) => color.label,
+                          (color: any) =>
+                            color.label,
                         ),
                       ]),
                     )
                       .filter(Boolean)
-                      .sort((a, b) => a.localeCompare(b))
+                      .sort((a, b) =>
+                        a.localeCompare(b),
+                      )
                       .map((label) => (
-                        <option key={label} value={label}>
+                        <option
+                          key={label}
+                          value={label}
+                        >
                           {label}
                         </option>
                       ))}
@@ -844,10 +955,15 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     minWidth: 0,
                   }}
                 >
-                  <span style={fieldLabelStyle}>Color</span>
+                  <span style={fieldLabelStyle}>
+                    Color
+                  </span>
 
                   <select
-                    value={selectedCalendar.colorName || ""}
+                    value={
+                      selectedCalendar.colorName ||
+                      ""
+                    }
                     onChange={(event) =>
                       updateCalendarItem({
                         colorName:
@@ -859,11 +975,16 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   >
                     <option value=""></option>
 
-                    {calendarPlainColors.map((color: any) => (
-                      <option key={color.id} value={color.id}>
-                        {color.label}
-                      </option>
-                    ))}
+                    {calendarPlainColors.map(
+                      (color: any) => (
+                        <option
+                          key={color.id}
+                          value={color.id}
+                        >
+                          {color.label}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </label>
 
@@ -874,10 +995,14 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     minWidth: 0,
                   }}
                 >
-                  <span style={fieldLabelStyle}>Repeat</span>
+                  <span style={fieldLabelStyle}>
+                    Repeat
+                  </span>
 
                   <select
-                    value={selectedCalendar.repeat || ""}
+                    value={
+                      selectedCalendar.repeat || ""
+                    }
                     onChange={(event) =>
                       updateCalendarItem({
                         repeat:
@@ -891,10 +1016,14 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
 
                     {repeatOptions
                       .filter(
-                        (option: string) => option !== "None",
+                        (option: string) =>
+                          option !== "None",
                       )
                       .map((option: string) => (
-                        <option key={option} value={option}>
+                        <option
+                          key={option}
+                          value={option}
+                        >
                           {option}
                         </option>
                       ))}
@@ -908,10 +1037,14 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     minWidth: 0,
                   }}
                 >
-                  <span style={fieldLabelStyle}>Reminder</span>
+                  <span style={fieldLabelStyle}>
+                    Reminder
+                  </span>
 
                   <select
-                    value={selectedCalendar.reminder || ""}
+                    value={
+                      selectedCalendar.reminder || ""
+                    }
                     onChange={(event) =>
                       updateCalendarItem({
                         reminder:
@@ -925,10 +1058,14 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
 
                     {reminderOptions
                       .filter(
-                        (option: string) => option !== "None",
+                        (option: string) =>
+                          option !== "None",
                       )
                       .map((option: string) => (
-                        <option key={option} value={option}>
+                        <option
+                          key={option}
+                          value={option}
+                        >
                           {option}
                         </option>
                       ))}
@@ -942,10 +1079,15 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     minWidth: 0,
                   }}
                 >
-                  <span style={fieldLabelStyle}>Attach To</span>
+                  <span style={fieldLabelStyle}>
+                    Attach To
+                  </span>
 
                   <select
-                    value={selectedCalendar.linkedType || ""}
+                    value={
+                      selectedCalendar.linkedType ||
+                      ""
+                    }
                     onChange={(event) =>
                       updateCalendarItem({
                         linkedType:
@@ -961,10 +1103,14 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
 
                     {linkTypeOptions
                       .filter(
-                        (option: string) => option !== "None",
+                        (option: string) =>
+                          option !== "None",
                       )
                       .map((option: string) => (
-                        <option key={option} value={option}>
+                        <option
+                          key={option}
+                          value={option}
+                        >
                           {option}
                         </option>
                       ))}
@@ -983,38 +1129,51 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   </span>
 
                   <select
-                    value={selectedCalendar.linkedId || ""}
+                    value={
+                      selectedCalendar.linkedId || ""
+                    }
                     disabled={
                       !selectedCalendar.linkedType ||
-                      selectedCalendar.linkedType === "None"
+                      selectedCalendar.linkedType ===
+                        "None"
                     }
                     onChange={(event) => {
-                      const option = linkedOptions.find(
-                        (item: any) =>
-                          item.id === event.currentTarget.value,
-                      );
+                      const option =
+                        linkedOptions.find(
+                          (item: any) =>
+                            item.id ===
+                            event.currentTarget.value,
+                        );
 
                       updateCalendarItem({
-                        linkedId: event.currentTarget.value,
-                        linkedName: option?.name || "",
+                        linkedId:
+                          event.currentTarget.value,
+                        linkedName:
+                          option?.name || "",
                       });
                     }}
                     style={{
                       ...inputStyle,
                       background:
                         !selectedCalendar.linkedType ||
-                        selectedCalendar.linkedType === "None"
+                        selectedCalendar.linkedType ===
+                          "None"
                           ? "#EEF2F6"
                           : "#FFFFFF",
                     }}
                   >
                     <option value=""></option>
 
-                    {linkedOptions.map((option: any) => (
-                      <option key={option.id} value={option.id}>
-                        {option.name}
-                      </option>
-                    ))}
+                    {linkedOptions.map(
+                      (option: any) => (
+                        <option
+                          key={option.id}
+                          value={option.id}
+                        >
+                          {option.name}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </label>
 
@@ -1022,7 +1181,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   label="Notes / Details"
                   value={selectedCalendar.notes || ""}
                   onChange={(value: string) =>
-                    updateCalendarItem({ notes: value })
+                    updateCalendarItem({
+                      notes: value,
+                    })
                   }
                   multiline
                 />
@@ -1030,10 +1191,13 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                 <label style={checkboxLineStyle}>
                   <input
                     type="checkbox"
-                    checked={!!selectedCalendar.completed}
+                    checked={
+                      !!selectedCalendar.completed
+                    }
                     onChange={(event) =>
                       updateCalendarItem({
-                        completed: event.currentTarget.checked,
+                        completed:
+                          event.currentTarget.checked,
                       })
                     }
                   />
@@ -1060,7 +1224,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                 {hasSelectedEvent ? (
                   <button
                     type="button"
-                    onClick={() => void deleteSelectedEvent()}
+                    onClick={() =>
+                      void deleteSelectedEvent()
+                    }
                     style={dangerButtonStyle}
                   >
                     Delete
@@ -1082,281 +1248,383 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     );
   }
 
-  const calendarViewportHeight = isMobile
-    ? "calc(100dvh - 174px)"
-    : "calc(100dvh - 118px)";
+  const calendarHeight = isMobile
+    ? "calc(100dvh - 80px)"
+    : "calc(100dvh - 104px)";
+
+  const controlButtonStyle = {
+    ...secondaryButtonStyle,
+    padding: isMobile ? "6px 8px" : "9px 13px",
+    fontSize: isMobile ? 10 : 13,
+    whiteSpace: "nowrap",
+  };
+
+  const activeControlButtonStyle = {
+    ...goldButtonStyle,
+    padding: isMobile ? "6px 8px" : "9px 13px",
+    fontSize: isMobile ? 10 : 13,
+    whiteSpace: "nowrap",
+  };
 
   return (
     <>
-      <ListDrawerLayout
-        eyebrow=""
-        title=""
-        detail={undefined}
-        isMobile={isMobile}
-        outerStyle={{
+      <section
+        style={{
           ...calendarNavyShellStyle,
-          height: calendarViewportHeight,
+          width: "100%",
+          height: calendarHeight,
           minHeight: 0,
+          padding: isMobile ? 5 : 14,
           overflow: "hidden",
+          boxSizing: "border-box",
         }}
-        listPanelStyleOverride={{
-          ...(calendarView === "month"
-            ? calendarMonthWhitePanelStyle
-            : calendarWhitePanelStyle),
-          height: "100%",
-          minHeight: 0,
-          overflow: "hidden",
-        }}
-        drawerStyleOverride={{
-          display: "none",
-        }}
-        right={
-          <>
-            <button
-              type="button"
-              onClick={() => moveCalendarYear(-1)}
-              style={secondaryButtonStyle}
-            >
-              Previous Year
-            </button>
-
-            <button
-              type="button"
-              onClick={() => moveCalendarPeriod(-1)}
-              style={secondaryButtonStyle}
-            >
-              Previous
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                const today = todayISO();
-                setCalendarCursor(new Date());
-                showDay(today);
-              }}
-              style={secondaryButtonStyle}
-            >
-              Today
-            </button>
-
-            <button
-              type="button"
-              onClick={() => moveCalendarPeriod(1)}
-              style={secondaryButtonStyle}
-            >
-              Next
-            </button>
-
-            <button
-              type="button"
-              onClick={() => moveCalendarYear(1)}
-              style={secondaryButtonStyle}
-            >
-              Next Year
-            </button>
-          </>
-        }
-        list={
-          <div
+      >
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            minHeight: 0,
+            background: "#FFFFFF",
+            borderRadius: isMobile ? 12 : 18,
+            border: `1px solid ${colors.line}`,
+            padding: isMobile ? 5 : 14,
+            boxSizing: "border-box",
+            overflow: "hidden",
+            display: "grid",
+            gridTemplateRows:
+              "auto auto minmax(0, 1fr)",
+            gap: isMobile ? 3 : 8,
+          }}
+        >
+          <header
             style={{
-              ...stackStyle,
               display: "grid",
-              gridTemplateRows:
-                "auto auto minmax(0, 1fr)",
-              height: "100%",
-              minHeight: 0,
-              gap: isMobile ? 6 : 8,
-              overflow: "hidden",
+              gap: isMobile ? 3 : 8,
+              minWidth: 0,
             }}
           >
             <div
-              style={
-                isMobile
-                  ? calendarCompactControlPanelStyle
-                  : calendarControlPanelStyle
-              }
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: isMobile ? 4 : 10,
+                minWidth: 0,
+              }}
             >
               <div
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: isMobile ? "nowrap" : "wrap",
+                  ...calendarHeaderStyle,
+                  fontSize: isMobile ? 16 : 25,
+                  lineHeight: 1,
+                  whiteSpace: "nowrap",
+                  minWidth: 0,
                 }}
               >
-                <div
+                {calendarTitle}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: isMobile ? 3 : 7,
+                  alignItems: "center",
+                  flexWrap: "nowrap",
+                  minWidth: 0,
+                }}
+              >
+                {!isMobile ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      moveCalendarYear(-1)
+                    }
+                    style={controlButtonStyle}
+                  >
+                    Previous Year
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    moveCalendarPeriod(-1)
+                  }
+                  style={controlButtonStyle}
+                >
+                  {isMobile ? "‹" : "Previous"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = todayISO();
+
+                    setCalendarCursor(new Date());
+                    showDay(today);
+                  }}
+                  style={activeControlButtonStyle}
+                >
+                  Today
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    moveCalendarPeriod(1)
+                  }
+                  style={controlButtonStyle}
+                >
+                  {isMobile ? "›" : "Next"}
+                </button>
+
+                {!isMobile ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      moveCalendarYear(1)
+                    }
+                    style={controlButtonStyle}
+                  >
+                    Next Year
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: isMobile ? 3 : 8,
+                minWidth: 0,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setCalendarView("month")
+                }
+                style={
+                  calendarView === "month"
+                    ? activeControlButtonStyle
+                    : controlButtonStyle
+                }
+              >
+                Month
+              </button>
+
+              {!isMobile ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCalendarView("week")
+                  }
+                  style={
+                    calendarView === "week"
+                      ? activeControlButtonStyle
+                      : controlButtonStyle
+                  }
+                >
+                  Week
+                </button>
+              ) : null}
+
+              {!isMobile ? (
+                <select
+                  value={calendarCursor.getFullYear()}
+                  onChange={(event) =>
+                    setCalendarCursor(
+                      (current: Date) =>
+                        new Date(
+                          Number(
+                            event.currentTarget.value,
+                          ),
+                          current.getMonth(),
+                          1,
+                        ),
+                    )
+                  }
                   style={{
-                    ...calendarHeaderStyle,
-                    fontSize: isMobile ? 17 : undefined,
+                    ...inputStyle,
+                    width: 112,
+                    padding: "8px 10px",
+                  }}
+                  aria-label="Calendar year"
+                >
+                  {Array.from(
+                    { length: 31 },
+                    (_, index) =>
+                      new Date().getFullYear() -
+                      15 +
+                      index,
+                  ).map((year) => (
+                    <option
+                      key={year}
+                      value={year}
+                    >
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+
+              <details
+                style={{
+                  ...calendarFilterDropdownStyle,
+                  marginLeft: "auto",
+                  position: "relative",
+                }}
+              >
+                <summary
+                  style={{
+                    ...calendarFilterSummaryStyle,
+                    padding: isMobile
+                      ? "6px 8px"
+                      : "8px 11px",
+                    fontSize: isMobile ? 10 : 13,
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {calendarTitle}
-                </div>
-
-                <div
-                  style={{
-                    ...buttonRowStyle,
-                    flexWrap: "nowrap",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setCalendarView("month")}
-                    style={
-                      calendarView === "month"
-                        ? goldButtonStyle
-                        : secondaryButtonStyle
-                    }
-                  >
-                    Month
-                  </button>
-
-                  {!isMobile ? (
-                    <button
-                      type="button"
-                      onClick={() => setCalendarView("week")}
-                      style={
-                        calendarView === "week"
-                          ? goldButtonStyle
-                          : secondaryButtonStyle
-                      }
-                    >
-                      Week
-                    </button>
-                  ) : null}
-
-                  {!isMobile ? (
-                    <select
-                      value={calendarCursor.getFullYear()}
-                      onChange={(event) =>
-                        setCalendarCursor(
-                          (current: Date) =>
-                            new Date(
-                              Number(event.currentTarget.value),
-                              current.getMonth(),
-                              1,
-                            ),
-                        )
-                      }
-                      style={{
-                        ...inputStyle,
-                        width: 120,
-                        padding: "10px 12px",
-                      }}
-                      aria-label="Calendar year"
-                    >
-                      {Array.from(
-                        { length: 31 },
-                        (_, index) =>
-                          new Date().getFullYear() -
-                          15 +
-                          index,
-                      ).map((year) => (
-                        <option key={year} value={year}>
-                          {year}
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
-                </div>
-              </div>
-
-              <details style={calendarFilterDropdownStyle}>
-                <summary style={calendarFilterSummaryStyle}>
                   Filters
                 </summary>
 
-                <div style={calendarFilterListStyle}>
-                  <label style={calendarFilterListItemStyle}>
+                <div
+                  style={{
+                    ...calendarFilterListStyle,
+                    position: "absolute",
+                    zIndex: 50,
+                    top: "calc(100% + 6px)",
+                    right: 0,
+                    width: isMobile
+                      ? "min(280px, calc(100vw - 28px))"
+                      : 280,
+                    maxHeight: "60vh",
+                    overflowY: "auto",
+                    background: "#FFFFFF",
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 12,
+                    boxShadow:
+                      "0 16px 40px rgba(7,27,47,0.20)",
+                    padding: 10,
+                  }}
+                >
+                  <label
+                    style={calendarFilterListItemStyle}
+                  >
                     <input
                       type="checkbox"
                       checked={showUsHolidays}
                       onChange={() =>
                         setShowUsHolidays(
-                          (current: boolean) => !current,
+                          (current: boolean) =>
+                            !current,
                         )
                       }
                     />
                     US Holidays
                   </label>
 
-                  <label style={calendarFilterListItemStyle}>
+                  <label
+                    style={calendarFilterListItemStyle}
+                  >
                     <input
                       type="checkbox"
                       checked={showJewishHolidays}
                       onChange={() =>
                         setShowJewishHolidays(
-                          (current: boolean) => !current,
+                          (current: boolean) =>
+                            !current,
                         )
                       }
                     />
                     Jewish Holidays
                   </label>
 
-                  {calendarFilterLabels.map((label: string) => (
-                    <label
-                      key={label}
-                      style={calendarFilterListItemStyle}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={
-                          calendarCategoryFilters[label] !== false
+                  {calendarFilterLabels.map(
+                    (label: string) => (
+                      <label
+                        key={label}
+                        style={
+                          calendarFilterListItemStyle
                         }
-                        onChange={() =>
-                          setCalendarCategoryFilters(
-                            (current: any) => ({
-                              ...current,
-                              [label]:
-                                current[label] === false,
-                            }),
-                          )
-                        }
-                      />
-                      {label}
-                    </label>
-                  ))}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            calendarCategoryFilters[
+                              label
+                            ] !== false
+                          }
+                          onChange={() =>
+                            setCalendarCategoryFilters(
+                              (current: any) => ({
+                                ...current,
+                                [label]:
+                                  current[label] ===
+                                  false,
+                              }),
+                            )
+                          }
+                        />
+                        {label}
+                      </label>
+                    ),
+                  )}
                 </div>
               </details>
             </div>
+          </header>
 
-            <div style={calendarWeekStyle}>
-              {[
-                "Sun",
-                "Mon",
-                "Tue",
-                "Wed",
-                "Thu",
-                "Fri",
-                "Sat",
-              ].map((day) => (
-                <div
-                  key={day}
-                  style={{
-                    ...calendarDayNameStyle,
-                    fontSize: isMobile ? 9 : undefined,
-                    padding: isMobile ? "2px 0" : undefined,
-                  }}
-                >
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            {calendarView === "month" ? (
+          <div
+            style={{
+              ...calendarWeekStyle,
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(7, minmax(0, 1fr))",
+              gap: isMobile ? 2 : 5,
+            }}
+          >
+            {[
+              "Sun",
+              "Mon",
+              "Tue",
+              "Wed",
+              "Thu",
+              "Fri",
+              "Sat",
+            ].map((day) => (
               <div
+                key={day}
                 style={{
-                  display: "grid",
-                  gridTemplateRows: `repeat(${monthWeeks.length}, minmax(0, 1fr))`,
-                  gap: isMobile ? 2 : 5,
-                  minHeight: 0,
-                  overflow: "hidden",
+                  ...calendarDayNameStyle,
+                  fontSize: isMobile ? 8 : 12,
+                  padding: isMobile
+                    ? "1px 0"
+                    : "4px 0",
+                  lineHeight: 1,
                 }}
               >
-                {monthWeeks.map((week, weekIndex) => (
+                {isMobile
+                  ? day.slice(0, 1)
+                  : day}
+              </div>
+            ))}
+          </div>
+
+          {calendarView === "month" ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateRows: `repeat(${monthWeeks.length}, minmax(0, 1fr))`,
+                gap: isMobile ? 2 : 5,
+                minHeight: 0,
+                height: "100%",
+                overflow: "hidden",
+              }}
+            >
+              {monthWeeks.map(
+                (week, weekIndex) => (
                   <div
                     key={`month-week-${weekIndex}`}
                     style={{
@@ -1371,30 +1639,32 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                       renderCalendarCell(cell),
                     )}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(7, minmax(0, 1fr))",
-                  minHeight: 0,
-                  overflow: "hidden",
-                  gap: 5,
-                }}
-              >
-                {cells.map((cell: any) =>
-                  renderCalendarCell(cell),
-                )}
-              </div>
-            )}
-          </div>
-        }
-        drawer={null}
-      />
+                ),
+              )}
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(7, minmax(0, 1fr))",
+                gap: 5,
+                minHeight: 0,
+                height: "100%",
+                overflow: "hidden",
+              }}
+            >
+              {weekCells.map((cell: any) =>
+                renderCalendarCell(cell),
+              )}
+            </div>
+          )}
+        </div>
+      </section>
 
-      {detailExpanded ? renderExpandedPanel() : null}
+      {detailExpanded
+        ? renderExpandedPanel()
+        : null}
     </>
   );
 }
