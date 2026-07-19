@@ -231,6 +231,18 @@ async function ensureContactsTable(sql: ReturnType<typeof neon>) {
   `;
 }
 
+async function recordChange(
+  sql: ReturnType<typeof neon>, actor: string, action: string,
+  table: string, recordId: string, record: JsonRecord,
+) {
+  await sql`CREATE TABLE IF NOT EXISTS atlas_change_history (
+    id bigserial PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT NOW(), actor text,
+    action text NOT NULL, table_name text NOT NULL, record_id text, record jsonb
+  )`;
+  await sql`INSERT INTO atlas_change_history (actor, action, table_name, record_id, record)
+    VALUES (${actor || "Atlas user"}, ${action}, ${table}, ${recordId}, ${JSON.stringify(record)}::jsonb)`;
+}
+
 async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   await sql`
     ALTER TABLE atlas_work_orders
@@ -728,6 +740,15 @@ export async function POST(request: NextRequest) {
       body.record && typeof body.record === "object"
         ? (body.record as JsonRecord)
         : {};
+
+    await recordChange(
+      sql,
+      request.headers.get("x-atlas-user-email") || "Atlas user",
+      "save",
+      table || asString(body.table),
+      asString(record.id),
+      record,
+    );
 
     if (!table) {
       return NextResponse.json(
@@ -1290,6 +1311,15 @@ export async function DELETE(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    await recordChange(
+      sql,
+      request.headers.get("x-atlas-user-email") || "Atlas user",
+      "delete",
+      table,
+      id,
+      { id },
+    );
 
     if (table === "vendors") {
       await sql`
