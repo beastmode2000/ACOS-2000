@@ -13,63 +13,63 @@ type AtlasCalendarProps = {
   ListDrawerLayout: any;
   addCalendarItem: any;
   applyCalendarIntake?: any;
-  assetRecords: any;
+  assetRecords: any[];
   blankCalendarItem: any;
-  buttonRowStyle: any;
+  buttonRowStyle: React.CSSProperties;
   byName: any;
   byTitle: any;
-  calendarCategoryFilters: any;
-  calendarCellStyle: any;
-  calendarColorDotStyle: any;
-  calendarColors: any;
-  calendarColorsBoxStyle?: any;
-  calendarCompactCellStyle: any;
-  calendarCompactControlPanelStyle: any;
-  calendarCompactMoreStyle: any;
-  calendarCompactPillStyle: any;
-  calendarControlPanelStyle: any;
+  calendarCategoryFilters: Record<string, boolean>;
+  calendarCellStyle: React.CSSProperties;
+  calendarColorDotStyle: React.CSSProperties;
+  calendarColors: any[];
+  calendarColorsBoxStyle?: React.CSSProperties;
+  calendarCompactCellStyle: React.CSSProperties;
+  calendarCompactControlPanelStyle: React.CSSProperties;
+  calendarCompactMoreStyle: React.CSSProperties;
+  calendarCompactPillStyle: React.CSSProperties;
+  calendarControlPanelStyle: React.CSSProperties;
   calendarCursor: Date;
-  calendarDayNameStyle: any;
-  calendarDoneBadgeStyle: any;
-  calendarDoneMiniStyle: any;
-  calendarFilterDropdownStyle: any;
+  calendarDayNameStyle: React.CSSProperties;
+  calendarDoneBadgeStyle: React.CSSProperties;
+  calendarDoneMiniStyle: React.CSSProperties;
+  calendarFilterDropdownStyle: React.CSSProperties;
   calendarFilterLabels: string[];
-  calendarFilterListItemStyle: any;
-  calendarFilterListStyle: any;
-  calendarFilterSummaryStyle: any;
-  calendarGridStyle: any;
-  calendarHeaderStyle: any;
+  calendarFilterListItemStyle: React.CSSProperties;
+  calendarFilterListStyle: React.CSSProperties;
+  calendarFilterSummaryStyle: React.CSSProperties;
+  calendarGridStyle: React.CSSProperties;
+  calendarHeaderStyle: React.CSSProperties;
   calendarIntakeMessage?: any;
   calendarIntakeText?: any;
-  calendarMonthWhitePanelStyle: any;
-  calendarMoreStyle: any;
-  calendarNavyShellStyle: any;
-  calendarPillContentStyle: any;
-  calendarPillStyle: any;
+  calendarMonthWhitePanelStyle: React.CSSProperties;
+  calendarMoreStyle: React.CSSProperties;
+  calendarNavyShellStyle: React.CSSProperties;
+  calendarPillContentStyle: React.CSSProperties;
+  calendarPillStyle: React.CSSProperties;
   calendarPlainColors: any[];
-  calendarSelectedEventRowStyle: any;
-  calendarTodayBoxStyle: any;
-  calendarTodayItemStyle: any;
+  calendarSelectedEventRowStyle: React.CSSProperties;
+  calendarTodayBoxStyle: React.CSSProperties;
+  calendarTodayItemStyle: React.CSSProperties;
   calendarView: "month" | "week";
-  calendarWeatherIconStyle: any;
-  calendarWeekStyle: any;
-  calendarWhiteDrawerStyle: any;
-  calendarWhitePanelStyle: any;
+  calendarWeatherIconStyle: React.CSSProperties;
+  calendarWeekStyle: React.CSSProperties;
+  calendarWhiteDrawerStyle: React.CSSProperties;
+  calendarWhitePanelStyle: React.CSSProperties;
   categoryToColorId: any;
-  checkboxLineStyle: any;
+  checkboxLineStyle: React.CSSProperties;
   colorForEvent: any;
   colors: any;
-  compactAddBoxStyle: any;
-  dangerButtonStyle: any;
+  compactAddBoxStyle: React.CSSProperties;
+  dangerButtonStyle: React.CSSProperties;
   deleteCalendarItem: any;
-  editorHeaderStyle: any;
+  editorHeaderStyle: React.CSSProperties;
   expandedCalendarItems: any[];
-  eyebrowStyle: any;
-  fieldLabelStyle: any;
-  formGridStyle: any;
+  eyebrowStyle: React.CSSProperties;
+  fieldLabelStyle: React.CSSProperties;
+  formGridStyle: React.CSSProperties;
   formatDate: any;
-  goldButtonStyle: any;
-  inputStyle: any;
+  goldButtonStyle: React.CSSProperties;
+  inputStyle: React.CSSProperties;
   isMobile: boolean;
   linkTypeOptions: string[];
   locations: any[];
@@ -77,12 +77,12 @@ type AtlasCalendarProps = {
   monthName: any;
   moveCalendarPeriod: any;
   moveCalendarYear: any;
-  mutedSmallStyle: any;
+  mutedSmallStyle: React.CSSProperties;
   openCalendarItem: any;
   reminderOptions: string[];
   repeatOptions: string[];
   saveCalendarItem: any;
-  secondaryButtonStyle: any;
+  secondaryButtonStyle: React.CSSProperties;
   selectedCalendar: any;
   selectedCalendarDate: string;
   selectedCalendarId: string;
@@ -101,7 +101,7 @@ type AtlasCalendarProps = {
   showCalendarSave: boolean;
   showJewishHolidays: boolean;
   showUsHolidays: boolean;
-  stackStyle: any;
+  stackStyle: React.CSSProperties;
   standardCalendarCategoryLabels: string[];
   todayISO: any;
   updateCalendarItem: any;
@@ -116,24 +116,25 @@ function calendarDateKey(value: unknown): string {
   if (!value) return "";
 
   if (value instanceof Date) {
-    return Number.isNaN(value.getTime())
-      ? ""
-      : value.toISOString().slice(0, 10);
+    if (Number.isNaN(value.getTime())) return "";
+    return value.toISOString().slice(0, 10);
   }
 
   const text = String(value).trim();
-  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  const directMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
 
-  if (isoMatch) return isoMatch[1];
+  if (directMatch) return directMatch[1];
 
   const parsed = new Date(text);
 
-  return Number.isNaN(parsed.getTime())
-    ? ""
-    : parsed.toISOString().slice(0, 10);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  return parsed.toISOString().slice(0, 10);
 }
 
-export default function AtlasCalendar(props: AtlasCalendarProps) {
+export default function AtlasCalendar(
+  props: AtlasCalendarProps,
+) {
   const {
     Field,
     addCalendarItem,
@@ -162,6 +163,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     calendarTodayItemStyle,
     calendarView,
     calendarWeatherIconStyle,
+    calendarWeekStyle,
     categoryToColorId,
     checkboxLineStyle,
     colorForEvent,
@@ -217,7 +219,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     weekCells,
   } = props;
 
-  const [detailExpanded, setDetailExpanded] = React.useState(false);
+  const [detailOpen, setDetailOpen] = React.useState(false);
   const [editorOpen, setEditorOpen] = React.useState(
     Boolean(selectedCalendarId),
   );
@@ -226,42 +228,26 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     if (!selectedCalendarId) return;
 
     setEditorOpen(true);
-    setDetailExpanded(true);
+    setDetailOpen(true);
   }, [selectedCalendarId]);
 
   React.useEffect(() => {
-    if (!selectedCalendarId) {
-      setEditorOpen(false);
-    }
-  }, [selectedCalendarDate, selectedCalendarId]);
+    if (!detailOpen) return;
 
-  React.useEffect(() => {
-    if (!detailExpanded) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
+    const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-
-      setDetailExpanded(false);
-      setEditorOpen(false);
-      setSelectedCalendarId("");
-      setCalendarDraft(
-        blankCalendarItem(selectedCalendarDate),
-      );
+      closeDetail();
     };
 
-    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", closeOnEscape);
 
-    return () =>
-      window.removeEventListener("keydown", onKeyDown);
-  }, [
-    detailExpanded,
-    selectedCalendarDate,
-    blankCalendarItem,
-    setCalendarDraft,
-    setSelectedCalendarId,
-  ]);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [detailOpen, selectedCalendarDate]);
 
   const hasSelectedEvent = Boolean(selectedCalendarId);
+  const todayKey = calendarDateKey(todayISO());
 
   const calendarTitle =
     calendarView === "week"
@@ -269,8 +255,6 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
           weekCells[0]?.date || selectedCalendarDate,
         )}`
       : monthName(calendarCursor);
-
-  const todayKey = todayISO();
 
   const monthWeeks = React.useMemo(() => {
     const weeks: any[][] = [];
@@ -288,34 +272,36 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
 
   const linkedOptions = React.useMemo(() => {
     if (selectedCalendar.linkedType === "Asset") {
-      return byName(assetRecords).map((item: any) => ({
-        id: item.id,
-        name: item.name,
+      return byName(assetRecords).map((record: any) => ({
+        id: record.id,
+        name: record.name,
       }));
     }
 
     if (selectedCalendar.linkedType === "Location") {
       return [...locations]
         .sort((a: any, b: any) =>
-          a.name.localeCompare(b.name),
+          String(a.name || "").localeCompare(
+            String(b.name || ""),
+          ),
         )
-        .map((item: any) => ({
-          id: item.id,
-          name: item.name,
+        .map((record: any) => ({
+          id: record.id,
+          name: record.name,
         }));
     }
 
     if (selectedCalendar.linkedType === "Vendor") {
-      return byName(vendorRecords).map((item: any) => ({
-        id: item.id,
-        name: item.name,
+      return byName(vendorRecords).map((record: any) => ({
+        id: record.id,
+        name: record.name,
       }));
     }
 
     if (selectedCalendar.linkedType === "Work Order") {
-      return byTitle(serviceRecords).map((item: any) => ({
-        id: item.id,
-        name: item.title,
+      return byTitle(serviceRecords).map((record: any) => ({
+        id: record.id,
+        name: record.title,
       }));
     }
 
@@ -335,19 +321,19 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     setSelectedCalendarId("");
     setCalendarDraft(blankCalendarItem(date));
     setEditorOpen(false);
-    setDetailExpanded(true);
+    setDetailOpen(true);
   }
 
   function editEvent(event: any) {
     openCalendarItem(event);
     setEditorOpen(true);
-    setDetailExpanded(true);
+    setDetailOpen(true);
   }
 
   function startNewEvent() {
     addCalendarItem(selectedCalendarDate);
     setEditorOpen(true);
-    setDetailExpanded(true);
+    setDetailOpen(true);
   }
 
   function closeEditor() {
@@ -358,8 +344,8 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     setEditorOpen(false);
   }
 
-  function collapseDetail() {
-    setDetailExpanded(false);
+  function closeDetail() {
+    setDetailOpen(false);
     setEditorOpen(false);
     setSelectedCalendarId("");
     setCalendarDraft(
@@ -377,68 +363,69 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
       blankCalendarItem(selectedCalendarDate),
     );
     setEditorOpen(false);
-    setDetailExpanded(false);
+    setDetailOpen(false);
   }
 
   function renderCalendarCell(cell: any) {
-    const cellDateKey = calendarDateKey(cell.date);
+    const dateKey = calendarDateKey(cell.date);
 
-    const events = cellDateKey
+    const events = dateKey
       ? expandedCalendarItems.filter(
-          (item: any) =>
-            calendarDateKey(item.date) === cellDateKey,
+          (event: any) =>
+            calendarDateKey(event.date) === dateKey,
         )
       : [];
 
-    const isToday =
-      cellDateKey === calendarDateKey(todayKey);
+    const selected =
+      dateKey === calendarDateKey(selectedCalendarDate);
 
-    const isSelected =
-      cellDateKey ===
-      calendarDateKey(selectedCalendarDate);
+    const today = dateKey === todayKey;
 
-    const dayWeather = cellDateKey
-      ? weatherByDate.get(cellDateKey)
+    const weather = dateKey
+      ? weatherByDate.get(dateKey)
       : undefined;
 
-    const visibleEventLimit = isMobile ? 2 : 4;
+    const visibleLimit = isMobile ? 2 : 4;
 
     return (
       <button
-        key={cell.key}
+        key={cell.key || dateKey}
         type="button"
-        disabled={!cellDateKey}
-        onClick={() =>
-          cellDateKey && showDay(cellDateKey)
-        }
+        disabled={!dateKey}
+        onClick={() => {
+          if (dateKey) showDay(dateKey);
+        }}
         style={{
           ...calendarCellStyle,
+          width: "100%",
+          height: "100%",
+          minWidth: 0,
+          minHeight: 0,
+          overflow: "hidden",
           display: "grid",
           gridTemplateRows: "auto minmax(0, 1fr)",
           alignContent: "start",
-          width: "100%",
-          height: "100%",
-          minHeight: 0,
           padding: isMobile ? "4px 3px" : "8px",
-          overflow: "hidden",
           boxSizing: "border-box",
-          opacity: cell.outside ? 0.42 : 1,
-          borderColor: isSelected
+          borderRadius: isMobile ? 8 : 12,
+          borderWidth: selected ? 2 : 1,
+          borderStyle: "solid",
+          borderColor: selected
             ? colors.gold
-            : isToday
+            : today
               ? colors.gold2
               : colors.line,
-          borderWidth: isSelected ? 2 : 1,
-          background: isSelected
+          background: selected
             ? "#FFF8E5"
-            : isToday
+            : today
               ? "#FFFDF3"
               : "#FFFFFF",
-          boxShadow: isSelected
+          opacity: cell.outside ? 0.45 : 1,
+          boxShadow: selected
             ? "inset 0 0 0 1px rgba(201,154,61,0.18)"
             : "none",
-          borderRadius: isMobile ? 9 : 12,
-          cursor: cellDateKey ? "pointer" : "default",
+          cursor: dateKey ? "pointer" : "default",
+          textAlign: "left",
         }}
       >
         <div
@@ -462,16 +449,16 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
             {cell.day ?? ""}
           </strong>
 
-          {dayWeather ? (
+          {weather ? (
             <span
-              title={weatherText(dayWeather.code)}
+              title={weatherText(weather.code)}
               style={{
                 ...calendarWeatherIconStyle,
-                fontSize: isMobile ? 9 : 13,
+                fontSize: isMobile ? 8 : 13,
                 lineHeight: 1,
               }}
             >
-              {weatherIcon(dayWeather.code)}
+              {weatherIcon(weather.code)}
             </span>
           ) : null}
         </div>
@@ -487,7 +474,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
           }}
         >
           {events
-            .slice(0, visibleEventLimit)
+            .slice(0, visibleLimit)
             .map((event: any) => {
               const eventColor = colorForEvent(event);
 
@@ -504,18 +491,17 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     gap: isMobile ? 2 : 5,
                     minWidth: 0,
                     overflow: "hidden",
-                    color: eventColor.hex,
-                    background: event.completed
-                      ? `${eventColor.hex}20`
-                      : `${eventColor.hex}0D`,
                     borderRadius: isMobile ? 4 : 6,
                     padding: isMobile
                       ? "1px 2px"
                       : "3px 5px",
+                    color: eventColor.hex,
+                    background: event.completed
+                      ? `${eventColor.hex}22`
+                      : `${eventColor.hex}0F`,
                     fontSize: isMobile ? 7 : 11,
                     fontWeight: 800,
                     lineHeight: isMobile ? 1.05 : 1.2,
-                    textAlign: "left",
                     cursor: "pointer",
                   }}
                 >
@@ -547,18 +533,17 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
               );
             })}
 
-          {events.length > visibleEventLimit ? (
+          {events.length > visibleLimit ? (
             <span
               style={{
                 color: colors.muted,
                 fontSize: isMobile ? 7 : 10,
-                lineHeight: 1,
                 fontWeight: 900,
-                paddingLeft: isMobile ? 1 : 4,
-                textAlign: "left",
+                lineHeight: 1,
+                paddingLeft: 2,
               }}
             >
-              +{events.length - visibleEventLimit} more
+              +{events.length - visibleLimit} more
             </span>
           ) : null}
         </div>
@@ -566,13 +551,13 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
     );
   }
 
-  function renderExpandedPanel() {
+  function renderDetailPanel() {
     return (
       <>
         <button
           type="button"
           aria-label="Close calendar details"
-          onClick={collapseDetail}
+          onClick={closeDetail}
           style={{
             position: "fixed",
             inset: 0,
@@ -588,7 +573,6 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
           aria-label={`Calendar details for ${formatDate(
             selectedCalendarDate,
           )}`}
-          onClick={(event) => event.stopPropagation()}
           style={{
             position: "fixed",
             zIndex: 9998,
@@ -599,15 +583,15 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
               ? "100%"
               : "min(720px, calc(100vw - 80px))",
             maxWidth: "100%",
+            padding: isMobile ? 16 : 22,
+            boxSizing: "border-box",
+            overflowY: "auto",
+            overscrollBehavior: "contain",
             background: "#FFFFFF",
             border: `1px solid ${colors.line}`,
             borderRadius: isMobile ? 0 : 20,
             boxShadow:
               "0 30px 80px rgba(7,27,47,0.34)",
-            overflowY: "auto",
-            overscrollBehavior: "contain",
-            padding: isMobile ? 16 : 22,
-            boxSizing: "border-box",
           }}
         >
           <div
@@ -615,13 +599,13 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
               position: "sticky",
               top: isMobile ? -16 : -22,
               zIndex: 5,
-              background: "#FFFFFF",
-              padding: "4px 0 14px",
-              borderBottom: `1px solid ${colors.line}`,
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
               gap: 12,
+              padding: "4px 0 14px",
+              background: "#FFFFFF",
+              borderBottom: `1px solid ${colors.line}`,
             }}
           >
             <div>
@@ -641,7 +625,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
 
             <button
               type="button"
-              onClick={collapseDetail}
+              onClick={closeDetail}
               style={secondaryButtonStyle}
             >
               ✕ Close
@@ -675,8 +659,8 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                           borderColor: eventColor.hex,
                           borderLeft: `6px solid ${eventColor.hex}`,
                           background: event.completed
-                            ? `${eventColor.hex}20`
-                            : `${eventColor.hex}0D`,
+                            ? `${eventColor.hex}22`
+                            : `${eventColor.hex}0F`,
                         }}
                       >
                         <div
@@ -832,6 +816,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     updateCalendarItem({
                       date: value,
                     });
+
                     setSelectedCalendarDate(value);
                   }}
                 />
@@ -850,7 +835,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   <input
                     value={selectedCalendar.time || ""}
                     disabled={
-                      !!selectedCalendar.allDay
+                      Boolean(selectedCalendar.allDay)
                     }
                     onChange={(event) =>
                       updateCalendarItem({
@@ -871,7 +856,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   <input
                     type="checkbox"
                     checked={
-                      !!selectedCalendar.allDay
+                      Boolean(selectedCalendar.allDay)
                     }
                     onChange={(event) =>
                       updateCalendarItem({
@@ -901,21 +886,21 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                       ""
                     }
                     onChange={(event) => {
-                      const nextLabel =
+                      const label =
                         event.currentTarget.value;
 
                       const matchingColor =
                         calendarColors.find(
                           (color: any) =>
-                            color.label === nextLabel,
+                            color.label === label,
                         );
 
                       updateCalendarItem({
-                        categoryLabel: nextLabel,
-                        area: nextLabel,
+                        categoryLabel: label,
+                        area: label,
                         colorId:
                           matchingColor?.id ||
-                          categoryToColorId(nextLabel),
+                          categoryToColorId(label),
                         colorName:
                           matchingColor?.colorName,
                       });
@@ -1192,7 +1177,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   <input
                     type="checkbox"
                     checked={
-                      !!selectedCalendar.completed
+                      Boolean(
+                        selectedCalendar.completed,
+                      )
                     }
                     onChange={(event) =>
                       updateCalendarItem({
@@ -1224,9 +1211,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                 {hasSelectedEvent ? (
                   <button
                     type="button"
-                    onClick={() =>
-                      void deleteSelectedEvent()
-                    }
+                    onClick={() => {
+                      void deleteSelectedEvent();
+                    }}
                     style={dangerButtonStyle}
                   >
                     Delete
@@ -1249,19 +1236,19 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
   }
 
   const calendarHeight = isMobile
-    ? "calc(100dvh - 80px)"
+    ? "calc(100dvh - 76px)"
     : "calc(100dvh - 104px)";
 
-  const controlButtonStyle = {
+  const normalControlStyle: React.CSSProperties = {
     ...secondaryButtonStyle,
-    padding: isMobile ? "6px 8px" : "9px 13px",
+    padding: isMobile ? "5px 7px" : "9px 13px",
     fontSize: isMobile ? 10 : 13,
     whiteSpace: "nowrap",
   };
 
-  const activeControlButtonStyle = {
+  const activeControlStyle: React.CSSProperties = {
     ...goldButtonStyle,
-    padding: isMobile ? "6px 8px" : "9px 13px",
+    padding: isMobile ? "5px 7px" : "9px 13px",
     fontSize: isMobile ? 10 : 13,
     whiteSpace: "nowrap",
   };
@@ -1274,7 +1261,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
           width: "100%",
           height: calendarHeight,
           minHeight: 0,
-          padding: isMobile ? 5 : 14,
+          padding: isMobile ? 4 : 14,
           overflow: "hidden",
           boxSizing: "border-box",
         }}
@@ -1284,16 +1271,16 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
             width: "100%",
             height: "100%",
             minHeight: 0,
-            background: "#FFFFFF",
-            borderRadius: isMobile ? 12 : 18,
-            border: `1px solid ${colors.line}`,
-            padding: isMobile ? 5 : 14,
+            padding: isMobile ? 4 : 14,
             boxSizing: "border-box",
             overflow: "hidden",
             display: "grid",
             gridTemplateRows:
               "auto auto minmax(0, 1fr)",
-            gap: isMobile ? 3 : 8,
+            gap: isMobile ? 2 : 8,
+            background: "#FFFFFF",
+            border: `1px solid ${colors.line}`,
+            borderRadius: isMobile ? 10 : 18,
           }}
         >
           <header
@@ -1308,17 +1295,16 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                gap: isMobile ? 4 : 10,
+                gap: isMobile ? 3 : 10,
                 minWidth: 0,
               }}
             >
               <div
                 style={{
                   ...calendarHeaderStyle,
-                  fontSize: isMobile ? 16 : 25,
+                  fontSize: isMobile ? 15 : 25,
                   lineHeight: 1,
                   whiteSpace: "nowrap",
-                  minWidth: 0,
                 }}
               >
                 {calendarTitle}
@@ -1327,10 +1313,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
               <div
                 style={{
                   display: "flex",
-                  gap: isMobile ? 3 : 7,
                   alignItems: "center",
+                  gap: isMobile ? 2 : 7,
                   flexWrap: "nowrap",
-                  minWidth: 0,
                 }}
               >
                 {!isMobile ? (
@@ -1339,7 +1324,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     onClick={() =>
                       moveCalendarYear(-1)
                     }
-                    style={controlButtonStyle}
+                    style={normalControlStyle}
                   >
                     Previous Year
                   </button>
@@ -1350,7 +1335,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   onClick={() =>
                     moveCalendarPeriod(-1)
                   }
-                  style={controlButtonStyle}
+                  style={normalControlStyle}
                 >
                   {isMobile ? "‹" : "Previous"}
                 </button>
@@ -1363,7 +1348,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     setCalendarCursor(new Date());
                     showDay(today);
                   }}
-                  style={activeControlButtonStyle}
+                  style={activeControlStyle}
                 >
                   Today
                 </button>
@@ -1373,7 +1358,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   onClick={() =>
                     moveCalendarPeriod(1)
                   }
-                  style={controlButtonStyle}
+                  style={normalControlStyle}
                 >
                   {isMobile ? "›" : "Next"}
                 </button>
@@ -1384,7 +1369,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     onClick={() =>
                       moveCalendarYear(1)
                     }
-                    style={controlButtonStyle}
+                    style={normalControlStyle}
                   >
                     Next Year
                   </button>
@@ -1407,8 +1392,8 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                 }
                 style={
                   calendarView === "month"
-                    ? activeControlButtonStyle
-                    : controlButtonStyle
+                    ? activeControlStyle
+                    : normalControlStyle
                 }
               >
                 Month
@@ -1422,8 +1407,8 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   }
                   style={
                     calendarView === "week"
-                      ? activeControlButtonStyle
-                      : controlButtonStyle
+                      ? activeControlStyle
+                      : normalControlStyle
                   }
                 >
                   Week
@@ -1480,7 +1465,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                   style={{
                     ...calendarFilterSummaryStyle,
                     padding: isMobile
-                      ? "6px 8px"
+                      ? "5px 7px"
                       : "8px 11px",
                     fontSize: isMobile ? 10 : 13,
                     whiteSpace: "nowrap",
@@ -1497,16 +1482,16 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                     top: "calc(100% + 6px)",
                     right: 0,
                     width: isMobile
-                      ? "min(280px, calc(100vw - 28px))"
+                      ? "min(280px, calc(100vw - 24px))"
                       : 280,
                     maxHeight: "60vh",
                     overflowY: "auto",
+                    padding: 10,
                     background: "#FFFFFF",
                     border: `1px solid ${colors.line}`,
                     borderRadius: 12,
                     boxShadow:
                       "0 16px 40px rgba(7,27,47,0.20)",
-                    padding: 10,
                   }}
                 >
                   <label
@@ -1598,10 +1583,10 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                 key={day}
                 style={{
                   ...calendarDayNameStyle,
-                  fontSize: isMobile ? 8 : 12,
                   padding: isMobile
                     ? "1px 0"
                     : "4px 0",
+                  fontSize: isMobile ? 8 : 12,
                   lineHeight: 1,
                 }}
               >
@@ -1618,8 +1603,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                 display: "grid",
                 gridTemplateRows: `repeat(${monthWeeks.length}, minmax(0, 1fr))`,
                 gap: isMobile ? 2 : 5,
-                minHeight: 0,
+                width: "100%",
                 height: "100%",
+                minHeight: 0,
                 overflow: "hidden",
               }}
             >
@@ -1632,6 +1618,8 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                       gridTemplateColumns:
                         "repeat(7, minmax(0, 1fr))",
                       gap: isMobile ? 2 : 5,
+                      width: "100%",
+                      height: "100%",
                       minHeight: 0,
                     }}
                   >
@@ -1649,8 +1637,9 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
                 gridTemplateColumns:
                   "repeat(7, minmax(0, 1fr))",
                 gap: 5,
-                minHeight: 0,
+                width: "100%",
                 height: "100%",
+                minHeight: 0,
                 overflow: "hidden",
               }}
             >
@@ -1662,9 +1651,7 @@ export default function AtlasCalendar(props: AtlasCalendarProps) {
         </div>
       </section>
 
-      {detailExpanded
-        ? renderExpandedPanel()
-        : null}
+      {detailOpen ? renderDetailPanel() : null}
     </>
   );
 }
