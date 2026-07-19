@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
+import { pbkdf2Sync, timingSafeEqual } from "crypto";
 
 const SESSION_COOKIE = "atlas_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 90;
@@ -46,6 +47,21 @@ async function loadSavedAccess(user: AtlasUser) {
   } catch {
     return user;
   }
+}
+
+async function loadInvitedUser(email: string, password: string): Promise<AtlasUser | null> {
+  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL;
+  if (!url) return null;
+  try {
+    const sql = neon(url);
+    const rows = await sql`SELECT name, email, role, active, password_hash, password_salt FROM atlas_team_access WHERE lower(email)=${email} LIMIT 1`;
+    const row = rows[0] as Record<string, unknown> | undefined;
+    if (!row || row.active === false || !row.password_hash || !row.password_salt) return null;
+    const actual = pbkdf2Sync(password, String(row.password_salt), 210000, 32, "sha256");
+    const expected = Buffer.from(String(row.password_hash), "hex");
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
+    return { name:String(row.name), email:String(row.email), password:"", role:String(row.role) as AtlasUser["role"] };
+  } catch { return null; }
 }
 
 function base64UrlEncodeBytes(bytes: Uint8Array) {
@@ -131,7 +147,7 @@ export async function POST(request: NextRequest) {
       item.password === password
   );
 
-  const user = matchedUser ? await loadSavedAccess(matchedUser) : null;
+  const user = matchedUser ? await loadSavedAccess(matchedUser) : await loadInvitedUser(login, password);
   if (!user) {
     return NextResponse.json(
       {
