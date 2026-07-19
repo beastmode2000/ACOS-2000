@@ -1,4 +1,3 @@
-
 import type { Screen } from "./atlas-types";
 
 export type AtlasScreen = Screen | "timeline" | "insights" | "reports";
@@ -46,7 +45,7 @@ export const screens: { id: AtlasScreen; label: string }[] = [
   { id: "map", label: "Map" },
   { id: "qr", label: "QR Codes" },
   { id: "parts", label: "Parts" },
-  { id: "links", label: "Work Links" },
+  { id: "links", label: "Apps" },
   { id: "weather", label: "Weather" },
   { id: "manuals", label: "Manuals" },
   { id: "assistant", label: "Ask Atlas" },
