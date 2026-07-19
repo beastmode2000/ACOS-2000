@@ -3066,10 +3066,11 @@ function ListDrawerLayout(props: {
           position: "sticky",
           top: 12,
           height: "auto",
-          maxHeight: "none",
+          maxHeight: "calc(100vh - 32px)",
           minHeight: 0,
-          overflowY: "visible",
+          overflowY: "auto",
           overflowX: "hidden",
+          overscrollBehavior: "contain",
         };
 
   return (
@@ -3285,6 +3286,7 @@ export default function AtlasPage() {
   );
   const [previewZoom, setPreviewZoom] = useState(100);
   const [documentSearch, setDocumentSearch] = useState("");
+  const [documentCategoryFilter, setDocumentCategoryFilter] = useState("All");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const documentListScrollYRef = useRef(0);
   const documentOverlayScrollRef = useRef<HTMLDivElement>(null);
@@ -10966,7 +10968,19 @@ export default function AtlasPage() {
     const relatedWorkOrders = selectedAsset.id
       ? [...serviceRecords]
           .filter((record) => record.assetId === selectedAsset.id)
-          .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+          .sort((a, b) =>
+            String(
+              b.serviceHistory?.[0]?.completedAt ||
+                b.lastCompletedDate ||
+                b.date,
+            ).localeCompare(
+              String(
+                a.serviceHistory?.[0]?.completedAt ||
+                  a.lastCompletedDate ||
+                  a.date,
+              ),
+            ),
+          )
       : [];
     const selectedAssetCoverPhoto = selectedAssetPhotos[0];
     const selectedAssetCoverSource = photoSource(selectedAssetCoverPhoto);
@@ -11396,7 +11410,7 @@ export default function AtlasPage() {
                 <div style={eyebrowStyle}>Work Order History</div>
                 {relatedWorkOrders.length ? (
                   <div style={compactLinkedListStyle}>
-                    {relatedWorkOrders.slice(0, 8).map((record) => (
+                    {relatedWorkOrders.map((record) => (
                       <button
                         key={record.id}
                         type="button"
@@ -11411,6 +11425,11 @@ export default function AtlasPage() {
                           <small style={mutedSmallStyle}>
                             {formatDate(record.date)}
                           </small>
+                          {(record.serviceHistory || []).map((entry) => (
+                            <small key={entry.id} style={mutedSmallStyle}>
+                              Serviced {formatDate(entry.completedAt.slice(0, 10))}
+                            </small>
+                          ))}
                         </span>
                         <span style={badgeStyle(record.status)}>
                           {record.status}
@@ -11698,6 +11717,26 @@ export default function AtlasPage() {
           ),
         )
       : [];
+    const relatedVendorWorkOrders = selectedVendor.id
+      ? [...serviceRecords]
+          .filter((record) => record.vendorId === selectedVendor.id)
+          .sort((a, b) =>
+            String(
+              b.serviceHistory?.[0]?.completedAt ||
+                b.lastCompletedDate ||
+                b.date,
+            ).localeCompare(
+              String(
+                a.serviceHistory?.[0]?.completedAt ||
+                  a.lastCompletedDate ||
+                  a.date,
+              ),
+            ),
+          )
+      : [];
+    const lastVendorVisit =
+      relatedVendorWorkOrders.find((record) => record.status === "Completed") ||
+      relatedVendorWorkOrders[0];
 
     return (
       <ListDrawerLayout
@@ -11791,6 +11830,18 @@ export default function AtlasPage() {
                   </h3>
                   <p style={mutedSmallStyle}>
                     {selectedVendor.category || "Uncategorized"}
+                  </p>
+                  <p style={mutedSmallStyle}>
+                    Last recorded visit:{" "}
+                    {lastVendorVisit
+                      ? formatDate(
+                          String(
+                            lastVendorVisit.serviceHistory?.[0]?.completedAt ||
+                              lastVendorVisit.lastCompletedDate ||
+                              lastVendorVisit.date,
+                          ).slice(0, 10),
+                        )
+                      : "No visit recorded"}
                   </p>
                 </div>
                 <div style={buttonRowStyle}>
@@ -11999,6 +12050,47 @@ export default function AtlasPage() {
                   <p style={mutedSmallStyle}>
                     No vendor photos attached yet. You can also click this panel
                     and paste a copied image.
+                  </p>
+                )}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Service & Visit History</div>
+                {relatedVendorWorkOrders.length ? (
+                  <div style={compactLinkedListStyle}>
+                    {relatedVendorWorkOrders.map((record) => (
+                      <button
+                        key={record.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedServiceId(record.id);
+                          setScreen("history");
+                        }}
+                        style={compactLinkedRowStyle}
+                      >
+                        <span>
+                          <strong>{record.title}</strong>
+                          <small style={mutedSmallStyle}>
+                            {formatDate(record.date)}
+                            {record.assetId
+                              ? ` · ${assetName(record.assetId)}`
+                              : ""}
+                          </small>
+                          {(record.serviceHistory || []).map((entry) => (
+                            <small key={entry.id} style={mutedSmallStyle}>
+                              Visit {formatDate(entry.completedAt.slice(0, 10))}
+                            </small>
+                          ))}
+                        </span>
+                        <span style={badgeStyle(record.status)}>
+                          {record.status}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>
+                    No visits or work orders are linked to this vendor.
                   </p>
                 )}
               </section>
@@ -12681,7 +12773,19 @@ export default function AtlasPage() {
         a.title.localeCompare(b.title) ||
         String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
     );
+    const documentCategories = Array.from(
+      new Set(
+        sortedDocuments.map((doc) => doc.type?.trim() || "Uncategorized"),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
     const searchableDocuments = sortedDocuments.filter((doc) => {
+      const category = doc.type?.trim() || "Uncategorized";
+      if (
+        documentCategoryFilter !== "All" &&
+        category !== documentCategoryFilter
+      ) {
+        return false;
+      }
       if (!normalizedDocumentSearch) return true;
       const fileNames = (doc.files || []).map((file) => file.name).join(" ");
       return [
@@ -12940,7 +13044,7 @@ export default function AtlasPage() {
               }
             />
             <Field
-              label="Type"
+              label="Category"
               value={selectedDocument.type}
               onChange={(value) =>
                 updateSelectedDocument(selectedDocument.id, {
@@ -13090,6 +13194,21 @@ export default function AtlasPage() {
                   style={inputStyle}
                   aria-label="Search documents and photos"
                 />
+                <select
+                  value={documentCategoryFilter}
+                  onChange={(event) =>
+                    setDocumentCategoryFilter(event.currentTarget.value)
+                  }
+                  style={{ ...inputStyle, marginTop: 8 }}
+                  aria-label="Filter documents by category"
+                >
+                  <option value="All">All categories</option>
+                  {documentCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
                 <div
                   style={{
                     display: "flex",
@@ -13132,9 +13251,6 @@ export default function AtlasPage() {
                       onClick={() => {
                         documentListScrollYRef.current = window.scrollY;
                         setSelectedDocumentId(document.id);
-                        if (!isMobile) {
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        }
                       }}
                       style={{
                         ...rowButtonStyle,
@@ -15213,6 +15329,24 @@ export default function AtlasPage() {
   }
 
   function renderRequests() {
+    const activeRequestRecords = requestRecords.filter(
+      (request) =>
+        request.status !== "Converted to Work Order" &&
+        request.status !== "Declined" &&
+        request.status !== "Closed",
+    );
+    const requestHistoryRecords = requestRecords
+      .filter(
+        (request) =>
+          request.status === "Converted to Work Order" ||
+          request.status === "Declined" ||
+          request.status === "Closed",
+      )
+      .sort((a, b) =>
+        String(b.updatedAt || b.submittedAt).localeCompare(
+          String(a.updatedAt || a.submittedAt),
+        ),
+      );
     const portalLink =
       requestPortalToken && typeof window !== "undefined"
         ? `${window.location.origin}/request?token=${encodeURIComponent(
@@ -15299,8 +15433,9 @@ export default function AtlasPage() {
           }
           list={
             <div style={listStyle}>
-              {requestRecords.length ? (
-                requestRecords.map((request) => (
+              <div style={eyebrowStyle}>Active Requests</div>
+              {activeRequestRecords.length ? (
+                activeRequestRecords.map((request) => (
                   <button
                     key={request.id}
                     type="button"
@@ -15328,8 +15463,42 @@ export default function AtlasPage() {
                   </button>
                 ))
               ) : (
-                <div style={noticeStyle}>{requestMessage}</div>
+                <div style={noticeStyle}>No active requests.</div>
               )}
+
+              {requestHistoryRecords.length ? (
+                <div style={{ display: "grid", gap: 8, marginTop: 18 }}>
+                  <div style={eyebrowStyle}>Request History</div>
+                  {requestHistoryRecords.map((request) => (
+                    <button
+                      key={request.id}
+                      type="button"
+                      onClick={() => setSelectedRequestId(request.id)}
+                      style={{
+                        ...rowButtonStyle,
+                        opacity: 0.82,
+                        borderColor:
+                          request.id === selectedRequest?.id
+                            ? colors.gold
+                            : colors.line,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <strong>{request.title || "Untitled Request"}</strong>
+                        <p style={mutedSmallStyle}>
+                          {request.status}
+                          {request.convertedWorkOrderId
+                            ? " · Work order created"
+                            : ""}
+                        </p>
+                      </div>
+                      <span style={badgeStyle(request.status)}>
+                        {request.status}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           }
           drawer={
