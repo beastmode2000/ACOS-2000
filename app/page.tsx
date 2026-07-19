@@ -16641,12 +16641,31 @@ export default function AtlasPage() {
       }
     };
 
+    const appOpensInsideAtlas = (link: WorkLinkRecord) => {
+      if (typeof window === "undefined") return false;
+      try {
+        const target = new URL(link.url, window.location.origin);
+        return target.origin === window.location.origin;
+      } catch {
+        return false;
+      }
+    };
+
+    const openApp = (link: WorkLinkRecord) => {
+      if (appOpensInsideAtlas(link)) {
+        setActiveAppLink(link);
+        return;
+      }
+
+      window.open(resolvedAppUrl(link), "_blank", "noopener,noreferrer");
+    };
+
     return (
       <section style={sectionStyle}>
         <SectionHeader
-          eyebrow="Application Launcher"
+          eyebrow="Apps"
           title="Apps"
-          detail="Open estate systems, portals, mobile tools, and Atlas utilities from one organized launcher. Apps open inside Atlas when the destination allows it, with a new-tab option always available."
+          detail="Open estate systems, portals, and tools from one organized launcher."
           right={
             <div style={buttonRowStyle}>
               <button type="button" onClick={openNewWorkLink} style={goldButtonStyle}>
@@ -16852,70 +16871,73 @@ export default function AtlasPage() {
           </div>
         ) : null}
 
-        <div style={{ display: "grid", gap: 24 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "1fr"
+              : "repeat(2, minmax(0, 1fr))",
+            gap: isMobile ? 16 : 20,
+          }}
+        >
           {appCategories.map(([category, links]) => (
-            <section key={category} style={{ display: "grid", gap: 12 }}>
-              <div
+            <section key={category} style={{ display: "grid", gap: 8 }}>
+              <h3
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  paddingBottom: 8,
-                  borderBottom: `1px solid ${colors.line}`,
+                  ...detailTitleStyle,
+                  margin: 0,
+                  fontSize: 15,
+                  lineHeight: 1.2,
                 }}
               >
-                <div>
-                  <div style={eyebrowStyle}>App Category</div>
-                  <h3 style={{ ...detailTitleStyle, margin: 0 }}>{category}</h3>
-                </div>
-                <span style={badgeStyle("Monitor")}>
-                  {links.length} {links.length === 1 ? "app" : "apps"}
-                </span>
-              </div>
+                {category}
+              </h3>
 
-              <div style={workLinksPageGridStyle}>
+              <div style={{ display: "grid", gap: 8 }}>
                 {links.map((link) => (
                   <article
                     key={link.id}
                     style={{
-                      ...workLinkPageCardStyle,
-                      position: "relative",
+                      border: `1px solid ${colors.line}`,
+                      background: "#FFFFFF",
+                      borderRadius: 14,
+                      minHeight: 78,
+                      boxShadow: "0 4px 14px rgba(15,23,42,0.05)",
+                      overflow: "hidden",
                       display: "grid",
-                      gridTemplateRows: "1fr auto",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
                       alignItems: "stretch",
-                      gap: 12,
                     }}
                   >
                     <button
                       type="button"
-                      onClick={() => setActiveAppLink(link)}
+                      onClick={() => openApp(link)}
                       style={{
                         border: 0,
                         background: "transparent",
-                        padding: 0,
+                        padding: "12px 10px 12px 12px",
                         margin: 0,
                         display: "grid",
-                        justifyItems: "center",
-                        alignContent: "center",
+                        gridTemplateColumns: "48px minmax(0, 1fr)",
+                        alignItems: "center",
                         gap: 12,
                         color: "inherit",
                         cursor: "pointer",
                         minWidth: 0,
-                        width: "100%",
-                        minHeight: 132,
+                        textAlign: "left",
                       }}
                       aria-label={`Open ${link.name}`}
                     >
                       <span
                         style={{
                           ...workLinkLogoLargeStyle,
-                          width: 68,
-                          height: 68,
-                          borderRadius: 20,
+                          width: 48,
+                          height: 48,
+                          borderRadius: 13,
                           background: link.logoBg,
                           color: link.logoColor || colors.navy,
-                          boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
+                          boxShadow: "0 5px 12px rgba(15,23,42,0.10)",
+                          flexShrink: 0,
                         }}
                       >
                         <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
@@ -16928,52 +16950,74 @@ export default function AtlasPage() {
                             }}
                             style={{
                               ...workLinkLogoImageLargeStyle,
-                              borderRadius: 20,
+                              borderRadius: 13,
                             }}
                           />
                         ) : null}
                       </span>
 
-                      <span
-                        style={{
-                          ...workLinkPageBodyStyle,
-                          justifyItems: "center",
-                          textAlign: "center",
-                        }}
-                      >
-                        <strong style={{ fontSize: 15 }}>{link.name}</strong>
+                      <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                        <strong
+                          style={{
+                            fontSize: 14,
+                            lineHeight: 1.25,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {link.name}
+                        </strong>
                         {link.vendor ? (
-                          <span style={mutedSmallStyle}>{link.vendor}</span>
+                          <span
+                            style={{
+                              ...mutedSmallStyle,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {link.vendor}
+                          </span>
                         ) : null}
                       </span>
                     </button>
 
                     <div
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr auto",
-                        gap: 8,
+                        display: "flex",
                         alignItems: "center",
+                        gap: 4,
+                        paddingRight: 8,
                       }}
                     >
                       <button
                         type="button"
-                        onClick={() => setActiveAppLink(link)}
-                        style={{ ...goldButtonStyle, width: "100%" }}
+                        onClick={() => openApp(link)}
+                        style={{
+                          ...secondaryButtonStyle,
+                          width: 38,
+                          minWidth: 38,
+                          height: 38,
+                          padding: 0,
+                          borderRadius: 10,
+                          fontSize: 17,
+                        }}
+                        aria-label={`Open ${link.name}`}
+                        title={appOpensInsideAtlas(link) ? "Open inside Atlas" : "Open in new tab"}
                       >
-                        Open App
+                        ↗
                       </button>
                       <button
                         type="button"
                         onClick={() => setAppQrLink(link)}
                         style={{
                           ...secondaryButtonStyle,
-                          width: 42,
-                          minWidth: 42,
-                          height: 42,
+                          width: 38,
+                          minWidth: 38,
+                          height: 38,
                           padding: 0,
-                          borderRadius: 12,
-                          fontSize: 20,
+                          borderRadius: 10,
+                          fontSize: 17,
                         }}
                         aria-label={`Show phone QR code for ${link.name}`}
                         title="Open on phone"
