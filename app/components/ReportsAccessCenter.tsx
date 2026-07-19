@@ -54,6 +54,12 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [report, setReport] = useState<ReportKey>("workOrders");
   const [team, setTeam] = useState<Member[]>(defaultTeam);
   const [message, setMessage] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newRole, setNewRole] = useState<Role>("Operations");
+  const [inviteLink, setInviteLink] = useState("");
+  const [backups, setBackups] = useState<Array<Record<string, unknown>>>([]);
+  const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
 
   useEffect(() => {
     void fetch("/api/atlas-team")
@@ -67,6 +73,13 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
       })
       .catch(() => setMessage("Atlas could not load shared access settings."));
   }, []);
+
+  async function loadReliability() {
+    const response = await fetch("/api/atlas-reliability");
+    const payload = await response.json().catch(() => ({}));
+    if (payload.ok) { setBackups(payload.backups || []); setHistory(payload.history || []); }
+  }
+  useEffect(() => { void loadReliability(); }, []);
 
   function updateMember(id: string, patch: Partial<Member>) {
     setTeam((current) => current.map((member) => member.id === id ? { ...member, ...patch } : member));
@@ -85,6 +98,47 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
     const payload = await response.json().catch(() => ({}));
     setMessage(response.ok && payload.ok ? "Shared access settings saved." : String(payload.error || "Access settings could not be saved."));
   }
+
+  async function createInvite() {
+    if (!newName.trim() || !newEmail.includes("@")) { setMessage("Enter the employee name and email."); return; }
+    const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member:{ id:`team-${Date.now()}`, name:newName.trim(), email:newEmail.trim(), role:newRole.toLowerCase(), active:true } }) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) { setMessage(String(payload.error || "Invitation could not be created.")); return; }
+    const link = `${window.location.origin}${payload.invitePath}`;
+    setInviteLink(link);
+    await navigator.clipboard?.writeText(link);
+    setMessage("Secure invitation link created and copied.");
+  }
+
+  function downloadBackup() {
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ createdAt:new Date().toISOString(), ...data }, null, 2)], { type:"application/json" }));
+    const link = document.createElement("a"); link.href=url; link.download=`atlas-backup-${new Date().toISOString().slice(0,10)}.json`; link.click(); URL.revokeObjectURL(url);
+  }
+
+  async function createServerBackup() {
+    setMessage("Creating protected backup...");
+    const response = await fetch("/api/atlas-reliability", { method:"POST" });
+    const payload = await response.json().catch(() => ({}));
+    setMessage(response.ok && payload.ok ? "Protected backup created." : String(payload.error || "Backup failed."));
+    if (response.ok) await loadReliability();
+  }
+
+  async function downloadProtectedBackup(id: string) {
+    const response = await fetch(`/api/atlas-reliability?id=${encodeURIComponent(id)}`, { method:"DELETE" });
+    const payload = await response.json().catch(() => ({}));
+    if (!payload.ok) { setMessage(String(payload.error || "Backup download failed.")); return; }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload.snapshot, null, 2)], {type:"application/json"}));
+    const link=document.createElement("a"); link.href=url; link.download=`${id}.json`; link.click(); URL.revokeObjectURL(url);
+  }
+
+  const today = new Date().toISOString().slice(0,10);
+  const nextWeek = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+  const activeWork = data.workOrders.filter((row) => !["Completed","Closed","Cancelled"].includes(String(row.status || "")));
+  const alerts = [
+    { label:"Overdue work", count:activeWork.filter((row)=>row.date && String(row.date)<today).length },
+    { label:"High priority", count:activeWork.filter((row)=>row.priority==="High").length },
+    { label:"Due within 7 days", count:activeWork.filter((row)=>row.date && String(row.date)>=today && String(row.date)<=nextWeek).length },
+  ];
 
   const card = { border: `1px solid ${colors.line}`, borderRadius: 16, background: colors.card, padding: 18 };
   const control = { width: "100%", minHeight: 42, border: `1px solid ${colors.line}`, borderRadius: 10, padding: "9px 11px", background: "#fff" };
@@ -123,10 +177,36 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
             </div>
           ))}
         </div>
+        <div style={{ marginTop:16, paddingTop:16, borderTop:`1px solid ${colors.line}`, display:"grid", gap:10 }}>
+          <strong style={{color:colors.navy}}>Add Team Member</strong>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1.3fr .8fr auto",gap:10}}>
+            <input value={newName} onChange={(e)=>setNewName(e.currentTarget.value)} placeholder="Employee name" style={control}/>
+            <input value={newEmail} onChange={(e)=>setNewEmail(e.currentTarget.value)} placeholder="Employee email" style={control}/>
+            <select value={newRole} onChange={(e)=>setNewRole(e.currentTarget.value as Role)} style={control}><option>Administrator</option><option>Operations</option><option>Viewer</option></select>
+            <button type="button" onClick={()=>void createInvite()} style={button}>Create Invite</button>
+          </div>
+          {inviteLink ? <div style={{display:"grid",gap:6}}><span style={{fontSize:12,color:colors.muted}}>Invitation expires in 7 days. Copy and send this link:</span><input readOnly value={inviteLink} onFocus={(e)=>e.currentTarget.select()} style={control}/></div> : null}
+        </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
           <button type="button" onClick={() => void saveAccess()} style={button}>Save Access Settings</button>
           {message ? <span style={{ color: colors.green, fontWeight: 850 }}>{message}</span> : null}
         </div>
+      </section>
+
+      <section style={card}>
+        <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Backup & Recovery</div>
+        <h2 style={{ margin: "5px 0", color: colors.navy }}>Download complete Atlas backup</h2>
+        <p style={{ margin:"0 0 14px", color:colors.muted }}>Creates a dated JSON copy of the records currently loaded in Atlas.</p>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}><button type="button" onClick={()=>void createServerBackup()} style={button}>Create Protected Backup</button><button type="button" onClick={downloadBackup} style={{...button,background:"#fff",border:`1px solid ${colors.line}`}}>Download Current Data</button></div>
+        <div style={{display:"grid",gap:7,marginTop:14}}>{backups.slice(0,5).map((backup)=><div key={String(backup.id)} style={{display:"flex",justifyContent:"space-between",gap:10,padding:10,border:`1px solid ${colors.line}`,borderRadius:10}}><span>{new Date(String(backup.created_at)).toLocaleString()} · {String(backup.reason)}</span><button type="button" onClick={()=>void downloadProtectedBackup(String(backup.id))} style={{...button,padding:"7px 10px"}}>Download</button></div>)}</div>
+      </section>
+
+      <section style={card}>
+        <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Notifications & History</div>
+        <h2 style={{margin:"5px 0",color:colors.navy}}>Operations alerts</h2>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10,marginBottom:16}}>{alerts.map((alert)=><div key={alert.label} style={{padding:14,border:`1px solid ${colors.line}`,borderRadius:12,background:colors.panel}}><strong style={{fontSize:24,color:colors.navy}}>{alert.count}</strong><div style={{color:colors.muted}}>{alert.label}</div></div>)}</div>
+        <strong style={{color:colors.navy}}>Recent change history</strong>
+        <div style={{display:"grid",gap:7,marginTop:8}}>{history.slice(0,10).map((entry)=><div key={String(entry.id)} style={{padding:10,border:`1px solid ${colors.line}`,borderRadius:10,fontSize:13}}><strong>{String(entry.action).toUpperCase()} · {String(entry.table_name)}</strong><div style={{color:colors.muted}}>{String(entry.actor || "Atlas user")} · {new Date(String(entry.created_at)).toLocaleString()}</div></div>)}</div>
       </section>
     </div>
   );
