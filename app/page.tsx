@@ -3065,12 +3065,12 @@ function ListDrawerLayout(props: {
           ...drawerStyle,
           position: "sticky",
           top: 12,
-          height: "auto",
-          maxHeight: "calc(100vh - 32px)",
+          height: "fit-content",
+          maxHeight: "none",
           minHeight: 0,
-          overflowY: "auto",
-          overflowX: "hidden",
-          overscrollBehavior: "contain",
+          overflow: "visible",
+          alignSelf: "start",
+          zIndex: 2,
         };
 
   return (
@@ -17913,7 +17913,7 @@ export default function AtlasPage() {
       <style>{`
         html, body {
           max-width: 100%;
-          overflow-x: hidden;
+          overflow-x: clip;
         }
         * {
           box-sizing: border-box;
@@ -21836,3 +21836,4 @@ const linkStyle: React.CSSProperties = {
 };
 
       
+
