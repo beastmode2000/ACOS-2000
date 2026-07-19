@@ -3135,6 +3135,10 @@ function ListDrawerLayout(props: {
 
 export default function AtlasPage() {
   const [ready, setReady] = useState(false);
+  const [syncState, setSyncState] = useState<
+    "loading" | "synced" | "offline"
+  >("loading");
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -3661,6 +3665,7 @@ export default function AtlasPage() {
 
     async function loadAtlasApi() {
       try {
+        setSyncState("loading");
         const response = await fetch("/api/atlas", { cache: "no-store" });
         if (!response.ok) throw new Error(`API returned ${response.status}`);
 
@@ -3769,51 +3774,17 @@ export default function AtlasPage() {
           }
         }
 
+        // The shared database is authoritative after a successful load. This
+        // prevents deleted or obsolete browser calendar items from flashing or
+        // silently uploading themselves again on another device.
         {
-          const apiNormalized = apiCalendar.map(normalizeCalendar);
-
-          if (apiNormalized.length) {
-            setCalendarItems((current) => {
-              const mergedById = new Map<string, CalendarItem>();
-
-              for (const item of current) {
-                if (item.id) mergedById.set(item.id, item);
-              }
-
-              for (const item of apiNormalized) {
-                if (item.id) mergedById.set(item.id, item);
-              }
-
-              const next = byTitle(
-                Array.from(mergedById.values()).filter(
-                  (item) => item.id && item.date && item.title,
-                ),
-              );
-
-              saveStoredArray(storageKeys.calendar[0], next);
-              return next;
-            });
-          }
-
-          const obsoleteFallbackIds = new Set(
-            fallbackCalendar.map((item) => item.id).filter(Boolean),
+          const next = byTitle(
+            apiCalendar
+              .map(normalizeCalendar)
+              .filter((item) => item.id && item.date && item.title),
           );
-          const browserCalendar = readStoredArray<CalendarItem>(
-            storageKeys.calendar,
-            [],
-          )
-            .map(normalizeCalendar)
-            .filter((item) => !obsoleteFallbackIds.has(item.id));
-
-          const apiIds = new Set(apiNormalized.map((item) => item.id));
-          for (const item of browserCalendar) {
-            if (!item.id || apiIds.has(item.id)) continue;
-            void postAtlasRecord("calendar", {
-              ...item,
-              status:
-                item.status || (item.completed ? "Completed" : "Scheduled"),
-            });
-          }
+          setCalendarItems(next);
+          saveStoredArray(storageKeys.calendar[0], next);
         }
 
         if (apiParts.length) {
@@ -3833,11 +3804,20 @@ export default function AtlasPage() {
         setDatabaseStatus(
           `Atlas loaded: ${apiAssets.length || assetRecords.length} assets, ${apiVendors.length || vendorRecords.length} vendors, ${apiServices.length || serviceRecords.length} work orders.`,
         );
+        setSyncState("synced");
+        setLastSyncedAt(
+          new Intl.DateTimeFormat(undefined, {
+            hour: "numeric",
+            minute: "2-digit",
+          }).format(new Date()),
+        );
       } catch {
-        if (!cancelled)
+        if (!cancelled) {
+          setSyncState("offline");
           setDatabaseStatus(
             "Using saved browser records / fallback records. /api/atlas did not load.",
           );
+        }
       }
     }
 
@@ -3878,21 +3858,7 @@ export default function AtlasPage() {
           .filter((item) => item.id && item.date && item.title);
 
         setCalendarItems((current) => {
-          if (!sharedCalendar.length) {
-            return current;
-          }
-
-          const merged = new Map<string, CalendarItem>();
-
-          current.forEach((item) => {
-            if (item.id) merged.set(item.id, item);
-          });
-
-          sharedCalendar.forEach((item) => {
-            if (item.id) merged.set(item.id, item);
-          });
-
-          const next = byTitle(Array.from(merged.values()));
+          const next = byTitle(sharedCalendar);
           const signature = (items: CalendarItem[]) =>
             items
               .map(
@@ -3910,8 +3876,16 @@ export default function AtlasPage() {
           saveStoredArray(storageKeys.calendar[0], next);
           return next;
         });
+        setSyncState("synced");
+        setLastSyncedAt(
+          new Intl.DateTimeFormat(undefined, {
+            hour: "numeric",
+            minute: "2-digit",
+          }).format(new Date()),
+        );
       } catch {
         // Keep the current calendar visible if the shared API is unavailable.
+        if (!cancelled) setSyncState("offline");
       } finally {
         running = false;
       }
@@ -11041,12 +11015,12 @@ export default function AtlasPage() {
                     <div>
                       <strong>{asset.name}</strong>
                       <p style={mutedSmallStyle}>
-                        {asset.category} · {locationName(asset.locationId)}
+                        {asset.category} Â· {locationName(asset.locationId)}
                       </p>
                       <p style={mutedSmallStyle}>
                         {[asset.make, asset.model, asset.serial]
                           .filter(Boolean)
-                          .join(" · ")}
+                          .join(" Â· ")}
                       </p>
                     </div>
                   </div>
@@ -11113,7 +11087,7 @@ export default function AtlasPage() {
                   </div>
 
                   <p style={assetHeaderMetaStyle}>
-                    {selectedAsset.category || "Uncategorized"} ·{" "}
+                    {selectedAsset.category || "Uncategorized"} Â·{" "}
                     {locationName(selectedAsset.locationId)}
                   </p>
 
@@ -11124,7 +11098,7 @@ export default function AtlasPage() {
                       selectedAsset.serial,
                     ]
                       .filter(Boolean)
-                      .join(" · ")}
+                      .join(" Â· ")}
                   </p>
                 </div>
 
@@ -11302,7 +11276,7 @@ export default function AtlasPage() {
                             <small style={mutedSmallStyle}>
                               {[manual.manufacturer, manual.model]
                                 .filter(Boolean)
-                                .join(" · ") || manual.category}
+                                .join(" Â· ") || manual.category}
                             </small>
                           </span>
                           <div style={manualActionRowStyle}>
@@ -11316,7 +11290,7 @@ export default function AtlasPage() {
                                 Open
                               </a>
                             ) : (
-                              <span style={manualNoPdfStyle}>—</span>
+                              <span style={manualNoPdfStyle}>â€”</span>
                             )}
                             <button
                               type="button"
@@ -11475,7 +11449,7 @@ export default function AtlasPage() {
     const contactSubtitle = (contact: ContactRecord) =>
       [contact.organization, contact.role, contact.category]
         .filter(Boolean)
-        .join(" · ");
+        .join(" Â· ");
 
     return (
       <ListDrawerLayout
@@ -11540,7 +11514,7 @@ export default function AtlasPage() {
                       <p style={contactSecondaryLineStyle}>
                         {[contact.phone, contact.email]
                           .filter(Boolean)
-                          .join(" · ") || "No phone or email saved"}
+                          .join(" Â· ") || "No phone or email saved"}
                       </p>
                     </div>
                   </button>
@@ -11772,7 +11746,7 @@ export default function AtlasPage() {
                       <p style={mutedSmallStyle}>
                         {[vendor.phone, vendor.email]
                           .filter(Boolean)
-                          .join(" · ")}
+                          .join(" Â· ")}
                       </p>
                     </div>
                   </div>
@@ -12307,8 +12281,8 @@ export default function AtlasPage() {
                   <div style={weatherIconStyle}>{weatherIcon(day.code)}</div>
                 </div>
 
-                <div style={weatherTempStyle}>{day.high}°</div>
-                <div style={weatherLowStyle}>{day.low}° low</div>
+                <div style={weatherTempStyle}>{day.high}Â°</div>
+                <div style={weatherLowStyle}>{day.low}Â° low</div>
 
                 <div style={weatherBarTrackStyle}>
                   <div
@@ -12357,11 +12331,11 @@ export default function AtlasPage() {
               <div style={weatherDetailGridStyle}>
                 <div style={weatherDetailMetricStyle}>
                   <span>High</span>
-                  <strong>{selectedWeather.high}°F</strong>
+                  <strong>{selectedWeather.high}Â°F</strong>
                 </div>
                 <div style={weatherDetailMetricStyle}>
                   <span>Low</span>
-                  <strong>{selectedWeather.low}°F</strong>
+                  <strong>{selectedWeather.low}Â°F</strong>
                 </div>
                 <div style={weatherDetailMetricStyle}>
                   <span>Rain chance</span>
@@ -12673,7 +12647,7 @@ export default function AtlasPage() {
                               Open
                             </a>
                           ) : (
-                            <span style={manualNoPdfStyle}>—</span>
+                            <span style={manualNoPdfStyle}>â€”</span>
                           )}
                           <button
                             type="button"
@@ -13311,7 +13285,7 @@ export default function AtlasPage() {
                     aria-label="Close document viewer"
                     title="Close"
                   >
-                    ×
+                    Ã—
                   </button>
                 </div>
               </div>
@@ -13621,7 +13595,7 @@ export default function AtlasPage() {
       inboxAnalysisText(aiReadings.temperature) ||
       firstInboxMatch(
         combinedText,
-        /\b(\d+(?:\.\d+)?)\s*(?:°\s*)?(?:f|fahrenheit)\b/i,
+        /\b(\d+(?:\.\d+)?)\s*(?:Â°\s*)?(?:f|fahrenheit)\b/i,
       );
     const ph =
       inboxAnalysisText(aiReadings.ph) ||
@@ -13893,7 +13867,7 @@ export default function AtlasPage() {
       ["PSI", readings.psi],
       [
         "Temperature",
-        readings.temperature ? `${String(readings.temperature)}°F` : "",
+        readings.temperature ? `${String(readings.temperature)}Â°F` : "",
       ],
       ["pH", readings.ph],
       ["Hours", readings.hours],
@@ -13957,7 +13931,7 @@ export default function AtlasPage() {
                       <div style={{ minWidth: 0 }}>
                         <strong>{item.title}</strong>
                         <p style={mutedSmallStyle}>
-                          {item.intakeType} · {item.status} ·{" "}
+                          {item.intakeType} Â· {item.status} Â·{" "}
                           {(item.files || []).length} file(s)
                         </p>
                       </div>
@@ -13983,7 +13957,7 @@ export default function AtlasPage() {
                     {selected.title}
                   </h3>
                   <p style={{ ...mutedSmallStyle, marginTop: 0 }}>
-                    {selected.intakeType} · {selected.source || "Manual"} ·{" "}
+                    {selected.intakeType} Â· {selected.source || "Manual"} Â·{" "}
                     {selected.status}
                   </p>
 
@@ -14146,8 +14120,7 @@ export default function AtlasPage() {
                       value={selected.notes}
                       onChange={(value) =>
                         setInboxItems((current) =>
-                          current.map((item) =>
-                            item.id === selected.id
+                          current.map((item) =>                            item.id === selected.id
                               ? { ...item, notes: value }
                               : item,
                           ),
@@ -18075,6 +18048,7 @@ export default function AtlasPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
+                    flexWrap: "wrap",
                     minWidth: 0,
                   }}
                 >
@@ -18084,6 +18058,67 @@ export default function AtlasPage() {
                       ? "Atlas / 2000"
                       : screens.find((item) => item.id === screen)?.label}
                   </h1>
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    title={
+                      syncState === "synced"
+                        ? `Shared Atlas data synced${lastSyncedAt ? ` at ${lastSyncedAt}` : ""}`
+                        : syncState === "offline"
+                          ? "Atlas is using saved browser records until the connection returns."
+                          : "Loading shared Atlas data."
+                    }
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      minHeight: 26,
+                      padding: "4px 9px",
+                      borderRadius: 999,
+                      border: `1px solid ${
+                        syncState === "synced"
+                          ? "#9FD6B8"
+                          : syncState === "offline"
+                            ? "#E7C46A"
+                            : colors.line
+                      }`,
+                      background:
+                        syncState === "synced"
+                          ? "#F0FBF5"
+                          : syncState === "offline"
+                            ? "#FFF8E8"
+                            : colors.panel,
+                      color:
+                        syncState === "synced"
+                          ? "#176B3A"
+                          : syncState === "offline"
+                            ? "#8A5A00"
+                            : colors.muted,
+                      fontSize: 11,
+                      fontWeight: 900,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        background:
+                          syncState === "synced"
+                            ? "#2BA568"
+                            : syncState === "offline"
+                              ? colors.gold
+                              : "#8091A3",
+                      }}
+                    />
+                    {syncState === "synced"
+                      ? `Synced${lastSyncedAt && !isMobile ? ` ${lastSyncedAt}` : ""}`
+                      : syncState === "offline"
+                        ? "Saved offline"
+                        : "Syncing..."}
+                  </div>
                 </div>
                 {screen === "dashboard" && !isMobile ? (
                   <p style={headerSubStyle}>{databaseStatus}</p>
