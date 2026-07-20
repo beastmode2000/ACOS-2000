@@ -127,6 +127,27 @@ type WorkNoteEntry = {
   createdAt: string;
 };
 
+
+const atlasNavigationSections: {
+  label: string;
+  items: AtlasScreen[];
+}[] = [
+  { label: "Overview", items: ["dashboard"] },
+  { label: "Analytics", items: ["timeline", "insights", "reports"] },
+  { label: "Intake", items: ["inbox", "requests", "qr"] },
+  {
+    label: "Work",
+    items: ["history", "calendar", "planner", "routines"],
+  },
+  { label: "Property", items: ["locations", "assets", "map"] },
+  { label: "People", items: ["vendors", "contacts"] },
+  {
+    label: "Knowledge",
+    items: ["documents", "manuals", "procedures"],
+  },
+  { label: "Tools", items: ["parts", "links", "assistant"] },
+];
+
 type WorkCompletionEntry = {
   id: string;
   completedAt: string;
@@ -17553,93 +17574,54 @@ export default function AtlasPage() {
     const highPriority = serviceRecords.filter(
       (record) => record.priority === "High" && record.status !== "Completed",
     );
-    const nextEvent = upcomingEvents[0] || todayEvents[0];
-    const pinnedLinks = defaultWorkLinks.filter((link) =>
-      [
-        "landscape-help-crew",
-        "maintainx-work-order",
-        "unifi-protect",
-        "hydrawise",
-        "chatgpt",
-      ].includes(link.id),
-    );
+    const nextRoutine = upcomingEvents[0] || todayEvents[0];
 
     return (
-      <div style={commandStripStyle}>
-        <div style={commandSectionStyle}>
-          <div style={commandEyebrowStyle}>Today</div>
-          <button
-            type="button"
-            onClick={() => {
-              if (nextEvent) {
-                openCalendarItem(nextEvent);
-                if (nextEvent.source !== "work-order") setScreen("calendar");
-              } else {
-                addCalendarItem(todayISO());
-              }
-            }}
-            style={commandMainButtonStyle}
-          >
-            <span>{nextEvent ? "Next" : "No event"}</span>
-            <strong>{nextEvent ? nextEvent.title : "Add today event"}</strong>
-          </button>
-          <div style={commandMiniGridStyle}>
-            <button
-              type="button"
-              onClick={() => setScreen("history")}
-              style={commandMetricStyle}
-            >
-              <strong>{openWorkOrders.length}</strong>
-              <span>Open</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setScreen("history")}
-              style={commandMetricStyle}
-            >
-              <strong>{highPriority.length}</strong>
-              <span>High</span>
-            </button>
-          </div>
-        </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr",
+          gap: 8,
+          marginTop: 10,
+          paddingTop: 10,
+          borderTop: "1px solid rgba(255,255,255,0.14)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (nextRoutine) {
+              openCalendarItem(nextRoutine);
+              if (nextRoutine.source !== "work-order") setScreen("calendar");
+            } else {
+              setScreen("routines");
+            }
+          }}
+          style={sidebarStatusCardStyle}
+        >
+          <span style={sidebarStatusLabelStyle}>Next routine</span>
+          <strong style={sidebarStatusValueStyle}>
+            {nextRoutine ? nextRoutine.title : "Open routines"}
+          </strong>
+        </button>
 
-        <div style={commandSectionStyle}>
-          <div style={commandEyebrowStyle}>Pinned</div>
-          <div style={commandPinnedGridStyle}>
-            {pinnedLinks.map((link) => (
-              <a
-                key={link.id}
-                href={link.url}
-                target="_blank"
-                rel="noreferrer"
-                style={commandPinnedLinkStyle}
-              >
-                <span>{link.logoText}</span>
-                <strong>
-                  {link.name
-                    .replace("Landscape Help — ", "Landscape ")
-                    .replace("UniFi Protect / Ubiquiti Cameras", "Cameras")
-                    .replace("Hydrawise / Irrigation", "Irrigation")
-                    .replace("MaintainX Work Order", "MaintainX")}
-                </strong>
-              </a>
-            ))}
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setScreen("history")}
+          style={sidebarStatusCardStyle}
+        >
+          <span style={sidebarStatusLabelStyle}>Open work</span>
+          <strong style={sidebarStatusNumberStyle}>{openWorkOrders.length}</strong>
+        </button>
 
-        <div style={commandSectionStyle}>
-          <div style={commandEyebrowStyle}>Watch</div>
-          <button
-            type="button"
-            onClick={() => setScreen("weather")}
-            style={commandWatchStyle}
-          >
-            Weather / irrigation check
-          </button>
-          <a href="/landscape-help" style={commandWatchStyle}>
-            Landscape Help admin
-          </a>
-        </div>
+        <button
+          type="button"
+          onClick={() => setScreen("history")}
+          style={sidebarStatusCardStyle}
+        >
+          <span style={sidebarStatusLabelStyle}>High priority</span>
+          <strong style={sidebarStatusNumberStyle}>{highPriority.length}</strong>
+        </button>
       </div>
     );
   }
@@ -18438,7 +18420,7 @@ export default function AtlasPage() {
                   width: 300,
                   height: "100vh",
                   maxHeight: "100vh",
-                  overflowY: "hidden",
+                  overflowY: "auto",
                   overflowX: "hidden",
                   zIndex: 30,
                   boxShadow: "10px 0 35px rgba(7,27,47,0.16)",
@@ -18489,38 +18471,43 @@ export default function AtlasPage() {
             </div>
           ) : (
             <>
-              <nav
-                style={{
-                  display: "grid",
-                  gap: 5,
-                  gridTemplateColumns: "1fr 1fr",
-                }}
-              >
-                {screens
-                  .filter(
-                    (item) => item.id !== "intake" && item.id !== "manuals",
-                  )
-                  .map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setScreen(item.id)}
-                      style={{
-                        ...navButtonStyle,
-                        borderColor:
-                          screen === item.id
-                            ? colors.gold
-                            : "rgba(255,255,255,0.12)",
-                        background:
-                          screen === item.id
-                            ? colors.gold
-                            : "rgba(255,255,255,0.04)",
-                        color: screen === item.id ? colors.navy : "#FFFFFF",
-                      }}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
+              <nav style={sidebarNavStyle} aria-label="Atlas sections">
+                {atlasNavigationSections.map((section) => (
+                  <div key={section.label} style={sidebarNavSectionStyle}>
+                    <div style={sidebarNavHeaderStyle}>{section.label}</div>
+                    <div style={sidebarNavItemsStyle}>
+                      {section.items.map((screenId) => {
+                        const item = screens.find(
+                          (candidate) => candidate.id === screenId,
+                        );
+                        if (!item) return null;
+
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setScreen(item.id)}
+                            style={{
+                              ...navButtonStyle,
+                              borderColor:
+                                screen === item.id
+                                  ? colors.gold
+                                  : "transparent",
+                              background:
+                                screen === item.id
+                                  ? colors.gold
+                                  : "transparent",
+                              color:
+                                screen === item.id ? colors.navy : "#FFFFFF",
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </nav>
 
               {renderCommandStrip()}
@@ -19674,16 +19661,74 @@ const brandSubStyle: React.CSSProperties = {
   fontWeight: 850,
 };
 
-const navButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 9,
-  padding: "6px 7px",
+const sidebarNavStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const sidebarNavSectionStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 3,
+};
+
+const sidebarNavHeaderStyle: React.CSSProperties = {
+  color: "rgba(214,226,238,0.72)",
+  fontSize: 9,
+  fontWeight: 950,
+  letterSpacing: 1.15,
+  lineHeight: 1,
+  padding: "3px 7px 1px",
+  textTransform: "uppercase",
+};
+
+const sidebarNavItemsStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 1,
+};
+
+const sidebarStatusCardStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid rgba(255,255,255,0.14)",
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.055)",
+  color: "#FFFFFF",
+  padding: "8px 10px",
+  display: "grid",
+  gap: 2,
   textAlign: "left",
   cursor: "pointer",
+};
+
+const sidebarStatusLabelStyle: React.CSSProperties = {
+  color: "rgba(214,226,238,0.75)",
+  fontSize: 9,
   fontWeight: 950,
-  fontSize: 10.5,
-  lineHeight: 1.08,
-  minHeight: 30,
+  letterSpacing: 0.8,
+  textTransform: "uppercase",
+};
+
+const sidebarStatusValueStyle: React.CSSProperties = {
+  fontSize: 11,
+  lineHeight: 1.25,
+};
+
+const sidebarStatusNumberStyle: React.CSSProperties = {
+  color: colors.gold2,
+  fontSize: 19,
+  lineHeight: 1,
+};
+
+const navButtonStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid transparent",
+  borderRadius: 8,
+  padding: "5px 8px",
+  textAlign: "left",
+  cursor: "pointer",
+  fontWeight: 850,
+  fontSize: 11,
+  lineHeight: 1.15,
+  minHeight: 25,
   display: "flex",
   alignItems: "center",
 };
