@@ -377,6 +377,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [planOpen, setPlanOpen] = useState(false);
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
+  const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
+
+  useEffect(() => {
+    setRecurrenceIntervalDraft(
+      String(Math.max(1, Number(selectedService?.recurrenceInterval || 1))),
+    );
+  }, [selectedService?.id, selectedService?.recurrenceInterval]);
 
   useEffect(() => {
     const loaded = safeReadSections();
@@ -1385,9 +1392,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         }
         drawer={
           selectedService.id ? (
-            <div style={stackStyle}>
+            <div style={{ ...stackStyle, gap: 10 }}>
               <div>
-                <h3 style={editorHeaderStyle}>
+                <h3 style={{ ...editorHeaderStyle, marginBottom: 8, paddingBottom: 8, fontSize: 21 }}>
                   {selectedService.title.trim() || "New Work"}
                 </h3>
                 <p style={mutedSmallStyle}>
@@ -1396,9 +1403,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </p>
               </div>
 
-              <section style={detailSectionStyle}>
+              <section style={{ ...detailSectionStyle, gap: 9, padding: 12 }}>
                 <div style={eyebrowStyle}>Work Information</div>
-                <div style={formGridStyle}>
+                <div style={{ ...formGridStyle, gap: 8, marginBottom: 0 }}>
                   <Field
                     label="Title / Rename"
                     value={selectedService.title}
@@ -1552,7 +1559,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <p style={mutedSmallStyle}>{photoMessage}</p>
                 ) : null}
                 {(selectedService.photos || []).length ? (
-                  <div style={photoGridStyle}>
+                  <div
+                    style={{
+                      ...photoGridStyle,
+                      maxHeight: 220,
+                      overflowY: "auto",
+                      paddingRight: 4,
+                    }}
+                  >
                     {(selectedService.photos || []).map((photo: PhotoLike) => {
                       const source = photoSource(photo);
                       return (
@@ -1596,12 +1610,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       );
                     })}
                   </div>
-                ) : (
-                  <p style={mutedSmallStyle}>
-                    Add photos of the issue, repair, completed work, equipment,
-                    or surrounding area.
-                  </p>
-                )}
+                ) : null}
               </section>
 
               <section style={detailSectionStyle}>
@@ -1660,12 +1669,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       ),
                     )}
                   </div>
-                ) : (
-                  <p style={mutedSmallStyle}>
-                    Completed work will be saved here with its notes, checklist,
-                    photos, and links.
-                  </p>
-                )}
+                ) : null}
               </section>
 
               <section style={detailSectionStyle}>
@@ -1675,8 +1679,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   onChange={(event) =>
                     updateWorkOrder({ notes: event.currentTarget.value })
                   }
-                  rows={7}
-                  style={{ ...inputStyle, resize: "vertical" }}
+                  rows={3}
+                  style={{ ...inputStyle, resize: "vertical", minHeight: 82 }}
                 />
               </section>
 
@@ -1847,7 +1851,17 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
               </details>
 
-              <section style={detailSectionStyle}>
+              <section
+                style={{
+                  ...detailSectionStyle,
+                  position: "sticky",
+                  bottom: 8,
+                  zIndex: 5,
+                  padding: 12,
+                  gap: 9,
+                  boxShadow: "0 -8px 24px rgba(15, 23, 42, 0.08)",
+                }}
+              >
                 <div style={eyebrowStyle}>Work Order Actions</div>
                 <div style={buttonRowStyle}>
                   {isRecordDirty("work_order", selectedService.id) ? (
@@ -1989,15 +2003,28 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <input
                         type="number"
                         min={1}
-                        value={selectedService.recurrenceInterval || 1}
-                        onChange={(event) =>
-                          updateWorkOrder({
-                            recurrenceInterval: Math.max(
-                              1,
-                              Number(event.currentTarget.value) || 1,
-                            ),
-                          })
-                        }
+                        inputMode="numeric"
+                        value={recurrenceIntervalDraft}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          if (nextValue === "" || /^\d+$/.test(nextValue)) {
+                            setRecurrenceIntervalDraft(nextValue);
+                          }
+                        }}
+                        onBlur={() => {
+                          const nextValue = Math.max(
+                            1,
+                            Number(recurrenceIntervalDraft) || 1,
+                          );
+                          setRecurrenceIntervalDraft(String(nextValue));
+                          updateWorkOrder({ recurrenceInterval: nextValue });
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
+                          }
+                        }}
                         style={inputStyle}
                       />
                     </label>
