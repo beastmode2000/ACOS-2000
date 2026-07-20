@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasDashboard from "./components/AtlasDashboard";
+import AtlasRoutines from "./components/AtlasRoutines";
 import { AtlasWorkOrders } from "./components/AtlasWorkOrders";
 import AtlasInsightsTimeline from "./components/AtlasInsightsTimeline";
 import ReportsAccessCenter from "./components/ReportsAccessCenter";
@@ -10358,6 +10359,10 @@ export default function AtlasPage() {
     );
   }
 
+  function renderRoutines() {
+    return <AtlasRoutines mode="manager" isMobile={isMobile} />;
+  }
+
   function renderTimelineOrInsights(mode: "timeline" | "insights") {
     return (
       <AtlasInsightsTimeline
@@ -18228,6 +18233,7 @@ export default function AtlasPage() {
     else if (screen === "intake") content = renderIntake();
     else if (screen === "inbox") content = renderInbox();
     else if (screen === "procedures") content = renderProcedures();
+    else if (screen === "routines") content = renderRoutines();
     else if (screen === "parts") content = renderParts();
     else if (screen === "links") content = renderWorkLinks();
     else if (screen === "qr") content = renderQRCodes();
