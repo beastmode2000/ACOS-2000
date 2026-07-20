@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
+import AtlasRoutines from "./AtlasRoutines";
 
 type AtlasDashboardProps = {
   [key: string]: any;
@@ -92,12 +93,15 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     const overdue = open.filter(
       (record: any) => record.date && daysFromToday(today, record.date) < 0,
     );
+
     const dueToday = open.filter(
       (record: any) => record.date && daysFromToday(today, record.date) === 0,
     );
+
     const inProgress = open.filter(
       (record: any) => record.status === "In Progress",
     );
+
     const maintenance = open.filter(
       (record: any) =>
         record.recurring || workType(record) === "Preventive Maintenance",
@@ -178,7 +182,9 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                 <img
                   src={logoCandidates[logoIndex]}
                   alt=""
-                  onError={() => setLogoIndex((index: number) => index + 1)}
+                  onError={() =>
+                    setLogoIndex((index: number) => index + 1)
+                  }
                   style={{
                     width: "100%",
                     height: "100%",
@@ -187,14 +193,27 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                   }}
                 />
               ) : (
-                <span style={{ color: colors.gold2, fontWeight: 900 }}>A</span>
+                <span
+                  style={{
+                    color: colors.gold2,
+                    fontWeight: 900,
+                  }}
+                >
+                  A
+                </span>
               )}
             </div>
 
             <div>
-              <div style={{ ...eyebrowStyle, color: colors.gold2 }}>
+              <div
+                style={{
+                  ...eyebrowStyle,
+                  color: colors.gold2,
+                }}
+              >
                 Estate Command Center
               </div>
+
               <h2
                 style={{
                   ...sectionTitleStyle,
@@ -204,6 +223,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
               >
                 Today at 2000
               </h2>
+
               <p
                 style={{
                   ...mutedSmallStyle,
@@ -223,6 +243,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
             >
               Plan My Day
             </button>
+
             <button
               type="button"
               onClick={() => setScreen("inbox")}
@@ -233,6 +254,12 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           </div>
         </div>
       </section>
+
+      <AtlasRoutines
+        mode="dashboard"
+        isMobile={isMobile}
+        onOpenManager={() => setScreen("routines")}
+      />
 
       <section style={sectionStyle}>
         <div
@@ -262,13 +289,17 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
               {todayEvents.length ? (
                 todayEvents.map((event: any) => {
                   const eventColor = colorForEvent(event);
+
                   return (
                     <button
                       key={event.instanceId || event.id}
                       type="button"
                       onClick={() => {
                         openCalendarItem(event);
-                        if (event.source !== "work-order") setScreen("calendar");
+
+                        if (event.source !== "work-order") {
+                          setScreen("calendar");
+                        }
                       }}
                       style={{
                         ...todayEventStyle,
@@ -277,11 +308,15 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                     >
                       <div>
                         <strong>{event.title}</strong>
+
                         <p style={mutedSmallStyle}>
-                          {event.allDay ? "All day" : event.time || "No time"} ·{" "}
-                          {categoryForEvent(event)}
+                          {event.allDay
+                            ? "All day"
+                            : event.time || "No time"}{" "}
+                          · {categoryForEvent(event)}
                         </p>
                       </div>
+
                       <span
                         style={{
                           ...eventColorPillStyle,
@@ -295,7 +330,9 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                   );
                 })
               ) : (
-                <div style={noticeStyle}>Nothing is scheduled for today.</div>
+                <div style={noticeStyle}>
+                  Nothing is scheduled for today.
+                </div>
               )}
             </div>
           </div>
@@ -327,7 +364,10 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                     type="button"
                     onClick={() => {
                       openCalendarItem(event);
-                      if (event.source !== "work-order") setScreen("calendar");
+
+                      if (event.source !== "work-order") {
+                        setScreen("calendar");
+                      }
                     }}
                     style={upcomingItemStyle}
                   >
@@ -337,13 +377,18 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                         background: eventColor.hex,
                       }}
                     />
+
                     <div style={upcomingInfoStyle}>
                       <strong>{event.title}</strong>
+
                       <p style={mutedSmallStyle}>
                         {formatDate(event.date)} ·{" "}
-                        {event.allDay ? "All day" : event.time || "No time"}
+                        {event.allDay
+                          ? "All day"
+                          : event.time || "No time"}
                       </p>
                     </div>
+
                     {dayLabel ? (
                       <span
                         style={{
@@ -392,22 +437,29 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
               >
                 <div style={dashboardWeatherTopStyle}>
                   <strong>
-                    {new Date(`${day.date}T12:00:00`).toLocaleDateString(
-                      undefined,
-                      { weekday: "short" },
-                    )}
+                    {new Date(
+                      `${day.date}T12:00:00`,
+                    ).toLocaleDateString(undefined, {
+                      weekday: "short",
+                    })}
                   </strong>
+
                   <span style={calendarWeatherIconStyle}>
                     {weatherIcon(day.code)}
                   </span>
                 </div>
+
                 <div style={dashboardWeatherTempStyle}>
                   {day.high}° / {day.low}°
                 </div>
+
                 <div style={dashboardWeatherMiniStyle}>
                   Rain {day.precipChance}% · ET0 {day.et0}"
                 </div>
-                <p style={dashboardAdviceStyle}>{irrigationAdvice(day)}</p>
+
+                <p style={dashboardAdviceStyle}>
+                  {irrigationAdvice(day)}
+                </p>
               </button>
             ))
           ) : (
