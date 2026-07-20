@@ -11166,6 +11166,45 @@ export default function AtlasPage() {
                 </div>
               </div>
 
+              <div style={{
+                ...buttonRowStyle,
+                flexShrink: 0,
+                justifyContent: "flex-end",
+                marginTop: -2,
+                marginBottom: 2,
+              }}>
+                {isRecordDirty("asset", selectedAsset.id) ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void saveDirtyRecord(
+                        "assets",
+                        selectedAsset,
+                        "asset",
+                        selectedAsset.id,
+                      )
+                    }
+                    style={goldButtonStyle}
+                  >
+                    Save Asset
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => addWorkOrder()}
+                  style={secondaryButtonStyle}
+                >
+                  Create Work Order
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteAssetRecord(selectedAsset)}
+                  style={dangerButtonStyle}
+                >
+                  Delete Asset
+                </button>
+              </div>
+
               <section style={detailSectionStyle}>
                 <div style={eyebrowStyle}>Asset Information</div>
                 <div style={formGridStyle}>
@@ -11241,38 +11280,6 @@ export default function AtlasPage() {
                   />
                 </div>
 
-                <div style={buttonRowStyle}>
-                  {isRecordDirty("asset", selectedAsset.id) ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void saveDirtyRecord(
-                          "assets",
-                          selectedAsset,
-                          "asset",
-                          selectedAsset.id,
-                        )
-                      }
-                      style={goldButtonStyle}
-                    >
-                      Save Asset
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => addWorkOrder()}
-                    style={secondaryButtonStyle}
-                  >
-                    Create Work Order
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteAssetRecord(selectedAsset)}
-                    style={dangerButtonStyle}
-                  >
-                    Delete Asset
-                  </button>
-                </div>
               </section>
 
               <section style={detailSectionStyle}>
