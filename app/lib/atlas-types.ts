@@ -15,6 +15,7 @@ export type Screen =
   | "manuals"
   | "intake"
   | "procedures"
+  | "routines"
   | "parts"
   | "links"
   | "qr"
@@ -499,6 +500,7 @@ export type AtlasTable =
   | "contacts"
   | "work_orders"
   | "procedures"
+  | "routines"
   | "calendar"
   | "asset_photos";
 
