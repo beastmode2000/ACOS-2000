@@ -127,6 +127,27 @@ type WorkNoteEntry = {
   createdAt: string;
 };
 
+
+const atlasNavigationSections: {
+  label: string;
+  items: AtlasScreen[];
+}[] = [
+  { label: "Overview", items: ["dashboard"] },
+  { label: "Analytics", items: ["timeline", "insights", "reports"] },
+  { label: "Intake", items: ["inbox", "requests", "qr"] },
+  {
+    label: "Work",
+    items: ["history", "calendar", "planner", "routines"],
+  },
+  { label: "Property", items: ["locations", "assets", "map"] },
+  { label: "People", items: ["vendors", "contacts"] },
+  {
+    label: "Knowledge",
+    items: ["documents", "manuals", "procedures"],
+  },
+  { label: "Tools", items: ["parts", "links", "assistant"] },
+];
+
 type WorkCompletionEntry = {
   id: string;
   completedAt: string;
@@ -17538,93 +17559,54 @@ export default function AtlasPage() {
     const highPriority = serviceRecords.filter(
       (record) => record.priority === "High" && record.status !== "Completed",
     );
-    const nextEvent = upcomingEvents[0] || todayEvents[0];
-    const pinnedLinks = defaultWorkLinks.filter((link) =>
-      [
-        "landscape-help-crew",
-        "maintainx-work-order",
-        "unifi-protect",
-        "hydrawise",
-        "chatgpt",
-      ].includes(link.id),
-    );
+    const nextRoutine = upcomingEvents[0] || todayEvents[0];
 
     return (
-      <div style={commandStripStyle}>
-        <div style={commandSectionStyle}>
-          <div style={commandEyebrowStyle}>Today</div>
-          <button
-            type="button"
-            onClick={() => {
-              if (nextEvent) {
-                openCalendarItem(nextEvent);
-                if (nextEvent.source !== "work-order") setScreen("calendar");
-              } else {
-                addCalendarItem(todayISO());
-              }
-            }}
-            style={commandMainButtonStyle}
-          >
-            <span>{nextEvent ? "Next" : "No event"}</span>
-            <strong>{nextEvent ? nextEvent.title : "Add today event"}</strong>
-          </button>
-          <div style={commandMiniGridStyle}>
-            <button
-              type="button"
-              onClick={() => setScreen("history")}
-              style={commandMetricStyle}
-            >
-              <strong>{openWorkOrders.length}</strong>
-              <span>Open</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setScreen("history")}
-              style={commandMetricStyle}
-            >
-              <strong>{highPriority.length}</strong>
-              <span>High</span>
-            </button>
-          </div>
-        </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr",
+          gap: 8,
+          marginTop: 10,
+          paddingTop: 10,
+          borderTop: "1px solid rgba(255,255,255,0.14)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (nextRoutine) {
+              openCalendarItem(nextRoutine);
+              if (nextRoutine.source !== "work-order") setScreen("calendar");
+            } else {
+              setScreen("routines");
+            }
+          }}
+          style={sidebarStatusCardStyle}
+        >
+          <span style={sidebarStatusLabelStyle}>Next routine</span>
+          <strong style={sidebarStatusValueStyle}>
+            {nextRoutine ? nextRoutine.title : "Open routines"}
+          </strong>
+        </button>
 
-        <div style={commandSectionStyle}>
-          <div style={commandEyebrowStyle}>Pinned</div>
-          <div style={commandPinnedGridStyle}>
-            {pinnedLinks.map((link) => (
-              <a
-                key={link.id}
-                href={link.url}
-                target="_blank"
-                rel="noreferrer"
-                style={commandPinnedLinkStyle}
-              >
-                <span>{link.logoText}</span>
-                <strong>
-                  {link.name
-                    .replace("Landscape Help — ", "Landscape ")
-                    .replace("UniFi Protect / Ubiquiti Cameras", "Cameras")
-                    .replace("Hydrawise / Irrigation", "Irrigation")
-                    .replace("MaintainX Work Order", "MaintainX")}
-                </strong>
-              </a>
-            ))}
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setScreen("history")}
+          style={sidebarStatusCardStyle}
+        >
+          <span style={sidebarStatusLabelStyle}>Open work</span>
+          <strong style={sidebarStatusNumberStyle}>{openWorkOrders.length}</strong>
+        </button>
 
-        <div style={commandSectionStyle}>
-          <div style={commandEyebrowStyle}>Watch</div>
-          <button
-            type="button"
-            onClick={() => setScreen("weather")}
-            style={commandWatchStyle}
-          >
-            Weather / irrigation check
-          </button>
-          <a href="/landscape-help" style={commandWatchStyle}>
-            Landscape Help admin
-          </a>
-        </div>
+        <button
+          type="button"
+          onClick={() => setScreen("history")}
+          style={sidebarStatusCardStyle}
+        >
+          <span style={sidebarStatusLabelStyle}>High priority</span>
+          <strong style={sidebarStatusNumberStyle}>{highPriority.length}</strong>
+        </button>
       </div>
     );
   }
@@ -18423,7 +18405,7 @@ export default function AtlasPage() {
                   width: 300,
                   height: "100vh",
                   maxHeight: "100vh",
-                  overflowY: "hidden",
+                  overflowY: "auto",
                   overflowX: "hidden",
                   zIndex: 30,
                   boxShadow: "10px 0 35px rgba(7,27,47,0.16)",
@@ -18474,38 +18456,43 @@ export default function AtlasPage() {
             </div>
           ) : (
             <>
-              <nav
-                style={{
-                  display: "grid",
-                  gap: 5,
-                  gridTemplateColumns: "1fr 1fr",
-                }}
-              >
-                {screens
-                  .filter(
-                    (item) => item.id !== "intake" && item.id !== "manuals",
-                  )
-                  .map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setScreen(item.id)}
-                      style={{
-                        ...navButtonStyle,
-                        borderColor:
-                          screen === item.id
-                            ? colors.gold
-                            : "rgba(255,255,255,0.12)",
-                        background:
-                          screen === item.id
-                            ? colors.gold
-                            : "rgba(255,255,255,0.04)",
-                        color: screen === item.id ? colors.navy : "#FFFFFF",
-                      }}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
+              <nav style={sidebarNavStyle} aria-label="Atlas sections">
+                {atlasNavigationSections.map((section) => (
+                  <div key={section.label} style={sidebarNavSectionStyle}>
+                    <div style={sidebarNavHeaderStyle}>{section.label}</div>
+                    <div style={sidebarNavItemsStyle}>
+                      {section.items.map((screenId) => {
+                        const item = screens.find(
+                          (candidate) => candidate.id === screenId,
+                        );
+                        if (!item) return null;
+
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setScreen(item.id)}
+                            style={{
+                              ...navButtonStyle,
+                              borderColor:
+                                screen === item.id
+                                  ? colors.gold
+                                  : "transparent",
+                              background:
+                                screen === item.id
+                                  ? colors.gold
+                                  : "transparent",
+                              color:
+                                screen === item.id ? colors.navy : "#FFFFFF",
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </nav>
 
               {renderCommandStrip()}
@@ -19518,8 +19505,8 @@ const mobileMenuSelectStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.16)",
   background: "rgba(255,255,255,0.08)",
   color: "#FFFFFF",
-  borderRadius: 12,
-  padding: "10px 11px",
+  borderRadius: 14,
+  padding: "12px 13px",
   fontSize: 15,
   fontWeight: 900,
   outline: "none",
@@ -19537,7 +19524,7 @@ const mobileTopbarStyle: React.CSSProperties = {
 const mobilePageTitleStyle: React.CSSProperties = {
   margin: 0,
   color: colors.navy,
-  fontSize: 24,
+  fontSize: 21,
   fontWeight: 950,
   letterSpacing: "-0.04em",
 };
@@ -19659,16 +19646,74 @@ const brandSubStyle: React.CSSProperties = {
   fontWeight: 850,
 };
 
-const navButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 9,
-  padding: "6px 7px",
+const sidebarNavStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const sidebarNavSectionStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 3,
+};
+
+const sidebarNavHeaderStyle: React.CSSProperties = {
+  color: "rgba(214,226,238,0.72)",
+  fontSize: 9,
+  fontWeight: 950,
+  letterSpacing: 1.15,
+  lineHeight: 1,
+  padding: "3px 7px 1px",
+  textTransform: "uppercase",
+};
+
+const sidebarNavItemsStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 1,
+};
+
+const sidebarStatusCardStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid rgba(255,255,255,0.14)",
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.055)",
+  color: "#FFFFFF",
+  padding: "8px 10px",
+  display: "grid",
+  gap: 2,
   textAlign: "left",
   cursor: "pointer",
+};
+
+const sidebarStatusLabelStyle: React.CSSProperties = {
+  color: "rgba(214,226,238,0.75)",
+  fontSize: 9,
   fontWeight: 950,
-  fontSize: 10.5,
-  lineHeight: 1.08,
-  minHeight: 30,
+  letterSpacing: 0.8,
+  textTransform: "uppercase",
+};
+
+const sidebarStatusValueStyle: React.CSSProperties = {
+  fontSize: 11,
+  lineHeight: 1.25,
+};
+
+const sidebarStatusNumberStyle: React.CSSProperties = {
+  color: colors.gold2,
+  fontSize: 19,
+  lineHeight: 1,
+};
+
+const navButtonStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid transparent",
+  borderRadius: 8,
+  padding: "5px 8px",
+  textAlign: "left",
+  cursor: "pointer",
+  fontWeight: 850,
+  fontSize: 11,
+  lineHeight: 1.15,
+  minHeight: 25,
   display: "flex",
   alignItems: "center",
 };
@@ -19923,7 +19968,7 @@ const headerSubStyle: React.CSSProperties = {
 };
 
 const dashboardStackStyle: React.CSSProperties = { display: "grid", gap: 14 };
-const stackStyle: React.CSSProperties = { display: "grid", gap: 12 };
+const stackStyle: React.CSSProperties = { display: "grid", gap: 16 };
 const listStyle: React.CSSProperties = { display: "grid", gap: 10 };
 const buttonRowStyle: React.CSSProperties = {
   display: "flex",
@@ -20075,15 +20120,13 @@ const listPanelStyle: React.CSSProperties = {
 const drawerStyle: React.CSSProperties = {
   background: colors.panel,
   border: `1px solid ${colors.line}`,
-  borderRadius: 24,
-  padding: 18,
+  borderRadius: 20,
+  padding: 14,
   position: "sticky",
-  top: 16,
+  top: 12,
   alignSelf: "start",
-  maxHeight: "calc(100vh - 32px)",
-  overflowY: "auto",
-  overflowX: "hidden",
-  overscrollBehavior: "contain",
+  maxHeight: "none",
+  overflow: "visible",
   boxShadow: "0 16px 35px rgba(15,23,42,0.06)",
   minWidth: 0,
   wordBreak: "break-word",
@@ -20099,8 +20142,8 @@ const detailTitleStyle: React.CSSProperties = {
 };
 
 const editorHeaderStyle: React.CSSProperties = {
-  margin: "0 0 18px",
-  padding: "0 0 12px",
+  margin: "0 0 10px",
+  padding: "0 0 8px",
   borderBottom: `2px solid ${colors.gold}`,
   color: colors.navy,
   fontSize: 24,
@@ -20150,8 +20193,8 @@ const inputStyle: React.CSSProperties = {
 
 const formGridStyle: React.CSSProperties = {
   display: "grid",
-  gap: 9,
-  marginBottom: 10,
+  gap: 11,
+  marginBottom: 14,
   minWidth: 0,
 };
 
@@ -21256,10 +21299,10 @@ const recurrenceHistoryStyle: React.CSSProperties = {
 
 const detailSectionStyle: React.CSSProperties = {
   display: "grid",
-  gap: 10,
-  padding: 12,
+  gap: 8,
+  padding: 10,
   border: `1px solid ${colors.line}`,
-  borderRadius: 16,
+  borderRadius: 13,
   background: "#FFFFFF",
 };
 
@@ -21267,29 +21310,29 @@ const detailSectionHeaderStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: 9,
+  gap: 12,
   flexWrap: "wrap",
 };
 
 const recordInfoGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-  gap: 10,
-  marginTop: 10,
+  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+  gap: 7,
+  marginTop: 6,
 };
 
 const recordInfoItemStyle: React.CSSProperties = {
   display: "grid",
-  gap: 4,
-  padding: 12,
+  gap: 3,
+  padding: 8,
   border: `1px solid ${colors.line}`,
   borderRadius: 12,
   background: colors.panel,
 };
 
 const recordNotesStyle: React.CSSProperties = {
-  margin: "10px 0 0",
-  padding: 12,
+  margin: "6px 0 0",
+  padding: 8,
   borderRadius: 12,
   background: colors.panel,
   color: colors.text,
@@ -21334,10 +21377,10 @@ const compactPhotoButtonStyle: React.CSSProperties = {
 
 const compactLinkedListStyle: React.CSSProperties = {
   display: "grid",
-  gap: 8,
-  maxHeight: 240,
+  gap: 6,
+  maxHeight: 190,
   overflowY: "auto",
-  paddingRight: 4,
+  paddingRight: 3,
 };
 
 const compactLinkedRowStyle: React.CSSProperties = {
@@ -22139,11 +22182,11 @@ const weatherDetailNoteStyle: React.CSSProperties = {
 
 const photoGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))",
-  gap: 10,
-  maxHeight: 240,
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(120px, 100%), 1fr))",
+  gap: 7,
+  maxHeight: 190,
   overflowY: "auto",
-  paddingRight: 4,
+  paddingRight: 3,
 };
 
 const photoCardStyle: React.CSSProperties = {
@@ -22155,7 +22198,7 @@ const photoCardStyle: React.CSSProperties = {
 
 const photoStyle: React.CSSProperties = {
   width: "100%",
-  maxHeight: 160,
+  maxHeight: 110,
   objectFit: "cover",
   borderRadius: 12,
   border: `1px solid ${colors.line}`,
