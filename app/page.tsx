@@ -3086,11 +3086,11 @@ function ListDrawerLayout(props: {
       : {
           ...drawerStyle,
           position: "sticky",
-          top: 12,
-          height: "fit-content",
-          maxHeight: "none",
+          top: 8,
+          height: "calc(100vh - 16px)",
+          maxHeight: "calc(100vh - 16px)",
           minHeight: 0,
-          overflow: "visible",
+          overflow: "hidden",
           alignSelf: "start",
           zIndex: 2,
         };
@@ -11070,6 +11070,7 @@ export default function AtlasPage() {
         drawer={
           selectedAsset.id ? (
             <div
+              className="atlas-asset-drawer"
               style={stackStyle}
               tabIndex={0}
               onPaste={(event) => {
@@ -11341,12 +11342,7 @@ export default function AtlasPage() {
                       );
                     })}
                   </div>
-                ) : (
-                  <p style={mutedSmallStyle}>
-                    Use Find Online to search official manufacturer sources, or
-                    Add Manual to paste a known link.
-                  </p>
-                )}
+                ) : null}
               </section>
 
               <section style={detailSectionStyle}>
@@ -11455,11 +11451,7 @@ export default function AtlasPage() {
                       </button>
                     ))}
                   </div>
-                ) : (
-                  <p style={mutedSmallStyle}>
-                    No work orders are linked to this asset.
-                  </p>
-                )}
+                ) : null}
               </section>
 
               {renderLinkedDocuments("Asset", selectedAsset.id)}
@@ -17566,9 +17558,9 @@ export default function AtlasPage() {
         style={{
           display: "grid",
           gridTemplateColumns: "1fr",
-          gap: 8,
-          marginTop: 10,
-          paddingTop: 10,
+          gap: 4,
+          marginTop: 5,
+          paddingTop: 5,
           borderTop: "1px solid rgba(255,255,255,0.14)",
         }}
       >
@@ -18369,6 +18361,43 @@ export default function AtlasPage() {
             page-break-inside: avoid;
           }
         }
+        @media (min-width: 820px) {
+          .atlas-asset-drawer {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            grid-template-rows: auto minmax(0, 1.25fr) minmax(0, 0.85fr);
+            gap: 6px !important;
+            height: 100%;
+            min-height: 0;
+            overflow: hidden;
+            align-content: stretch;
+          }
+          .atlas-asset-drawer > div:first-child {
+            grid-column: 1 / -1;
+          }
+          .atlas-asset-drawer > section {
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+          }
+          .atlas-asset-drawer > section:nth-of-type(1) {
+            grid-column: 1 / -1;
+          }
+          .atlas-asset-drawer > section:nth-of-type(2),
+          .atlas-asset-drawer > section:nth-of-type(3),
+          .atlas-asset-drawer > section:nth-of-type(4),
+          .atlas-asset-drawer > section:nth-of-type(5) {
+            display: flex !important;
+            flex-direction: column;
+          }
+          .atlas-asset-drawer > section:nth-of-type(2) > div:last-child,
+          .atlas-asset-drawer > section:nth-of-type(3) > div:last-child,
+          .atlas-asset-drawer > section:nth-of-type(4) > div:last-child,
+          .atlas-asset-drawer > section:nth-of-type(5) > div:last-child {
+            min-height: 0;
+            overflow-y: auto;
+          }
+        }
         @media (max-width: 819px) {
           body {
             width: 100%;
@@ -18384,7 +18413,7 @@ export default function AtlasPage() {
           display: "grid",
           gridTemplateColumns: isMobile
             ? "minmax(0, 1fr)"
-            : "300px minmax(0, 1fr)",
+            : "250px minmax(0, 1fr)",
           minHeight: "100vh",
           width: "100%",
           maxWidth: isMobile ? "100vw" : "none",
@@ -18402,10 +18431,10 @@ export default function AtlasPage() {
                   top: 0,
                   left: 0,
                   bottom: 0,
-                  width: 300,
+                  width: 250,
                   height: "100vh",
                   maxHeight: "100vh",
-                  overflowY: "auto",
+                  overflowY: "hidden",
                   overflowX: "hidden",
                   zIndex: 30,
                   boxShadow: "10px 0 35px rgba(7,27,47,0.16)",
@@ -18946,7 +18975,7 @@ export default function AtlasPage() {
                         <div
                           style={{
                             maxWidth: "88%",
-                            padding: "10px 12px",
+                            padding: "6px 8px",
                             borderRadius:
                               turn.role === "user"
                                 ? "14px 14px 4px 14px"
@@ -19020,7 +19049,7 @@ export default function AtlasPage() {
                         }}
                         style={{
                           ...secondaryButtonStyle,
-                          padding: "8px 10px",
+                          padding: "5px 7px",
                           fontSize: 12,
                         }}
                       >
@@ -19471,8 +19500,8 @@ const mobileHeaderShellStyle: React.CSSProperties = {
 const mobileBrandStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 10,
-  marginBottom: 8,
+  gap: 8,
+  marginBottom: 5,
 };
 
 const mobileLogoBoxStyle: React.CSSProperties = {
@@ -19593,24 +19622,24 @@ const desktopContentStyle: React.CSSProperties = {
 const sidebarStyle: React.CSSProperties = {
   background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
   color: "#FFFFFF",
-  padding: "10px 10px 10px",
+  padding: "7px 8px",
   top: 0,
   display: "flex",
   flexDirection: "column",
-  overflowY: "auto",
+  overflowY: "hidden",
   overflowX: "hidden",
 };
 
 const brandStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 10,
-  marginBottom: 8,
+  gap: 8,
+  marginBottom: 5,
 };
 
 const logoBoxStyle: React.CSSProperties = {
-  width: 36,
-  height: 36,
+  width: 30,
+  height: 30,
   borderRadius: 12,
   background: colors.gold,
   border: `1px solid ${colors.gold}`,
@@ -19635,8 +19664,8 @@ const logoFallbackStyle: React.CSSProperties = {
 
 const brandTitleStyle: React.CSSProperties = {
   fontWeight: 950,
-  fontSize: 18,
-  letterSpacing: 1.3,
+  fontSize: 16,
+  letterSpacing: 1.1,
   lineHeight: 1,
 };
 
@@ -19648,27 +19677,27 @@ const brandSubStyle: React.CSSProperties = {
 
 const sidebarNavStyle: React.CSSProperties = {
   display: "grid",
-  gap: 8,
+  gap: 3,
 };
 
 const sidebarNavSectionStyle: React.CSSProperties = {
   display: "grid",
-  gap: 3,
+  gap: 1,
 };
 
 const sidebarNavHeaderStyle: React.CSSProperties = {
   color: "rgba(214,226,238,0.72)",
-  fontSize: 9,
+  fontSize: "clamp(7px, 0.85vh, 9px)",
   fontWeight: 950,
-  letterSpacing: 1.15,
+  letterSpacing: 1,
   lineHeight: 1,
-  padding: "3px 7px 1px",
+  padding: "1px 6px 0",
   textTransform: "uppercase",
 };
 
 const sidebarNavItemsStyle: React.CSSProperties = {
   display: "grid",
-  gap: 1,
+  gap: 0,
 };
 
 const sidebarStatusCardStyle: React.CSSProperties = {
@@ -19677,7 +19706,7 @@ const sidebarStatusCardStyle: React.CSSProperties = {
   borderRadius: 10,
   background: "rgba(255,255,255,0.055)",
   color: "#FFFFFF",
-  padding: "8px 10px",
+  padding: "5px 7px",
   display: "grid",
   gap: 2,
   textAlign: "left",
@@ -19693,13 +19722,13 @@ const sidebarStatusLabelStyle: React.CSSProperties = {
 };
 
 const sidebarStatusValueStyle: React.CSSProperties = {
-  fontSize: 11,
-  lineHeight: 1.25,
+  fontSize: 9,
+  lineHeight: 1.1,
 };
 
 const sidebarStatusNumberStyle: React.CSSProperties = {
   color: colors.gold2,
-  fontSize: 19,
+  fontSize: 14,
   lineHeight: 1,
 };
 
@@ -19707,13 +19736,13 @@ const navButtonStyle: React.CSSProperties = {
   width: "100%",
   border: "1px solid transparent",
   borderRadius: 8,
-  padding: "5px 8px",
+  padding: "clamp(2px, 0.45vh, 4px) 7px",
   textAlign: "left",
   cursor: "pointer",
   fontWeight: 850,
-  fontSize: 11,
-  lineHeight: 1.15,
-  minHeight: 25,
+  fontSize: "clamp(8px, 1.05vh, 11px)",
+  lineHeight: 1.05,
+  minHeight: "clamp(18px, 2.45vh, 23px)",
   display: "flex",
   alignItems: "center",
 };
@@ -21299,8 +21328,8 @@ const recurrenceHistoryStyle: React.CSSProperties = {
 
 const detailSectionStyle: React.CSSProperties = {
   display: "grid",
-  gap: 8,
-  padding: 10,
+  gap: 5,
+  padding: 6,
   border: `1px solid ${colors.line}`,
   borderRadius: 13,
   background: "#FFFFFF",
@@ -21310,21 +21339,21 @@ const detailSectionHeaderStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: 12,
+  gap: 6,
   flexWrap: "wrap",
 };
 
 const recordInfoGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-  gap: 7,
-  marginTop: 6,
+  gap: 5,
+  marginTop: 3,
 };
 
 const recordInfoItemStyle: React.CSSProperties = {
   display: "grid",
-  gap: 3,
-  padding: 8,
+  gap: 2,
+  padding: 5,
   border: `1px solid ${colors.line}`,
   borderRadius: 12,
   background: colors.panel,
@@ -21332,11 +21361,11 @@ const recordInfoItemStyle: React.CSSProperties = {
 
 const recordNotesStyle: React.CSSProperties = {
   margin: "6px 0 0",
-  padding: 8,
-  borderRadius: 12,
+  padding: 5,
+  borderRadius: 9,
   background: colors.panel,
   color: colors.text,
-  lineHeight: 1.5,
+  lineHeight: 1.25,
   whiteSpace: "pre-wrap",
 };
 
@@ -21346,8 +21375,8 @@ const compactUploadButtonStyle: React.CSSProperties = {
   justifyContent: "center",
   flexShrink: 0,
   minWidth: "max-content",
-  minHeight: 38,
-  padding: "9px 12px",
+  minHeight: 30,
+  padding: "6px 9px",
   border: `1px solid ${colors.gold}`,
   borderRadius: 11,
   background: colors.gold,
@@ -21378,7 +21407,7 @@ const compactPhotoButtonStyle: React.CSSProperties = {
 const compactLinkedListStyle: React.CSSProperties = {
   display: "grid",
   gap: 6,
-  maxHeight: 190,
+  maxHeight: 120,
   overflowY: "auto",
   paddingRight: 3,
 };
@@ -21389,7 +21418,7 @@ const compactLinkedRowStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: 12,
-  padding: "10px 12px",
+  padding: "6px 8px",
   border: `1px solid ${colors.line}`,
   borderRadius: 12,
   background: colors.panel,
@@ -21405,8 +21434,8 @@ const assetVisualHeaderStyle: React.CSSProperties = {
   boxSizing: "border-box",
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr)",
-  gap: 14,
-  padding: 14,
+  gap: 6,
+  padding: 6,
   border: `1px solid ${colors.line}`,
   borderRadius: 16,
   background: "#FFFFFF",
@@ -21414,7 +21443,7 @@ const assetVisualHeaderStyle: React.CSSProperties = {
 
 const assetPhotoLargeStyle: React.CSSProperties = {
   width: "100%",
-  height: 190,
+  height: 88,
   minWidth: 0,
   display: "grid",
   placeItems: "center",
@@ -21497,7 +21526,7 @@ const assetPhotoActionButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "10px 12px",
+  padding: "6px 8px",
   border: `1px solid ${colors.line}`,
   borderRadius: 12,
   background: "#FFFFFF",
@@ -21521,7 +21550,7 @@ const assetPhotoUploadButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "10px 12px",
+  padding: "6px 8px",
   border: `1px solid ${colors.gold}`,
   borderRadius: 12,
   background: colors.gold,
@@ -21542,7 +21571,7 @@ const manualAssetRowStyle: React.CSSProperties = {
   gridTemplateColumns: "minmax(0, 1fr) 64px",
   alignItems: "center",
   gap: 12,
-  padding: "10px 12px",
+  padding: "6px 8px",
   border: `1px solid ${colors.line}`,
   borderRadius: 12,
   background: colors.panel,
@@ -21613,7 +21642,7 @@ const vendorLogoImageStyle: React.CSSProperties = {
 const vendorDetailHeaderStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 12,
+  gap: 6,
   flexWrap: "wrap",
 };
 
@@ -22093,7 +22122,7 @@ const photoMissingStyle: React.CSSProperties = {
   minHeight: 120,
   display: "grid",
   placeItems: "center",
-  marginBottom: 8,
+  marginBottom: 4,
   border: `1px dashed ${colors.line}`,
   borderRadius: 12,
   background: colors.panel,
@@ -22184,7 +22213,7 @@ const photoGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(min(120px, 100%), 1fr))",
   gap: 7,
-  maxHeight: 190,
+  maxHeight: 120,
   overflowY: "auto",
   paddingRight: 3,
 };
@@ -22198,11 +22227,11 @@ const photoCardStyle: React.CSSProperties = {
 
 const photoStyle: React.CSSProperties = {
   width: "100%",
-  maxHeight: 110,
+  maxHeight: 70,
   objectFit: "cover",
   borderRadius: 12,
   border: `1px solid ${colors.line}`,
-  marginBottom: 8,
+  marginBottom: 4,
 };
 
 const linkStyle: React.CSSProperties = {
