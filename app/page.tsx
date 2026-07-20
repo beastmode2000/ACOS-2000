@@ -6712,26 +6712,35 @@ export default function AtlasPage() {
     if (!linked.length) return null;
 
     return (
-      <div style={{ marginTop: 16 }}>
-        <div style={eyebrowStyle}>Linked Documents</div>
-        <div style={listStyle}>
-          {linked.slice(0, 5).map((doc) => (
+      <section style={detailSectionStyle}>
+        <div style={detailSectionHeaderStyle}>
+          <div>
+            <div style={eyebrowStyle}>Documents</div>
+            <strong>{linked.length} attached</strong>
+          </div>
+        </div>
+        <div style={compactLinkedListStyle}>
+          {linked.map((doc) => (
             <button
               key={doc.id}
               type="button"
-              onClick={() => setScreen("documents")}
-              style={rowButtonStyle}
+              onClick={() => {
+                setSelectedDocumentId(doc.id);
+                setScreen("documents");
+              }}
+              style={compactLinkedRowStyle}
             >
-              <div>
+              <span style={{ minWidth: 0 }}>
                 <strong>{doc.title}</strong>
-                <p style={mutedSmallStyle}>
+                <small style={mutedSmallStyle}>
                   {doc.type} · {(doc.files || []).length} file(s)
-                </p>
-              </div>
+                </small>
+              </span>
+              <span style={linkedOpenLabelStyle}>Open</span>
             </button>
           ))}
         </div>
-      </div>
+      </section>
     );
   }
 
@@ -11102,77 +11111,38 @@ export default function AtlasPage() {
               }}
             >
               <div style={assetVisualHeaderStyle}>
-                <div style={assetPhotoLargeStyle}>
-                  {selectedAssetCoverSource ? (
-                    <img
-                      src={selectedAssetCoverSource}
-                      alt={selectedAsset.name}
-                      style={assetPhotoLargeImageStyle}
-                    />
-                  ) : (
-                    <span>{selectedAsset.name.slice(0, 1).toUpperCase()}</span>
-                  )}
-                </div>
-
-                <div style={assetHeaderTextStyle}>
-                  <div style={assetHeaderNameRowStyle}>
+                <div style={assetHeaderNameRowStyle}>
+                  <div style={assetHeaderTextStyle}>
                     <h3 style={assetHeaderNameStyle}>
                       {selectedAsset.name.trim() || "Asset"}
                     </h3>
-                    <span style={badgeStyle(selectedAsset.status)}>
-                      {selectedAsset.status}
-                    </span>
-                  </div>
-
-                  <p style={assetHeaderMetaStyle}>
-                    {selectedAsset.category || "Uncategorized"} ·{" "}
-                    {locationName(selectedAsset.locationId)}
-                  </p>
-
-                  <p style={assetHeaderMetaStyle}>
+                    <p style={assetHeaderMetaStyle}>
+                      {selectedAsset.category || "Uncategorized"} ·{" "}
+                      {locationName(selectedAsset.locationId)}
+                    </p>
                     {[
                       selectedAsset.make,
                       selectedAsset.model,
                       selectedAsset.serial,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                </div>
-
-                <div style={assetPhotoButtonRowStyle}>
-                  <button
-                    type="button"
-                    onClick={() => void pasteAssetPhoto()}
-                    style={assetPhotoActionButtonStyle}
-                  >
-                    Paste Image
-                  </button>
-
-                  <label style={assetPhotoUploadButtonStyle}>
-                    {selectedAssetCoverPhoto ? "Add Another" : "Add Photo"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      capture="environment"
-                      onChange={(event) => {
-                        void addAssetPhotoFiles(event.currentTarget.files);
-                        event.currentTarget.value = "";
-                      }}
-                      style={{ display: "none" }}
-                    />
-                  </label>
+                    ].filter(Boolean).length ? (
+                      <p style={assetHeaderMetaStyle}>
+                        {[
+                          selectedAsset.make,
+                          selectedAsset.model,
+                          selectedAsset.serial,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span style={badgeStyle(selectedAsset.status)}>
+                    {selectedAsset.status}
+                  </span>
                 </div>
               </div>
 
-              <div style={{
-                ...buttonRowStyle,
-                flexShrink: 0,
-                justifyContent: "flex-end",
-                marginTop: -2,
-                marginBottom: 2,
-              }}>
+              <div style={assetActionRowStyle}>
                 {isRecordDirty("asset", selectedAsset.id) ? (
                   <button
                     type="button"
@@ -11184,7 +11154,7 @@ export default function AtlasPage() {
                         selectedAsset.id,
                       )
                     }
-                    style={goldButtonStyle}
+                    style={assetPrimaryActionButtonStyle}
                   >
                     Save Asset
                   </button>
@@ -11192,14 +11162,14 @@ export default function AtlasPage() {
                 <button
                   type="button"
                   onClick={() => addWorkOrder()}
-                  style={secondaryButtonStyle}
+                  style={assetActionButtonStyle}
                 >
                   Create Work Order
                 </button>
                 <button
                   type="button"
                   onClick={() => void deleteAssetRecord(selectedAsset)}
-                  style={dangerButtonStyle}
+                  style={assetDangerActionButtonStyle}
                 >
                   Delete Asset
                 </button>
@@ -11384,39 +11354,30 @@ export default function AtlasPage() {
                 </div>
 
                 {selectedAssetPhotos.length ? (
-                  <div style={photoGridStyle}>
+                  <div style={compactLinkedListStyle}>
                     {selectedAssetPhotos.map((photo, index) => {
                       const source = photoSource(photo);
                       return (
-                        <div key={photo.id} style={photoManageCardStyle}>
+                        <div key={photo.id} style={assetFileListRowStyle}>
                           <button
                             type="button"
                             onClick={() => openPhotoPreview(photo)}
-                            style={compactPhotoButtonStyle}
+                            style={assetFileOpenButtonStyle}
                             disabled={!source}
                           >
-                            {source ? (
-                              <img
-                                src={source}
-                                alt={photo.name}
-                                style={photoStyle}
-                              />
-                            ) : (
-                              <div style={photoMissingStyle}>
-                                Image data missing
-                              </div>
-                            )}
-                            <strong>{photo.name}</strong>
-                            {index === 0 ? (
-                              <small style={coverPhotoLabelStyle}>
-                                Main photo
+                            <span style={{ minWidth: 0 }}>
+                              <strong>{photo.name || `Asset photo ${index + 1}`}</strong>
+                              <small style={mutedSmallStyle}>
+                                {index === 0 ? "Main photo · Click to view" : "Click to view"}
                               </small>
-                            ) : null}
+                            </span>
+                            <span style={linkedOpenLabelStyle}>View</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => void deleteAssetPhoto(photo)}
-                            style={photoDeleteButtonStyle}
+                            style={assetFileDeleteButtonStyle}
+                            aria-label={`Delete ${photo.name || "asset photo"}`}
                           >
                             Delete
                           </button>
@@ -21435,17 +21396,95 @@ const compactLinkedRowStyle: React.CSSProperties = {
   fontFamily: "inherit",
 };
 
+const linkedOpenLabelStyle: React.CSSProperties = {
+  flex: "0 0 auto",
+  color: colors.navy3,
+  fontSize: 10,
+  fontWeight: 950,
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
+};
+
+const assetFileListRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: 5,
+};
+
+const assetFileOpenButtonStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  padding: "6px 8px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 10,
+  background: colors.panel,
+  color: colors.text,
+  textAlign: "left",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const assetFileDeleteButtonStyle: React.CSSProperties = {
+  border: "1px solid #F1B8B4",
+  borderRadius: 9,
+  padding: "6px 8px",
+  background: "#FFF1F0",
+  color: colors.red,
+  fontSize: 10,
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const assetActionRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: 5,
+  flexWrap: "wrap",
+  flexShrink: 0,
+  margin: 0,
+};
+
+const assetActionButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.navy,
+  borderRadius: 8,
+  padding: "5px 8px",
+  minHeight: 28,
+  fontSize: 11,
+  fontWeight: 850,
+  lineHeight: 1,
+  whiteSpace: "nowrap",
+  cursor: "pointer",
+};
+
+const assetPrimaryActionButtonStyle: React.CSSProperties = {
+  ...assetActionButtonStyle,
+  border: `1px solid ${colors.gold}`,
+  background: colors.gold,
+};
+
+const assetDangerActionButtonStyle: React.CSSProperties = {
+  ...assetActionButtonStyle,
+  border: "1px solid #FACACA",
+  background: "#FEECEC",
+  color: colors.red,
+};
+
 const assetVisualHeaderStyle: React.CSSProperties = {
   width: "100%",
   minWidth: 0,
   boxSizing: "border-box",
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr)",
-  gap: 6,
-  padding: 6,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 16,
-  background: "#FFFFFF",
+  gap: 3,
+  padding: "2px 1px 5px",
+  borderBottom: `1px solid ${colors.line}`,
 };
 
 const assetPhotoLargeStyle: React.CSSProperties = {
@@ -21481,21 +21520,19 @@ const assetHeaderTextStyle: React.CSSProperties = {
 const assetHeaderNameRowStyle: React.CSSProperties = {
   width: "100%",
   minWidth: 0,
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 10,
-  flexWrap: "wrap",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  alignItems: "start",
+  gap: 8,
 };
 
 const assetHeaderNameStyle: React.CSSProperties = {
-  flex: "1 1 220px",
   minWidth: 0,
   margin: 0,
   color: colors.navy,
-  fontSize: 23,
-  fontWeight: 950,
-  letterSpacing: "-0.03em",
+  fontSize: 18,
+  fontWeight: 900,
+  letterSpacing: "-0.02em",
   lineHeight: 1.15,
   whiteSpace: "normal",
   wordBreak: "normal",
@@ -21509,8 +21546,8 @@ const assetHeaderMetaStyle: React.CSSProperties = {
   minWidth: 0,
   margin: 0,
   color: colors.muted,
-  fontSize: 13,
-  lineHeight: 1.45,
+  fontSize: 11,
+  lineHeight: 1.25,
   whiteSpace: "normal",
   wordBreak: "normal",
   overflowWrap: "break-word",
