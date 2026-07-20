@@ -1392,7 +1392,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         }
         drawer={
           selectedService.id ? (
-            <div style={{ ...stackStyle, gap: 10 }}>
+            <div style={{ ...stackStyle, gap: 7 }}>
               <div>
                 <h3 style={{ ...editorHeaderStyle, marginBottom: 8, paddingBottom: 8, fontSize: 21 }}>
                   {selectedService.title.trim() || "New Work"}
@@ -1403,7 +1403,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </p>
               </div>
 
-              <section style={{ ...detailSectionStyle, gap: 9, padding: 12 }}>
+              <section style={{ ...detailSectionStyle, gap: 7, padding: 9 }}>
                 <div style={eyebrowStyle}>Work Information</div>
                 <div style={{ ...formGridStyle, gap: 8, marginBottom: 0 }}>
                   <Field
@@ -1562,7 +1562,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <div
                     style={{
                       ...photoGridStyle,
-                      maxHeight: 220,
+                      maxHeight: 150,
                       overflowY: "auto",
                       paddingRight: 4,
                     }}
@@ -1631,7 +1631,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     style={{
                       display: "grid",
                       gap: 8,
-                      maxHeight: 260,
+                      maxHeight: 150,
                       overflowY: "auto",
                     }}
                   >
@@ -1679,8 +1679,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   onChange={(event) =>
                     updateWorkOrder({ notes: event.currentTarget.value })
                   }
-                  rows={3}
-                  style={{ ...inputStyle, resize: "vertical", minHeight: 82 }}
+                  rows={2}
+                  style={{ ...inputStyle, resize: "vertical", minHeight: 58 }}
                 />
               </section>
 
