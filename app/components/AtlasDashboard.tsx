@@ -59,12 +59,14 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     mutedSmallStyle,
     noticeStyle,
     openCalendarItem,
+    requestRecords = [],
     secondaryButtonStyle,
     sectionStyle,
     sectionTitleStyle,
     serviceRecords = [],
     setLogoIndex,
     setScreen,
+    setSelectedRequestId,
     setSelectedServiceId,
     todayEventStyle,
     todayEvents = [],
@@ -109,6 +111,64 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
 
     return { open, overdue, dueToday, inProgress, maintenance };
   }, [serviceRecords, today]);
+
+  const recentActivity = useMemo(() => {
+    const entries: any[] = [];
+
+    requestRecords.forEach((request: any) => {
+      entries.push({
+        id: `request-${request.id}`,
+        date: request.updatedAt || request.submittedAt,
+        icon: request.status === "Closed" ? "✅" : "📥",
+        title: request.title || "Owner request",
+        detail:
+          request.status === "Closed"
+            ? `Request completed · ${request.requesterName || "Owner"}`
+            : `${request.status || "New"} request · ${request.requesterName || "Owner"}`,
+        kind: "request",
+        recordId: request.id,
+      });
+    });
+
+    serviceRecords.forEach((record: any) => {
+      const completedAt =
+        record.lastCompletedDate ||
+        (Array.isArray(record.completionHistory)
+          ? record.completionHistory[record.completionHistory.length - 1]
+          : "");
+
+      if (completedAt) {
+        entries.push({
+          id: `work-${record.id}-${completedAt}`,
+          date: completedAt,
+          icon: "🔧",
+          title: record.title,
+          detail: `Work completed · ${assetName(record.assetId)}`,
+          kind: "work",
+          recordId: record.id,
+        });
+      }
+
+      const notes = Array.isArray(record.notesHistory) ? record.notesHistory : [];
+      notes.slice(-2).forEach((note: any, index: number) => {
+        if (!note?.createdAt) return;
+        entries.push({
+          id: `note-${record.id}-${note.id || index}`,
+          date: note.createdAt,
+          icon: "📝",
+          title: record.title,
+          detail: note.text || "Work note added",
+          kind: "work",
+          recordId: record.id,
+        });
+      });
+    });
+
+    return entries
+      .filter((entry) => entry.date)
+      .sort((a, b) => dateTime(b.date) - dateTime(a.date))
+      .slice(0, 10);
+  }, [assetName, requestRecords, serviceRecords]);
 
   const cardGrid: React.CSSProperties = {
     display: "grid",
@@ -401,6 +461,70 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
             </div>
           </div>
         </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <SectionHeader
+          brand
+          eyebrow="Property Record"
+          title="Recent Activity"
+          detail="The newest requests, completed work, and work notes across Atlas."
+          right={
+            <button
+              type="button"
+              onClick={() => setScreen("timeline")}
+              style={secondaryButtonStyle}
+            >
+              View Full Timeline
+            </button>
+          }
+        />
+
+        {recentActivity.length ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            {recentActivity.map((entry: any) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => {
+                  if (entry.kind === "request") {
+                    setSelectedRequestId?.(entry.recordId);
+                    setScreen("requests");
+                    return;
+                  }
+
+                  setSelectedServiceId(entry.recordId);
+                  setScreen("history");
+                }}
+                style={{
+                  width: "100%",
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 12,
+                  background: "#FFFFFF",
+                  padding: "10px 12px",
+                  display: "grid",
+                  gridTemplateColumns: "32px minmax(0, 1fr) auto",
+                  alignItems: "center",
+                  gap: 10,
+                  textAlign: "left",
+                  color: colors.text,
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ fontSize: 18 }}>{entry.icon}</span>
+                <span style={{ minWidth: 0 }}>
+                  <strong style={{ display: "block" }}>{entry.title}</strong>
+                  <span style={mutedSmallStyle}>{entry.detail}</span>
+                </span>
+                <span style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>
+                  {formatDate(String(entry.date).slice(0, 10))}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={noticeStyle}>Activity will appear as requests and work are updated.</div>
+        )}
       </section>
 
       <AtlasRoutines
