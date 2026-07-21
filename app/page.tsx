@@ -1837,7 +1837,7 @@ function getWeekCells(cursor: Date) {
   });
 }
 
-const locations: LocationRecord[] = [
+const fallbackLocations: LocationRecord[] = [
   {
     id: "general",
     name: "General",
@@ -3188,6 +3188,10 @@ export default function AtlasPage() {
     "info" | "vendors" | "photos" | "tabs"
   >("info");
 
+  const [locations, setLocations] =
+    useState<LocationRecord[]>(fallbackLocations);
+  const [locationEditorOpen, setLocationEditorOpen] = useState(false);
+
   const [assetRecords, setAssetRecords] =
     useState<AssetRecord[]>(fallbackAssets);
   const [vendorRecords, setVendorRecords] =
@@ -3702,6 +3706,9 @@ export default function AtlasPage() {
         const payload = (await response.json()) as AtlasApiPayload;
         if (cancelled) return;
 
+        const apiLocations = Array.isArray(payload.locations)
+          ? payload.locations
+          : [];
         const apiAssets = Array.isArray(payload.assetRecords)
           ? payload.assetRecords
           : Array.isArray(payload.assets)
@@ -3746,6 +3753,14 @@ export default function AtlasPage() {
         )
           .map(normalizePhotoRecord)
           .filter((photo) => photo.id && photo.assetId);
+
+        if (apiLocations.length) {
+          const next = byName(apiLocations);
+          setLocations(next);
+          setSelectedLocationId((current) =>
+            next.some((item) => item.id === current) ? current : "",
+          );
+        }
 
         if (apiAssets.length) {
           const next = byName(apiAssets.map(normalizeAsset));
@@ -6848,6 +6863,71 @@ export default function AtlasPage() {
       );
       return false;
     }
+  }
+
+  function addLocation() {
+    const record: LocationRecord = {
+      id: uid("location"),
+      name: "",
+      type: "",
+      zone: "",
+      notes: "",
+    };
+    setLocations((current) => byName([record, ...current]));
+    setSelectedLocationId(record.id);
+    setLocationEditorOpen(true);
+    markRecordDirty("location", record.id);
+    setScreen("locations");
+  }
+
+  function updateLocation(patch: Partial<LocationRecord>) {
+    if (!selectedLocation.id) return;
+    markRecordDirty("location", selectedLocation.id);
+    setLocations((current) =>
+      byName(
+        current.map((item) =>
+          item.id === selectedLocation.id ? { ...item, ...patch } : item,
+        ),
+      ),
+    );
+  }
+
+  async function assignAssetToLocation(assetId: string) {
+    if (!selectedLocation.id || !assetId) return;
+    const asset = assetRecords.find((item) => item.id === assetId);
+    if (!asset) return;
+
+    const updated = normalizeAsset({
+      ...asset,
+      locationId: selectedLocation.id,
+    });
+    setAssetRecords((current) =>
+      byName(current.map((item) => (item.id === assetId ? updated : item))),
+    );
+    const saved = await postAtlasRecord("assets", updated);
+    showSaveToast(
+      saved
+        ? `${asset.name} added to ${selectedLocation.name || "this location"}.`
+        : `${asset.name} was added here, but Atlas sync did not finish.`,
+      saved ? "success" : "warning",
+    );
+  }
+
+  async function removeAssetFromLocation(assetId: string) {
+    const asset = assetRecords.find((item) => item.id === assetId);
+    if (!asset) return;
+
+    const updated = normalizeAsset({ ...asset, locationId: "general" });
+    setAssetRecords((current) =>
+      byName(current.map((item) => (item.id === assetId ? updated : item))),
+    );
+    const saved = await postAtlasRecord("assets", updated);
+    showSaveToast(
+      saved
+        ? `${asset.name} removed from ${selectedLocation.name || "this location"}.`
+        : `${asset.name} was removed here, but Atlas sync did not finish.`,
+      saved ? "success" : "warning",
+    );
   }
 
   function addAsset() {
@@ -10844,13 +10924,21 @@ export default function AtlasPage() {
         title="Locations"
         isMobile={isMobile}
         drawerResetKey={selectedLocationId || "location-empty"}
+        right={
+          <button type="button" onClick={addLocation} style={goldButtonStyle}>
+            Add Location
+          </button>
+        }
         list={
           <div style={listStyle}>
             {filteredLocations.map((location) => (
               <button
                 key={location.id}
                 type="button"
-                onClick={() => setSelectedLocationId(location.id)}
+                onClick={() => {
+                  setSelectedLocationId(location.id);
+                  setLocationEditorOpen(false);
+                }}
                 style={{
                   ...rowButtonStyle,
                   borderColor:
@@ -10895,20 +10983,93 @@ export default function AtlasPage() {
               }}
             >
               <div>
-                <h3 style={editorHeaderStyle}>{selectedLocation.name}</h3>
-                <div style={recordInfoGridStyle}>
-                  <div style={recordInfoItemStyle}>
-                    <span style={fieldLabelStyle}>Type</span>
-                    <strong>{selectedLocation.type || "—"}</strong>
-                  </div>
-                  <div style={recordInfoItemStyle}>
-                    <span style={fieldLabelStyle}>Zone</span>
-                    <strong>{selectedLocation.zone || "—"}</strong>
+                <div style={detailSectionHeaderStyle}>
+                  <h3 style={{ ...editorHeaderStyle, marginBottom: 0 }}>
+                    {selectedLocation.name || "New Location"}
+                  </h3>
+                  <div style={buttonRowStyle}>
+                    {locationEditorOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => setLocationEditorOpen(false)}
+                        style={secondaryButtonStyle}
+                      >
+                        Cancel
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setLocationEditorOpen(true)}
+                        style={secondaryButtonStyle}
+                      >
+                        Edit
+                      </button>
+                    )}
+                    {locationEditorOpen ||
+                    isRecordDirty("location", selectedLocation.id) ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void (async () => {
+                            await saveDirtyRecord(
+                              "locations",
+                              selectedLocation,
+                              "location",
+                              selectedLocation.id,
+                            );
+                            setLocationEditorOpen(false);
+                            showSaveToast("Location saved.");
+                          })()
+                        }
+                        style={goldButtonStyle}
+                      >
+                        Save Location
+                      </button>
+                    ) : null}
                   </div>
                 </div>
-                {selectedLocation.notes ? (
-                  <p style={recordNotesStyle}>{selectedLocation.notes}</p>
-                ) : null}
+
+                {locationEditorOpen ? (
+                  <div style={{ ...formGridStyle, marginTop: 12 }}>
+                    <Field
+                      label="Name"
+                      value={selectedLocation.name}
+                      onChange={(value) => updateLocation({ name: value })}
+                    />
+                    <Field
+                      label="Type"
+                      value={selectedLocation.type}
+                      onChange={(value) => updateLocation({ type: value })}
+                    />
+                    <Field
+                      label="Zone"
+                      value={selectedLocation.zone}
+                      onChange={(value) => updateLocation({ zone: value })}
+                    />
+                    <Field
+                      label="Notes"
+                      value={selectedLocation.notes}
+                      onChange={(value) => updateLocation({ notes: value })}
+                      multiline
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div style={recordInfoGridStyle}>
+                      <div style={recordInfoItemStyle}>
+                        <span style={fieldLabelStyle}>Type</span>
+                        <strong>{selectedLocation.type || "—"}</strong>
+                      </div>
+                      <div style={recordInfoItemStyle}>
+                        <span style={fieldLabelStyle}>Zone</span>
+                        <strong>{selectedLocation.zone || "—"}</strong>
+                      </div>
+                    </div>
+                    {selectedLocation.notes ? (
+                      <p style={recordNotesStyle}>{selectedLocation.notes}</p>
+                    ) : null}
+                  </>
+                )}
               </div>
 
               <section style={detailSectionStyle}>
@@ -10983,29 +11144,66 @@ export default function AtlasPage() {
               </section>
 
               <section style={detailSectionStyle}>
-                <div style={eyebrowStyle}>Assets at this location</div>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Assets at this location</div>
+                    <strong>{locationAssets.length} attached</strong>
+                  </div>
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      const assetId = event.currentTarget.value;
+                      if (assetId) void assignAssetToLocation(assetId);
+                    }}
+                    style={{ ...inputStyle, width: "auto", minWidth: 170 }}
+                    aria-label="Add an asset to this location"
+                  >
+                    <option value="">+ Add Asset</option>
+                    {byName(
+                      assetRecords.filter(
+                        (asset) => asset.locationId !== selectedLocation.id,
+                      ),
+                    ).map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 {locationAssets.length ? (
                   <div style={compactLinkedListStyle}>
                     {locationAssets.map((asset) => (
-                      <button
-                        key={asset.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedAssetId(asset.id);
-                          setScreen("assets");
-                        }}
-                        style={compactLinkedRowStyle}
-                      >
-                        <span>
-                          <strong>{asset.name}</strong>
-                          <small style={mutedSmallStyle}>
-                            {asset.category}
-                          </small>
-                        </span>
-                        <span style={badgeStyle(asset.status)}>
-                          {asset.status}
-                        </span>
-                      </button>
+                      <div key={asset.id} style={assetFileListRowStyle}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAssetId(asset.id);
+                            setScreen("assets");
+                          }}
+                          style={compactLinkedRowStyle}
+                        >
+                          <span>
+                            <strong>{asset.name}</strong>
+                            <small style={mutedSmallStyle}>
+                              {asset.category}
+                            </small>
+                          </span>
+                          <span style={badgeStyle(asset.status)}>
+                            {asset.status}
+                          </span>
+                        </button>
+                        {locationEditorOpen ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void removeAssetFromLocation(asset.id)
+                            }
+                            style={assetFileDeleteButtonStyle}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
                     ))}
                   </div>
                 ) : (
