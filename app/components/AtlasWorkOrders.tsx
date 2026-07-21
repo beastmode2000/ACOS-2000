@@ -378,6 +378,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const quickPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [newWorkOpen, setNewWorkOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [newWorkDraft, setNewWorkDraft] = useState<{
     title: string;
     workType: WorkItemType;
@@ -403,10 +404,15 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   useEffect(() => {
     setNewWorkOpen(false);
+    setDetailOpen(false);
     setPlanOpen(false);
     setManageSectionsOpen(false);
     setManageCategoriesOpen(false);
   }, [openResetKey]);
+
+  useEffect(() => {
+    if (!selectedService?.id) setDetailOpen(false);
+  }, [selectedService?.id]);
 
   useEffect(() => {
     const loaded = safeReadSections();
@@ -738,6 +744,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function selectAndPatch(record: any, patch: Record<string, unknown>) {
+    setDetailOpen(true);
     setSelectedServiceId(record.id);
     setPendingPatch({ recordId: record.id, patch });
   }
@@ -788,6 +795,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function quickAddPhoto(record: any) {
+    setDetailOpen(true);
     setSelectedServiceId(record.id);
     setPendingPhotoRecordId(record.id);
   }
@@ -797,6 +805,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function openNewWork(workType: WorkItemType = "Work Order") {
+    setDetailOpen(false);
     setSelectedServiceId("");
     setNewWorkDraft({
       title: "",
@@ -823,6 +832,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       return;
     }
 
+    setDetailOpen(true);
     addWorkOrder({
       title,
       workType: newWorkDraft.workType,
@@ -844,6 +854,26 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       setManageSectionsOpen((current) => !current);
     if (value === "categories")
       setManageCategoriesOpen((current) => !current);
+  }
+
+  function handleDetailAction(value: string) {
+    if (!value) return;
+    if (value === "save") void saveWorkOrderRecord();
+    if (value === "reopen")
+      updateWorkOrder({ status: "Open", completedAt: "" });
+    if (value === "start") updateWorkOrder({ status: "In Progress" });
+    if (value === "complete") void completeWorkOrder(selectedService);
+    if (value === "reschedule") quickReschedule(selectedService);
+    if (value === "convert") quickConvert(selectedService);
+    if (value === "tomorrow")
+      updateWorkOrder({ date: tomorrowDate(), status: "Scheduled" });
+    if (value === "next-week")
+      updateWorkOrder({ date: nextWeekDate(), status: "Scheduled" });
+    if (value === "recurring")
+      updateWorkOrder({ recurring: !Boolean(selectedService.recurring) });
+    if (value === "photo") quickAddPhoto(selectedService);
+    if (value === "duplicate") duplicateWork(selectedService);
+    if (value === "delete") void deleteWorkOrderRecord(selectedService);
   }
 
   function tomorrowDate() {
@@ -992,12 +1022,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         tabIndex={0}
         onClick={() => {
           setNewWorkOpen(false);
+          setDetailOpen(true);
           setSelectedServiceId(record.id);
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             setNewWorkOpen(false);
+            setDetailOpen(true);
             setSelectedServiceId(record.id);
           }
         }}
@@ -1155,10 +1187,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         detail="Track active work, recurring maintenance, projects, and completed history."
         isMobile={isMobile}
         gridStyleOverride={
-          selectedService.id ? undefined : { gridTemplateColumns: "1fr" }
+          detailOpen && selectedService.id
+            ? undefined
+            : { gridTemplateColumns: "1fr" }
         }
         drawerStyleOverride={
-          selectedService.id ? undefined : { display: "none" }
+          detailOpen && selectedService.id ? undefined : { display: "none" }
         }
         right={
           <>
@@ -1330,6 +1364,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       type="button"
                       onClick={() => {
                         setNewWorkOpen(false);
+                        setDetailOpen(true);
                         setSelectedServiceId(record.id);
                       }}
                       style={{
@@ -1699,7 +1734,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           </div>
         }
         drawer={
-          selectedService.id ? (
+          detailOpen && selectedService.id ? (
             <div style={{ ...stackStyle, gap: 7 }}>
               <div>
                 <h3 style={{ ...editorHeaderStyle, marginBottom: 8, paddingBottom: 8, fontSize: 21 }}>
@@ -2162,140 +2197,66 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <section
                 style={{
                   ...detailSectionStyle,
-                  position: "sticky",
-                  bottom: 8,
-                  zIndex: 5,
-                  padding: 12,
-                  gap: 9,
-                  boxShadow: "0 -8px 24px rgba(15, 23, 42, 0.08)",
+                  padding: 10,
+                  gap: 7,
+                  background: "#F8FAFC",
                 }}
               >
-                <div style={eyebrowStyle}>Work Order Actions</div>
-                <div style={buttonRowStyle}>
+                <div
+                  style={{
+                    color: colors.muted,
+                    fontSize: 12,
+                    fontWeight: 400,
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  Work Order Actions
+                </div>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    handleDetailAction(event.currentTarget.value);
+                    event.currentTarget.value = "";
+                  }}
+                  style={{
+                    ...controlStyle,
+                    minHeight: 40,
+                    color: colors.muted,
+                    fontSize: 13,
+                    fontWeight: 400,
+                    background: "#FFFFFF",
+                  }}
+                  aria-label="Work order actions"
+                >
+                  <option value="">Choose an action...</option>
                   {isRecordDirty("work_order", selectedService.id) ? (
-                    <button
-                      type="button"
-                      onClick={() => void saveWorkOrderRecord()}
-                      style={goldButtonStyle}
-                    >
-                      Save Work
-                    </button>
+                    <option value="save">Save Work</option>
                   ) : null}
-
                   {selectedService.status === "Completed" ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateWorkOrder({ status: "Open", completedAt: "" })
-                      }
-                      style={secondaryButtonStyle}
-                    >
-                      Reopen
-                    </button>
+                    <option value="reopen">Reopen Work Order</option>
                   ) : (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => updateWorkOrder({ status: "In Progress" })}
-                        style={secondaryButtonStyle}
-                      >
-                        Start
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void completeWorkOrder(selectedService)}
-                        style={
-                          selectedService.recurring
-                            ? goldButtonStyle
-                            : secondaryButtonStyle
-                        }
-                      >
+                      <option value="start">Start Work</option>
+                      <option value="complete">
                         {selectedService.recurring
                           ? "Complete & Move to Next Due"
-                          : "Done"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => quickReschedule(selectedService)}
-                        style={secondaryButtonStyle}
-                      >
-                        Reschedule
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => quickConvert(selectedService)}
-                        style={secondaryButtonStyle}
-                      >
-                        Convert
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateWorkOrder({
-                            date: tomorrowDate(),
-                            status: "Scheduled",
-                          })
-                        }
-                        style={secondaryButtonStyle}
-                      >
-                        Tomorrow
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateWorkOrder({
-                            date: nextWeekDate(),
-                            status: "Scheduled",
-                          })
-                        }
-                        style={secondaryButtonStyle}
-                      >
-                        Next Week
-                      </button>
+                          : "Mark Done"}
+                      </option>
+                      <option value="reschedule">Reschedule</option>
+                      <option value="tomorrow">Move to Tomorrow</option>
+                      <option value="next-week">Move to Next Week</option>
+                      <option value="convert">Convert Work Type</option>
                     </>
                   )}
-
-                  <label
-                    style={{
-                      ...recurrenceToggleStyle,
-                      minHeight: 42,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selectedService.recurring)}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          recurring: event.currentTarget.checked,
-                        })
-                      }
-                    />
-                    Recurring
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => quickAddPhoto(selectedService)}
-                    style={secondaryButtonStyle}
-                  >
-                    Add Photo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => duplicateWork(selectedService)}
-                    style={secondaryButtonStyle}
-                  >
-                    Duplicate
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteWorkOrderRecord(selectedService)}
-                    style={dangerButtonStyle}
-                  >
-                    Delete
-                  </button>
-                </div>
+                  <option value="recurring">
+                    {selectedService.recurring
+                      ? "Turn Off Recurring"
+                      : "Make Recurring"}
+                  </option>
+                  <option value="photo">Add Photo</option>
+                  <option value="duplicate">Duplicate Work Order</option>
+                  <option value="delete">Delete Work Order</option>
+                </select>
 
                 {selectedService.recurring ? (
                   <div
