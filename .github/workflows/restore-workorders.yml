@@ -1,1 +1,149 @@
+name: Restore Work Orders
 
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/restore-workorders.yml
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: github.event.head_commit.message != 'Restore Work Orders save and delete actions'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore last good Work Orders file
+        run: git checkout 5a5cad635acca8907dae941288d30033e1ff2b01 -- app/components/AtlasWorkOrders.tsx
+
+      - name: Make Save and Delete actions always visible
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("app/components/AtlasWorkOrders.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          old = """                {isRecordDirty("work_order", selectedService.id) ? (
+                  <button
+                    type="button"
+                    onClick={() => void saveWorkOrderRecord()}
+                    style={{ ...goldButtonStyle, width: "100%" }}
+                  >
+                    Save Changes
+                  </button>
+                ) : null}
+                <select
+                  value=""
+                  onChange={(event) => {
+                    handleDetailAction(event.currentTarget.value);
+                    event.currentTarget.value = "";
+                  }}
+                  style={{
+                    ...controlStyle,
+                    minHeight: 40,
+                    color: colors.muted,
+                    fontSize: 13,
+                    fontWeight: 400,
+                    background: "#FFFFFF",
+                  }}
+                  aria-label="Work order actions"
+                >
+                  <option value="">Choose an action...</option>
+                  {selectedService.status === "Completed" ? (
+                    <option value="reopen">Reopen Work Order</option>
+                  ) : (
+                    <>
+                      <option value="start">Start Work</option>
+                      <option value="complete">
+                        {selectedService.recurring
+                          ? "Complete & Move to Next Due"
+                          : "Mark Done"}
+                      </option>
+                      <option value="reschedule">Reschedule</option>
+                      <option value="tomorrow">Move to Tomorrow</option>
+                      <option value="next-week">Move to Next Week</option>
+                      <option value="convert">Convert Work Type</option>
+                    </>
+                  )}
+                  <option value="photo">Add Photo</option>
+                  <option value="duplicate">Duplicate Work Order</option>
+                  <option value="delete">Delete Work Order</option>
+                </select>"""
+
+          new = """                <button
+                  type="button"
+                  onClick={() => void saveWorkOrderRecord()}
+                  style={{ ...goldButtonStyle, width: "100%" }}
+                >
+                  Save Work Order
+                </button>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    handleDetailAction(event.currentTarget.value);
+                    event.currentTarget.value = "";
+                  }}
+                  style={{
+                    ...controlStyle,
+                    minHeight: 40,
+                    color: colors.muted,
+                    fontSize: 13,
+                    fontWeight: 400,
+                    background: "#FFFFFF",
+                  }}
+                  aria-label="Work order actions"
+                >
+                  <option value="">Choose an action...</option>
+                  {selectedService.status === "Completed" ? (
+                    <option value="reopen">Reopen Work Order</option>
+                  ) : (
+                    <>
+                      <option value="start">Start Work</option>
+                      <option value="complete">
+                        {selectedService.recurring
+                          ? "Complete & Move to Next Due"
+                          : "Mark Done"}
+                      </option>
+                      <option value="reschedule">Reschedule</option>
+                      <option value="tomorrow">Move to Tomorrow</option>
+                      <option value="next-week">Move to Next Week</option>
+                      <option value="convert">Convert Work Type</option>
+                    </>
+                  )}
+                  <option value="photo">Add Photo</option>
+                  <option value="duplicate">Duplicate Work Order</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void deleteWorkOrderRecord(selectedService)}
+                  style={{ ...dangerButtonStyle, width: "100%" }}
+                >
+                  Delete Work Order
+                </button>"""
+
+          if old not in text:
+              raise SystemExit("Expected Work Order actions block was not found")
+
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: Verify export and build
+        run: |
+          grep -q 'export { AtlasWorkOrders };' app/components/AtlasWorkOrders.tsx
+          npm ci
+          npm run build
+
+      - name: Commit repaired file
+        run: |
+          git config user.name "Atlas Repair"
+          git config user.email "actions@github.com"
+          git add app/components/AtlasWorkOrders.tsx
+          git commit -m "Restore Work Orders save and delete actions"
+          git push origin main
