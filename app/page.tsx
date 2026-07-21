@@ -16057,20 +16057,18 @@ export default function AtlasPage() {
               {formatRequestDateTime(selectedRequest.submittedAt)}
             </p>
           </div>
-          {requestIsCompleted(selectedRequest) ? (
-            <button
-              type="button"
-              onClick={() => void deleteOwnerRequest(selectedRequest)}
-              style={{
-                ...secondaryButtonStyle,
-                color: "#ef6b63",
-                borderColor: "rgba(239,107,99,.55)",
-                fontWeight: 500,
-              }}
-            >
-              Delete
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => void deleteOwnerRequest(selectedRequest)}
+            style={{
+              ...secondaryButtonStyle,
+              color: "#ef6b63",
+              borderColor: "rgba(239,107,99,.55)",
+              fontWeight: 500,
+            }}
+          >
+            Delete Request
+          </button>
         </div>
 
         {primaryPhoto ? (
@@ -16314,10 +16312,56 @@ export default function AtlasPage() {
         ) : null}
 
         {selectedLinkedWorkOrder ? (
-          <div style={noticeStyle}>
-            Linked work order: <strong>{selectedLinkedWorkOrder.title}</strong> ·{" "}
-            {selectedLinkedWorkOrder.status}
-          </div>
+          <section style={{ ...sectionStyle, padding: 12 }}>
+            <div style={eyebrowStyle}>Linked Work Order</div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <strong>{selectedLinkedWorkOrder.title}</strong>
+                <p style={{ ...mutedSmallStyle, margin: "3px 0 0" }}>
+                  Status: {selectedLinkedWorkOrder.status}
+                </p>
+              </div>
+              <span style={badgeStyle(selectedLinkedWorkOrder.status)}>
+                {selectedLinkedWorkOrder.status}
+              </span>
+            </div>
+            <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+              {selectedLinkedWorkOrder.status !== "Completed" ? (
+                <button
+                  type="button"
+                  onClick={() => void completeWorkOrder(selectedLinkedWorkOrder)}
+                  style={goldButtonStyle}
+                >
+                  Mark Complete
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedServiceId(selectedLinkedWorkOrder.id);
+                  setScreen("history");
+                }}
+                style={secondaryButtonStyle}
+              >
+                Edit Work Order
+              </button>
+              <button
+                type="button"
+                onClick={() => void deleteWorkOrderRecord(selectedLinkedWorkOrder)}
+                style={dangerButtonStyle}
+              >
+                Delete Work Order
+              </button>
+            </div>
+          </section>
         ) : null}
 
         <div style={buttonRowStyle}>
@@ -16342,18 +16386,7 @@ export default function AtlasPage() {
               ? "Work Order Created"
               : "Convert to Work Order"}
           </button>
-          {selectedLinkedWorkOrder ? (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedServiceId(selectedLinkedWorkOrder.id);
-                setScreen("history");
-              }}
-              style={secondaryButtonStyle}
-            >
-              Open Work Order
-            </button>
-          ) : null}
+
         </div>
       </div>
     ) : (
