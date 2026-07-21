@@ -423,6 +423,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
   const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
+  const [completedHistoryOpen, setCompletedHistoryOpen] = useState(true);
+  const [completedHistoryLimit, setCompletedHistoryLimit] = useState(5);
 
   useEffect(() => {
     setRecurrenceIntervalDraft(
@@ -640,6 +642,21 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       projects: sortWorkRecords(groups.projects),
     };
   }, [visibleRecords]);
+
+  const completedHistoryRecords = useMemo(
+    () =>
+      sortCompletedRecords(
+        filteredServices.filter(
+          (record: any) => String(record.status || "") === "Completed",
+        ),
+      ),
+    [filteredServices],
+  );
+
+  const visibleCompletedHistory = completedHistoryRecords.slice(
+    0,
+    completedHistoryLimit,
+  );
 
   const tabCounts = useMemo(() => {
     const result: Record<string, number> = {};
@@ -2546,6 +2563,247 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           )
         }
       />
+
+      <section
+        style={{
+          marginTop: 18,
+          padding: isMobile ? 12 : 18,
+          border: `1px solid ${colors.line}`,
+          borderRadius: 16,
+          background: colors.card || "#FFFFFF",
+          color: colors.text,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: completedHistoryOpen ? 14 : 0,
+          }}
+        >
+          <div>
+            <div style={eyebrowStyle}>Completed History</div>
+            <h3 style={{ ...editorHeaderStyle, margin: "4px 0" }}>
+              Completed Work Orders
+            </h3>
+            <p style={{ ...mutedSmallStyle, margin: 0 }}>
+              Completed work orders, newest first.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCompletedHistoryOpen((open) => !open)}
+            style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+          >
+            {completedHistoryOpen ? "Hide History ↑" : "Show History ↓"}
+          </button>
+        </div>
+
+        {completedHistoryOpen ? (
+          completedHistoryRecords.length ? (
+            <>
+              <div style={{ overflowX: "auto" }}>
+                <div
+                  style={{
+                    minWidth: isMobile ? 760 : 980,
+                    display: "grid",
+                    gap: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(270px, 2fr) 145px 150px 150px 150px 190px",
+                      gap: 12,
+                      padding: "0 10px 9px",
+                      color: colors.muted,
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>Title</span>
+                    <span>Completed</span>
+                    <span>Asset</span>
+                    <span>Location</span>
+                    <span>Category</span>
+                    <span>Actions</span>
+                  </div>
+
+                  {visibleCompletedHistory.map((record: any) => {
+                    const photo = (record.photos || [])[0] as
+                      | PhotoLike
+                      | undefined;
+                    const source = photo ? photoSource(photo) : "";
+                    const location = locationRecords.find(
+                      (item: any) => item.id === record.locationId,
+                    );
+                    return (
+                      <div
+                        key={record.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "minmax(270px, 2fr) 145px 150px 150px 150px 190px",
+                          gap: 12,
+                          alignItems: "center",
+                          padding: 10,
+                          borderTop: `1px solid ${colors.line}`,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewWorkOpen(false);
+                            setDetailOpen(true);
+                            setSelectedServiceId(record.id);
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            minWidth: 0,
+                            padding: 0,
+                            border: 0,
+                            background: "transparent",
+                            color: colors.text,
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {source ? (
+                            <img
+                              src={source}
+                              alt=""
+                              style={{
+                                width: 64,
+                                height: 46,
+                                flex: "0 0 auto",
+                                objectFit: "cover",
+                                borderRadius: 8,
+                              }}
+                            />
+                          ) : (
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: 64,
+                                height: 46,
+                                display: "grid",
+                                placeItems: "center",
+                                flex: "0 0 auto",
+                                borderRadius: 8,
+                                background: "#F1F5F9",
+                                fontSize: 22,
+                              }}
+                            >
+                              {categoryEmoji(categoryLabel(record))}
+                            </span>
+                          )}
+                          <span style={{ minWidth: 0 }}>
+                            <strong
+                              style={{
+                                display: "block",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {record.title || "Untitled Work"}
+                            </strong>
+                            <small style={mutedSmallStyle}>
+                              {record.assignedTo
+                                ? `Completed by ${record.assignedTo}`
+                                : "Completed"}
+                            </small>
+                          </span>
+                        </button>
+                        <span style={{ fontSize: 13 }}>
+                          {completedTime(record)
+                            ? new Date(completedTime(record)).toLocaleString()
+                            : "—"}
+                        </span>
+                        <span style={{ fontSize: 13 }}>
+                          {record.assetId ? assetName(record.assetId) : "—"}
+                        </span>
+                        <span style={{ fontSize: 13 }}>
+                          {location?.name || "—"}
+                        </span>
+                        <span style={{ fontSize: 13 }}>
+                          {categoryDisplayLabel(categoryLabel(record))}
+                        </span>
+                        <span style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewWorkOpen(false);
+                              setDetailOpen(true);
+                              setSelectedServiceId(record.id);
+                            }}
+                            style={{ ...secondaryButtonStyle, padding: "7px 11px" }}
+                          >
+                            View / Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteWorkOrderRecord(record)}
+                            style={{ ...dangerButtonStyle, padding: "7px 10px" }}
+                            aria-label={`Delete ${record.title || "work order"}`}
+                            title="Delete work order"
+                          >
+                            Delete
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  marginTop: 12,
+                  color: colors.muted,
+                  fontSize: 13,
+                }}
+              >
+                <span>
+                  Showing 1 to {visibleCompletedHistory.length} of{" "}
+                  {completedHistoryRecords.length} completed items
+                </span>
+                {completedHistoryLimit < completedHistoryRecords.length ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCompletedHistoryLimit((limit) => limit + 5)
+                    }
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                  >
+                    Load More ↓
+                  </button>
+                ) : completedHistoryRecords.length > 5 ? (
+                  <button
+                    type="button"
+                    onClick={() => setCompletedHistoryLimit(5)}
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                  >
+                    Show Less ↑
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <div style={noticeStyle}>No completed work orders yet.</div>
+          )
+        ) : null}
+      </section>
     </>
   );
 }
