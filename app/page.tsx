@@ -15869,33 +15869,492 @@ export default function AtlasPage() {
     setScreen("history");
   }
 
-  function renderRequests() {
-    const activeRequestRecords = requestRecords.filter(
-      (request) =>
-        request.status !== "Converted to Work Order" &&
-        request.status !== "Declined" &&
-        request.status !== "Closed",
+  async function deleteOwnerRequest(request: OwnerRequestRecord) {
+    const confirmed = window.confirm(
+      `Delete “${request.title || "this request"}” permanently? This cannot be undone.`,
     );
-    const requestHistoryRecords = requestRecords
-      .filter(
-        (request) =>
-          request.status === "Converted to Work Order" ||
-          request.status === "Declined" ||
-          request.status === "Closed",
-      )
-      .sort((a, b) =>
-        String(b.updatedAt || b.submittedAt).localeCompare(
-          String(a.updatedAt || a.submittedAt),
-        ),
+    if (!confirmed) return;
+
+    setRequestMessage("Deleting request...");
+    try {
+      const response = await fetch(
+        `/api/atlas-requests?id=${encodeURIComponent(request.id)}`,
+        { method: "DELETE" },
       );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Request deletion failed.");
+      }
+      setRequestRecords((current) =>
+        current.filter((item) => item.id !== request.id),
+      );
+      setSelectedRequestId("");
+      setRequestMessage("Request deleted.");
+    } catch (error) {
+      setRequestMessage(
+        error instanceof Error ? error.message : "Request deletion failed.",
+      );
+    }
+  }
+
+  function renderRequests() {
+    const linkedWorkOrderFor = (request: OwnerRequestRecord) =>
+      request.convertedWorkOrderId
+        ? serviceRecords.find(
+            (item) => item.id === request.convertedWorkOrderId,
+          ) || null
+        : null;
+
+    const requestIsCompleted = (request: OwnerRequestRecord) => {
+      const linked = linkedWorkOrderFor(request);
+      return (
+        request.status === "Closed" ||
+        request.status === "Declined" ||
+        linked?.status === "Completed"
+      );
+    };
+
+    const completionValue = (request: OwnerRequestRecord) => {
+      const linked = linkedWorkOrderFor(request);
+      return (
+        request.completedAt ||
+        linked?.lastCompletedDate ||
+        (linked?.status === "Completed" ? linked.date : "") ||
+        request.updatedAt ||
+        request.submittedAt
+      );
+    };
+
+    const activeRequestRecords = requestRecords
+      .filter((request) => !requestIsCompleted(request))
+      .sort((a, b) =>
+        String(b.submittedAt).localeCompare(String(a.submittedAt)),
+      );
+
+    const requestHistoryRecords = requestRecords
+      .filter(requestIsCompleted)
+      .sort((a, b) =>
+        String(completionValue(b)).localeCompare(String(completionValue(a))),
+      );
+
     const portalLink =
       requestPortalToken && typeof window !== "undefined"
         ? `${window.location.origin}/request?token=${encodeURIComponent(
             requestPortalToken,
           )}`
         : "";
-
     const ownerRequestQr = portalLink ? qrImageUrl(portalLink, 320) : "";
+    const primaryPhoto = selectedRequest?.photos?.[0];
+    const selectedLinkedWorkOrder = selectedRequest
+      ? linkedWorkOrderFor(selectedRequest)
+      : null;
+    const requestCategories = [
+      "Cleaning",
+      "Maintenance",
+      "Landscaping",
+      "Pool & Spa",
+      "Irrigation",
+      "Electrical",
+      "Plumbing",
+      "HVAC",
+      "Dock & Marine",
+      "Vehicles",
+      "House",
+      "Inventory",
+      "Project",
+      "Inspection",
+      "Safety",
+      "Admin",
+    ];
+    const formatRequestDateTime = (value: string) => {
+      if (!value) return "Not recorded";
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime())
+        ? value
+        : parsed.toLocaleString([], {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          });
+    };
+
+    const requestList = (
+      <div style={listStyle}>
+        <div style={eyebrowStyle}>Open / In Progress</div>
+        {activeRequestRecords.length ? (
+          activeRequestRecords.map((request) => {
+            const photo = request.photos?.[0];
+            const linked = linkedWorkOrderFor(request);
+            return (
+              <button
+                key={request.id}
+                type="button"
+                onClick={() => setSelectedRequestId(request.id)}
+                style={{
+                  ...rowButtonStyle,
+                  gap: 12,
+                  alignItems: "center",
+                  borderColor:
+                    request.id === selectedRequest?.id
+                      ? colors.gold
+                      : colors.line,
+                }}
+              >
+                {photo ? (
+                  <img
+                    src={photo.dataUrl || photo.url}
+                    alt=""
+                    style={{
+                      width: 72,
+                      height: 58,
+                      borderRadius: 10,
+                      objectFit: "cover",
+                      flex: "0 0 auto",
+                    }}
+                  />
+                ) : null}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <strong>{request.title || "Untitled Request"}</strong>
+                  <p style={mutedSmallStyle}>
+                    {request.requesterName || "Owner"} ·{" "}
+                    {request.locationName || request.assetName || "Unassigned"}
+                  </p>
+                  {linked ? (
+                    <p style={{ ...mutedSmallStyle, marginTop: 3 }}>
+                      Work order: {linked.status}
+                    </p>
+                  ) : null}
+                </div>
+                <span style={badgeStyle(request.status)}>{request.status}</span>
+              </button>
+            );
+          })
+        ) : (
+          <div style={noticeStyle}>No open requests.</div>
+        )}
+      </div>
+    );
+
+    const requestDrawer = selectedRequest ? (
+      <div style={{ display: "grid", gap: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={eyebrowStyle}>Request Details</div>
+            <h3 style={{ ...editorHeaderStyle, marginBottom: 6 }}>
+              {selectedRequest.title || "Untitled Request"}
+            </h3>
+            <p style={{ ...mutedSmallStyle, margin: 0 }}>
+              Submitted by {selectedRequest.requesterName || "Owner"} ·{" "}
+              {formatRequestDateTime(selectedRequest.submittedAt)}
+            </p>
+          </div>
+          {requestIsCompleted(selectedRequest) ? (
+            <button
+              type="button"
+              onClick={() => void deleteOwnerRequest(selectedRequest)}
+              style={{
+                ...secondaryButtonStyle,
+                color: "#ef6b63",
+                borderColor: "rgba(239,107,99,.55)",
+                fontWeight: 500,
+              }}
+            >
+              Delete
+            </button>
+          ) : null}
+        </div>
+
+        {primaryPhoto ? (
+          <button
+            type="button"
+            onClick={() => setPreviewFile(primaryPhoto)}
+            style={{
+              border: `1px solid ${colors.line}`,
+              borderRadius: 16,
+              overflow: "hidden",
+              padding: 0,
+              background: colors.card,
+              cursor: "pointer",
+            }}
+          >
+            <img
+              src={primaryPhoto.dataUrl || primaryPhoto.url}
+              alt={primaryPhoto.name}
+              style={{
+                width: "100%",
+                maxHeight: 390,
+                objectFit: "contain",
+                display: "block",
+                background: "#09111d",
+              }}
+            />
+          </button>
+        ) : null}
+
+        <div style={noticeStyle}>{requestMessage}</div>
+
+        <section style={{ ...sectionStyle, padding: 16 }}>
+          <div style={eyebrowStyle}>Original Request</div>
+          <div style={formGridStyle}>
+            <Field
+              label="Title"
+              value={selectedRequest.title}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, title: value }
+                      : item,
+                  ),
+                )
+              }
+            />
+            <Field
+              label="Submitted By"
+              value={selectedRequest.requesterName}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, requesterName: value }
+                      : item,
+                  ),
+                )
+              }
+            />
+            <Field
+              label="Contact"
+              value={selectedRequest.requesterContact}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, requesterContact: value }
+                      : item,
+                  ),
+                )
+              }
+            />
+            <Field
+              label="Preferred Timing"
+              value={selectedRequest.preferredTiming}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, preferredTiming: value }
+                      : item,
+                  ),
+                )
+              }
+            />
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Field
+                label="Description"
+                value={selectedRequest.description}
+                onChange={(value) =>
+                  setRequestRecords((current) =>
+                    current.map((item) =>
+                      item.id === selectedRequest.id
+                        ? { ...item, description: value }
+                        : item,
+                    ),
+                  )
+                }
+                multiline
+              />
+            </div>
+          </div>
+        </section>
+
+        <section style={{ ...sectionStyle, padding: 16 }}>
+          <div style={eyebrowStyle}>Atlas Assignment</div>
+          <div style={formGridStyle}>
+            <SelectField
+              label="Asset"
+              value={selectedRequest.assetName}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, assetName: value }
+                      : item,
+                  ),
+                )
+              }
+              options={["", ...assetRecords.map((item) => item.name)]}
+            />
+            <SelectField
+              label="Location"
+              value={selectedRequest.locationName}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, locationName: value }
+                      : item,
+                  ),
+                )
+              }
+              options={["", ...locations.map((item) => item.name)]}
+            />
+            <SelectField
+              label="Category"
+              value={selectedRequest.category || "Maintenance"}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, category: value }
+                      : item,
+                  ),
+                )
+              }
+              options={requestCategories}
+            />
+            <SelectField
+              label="Priority"
+              value={selectedRequest.priority}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, priority: value }
+                      : item,
+                  ),
+                )
+              }
+              options={["Low", "Medium", "High"] as const}
+            />
+            <SelectField
+              label="Status"
+              value={selectedRequest.status}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, status: value }
+                      : item,
+                  ),
+                )
+              }
+              options={[
+                "New",
+                "Under Review",
+                "Approved",
+                "Converted to Work Order",
+                "Declined",
+                "Closed",
+              ] as const}
+            />
+          </div>
+        </section>
+
+        <section style={{ ...sectionStyle, padding: 16 }}>
+          <div style={eyebrowStyle}>Internal Notes</div>
+          <Field
+            label="Notes not visible to the owner"
+            value={selectedRequest.adminNotes}
+            onChange={(value) =>
+              setRequestRecords((current) =>
+                current.map((item) =>
+                  item.id === selectedRequest.id
+                    ? { ...item, adminNotes: value }
+                    : item,
+                ),
+              )
+            }
+            multiline
+          />
+        </section>
+
+        {selectedRequest.photos?.length > 1 ? (
+          <div style={photoGridStyle}>
+            {selectedRequest.photos.slice(1).map((photo) => (
+              <button
+                key={photo.id}
+                type="button"
+                onClick={() => setPreviewFile(photo)}
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  padding: 0,
+                  background: colors.card,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <img
+                  src={photo.dataUrl || photo.url}
+                  alt={photo.name}
+                  style={{
+                    width: "100%",
+                    height: 150,
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {selectedLinkedWorkOrder ? (
+          <div style={noticeStyle}>
+            Linked work order: <strong>{selectedLinkedWorkOrder.title}</strong> ·{" "}
+            {selectedLinkedWorkOrder.status}
+          </div>
+        ) : null}
+
+        <div style={buttonRowStyle}>
+          <button
+            type="button"
+            onClick={() =>
+              void updateOwnerRequest(selectedRequest.id, selectedRequest)
+            }
+            style={goldButtonStyle}
+          >
+            Save Changes
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(selectedRequest.convertedWorkOrderId)}
+            onClick={() =>
+              void convertOwnerRequestToWorkOrder(selectedRequest)
+            }
+            style={secondaryButtonStyle}
+          >
+            {selectedRequest.convertedWorkOrderId
+              ? "Work Order Created"
+              : "Convert to Work Order"}
+          </button>
+          {selectedLinkedWorkOrder ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedServiceId(selectedLinkedWorkOrder.id);
+                setScreen("history");
+              }}
+              style={secondaryButtonStyle}
+            >
+              Open Work Order
+            </button>
+          ) : null}
+        </div>
+      </div>
+    ) : (
+      <div style={noticeStyle}>Select a request to view its information.</div>
+    );
 
     return (
       <div style={{ display: "grid", gap: 18 }}>
@@ -15904,11 +16363,10 @@ export default function AtlasPage() {
             <div style={{ minWidth: 0 }}>
               <div style={eyebrowStyle}>Owner Access</div>
               <h3 style={{ ...editorHeaderStyle, marginBottom: 8 }}>
-                Request Service QR Code
+                Owner Requests
               </h3>
               <p style={mutedSmallStyle}>
-                The owner can scan this code to open the secure request form
-                without entering the full Atlas app.
+                Scan to submit a secure request without opening the full Atlas app.
               </p>
               <div className="atlas-no-print" style={buttonRowStyle}>
                 <button
@@ -15937,11 +16395,7 @@ export default function AtlasPage() {
                   Open Request Form
                 </a>
               </div>
-              <small style={{ ...qrUrlStyle, display: "block", marginTop: 10 }}>
-                {portalLink}
-              </small>
             </div>
-
             <div style={ownerRequestQrShellStyle}>
               <img
                 src={ownerRequestQr}
@@ -15955,310 +16409,155 @@ export default function AtlasPage() {
         <ListDrawerLayout
           eyebrow="Owner Intake"
           title="Requests"
-          detail="Review owner-submitted maintenance requests, then approve, decline, or convert them into work orders."
+          detail="Review, organize, and convert owner requests into trackable Atlas work."
           isMobile={isMobile}
           drawerResetKey={selectedRequest?.id || "requests-empty"}
-          right={
-            portalLink ? (
-              <button
-                type="button"
-                onClick={() => {
-                  void navigator.clipboard.writeText(portalLink);
-                  setRequestMessage("Owner request link copied.");
-                }}
-                style={goldButtonStyle}
-              >
-                Copy Owner Request Link
-              </button>
-            ) : null
-          }
-          list={
-            <div style={listStyle}>
-              <div style={eyebrowStyle}>Active Requests</div>
-              {activeRequestRecords.length ? (
-                activeRequestRecords.map((request) => (
-                  <button
-                    key={request.id}
-                    type="button"
-                    onClick={() => setSelectedRequestId(request.id)}
-                    style={{
-                      ...rowButtonStyle,
-                      borderColor:
-                        request.id === selectedRequest?.id
-                          ? colors.gold
-                          : colors.line,
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <strong>{request.title || "Untitled Request"}</strong>
-                      <p style={mutedSmallStyle}>
-                        {request.requesterName || "Owner"} ·{" "}
-                        {request.locationName ||
-                          request.assetName ||
-                          "No location"}
-                      </p>
-                    </div>
-                    <span style={badgeStyle(request.status)}>
-                      {request.status}
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <div style={noticeStyle}>No active requests.</div>
-              )}
+          list={requestList}
+          drawer={requestDrawer}
+        />
 
-              {requestHistoryRecords.length ? (
-                <div style={{ display: "grid", gap: 8, marginTop: 18 }}>
-                  <div style={eyebrowStyle}>Request History</div>
-                  {requestHistoryRecords.map((request) => (
-                    <button
+        <section style={{ ...sectionStyle, padding: 18 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 14,
+            }}
+          >
+            <div>
+              <div style={eyebrowStyle}>Completed History</div>
+              <h3 style={{ ...editorHeaderStyle, marginBottom: 4 }}>
+                Completed Requests / Work Orders
+              </h3>
+              <p style={{ ...mutedSmallStyle, margin: 0 }}>
+                Newest completion first. Select an item to view its full record.
+              </p>
+            </div>
+            <span style={badgeStyle("Completed")}>
+              {requestHistoryRecords.length} completed
+            </span>
+          </div>
+
+          {requestHistoryRecords.length ? (
+            <div style={{ overflowX: "auto" }}>
+              <div style={{ minWidth: 860, display: "grid", gap: 8 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(240px, 2fr) 150px 150px 150px 150px 110px",
+                    gap: 12,
+                    padding: "0 12px 8px",
+                    color: colors.muted,
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  <span>Title</span>
+                  <span>Completed</span>
+                  <span>Asset</span>
+                  <span>Location</span>
+                  <span>Work Order</span>
+                  <span>Actions</span>
+                </div>
+                {requestHistoryRecords.map((request) => {
+                  const linked = linkedWorkOrderFor(request);
+                  const photo = request.photos?.[0];
+                  return (
+                    <div
                       key={request.id}
-                      type="button"
-                      onClick={() => setSelectedRequestId(request.id)}
                       style={{
-                        ...rowButtonStyle,
-                        opacity: 0.82,
-                        borderColor:
-                          request.id === selectedRequest?.id
-                            ? colors.gold
-                            : colors.line,
+                        display: "grid",
+                        gridTemplateColumns: "minmax(240px, 2fr) 150px 150px 150px 150px 110px",
+                        gap: 12,
+                        alignItems: "center",
+                        padding: 12,
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 12,
+                        background: colors.card,
                       }}
                     >
-                      <div style={{ minWidth: 0 }}>
-                        <strong>{request.title || "Untitled Request"}</strong>
-                        <p style={mutedSmallStyle}>
-                          {request.status}
-                          {request.convertedWorkOrderId
-                            ? " · Work order created"
-                            : ""}
-                        </p>
-                      </div>
-                      <span style={badgeStyle(request.status)}>
-                        {request.status}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          }
-          drawer={
-            selectedRequest ? (
-              <>
-                <div style={eyebrowStyle}>Request Details</div>
-                <h3 style={editorHeaderStyle}>{selectedRequest.title}</h3>
-                <div style={noticeStyle}>{requestMessage}</div>
-                <div style={formGridStyle}>
-                  <Field
-                    label="Requester"
-                    value={selectedRequest.requesterName}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, requesterName: value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                  <Field
-                    label="Contact"
-                    value={selectedRequest.requesterContact}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, requesterContact: value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                  <Field
-                    label="Title"
-                    value={selectedRequest.title}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, title: value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                  <Field
-                    label="Location"
-                    value={selectedRequest.locationName}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, locationName: value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                  <Field
-                    label="Asset"
-                    value={selectedRequest.assetName}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, assetName: value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                  <SelectField
-                    label="Priority"
-                    value={selectedRequest.priority}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, priority: value }
-                            : item,
-                        ),
-                      )
-                    }
-                    options={["Low", "Medium", "High"] as const}
-                  />
-                  <SelectField
-                    label="Status"
-                    value={selectedRequest.status}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, status: value }
-                            : item,
-                        ),
-                      )
-                    }
-                    options={
-                      [
-                        "New",
-                        "Under Review",
-                        "Approved",
-                        "Converted to Work Order",
-                        "Declined",
-                        "Closed",
-                      ] as const
-                    }
-                  />
-                  <Field
-                    label="Preferred Timing"
-                    value={selectedRequest.preferredTiming}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, preferredTiming: value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                  <Field
-                    label="Issue / Request"
-                    value={selectedRequest.description}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, description: value }
-                            : item,
-                        ),
-                      )
-                    }
-                    multiline
-                  />
-                  <Field
-                    label="Admin Notes"
-                    value={selectedRequest.adminNotes}
-                    onChange={(value) =>
-                      setRequestRecords((current) =>
-                        current.map((item) =>
-                          item.id === selectedRequest.id
-                            ? { ...item, adminNotes: value }
-                            : item,
-                        ),
-                      )
-                    }
-                    multiline
-                  />
-                </div>
-                {selectedRequest.photos?.length ? (
-                  <div style={photoGridStyle}>
-                    {selectedRequest.photos.map((photo) => (
                       <button
-                        key={photo.id}
                         type="button"
-                        onClick={() => setPreviewFile(photo)}
+                        onClick={() => setSelectedRequestId(request.id)}
                         style={{
-                          border: `1px solid ${colors.line}`,
-                          borderRadius: 14,
-                          overflow: "hidden",
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "center",
+                          border: 0,
                           padding: 0,
-                          background: colors.card,
+                          background: "transparent",
+                          color: colors.text,
                           textAlign: "left",
                           cursor: "pointer",
                         }}
                       >
-                        <img
-                          src={photo.dataUrl || photo.url}
-                          alt={photo.name}
-                          style={{
-                            width: "100%",
-                            height: 150,
-                            objectFit: "cover",
-                            display: "block",
-                          }}
-                        />
-                        <span style={{ display: "block", padding: 10 }}>
-                          {photo.name}
+                        {photo ? (
+                          <img
+                            src={photo.dataUrl || photo.url}
+                            alt=""
+                            style={{
+                              width: 62,
+                              height: 46,
+                              objectFit: "cover",
+                              borderRadius: 8,
+                            }}
+                          />
+                        ) : null}
+                        <span>
+                          <strong style={{ display: "block" }}>
+                            {request.title || "Untitled Request"}
+                          </strong>
+                          <small style={mutedSmallStyle}>
+                            {request.category || "Maintenance"}
+                          </small>
                         </span>
                       </button>
-                    ))}
-                  </div>
-                ) : null}
-                <div style={buttonRowStyle}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void updateOwnerRequest(
-                        selectedRequest.id,
-                        selectedRequest,
-                      )
-                    }
-                    style={secondaryButtonStyle}
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void convertOwnerRequestToWorkOrder(selectedRequest)
-                    }
-                    style={goldButtonStyle}
-                  >
-                    Convert to Work Order
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div style={noticeStyle}>No request selected.</div>
-            )
-          }
-        />
+                      <span style={mutedSmallStyle}>
+                        {formatRequestDateTime(completionValue(request))}
+                      </span>
+                      <span>{request.assetName || "—"}</span>
+                      <span>{request.locationName || "—"}</span>
+                      <span>
+                        {linked ? `${linked.title} · ${linked.status}` : "—"}
+                      </span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRequestId(request.id)}
+                          style={{ ...secondaryButtonStyle, padding: "8px 10px" }}
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteOwnerRequest(request)}
+                          aria-label={`Delete ${request.title}`}
+                          style={{
+                            ...secondaryButtonStyle,
+                            padding: "8px 10px",
+                            color: "#ef6b63",
+                            borderColor: "rgba(239,107,99,.55)",
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div style={emptyStateStyle}>No completed requests yet.</div>
+          )}
+        </section>
       </div>
     );
   }
+
 
   function renderProcedures() {
     const procedureEditor = selectedProcedureId ? (
