@@ -375,6 +375,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const quickPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
+  const [newWorkOpen, setNewWorkOpen] = useState(false);
+  const [newWorkDraft, setNewWorkDraft] = useState<{
+    title: string;
+    workType: WorkItemType;
+    workCategory: string;
+    priority: "Low" | "Medium" | "High";
+    date: string;
+  }>({
+    title: "",
+    workType: "Work Order",
+    workCategory: "🔧 Maintenance",
+    priority: "Medium",
+    date: "",
+  });
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
   const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
@@ -770,14 +784,57 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function quickTask() {
+    openNewWork("Quick Task");
+  }
+
+  function openNewWork(workType: WorkItemType = "Work Order") {
+    setSelectedServiceId("");
+    setNewWorkDraft({
+      title: "",
+      workType,
+      workCategory:
+        workType === "Quick Task"
+          ? "🧹 Cleaning"
+          : workType === "Project"
+            ? "📋 Project"
+            : "🔧 Maintenance",
+      priority: "Medium",
+      date:
+        workType === "Quick Task"
+          ? new Date().toISOString().slice(0, 10)
+          : "",
+    });
+    setNewWorkOpen(true);
+  }
+
+  function createNewWork() {
+    const title = newWorkDraft.title.trim();
+    if (!title) {
+      window.alert("Add a title before creating this work item.");
+      return;
+    }
+
     addWorkOrder({
-      workType: "Quick Task",
-      workCategory: "🧹 Cleaning",
-      effort: "15 minutes",
-      date: new Date().toISOString().slice(0, 10),
+      title,
+      workType: newWorkDraft.workType,
+      workCategory: newWorkDraft.workCategory,
+      priority: newWorkDraft.priority,
+      date: newWorkDraft.date,
+      effort: newWorkDraft.workType === "Quick Task" ? "15 minutes" : "30 minutes",
       status: "Open",
-      recurring: false,
+      recurring: newWorkDraft.workType === "Preventive Maintenance",
     } as any);
+    setNewWorkOpen(false);
+  }
+
+  function handleWorkOption(value: string) {
+    if (value === "add-work") openNewWork("Work Order");
+    if (value === "quick-task") quickTask();
+    if (value === "plan") setPlanOpen((current) => !current);
+    if (value === "sections")
+      setManageSectionsOpen((current) => !current);
+    if (value === "categories")
+      setManageCategoriesOpen((current) => !current);
   }
 
   function tomorrowDate() {
@@ -924,10 +981,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         key={record.id}
         role="button"
         tabIndex={0}
-        onClick={() => setSelectedServiceId(record.id)}
+        onClick={() => {
+          setNewWorkOpen(false);
+          setSelectedServiceId(record.id);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
+            setNewWorkOpen(false);
             setSelectedServiceId(record.id);
           }
         }}
@@ -1084,47 +1145,149 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         title={activeSection?.label || "My Work"}
         detail="Track active work, recurring maintenance, projects, and completed history."
         isMobile={isMobile}
+        gridStyleOverride={
+          selectedService.id ? undefined : { gridTemplateColumns: "1fr" }
+        }
+        drawerStyleOverride={
+          selectedService.id ? undefined : { display: "none" }
+        }
         right={
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => setManageSectionsOpen((current) => !current)}
-              style={secondaryButtonStyle}
-            >
-              Edit Sections
-            </button>
-            <button
-              type="button"
-              onClick={() => setManageCategoriesOpen((current) => !current)}
-              style={secondaryButtonStyle}
-            >
-              Edit Categories
-            </button>
-            <button
-              type="button"
-              onClick={() => setPlanOpen((current) => !current)}
-              style={secondaryButtonStyle}
-            >
-              Plan My Day
-            </button>
-            <button
-              type="button"
-              onClick={quickTask}
-              style={secondaryButtonStyle}
-            >
-              + Quick Task
-            </button>
-            <button
-              type="button"
-              onClick={() => addWorkOrder()}
-              style={goldButtonStyle}
-            >
-              Add Work
-            </button>
-          </div>
+          <select
+            value=""
+            onChange={(event) => {
+              handleWorkOption(event.currentTarget.value);
+              event.currentTarget.value = "";
+            }}
+            style={{
+              ...controlStyle,
+              width: "auto",
+              minWidth: 156,
+              minHeight: 38,
+              padding: "7px 32px 7px 11px",
+              background: "#F8FAFC",
+              color: colors.muted,
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+            aria-label="Work order actions"
+          >
+            <option value="">Work Options</option>
+            <option value="add-work">Add Work Order</option>
+            <option value="quick-task">Add Quick Task</option>
+            <option value="plan">Plan My Day</option>
+            <option value="sections">Edit Sections</option>
+            <option value="categories">Edit Categories</option>
+          </select>
         }
         list={
           <div style={stackStyle}>
+            {newWorkOpen ? (
+              <section style={{ ...filterPanelStyle, background: "#FFFFFF" }}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={{ ...eyebrowStyle, opacity: 0.75 }}>
+                      New Work
+                    </div>
+                    <span style={{ color: colors.muted, fontSize: 13 }}>
+                      Nothing is added until you press Create.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewWorkOpen(false)}
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <input
+                    value={newWorkDraft.title}
+                    onChange={(event) =>
+                      setNewWorkDraft((current) => ({
+                        ...current,
+                        title: event.currentTarget.value,
+                      }))
+                    }
+                    placeholder="Work title"
+                    autoFocus
+                    style={controlStyle}
+                  />
+                  <select
+                    value={newWorkDraft.workType}
+                    onChange={(event) =>
+                      setNewWorkDraft((current) => ({
+                        ...current,
+                        workType: event.currentTarget.value as WorkItemType,
+                      }))
+                    }
+                    style={controlStyle}
+                  >
+                    <option value="Quick Task">Task</option>
+                    <option value="Work Order">Work Order</option>
+                    <option value="Preventive Maintenance">
+                      Preventive Maintenance
+                    </option>
+                    <option value="Project">Project</option>
+                  </select>
+                  <select
+                    value={newWorkDraft.workCategory}
+                    onChange={(event) =>
+                      setNewWorkDraft((current) => ({
+                        ...current,
+                        workCategory: event.currentTarget.value,
+                      }))
+                    }
+                    style={controlStyle}
+                  >
+                    {categories
+                      .filter((category) => category !== "All")
+                      .map((category) => (
+                        <option key={category} value={category}>
+                          {categoryDisplayLabel(category)}
+                        </option>
+                      ))}
+                  </select>
+                  <select
+                    value={newWorkDraft.priority}
+                    onChange={(event) =>
+                      setNewWorkDraft((current) => ({
+                        ...current,
+                        priority: event.currentTarget.value as
+                          | "Low"
+                          | "Medium"
+                          | "High",
+                      }))
+                    }
+                    style={controlStyle}
+                  >
+                    <option value="Low">Low Priority</option>
+                    <option value="Medium">Medium Priority</option>
+                    <option value="High">High Priority</option>
+                  </select>
+                  <input
+                    type="date"
+                    value={newWorkDraft.date}
+                    onChange={(event) =>
+                      setNewWorkDraft((current) => ({
+                        ...current,
+                        date: event.currentTarget.value,
+                      }))
+                    }
+                    style={controlStyle}
+                  />
+                  <button
+                    type="button"
+                    onClick={createNewWork}
+                    style={goldButtonStyle}
+                  >
+                    Create Work
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
             {planOpen ? (
               <section style={{ ...filterPanelStyle, background: "#FFFFFF" }}>
                 <div style={detailSectionHeaderStyle}>
@@ -1148,7 +1311,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <button
                       key={record.id}
                       type="button"
-                      onClick={() => setSelectedServiceId(record.id)}
+                      onClick={() => {
+                        setNewWorkOpen(false);
+                        setSelectedServiceId(record.id);
+                      }}
                       style={{
                         ...rowButtonStyle,
                         display: "flex",
@@ -1179,20 +1345,61 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               </section>
             ) : null}
             <section style={filterPanelStyle}>
-              <div style={tabRowStyle}>
-                {sections.map((section) => {
-                  const selected = activeSectionId === section.id;
-                  return (
+              <div style={{ display: "grid", gap: 6 }}>
+                <span
+                  style={{
+                    color: colors.muted,
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: 0.5,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Work Sections
+                </span>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "repeat(2, minmax(0, 1fr))"
+                      : "repeat(auto-fit, minmax(130px, 1fr))",
+                    gap: 7,
+                  }}
+                >
+                  {sections.map((section) => (
                     <button
                       key={section.id}
                       type="button"
                       onClick={() => setActiveSectionId(section.id)}
-                      style={tabButtonStyle(selected)}
+                      style={{
+                        minWidth: 0,
+                        minHeight: 40,
+                        padding: "8px 9px",
+                        border: `1px solid ${
+                          activeSectionId === section.id
+                            ? colors.gold
+                            : colors.line
+                        }`,
+                        borderRadius: 10,
+                        background:
+                          activeSectionId === section.id
+                            ? "#FFF8E8"
+                            : "#FFFFFF",
+                        color:
+                          activeSectionId === section.id
+                            ? colors.text
+                            : colors.muted,
+                        fontSize: 13,
+                        fontWeight: 500,
+                        lineHeight: 1.2,
+                        cursor: "pointer",
+                        whiteSpace: "normal",
+                      }}
                     >
                       {section.label} ({tabCounts[section.id] || 0})
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
 
               {manageSectionsOpen ? (
@@ -1247,15 +1454,118 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               ) : null}
 
-              <div
+              {manageCategoriesOpen ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 9,
+                    padding: 10,
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 12,
+                    background: "#FFFFFF",
+                  }}
+                >
+                  <input
+                    value={newCategory}
+                    onChange={(event) =>
+                      setNewCategory(event.currentTarget.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addCategory();
+                      }
+                    }}
+                    placeholder="New category name"
+                    style={controlStyle}
+                  />
+                  <button
+                    type="button"
+                    onClick={addCategory}
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                  >
+                    Add Category
+                  </button>
+                  {categoryChoices.map((category) => (
+                    <details
+                      key={category}
+                      style={{
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 9,
+                        background: "#F8FAFC",
+                      }}
+                    >
+                      <summary
+                        style={{
+                          padding: "9px 10px",
+                          color: colors.muted,
+                          fontSize: 13,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {categoryDisplayLabel(category)}
+                      </summary>
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 6,
+                          padding: "0 8px 8px",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => renameCategory(category)}
+                          style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeCategory(category)}
+                          style={{ ...dangerButtonStyle, fontWeight: 500 }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </details>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={restoreDefaultCategories}
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                  >
+                    Restore Default Categories
+                  </button>
+                </div>
+              ) : null}
+
+              <details
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "repeat(3, minmax(0, 1fr))",
-                  gap: 10,
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 11,
+                  background: "#FFFFFF",
                 }}
               >
+                <summary
+                  style={{
+                    padding: "11px 12px",
+                    color: colors.muted,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  Search &amp; Filters
+                </summary>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr",
+                    gap: 9,
+                    padding: "0 10px 10px",
+                  }}
+                >
                 <input
                   value={localSearch}
                   onChange={(event) =>
@@ -1373,7 +1683,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 >
                   Clear Filters
                 </button>
-              </div>
+                </div>
+              </details>
             </section>
 
             {activeSection?.kind === "my-work" ? (
