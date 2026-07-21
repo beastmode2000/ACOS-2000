@@ -11425,9 +11425,25 @@ export default function AtlasPage() {
         list={
           <div style={assetAlphabeticalListStyle}>
             {displayedAssets.map((asset) => {
-              const coverPhoto = photos.find(
+              const assetPhotos = photos.filter(
                 (photo) => photo.assetId === asset.id,
               );
+              const coverPhoto =
+                assetPhotos.find(
+                  (photo) =>
+                    photoSource(photo) &&
+                    /(^|\s)(cover|main|primary|hero)(\s|$)/i.test(
+                      photo.name || "",
+                    ),
+                ) ||
+                [...assetPhotos]
+                  .filter((photo) => photoSource(photo))
+                  .sort((a, b) => {
+                    const left = new Date(a.createdAt || 0).getTime() || 0;
+                    const right = new Date(b.createdAt || 0).getTime() || 0;
+                    return left - right;
+                  })[0] ||
+                assetPhotos[0];
               const coverPhotoSource = photoSource(coverPhoto);
               return (
                 <button
