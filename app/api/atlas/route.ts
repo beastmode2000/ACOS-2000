@@ -130,6 +130,11 @@ function cleanTable(value: unknown): AtlasTable | "" {
   return "";
 }
 
+async function ensureAssetColumns(sql: ReturnType<typeof neon>) {
+  await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS year text`;
+  await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS manufacturer text`;
+}
+
 
 async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
   await sql`
@@ -414,6 +419,8 @@ function mapAsset(row: JsonRecord) {
     status: String(row.status || "Monitor"),
     make: row.make ? String(row.make) : "",
     model: row.model ? String(row.model) : "",
+    year: row.year ? String(row.year) : "",
+    manufacturer: row.manufacturer ? String(row.manufacturer) : "",
     serial: row.serial ? String(row.serial) : "",
     notes: String(row.notes || ""),
     vendorIds: asStringArray(row.vendor_ids),
@@ -559,6 +566,7 @@ function mapPhoto(row: JsonRecord) {
 export async function GET() {
   try {
     const sql = getSql();
+    await ensureAssetColumns(sql);
     await ensureWorkOrderColumns(sql);
     await ensureCalendarColumns(sql);
     await ensureContactsTable(sql);
@@ -580,7 +588,7 @@ export async function GET() {
     `) as unknown as JsonRecord[];
 
     const assetRows = (await sql`
-      SELECT id, name, location_id, category, status, make, model, serial, notes, vendor_ids, documents
+      SELECT id, name, location_id, category, status, make, model, year, manufacturer, serial, notes, vendor_ids, documents
       FROM atlas_assets
       ORDER BY name ASC
     `) as unknown as JsonRecord[];
@@ -820,6 +828,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (table === "assets") {
+      await ensureAssetColumns(sql);
       const id = getId(record, "asset");
 
       await sql`
@@ -831,6 +840,8 @@ export async function POST(request: NextRequest) {
           status,
           make,
           model,
+          year,
+          manufacturer,
           serial,
           notes,
           vendor_ids,
@@ -845,6 +856,8 @@ export async function POST(request: NextRequest) {
           ${asStatus(record.status, "Monitor")},
           ${nullableString(record.make)},
           ${nullableString(record.model)},
+          ${nullableString(record.year)},
+          ${nullableString(record.manufacturer)},
           ${nullableString(record.serial)},
           ${asString(record.notes)},
           ARRAY(
@@ -863,6 +876,8 @@ export async function POST(request: NextRequest) {
           status = EXCLUDED.status,
           make = EXCLUDED.make,
           model = EXCLUDED.model,
+          year = EXCLUDED.year,
+          manufacturer = EXCLUDED.manufacturer,
           serial = EXCLUDED.serial,
           notes = EXCLUDED.notes,
           vendor_ids = EXCLUDED.vendor_ids,
@@ -1260,7 +1275,7 @@ export async function POST(request: NextRequest) {
         DO UPDATE SET
           asset_id = EXCLUDED.asset_id,
           name = EXCLUDED.name,
-          data_url = EXCLUDED.data_url
+          data_url = COALESCE(NULLIF(EXCLUDED.data_url, ''), atlas_asset_photos.data_url)
       `;
 
       return NextResponse.json({ ok: true, id });
