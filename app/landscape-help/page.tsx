@@ -150,6 +150,7 @@ export default function LandscapeHelpPage() {
   const [message, setMessage] = useState("");
   const [origin, setOrigin] = useState("");
   const [shareToken, setShareToken] = useState("");
+  const [editingTasks, setEditingTasks] = useState(false);
 
   useEffect(() => {
     const token = getLandscapeShareTokenFromUrl();
@@ -182,12 +183,12 @@ export default function LandscapeHelpPage() {
 
       const data = await readLandscapeJson(
         response,
-        "Could not load Landscape Help.",
+        "Could not load Daily Crew Work.",
       );
 
       if (!data.ok) {
         throw new Error(
-          data.error || "Could not load Landscape Help.",
+          data.error || "Could not load Daily Crew Work.",
         );
       }
 
@@ -198,7 +199,7 @@ export default function LandscapeHelpPage() {
       const text =
         error instanceof Error
           ? error.message
-          : "Could not load Landscape Help.";
+          : "Could not load Daily Crew Work.";
 
       setMessage(text);
     } finally {
@@ -256,6 +257,48 @@ export default function LandscapeHelpPage() {
     );
   }
 
+  function addTask() {
+    const id = crypto.randomUUID();
+    setItems((current) => [
+      ...current,
+      {
+        id,
+        weekId: week?.id || "",
+        sortOrder: current.length + 1,
+        label: "New task",
+        category: "General",
+        priority: "Normal",
+        isDone: false,
+        notes: "",
+        updatedBy: "Atlas Admin",
+        updatedAt: "",
+      },
+    ]);
+    setEditingTasks(true);
+  }
+
+  function deleteTask(id: string) {
+    setItems((current) =>
+      current
+        .filter((item) => item.id !== id)
+        .map((item, index) => ({ ...item, sortOrder: index + 1 })),
+    );
+  }
+
+  function moveTask(id: string, direction: -1 | 1) {
+    setItems((current) => {
+      const index = current.findIndex((item) => item.id === id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next.map((item, itemIndex) => ({
+        ...item,
+        sortOrder: itemIndex + 1,
+      }));
+    });
+  }
+
   async function saveUpdates(
     nextStatus?: LandscapeStatus,
   ) {
@@ -274,6 +317,7 @@ export default function LandscapeHelpPage() {
           },
           body: JSON.stringify({
             weekId: week.id,
+            title: week.title,
             status: nextStatus || week.status,
             crewName: week.crewName,
             managerNotes: week.managerNotes,
@@ -285,12 +329,12 @@ export default function LandscapeHelpPage() {
 
       const data = await readLandscapeJson(
         response,
-        "Could not save Landscape Help.",
+        "Could not save Daily Crew Work.",
       );
 
       if (!data.ok) {
         throw new Error(
-          data.error || "Could not save Landscape Help.",
+          data.error || "Could not save Daily Crew Work.",
         );
       }
 
@@ -301,7 +345,7 @@ export default function LandscapeHelpPage() {
       const text =
         error instanceof Error
           ? error.message
-          : "Could not save Landscape Help.";
+          : "Could not save Daily Crew Work.";
 
       setMessage(text);
     } finally {
@@ -333,11 +377,11 @@ export default function LandscapeHelpPage() {
               </div>
 
               <h1 className="lh-title lh-loading-title">
-                Landscape Help
+                Daily Crew Work
               </h1>
 
               <p className="lh-muted">
-                Loading weekly checklist...
+                Loading crew work list...
               </p>
             </section>
           </div>
@@ -359,13 +403,12 @@ export default function LandscapeHelpPage() {
               </div>
 
               <h1 className="lh-title">
-                Landscape Help
+                Daily Crew Work
               </h1>
 
               <p className="lh-subtitle">
-                Weekly outside-crew checklist for weeding,
-                watering, pruning, cleanup, irrigation notes,
-                and review items.
+                Assign, share, and track daily or weekly work for landscaping,
+                maintenance, cleaning, seasonal help, and other crew members.
               </p>
             </div>
 
@@ -397,7 +440,7 @@ export default function LandscapeHelpPage() {
                   <div className="lh-row-between">
                     <div className="lh-min-width-zero">
                       <div className="lh-eyebrow">
-                        Current Week
+                        Work List
                       </div>
 
                       <h2 className="lh-card-title">
@@ -431,6 +474,19 @@ export default function LandscapeHelpPage() {
                     {completedCount} of {items.length} items
                     complete · {progress}%
                   </p>
+
+                  {!shareToken ? (
+                    <label className="lh-label">
+                      <span>List Title</span>
+                      <input
+                        value={week.title}
+                        onChange={(event) =>
+                          setWeek({ ...week, title: event.target.value })
+                        }
+                        className="lh-input"
+                      />
+                    </label>
+                  ) : null}
 
                   <div className="lh-form-grid">
                     <label className="lh-label">
@@ -479,6 +535,7 @@ export default function LandscapeHelpPage() {
                     </label>
                   </div>
 
+                  {!shareToken ? (
                   <label className="lh-label">
                     <span>Manager Notes</span>
 
@@ -495,6 +552,13 @@ export default function LandscapeHelpPage() {
                       className="lh-textarea"
                     />
                   </label>
+
+                  ) : week.managerNotes ? (
+                    <div className="lh-readonly-note">
+                      <strong>Instructions</strong>
+                      <p>{week.managerNotes}</p>
+                    </div>
+                  ) : null}
 
                   <label className="lh-label">
                     <span>Crew Notes</span>
@@ -522,7 +586,7 @@ export default function LandscapeHelpPage() {
                     >
                       {saving
                         ? "Saving..."
-                        : "Save Landscape Help"}
+                        : "Save Work List"}
                     </button>
 
                     <button
@@ -544,14 +608,11 @@ export default function LandscapeHelpPage() {
                   </div>
 
                   <h2 className="lh-card-title">
-                    Send this link to the landscaping
-                    help
+                    Send this link to the assigned crew member
                   </h2>
 
                   <p className="lh-muted">
-                    This opens only the weekly Landscape
-                    Help checklist. It does not show full
-                    Atlas records.
+                    This opens only this crew work list. It does not show full Atlas records.
                   </p>
 
                   <div className="lh-share-box">
@@ -559,7 +620,7 @@ export default function LandscapeHelpPage() {
                       value={shareLink}
                       readOnly
                       className="lh-share-input"
-                      aria-label="Landscape Help crew share link"
+                      aria-label="Daily Crew Work share link"
                     />
 
                     <button
@@ -589,7 +650,7 @@ export default function LandscapeHelpPage() {
                   </div>
 
                   <h2 className="lh-card-title">
-                    Recent Landscape Help Weeks
+                    Recent Work Lists
                   </h2>
 
                   <div className="lh-week-list">
@@ -628,75 +689,113 @@ export default function LandscapeHelpPage() {
                     </div>
 
                     <h2 className="lh-card-title">
-                      Weekly Landscape Help Tasks
+                      Assigned Tasks
                     </h2>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => saveUpdates()}
-                    disabled={saving}
-                    className="lh-button lh-button-secondary lh-top-save-button"
-                  >
-                    {saving
-                      ? "Saving..."
-                      : "Save"}
-                  </button>
+                  <div className="lh-task-header-actions">
+                    {!shareToken ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setEditingTasks((current) => !current)}
+                          className="lh-button lh-button-secondary"
+                        >
+                          {editingTasks ? "Done Editing" : "Edit Tasks"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={addTask}
+                          className="lh-button lh-button-secondary"
+                        >
+                          Add Task
+                        </button>
+                      </>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => saveUpdates()}
+                      disabled={saving}
+                      className="lh-button lh-button-secondary lh-top-save-button"
+                    >
+                      {saving ? "Saving..." : "Save"}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="lh-item-list">
-                  {items.map((item) => (
+                  {items.map((item, index) => (
                     <div
                       key={item.id}
-                      className={
-                        item.isDone
-                          ? "lh-item lh-item-done"
-                          : "lh-item"
-                      }
+                      className={item.isDone ? "lh-item lh-item-done" : "lh-item"}
                     >
-                      <label className="lh-check-row">
-                        <input
-                          type="checkbox"
-                          checked={item.isDone}
-                          onChange={(event) =>
-                            updateItem(item.id, {
-                              isDone:
-                                event.target
-                                  .checked,
-                              updatedBy:
-                                shareToken
-                                  ? "Landscape Crew"
-                                  : "Atlas Admin",
-                            })
-                          }
-                          className="lh-checkbox"
-                        />
-
-                        <span className="lh-item-copy">
-                          <strong>
-                            {item.label}
-                          </strong>
-
-                          <small>
-                            {item.category} ·{" "}
-                            {item.priority}
-                          </small>
-                        </span>
-                      </label>
+                      {!shareToken && editingTasks ? (
+                        <div className="lh-task-editor">
+                          <input
+                            value={item.label}
+                            onChange={(event) =>
+                              updateItem(item.id, { label: event.target.value })
+                            }
+                            className="lh-input lh-task-title-input"
+                          />
+                          <div className="lh-task-editor-grid">
+                            <input
+                              value={item.category}
+                              onChange={(event) =>
+                                updateItem(item.id, { category: event.target.value })
+                              }
+                              className="lh-input"
+                              aria-label="Task category"
+                            />
+                            <select
+                              value={item.priority}
+                              onChange={(event) =>
+                                updateItem(item.id, { priority: event.target.value })
+                              }
+                              className="lh-input"
+                              aria-label="Task priority"
+                            >
+                              <option value="Highest">Highest</option>
+                              <option value="High">High</option>
+                              <option value="Normal">Normal</option>
+                              <option value="Low">Low</option>
+                            </select>
+                          </div>
+                          <div className="lh-task-edit-actions">
+                            <button type="button" onClick={() => moveTask(item.id, -1)} disabled={index === 0} className="lh-small-button">Move Up</button>
+                            <button type="button" onClick={() => moveTask(item.id, 1)} disabled={index === items.length - 1} className="lh-small-button">Move Down</button>
+                            <button type="button" onClick={() => deleteTask(item.id)} className="lh-small-button lh-small-button-danger">Delete</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="lh-check-row">
+                          <input
+                            type="checkbox"
+                            checked={item.isDone}
+                            onChange={(event) =>
+                              updateItem(item.id, {
+                                isDone: event.target.checked,
+                                updatedBy: shareToken ? "Crew" : "Atlas Admin",
+                              })
+                            }
+                            className="lh-checkbox"
+                          />
+                          <span className="lh-item-copy">
+                            <strong>{item.label}</strong>
+                            <small>{item.category} · {item.priority}</small>
+                          </span>
+                        </label>
+                      )}
 
                       <textarea
                         value={item.notes}
                         onChange={(event) =>
                           updateItem(item.id, {
-                            notes:
-                              event.target.value,
-                            updatedBy:
-                              shareToken
-                                ? "Landscape Crew"
-                                : "Atlas Admin",
+                            notes: event.target.value,
+                            updatedBy: shareToken ? "Crew" : "Atlas Admin",
                           })
                         }
-                        placeholder="Optional item note..."
+                        placeholder="Optional task note..."
                         className="lh-item-notes"
                       />
                     </div>
@@ -707,7 +806,7 @@ export default function LandscapeHelpPage() {
           ) : (
             <section className="lh-card">
               <h2 className="lh-card-title">
-                Landscape Help did not load
+                Daily Crew Work did not load
               </h2>
 
               <p className="lh-muted">
@@ -1368,6 +1467,18 @@ function LandscapeHelpStyles() {
           padding-left: 8px;
         }
       }
+
+        .lh-task-header-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+        .lh-task-editor { display: grid; gap: 10px; }
+        .lh-task-editor-grid { display: grid; grid-template-columns: 1fr 150px; gap: 10px; }
+        .lh-task-title-input { font-weight: 700; }
+        .lh-task-edit-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .lh-small-button { border: 1px solid ${colors.line}; background: #fff; border-radius: 8px; padding: 7px 10px; cursor: pointer; font: inherit; }
+        .lh-small-button:disabled { opacity: .45; cursor: not-allowed; }
+        .lh-small-button-danger { color: #a12424; }
+        .lh-readonly-note { border: 1px solid ${colors.line}; background: #f8fafc; border-radius: 12px; padding: 14px; margin-top: 14px; }
+        .lh-readonly-note p { margin: 6px 0 0; white-space: pre-wrap; }
+        @media (max-width: 640px) { .lh-task-editor-grid { grid-template-columns: 1fr; } .lh-task-header-actions { justify-content: stretch; } .lh-task-header-actions .lh-button { flex: 1; } }
     `}</style>
   );
 }
