@@ -1228,21 +1228,57 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         title={activeSection?.label || "My Work"}
         detail="Track active work, recurring maintenance, projects, and completed history."
         isMobile={isMobile}
+        outerStyle={
+          isMobile
+            ? undefined
+            : {
+                height: "calc(100vh - 132px)",
+                minHeight: 620,
+                overflow: "hidden",
+                display: "grid",
+                gridTemplateRows: "auto minmax(0, 1fr)",
+              }
+        }
         gridStyleOverride={
           detailOpen && selectedService.id
+            ? isMobile
+              ? undefined
+              : {
+                  gridTemplateColumns: "minmax(300px, 36%) minmax(0, 64%)",
+                  height: "100%",
+                  minHeight: 0,
+                  overflow: "hidden",
+                  alignItems: "start",
+                }
+            : {
+                gridTemplateColumns: "1fr",
+                height: "100%",
+                minHeight: 0,
+                overflow: "hidden",
+              }
+        }
+        listPanelStyleOverride={
+          isMobile
             ? undefined
-            : { gridTemplateColumns: "1fr" }
+            : {
+                height: "100%",
+                minHeight: 0,
+                overflowY: "auto",
+                overflowX: "hidden",
+                paddingRight: 8,
+              }
         }
         drawerStyleOverride={
           detailOpen && selectedService.id
             ? isMobile
               ? undefined
               : {
-                  position: "sticky",
-                  top: 8,
-                  height: "auto",
-                  maxHeight: "none",
-                  overflow: "visible",
+                  position: "relative",
+                  top: 0,
+                  height: "100%",
+                  maxHeight: "100%",
+                  minHeight: 0,
+                  overflow: "hidden",
                   alignSelf: "start",
                 }
             : { display: "none" }
