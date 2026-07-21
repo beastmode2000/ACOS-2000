@@ -2046,57 +2046,28 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <p style={mutedSmallStyle}>{photoMessage}</p>
                 ) : null}
                 {(selectedService.photos || []).length ? (
-                  <div
-                    style={{
-                      ...photoGridStyle,
-                      maxHeight: 150,
-                      overflowY: "auto",
-                      paddingRight: 4,
-                    }}
-                  >
-                    {(selectedService.photos || []).map((photo: PhotoLike) => {
-                      const source = photoSource(photo);
-                      return (
-                        <div
-                          key={photo.id}
-                          style={{
-                            display: "grid",
-                            gap: 7,
-                            padding: 8,
-                            border: `1px solid ${colors.line}`,
-                            borderRadius: 12,
-                            background: "#FFFFFF",
-                          }}
-                        >
-                          {source ? (
-                            <a href={source} target="_blank" rel="noreferrer">
-                              <img
-                                src={source}
-                                alt={photo.name || "Work photo"}
-                                style={{
-                                  display: "block",
-                                  width: "100%",
-                                  aspectRatio: "4 / 3",
-                                  objectFit: "cover",
-                                  borderRadius: 8,
-                                }}
-                              />
-                            </a>
-                          ) : (
-                            <div style={noticeStyle}>Photo unavailable</div>
-                          )}
-                          <small style={mutedSmallStyle}>{photo.name}</small>
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(photo.id)}
-                            style={{ ...dangerButtonStyle, padding: "7px 9px" }}
-                          >
-                            Remove Photo
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF" }}>
+                    <summary style={{ padding: "8px 10px", cursor: "pointer", color: colors.text, fontSize: 12, fontWeight: 700 }}>
+                      Photos ({(selectedService.photos || []).length})
+                    </summary>
+                    <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
+                      {(selectedService.photos || []).map((photo: PhotoLike) => {
+                        const source = photoSource(photo);
+                        return (
+                          <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
+                            {source ? (
+                              <a href={source} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+                                {photo.name || "Work photo"}
+                              </a>
+                            ) : (
+                              <span style={mutedSmallStyle}>{photo.name || "Photo unavailable"}</span>
+                            )}
+                            <button type="button" onClick={() => removePhoto(photo.id)} style={{ ...dangerButtonStyle, padding: "6px 8px" }}>Remove</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
                 ) : null}
               </section>
 
