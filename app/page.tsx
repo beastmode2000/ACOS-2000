@@ -10862,17 +10862,12 @@ export default function AtlasPage() {
                   </label>
 
                   {selectedMapLabel.photos?.length ? (
-                    <div style={mapSmallPhotoGridStyle}>
+                    <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
+                      <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({selectedMapLabel.photos.length})</summary>
+                      <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
                       {selectedMapLabel.photos.map((photo) => (
-                        <div key={photo.id} style={mapSmallPhotoCardStyle}>
-                          {photo.dataUrl || photo.url ? (
-                            <img
-                              src={photo.dataUrl || photo.url}
-                              alt={photo.name}
-                              style={mapSmallPhotoStyle}
-                            />
-                          ) : null}
-                          <div style={mapPhotoCardFooterStyle}>
+                        <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 6, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
+                            <button type="button" onClick={() => openUploadedFile(photo)} style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}>{photo.name || "Map photo"}</button>
                             <button
                               type="button"
                               onClick={() =>
@@ -10891,10 +10886,10 @@ export default function AtlasPage() {
                             >
                               Remove
                             </button>
-                          </div>
                         </div>
                       ))}
-                    </div>
+                      </div>
+                    </details>
                   ) : (
                     <p style={mapEmptyNoteStyle}>No photos added.</p>
                   )}
@@ -11165,20 +11160,17 @@ export default function AtlasPage() {
                 </div>
 
                 {locationPhotos.length ? (
-                  <div style={photoGridStyle}>
+                  <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
+                    <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({locationPhotos.length})</summary>
+                    <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
                     {locationPhotos.map((file) => (
-                      <div key={file.id} style={photoManageCardStyle}>
+                      <div key={file.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
                         <button
                           type="button"
                           onClick={() => openUploadedFile(file)}
-                          style={compactPhotoButtonStyle}
+                          style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}
                         >
-                          <img
-                            src={file.dataUrl || file.url}
-                            alt={file.name}
-                            style={photoStyle}
-                          />
-                          <strong>{file.name}</strong>
+                          {file.name}
                         </button>
                         <button
                           type="button"
@@ -11189,7 +11181,8 @@ export default function AtlasPage() {
                         </button>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                  </details>
                 ) : null}
               </section>
 
@@ -11868,68 +11861,25 @@ export default function AtlasPage() {
                     </div>
                   </div>
                   {selectedAssetPhotos.length ? (
-                    <div
-                      style={{
-                        ...assetPhotoGridStyle,
-                        gridTemplateColumns: `repeat(${Math.min(
-                          selectedAssetPhotos.length,
-                          isMobile ? 2 : 4,
-                        )}, minmax(0, 1fr))`,
-                      }}
-                    >
-                      {selectedAssetPhotos.slice(0, isMobile ? 4 : 4).map((photo) => {
-                        const source = photoSource(photo);
-                        return (
-                          <div key={photo.id} style={assetPhotoTileStyle}>
-                            <button
-                              type="button"
-                              onClick={() => openPhotoPreview(photo)}
-                              style={assetPhotoPreviewButtonStyle}
-                              disabled={!source}
-                            >
-                              {source ? (
-                                <img
-                                  src={source}
-                                  alt={photo.name || "Asset photo"}
-                                  style={assetPhotoThumbImageStyle}
-                                />
-                              ) : (
-                                <span>No preview</span>
-                              )}
+                    <details style={{ border: `1px solid ${colors.line}`, borderRadius: 8, background: "#FFFFFF" }}>
+                      <summary style={{ padding: "7px 9px", cursor: "pointer", color: colors.navy, fontSize: 11, fontWeight: 900 }}>
+                        Photos ({selectedAssetPhotos.length})
+                      </summary>
+                      <div style={{ display: "grid", gap: 4, maxHeight: 180, overflowY: "auto", padding: "0 7px 7px" }}>
+                        {selectedAssetPhotos.map((photo) => (
+                          <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 5, padding: "5px 6px", border: `1px solid ${colors.line}`, borderRadius: 7 }}>
+                            <button type="button" onClick={() => openPhotoPreview(photo)} style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
+                              {photo.name || "Asset photo"}
                             </button>
-                            <div style={assetPhotoLabelRowStyle}>
-                              <span title={photo.name}>{photo.name || "Asset photo"}</span>
-                              <button
-                                type="button"
-                                onClick={() => void renameAssetPhoto(photo)}
-                                style={assetPhotoLabelButtonStyle}
-                                aria-label={`Edit ${photo.name || "photo"} label`}
-                              >
-                                ✏
-                              </button>
-                              {assetEditorOpen ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void deleteAssetPhoto(photo)}
-                                  style={assetPhotoDeleteIconStyle}
-                                  aria-label={`Delete ${photo.name || "photo"}`}
-                                >
-                                  ×
-                                </button>
-                              ) : null}
-                            </div>
+                            <button type="button" onClick={() => void renameAssetPhoto(photo)} style={assetPhotoLabelButtonStyle} aria-label={`Edit ${photo.name || "photo"} label`}>✏</button>
+                            {assetEditorOpen ? <button type="button" onClick={() => void deleteAssetPhoto(photo)} style={assetPhotoDeleteIconStyle} aria-label={`Delete ${photo.name || "photo"}`}>×</button> : null}
                           </div>
-                        );
-                      })}
-                    </div>
+                        ))}
+                      </div>
+                    </details>
                   ) : (
                     <div style={assetEmptyStateStyle}>No photos attached.</div>
                   )}
-                  {selectedAssetPhotos.length > 4 ? (
-                    <span style={assetCardHintStyle}>
-                      + {selectedAssetPhotos.length - 4} more photos
-                    </span>
-                  ) : null}
                 </section>
               </div>
 
@@ -12603,20 +12553,17 @@ export default function AtlasPage() {
                 </div>
 
                 {selectedVendorPhotos.length ? (
-                  <div style={photoGridStyle}>
+                  <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
+                    <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({selectedVendorPhotos.length})</summary>
+                    <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
                     {selectedVendorPhotos.map((file) => (
-                      <div key={file.id} style={photoManageCardStyle}>
+                      <div key={file.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
                         <button
                           type="button"
                           onClick={() => openUploadedFile(file)}
-                          style={compactPhotoButtonStyle}
+                          style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}
                         >
-                          <img
-                            src={file.dataUrl || file.url}
-                            alt={file.name}
-                            style={photoStyle}
-                          />
-                          <strong>{file.name}</strong>
+                          {file.name}
                         </button>
                         <button
                           type="button"
@@ -12627,7 +12574,8 @@ export default function AtlasPage() {
                         </button>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                  </details>
                 ) : null}
               </section>
 
@@ -15468,22 +15416,12 @@ export default function AtlasPage() {
               </div>
 
               {intakeFiles.length ? (
-                <div style={{ ...photoGridStyle, marginTop: 14 }}>
+                <details style={{ marginTop: 14, border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }} open>
+                  <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Attached Files ({intakeFiles.length})</summary>
+                  <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
                   {intakeFiles.map((file) => (
-                    <div key={file.id} style={photoCardStyle}>
-                      {file.dataUrl?.startsWith("data:image/") ? (
-                        <img
-                          src={file.dataUrl}
-                          alt={file.name}
-                          style={photoStyle}
-                        />
-                      ) : (
-                        <div style={fileTileStyle}>
-                          {file.type?.includes("pdf") ? "PDF" : "FILE"}
-                        </div>
-                      )}
+                    <div key={file.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 6, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
                       <strong>{file.name}</strong>
-                      <div style={buttonRowStyle}>
                         <button
                           type="button"
                           onClick={() => openUploadedFile(file)}
@@ -15498,10 +15436,10 @@ export default function AtlasPage() {
                         >
                           Remove
                         </button>
-                      </div>
                     </div>
                   ))}
-                </div>
+                  </div>
+                </details>
               ) : (
                 <div style={emptyStateStyle}>No file attached yet.</div>
               )}
@@ -16317,35 +16255,21 @@ export default function AtlasPage() {
         </section>
 
         {selectedRequest.photos?.length > 1 ? (
-          <div style={photoGridStyle}>
+          <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
+            <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({selectedRequest.photos.length - 1})</summary>
+            <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
             {selectedRequest.photos.slice(1).map((photo) => (
               <button
                 key={photo.id}
                 type="button"
                 onClick={() => setPreviewFile(photo)}
-                style={{
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 14,
-                  overflow: "hidden",
-                  padding: 0,
-                  background: colors.card,
-                  textAlign: "left",
-                  cursor: "pointer",
-                }}
+                style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: "7px 8px", background: colors.card, color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}
               >
-                <img
-                  src={photo.dataUrl || photo.url}
-                  alt={photo.name}
-                  style={{
-                    width: "100%",
-                    height: 100,
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                />
+                {photo.name || "Request photo"}
               </button>
             ))}
-          </div>
+            </div>
+          </details>
         ) : null}
 
         {selectedLinkedWorkOrder ? (
@@ -17096,36 +17020,21 @@ export default function AtlasPage() {
             </label>
           </div>
           {(selectedProcedure.photos || []).length ? (
-            <div style={{ ...photoGridStyle, marginTop: 12 }}>
+            <details style={{ marginTop: 12, border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF" }}>
+              <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({(selectedProcedure.photos || []).length})</summary>
+              <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
               {(selectedProcedure.photos || []).map((photo) => (
                 <button
                   key={photo.id}
                   type="button"
                   onClick={() => setPreviewFile(photo)}
-                  style={{
-                    border: `1px solid ${colors.line}`,
-                    borderRadius: 14,
-                    overflow: "hidden",
-                    padding: 0,
-                    background: "#FFFFFF",
-                  }}
+                  style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: "7px 8px", background: "#FFFFFF", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}
                 >
-                  <img
-                    src={photo.dataUrl || photo.url}
-                    alt={photo.name}
-                    style={{
-                      width: "100%",
-                      height: 150,
-                      objectFit: "cover",
-                      display: "block",
-                    }}
-                  />
-                  <span style={{ display: "block", padding: 8 }}>
-                    {photo.name}
-                  </span>
+                  {photo.name || "Procedure photo"}
                 </button>
               ))}
-            </div>
+              </div>
+            </details>
           ) : null}
           {(selectedProcedure.documents || []).length ? (
             <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
