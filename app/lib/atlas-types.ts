@@ -121,6 +121,8 @@ export type AssetRecord = {
   status: Status;
   make?: string;
   model?: string;
+  year?: string;
+  manufacturer?: string;
   serial?: string;
   notes: string;
   vendorIds: string[];
