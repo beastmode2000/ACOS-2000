@@ -255,12 +255,6 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
         </div>
       </section>
 
-      <AtlasRoutines
-        mode="dashboard"
-        isMobile={isMobile}
-        onOpenManager={() => setScreen("routines")}
-      />
-
       <section style={sectionStyle}>
         <div
           style={{
@@ -408,6 +402,12 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           </div>
         </div>
       </section>
+
+      <AtlasRoutines
+        mode="dashboard"
+        isMobile={isMobile}
+        onOpenManager={() => setScreen("routines")}
+      />
 
       <section style={sectionStyle}>
         <SectionHeader
