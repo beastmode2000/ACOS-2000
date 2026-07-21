@@ -383,6 +383,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [dueDateFilter, setDueDateFilter] = useState("All");
   const [locationFilter, setLocationFilter] = useState("All");
   const [assetFilter, setAssetFilter] = useState("All");
   const [assignedFilter, setAssignedFilter] = useState("All");
@@ -536,6 +537,18 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const matchesStatus =
       statusFilter === "All" ||
       String(record.status || "Open") === statusFilter;
+    const dueDistance = dayDistance(String(record.date || ""));
+    const matchesDueDate =
+      dueDateFilter === "All" ||
+      (dueDateFilter === "Overdue" && dueDistance < 0) ||
+      (dueDateFilter === "Today" && dueDistance === 0) ||
+      (dueDateFilter === "Next 7 Days" &&
+        dueDistance >= 0 &&
+        dueDistance <= 7) ||
+      (dueDateFilter === "Next 30 Days" &&
+        dueDistance >= 0 &&
+        dueDistance <= 30) ||
+      (dueDateFilter === "No Due Date" && !String(record.date || "").trim());
     const matchesLocation =
       locationFilter === "All" ||
       String(record.locationId || "") === locationFilter;
@@ -568,6 +581,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       matchesCategory &&
       matchesType &&
       matchesStatus &&
+      matchesDueDate &&
       matchesLocation &&
       matchesAsset &&
       matchesAssigned &&
@@ -595,6 +609,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     categoryFilter,
     typeFilter,
     statusFilter,
+    dueDateFilter,
     locationFilter,
     assetFilter,
     assignedFilter,
@@ -1683,6 +1698,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   ))}
                 </select>
                 <select
+                  value={dueDateFilter}
+                  onChange={(event) =>
+                    setDueDateFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">All Due Dates</option>
+                  <option value="Overdue">Overdue</option>
+                  <option value="Today">Due Today</option>
+                  <option value="Next 7 Days">Next 7 Days</option>
+                  <option value="Next 30 Days">Next 30 Days</option>
+                  <option value="No Due Date">No Due Date</option>
+                </select>
+                <select
                   value={locationFilter}
                   onChange={(event) =>
                     setLocationFilter(event.currentTarget.value)
@@ -1734,6 +1763,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     setCategoryFilter("All");
                     setTypeFilter("All");
                     setStatusFilter("All");
+                    setDueDateFilter("All");
                     setLocationFilter("All");
                     setAssetFilter("All");
                     setAssignedFilter("All");
