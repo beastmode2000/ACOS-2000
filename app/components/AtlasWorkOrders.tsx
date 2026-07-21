@@ -1883,6 +1883,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   borderBottom: `1px solid ${colors.line}`,
                 }}
               >
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => void deleteWorkOrderRecord(selectedService)}
+                    style={{
+                      ...dangerButtonStyle,
+                      width: "auto",
+                      padding: "7px 10px",
+                      border: 0,
+                      background: "transparent",
+                    }}
+                  >
+                    Delete Work Order
+                  </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -1919,180 +1933,60 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 >
                   ×
                 </button>
+                </span>
               </div>
-              <div>
-                <h3 style={{ ...editorHeaderStyle, marginBottom: 8, paddingBottom: 8, fontSize: 21 }}>
-                  {selectedService.title.trim() || "New Work"}
-                </h3>
-                <p style={mutedSmallStyle}>
-                  {categoryDisplayLabel(categoryLabel(selectedService))} ·{" "}
-                  {itemType(selectedService)}
-                </p>
-                <div
-                  style={{
-                    ...buttonRowStyle,
-                    justifyContent: "flex-start",
-                    marginTop: 9,
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => void saveWorkOrderRecord()}
-                    style={{ ...goldButtonStyle, width: "auto" }}
-                  >
-                    Save Work Order
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteWorkOrderRecord(selectedService)}
-                    style={{ ...dangerButtonStyle, width: "auto" }}
-                  >
-                    Delete Work Order
-                  </button>
-                </div>
-              </div>
-
-              <section style={{ ...detailSectionStyle, gap: 7, padding: 9 }}>
-                <div style={eyebrowStyle}>Work Information</div>
-                <div style={{ ...formGridStyle, gap: 8, marginBottom: 0 }}>
-                  <Field
-                    label="Title / Rename"
-                    value={selectedService.title}
-                    onChange={(value: string) =>
-                      updateWorkOrder({ title: value })
-                    }
-                  />
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>
-                      {selectedService.recurring ? "Next Due" : "Due Date"}
-                    </span>
-                    <input
-                      type="date"
-                      value={String(selectedService.date || "")}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          date: event.currentTarget.value || "",
-                        })
-                      }
-                      style={inputStyle}
-                    />
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Status</span>
-                    <select
-                      value={selectedService.status}
-                      onChange={(event) =>
-                        updateWorkOrder({ status: event.currentTarget.value })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="Open">Open</option>
-                      <option value="Scheduled">Scheduled</option>
-                      <option value="In Progress">In Progress</option>
-                      <option value="Waiting">Waiting</option>
-                      <option value="Monitor">Monitor</option>
-                      <option value="Completed">Completed</option>
-                    </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Priority</span>
-                    <select
-                      value={selectedService.priority || "Medium"}
-                      onChange={(event) =>
-                        updateWorkOrder({ priority: event.currentTarget.value })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="High">High</option>
-                      <option value="Medium">Normal</option>
-                      <option value="Low">Low</option>
-                    </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Schedule Type</span>
-                    <select
-                      value={selectedService.recurring ? "recurring" : "one-time"}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          recurring: event.currentTarget.value === "recurring",
-                        })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="one-time">One-time</option>
-                      <option value="recurring">Recurring</option>
-                    </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Location</span>
-                    <select
-                      value={selectedService.locationId || ""}
-                      onChange={(event) =>
-                        updateWorkOrder({
-                          locationId: event.currentTarget.value,
-                        })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="">No linked location</option>
-                      {byName(locationRecords).map((location: any) => (
-                        <option key={location.id} value={location.id}>
-                          {location.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Asset</span>
-                    <select
-                      value={selectedService.assetId || ""}
-                      onChange={(event) =>
-                        updateWorkOrder({ assetId: event.currentTarget.value })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="">No linked asset</option>
-                      {byName(assetRecords).map((asset: any) => (
-                        <option key={asset.id} value={asset.id}>
-                          {asset.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Vendor</span>
-                    <select
-                      value={selectedService.vendorId || ""}
-                      onChange={(event) =>
-                        updateWorkOrder({ vendorId: event.currentTarget.value })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="">No vendor</option>
-                      {byName(vendorRecords).map((vendor: any) => (
-                        <option key={vendor.id} value={vendor.id}>
-                          {vendor.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <Field
-                    label="Follow-up Date"
-                    value={selectedService.followUpDate || ""}
-                    onChange={(value: string) =>
-                      updateWorkOrder({ followUpDate: value })
-                    }
-                  />
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(250px, 40%) minmax(0, 60%)", gap: 18 }}>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {photoSource((selectedService.photos || [])[0]) ? (
+                      <img src={photoSource(selectedService.photos[0])} alt={selectedService.title || "Work order"} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 10 }} />
+                    ) : (
+                      <button type="button" onClick={() => photoInputRef.current?.click()} style={{ width: "100%", aspectRatio: "4 / 3", border: `1px dashed ${colors.line}`, borderRadius: 10, background: "#F8FAFC", color: colors.muted, cursor: "pointer" }}>Add Work Order Photo</button>
+                    )}
+                    <button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, fontWeight: 500 }}>Add / Change Photo</button>
+                  </div>
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div>
+                      <div style={eyebrowStyle}>Work Order Details</div>
+                      <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, border: 0, padding: "4px 0", background: "transparent", fontSize: isMobile ? 22 : 27, fontWeight: 800 }} />
+                    </div>
+                    <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} placeholder="Describe the work that is needed" style={{ ...inputStyle, minHeight: 82, resize: "vertical" }} />
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 150px", gap: 12 }}>
+                      <div style={{ display: "grid", gap: 8, alignContent: "start" }}>
+                        <div><span style={fieldLabelStyle}>Assigned To</span><div style={{ marginTop: 3 }}>{selectedService.assignedTo || "Unassigned"}</div></div>
+                        <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
+                      </div>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Status</span><select value={selectedService.status || "Open"} onChange={(event) => updateWorkOrder({ status: event.currentTarget.value })} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="In Progress">In Progress</option><option value="Waiting">Waiting</option><option value="Monitor">Monitor</option><option value="Completed">Completed</option></select></label>
+                        <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Priority</span><select value={selectedService.priority || "Medium"} onChange={(event) => updateWorkOrder({ priority: event.currentTarget.value })} style={inputStyle}><option value="High">High</option><option value="Medium">Normal</option><option value="Low">Low</option></select></label>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </section>
+
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Atlas Assignment</div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder({ assetId: event.currentTarget.value })} style={inputStyle}><option value="">No linked asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => updateWorkOrder({ locationId: event.currentTarget.value })} style={inputStyle}><option value="">No linked location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => updateWorkOrder({ workCategory: event.currentTarget.value, emoji: categoryEmoji(event.currentTarget.value) })} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Priority</span><select value={selectedService.priority || "Medium"} onChange={(event) => updateWorkOrder({ priority: event.currentTarget.value })} style={inputStyle}><option value="High">High</option><option value="Medium">Normal</option><option value="Low">Low</option></select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => updateWorkOrder({ assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => updateWorkOrder({ vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                </div>
+              </section>
+
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <div style={{ ...eyebrowStyle, marginBottom: 10 }}>Internal Notes</div>
+                <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={4} placeholder="Add internal notes here..." style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} />
+                <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>These notes stay inside Atlas.</p>
+              </section>
+
+              <div style={{ ...buttonRowStyle, justifyContent: "flex-start", padding: "2px 0 8px" }}>
+                <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto" }}>Save Changes</button>
+                <select value="" onChange={(event) => { handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...secondaryButtonStyle, minHeight: 42, width: "auto" }} aria-label="Work order actions"><option value="">Work Order Actions</option><option value="start">Start Work</option><option value="complete">Mark Complete</option><option value="reschedule">Reschedule</option><option value="photo">Add Photo</option><option value="duplicate">Duplicate</option></select>
+              </div>
 
               <section style={detailSectionStyle}>
                 <div style={detailSectionHeaderStyle}>
