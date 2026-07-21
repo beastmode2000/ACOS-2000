@@ -1244,7 +1244,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             ? isMobile
               ? undefined
               : {
-                  gridTemplateColumns: "minmax(300px, 36%) minmax(0, 64%)",
+                  gridTemplateColumns: "minmax(340px, 38%) minmax(0, 62%)",
                   height: "100%",
                   minHeight: 0,
                   overflow: "hidden",
@@ -1271,14 +1271,26 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         drawerStyleOverride={
           detailOpen && selectedService.id
             ? isMobile
-              ? undefined
+              ? {
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 1000,
+                  width: "100%",
+                  height: "100dvh",
+                  maxHeight: "100dvh",
+                  overflowY: "auto",
+                  overscrollBehavior: "contain",
+                  background: "#FFFFFF",
+                  padding: 16,
+                }
               : {
                   position: "relative",
                   top: 0,
                   height: "100%",
                   maxHeight: "100%",
                   minHeight: 0,
-                  overflow: "hidden",
+                  overflowY: "auto",
+                  overflowX: "hidden",
                   alignSelf: "start",
                 }
             : { display: "none" }
@@ -1840,6 +1852,57 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         drawer={
           detailOpen && selectedService.id ? (
             <div style={{ ...stackStyle, gap: 7 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  position: isMobile ? "sticky" : "relative",
+                  top: 0,
+                  zIndex: 5,
+                  padding: isMobile ? "4px 0 12px" : "0 0 8px",
+                  background: "#FFFFFF",
+                  borderBottom: `1px solid ${colors.line}`,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailOpen(false);
+                    setSelectedServiceId("");
+                  }}
+                  style={{
+                    ...secondaryButtonStyle,
+                    minHeight: 38,
+                    padding: "7px 11px",
+                    fontWeight: 500,
+                  }}
+                  aria-label="Back to work orders"
+                >
+                  ← Back to Work Orders
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailOpen(false);
+                    setSelectedServiceId("");
+                  }}
+                  style={{
+                    border: 0,
+                    background: "transparent",
+                    color: colors.text,
+                    fontSize: 26,
+                    lineHeight: 1,
+                    padding: 6,
+                    cursor: "pointer",
+                  }}
+                  aria-label="Close work order details"
+                  title="Close"
+                >
+                  ×
+                </button>
+              </div>
               <div>
                 <h3 style={{ ...editorHeaderStyle, marginBottom: 8, paddingBottom: 8, fontSize: 21 }}>
                   {selectedService.title.trim() || "New Work"}
@@ -2389,6 +2452,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   )}
                   <option value="photo">Add Photo</option>
                   <option value="duplicate">Duplicate Work Order</option>
+                  <option value="delete">Delete Work Order</option>
                 </select>
 
                 {selectedService.recurring ? (
