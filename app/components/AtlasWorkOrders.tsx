@@ -163,6 +163,33 @@ function sortWorkRecords(records: any[]) {
   });
 }
 
+function completedTime(record: any) {
+  const candidates = [
+    record.completedAt,
+    record.lastCompletedDate,
+    ...(Array.isArray(record.completionHistory)
+      ? record.completionHistory
+      : []),
+    ...(Array.isArray(record.serviceHistory)
+      ? record.serviceHistory.map((entry: any) => entry?.completedAt)
+      : []),
+  ];
+
+  return candidates.reduce((latest: number, value: unknown) => {
+    if (!value) return latest;
+    const parsed = new Date(String(value)).getTime();
+    return Number.isNaN(parsed) ? latest : Math.max(latest, parsed);
+  }, 0);
+}
+
+function sortCompletedRecords(records: any[]) {
+  return [...records].sort((a, b) => {
+    const timeDifference = completedTime(b) - completedTime(a);
+    if (timeDifference !== 0) return timeDifference;
+    return String(a.title || "").localeCompare(String(b.title || ""));
+  });
+}
+
 function safeReadSections(): WorkSection[] {
   if (typeof window === "undefined") return DEFAULT_SECTIONS;
   try {
@@ -550,7 +577,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   const visibleRecords = useMemo(() => {
     if (!activeSection) return [];
-    return filteredServices.filter((record: any) => {
+    const matchingRecords = filteredServices.filter((record: any) => {
       const type = itemType(record);
       const matchesSection =
         activeSection.kind === "my-work"
@@ -560,6 +587,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             : record.status !== "Completed" && type === activeSection.kind;
       return matchesSection && matchesCommonFilters(record);
     });
+    return activeSection.kind === "completed"
+      ? sortCompletedRecords(matchingRecords)
+      : matchingRecords;
   }, [
     activeSection,
     categoryFilter,
@@ -858,7 +888,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   function handleDetailAction(value: string) {
     if (!value) return;
-    if (value === "save") void saveWorkOrderRecord();
     if (value === "reopen")
       updateWorkOrder({ status: "Open", completedAt: "" });
     if (value === "start") updateWorkOrder({ status: "In Progress" });
@@ -869,8 +898,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       updateWorkOrder({ date: tomorrowDate(), status: "Scheduled" });
     if (value === "next-week")
       updateWorkOrder({ date: nextWeekDate(), status: "Scheduled" });
-    if (value === "recurring")
-      updateWorkOrder({ recurring: !Boolean(selectedService.recurring) });
     if (value === "photo") quickAddPhoto(selectedService);
     if (value === "duplicate") duplicateWork(selectedService);
     if (value === "delete") void deleteWorkOrderRecord(selectedService);
@@ -1807,6 +1834,22 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </label>
 
                   <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Schedule Type</span>
+                    <select
+                      value={selectedService.recurring ? "recurring" : "one-time"}
+                      onChange={(event) =>
+                        updateWorkOrder({
+                          recurring: event.currentTarget.value === "recurring",
+                        })
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="one-time">One-time</option>
+                      <option value="recurring">Recurring</option>
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                     <span style={fieldLabelStyle}>Location</span>
                     <select
                       value={selectedService.locationId || ""}
@@ -2212,6 +2255,15 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 >
                   Work Order Actions
                 </div>
+                {isRecordDirty("work_order", selectedService.id) ? (
+                  <button
+                    type="button"
+                    onClick={() => void saveWorkOrderRecord()}
+                    style={{ ...goldButtonStyle, width: "100%" }}
+                  >
+                    Save Changes
+                  </button>
+                ) : null}
                 <select
                   value=""
                   onChange={(event) => {
@@ -2229,9 +2281,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   aria-label="Work order actions"
                 >
                   <option value="">Choose an action...</option>
-                  {isRecordDirty("work_order", selectedService.id) ? (
-                    <option value="save">Save Work</option>
-                  ) : null}
                   {selectedService.status === "Completed" ? (
                     <option value="reopen">Reopen Work Order</option>
                   ) : (
@@ -2248,11 +2297,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <option value="convert">Convert Work Type</option>
                     </>
                   )}
-                  <option value="recurring">
-                    {selectedService.recurring
-                      ? "Turn Off Recurring"
-                      : "Make Recurring"}
-                  </option>
                   <option value="photo">Add Photo</option>
                   <option value="duplicate">Duplicate Work Order</option>
                   <option value="delete">Delete Work Order</option>
