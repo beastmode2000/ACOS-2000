@@ -7,6 +7,10 @@ type LandscapeStatus = "Not Started" | "In Progress" | "Complete" | "Needs Revie
 
 type LandscapeHelpItemInput = {
   id: string;
+  sortOrder?: number;
+  label?: string;
+  category?: string;
+  priority?: string;
   isDone?: boolean;
   notes?: string;
   updatedBy?: string;
@@ -379,6 +383,7 @@ export async function PATCH(request: NextRequest) {
 
     if (!targetWeekId) return NextResponse.json({ ok: false, error: "Missing week id." }, { status: 400 });
 
+    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Daily Crew Work";
     const status = safeStatus(body.status);
     const crewName = typeof body.crewName === "string" ? body.crewName : "";
     const managerNotes = typeof body.managerNotes === "string" ? body.managerNotes : "";
@@ -387,6 +392,7 @@ export async function PATCH(request: NextRequest) {
     await sql`
       UPDATE landscape_help_weeks
       SET
+        title = CASE WHEN ${isPublicCrewUpdate} THEN title ELSE ${title} END,
         status = ${status},
         crew_name = ${crewName},
         manager_notes = CASE WHEN ${isPublicCrewUpdate} THEN manager_notes ELSE ${managerNotes} END,
@@ -398,19 +404,56 @@ export async function PATCH(request: NextRequest) {
 
     const items = Array.isArray(body.items) ? (body.items as LandscapeHelpItemInput[]) : [];
 
-    for (const item of items) {
+    if (!isPublicCrewUpdate) {
+      const incomingIds = items.map((item) => item.id).filter(Boolean);
+      if (incomingIds.length) {
+        await sql`DELETE FROM landscape_help_items WHERE week_id = ${targetWeekId} AND NOT (id = ANY(${incomingIds}::uuid[]))`;
+      } else {
+        await sql`DELETE FROM landscape_help_items WHERE week_id = ${targetWeekId}`;
+      }
+    }
+
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
       if (!item.id) continue;
 
-      await sql`
-        UPDATE landscape_help_items
-        SET
-          is_done = ${Boolean(item.isDone)},
-          notes = ${typeof item.notes === "string" ? item.notes : ""},
-          updated_by = ${typeof item.updatedBy === "string" ? item.updatedBy : ""},
-          updated_at = now()
-        WHERE id = ${item.id}
-        AND week_id = ${targetWeekId}
-      `;
+      if (isPublicCrewUpdate) {
+        await sql`
+          UPDATE landscape_help_items
+          SET
+            is_done = ${Boolean(item.isDone)},
+            notes = ${typeof item.notes === "string" ? item.notes : ""},
+            updated_by = ${typeof item.updatedBy === "string" ? item.updatedBy : "Crew"},
+            updated_at = now()
+          WHERE id = ${item.id} AND week_id = ${targetWeekId}
+        `;
+      } else {
+        await sql`
+          INSERT INTO landscape_help_items (id, week_id, sort_order, label, category, priority, is_done, notes, updated_by, updated_at)
+          VALUES (
+            ${item.id}::uuid,
+            ${targetWeekId},
+            ${Number(item.sortOrder) || index + 1},
+            ${typeof item.label === "string" && item.label.trim() ? item.label.trim() : "Untitled task"},
+            ${typeof item.category === "string" && item.category.trim() ? item.category.trim() : "General"},
+            ${typeof item.priority === "string" && item.priority.trim() ? item.priority.trim() : "Normal"},
+            ${Boolean(item.isDone)},
+            ${typeof item.notes === "string" ? item.notes : ""},
+            ${typeof item.updatedBy === "string" ? item.updatedBy : "Atlas Admin"},
+            now()
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            sort_order = EXCLUDED.sort_order,
+            label = EXCLUDED.label,
+            category = EXCLUDED.category,
+            priority = EXCLUDED.priority,
+            is_done = EXCLUDED.is_done,
+            notes = EXCLUDED.notes,
+            updated_by = EXCLUDED.updated_by,
+            updated_at = now()
+          WHERE landscape_help_items.week_id = ${targetWeekId}
+        `;
+      }
     }
 
     const loaded = await loadWeekById(targetWeekId);
