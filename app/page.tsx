@@ -17833,65 +17833,6 @@ export default function AtlasPage() {
     );
   }
 
-  function renderCommandStrip() {
-    const openWorkOrders = serviceRecords.filter(
-      (record) => record.status !== "Completed",
-    );
-    const highPriority = serviceRecords.filter(
-      (record) => record.priority === "High" && record.status !== "Completed",
-    );
-    const nextRoutine = upcomingEvents[0] || todayEvents[0];
-
-    return (
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: 4,
-          marginTop: 5,
-          paddingTop: 5,
-          borderTop: "1px solid rgba(255,255,255,0.14)",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            if (nextRoutine) {
-              openCalendarItem(nextRoutine);
-              if (nextRoutine.source !== "work-order") setScreen("calendar");
-            } else {
-              setScreen("routines");
-            }
-          }}
-          style={sidebarStatusCardStyle}
-        >
-          <span style={sidebarStatusLabelStyle}>Next routine</span>
-          <strong style={sidebarStatusValueStyle}>
-            {nextRoutine ? nextRoutine.title : "Open routines"}
-          </strong>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setScreen("history")}
-          style={sidebarStatusCardStyle}
-        >
-          <span style={sidebarStatusLabelStyle}>Open work</span>
-          <strong style={sidebarStatusNumberStyle}>{openWorkOrders.length}</strong>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setScreen("history")}
-          style={sidebarStatusCardStyle}
-        >
-          <span style={sidebarStatusLabelStyle}>High priority</span>
-          <strong style={sidebarStatusNumberStyle}>{highPriority.length}</strong>
-        </button>
-      </div>
-    );
-  }
-
   function renderFilePreviewOverlay() {
     if (!previewFile) return null;
 
@@ -18774,7 +18715,6 @@ export default function AtlasPage() {
               </select>
             </div>
           ) : (
-            <>
               <nav style={sidebarNavStyle} aria-label="Atlas sections">
                 {atlasNavigationSections.map((section) => (
                   <div key={section.label} style={sidebarNavSectionStyle}>
@@ -18813,9 +18753,6 @@ export default function AtlasPage() {
                   </div>
                 ))}
               </nav>
-
-              {renderCommandStrip()}
-            </>
           )}
         </aside>
 
@@ -19967,7 +19904,8 @@ const brandSubStyle: React.CSSProperties = {
 
 const sidebarNavStyle: React.CSSProperties = {
   display: "grid",
-  gap: 3,
+  gap: "clamp(2px, 0.35vh, 4px)",
+  minHeight: 0,
 };
 
 const sidebarNavSectionStyle: React.CSSProperties = {
@@ -19977,7 +19915,7 @@ const sidebarNavSectionStyle: React.CSSProperties = {
 
 const sidebarNavHeaderStyle: React.CSSProperties = {
   color: "rgba(214,226,238,0.72)",
-  fontSize: "clamp(7px, 0.85vh, 9px)",
+  fontSize: "clamp(8px, 1vh, 10px)",
   fontWeight: 950,
   letterSpacing: 1,
   lineHeight: 1,
@@ -19990,49 +19928,17 @@ const sidebarNavItemsStyle: React.CSSProperties = {
   gap: 0,
 };
 
-const sidebarStatusCardStyle: React.CSSProperties = {
-  width: "100%",
-  border: "1px solid rgba(255,255,255,0.14)",
-  borderRadius: 10,
-  background: "rgba(255,255,255,0.055)",
-  color: "#FFFFFF",
-  padding: "5px 7px",
-  display: "grid",
-  gap: 2,
-  textAlign: "left",
-  cursor: "pointer",
-};
-
-const sidebarStatusLabelStyle: React.CSSProperties = {
-  color: "rgba(214,226,238,0.75)",
-  fontSize: 9,
-  fontWeight: 950,
-  letterSpacing: 0.8,
-  textTransform: "uppercase",
-};
-
-const sidebarStatusValueStyle: React.CSSProperties = {
-  fontSize: 9,
-  lineHeight: 1.1,
-};
-
-const sidebarStatusNumberStyle: React.CSSProperties = {
-  color: colors.gold2,
-  fontSize: 14,
-  lineHeight: 1,
-};
-
 const navButtonStyle: React.CSSProperties = {
   width: "100%",
   border: "1px solid transparent",
   borderRadius: 8,
-  padding: "clamp(2px, 0.45vh, 4px) 7px",
+  padding: "clamp(3px, 0.5vh, 5px) 7px",
   textAlign: "left",
   cursor: "pointer",
   fontWeight: 850,
-  fontSize: "clamp(8px, 1.05vh, 11px)",
+  fontSize: "clamp(10px, 1.55vh, 13px)",
   lineHeight: 1.05,
-  minHeight: "clamp(18px, 2.45vh, 23px)",
+  minHeight: "clamp(20px, 2.9vh, 27px)",
   display: "flex",
   alignItems: "center",
 };
