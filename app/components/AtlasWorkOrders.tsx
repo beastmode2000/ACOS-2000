@@ -72,7 +72,6 @@ const DEFAULT_SECTIONS: WorkSection[] = [
     kind: "Preventive Maintenance",
   },
   { id: "projects", label: "Projects", kind: "Project" },
-  { id: "completed", label: "Completed", kind: "completed" },
 ];
 
 const SECTION_STORAGE_KEY = "atlas-work-section-settings-v1";
@@ -203,7 +202,7 @@ function safeReadSections(): WorkSection[] {
           section &&
           typeof section.id === "string" &&
           typeof section.label === "string" &&
-          typeof section.kind === "string",
+          typeof section.kind === "string" && section.kind !== "completed",
       )
       .map((section) => ({ ...section }));
   } catch {
@@ -2458,6 +2457,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         }
       />
 
+      {false ? (
       <section
         style={{
           marginTop: 18,
@@ -2698,6 +2698,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           )
         ) : null}
       </section>
+      ) : null}
     </>
   );
 }
