@@ -205,10 +205,12 @@ export type OwnerRequestRecord = {
   assetName: string;
   priority: WorkOrderPriority;
   preferredTiming: string;
+  category: string;
   status: RequestStatus;
   photos: UploadedFileRecord[];
   adminNotes: string;
   convertedWorkOrderId: string;
+  completedAt: string;
   submittedAt: string;
   updatedAt: string;
 };
