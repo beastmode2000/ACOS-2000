@@ -133,10 +133,12 @@ function normalizeRequest(row: any) {
     assetName: row.asset_name ?? "",
     priority: safePriority(row.priority),
     preferredTiming: row.preferred_timing ?? "",
+    category: row.category ?? "Maintenance",
     status: safeStatus(row.status),
     photos: Array.isArray(row.photos) ? row.photos : [],
     adminNotes: row.admin_notes ?? "",
     convertedWorkOrderId: row.converted_work_order_id ?? "",
+    completedAt: row.completed_at ?? "",
     submittedAt: row.submitted_at ?? "",
     updatedAt: row.updated_at ?? "",
   };
@@ -173,14 +175,19 @@ async function ensureSchema() {
       asset_name TEXT NOT NULL DEFAULT '',
       priority TEXT NOT NULL DEFAULT 'Medium',
       preferred_timing TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'Maintenance',
       status TEXT NOT NULL DEFAULT 'New',
       photos JSONB NOT NULL DEFAULT '[]'::jsonb,
       admin_notes TEXT NOT NULL DEFAULT '',
       converted_work_order_id TEXT NOT NULL DEFAULT '',
+      completed_at TIMESTAMPTZ,
       submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+
+  await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'Maintenance'`;
+  await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`;
 
   await sql`
     CREATE INDEX IF NOT EXISTS atlas_requests_status_date_idx
@@ -285,6 +292,7 @@ export async function POST(request: NextRequest) {
     const assetName = cleanText(body.assetName, 300);
     const priority = safePriority(body.priority);
     const preferredTiming = cleanText(body.preferredTiming, 500);
+    const category = cleanText(body.category, 200) || "Maintenance";
     const photos = safePhotos(body.photos);
 
     if (!requesterName || !description) {
@@ -308,6 +316,7 @@ export async function POST(request: NextRequest) {
         asset_name,
         priority,
         preferred_timing,
+        category,
         status,
         photos
       )
@@ -320,6 +329,7 @@ export async function POST(request: NextRequest) {
         ${assetName},
         ${priority},
         ${preferredTiming},
+        ${category},
         'New',
         ${JSON.stringify(photos)}::jsonb
       )
@@ -401,6 +411,10 @@ export async function PATCH(request: NextRequest) {
       body.preferredTiming === undefined
         ? existing.preferred_timing
         : cleanText(body.preferredTiming, 500);
+    const category =
+      body.category === undefined
+        ? existing.category || "Maintenance"
+        : cleanText(body.category, 200) || "Maintenance";
     const status =
       body.status === undefined
         ? safeStatus(existing.status)
@@ -413,6 +427,11 @@ export async function PATCH(request: NextRequest) {
       body.convertedWorkOrderId === undefined
         ? existing.converted_work_order_id
         : cleanText(body.convertedWorkOrderId, 300);
+    const wasCompleted = Boolean(existing.completed_at);
+    const isCompleted = status === "Closed" || status === "Declined";
+    const completedAt = isCompleted
+      ? (wasCompleted ? existing.completed_at : new Date().toISOString())
+      : null;
 
     const rows = await sql`
       UPDATE atlas_requests
@@ -425,9 +444,11 @@ export async function PATCH(request: NextRequest) {
         asset_name = ${assetName},
         priority = ${priority},
         preferred_timing = ${preferredTiming},
+        category = ${category},
         status = ${status},
         admin_notes = ${adminNotes},
         converted_work_order_id = ${convertedWorkOrderId},
+        completed_at = ${completedAt},
         updated_at = now()
       WHERE id = ${id}::uuid
       RETURNING *
@@ -446,3 +467,30 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
+
+
+export async function DELETE(request: NextRequest) {
+  try {
+    await ensureSchema();
+    const blocked = adminBlockResponse(request);
+    if (blocked) return blocked;
+
+    const id = cleanText(new URL(request.url).searchParams.get("id"), 100);
+    if (!id) {
+      return NextResponse.json({ ok: false, error: "Missing request id." }, { status: 400 });
+    }
+
+    const sql = getSql();
+    const rows = await sql`DELETE FROM atlas_requests WHERE id = ${id}::uuid RETURNING id`;
+    if (!rows.length) {
+      return NextResponse.json({ ok: false, error: "Request not found." }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true, id });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Request deletion failed." },
+      { status: 500 },
+    );
+  }
+}
