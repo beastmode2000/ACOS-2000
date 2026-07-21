@@ -914,6 +914,8 @@ function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
     status: isStatus(record.status) ? record.status : "Monitor",
     make: record.make || "",
     model: record.model || "",
+    year: record.year || "",
+    manufacturer: record.manufacturer || "",
     serial: record.serial || "",
     notes: String(record.notes || ""),
     vendorIds: Array.isArray(record.vendorIds)
@@ -3334,6 +3336,8 @@ export default function AtlasPage() {
 
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [assetEditorOpen, setAssetEditorOpen] = useState(false);
+  const [assetSortOrder, setAssetSortOrder] = useState<"az" | "za">("az");
   const [selectedVendorId, setSelectedVendorId] = useState("");
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [selectedProcedureId, setSelectedProcedureId] = useState("");
@@ -4542,6 +4546,8 @@ export default function AtlasPage() {
       status: "Monitor",
       make: "",
       model: "",
+      year: "",
+      manufacturer: "",
       serial: "",
       notes: "",
       vendorIds: [],
@@ -4633,7 +4639,13 @@ export default function AtlasPage() {
       notes: "",
     });
   const selectedAssetPhotos = selectedAssetId
-    ? photos.filter((photo) => photo.assetId === selectedAssetId)
+    ? photos
+        .filter((photo) => photo.assetId === selectedAssetId)
+        .sort((a, b) =>
+          String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+            sensitivity: "base",
+          }),
+        )
     : [];
   const selectedWeather =
     weatherDays.find((day) => day.date === selectedWeatherDate) ??
@@ -4674,7 +4686,6 @@ export default function AtlasPage() {
     await postAtlasRecord(table, record);
     clearRecordDirty(recordType, id);
 
-    if (recordType === "asset") setSelectedAssetId("");
     if (recordType === "vendor") setSelectedVendorId("");
     if (recordType === "work_order") setSelectedServiceId("");
     if (recordType === "procedure") setSelectedProcedureId("");
@@ -6871,6 +6882,28 @@ export default function AtlasPage() {
     );
   }
 
+  async function renameAssetPhoto(photo: PhotoRecord) {
+    const nextName = window.prompt("Photo label", photo.name || "Asset photo");
+    if (nextName === null) return;
+    const name = nextName.trim();
+    if (!name || name === photo.name) return;
+
+    const updated = { ...photo, name };
+    setPhotos((current) => {
+      const next = current.map((item) =>
+        item.id === photo.id ? updated : item,
+      );
+      persistPhotoRecords(next);
+      return next;
+    });
+
+    const saved = await postAtlasRecord("asset_photos", updated);
+    showSaveToast(
+      saved ? "Photo label saved." : "Photo label changed here; Atlas sync did not finish.",
+      saved ? "success" : "warning",
+    );
+  }
+
   function addVendor() {
     const record = normalizeVendor({
       id: uid("vendor"),
@@ -8642,6 +8675,8 @@ export default function AtlasPage() {
         status: item.status,
         make: cleanText(item.make, 160),
         model: cleanText(item.model, 160),
+        year: cleanText(item.year, 40),
+        manufacturer: cleanText(item.manufacturer, 160),
         serial: cleanText(item.serial, 160),
         notes: cleanText(item.notes),
         vendorIds: item.vendorIds,
@@ -11014,8 +11049,89 @@ export default function AtlasPage() {
             ),
           )
       : [];
-    const selectedAssetCoverPhoto = selectedAssetPhotos[0];
+    const assetHistory = relatedWorkOrders
+      .flatMap((record) => {
+        const completions = (record.serviceHistory || []).map((entry) => ({
+          id: `${record.id}-${entry.id}`,
+          workOrderId: record.id,
+          date: entry.completedAt.slice(0, 10),
+          title: record.title,
+          status: "Completed" as ServiceStatus,
+        }));
+
+        const current = {
+          id: record.id,
+          workOrderId: record.id,
+          date: record.lastCompletedDate || record.date,
+          title: record.title,
+          status: record.status,
+        };
+
+        return completions.length ? completions : [current];
+      })
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const selectedAssetCoverPhoto =
+      selectedAssetPhotos.find((photo) => photoSource(photo)) ||
+      selectedAssetPhotos[0];
     const selectedAssetCoverSource = photoSource(selectedAssetCoverPhoto);
+    const displayedAssets = [...filteredAssets].sort((a, b) => {
+      const comparison = a.name.localeCompare(b.name, undefined, {
+        sensitivity: "base",
+      });
+      return assetSortOrder === "az" ? comparison : -comparison;
+    });
+    const alphabeticalLocations = [...locations].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+    const alphabeticalVendors = [...vendorRecords].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+    const selectedVendors = selectedAsset.vendorIds
+      .map((id) => vendorRecords.find((vendor) => vendor.id === id))
+      .filter((vendor): vendor is VendorRecord => Boolean(vendor))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const assetCategories = [...new Set(assetRecords.map((asset) => asset.category))]
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+
+    const removeVendor = (vendorId: string) =>
+      updateAsset({
+        vendorIds: selectedAsset.vendorIds.filter((id) => id !== vendorId),
+      });
+
+    const addSelectedVendor = (vendorId: string) => {
+      if (!vendorId || selectedAsset.vendorIds.includes(vendorId)) return;
+      updateAsset({ vendorIds: [...selectedAsset.vendorIds, vendorId] });
+    };
+
+    const infoValue = (
+      label: string,
+      value: string,
+      editor: React.ReactNode,
+      clear?: () => void,
+    ) => (
+      <div style={assetInfoItemStyle}>
+        <span style={assetInfoLabelStyle}>{label}</span>
+        {assetEditorOpen ? (
+          <div style={assetInlineEditorStyle}>
+            {editor}
+            {clear && value ? (
+              <button
+                type="button"
+                onClick={clear}
+                style={assetClearFieldButtonStyle}
+                aria-label={`Clear ${label}`}
+                title={`Clear ${label}`}
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <strong style={assetInfoValueStyle}>{value || "—"}</strong>
+        )}
+      </div>
+    );
 
     return (
       <ListDrawerLayout
@@ -11024,13 +11140,26 @@ export default function AtlasPage() {
         isMobile={isMobile}
         drawerResetKey={selectedAssetId}
         right={
-          <button type="button" onClick={addAsset} style={goldButtonStyle}>
-            Add Asset
-          </button>
+          <div style={assetListControlsStyle}>
+            <select
+              value={assetSortOrder}
+              onChange={(event) =>
+                setAssetSortOrder(event.currentTarget.value as "az" | "za")
+              }
+              style={assetSortSelectStyle}
+              aria-label="Asset alphabetical order"
+            >
+              <option value="az">A – Z</option>
+              <option value="za">Z – A</option>
+            </select>
+            <button type="button" onClick={addAsset} style={goldButtonStyle}>
+              Add Asset
+            </button>
+          </div>
         }
         list={
-          <div style={listStyle}>
-            {filteredAssets.map((asset) => {
+          <div style={assetAlphabeticalListStyle}>
+            {displayedAssets.map((asset) => {
               const coverPhoto = photos.find(
                 (photo) => photo.assetId === asset.id,
               );
@@ -11039,15 +11168,20 @@ export default function AtlasPage() {
                 <button
                   key={asset.id}
                   type="button"
-                  onClick={() => setSelectedAssetId(asset.id)}
+                  onClick={() => {
+                    setSelectedAssetId(asset.id);
+                    setAssetEditorOpen(false);
+                  }}
                   style={{
-                    ...rowButtonStyle,
+                    ...assetListRowStyle,
                     borderColor:
                       asset.id === selectedAsset.id ? colors.gold : colors.line,
+                    background:
+                      asset.id === selectedAsset.id ? "#F4F8FD" : "#FFFFFF",
                   }}
                 >
                   <div style={recordListIdentityStyle}>
-                    <div style={recordListThumbStyle}>
+                    <div style={assetListThumbStyle}>
                       {coverPhotoSource ? (
                         <img
                           src={coverPhotoSource}
@@ -11058,19 +11192,8 @@ export default function AtlasPage() {
                         <span>{asset.name.slice(0, 1).toUpperCase()}</span>
                       )}
                     </div>
-                    <div>
-                      <strong>{asset.name}</strong>
-                      <p style={mutedSmallStyle}>
-                        {asset.category} · {locationName(asset.locationId)}
-                      </p>
-                      <p style={mutedSmallStyle}>
-                        {[asset.make, asset.model, asset.serial]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    </div>
+                    <strong style={assetListNameStyle}>{asset.name}</strong>
                   </div>
-                  <span style={badgeStyle(asset.status)}>{asset.status}</span>
                 </button>
               );
             })}
@@ -11080,7 +11203,11 @@ export default function AtlasPage() {
           selectedAsset.id ? (
             <div
               className="atlas-asset-drawer"
-              style={stackStyle}
+              style={{
+                ...assetFixedPanelStyle,
+                maxHeight: isMobile ? "none" : "calc(100vh - 154px)",
+                overflow: isMobile ? "visible" : "hidden",
+              }}
               tabIndex={0}
               onPaste={(event) => {
                 const payload = imagePayloadFromPasteEvent(event);
@@ -11110,319 +11237,513 @@ export default function AtlasPage() {
                 })();
               }}
             >
-              <div style={assetVisualHeaderStyle}>
-                <div style={assetHeaderNameRowStyle}>
-                  <div style={assetHeaderTextStyle}>
-                    <h3 style={assetHeaderNameStyle}>
-                      {selectedAsset.name.trim() || "Asset"}
-                    </h3>
-                    <p style={assetHeaderMetaStyle}>
-                      {selectedAsset.category || "Uncategorized"} ·{" "}
-                      {locationName(selectedAsset.locationId)}
-                    </p>
-                    {[
-                      selectedAsset.make,
-                      selectedAsset.model,
-                      selectedAsset.serial,
-                    ].filter(Boolean).length ? (
-                      <p style={assetHeaderMetaStyle}>
-                        {[
-                          selectedAsset.make,
-                          selectedAsset.model,
-                          selectedAsset.serial,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    ) : null}
-                  </div>
+              <div style={assetPanelTitleRowStyle}>
+                <div>
+                  <h3 style={assetPanelTitleStyle}>
+                    {selectedAsset.name.trim() || "Asset"}
+                  </h3>
                   <span style={badgeStyle(selectedAsset.status)}>
                     {selectedAsset.status}
                   </span>
                 </div>
-              </div>
-
-              <div style={assetActionRowStyle}>
-                {isRecordDirty("asset", selectedAsset.id) ? (
+                <div style={assetActionRowStyle}>
+                  {assetEditorOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setAssetEditorOpen(false)}
+                      style={assetActionButtonStyle}
+                    >
+                      Cancel
+                    </button>
+                  ) : null}
+                  {assetEditorOpen || isRecordDirty("asset", selectedAsset.id) ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void (async () => {
+                          await saveDirtyRecord(
+                            "assets",
+                            selectedAsset,
+                            "asset",
+                            selectedAsset.id,
+                          );
+                          setAssetEditorOpen(false);
+                          showSaveToast("Asset saved.");
+                        })()
+                      }
+                      style={assetPrimaryActionButtonStyle}
+                    >
+                      Save
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAssetEditorOpen(true)}
+                      style={assetEditButtonStyle}
+                    >
+                      ✎&nbsp; Edit
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() =>
-                      void saveDirtyRecord(
-                        "assets",
-                        selectedAsset,
-                        "asset",
-                        selectedAsset.id,
-                      )
-                    }
-                    style={assetPrimaryActionButtonStyle}
+                    onClick={() => addWorkOrder()}
+                    style={assetActionButtonStyle}
                   >
-                    Save Asset
+                    + Work Order
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => addWorkOrder()}
-                  style={assetActionButtonStyle}
-                >
-                  Create Work Order
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void deleteAssetRecord(selectedAsset)}
-                  style={assetDangerActionButtonStyle}
-                >
-                  Delete Asset
-                </button>
+                </div>
               </div>
 
-              <section style={detailSectionStyle}>
-                <div style={eyebrowStyle}>Asset Information</div>
-                <div style={formGridStyle}>
-                  <Field
-                    label="Name"
-                    value={selectedAsset.name}
-                    onChange={(value) => updateAsset({ name: value })}
-                  />
-                  <Field
-                    label="Category"
-                    value={selectedAsset.category}
-                    onChange={(value) => updateAsset({ category: value })}
-                  />
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Location</span>
-                    <select
+              <div
+                style={{
+                  ...assetTopGridStyle,
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "minmax(150px, 22%) minmax(0, 1fr)",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    selectedAssetCoverPhoto &&
+                    openPhotoPreview(selectedAssetCoverPhoto)
+                  }
+                  style={assetHeroPhotoStyle}
+                  disabled={!selectedAssetCoverSource}
+                >
+                  {selectedAssetCoverSource ? (
+                    <img
+                      src={selectedAssetCoverSource}
+                      alt={selectedAssetCoverPhoto?.name || selectedAsset.name}
+                      style={assetHeroPhotoImageStyle}
+                    />
+                  ) : (
+                    <span>{selectedAsset.name.slice(0, 1).toUpperCase()}</span>
+                  )}
+                </button>
+
+                <section style={assetCardStyle}>
+                  <div style={assetCardHeaderStyle}>
+                    <strong>Asset Information</strong>
+                    <span style={assetCardHintStyle}>
+                      {assetEditorOpen ? "Edit or clear optional fields" : "Saved to Atlas"}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      ...assetInformationGridStyle,
+                      gridTemplateColumns: isMobile
+                        ? "1fr"
+                        : "repeat(2, minmax(0, 1fr))",
+                    }}
+                  >
+                    {infoValue(
+                      "Name",
+                      selectedAsset.name,
+                      <input
+                        value={selectedAsset.name}
+                        onChange={(event) =>
+                          updateAsset({ name: event.currentTarget.value })
+                        }
+                        style={assetCompactInputStyle}
+                      />,
+                    )}
+                    {infoValue(
+                      "Make",
+                      selectedAsset.make || "",
+                      <input
+                        value={selectedAsset.make || ""}
+                        onChange={(event) =>
+                          updateAsset({ make: event.currentTarget.value })
+                        }
+                        style={assetCompactInputStyle}
+                      />,
+                      () => updateAsset({ make: "" }),
+                    )}
+                    {infoValue(
+                      "Category",
+                      selectedAsset.category,
+                      <>
+                        <input
+                          list={`asset-categories-${selectedAsset.id}`}
+                          value={selectedAsset.category}
+                          onChange={(event) =>
+                            updateAsset({ category: event.currentTarget.value })
+                          }
+                          style={assetCompactInputStyle}
+                        />
+                        <datalist id={`asset-categories-${selectedAsset.id}`}>
+                          {assetCategories.map((category) => (
+                            <option key={category} value={category} />
+                          ))}
+                        </datalist>
+                      </>,
+                    )}
+                    {infoValue(
+                      "Model",
+                      selectedAsset.model || "",
+                      <input
+                        value={selectedAsset.model || ""}
+                        onChange={(event) =>
+                          updateAsset({ model: event.currentTarget.value })
+                        }
+                        style={assetCompactInputStyle}
+                      />,
+                      () => updateAsset({ model: "" }),
+                    )}
+                    {infoValue(
+                      "Location",
+                      locationName(selectedAsset.locationId),
+                      <select
                       value={selectedAsset.locationId}
                       onChange={(event) =>
                         updateAsset({
                           locationId: event.currentTarget.value,
                         })
                       }
-                      style={inputStyle}
+                        style={assetCompactInputStyle}
                     >
                       <option value="">No location</option>
-                      {locations.map((location) => (
+                        {alphabeticalLocations.map((location) => (
                         <option key={location.id} value={location.id}>
                           {location.name}
                         </option>
                       ))}
-                    </select>
-                  </label>
-                  <SelectField
-                    label="Status"
-                    value={selectedAsset.status}
-                    onChange={(value) => updateAsset({ status: value })}
-                    options={
-                      ["Online", "Offline", "Seasonal", "Monitor"] as const
-                    }
-                  />
-                  <Field
-                    label="Make"
-                    value={selectedAsset.make ?? ""}
-                    onChange={(value) => updateAsset({ make: value })}
-                  />
-                  <Field
-                    label="Model"
-                    value={selectedAsset.model ?? ""}
-                    onChange={(value) => updateAsset({ model: value })}
-                  />
-                  <Field
-                    label="Serial / VIN / HIN"
-                    value={selectedAsset.serial ?? ""}
-                    onChange={(value) => updateAsset({ serial: value })}
-                  />
-                  <Field
-                    label="Vendor IDs"
-                    value={selectedAsset.vendorIds.join(", ")}
-                    onChange={(value) =>
-                      updateAsset({
-                        vendorIds: value
-                          .split(",")
-                          .map((item) => item.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                  />
-                  <Field
-                    label="Notes"
-                    value={selectedAsset.notes}
-                    onChange={(value) => updateAsset({ notes: value })}
-                    multiline
-                  />
-                </div>
-
-              </section>
-
-              <section style={detailSectionStyle}>
-                <div style={detailSectionHeaderStyle}>
-                  <div>
-                    <div style={eyebrowStyle}>Manuals</div>
-                    <strong>
-                      {attachedManuals.length
-                        ? `${attachedManuals.length} attached`
-                        : "No manual attached"}
-                    </strong>
+                      </select>,
+                    )}
+                    {infoValue(
+                      "Year",
+                      selectedAsset.year || "",
+                      <input
+                        value={selectedAsset.year || ""}
+                        inputMode="numeric"
+                        onChange={(event) =>
+                          updateAsset({ year: event.currentTarget.value })
+                        }
+                        style={assetCompactInputStyle}
+                      />,
+                      () => updateAsset({ year: "" }),
+                    )}
+                    {infoValue(
+                      "Status",
+                      selectedAsset.status,
+                      <select
+                        value={selectedAsset.status}
+                        onChange={(event) =>
+                          updateAsset({
+                            status: event.currentTarget.value as Status,
+                          })
+                        }
+                        style={assetCompactInputStyle}
+                      >
+                        {["Monitor", "Offline", "Online", "Seasonal"].map(
+                          (status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ),
+                        )}
+                      </select>,
+                    )}
+                    {infoValue(
+                      "Manufacturer",
+                      selectedAsset.manufacturer || "",
+                      <input
+                        value={selectedAsset.manufacturer || ""}
+                        onChange={(event) =>
+                          updateAsset({
+                            manufacturer: event.currentTarget.value,
+                          })
+                        }
+                        style={assetCompactInputStyle}
+                      />,
+                      () => updateAsset({ manufacturer: "" }),
+                    )}
+                    {infoValue(
+                      "Serial / VIN / HIN",
+                      selectedAsset.serial || "",
+                      <input
+                        value={selectedAsset.serial || ""}
+                        onChange={(event) =>
+                          updateAsset({ serial: event.currentTarget.value })
+                        }
+                        style={assetCompactInputStyle}
+                      />,
+                      () => updateAsset({ serial: "" }),
+                    )}
                   </div>
-                  <div style={buttonRowStyle}>
-                    <button
-                      type="button"
-                      onClick={() => startManualForAsset(selectedAsset)}
-                      style={secondaryButtonStyle}
-                    >
-                      Add Manual
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => findManualForAsset(selectedAsset)}
-                      style={goldButtonStyle}
-                    >
-                      Find Online
-                    </button>
-                  </div>
-                </div>
 
-                {attachedManuals.length ? (
-                  <div style={compactLinkedListStyle}>
-                    {attachedManuals.map((manual) => {
-                      const url = openManualUrl(manual);
-                      return (
-                        <div key={manual.id} style={manualAssetRowStyle}>
-                          <span style={{ minWidth: 0 }}>
-                            <strong>{manual.title}</strong>
-                            <small style={mutedSmallStyle}>
-                              {[manual.manufacturer, manual.model]
-                                .filter(Boolean)
-                                .join(" · ") || manual.category}
-                            </small>
-                          </span>
-                          <div style={manualActionRowStyle}>
-                            {url ? (
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={manualCompactFileStyle}
-                              >
-                                Open
-                              </a>
-                            ) : (
-                              <span style={manualNoPdfStyle}>—</span>
-                            )}
+                  <div style={assetVendorBlockStyle}>
+                    <span style={assetInfoLabelStyle}>Vendors</span>
+                    <div style={assetVendorRowStyle}>
+                      {selectedVendors.map((vendor) => (
+                        <span key={vendor.id} style={assetVendorChipStyle}>
+                          {vendor.name}
+                          {assetEditorOpen ? (
                             <button
                               type="button"
-                              onClick={() => void deleteManualRecord(manual)}
-                              style={manualDeleteButtonStyle}
+                              onClick={() => removeVendor(vendor.id)}
+                              style={assetVendorRemoveStyle}
+                              aria-label={`Remove ${vendor.name}`}
                             >
-                              Delete
+                              ×
                             </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          ) : null}
+                        </span>
+                      ))}
+                      {!selectedVendors.length ? (
+                        <span style={assetCardHintStyle}>No vendors added</span>
+                      ) : null}
+                      {assetEditorOpen ? (
+                        <select
+                          value=""
+                          onChange={(event) =>
+                            addSelectedVendor(event.currentTarget.value)
+                          }
+                          style={assetAddVendorSelectStyle}
+                        >
+                          <option value="">+ Add Vendor</option>
+                          {alphabeticalVendors
+                            .filter(
+                              (vendor) =>
+                                !selectedAsset.vendorIds.includes(vendor.id),
+                            )
+                            .map((vendor) => (
+                              <option key={vendor.id} value={vendor.id}>
+                                {vendor.name}
+                              </option>
+                            ))}
+                        </select>
+                      ) : null}
+                    </div>
                   </div>
-                ) : null}
-              </section>
+                </section>
+              </div>
 
-              <section style={detailSectionStyle}>
-                <div style={detailSectionHeaderStyle}>
-                  <div>
-                    <div style={eyebrowStyle}>Photos</div>
-                    <strong>{selectedAssetPhotos.length} attached</strong>
+              <div
+                style={{
+                  ...assetMiddleGridStyle,
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "minmax(180px, 28%) minmax(0, 1fr)",
+                }}
+              >
+                <section style={assetCardStyle}>
+                  <div style={assetCardHeaderStyle}>
+                    <strong>Notes</strong>
+                    {!assetEditorOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => setAssetEditorOpen(true)}
+                        style={assetIconButtonStyle}
+                        aria-label="Edit notes"
+                      >
+                        ✎
+                      </button>
+                    ) : null}
                   </div>
-                  <div style={buttonRowStyle}>
+                  {assetEditorOpen ? (
+                    <textarea
+                      value={selectedAsset.notes}
+                      onChange={(event) =>
+                        updateAsset({ notes: event.currentTarget.value })
+                      }
+                      style={assetNotesEditorStyle}
+                    />
+                  ) : (
+                    <p style={assetNotesTextStyle}>
+                      {selectedAsset.notes || "No notes yet."}
+                    </p>
+                  )}
+                </section>
+
+                <section style={assetCardStyle}>
+                  <div style={assetCardHeaderStyle}>
+                    <strong>Photos</strong>
+                    <div style={assetPhotoHeaderActionsStyle}>
+                      <button
+                        type="button"
+                        onClick={() => void pasteAssetPhoto()}
+                        style={assetTinyButtonStyle}
+                      >
+                        Paste
+                      </button>
+                      <label style={assetTinyUploadStyle}>
+                        + Add Photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          capture="environment"
+                          onChange={(event) => {
+                            void addAssetPhotoFiles(event.currentTarget.files);
+                            event.currentTarget.value = "";
+                          }}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  {selectedAssetPhotos.length ? (
+                    <div
+                      style={{
+                        ...assetPhotoGridStyle,
+                        gridTemplateColumns: `repeat(${Math.min(
+                          selectedAssetPhotos.length,
+                          isMobile ? 2 : 4,
+                        )}, minmax(0, 1fr))`,
+                      }}
+                    >
+                      {selectedAssetPhotos.slice(0, isMobile ? 4 : 4).map((photo) => {
+                        const source = photoSource(photo);
+                        return (
+                          <div key={photo.id} style={assetPhotoTileStyle}>
+                            <button
+                              type="button"
+                              onClick={() => openPhotoPreview(photo)}
+                              style={assetPhotoPreviewButtonStyle}
+                              disabled={!source}
+                            >
+                              {source ? (
+                                <img
+                                  src={source}
+                                  alt={photo.name || "Asset photo"}
+                                  style={assetPhotoThumbImageStyle}
+                                />
+                              ) : (
+                                <span>No preview</span>
+                              )}
+                            </button>
+                            <div style={assetPhotoLabelRowStyle}>
+                              <span title={photo.name}>{photo.name || "Asset photo"}</span>
+                              <button
+                                type="button"
+                                onClick={() => void renameAssetPhoto(photo)}
+                                style={assetPhotoLabelButtonStyle}
+                                aria-label={`Edit ${photo.name || "photo"} label`}
+                              >
+                                ✎
+                              </button>
+                              {assetEditorOpen ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void deleteAssetPhoto(photo)}
+                                  style={assetPhotoDeleteIconStyle}
+                                  aria-label={`Delete ${photo.name || "photo"}`}
+                                >
+                                  ×
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={assetEmptyStateStyle}>No photos attached.</div>
+                  )}
+                  {selectedAssetPhotos.length > 4 ? (
+                    <span style={assetCardHintStyle}>
+                      + {selectedAssetPhotos.length - 4} more photos
+                    </span>
+                  ) : null}
+                </section>
+              </div>
+
+              <section style={assetCardStyle}>
+                <div style={assetCardHeaderStyle}>
+                  <strong>Service &amp; Work Order History</strong>
+                  <div style={assetHistoryHeaderActionsStyle}>
+                    <span style={assetHistoryOrderStyle}>Newest first</span>
                     <button
                       type="button"
-                      onClick={() => void pasteAssetPhoto()}
-                      style={secondaryButtonStyle}
+                      onClick={() => setScreen("history")}
+                      style={assetTinyButtonStyle}
                     >
-                      Paste Image
+                      View All History
                     </button>
-                    <label style={compactUploadButtonStyle}>
-                      Add Photo
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        capture="environment"
-                        onChange={(event) => {
-                          void addAssetPhotoFiles(event.currentTarget.files);
-                          event.currentTarget.value = "";
-                        }}
-                        style={{ display: "none" }}
-                      />
-                    </label>
                   </div>
                 </div>
-
-                {selectedAssetPhotos.length ? (
-                  <div style={compactLinkedListStyle}>
-                    {selectedAssetPhotos.map((photo, index) => {
-                      const source = photoSource(photo);
-                      return (
-                        <div key={photo.id} style={assetFileListRowStyle}>
-                          <button
-                            type="button"
-                            onClick={() => openPhotoPreview(photo)}
-                            style={assetFileOpenButtonStyle}
-                            disabled={!source}
-                          >
-                            <span style={{ minWidth: 0 }}>
-                              <strong>{photo.name || `Asset photo ${index + 1}`}</strong>
-                              <small style={mutedSmallStyle}>
-                                {index === 0 ? "Main photo · Click to view" : "Click to view"}
-                              </small>
-                            </span>
-                            <span style={linkedOpenLabelStyle}>View</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void deleteAssetPhoto(photo)}
-                            style={assetFileDeleteButtonStyle}
-                            aria-label={`Delete ${photo.name || "asset photo"}`}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </section>
-
-              <section style={detailSectionStyle}>
-                <div style={eyebrowStyle}>Work Order History</div>
-                {relatedWorkOrders.length ? (
-                  <div style={compactLinkedListStyle}>
-                    {relatedWorkOrders.map((record) => (
+                {assetHistory.length ? (
+                  <div style={assetHistoryListStyle}>
+                    {assetHistory.slice(0, isMobile ? 5 : 4).map((entry) => (
                       <button
-                        key={record.id}
+                        key={entry.id}
                         type="button"
                         onClick={() => {
-                          setSelectedServiceId(record.id);
+                          setSelectedServiceId(entry.workOrderId);
                           setScreen("history");
                         }}
-                        style={compactLinkedRowStyle}
+                        style={assetHistoryRowStyle}
                       >
-                        <span>
-                          <strong>{record.title}</strong>
-                          <small style={mutedSmallStyle}>
-                            {formatDate(record.date)}
-                          </small>
-                          {(record.serviceHistory || []).map((entry) => (
-                            <small key={entry.id} style={mutedSmallStyle}>
-                              Serviced {formatDate(entry.completedAt.slice(0, 10))}
-                            </small>
-                          ))}
+                        <span style={assetHistoryDateStyle}>
+                          {formatDate(entry.date)}
                         </span>
-                        <span style={badgeStyle(record.status)}>
-                          {record.status}
+                        <strong style={assetHistoryTitleStyle}>{entry.title}</strong>
+                        <span style={badgeStyle(entry.status)}>
+                          {entry.status}
                         </span>
                       </button>
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <div style={assetEmptyStateStyle}>
+                    Completed service and work orders will be saved here.
+                  </div>
+                )}
               </section>
 
-              {renderLinkedDocuments("Asset", selectedAsset.id)}
+              <div style={assetPanelFooterStyle}>
+                <div style={assetFileSummaryStyle}>
+                  <strong>Manuals &amp; Files</strong>
+                  <span style={assetCardHintStyle}>
+                    {attachedManuals.length} manual{attachedManuals.length === 1 ? "" : "s"}
+                  </span>
+                  {attachedManuals.length ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedManualId(attachedManuals[0].id);
+                        setScreen("manuals");
+                      }}
+                      style={assetTinyButtonStyle}
+                    >
+                      View Manuals
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => startManualForAsset(selectedAsset)}
+                    style={assetTinyButtonStyle}
+                  >
+                    Add Manual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => findManualForAsset(selectedAsset)}
+                    style={assetTinyButtonStyle}
+                  >
+                    Find Online
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocumentSearch(selectedAsset.name);
+                      setScreen("documents");
+                    }}
+                    style={assetTinyButtonStyle}
+                  >
+                    Documents
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void deleteAssetRecord(selectedAsset)}
+                  style={assetDeleteBottomButtonStyle}
+                >
+                  Delete Asset
+                </button>
+              </div>
             </div>
           ) : (
             <div style={noticeStyle}>
@@ -21476,6 +21797,535 @@ const assetDangerActionButtonStyle: React.CSSProperties = {
   border: "1px solid #FACACA",
   background: "#FEECEC",
   color: colors.red,
+};
+
+const assetListControlsStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const assetSortSelectStyle: React.CSSProperties = {
+  minHeight: 38,
+  padding: "8px 34px 8px 12px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 10,
+  background: "#FFFFFF",
+  color: colors.navy,
+  fontSize: 13,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const assetAlphabeticalListStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 0,
+  overflow: "hidden",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 14,
+  background: "#FFFFFF",
+};
+
+const assetListRowStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  minHeight: 48,
+  display: "flex",
+  alignItems: "center",
+  padding: "7px 10px",
+  border: "none",
+  borderBottom: `1px solid ${colors.line}`,
+  borderLeft: "3px solid transparent",
+  background: "#FFFFFF",
+  color: colors.text,
+  textAlign: "left",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const assetListThumbStyle: React.CSSProperties = {
+  width: 32,
+  height: 32,
+  flex: "0 0 32px",
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+  borderRadius: 8,
+  background: colors.navy,
+  color: "#FFFFFF",
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const assetListNameStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontSize: 13,
+  fontWeight: 850,
+};
+
+const assetFixedPanelStyle: React.CSSProperties = {
+  minWidth: 0,
+  minHeight: 0,
+  display: "grid",
+  gridTemplateRows: "auto auto auto minmax(0, 1fr) auto",
+  gap: 8,
+  padding: 2,
+  boxSizing: "border-box",
+};
+
+const assetPanelTitleRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "1px 2px 6px",
+  borderBottom: `1px solid ${colors.line}`,
+};
+
+const assetPanelTitleStyle: React.CSSProperties = {
+  margin: "0 0 4px",
+  color: colors.navy,
+  fontSize: 22,
+  lineHeight: 1.05,
+  fontWeight: 950,
+  letterSpacing: "-0.03em",
+};
+
+const assetEditButtonStyle: React.CSSProperties = {
+  ...assetActionButtonStyle,
+  minHeight: 34,
+  padding: "8px 12px",
+  borderColor: colors.navy,
+  background: colors.navy,
+  color: "#FFFFFF",
+};
+
+const assetTopGridStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 8,
+  alignItems: "stretch",
+};
+
+const assetHeroPhotoStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  minHeight: 132,
+  maxHeight: 218,
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+  padding: 0,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 12,
+  background: colors.panel,
+  color: colors.navy,
+  fontSize: 42,
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const assetHeroPhotoImageStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  minHeight: 132,
+  maxHeight: 218,
+  display: "block",
+  objectFit: "cover",
+  background: "#FFFFFF",
+};
+
+const assetCardStyle: React.CSSProperties = {
+  minWidth: 0,
+  minHeight: 0,
+  display: "grid",
+  alignContent: "start",
+  gap: 6,
+  padding: 9,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 12,
+  background: "#FFFFFF",
+};
+
+const assetCardHeaderStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  color: colors.navy,
+  fontSize: 13,
+};
+
+const assetCardHintStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 10,
+  fontWeight: 750,
+};
+
+const assetInformationGridStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  columnGap: 14,
+  rowGap: 2,
+};
+
+const assetInfoItemStyle: React.CSSProperties = {
+  minWidth: 0,
+  minHeight: 25,
+  display: "grid",
+  gridTemplateColumns: "minmax(72px, 40%) minmax(0, 1fr)",
+  alignItems: "center",
+  gap: 6,
+};
+
+const assetInfoLabelStyle: React.CSSProperties = {
+  color: colors.navy,
+  fontSize: 10,
+  fontWeight: 900,
+};
+
+const assetInfoValueStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color: colors.text,
+  fontSize: 11,
+  fontWeight: 750,
+};
+
+const assetInlineEditorStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 3,
+  alignItems: "center",
+};
+
+const assetCompactInputStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  minHeight: 28,
+  boxSizing: "border-box",
+  padding: "4px 7px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 7,
+  background: "#FFFFFF",
+  color: colors.text,
+  fontSize: 11,
+  fontWeight: 750,
+};
+
+const assetClearFieldButtonStyle: React.CSSProperties = {
+  width: 25,
+  height: 25,
+  minHeight: 25,
+  display: "grid",
+  placeItems: "center",
+  padding: 0,
+  border: "1px solid #F1B8B4",
+  borderRadius: 7,
+  background: "#FFF7F6",
+  color: colors.red,
+  fontSize: 15,
+  cursor: "pointer",
+};
+
+const assetVendorBlockStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gridTemplateColumns: "72px minmax(0, 1fr)",
+  alignItems: "center",
+  gap: 6,
+  paddingTop: 4,
+  marginTop: 3,
+  borderTop: `1px solid ${colors.line}`,
+};
+
+const assetVendorRowStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  flexWrap: "wrap",
+};
+
+const assetVendorChipStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "4px 7px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 999,
+  background: colors.panel,
+  color: colors.navy,
+  fontSize: 10,
+  fontWeight: 850,
+};
+
+const assetVendorRemoveStyle: React.CSSProperties = {
+  width: 16,
+  height: 16,
+  minHeight: 16,
+  display: "grid",
+  placeItems: "center",
+  padding: 0,
+  border: 0,
+  borderRadius: 999,
+  background: "transparent",
+  color: colors.red,
+  cursor: "pointer",
+};
+
+const assetAddVendorSelectStyle: React.CSSProperties = {
+  minHeight: 27,
+  padding: "4px 22px 4px 7px",
+  border: `1px dashed ${colors.navy3}`,
+  borderRadius: 8,
+  background: "#FFFFFF",
+  color: colors.navy3,
+  fontSize: 10,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const assetMiddleGridStyle: React.CSSProperties = {
+  minWidth: 0,
+  minHeight: 0,
+  display: "grid",
+  gap: 8,
+};
+
+const assetIconButtonStyle: React.CSSProperties = {
+  width: 25,
+  height: 25,
+  minHeight: 25,
+  display: "grid",
+  placeItems: "center",
+  padding: 0,
+  border: 0,
+  borderRadius: 7,
+  background: "transparent",
+  color: colors.navy3,
+  cursor: "pointer",
+};
+
+const assetNotesEditorStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  minHeight: 74,
+  maxHeight: 92,
+  resize: "none",
+  boxSizing: "border-box",
+  padding: 7,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 8,
+  color: colors.text,
+  fontSize: 11,
+  lineHeight: 1.35,
+};
+
+const assetNotesTextStyle: React.CSSProperties = {
+  margin: 0,
+  color: colors.text,
+  fontSize: 11,
+  lineHeight: 1.35,
+  whiteSpace: "pre-wrap",
+};
+
+const assetPhotoHeaderActionsStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+};
+
+const assetTinyButtonStyle: React.CSSProperties = {
+  minHeight: 27,
+  padding: "5px 8px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 7,
+  background: "#FFFFFF",
+  color: colors.navy,
+  fontSize: 10,
+  fontWeight: 900,
+  whiteSpace: "nowrap",
+  cursor: "pointer",
+};
+
+const assetTinyUploadStyle: React.CSSProperties = {
+  ...assetTinyButtonStyle,
+  display: "inline-flex",
+  alignItems: "center",
+  borderColor: colors.gold,
+  color: colors.navy3,
+};
+
+const assetPhotoGridStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 6,
+};
+
+const assetPhotoTileStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 3,
+};
+
+const assetPhotoPreviewButtonStyle: React.CSSProperties = {
+  width: "100%",
+  height: 70,
+  minWidth: 0,
+  minHeight: 70,
+  display: "grid",
+  placeItems: "center",
+  overflow: "hidden",
+  padding: 0,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 8,
+  background: colors.panel,
+  color: colors.muted,
+  fontSize: 9,
+  cursor: "pointer",
+};
+
+const assetPhotoThumbImageStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+  display: "block",
+};
+
+const assetPhotoLabelRowStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto auto",
+  alignItems: "center",
+  gap: 2,
+  color: colors.navy,
+  fontSize: 9,
+  fontWeight: 850,
+  textAlign: "center",
+};
+
+const assetPhotoLabelButtonStyle: React.CSSProperties = {
+  width: 20,
+  height: 20,
+  minHeight: 20,
+  display: "grid",
+  placeItems: "center",
+  padding: 0,
+  border: 0,
+  background: "transparent",
+  color: colors.navy3,
+  cursor: "pointer",
+};
+
+const assetPhotoDeleteIconStyle: React.CSSProperties = {
+  ...assetPhotoLabelButtonStyle,
+  color: colors.red,
+};
+
+const assetEmptyStateStyle: React.CSSProperties = {
+  padding: "9px 10px",
+  border: `1px dashed ${colors.line}`,
+  borderRadius: 8,
+  background: colors.panel,
+  color: colors.muted,
+  fontSize: 10,
+  fontWeight: 750,
+};
+
+const assetHistoryHeaderActionsStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
+};
+
+const assetHistoryOrderStyle: React.CSSProperties = {
+  padding: "5px 8px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 7,
+  color: colors.muted,
+  fontSize: 9,
+  fontWeight: 850,
+  whiteSpace: "nowrap",
+};
+
+const assetHistoryListStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 2,
+};
+
+const assetHistoryRowStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  display: "grid",
+  gridTemplateColumns: "110px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: 8,
+  minHeight: 30,
+  padding: "4px 7px",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 7,
+  background: "#FFFFFF",
+  color: colors.text,
+  textAlign: "left",
+  fontFamily: "inherit",
+  cursor: "pointer",
+};
+
+const assetHistoryDateStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 9,
+  fontWeight: 800,
+};
+
+const assetHistoryTitleStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontSize: 10,
+};
+
+const assetPanelFooterStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  paddingTop: 1,
+};
+
+const assetFileSummaryStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  flexWrap: "wrap",
+  color: colors.navy,
+  fontSize: 11,
+};
+
+const assetDeleteBottomButtonStyle: React.CSSProperties = {
+  minHeight: 31,
+  padding: "6px 10px",
+  border: "1px solid #E5484D",
+  borderRadius: 8,
+  background: "#FFFFFF",
+  color: colors.red,
+  fontSize: 10,
+  fontWeight: 900,
+  whiteSpace: "nowrap",
+  cursor: "pointer",
 };
 
 const assetVisualHeaderStyle: React.CSSProperties = {
