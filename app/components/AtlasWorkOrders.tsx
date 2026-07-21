@@ -1234,7 +1234,18 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             : { gridTemplateColumns: "1fr" }
         }
         drawerStyleOverride={
-          detailOpen && selectedService.id ? undefined : { display: "none" }
+          detailOpen && selectedService.id
+            ? isMobile
+              ? undefined
+              : {
+                  position: "sticky",
+                  top: 8,
+                  height: "auto",
+                  maxHeight: "none",
+                  overflow: "visible",
+                  alignSelf: "start",
+                }
+            : { display: "none" }
         }
         right={
           <>
@@ -1793,53 +1804,32 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         drawer={
           detailOpen && selectedService.id ? (
             <div style={{ ...stackStyle, gap: 7 }}>
-              <div
-                style={{
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 20,
-                  display: "grid",
-                  gap: 8,
-                  paddingBottom: 10,
-                  background: "#FFFFFF",
-                  borderBottom: `1px solid ${colors.line}`,
-                }}
-              >
-                <div>
-                  <h3
-                    style={{
-                      ...editorHeaderStyle,
-                      marginBottom: 8,
-                      paddingBottom: 8,
-                      fontSize: 21,
-                    }}
-                  >
-                    {selectedService.title.trim() || "New Work"}
-                  </h3>
-                  <p style={mutedSmallStyle}>
-                    {categoryDisplayLabel(categoryLabel(selectedService))} ·{" "}
-                    {itemType(selectedService)}
-                  </p>
-                </div>
-
+              <div>
+                <h3 style={{ ...editorHeaderStyle, marginBottom: 8, paddingBottom: 8, fontSize: 21 }}>
+                  {selectedService.title.trim() || "New Work"}
+                </h3>
+                <p style={mutedSmallStyle}>
+                  {categoryDisplayLabel(categoryLabel(selectedService))} ·{" "}
+                  {itemType(selectedService)}
+                </p>
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                    gap: 8,
+                    ...buttonRowStyle,
+                    justifyContent: "flex-start",
+                    marginTop: 9,
                   }}
                 >
                   <button
                     type="button"
                     onClick={() => void saveWorkOrderRecord()}
-                    style={{ ...goldButtonStyle, width: "100%" }}
+                    style={{ ...goldButtonStyle, width: "auto" }}
                   >
                     Save Work Order
                   </button>
                   <button
                     type="button"
                     onClick={() => void deleteWorkOrderRecord(selectedService)}
-                    style={{ ...dangerButtonStyle, width: "100%" }}
+                    style={{ ...dangerButtonStyle, width: "auto" }}
                   >
                     Delete Work Order
                   </button>
