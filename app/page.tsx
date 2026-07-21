@@ -19914,12 +19914,12 @@ const sidebarNavSectionStyle: React.CSSProperties = {
 };
 
 const sidebarNavHeaderStyle: React.CSSProperties = {
-  color: "rgba(214,226,238,0.72)",
-  fontSize: "clamp(8px, 1vh, 10px)",
+  color: colors.gold2,
+  fontSize: "clamp(11px, 1.65vh, 14px)",
   fontWeight: 950,
-  letterSpacing: 1,
+  letterSpacing: 0.9,
   lineHeight: 1,
-  padding: "1px 6px 0",
+  padding: "2px 6px 1px",
   textTransform: "uppercase",
 };
 
