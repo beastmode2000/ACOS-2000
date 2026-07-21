@@ -18333,14 +18333,15 @@ export default function AtlasPage() {
           .atlas-asset-drawer {
             display: grid !important;
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            grid-template-rows: auto minmax(0, 1.25fr) minmax(0, 0.85fr);
+            grid-template-rows: auto auto minmax(0, 1.25fr) minmax(0, 0.85fr);
             gap: 6px !important;
             height: 100%;
             min-height: 0;
             overflow: hidden;
             align-content: stretch;
           }
-          .atlas-asset-drawer > div:first-child {
+          .atlas-asset-drawer > div:first-child,
+          .atlas-asset-drawer > div:nth-child(2) {
             grid-column: 1 / -1;
           }
           .atlas-asset-drawer > section {
