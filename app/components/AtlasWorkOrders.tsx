@@ -293,6 +293,7 @@ type AtlasWorkOrdersProps = {
   deleteWorkOrderRecord: (record: any) => Promise<void> | void;
   dangerButtonStyle: React.CSSProperties;
   renderLinkedDocuments: (type: string, id: string) => React.ReactNode;
+  openResetKey?: number;
 };
 
 function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
@@ -347,6 +348,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     deleteWorkOrderRecord,
     dangerButtonStyle,
     renderLinkedDocuments,
+    openResetKey = 0,
   } = props;
 
   const [sections, setSections] = useState<WorkSection[]>(DEFAULT_SECTIONS);
@@ -398,6 +400,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       String(Math.max(1, Number(selectedService?.recurrenceInterval || 1))),
     );
   }, [selectedService?.id, selectedService?.recurrenceInterval]);
+
+  useEffect(() => {
+    setNewWorkOpen(false);
+    setPlanOpen(false);
+    setManageSectionsOpen(false);
+    setManageCategoriesOpen(false);
+  }, [openResetKey]);
 
   useEffect(() => {
     const loaded = safeReadSections();
@@ -1152,32 +1161,40 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           selectedService.id ? undefined : { display: "none" }
         }
         right={
-          <select
-            value=""
-            onChange={(event) => {
-              handleWorkOption(event.currentTarget.value);
-              event.currentTarget.value = "";
-            }}
-            style={{
-              ...controlStyle,
-              width: "auto",
-              minWidth: 156,
-              minHeight: 38,
-              padding: "7px 32px 7px 11px",
-              background: "#F8FAFC",
-              color: colors.muted,
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-            aria-label="Work order actions"
-          >
-            <option value="">Work Options</option>
-            <option value="add-work">Add Work Order</option>
-            <option value="quick-task">Add Quick Task</option>
-            <option value="plan">Plan My Day</option>
-            <option value="sections">Edit Sections</option>
-            <option value="categories">Edit Categories</option>
-          </select>
+          <>
+            <select
+              value=""
+              onChange={(event) => {
+                handleWorkOption(event.currentTarget.value);
+                event.currentTarget.value = "";
+              }}
+              style={{
+                ...controlStyle,
+                width: "auto",
+                minWidth: 144,
+                minHeight: 38,
+                padding: "7px 32px 7px 11px",
+                background: "#F8FAFC",
+                color: colors.muted,
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+              aria-label="Work order options"
+            >
+              <option value="">Work Options</option>
+              <option value="quick-task">Add Quick Task</option>
+              <option value="plan">Plan My Day</option>
+              <option value="sections">Edit Sections</option>
+              <option value="categories">Edit Categories</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => openNewWork("Work Order")}
+              style={{ ...goldButtonStyle, minHeight: 38 }}
+            >
+              Add Work Order
+            </button>
+          </>
         }
         list={
           <div style={stackStyle}>
@@ -1357,49 +1374,29 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 >
                   Work Sections
                 </span>
-                <div
+                <select
+                  value={activeSectionId}
+                  onChange={(event) =>
+                    setActiveSectionId(event.currentTarget.value)
+                  }
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "repeat(2, minmax(0, 1fr))"
-                      : "repeat(auto-fit, minmax(130px, 1fr))",
-                    gap: 7,
+                    ...controlStyle,
+                    minHeight: 42,
+                    color: colors.text,
+                    fontSize: 14,
+                    fontWeight: 500,
                   }}
+                  aria-label="Choose work section"
                 >
                   {sections.map((section) => (
-                    <button
+                    <option
                       key={section.id}
-                      type="button"
-                      onClick={() => setActiveSectionId(section.id)}
-                      style={{
-                        minWidth: 0,
-                        minHeight: 40,
-                        padding: "8px 9px",
-                        border: `1px solid ${
-                          activeSectionId === section.id
-                            ? colors.gold
-                            : colors.line
-                        }`,
-                        borderRadius: 10,
-                        background:
-                          activeSectionId === section.id
-                            ? "#FFF8E8"
-                            : "#FFFFFF",
-                        color:
-                          activeSectionId === section.id
-                            ? colors.text
-                            : colors.muted,
-                        fontSize: 13,
-                        fontWeight: 500,
-                        lineHeight: 1.2,
-                        cursor: "pointer",
-                        whiteSpace: "normal",
-                      }}
+                      value={section.id}
                     >
                       {section.label} ({tabCounts[section.id] || 0})
-                    </button>
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
 
               {manageSectionsOpen ? (
