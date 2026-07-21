@@ -3344,6 +3344,7 @@ export default function AtlasPage() {
   const [assetSortOrder, setAssetSortOrder] = useState<"az" | "za">("az");
   const [selectedVendorId, setSelectedVendorId] = useState("");
   const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [workOrdersOpenKey, setWorkOrdersOpenKey] = useState(0);
   const [selectedProcedureId, setSelectedProcedureId] = useState("");
   const [procedureDraftNotes, setProcedureDraftNotes] = useState("");
   const [procedureMessage, setProcedureMessage] = useState("");
@@ -12691,6 +12692,7 @@ export default function AtlasPage() {
         deleteWorkOrderRecord={deleteWorkOrderRecord}
         dangerButtonStyle={dangerButtonStyle}
         renderLinkedDocuments={renderLinkedDocuments}
+        openResetKey={workOrdersOpenKey}
       />
     );
   }
@@ -18898,7 +18900,10 @@ export default function AtlasPage() {
                 value={screen}
                 onChange={(event) => {
                   const nextScreen = event.currentTarget.value as Screen;
-                  if (nextScreen === "history") setSelectedServiceId("");
+                  if (nextScreen === "history") {
+                    setSelectedServiceId("");
+                    setWorkOrdersOpenKey((current) => current + 1);
+                  }
                   setScreen(nextScreen);
                 }}
                 style={mobileMenuSelectStyle}
@@ -18934,6 +18939,7 @@ export default function AtlasPage() {
                             onClick={() => {
                               if (item.id === "history") {
                                 setSelectedServiceId("");
+                                setWorkOrdersOpenKey((current) => current + 1);
                               }
                               setScreen(item.id);
                             }}
@@ -19681,7 +19687,13 @@ export default function AtlasPage() {
             <button
               key={item.id}
               type="button"
-              onClick={() => setScreen(item.id)}
+              onClick={() => {
+                if (item.id === "history") {
+                  setSelectedServiceId("");
+                  setWorkOrdersOpenKey((current) => current + 1);
+                }
+                setScreen(item.id);
+              }}
               style={{
                 ...mobileBottomButtonStyle,
                 color: screen === item.id ? colors.navy : colors.muted,
