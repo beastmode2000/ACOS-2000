@@ -16038,7 +16038,7 @@ export default function AtlasPage() {
     );
 
     const requestDrawer = selectedRequest ? (
-      <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "grid", gap: 10, paddingBottom: 76 }}>
         <div
           style={{
             display: "flex",
@@ -16091,7 +16091,7 @@ export default function AtlasPage() {
               alt={primaryPhoto.name}
               style={{
                 width: "100%",
-                maxHeight: 390,
+                maxHeight: 235,
                 objectFit: "contain",
                 display: "block",
                 background: "#09111d",
@@ -16100,9 +16100,13 @@ export default function AtlasPage() {
           </button>
         ) : null}
 
-        <div style={noticeStyle}>{requestMessage}</div>
+        {requestMessage ? (
+          <div style={{ ...noticeStyle, padding: "8px 10px", fontSize: 12 }}>
+            {requestMessage}
+          </div>
+        ) : null}
 
-        <section style={{ ...sectionStyle, padding: 16 }}>
+        <section style={{ ...sectionStyle, padding: 12 }}>
           <div style={eyebrowStyle}>Original Request</div>
           <div style={formGridStyle}>
             <Field
@@ -16176,7 +16180,7 @@ export default function AtlasPage() {
           </div>
         </section>
 
-        <section style={{ ...sectionStyle, padding: 16 }}>
+        <section style={{ ...sectionStyle, padding: 12 }}>
           <div style={eyebrowStyle}>Atlas Assignment</div>
           <div style={formGridStyle}>
             <SelectField
@@ -16259,7 +16263,7 @@ export default function AtlasPage() {
           </div>
         </section>
 
-        <section style={{ ...sectionStyle, padding: 16 }}>
+        <section style={{ ...sectionStyle, padding: 12 }}>
           <div style={eyebrowStyle}>Internal Notes</div>
           <Field
             label="Notes not visible to the owner"
@@ -16299,7 +16303,7 @@ export default function AtlasPage() {
                   alt={photo.name}
                   style={{
                     width: "100%",
-                    height: 150,
+                    height: 100,
                     objectFit: "cover",
                     display: "block",
                   }}
@@ -16359,7 +16363,15 @@ export default function AtlasPage() {
     return (
       <div style={{ display: "grid", gap: 18 }}>
         {portalLink ? (
-          <section style={ownerRequestPortalCardStyle}>
+          <section
+            style={{
+              ...ownerRequestPortalCardStyle,
+              gridTemplateColumns: "minmax(0, 1fr) auto",
+              gap: 12,
+              padding: 14,
+              borderRadius: 16,
+            }}
+          >
             <div style={{ minWidth: 0 }}>
               <div style={eyebrowStyle}>Owner Access</div>
               <h3 style={{ ...editorHeaderStyle, marginBottom: 8 }}>
@@ -16396,7 +16408,14 @@ export default function AtlasPage() {
                 </a>
               </div>
             </div>
-            <div style={ownerRequestQrShellStyle}>
+            <div
+              style={{
+                ...ownerRequestQrShellStyle,
+                width: 118,
+                padding: 6,
+                borderRadius: 13,
+              }}
+            >
               <img
                 src={ownerRequestQr}
                 alt="Owner Request QR code"
@@ -16414,9 +16433,58 @@ export default function AtlasPage() {
           drawerResetKey={selectedRequest?.id || "requests-empty"}
           list={requestList}
           drawer={requestDrawer}
+          outerStyle={
+            isMobile
+              ? undefined
+              : {
+                  ...sectionStyle,
+                  height: "calc(100vh - 250px)",
+                  minHeight: 540,
+                  maxHeight: 720,
+                  overflow: "hidden",
+                  display: "grid",
+                  gridTemplateRows: "auto minmax(0, 1fr)",
+                }
+          }
+          gridStyleOverride={
+            isMobile
+              ? undefined
+              : {
+                  height: "100%",
+                  minHeight: 0,
+                  overflow: "hidden",
+                  alignItems: "stretch",
+                }
+          }
+          listPanelStyleOverride={
+            isMobile
+              ? undefined
+              : {
+                  height: "100%",
+                  minHeight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: 6,
+                }
+          }
+          drawerStyleOverride={
+            isMobile
+              ? undefined
+              : {
+                  position: "relative",
+                  top: 0,
+                  height: "100%",
+                  maxHeight: "none",
+                  minHeight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  overscrollBehavior: "contain",
+                  paddingRight: 6,
+                }
+          }
         />
 
-        <section style={{ ...sectionStyle, padding: 18 }}>
+        <section style={{ ...sectionStyle, padding: 14 }}>
           <div
             style={{
               display: "flex",
@@ -16442,7 +16510,7 @@ export default function AtlasPage() {
           </div>
 
           {requestHistoryRecords.length ? (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto", maxHeight: 310, overflowY: "auto" }}>
               <div style={{ minWidth: 860, display: "grid", gap: 8 }}>
                 <div
                   style={{
