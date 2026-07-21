@@ -478,6 +478,7 @@ export type AtlasApiPayload = {
   ok?: boolean;
   source?: string;
   error?: string;
+  locations?: LocationRecord[];
   assetRecords?: AssetRecord[];
   assets?: AssetRecord[];
   vendorRecords?: VendorRecord[];
@@ -497,6 +498,7 @@ export type AtlasApiPayload = {
 };
 
 export type AtlasTable =
+  | "locations"
   | "assets"
   | "vendors"
   | "contacts"
