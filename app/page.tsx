@@ -10457,6 +10457,7 @@ export default function AtlasPage() {
           mutedSmallStyle={mutedSmallStyle}
           noticeStyle={noticeStyle}
           openCalendarItem={openCalendarItem}
+          requestRecords={requestRecords}
           quickLinkCardStyle={quickLinkCardStyle}
           quickLinksGridStyle={quickLinksGridStyle}
           renderCalendarIntakeCard={renderCalendarIntakeCard}
@@ -10466,6 +10467,7 @@ export default function AtlasPage() {
           serviceRecords={serviceRecords}
           setLogoIndex={setLogoIndex}
           setScreen={setScreen}
+          setSelectedRequestId={setSelectedRequestId}
           setSelectedServiceId={setSelectedServiceId}
           statGridStyle={statGridStyle}
           todayEventStyle={todayEventStyle}
