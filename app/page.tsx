@@ -3677,9 +3677,31 @@ export default function AtlasPage() {
     setCalendarItems([]);
     setCalendarColors(mergeCalendarColors(storedCalendarColors));
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
+    const mergedWorkLinks = [...storedWorkLinks];
+    const existingWorkLinkIds = new Set(
+      mergedWorkLinks.map((link) => link.id.trim().toLowerCase()),
+    );
+    const existingWorkLinkNames = new Set(
+      mergedWorkLinks.map((link) => link.name.trim().toLowerCase()),
+    );
+
+    for (const defaultLink of defaultWorkLinks) {
+      const defaultId = defaultLink.id.trim().toLowerCase();
+      const defaultName = defaultLink.name.trim().toLowerCase();
+
+      if (
+        !existingWorkLinkIds.has(defaultId) &&
+        !existingWorkLinkNames.has(defaultName)
+      ) {
+        mergedWorkLinks.push(defaultLink);
+        existingWorkLinkIds.add(defaultId);
+        existingWorkLinkNames.add(defaultName);
+      }
+    }
+
     setWorkLinks(
-      storedWorkLinks.length
-        ? [...storedWorkLinks].sort((a, b) => a.name.localeCompare(b.name))
+      mergedWorkLinks.length
+        ? mergedWorkLinks.sort((a, b) => a.name.localeCompare(b.name))
         : defaultWorkLinks,
     );
     setPhotos(storedPhotos);
