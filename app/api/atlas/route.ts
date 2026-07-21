@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 type JsonRecord = Record<string, unknown>;
 
 type AtlasTable =
+  | "locations"
   | "vendors"
   | "assets"
   | "contacts"
@@ -118,6 +119,7 @@ function getId(record: JsonRecord, prefix: string) {
 function cleanTable(value: unknown): AtlasTable | "" {
   const table = asString(value);
 
+  if (table === "locations") return "locations";
   if (table === "vendors") return "vendors";
   if (table === "assets") return "assets";
   if (table === "contacts") return "contacts";
@@ -766,6 +768,38 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 },
       );
+    }
+
+    if (table === "locations") {
+      const id = getId(record, "location");
+
+      await sql`
+        INSERT INTO atlas_locations (
+          id,
+          name,
+          type,
+          zone,
+          notes,
+          sort_order
+        )
+        VALUES (
+          ${id},
+          ${asString(record.name) || "Untitled Location"},
+          ${asString(record.type) || "General"},
+          ${asString(record.zone)},
+          ${asString(record.notes)},
+          ${Number(record.sort_order || 0)}
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          type = EXCLUDED.type,
+          zone = EXCLUDED.zone,
+          notes = EXCLUDED.notes,
+          sort_order = EXCLUDED.sort_order
+      `;
+
+      return NextResponse.json({ ok: true, id });
     }
 
     if (table === "contacts") {
