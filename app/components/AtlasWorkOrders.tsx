@@ -260,8 +260,8 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-function photoSource(photo: PhotoLike) {
-  return String(photo.dataUrl || photo.url || "");
+function photoSource(photo?: PhotoLike | null) {
+  return String(photo?.dataUrl || photo?.url || "");
 }
 
 function uid(prefix: string) {
