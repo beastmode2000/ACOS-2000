@@ -11312,7 +11312,18 @@ export default function AtlasPage() {
       })
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const selectedAssetCoverPhoto =
-      selectedAssetPhotos.find((photo) => photoSource(photo)) ||
+      selectedAssetPhotos.find(
+        (photo) =>
+          photoSource(photo) &&
+          /(^|\s)(cover|main|primary|hero)(\s|$)/i.test(photo.name || ""),
+      ) ||
+      [...selectedAssetPhotos]
+        .filter((photo) => photoSource(photo))
+        .sort((a, b) => {
+          const left = new Date(a.createdAt || 0).getTime() || 0;
+          const right = new Date(b.createdAt || 0).getTime() || 0;
+          return left - right;
+        })[0] ||
       selectedAssetPhotos[0];
     const selectedAssetCoverSource = photoSource(selectedAssetCoverPhoto);
     const displayedAssets = [...filteredAssets].sort((a, b) => {
