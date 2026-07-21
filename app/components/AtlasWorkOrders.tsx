@@ -1793,14 +1793,57 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         drawer={
           detailOpen && selectedService.id ? (
             <div style={{ ...stackStyle, gap: 7 }}>
-              <div>
-                <h3 style={{ ...editorHeaderStyle, marginBottom: 8, paddingBottom: 8, fontSize: 21 }}>
-                  {selectedService.title.trim() || "New Work"}
-                </h3>
-                <p style={mutedSmallStyle}>
-                  {categoryDisplayLabel(categoryLabel(selectedService))} ·{" "}
-                  {itemType(selectedService)}
-                </p>
+              <div
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 20,
+                  display: "grid",
+                  gap: 8,
+                  paddingBottom: 10,
+                  background: "#FFFFFF",
+                  borderBottom: `1px solid ${colors.line}`,
+                }}
+              >
+                <div>
+                  <h3
+                    style={{
+                      ...editorHeaderStyle,
+                      marginBottom: 8,
+                      paddingBottom: 8,
+                      fontSize: 21,
+                    }}
+                  >
+                    {selectedService.title.trim() || "New Work"}
+                  </h3>
+                  <p style={mutedSmallStyle}>
+                    {categoryDisplayLabel(categoryLabel(selectedService))} ·{" "}
+                    {itemType(selectedService)}
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: 8,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => void saveWorkOrderRecord()}
+                    style={{ ...goldButtonStyle, width: "100%" }}
+                  >
+                    Save Work Order
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteWorkOrderRecord(selectedService)}
+                    style={{ ...dangerButtonStyle, width: "100%" }}
+                  >
+                    Delete Work Order
+                  </button>
+                </div>
               </div>
 
               <section style={{ ...detailSectionStyle, gap: 7, padding: 9 }}>
@@ -2285,13 +2328,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 >
                   Work Order Actions
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void saveWorkOrderRecord()}
-                  style={{ ...goldButtonStyle, width: "100%" }}
-                >
-                  Save Work Order
-                </button>
                 <select
                   value=""
                   onChange={(event) => {
@@ -2328,13 +2364,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <option value="photo">Add Photo</option>
                   <option value="duplicate">Duplicate Work Order</option>
                 </select>
-                <button
-                  type="button"
-                  onClick={() => void deleteWorkOrderRecord(selectedService)}
-                  style={{ ...dangerButtonStyle, width: "100%" }}
-                >
-                  Delete Work Order
-                </button>
 
                 {selectedService.recurring ? (
                   <div
