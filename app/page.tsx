@@ -7187,6 +7187,7 @@ export default function AtlasPage() {
     );
     clearRecordDirty("work_order", prepared.id);
     setDatabaseStatus(`Saved ${prepared.title || "work order"}.`);
+    setSelectedServiceId("");
   }
 
   async function completeWorkOrder(record: AtlasServiceRecord) {
@@ -18895,9 +18896,11 @@ export default function AtlasPage() {
             <div style={mobileMenuRowStyle}>
               <select
                 value={screen}
-                onChange={(event) =>
-                  setScreen(event.currentTarget.value as Screen)
-                }
+                onChange={(event) => {
+                  const nextScreen = event.currentTarget.value as Screen;
+                  if (nextScreen === "history") setSelectedServiceId("");
+                  setScreen(nextScreen);
+                }}
                 style={mobileMenuSelectStyle}
                 aria-label="Open Atlas section"
               >
@@ -18928,7 +18931,12 @@ export default function AtlasPage() {
                           <button
                             key={item.id}
                             type="button"
-                            onClick={() => setScreen(item.id)}
+                            onClick={() => {
+                              if (item.id === "history") {
+                                setSelectedServiceId("");
+                              }
+                              setScreen(item.id);
+                            }}
                             style={{
                               ...navButtonStyle,
                               borderColor:
