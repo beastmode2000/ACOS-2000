@@ -42,6 +42,7 @@ function relationshipTokens(value: string) {
 
 function relationshipIds(record: SearchResult) {
   return [
+    ...(record.relatedIds || []),
     record.locationId,
     record.assetId,
     record.vendorId,
@@ -70,7 +71,8 @@ export function findRelatedRecords(
       let score = 0;
       const candidateIds = relationshipIds(candidate);
 
-      if (candidateIds.some((id) => sourceIds.has(id))) score += 12;
+      const sharedIds = candidateIds.filter((id) => sourceIds.has(id));
+      if (sharedIds.length) score += 12 + Math.min(12, sharedIds.length * 4);
 
       const candidateText =
         `${candidate.title} ${candidate.subtitle} ${candidate.detail}`.toLowerCase();
@@ -104,4 +106,3 @@ export function findRelatedRecords(
     .slice(0, limit)
     .map((entry) => entry.candidate);
 }
-
