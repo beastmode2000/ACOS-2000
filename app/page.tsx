@@ -3456,6 +3456,9 @@ export default function AtlasPage() {
     useState<FastIntakeSaveMode>("Attach to Existing");
   const [fastIntakeRecordName, setFastIntakeRecordName] = useState("");
   const [fastIntakeCategory, setFastIntakeCategory] = useState("General");
+  const [fastIntakeManufacturer, setFastIntakeManufacturer] = useState("");
+  const [fastIntakeModel, setFastIntakeModel] = useState("");
+  const [fastIntakeSerial, setFastIntakeSerial] = useState("");
   const [fastIntakePriority, setFastIntakePriority] =
     useState<WorkOrderPriority>("Medium");
   const [fastIntakeLocationId, setFastIntakeLocationId] = useState("general");
@@ -5933,6 +5936,9 @@ export default function AtlasPage() {
     setFastIntakeSaveMode("Attach to Existing");
     setFastIntakeRecordName("");
     setFastIntakeCategory("General");
+    setFastIntakeManufacturer("");
+    setFastIntakeModel("");
+    setFastIntakeSerial("");
     setFastIntakePriority("Medium");
     setFastIntakeLocationId("general");
     setFastIntakeAppendNotes(false);
@@ -6821,6 +6827,10 @@ export default function AtlasPage() {
           name: fastIntakeRecordName.trim() || title,
           locationId: fastIntakeLocationId || "general",
           category: fastIntakeCategory.trim() || "General",
+          make: fastIntakeManufacturer.trim(),
+          manufacturer: fastIntakeManufacturer.trim(),
+          model: fastIntakeModel.trim(),
+          serial: fastIntakeSerial.trim(),
           status: "Monitor",
           notes: combinedNotes,
           vendorIds:
@@ -14972,10 +14982,59 @@ export default function AtlasPage() {
   }
 
   function openInboxItemInFastIntake(item: InboxItemRecord) {
+    const analysis = (item.extractedData || {}) as Record<string, unknown>;
+    const manufacturer = inboxAnalysisText(analysis.manufacturer);
+    const model = inboxAnalysisText(analysis.model);
+    const serial = inboxAnalysisText(analysis.serial);
+    const assetName = inboxAnalysisText(analysis.assetName);
+    const documentType = inboxAnalysisText(analysis.documentType);
+    const summary = inboxAnalysisText(analysis.summary);
+    const suggestedMatch = (analysis.suggestedMatch || {}) as Record<string, unknown>;
+    const hasReliableAssetMatch =
+      inboxAnalysisText(suggestedMatch.type) === "Asset" &&
+      ["High", "Medium"].includes(inboxAnalysisText(suggestedMatch.confidence));
+    const looksLikeNewAsset =
+      !hasReliableAssetMatch && Boolean(assetName || manufacturer || model || serial);
+    const proposedName =
+      assetName ||
+      [manufacturer, documentType && !/label|photo|image/i.test(documentType) ? documentType : ""]
+        .filter(Boolean)
+        .join(" ") ||
+      item.title ||
+      model ||
+      "New Asset";
+    const category = /appliance|refrigerator|freezer|dishwasher|washer|dryer|range|oven/i.test(
+      [documentType, summary, proposedName].join(" "),
+    )
+      ? "Appliance"
+      : documentType && !/label|photo|image/i.test(documentType)
+        ? documentType
+        : "Equipment";
+    const locationNameHint = inboxAnalysisText(analysis.locationName).toLowerCase();
+    const suggestedLocation = locations.find((location) =>
+      locationNameHint &&
+      [location.name, location.type, location.zone]
+        .join(" ")
+        .toLowerCase()
+        .includes(locationNameHint),
+    );
+
     setFastIntakeKind(item.intakeType || "Document");
-    setFastIntakeSaveMode(item.proposedAction || "Attach to Existing");
+    setFastIntakeSaveMode(
+      looksLikeNewAsset ? "Create Asset" : item.proposedAction || "Attach to Existing",
+    );
     setIntakeTitle(item.title || "");
-    setIntakeNotes(item.notes || "");
+    setFastIntakeRecordName(looksLikeNewAsset ? proposedName : "");
+    setFastIntakeCategory(looksLikeNewAsset ? category : "General");
+    setFastIntakeManufacturer(manufacturer);
+    setFastIntakeModel(model);
+    setFastIntakeSerial(serial);
+    setFastIntakeLocationId(suggestedLocation?.id || "general");
+    setIntakeNotes(
+      [item.notes, summary ? `AI photo review: ${summary}` : ""]
+        .filter(Boolean)
+        .join("\n"),
+    );
     setIntakePastedText(item.pastedText || "");
     setIntakeFiles(Array.isArray(item.files) ? item.files : []);
     setIntakeTargetKind(item.targetType || "General");
@@ -16054,6 +16113,21 @@ export default function AtlasPage() {
                         ))}
                       </select>
                     </label>
+                    <Field
+                      label="Manufacturer"
+                      value={fastIntakeManufacturer}
+                      onChange={setFastIntakeManufacturer}
+                    />
+                    <Field
+                      label="Model"
+                      value={fastIntakeModel}
+                      onChange={setFastIntakeModel}
+                    />
+                    <Field
+                      label="Serial number"
+                      value={fastIntakeSerial}
+                      onChange={setFastIntakeSerial}
+                    />
                   </>
                 ) : null}
 
