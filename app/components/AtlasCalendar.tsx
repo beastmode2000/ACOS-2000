@@ -248,6 +248,11 @@ export default function AtlasCalendar(
 
   const hasSelectedEvent = Boolean(selectedCalendarId);
   const todayKey = calendarDateKey(todayISO());
+  const activeCategoryFilterCount = calendarFilterLabels.filter(
+    (label: string) => calendarCategoryFilters[label] === false,
+  ).length;
+  const hasActiveFilters =
+    !showUsHolidays || !showJewishHolidays || activeCategoryFilterCount > 0;
 
   const calendarTitle =
     calendarView === "week"
@@ -1471,7 +1476,7 @@ export default function AtlasCalendar(
                     whiteSpace: "nowrap",
                   }}
                 >
-                  Filters
+                  Filters{hasActiveFilters ? ` (${activeCategoryFilterCount + (!showUsHolidays ? 1 : 0) + (!showJewishHolidays ? 1 : 0)} hidden)` : ""}
                 </summary>
 
                 <div
@@ -1525,6 +1530,24 @@ export default function AtlasCalendar(
                     />
                     Jewish Holidays
                   </label>
+
+                  {hasActiveFilters ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUsHolidays(true);
+                        setShowJewishHolidays(true);
+                        setCalendarCategoryFilters({});
+                      }}
+                      style={{
+                        ...secondaryButtonStyle,
+                        width: "100%",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Show All Calendar Items
+                    </button>
+                  ) : null}
 
                   {calendarFilterLabels.map(
                     (label: string) => (
