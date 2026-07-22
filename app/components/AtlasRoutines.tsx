@@ -762,7 +762,7 @@ export default function AtlasRoutines({
                           style={button}
                           onClick={() => moveTask(index, -1)}
                         >
-                          ↑
+                          Up
                         </button>
 
                         <button
@@ -771,7 +771,7 @@ export default function AtlasRoutines({
                           style={button}
                           onClick={() => moveTask(index, 1)}
                         >
-                          ↓
+                          Down
                         </button>
                       </div>
 
@@ -791,7 +791,7 @@ export default function AtlasRoutines({
                         {[1, 2, 3, 4, 5].map((day) => (
                           <option key={day} value={day}>
                             {day === selectedDay
-                              ? "Move to…"
+                              ? "Move to..."
                               : dayNames[day]}
                           </option>
                         ))}
