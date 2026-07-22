@@ -14,6 +14,7 @@ type AtlasTable =
   | "procedures"
   | "work_orders"
   | "calendar"
+  | "parts"
   | "documents"
   | "asset_photos";
 
@@ -126,6 +127,7 @@ function cleanTable(value: unknown): AtlasTable | "" {
   if (table === "procedures") return "procedures";
   if (table === "work_orders") return "work_orders";
   if (table === "calendar") return "calendar";
+  if (table === "parts") return "parts";
   if (table === "documents") return "documents";
   if (table === "asset_photos") return "asset_photos";
 
@@ -233,6 +235,24 @@ async function ensureContactsTable(sql: ReturnType<typeof neon>) {
       id text PRIMARY KEY,
       name text NOT NULL,
       record jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
+async function ensurePartsTable(sql: ReturnType<typeof neon>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_parts (
+      id text PRIMARY KEY,
+      name text NOT NULL,
+      category text NOT NULL DEFAULT 'General',
+      location_id text,
+      asset_id text,
+      vendor_id text,
+      quantity integer NOT NULL DEFAULT 0,
+      min_quantity integer NOT NULL DEFAULT 0,
+      status text NOT NULL DEFAULT 'In Stock',
+      notes text NOT NULL DEFAULT '',
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
   `;
@@ -456,6 +476,21 @@ function mapProcedure(row: JsonRecord) {
   };
 }
 
+function mapPart(row: JsonRecord) {
+  return {
+    id: String(row.id || ""),
+    name: String(row.name || ""),
+    category: String(row.category || "General"),
+    locationId: String(row.location_id || ""),
+    assetId: String(row.asset_id || ""),
+    vendorId: String(row.vendor_id || ""),
+    quantity: Number(row.quantity || 0),
+    minQuantity: Number(row.min_quantity || 0),
+    status: String(row.status || "In Stock"),
+    notes: String(row.notes || ""),
+  };
+}
+
 function mapWorkOrder(row: JsonRecord) {
   return {
     id: String(row.id || ""),
@@ -572,6 +607,7 @@ export async function GET() {
     await ensureWorkOrderColumns(sql);
     await ensureCalendarColumns(sql);
     await ensureContactsTable(sql);
+    await ensurePartsTable(sql);
 
     const locationRows = (await sql`
       SELECT id, name, type, zone, notes, sort_order
@@ -708,6 +744,13 @@ export async function GET() {
       ORDER BY created_at DESC
     `) as unknown as JsonRecord[];
 
+    const partRows = (await sql`
+      SELECT id, name, category, location_id, asset_id, vendor_id,
+             quantity, min_quantity, status, notes
+      FROM atlas_parts
+      ORDER BY lower(name) ASC
+    `) as unknown as JsonRecord[];
+
     return NextResponse.json({
       ok: true,
       source: "neon",
@@ -720,6 +763,7 @@ export async function GET() {
       calendarItems: calendarRows.map(mapCalendarItem),
       documents: documentRows.map(mapDocument),
       photos: photoRows.map(mapPhoto),
+      partRecords: partRows.map(mapPart),
     });
   } catch (error) {
     return NextResponse.json(
@@ -1249,6 +1293,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, id });
     }
 
+    if (table === "parts") {
+      await ensurePartsTable(sql);
+      const id = getId(record, "part");
+      const quantity = Math.max(0, Math.floor(Number(record.quantity) || 0));
+      const minQuantity = Math.max(0, Math.floor(Number(record.minQuantity) || 0));
+      const automaticStatus =
+        quantity <= 0 ? "Out" : quantity <= minQuantity ? "Low" : "In Stock";
+
+      await sql`
+        INSERT INTO atlas_parts (
+          id, name, category, location_id, asset_id, vendor_id,
+          quantity, min_quantity, status, notes, updated_at
+        ) VALUES (
+          ${id},
+          ${asString(record.name) || "Untitled Part"},
+          ${asString(record.category) || "General"},
+          ${nullableString(record.locationId)},
+          ${nullableString(record.assetId)},
+          ${nullableString(record.vendorId)},
+          ${quantity},
+          ${minQuantity},
+          ${asStatus(record.status, automaticStatus)},
+          ${asString(record.notes)},
+          NOW()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          category = EXCLUDED.category,
+          location_id = EXCLUDED.location_id,
+          asset_id = EXCLUDED.asset_id,
+          vendor_id = EXCLUDED.vendor_id,
+          quantity = EXCLUDED.quantity,
+          min_quantity = EXCLUDED.min_quantity,
+          status = EXCLUDED.status,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+      `;
+      return NextResponse.json({ ok: true, id });
+    }
+
     if (table === "documents") {
       const id = getId(record, "document");
 
@@ -1428,6 +1512,12 @@ export async function DELETE(request: NextRequest) {
         WHERE id = ${id}
       `;
 
+      return NextResponse.json({ ok: true });
+    }
+
+    if (table === "parts") {
+      await ensurePartsTable(sql);
+      await sql`DELETE FROM atlas_parts WHERE id = ${id}`;
       return NextResponse.json({ ok: true });
     }
 
