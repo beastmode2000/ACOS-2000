@@ -4855,7 +4855,6 @@ export default function AtlasPage() {
     weatherDays.find((day) => day.date === selectedWeatherDate) ??
     weatherDays[0];
   const selectedCalendar = calendarDraft;
-
   function dirtyKey(recordType: string, id?: string) {
     return `${recordType}:${id || ""}`;
   }
@@ -5026,9 +5025,6 @@ export default function AtlasPage() {
 
   const calendarFilterLabels = useMemo(() => {
     const labels = new Set<string>();
-    [...defaultCalendarColors, ...calendarColors].forEach((item) =>
-      labels.add(item.label),
-    );
     baseCalendarItems.forEach((item) => labels.add(categoryForEvent(item)));
     return Array.from(labels)
       .filter(Boolean)
@@ -13082,7 +13078,7 @@ export default function AtlasPage() {
         eyebrowStyle={eyebrowStyle}
         serviceRecords={serviceRecords}
         colors={colors}
-        filteredServices={filteredServices}
+        filteredServices={serviceRecords}
         listStyle={listStyle}
         setSelectedServiceId={setSelectedServiceId}
         rowButtonStyle={rowButtonStyle}
@@ -24094,3 +24090,4 @@ const linkStyle: React.CSSProperties = {
 };
 
       
+
