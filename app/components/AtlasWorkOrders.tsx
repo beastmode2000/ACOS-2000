@@ -415,6 +415,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [pendingPhotoRecordId, setPendingPhotoRecordId] = useState("");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const quickPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const newWorkTitleRef = useRef<HTMLInputElement | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [newWorkOpen, setNewWorkOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -929,7 +930,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function createNewWork() {
-    const title = newWorkDraft.title.trim();
+    const title = newWorkTitleRef.current?.value.trim() || "";
     if (!title) {
       window.alert("Add a title before creating this work item.");
       return;
@@ -1126,6 +1127,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           setSelectedServiceId(record.id);
         }}
         onKeyDown={(event) => {
+          if (
+            event.target instanceof HTMLElement &&
+            event.target.closest("input, textarea, select, button, a")
+          ) {
+            return;
+          }
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             setNewWorkOpen(false);
@@ -1413,13 +1420,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
                 <div style={{ display: "grid", gap: 10 }}>
                   <input
-                    value={newWorkDraft.title}
-                    onChange={(event) =>
-                      setNewWorkDraft((current) => ({
-                        ...current,
-                        title: event.currentTarget.value,
-                      }))
-                    }
+                    ref={newWorkTitleRef}
+                    defaultValue=""
                     placeholder="Work title"
                     autoFocus
                     style={controlStyle}
