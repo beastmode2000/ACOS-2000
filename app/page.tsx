@@ -3411,6 +3411,7 @@ export default function AtlasPage() {
   const [selectedInboxId, setSelectedInboxId] = useState("");
   const [inboxMessage, setInboxMessage] = useState("Loading Atlas Inbox...");
   const [analyzingInboxId, setAnalyzingInboxId] = useState("");
+  const [savingInboxApprovalId, setSavingInboxApprovalId] = useState("");
   const [inboxReviewOpen, setInboxReviewOpen] = useState(false);
   const [inboxReviewDraft, setInboxReviewDraft] = useState<InboxReviewDraft>({
     documentType: "",
@@ -6827,6 +6828,18 @@ export default function AtlasPage() {
     let finalTargetName = targetNameFor(finalTargetKind, finalTargetId);
     let createdLabel = "document";
 
+    if (
+      (fastIntakeSaveMode === "Attach to Existing" ||
+        fastIntakeSaveMode === "Create Work Order") &&
+      intakeTargetKind !== "General" &&
+      !intakeTargetId
+    ) {
+      setIntakeMessage(
+        "Choose the existing record before approving the save.",
+      );
+      return;
+    }
+
     try {
       if (fastIntakeSaveMode === "Create Work Order") {
         const workOrder = normalizeService({
@@ -6902,25 +6915,37 @@ export default function AtlasPage() {
 
       if (
         fastIntakeSaveMode === "Attach to Existing" &&
+        intakeTargetKind === "Asset"
+      ) {
+        const existing = assetRecords.find(
+          (item) => item.id === intakeTargetId,
+        );
+        if (!existing) throw new Error("The selected asset could not be found.");
+        const updated = normalizeAsset({
+          ...existing,
+          make: existing.make || fastIntakeManufacturer.trim(),
+          manufacturer:
+            existing.manufacturer || fastIntakeManufacturer.trim(),
+          model: existing.model || fastIntakeModel.trim(),
+          serial: existing.serial || fastIntakeSerial.trim(),
+          notes:
+            fastIntakeAppendNotes && combinedNotes
+              ? appendIntakeNote(existing.notes, combinedNotes)
+              : existing.notes,
+        });
+        const saved = await postAtlasRecord("assets", updated);
+        if (!saved) throw new Error("Asset details did not save.");
+        setAssetRecords((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        createdLabel = "asset details, photo, and intake record";
+      }
+
+      if (
+        fastIntakeSaveMode === "Attach to Existing" &&
         fastIntakeAppendNotes &&
         combinedNotes
       ) {
-        if (intakeTargetKind === "Asset") {
-          const existing = assetRecords.find(
-            (item) => item.id === intakeTargetId,
-          );
-          if (existing) {
-            const updated = normalizeAsset({
-              ...existing,
-              notes: appendIntakeNote(existing.notes, combinedNotes),
-            });
-            const saved = await postAtlasRecord("assets", updated);
-            if (!saved) throw new Error("Asset note update did not save.");
-            setAssetRecords((current) =>
-              current.map((item) => (item.id === updated.id ? updated : item)),
-            );
-          }
-        }
 
         if (intakeTargetKind === "Vendor") {
           const existing = vendorRecords.find(
@@ -7003,14 +7028,16 @@ export default function AtlasPage() {
       }
 
       if (record.targetType === "Asset" && record.targetId) {
-        const imagePhotos: PhotoRecord[] = (record.files || [])
-          .filter(
-            (file) => (file.type || "").startsWith("image/") && file.dataUrl,
-          )
-          .map((file) => ({
+        const imageFiles = (record.files || []).filter(
+          (file) => (file.type || "").startsWith("image/") && file.dataUrl,
+        );
+        const imagePhotos: PhotoRecord[] = imageFiles.map((file, index) => ({
             id: uid("photo"),
             assetId: record.targetId || "",
-            name: file.name,
+            name:
+              imageFiles.length > 1
+                ? `${record.title} ${index + 1}`
+                : record.title,
             dataUrl: file.dataUrl,
             createdAt: file.createdAt || new Date().toISOString(),
           }));
@@ -15022,6 +15049,126 @@ export default function AtlasPage() {
     setAnalyzingInboxId("");
   }
 
+  async function approveInboxPhotoToAsset(
+    item: InboxItemRecord,
+    assetId: string,
+  ) {
+    if (savingInboxApprovalId) return;
+    const asset = assetRecords.find((record) => record.id === assetId);
+    if (!asset) {
+      setInboxMessage("The matched asset could not be found. Nothing was saved.");
+      return;
+    }
+
+    setSavingInboxApprovalId(item.id);
+    setInboxMessage(`Saving photo and missing details to ${asset.name}...`);
+
+    try {
+      const updatedAsset = normalizeAsset({
+        ...asset,
+        make: asset.make || inboxReviewDraft.manufacturer.trim(),
+        manufacturer:
+          asset.manufacturer || inboxReviewDraft.manufacturer.trim(),
+        model: asset.model || inboxReviewDraft.model.trim(),
+        serial: asset.serial || inboxReviewDraft.serial.trim(),
+        notes: inboxReviewDraft.notes.trim()
+          ? appendIntakeNote(asset.notes, inboxReviewDraft.notes)
+          : asset.notes,
+      });
+      const savedAsset = await postAtlasRecord("assets", updatedAsset);
+      if (!savedAsset) throw new Error("Asset details did not save.");
+      setAssetRecords((current) =>
+        current.map((record) =>
+          record.id === updatedAsset.id ? updatedAsset : record,
+        ),
+      );
+
+      const imageFiles = (item.files || []).filter(
+        (file) => (file.type || "").startsWith("image/") && file.dataUrl,
+      );
+      const imagePhotos: PhotoRecord[] = imageFiles.map((file, index) => ({
+        id: uid("photo"),
+        assetId: asset.id,
+        name:
+          imageFiles.length > 1 ? `${item.title} ${index + 1}` : item.title,
+        dataUrl: file.dataUrl,
+        createdAt: file.createdAt || new Date().toISOString(),
+      }));
+
+      if (imagePhotos.length) {
+        await cachePhotoRecords(imagePhotos);
+        setPhotos((current) => {
+          const next = mergePhotoRecords(imagePhotos, current);
+          persistPhotoRecords(next);
+          return next;
+        });
+        await Promise.all(
+          imagePhotos.map((photo) => postAtlasRecord("asset_photos", photo)),
+        );
+      }
+
+      const linkedDocument: DocumentRecord = {
+        id: uid("doc"),
+        title: item.title,
+        area: asset.name,
+        type: item.intakeType || "Asset Label",
+        linkedAssetId: asset.id,
+        targetType: "Asset",
+        targetId: asset.id,
+        targetName: asset.name,
+        notes:
+          inboxReviewDraft.summary.trim() ||
+          item.notes ||
+          "Asset label analyzed and approved in Atlas Inbox.",
+        pastedText: item.pastedText || "",
+        files: item.files || [],
+        createdAt: new Date().toISOString(),
+      };
+      const nextDocs = mergeDocuments([linkedDocument], intakeDocs);
+      setIntakeDocs(nextDocs);
+      saveStoredArray(storageKeys.intakeDocs[0], nextDocs);
+      try {
+        await postDocumentToAtlasVault(linkedDocument);
+      } catch {
+        setDocumentSyncStatus(
+          "The asset and photo saved, but document-vault sync needs attention.",
+        );
+      }
+
+      await updateInboxItem(item.id, {
+        extractedData: {
+          ...(item.extractedData || {}),
+          ...inboxReviewDraft,
+          readings: {
+            psi: inboxReviewDraft.psi,
+            temperature: inboxReviewDraft.temperature,
+            ph: inboxReviewDraft.ph,
+            hours: inboxReviewDraft.hours,
+          },
+        },
+        targetType: "Asset",
+        targetId: asset.id,
+        targetName: asset.name,
+        status: "Saved",
+      });
+
+      setSelectedAssetId(asset.id);
+      setInboxReviewOpen(false);
+      setInboxMessage(`Saved to ${asset.name}.`);
+      showSaveToast(
+        `${item.title} and missing label details were saved to ${asset.name}.`,
+      );
+      setScreen("assets");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "The asset update did not save.";
+      setInboxMessage(message);
+      showSaveToast(message, "warning");
+    } finally {
+      setSavingInboxApprovalId("");
+    }
+  }
+
   function openInboxItemInFastIntake(item: InboxItemRecord) {
     const analysis = (item.extractedData || {}) as Record<string, unknown>;
     const manufacturer = inboxAnalysisText(analysis.manufacturer);
@@ -15062,7 +15209,11 @@ export default function AtlasPage() {
 
     setFastIntakeKind(item.intakeType || "Document");
     setFastIntakeSaveMode(
-      looksLikeNewAsset ? "Create Asset" : item.proposedAction || "Attach to Existing",
+      looksLikeNewAsset
+        ? "Create Asset"
+        : hasReliableAssetMatch
+          ? "Attach to Existing"
+          : item.proposedAction || "Attach to Existing",
     );
     setIntakeTitle(item.title || "");
     setFastIntakeRecordName(looksLikeNewAsset ? proposedName : "");
@@ -15078,10 +15229,18 @@ export default function AtlasPage() {
     );
     setIntakePastedText(item.pastedText || "");
     setIntakeFiles(Array.isArray(item.files) ? item.files : []);
-    setIntakeTargetKind(item.targetType || "General");
-    setIntakeTargetId(item.targetId || "");
+    setIntakeTargetKind(
+      hasReliableAssetMatch ? "Asset" : item.targetType || "General",
+    );
+    setIntakeTargetId(
+      hasReliableAssetMatch
+        ? inboxAnalysisText(suggestedMatch.id)
+        : item.targetId || "",
+    );
     setIntakeMessage(
-      "Loaded from Atlas Inbox. Review everything before saving.",
+      hasReliableAssetMatch
+        ? `Matched to ${inboxAnalysisText(suggestedMatch.name)}. Approve once to save missing details and attach the photo.`
+        : "Loaded from Atlas Inbox. Review everything before saving.",
     );
     void updateInboxItem(item.id, { status: "Needs Review" });
     setScreen("intake");
@@ -15116,6 +15275,11 @@ export default function AtlasPage() {
         }
       | null
       | undefined;
+    const reliableAssetMatch =
+      suggestedMatch?.type === "Asset" &&
+      Boolean(suggestedMatch.id) &&
+      (suggestedMatch.confidence === "High" ||
+        suggestedMatch.confidence === "Medium");
     const readings = (analysis.readings || {}) as Record<string, unknown>;
     const analysisFields = [
       ["Manufacturer", analysis.manufacturer],
@@ -15702,6 +15866,7 @@ export default function AtlasPage() {
                     </div>
                   </div>
 
+                  {!reliableAssetMatch ? (
                   <div style={cardStyle}>
                     <div style={eyebrowStyle}>Where Should This Go?</div>
                     <p style={mutedSmallStyle}>
@@ -15792,6 +15957,7 @@ export default function AtlasPage() {
                       </label>
                     </div>
                   </div>
+                  ) : null}
 
                   <div style={cardStyle}>
                     <div style={eyebrowStyle}>Reliable Match Check</div>
@@ -15809,29 +15975,52 @@ export default function AtlasPage() {
                             ? ` · ${suggestedMatch.reasons.join(" · ")}`
                             : ""}
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (suggestedMatch.type === "Asset")
-                              setInboxReviewDraft((c) => ({
-                                ...c,
-                                assetId: suggestedMatch.id || "",
-                              }));
-                            if (suggestedMatch.type === "Vendor")
-                              setInboxReviewDraft((c) => ({
-                                ...c,
-                                vendorId: suggestedMatch.id || "",
-                              }));
-                            if (suggestedMatch.type === "Work Order")
-                              setInboxReviewDraft((c) => ({
-                                ...c,
-                                workOrderId: suggestedMatch.id || "",
-                              }));
-                          }}
-                          style={secondaryButtonStyle}
-                        >
-                          Use This Match
-                        </button>
+                        {suggestedMatch.type === "Asset" &&
+                        suggestedMatch.id ? (
+                          <button
+                            type="button"
+                            disabled={savingInboxApprovalId === selected.id}
+                            onClick={() =>
+                              void approveInboxPhotoToAsset(
+                                selected,
+                                suggestedMatch.id || "",
+                              )
+                            }
+                            style={{
+                              ...goldButtonStyle,
+                              width: "100%",
+                              opacity:
+                                savingInboxApprovalId === selected.id ? 0.65 : 1,
+                              cursor:
+                                savingInboxApprovalId === selected.id
+                                  ? "wait"
+                                  : "pointer",
+                            }}
+                          >
+                            {savingInboxApprovalId === selected.id
+                              ? `Saving to ${suggestedMatch.name}...`
+                              : `Approve and Save to ${suggestedMatch.name}`}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (suggestedMatch.type === "Vendor")
+                                setInboxReviewDraft((c) => ({
+                                  ...c,
+                                  vendorId: suggestedMatch.id || "",
+                                }));
+                              if (suggestedMatch.type === "Work Order")
+                                setInboxReviewDraft((c) => ({
+                                  ...c,
+                                  workOrderId: suggestedMatch.id || "",
+                                }));
+                            }}
+                            style={secondaryButtonStyle}
+                          >
+                            Use This Match
+                          </button>
+                        )}
                       </>
                     ) : (
                       <p style={mutedSmallStyle}>
@@ -15841,6 +16030,7 @@ export default function AtlasPage() {
                     )}
                   </div>
 
+                  {!reliableAssetMatch ? (
                   <div style={cardStyle}>
                     <Field
                       label="Review notes"
@@ -15907,7 +16097,7 @@ export default function AtlasPage() {
                         }
                         style={secondaryButtonStyle}
                       >
-                        Save Review Draft
+                        Save Review Only (Does Not Update Asset)
                       </button>
                       <button
                         type="button"
@@ -15917,7 +16107,7 @@ export default function AtlasPage() {
                         }}
                         style={goldButtonStyle}
                       >
-                        Continue to Approval Actions
+                        Continue to Update Asset
                       </button>
                     </div>
                     <p style={mutedSmallStyle}>
@@ -15925,6 +16115,7 @@ export default function AtlasPage() {
                       not create or overwrite an Atlas record.
                     </p>
                   </div>
+                  ) : null}
                 </div>
               )}
             </div>
