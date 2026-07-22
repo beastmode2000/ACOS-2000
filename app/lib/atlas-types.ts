@@ -508,6 +508,7 @@ export type AtlasTable =
   | "procedures"
   | "routines"
   | "calendar"
+  | "parts"
   | "asset_photos";
 
 export type SearchResult = {
