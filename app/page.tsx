@@ -3005,6 +3005,9 @@ function ListDrawerLayout(props: {
   drawerStyleOverride?: React.CSSProperties;
   gridStyleOverride?: React.CSSProperties;
   drawerResetKey?: string | number;
+  mobileDrawerOpen?: boolean;
+  onMobileDrawerClose?: () => void;
+  mobileDrawerTitle?: string;
 }) {
   const drawerScrollRef = useRef<HTMLDivElement>(null);
 
@@ -3122,7 +3125,7 @@ function ListDrawerLayout(props: {
         };
 
   return (
-    <section style={outerStyle}>
+    <section style={{ ...outerStyle, minWidth: 0, overflowX: "hidden" }}>
       {props.eyebrow || props.detail || props.right ? (
         <div
           style={{
@@ -3167,17 +3170,97 @@ function ListDrawerLayout(props: {
         >
           {props.list}
         </div>
-        <div
-          ref={drawerScrollRef}
-          style={
-            props.drawerStyleOverride
-              ? { ...desktopDrawerStyle, ...props.drawerStyleOverride }
-              : desktopDrawerStyle
-          }
-        >
-          {props.drawer}
-        </div>
+        {!props.isMobile || props.mobileDrawerOpen === undefined ? (
+          <div
+            ref={drawerScrollRef}
+            style={
+              props.drawerStyleOverride
+                ? { ...desktopDrawerStyle, ...props.drawerStyleOverride }
+                : desktopDrawerStyle
+            }
+          >
+            {props.drawer}
+          </div>
+        ) : null}
       </div>
+
+      {props.isMobile && props.mobileDrawerOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={props.mobileDrawerTitle || props.title || "Details"}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 240,
+            background: "rgba(7,27,47,0.68)",
+            display: "grid",
+            alignItems: "stretch",
+            justifyItems: "stretch",
+            padding: 0,
+          }}
+          onClick={(event) => {
+            if (event.currentTarget === event.target) {
+              props.onMobileDrawerClose?.();
+            }
+          }}
+        >
+          <div
+            ref={drawerScrollRef}
+            style={{
+              width: "100%",
+              height: "100dvh",
+              minWidth: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              background: colors.card,
+              WebkitOverflowScrolling: "touch",
+              overscrollBehavior: "contain",
+              paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+            }}
+          >
+            <div
+              style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                minHeight: 58,
+                padding: "10px 14px",
+                borderBottom: `1px solid ${colors.line}`,
+                background: colors.card,
+              }}
+            >
+              <strong style={{ color: colors.navy, minWidth: 0 }}>
+                {props.mobileDrawerTitle || props.title || "Details"}
+              </strong>
+              <button
+                type="button"
+                onClick={props.onMobileDrawerClose}
+                style={{
+                  ...secondaryButtonStyle,
+                  width: 42,
+                  minWidth: 42,
+                  height: 42,
+                  padding: 0,
+                  borderRadius: 999,
+                  fontSize: 24,
+                  lineHeight: 1,
+                }}
+                aria-label="Close details"
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ minWidth: 0, padding: 14, overflowX: "hidden" }}>
+              {props.drawer}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -3208,6 +3291,7 @@ export default function AtlasPage() {
   const [mapLabels, setMapLabels] =
     useState<MapLabelRecord[]>(defaultMapLabels);
   const [selectedMapLabelId, setSelectedMapLabelId] = useState("");
+  const [mapMobileDrawerOpen, setMapMobileDrawerOpen] = useState(false);
   const [activeMapPanelTab, setActiveMapPanelTab] = useState<
     "info" | "vendors" | "photos" | "tabs"
   >("info");
@@ -3215,6 +3299,7 @@ export default function AtlasPage() {
   const [locations, setLocations] =
     useState<LocationRecord[]>(fallbackLocations);
   const [locationEditorOpen, setLocationEditorOpen] = useState(false);
+  const [locationMobileDrawerOpen, setLocationMobileDrawerOpen] = useState(false);
 
   const [assetRecords, setAssetRecords] =
     useState<AssetRecord[]>(fallbackAssets);
@@ -10602,6 +10687,12 @@ export default function AtlasPage() {
         detail="Click a label for details. Click and hold a label to move it."
         isMobile={isMobile}
         drawerResetKey={selectedMapLabelId || "map-empty"}
+        mobileDrawerOpen={mapMobileDrawerOpen}
+        onMobileDrawerClose={() => setMapMobileDrawerOpen(false)}
+        mobileDrawerTitle={selectedMapLabel.label || "Map Details"}
+        gridStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+        listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
+        drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
         right={
           <>
             {selectedMapLabel.id ? (
@@ -10613,7 +10704,14 @@ export default function AtlasPage() {
                 Delete Label
               </button>
             ) : null}
-            <button type="button" onClick={addMapLabel} style={goldButtonStyle}>
+            <button
+              type="button"
+              onClick={() => {
+                addMapLabel();
+                if (isMobile) setMapMobileDrawerOpen(true);
+              }}
+              style={goldButtonStyle}
+            >
               Add Label
             </button>
           </>
@@ -10660,6 +10758,10 @@ export default function AtlasPage() {
                     onPointerDown={(event) =>
                       handleMapLabelPointerDown(event, label.id)
                     }
+                    onClick={() => {
+                      setSelectedMapLabelId(label.id);
+                      if (isMobile) setMapMobileDrawerOpen(true);
+                    }}
                     style={{
                       ...mapPinStyle,
                       left: `${label.x}%`,
@@ -10969,8 +11071,24 @@ export default function AtlasPage() {
         title="Locations"
         isMobile={isMobile}
         drawerResetKey={selectedLocationId || "location-empty"}
+        mobileDrawerOpen={locationMobileDrawerOpen}
+        onMobileDrawerClose={() => {
+          setLocationMobileDrawerOpen(false);
+          setLocationEditorOpen(false);
+        }}
+        mobileDrawerTitle={selectedLocation.name || "Location Details"}
+        gridStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+        listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
+        drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
         right={
-          <button type="button" onClick={addLocation} style={goldButtonStyle}>
+          <button
+            type="button"
+            onClick={() => {
+              addLocation();
+              if (isMobile) setLocationMobileDrawerOpen(true);
+            }}
+            style={goldButtonStyle}
+          >
             Add Location
           </button>
         }
@@ -10983,9 +11101,14 @@ export default function AtlasPage() {
                 onClick={() => {
                   setSelectedLocationId(location.id);
                   setLocationEditorOpen(false);
+                  if (isMobile) setLocationMobileDrawerOpen(true);
                 }}
                 style={{
                   ...rowButtonStyle,
+                  width: "100%",
+                  minWidth: 0,
+                  gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : undefined,
+                  overflow: "hidden",
                   borderColor:
                     location.id === selectedLocation.id
                       ? colors.gold
@@ -11013,7 +11136,7 @@ export default function AtlasPage() {
         drawer={
           selectedLocation.id ? (
             <div
-              style={stackStyle}
+              style={{ ...stackStyle, minWidth: 0, overflowX: "hidden" }}
               tabIndex={0}
               onPaste={(event) => {
                 const files = imageFilesFromPasteEvent(event);
@@ -11028,16 +11151,30 @@ export default function AtlasPage() {
               }}
             >
               <div>
-                <div style={detailSectionHeaderStyle}>
-                  <h3 style={{ ...editorHeaderStyle, marginBottom: 0 }}>
+                <div
+                  style={{
+                    ...detailSectionHeaderStyle,
+                    alignItems: isMobile ? "stretch" : "center",
+                    flexDirection: isMobile ? "column" : "row",
+                    minWidth: 0,
+                  }}
+                >
+                  <h3 style={{ ...editorHeaderStyle, marginBottom: 0, minWidth: 0, overflowWrap: "anywhere" }}>
                     {selectedLocation.name || "New Location"}
                   </h3>
-                  <div style={buttonRowStyle}>
+                  <div
+                    style={{
+                      ...buttonRowStyle,
+                      width: isMobile ? "100%" : undefined,
+                      display: "grid",
+                      gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : undefined,
+                    }}
+                  >
                     {locationEditorOpen ? (
                       <button
                         type="button"
                         onClick={() => setLocationEditorOpen(false)}
-                        style={secondaryButtonStyle}
+                        style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : undefined }}
                       >
                         Cancel
                       </button>
@@ -11045,7 +11182,7 @@ export default function AtlasPage() {
                       <button
                         type="button"
                         onClick={() => setLocationEditorOpen(true)}
-                        style={secondaryButtonStyle}
+                        style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : undefined }}
                       >
                         Edit
                       </button>
@@ -11066,7 +11203,7 @@ export default function AtlasPage() {
                             showSaveToast("Location saved.");
                           })()
                         }
-                        style={goldButtonStyle}
+                        style={{ ...goldButtonStyle, width: isMobile ? "100%" : undefined, whiteSpace: "nowrap" }}
                       >
                         Save Location
                       </button>
@@ -11198,7 +11335,7 @@ export default function AtlasPage() {
                       const assetId = event.currentTarget.value;
                       if (assetId) void assignAssetToLocation(assetId);
                     }}
-                    style={{ ...inputStyle, width: "auto", minWidth: 170 }}
+                    style={{ ...inputStyle, width: isMobile ? "100%" : "auto", minWidth: 0, maxWidth: "100%" }}
                     aria-label="Add an asset to this location"
                   >
                     <option value="">+ Add Asset</option>
