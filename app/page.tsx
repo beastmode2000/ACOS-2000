@@ -41,6 +41,7 @@ import MaintenancePlanningIntelligence, {
   type MaintenanceSuggestion,
 } from "./components/ai/MaintenancePlanningIntelligence";
 import AtlasIntelligenceRecommendations from "./components/ai/AtlasIntelligenceRecommendations";
+import DocumentIntelligencePanel from "./components/ai/DocumentIntelligencePanel";
 import { findRelatedRecords } from "./lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -14031,6 +14032,18 @@ export default function AtlasPage() {
 
         <div style={cardStyle}>
           <div style={eyebrowStyle}>Document Information</div>
+          <DocumentIntelligencePanel
+            document={selectedDocument}
+            assets={assetRecords}
+            vendors={vendorRecords}
+            locations={locations}
+            workOrders={serviceRecords}
+            colors={colors}
+            onApply={async (patch) => {
+              const updated = normalizeDocument({ ...selectedDocument, ...patch });
+              await saveSelectedDocument(updated);
+            }}
+          />
           <div style={formGridStyle}>
             <Field
               label="Title"
