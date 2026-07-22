@@ -528,6 +528,7 @@ export type SearchResult = {
   calendarId?: string;
   partId?: string;
   manualId?: string;
+  relatedIds?: string[];
 };
 
 export type ManualCandidate = {
