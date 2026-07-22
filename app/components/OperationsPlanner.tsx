@@ -129,7 +129,7 @@ export default function OperationsPlanner(props: OperationsPlannerProps) {
             detail="Lock recurring commitments first, then let Atlas build a balanced week around them."
             right={
               <div style={buttonRowStyle}>
-                <button type="button" onClick={() => setScreen("dashboard")} style={secondaryButtonStyle}>← Dashboard</button>
+                <button type="button" onClick={() => setScreen("dashboard")} style={secondaryButtonStyle}>Back to Dashboard</button>
                 <button type="button" onClick={buildWorkPlan} style={goldButtonStyle}>Build My Week</button>
               </div>
             }
@@ -268,7 +268,7 @@ export default function OperationsPlanner(props: OperationsPlannerProps) {
                             }
                             style={plannerMiniButtonStyle}
                           >
-                            −15
+                            -15
                           </button>
                           <button
                             type="button"
@@ -353,7 +353,7 @@ export default function OperationsPlanner(props: OperationsPlannerProps) {
                             }
                             style={plannerMiniButtonStyle}
                           >
-                            −15
+                            -15
                           </button>
                           <button
                             type="button"
