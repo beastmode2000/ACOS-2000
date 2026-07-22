@@ -40,6 +40,7 @@ import DailyOperationsManager from "./components/ai/DailyOperationsManager";
 import MaintenancePlanningIntelligence, {
   type MaintenanceSuggestion,
 } from "./components/ai/MaintenancePlanningIntelligence";
+import AtlasIntelligenceRecommendations from "./components/ai/AtlasIntelligenceRecommendations";
 import { findRelatedRecords } from "./lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -5821,7 +5822,7 @@ export default function AtlasPage() {
     const clean = value.trim();
     if (!clean) return false;
     if (clean.endsWith("?")) return true;
-    return /^(what|when|where|who|why|how|can|could|should|would|is|are|do|does|did|based on|tell me|help me|show me)\b/i.test(
+    return /^(what|when|where|who|why|how|can|could|should|would|is|are|do|does|did|based on|tell me|help me|show me|find|summarize|recommend|compare|explain|analyze|identify|list everything)\b/i.test(
       clean,
     );
   }
@@ -19348,6 +19349,16 @@ export default function AtlasPage() {
           }
           sidebar={
             <>
+              <AtlasIntelligenceRecommendations
+                assets={assetRecords}
+                workOrders={serviceRecords}
+                procedures={procedureRecords}
+                parts={partRecords}
+                documents={intakeDocs}
+                today={todayISO()}
+                onOpen={openSearchResult}
+                colors={colors}
+              />
               <div style={{ ...cardStyle, padding: 16 }}>
                 <div style={eyebrowStyle}>Matching Atlas Records</div>
                 <h3 style={{ margin: "4px 0 12px", fontSize: 20 }}>
