@@ -43,23 +43,33 @@ type ChecklistItem = {
   completed: boolean;
 };
 
+const SYMBOL = {
+  back: "\u2190",
+  close: "\u00D7",
+  edit: "\u270F",
+  up: "\u2191",
+  down: "\u2193",
+  collapsed: "\u25B8",
+  expanded: "\u25BE",
+};
+
 const DEFAULT_CATEGORIES = [
-  "ðŸ”§ Maintenance",
-  "ðŸ§¹ Cleaning",
-  "ðŸŒ¿ Landscaping",
-  "ðŸš¿ Pool & Spa",
-  "ðŸ’§ Irrigation",
-  "âš¡ Electrical",
-  "ðŸš° Plumbing",
-  "â„ï¸ HVAC",
-  "ðŸš¤ Dock & Marine",
-  "ðŸš— Vehicles",
-  "ðŸ  House",
-  "ðŸ“¦ Inventory",
-  "ðŸ“‹ Project",
-  "âœ… Inspection",
-  "ðŸš¨ Safety",
-  "ðŸ“„ Admin",
+  "\u{1F527} Maintenance",
+  "\u{1F9F9} Cleaning",
+  "\u{1F33F} Landscaping",
+  "\u{1F6BF} Pool & Spa",
+  "\u{1F4A7} Irrigation",
+  "\u26A1 Electrical",
+  "\u{1F6B0} Plumbing",
+  "\u2744\uFE0F HVAC",
+  "\u{1F6A4} Dock & Marine",
+  "\u{1F697} Vehicles",
+  "\u{1F3E0} House",
+  "\u{1F4E6} Inventory",
+  "\u{1F4CB} Project",
+  "\u2705 Inspection",
+  "\u{1F6A8} Safety",
+  "\u{1F4C4} Admin",
 ];
 
 const DEFAULT_SECTIONS: WorkSection[] = [
@@ -91,7 +101,7 @@ function itemType(record: any): WorkItemType {
 }
 
 function categoryLabel(record: any) {
-  return String(record.workCategory || record.category || "ðŸ”§ Maintenance");
+  return String(record.workCategory || record.category || "🔧 Maintenance");
 }
 
 function categoryEmoji(category: string) {
@@ -100,7 +110,7 @@ function categoryEmoji(category: string) {
     .match(
       /^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u,
     );
-  return match?.[1] || "ðŸ”§";
+  return match?.[1] || "🔧";
 }
 
 function categoryDisplayLabel(category: string) {
@@ -300,6 +310,7 @@ type AtlasWorkOrdersProps = {
   inputStyle: React.CSSProperties;
   byName: (records: any[]) => any[];
   assetRecords: any[];
+  assetPhotoRecords?: any[];
   vendorRecords: any[];
   locationRecords?: any[];
   contactRecords?: any[];
@@ -355,6 +366,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     inputStyle,
     byName,
     assetRecords,
+    assetPhotoRecords = [],
     vendorRecords,
     locationRecords = [],
     contactRecords = [],
@@ -416,7 +428,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }>({
     title: "",
     workType: "Work Order",
-    workCategory: "ðŸ”§ Maintenance",
+    workCategory: "🔧 Maintenance",
     priority: "Medium",
     date: "",
   });
@@ -595,6 +607,31 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     );
   };
 
+  function assetPhotoPatch(assetId: string) {
+    if (!assetId || (selectedService.photos || []).length) {
+      return { assetId };
+    }
+    const photo = [...assetPhotoRecords]
+      .filter((item: any) => item.assetId === assetId && photoSource(item))
+      .sort((a: any, b: any) =>
+        String(a.createdAt || "").localeCompare(String(b.createdAt || "")),
+      )[0];
+    return photo
+      ? {
+          assetId,
+          photos: [
+            {
+              id: photo.id,
+              name: photo.name || "Asset photo",
+              dataUrl: photo.dataUrl,
+              url: photo.url,
+              createdAt: photo.createdAt,
+            },
+          ],
+        }
+      : { assetId };
+  }
+
   const visibleRecords = useMemo(() => {
     if (!activeSection) return [];
     const matchingRecords = filteredServices.filter((record: any) => {
@@ -755,7 +792,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     if (sections.length <= 1) return;
     if (
       !window.confirm(
-        `Remove the section â€œ${section.label}â€ from this screen? Work records will not be deleted.`,
+        `Remove the section “${section.label}” from this screen? Work records will not be deleted.`,
       )
     ) {
       return;
@@ -878,10 +915,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       workType,
       workCategory:
         workType === "Quick Task"
-          ? "ðŸ§¹ Cleaning"
+          ? "🧹 Cleaning"
           : workType === "Project"
-            ? "ðŸ“‹ Project"
-            : "ðŸ”§ Maintenance",
+            ? "📋 Project"
+            : "🔧 Maintenance",
       priority: "Medium",
       date:
         workType === "Quick Task"
@@ -1121,18 +1158,18 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               {record.title || "Untitled Work"}
             </strong>
             <p style={{ ...mutedSmallStyle, marginTop: 4 }}>
-              {categoryDisplayLabel(category)} Â· {type}
+              {categoryDisplayLabel(category)} · {type}
             </p>
             <p style={{ ...mutedSmallStyle, marginTop: 2 }}>
               {record.date
                 ? `${record.recurring ? "Next due" : "Due"} ${formatDate(record.date)}`
                 : "No due date"}
-              {record.priority ? ` Â· ${record.priority} priority` : ""}
+              {record.priority ? ` · ${record.priority} priority` : ""}
             </p>
             {record.assetId || record.vendorId ? (
               <p style={{ ...mutedSmallStyle, marginTop: 2 }}>
                 {record.assetId ? assetName(record.assetId) : ""}
-                {record.assetId && record.vendorId ? " Â· " : ""}
+                {record.assetId && record.vendorId ? " · " : ""}
                 {record.vendorId ? vendorName(record.vendorId) : ""}
               </p>
             ) : null}
@@ -1168,10 +1205,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       { id: "upcoming", label: "Upcoming", records: myWorkGroups.upcoming },
       {
         id: "maintenance",
-        label: "ðŸ” Recurring Maintenance",
+        label: "🔁 Recurring Maintenance",
         records: myWorkGroups.maintenance,
       },
-      { id: "projects", label: "ðŸ“‹ Projects", records: myWorkGroups.projects },
+      { id: "projects", label: "📋 Projects", records: myWorkGroups.projects },
     ];
     return (
       <div style={{ display: "grid", gap: 14 }}>
@@ -1214,7 +1251,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={recurringBadgeStyle}>{group.records.length}</span>
                 <span aria-hidden="true">
-                  {collapsedGroups[group.id] ? "â–¸" : "â–¾"}
+                  {collapsedGroups[group.id] ? SYMBOL.collapsed : SYMBOL.expanded}
                 </span>
               </span>
             </button>
@@ -1471,7 +1508,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       {planContext.todayCalendar.length} calendar item
                       {planContext.todayCalendar.length === 1 ? "" : "s"}
                       {planContext.todayWeather
-                        ? ` Â· ${Math.round(Number(planContext.todayWeather.high || 0))}Â° high Â· ${Math.round(Number(planContext.todayWeather.precipChance || 0))}% rain`
+                        ? ` · ${Math.round(Number(planContext.todayWeather.high || 0))}° high · ${Math.round(Number(planContext.todayWeather.precipChance || 0))}% rain`
                         : ""}
                     </div>
                   </div>
@@ -1502,8 +1539,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         </strong>
                         <br />
                         <small style={mutedSmallStyle}>
-                          {record.effort || "30 minutes"} Â·{" "}
-                          {record.locationId || assetName(record.assetId)} Â·{" "}
+                          {record.effort || "30 minutes"} ·{" "}
+                          {record.locationId || assetName(record.assetId)} ·{" "}
                           {formatDate(record.date)}
                         </small>
                       </span>
@@ -1915,7 +1952,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   }}
                   aria-label="Back to work orders"
                 >
-                  â† Back to Work Orders
+                  {SYMBOL.back} Back to Work Orders
                 </button>
                 <button
                   type="button"
@@ -1935,7 +1972,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   aria-label="Close work order details"
                   title="Close"
                 >
-                  Ã—
+                  {SYMBOL.close}
                 </button>
                 </span>
               </div>
@@ -1960,7 +1997,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         )}
                       </div>
                       {!workEditorOpen ? (
-                        <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: 34, minWidth: 34, height: 34, minHeight: 34, padding: 0, borderRadius: 8 }} aria-label="Edit work order details" title="Edit work order details">âœ</button>
+                        <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: 34, minWidth: 34, height: 34, minHeight: 34, padding: 0, borderRadius: 8 }} aria-label="Edit work order details" title="Edit work order details">{SYMBOL.edit}</button>
                       ) : null}
                     </div>
 
@@ -2001,7 +2038,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
                 <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Atlas Assignment</div>
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder({ assetId: event.currentTarget.value })} style={inputStyle}><option value="">No linked asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder(assetPhotoPatch(event.currentTarget.value))} style={inputStyle}><option value="">No linked asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => updateWorkOrder({ locationId: event.currentTarget.value })} style={inputStyle}><option value="">No linked location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => updateWorkOrder({ workCategory: event.currentTarget.value, emoji: categoryEmoji(event.currentTarget.value) })} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => updateWorkOrder({ assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select></label>
@@ -2111,7 +2148,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                             {new Date(entry.completedAt).toLocaleString()}
                           </strong>
                           <div style={mutedSmallStyle}>
-                            Due {formatDate(entry.dueDate)} Â·{" "}
+                            Due {formatDate(entry.dueDate)} ·{" "}
                             {entry.statusBefore}
                           </div>
                           <div style={mutedSmallStyle}>
@@ -2121,7 +2158,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                               ).length
                             }
                             /{(entry.checklist || []).length} checklist items
-                            complete Â· {(entry.photos || []).length} photo(s)
+                            complete · {(entry.photos || []).length} photo(s)
                           </div>
                           {entry.notes ? (
                             <p style={{ marginBottom: 0 }}>{entry.notes}</p>
@@ -2495,7 +2532,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             onClick={() => setCompletedHistoryOpen((open) => !open)}
             style={{ ...secondaryButtonStyle, fontWeight: 500 }}
           >
-            {completedHistoryOpen ? "Hide History â†‘" : "Show History â†“"}
+            {completedHistoryOpen ? `Hide History ${SYMBOL.up}` : `Show History ${SYMBOL.down}`}
           </button>
         </div>
 
@@ -2621,13 +2658,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         <span style={{ fontSize: 13 }}>
                           {completedTime(record)
                             ? new Date(completedTime(record)).toLocaleString()
-                            : "â€”"}
+                            : "—"}
                         </span>
                         <span style={{ fontSize: 13 }}>
-                          {record.assetId ? assetName(record.assetId) : "â€”"}
+                          {record.assetId ? assetName(record.assetId) : "—"}
                         </span>
                         <span style={{ fontSize: 13 }}>
-                          {location?.name || "â€”"}
+                          {location?.name || "—"}
                         </span>
                         <span style={{ fontSize: 13 }}>
                           {categoryDisplayLabel(categoryLabel(record))}
@@ -2683,7 +2720,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     }
                     style={{ ...secondaryButtonStyle, fontWeight: 500 }}
                   >
-                    Load More â†“
+                    Load More {SYMBOL.down}
                   </button>
                 ) : completedHistoryRecords.length > 5 ? (
                   <button
@@ -2691,7 +2728,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     onClick={() => setCompletedHistoryLimit(5)}
                     style={{ ...secondaryButtonStyle, fontWeight: 500 }}
                   >
-                    Show Less â†‘
+                    Show Less {SYMBOL.up}
                   </button>
                 ) : null}
               </div>
