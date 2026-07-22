@@ -11744,10 +11744,24 @@ export default function AtlasPage() {
         eyebrow="Property Records"
         title="Assets"
         isMobile={isMobile}
-        drawerResetKey={selectedAssetId}
+        drawerResetKey={selectedAssetId || "asset-empty"}
+        mobileDrawerOpen={isMobile && Boolean(selectedAssetId)}
+        onMobileDrawerClose={() => {
+          setSelectedAssetId("");
+          setAssetEditorOpen(false);
+        }}
+        mobileDrawerTitle={selectedAsset.name || "Asset Details"}
+        gridStyleOverride={
+          isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined
+        }
+        listPanelStyleOverride={
+          isMobile
+            ? { minWidth: 0, overflowX: "hidden", padding: 0 }
+            : undefined
+        }
         drawerStyleOverride={
           isMobile
-            ? undefined
+            ? { minWidth: 0, overflowX: "hidden" }
             : {
                 position: "sticky",
                 top: 8,
