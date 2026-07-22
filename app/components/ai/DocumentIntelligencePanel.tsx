@@ -74,6 +74,8 @@ export default function DocumentIntelligencePanel({
 }: Props) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedMessage, setSavedMessage] = useState("");
   const [message, setMessage] = useState(
     "Analyze this document to extract equipment, vendor, date, and maintenance information.",
   );
@@ -166,6 +168,9 @@ export default function DocumentIntelligencePanel({
   }
 
   async function applySuggestion(suggestion: Suggestion) {
+    if (saving) return;
+    setSaving(true);
+    setSavedMessage("");
     const notes = [
       document.notes,
       analysis?.summary ? `AI review summary: ${analysis.summary}` : "",
@@ -174,16 +179,23 @@ export default function DocumentIntelligencePanel({
       analysis?.serial ? `Serial: ${analysis.serial}` : "",
       analysis?.date ? `Document date: ${analysis.date}` : "",
     ].filter(Boolean).join("\n");
-    await onApply({
-      targetType: suggestion.kind,
-      targetId: suggestion.id,
-      targetName: suggestion.name,
-      area: suggestion.name,
-      linkedAssetId: suggestion.kind === "Asset" ? suggestion.id : undefined,
-      linkedVendorId: suggestion.kind === "Vendor" ? suggestion.id : undefined,
-      notes,
-    });
-    setMessage(`Linked to ${suggestion.name}.`);
+    try {
+      await onApply({
+        targetType: suggestion.kind,
+        targetId: suggestion.id,
+        targetName: suggestion.name,
+        area: suggestion.name,
+        linkedAssetId: suggestion.kind === "Asset" ? suggestion.id : undefined,
+        linkedVendorId: suggestion.kind === "Vendor" ? suggestion.id : undefined,
+        notes,
+      });
+      setMessage(`Linked to ${suggestion.name}.`);
+      setSavedMessage(`Link approved and document saved to ${suggestion.name}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The link could not be saved.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const fields = analysis
@@ -212,6 +224,7 @@ export default function DocumentIntelligencePanel({
         </button>
       </div>
       <div style={{ color: colors.muted, fontSize: 12, lineHeight: 1.5 }}>{message}</div>
+      {savedMessage ? <div role="status" style={{ border: "1px solid #86C89A", borderRadius: 9, background: "#EFFAF2", color: "#176B33", padding: "9px 11px", fontSize: 12, fontWeight: 900 }}>{savedMessage}</div> : null}
 
       {analysis?.summary ? <div style={{ color: colors.navy, lineHeight: 1.55 }}><strong>Summary:</strong> {analysis.summary}</div> : null}
       {fields.length ? (
@@ -225,8 +238,8 @@ export default function DocumentIntelligencePanel({
           <strong style={{ color: colors.navy }}>Suggested record links</strong>
           {suggestions.map((suggestion) => (
             <div key={`${suggestion.kind}-${suggestion.id}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card, padding: 9 }}>
-              <span style={{ minWidth: 0 }}><strong style={{ display: "block", color: colors.navy }}>{suggestion.name}</strong><small style={{ color: colors.muted }}>{suggestion.kind} · {suggestion.reason}</small></span>
-              <button type="button" onClick={() => void applySuggestion(suggestion)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, background: colors.panel, color: colors.navy, padding: "7px 9px", fontWeight: 850, cursor: "pointer", whiteSpace: "nowrap" }}>Approve Link</button>
+              <span style={{ minWidth: 0 }}><strong style={{ display: "block", color: colors.navy }}>{suggestion.name}</strong><small style={{ color: colors.muted }}>{suggestion.kind} Â· {suggestion.reason}</small></span>
+              <button type="button" disabled={saving} onClick={() => void applySuggestion(suggestion)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, background: colors.panel, color: colors.navy, padding: "7px 9px", fontWeight: 850, cursor: saving ? "wait" : "pointer", whiteSpace: "nowrap" }}>{saving ? "Saving..." : "Approve Link"}</button>
             </div>
           ))}
         </div>
@@ -234,4 +247,3 @@ export default function DocumentIntelligencePanel({
     </section>
   );
 }
-
