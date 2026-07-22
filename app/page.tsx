@@ -43,6 +43,7 @@ import MaintenancePlanningIntelligence, {
 import AtlasIntelligenceRecommendations from "./components/ai/AtlasIntelligenceRecommendations";
 import DocumentIntelligencePanel from "./components/ai/DocumentIntelligencePanel";
 import PhotoIntelligencePanel from "./components/ai/PhotoIntelligencePanel";
+import AtlasGroupedSearchResults from "./components/ai/AtlasGroupedSearchResults";
 import { findRelatedRecords } from "./lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -20107,45 +20108,14 @@ export default function AtlasPage() {
                       {query.trim() ? (
                         <>
                           {searchResults.length ? (
-                            searchResults.map((result, index) => (
-                              <button
-                                key={result.id}
-                                type="button"
-                                onMouseEnter={() => setSearchActiveIndex(index)}
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                  openSearchResult(result);
-                                }}
-                                style={{
-                                  ...searchResultStyle,
-                                  ...(index === searchActiveIndex
-                                    ? {
-                                        background: "#FFF9E8",
-                                        borderColor: colors.gold2,
-                                      }
-                                    : {}),
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    gap: 10,
-                                    alignItems: "center",
-                                  }}
-                                >
-                                  <strong>
-                                    {highlightedSearchText(result.title)}
-                                  </strong>
-                                  <span style={searchTypeBadgeStyle}>
-                                    {result.type}
-                                  </span>
-                                </span>
-                                <span style={mutedSmallStyle}>
-                                  {highlightedSearchText(result.subtitle)}
-                                </span>
-                              </button>
-                            ))
+                            <AtlasGroupedSearchResults
+                              results={searchResults}
+                              activeIndex={searchActiveIndex}
+                              query={query}
+                              onHover={setSearchActiveIndex}
+                              onOpen={openSearchResult}
+                              highlight={highlightedSearchText}
+                            />
                           ) : (
                             <div style={searchEmptyStyle}>
                               No direct Atlas records match “{query.trim()}”.
