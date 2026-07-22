@@ -142,13 +142,13 @@ function dayDistance(dateValue: string) {
 
 function myWorkGroup(record: any) {
   if (record.status === "Completed") return "";
+  const distance = dayDistance(String(record.date || ""));
+  if (distance <= 0) return "today";
   const type = itemType(record);
   if (type === "Project") return "projects";
   if (type === "Preventive Maintenance" || record.recurring) {
     return "maintenance";
   }
-  const distance = dayDistance(String(record.date || ""));
-  if (distance <= 0) return "today";
   if (distance <= 7) return "week";
   return "upcoming";
 }
