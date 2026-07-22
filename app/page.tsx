@@ -3484,6 +3484,28 @@ export default function AtlasPage() {
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const documentListScrollYRef = useRef(0);
   const documentOverlayScrollRef = useRef<HTMLDivElement>(null);
+  const intakePhotoNameRef = useRef<HTMLInputElement>(null);
+  const intakeHasPhoto = intakeFiles.some((file) =>
+    (file.type || "").startsWith("image/"),
+  );
+  const normalizedIntakePhotoName = intakeTitle
+    .trim()
+    .replace(/\.[a-z0-9]{2,5}$/i, "");
+  const intakePhotoNeedsName =
+    intakeHasPhoto &&
+    (!normalizedIntakePhotoName ||
+      /^(?:img|image|photo|picture|camera|dsc|pxl|screenshot|pasted[-_ ]?image)[-_ ]?\d*$/i.test(
+        normalizedIntakePhotoName,
+      ) ||
+      /^\d{8,}$/.test(normalizedIntakePhotoName.replace(/[-_ ]/g, "")));
+
+  useEffect(() => {
+    if (!intakePhotoNeedsName) return;
+    window.setTimeout(() => {
+      intakePhotoNameRef.current?.focus();
+      intakePhotoNameRef.current?.select();
+    }, 50);
+  }, [intakeFiles.length, intakePhotoNeedsName]);
 
   useEffect(() => {
     try {
@@ -5380,7 +5402,7 @@ export default function AtlasPage() {
     }
 
     if (!intakeTargetOptions.some((option) => option.id === intakeTargetId)) {
-      setIntakeTargetId(intakeTargetOptions[0].id);
+      setIntakeTargetId("");
     }
   }, [intakeTargetKind, intakeTargetOptions, intakeTargetId]);
 
@@ -5951,6 +5973,7 @@ export default function AtlasPage() {
   function applyFastIntakeKind(kind: FastIntakeKind) {
     setFastIntakeKind(kind);
     setIntakeType(kind);
+    setIntakeTargetId("");
 
     if (kind === "Asset Label") {
       setFastIntakeSaveMode("Attach to Existing");
@@ -5999,12 +6022,12 @@ export default function AtlasPage() {
       setIntakeMessage("Adding file(s) to intake...");
       const uploaded = await Promise.all(files.map(fileToUploadedRecord));
       setIntakeFiles((current) => [...current, ...uploaded]);
-      setIntakeTitle(
-        (current) =>
-          current ||
-          uploaded[0]?.name?.replace(/\.[^.]+$/, "") ||
-          "New Document",
-      );
+      setIntakeTitle((current) => {
+        if (current) return current;
+        const first = uploaded[0];
+        if ((first?.type || "").startsWith("image/")) return "";
+        return first?.name?.replace(/\.[^.]+$/, "") || "New Document";
+      });
       setIntakeMessage(`${uploaded.length} file(s) ready to save into Atlas.`);
     } catch {
       setIntakeMessage(
@@ -6772,6 +6795,14 @@ export default function AtlasPage() {
       setIntakeMessage(
         "Add a photo, file, pasted text, or note before saving.",
       );
+      return;
+    }
+
+    if (intakePhotoNeedsName) {
+      setIntakeMessage(
+        "Name this photo before saving so it will be easy to find later.",
+      );
+      intakePhotoNameRef.current?.focus();
       return;
     }
 
@@ -14489,7 +14520,15 @@ export default function AtlasPage() {
       setIntakeMessage(
         "Add a file, pasted text, or notes before saving to the Inbox.",
       );
-      return;
+      return null;
+    }
+
+    if (intakePhotoNeedsName) {
+      setIntakeMessage(
+        "Name this photo before continuing so it will be easy to find later.",
+      );
+      intakePhotoNameRef.current?.focus();
+      return null;
     }
 
     const title =
@@ -14534,10 +14573,12 @@ export default function AtlasPage() {
       setIntakeMessage("Saved to Atlas Inbox. Nothing else was changed.");
       resetIntakeDraft();
       setScreen("inbox");
+      return saved;
     } catch (error) {
       setIntakeMessage(
         error instanceof Error ? error.message : "Inbox save failed.",
       );
+      return null;
     }
   }
 
@@ -15992,6 +16033,36 @@ export default function AtlasPage() {
                 </label>
               </div>
 
+              {intakeHasPhoto ? (
+                <label
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    marginTop: 14,
+                    padding: 12,
+                    border: `2px solid ${
+                      intakePhotoNeedsName ? colors.gold : colors.green
+                    }`,
+                    borderRadius: 10,
+                    background: intakePhotoNeedsName ? "#FFF8E8" : "#EFFAF2",
+                  }}
+                >
+                  <span style={{ ...fieldLabelStyle, fontSize: 13 }}>
+                    Name this photo before continuing
+                  </span>
+                  <input
+                    ref={intakePhotoNameRef}
+                    value={intakeTitle}
+                    onChange={(event) => setIntakeTitle(event.currentTarget.value)}
+                    placeholder="Example: Basement Freezer label"
+                    style={inputStyle}
+                  />
+                  <span style={mutedSmallStyle}>
+                    Use a useful searchable name—not the camera filename.
+                  </span>
+                </label>
+              ) : null}
+
               {intakeFiles.length ? (
                 <details style={{ marginTop: 14, border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }} open>
                   <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Attached Files ({intakeFiles.length})</summary>
@@ -16180,6 +16251,7 @@ export default function AtlasPage() {
                           }
                           style={inputStyle}
                         >
+                          <option value="">None selected</option>
                           {intakeTargetOptions.map((option) => (
                             <option key={option.id} value={option.id}>
                               {option.name}
@@ -16292,20 +16364,54 @@ export default function AtlasPage() {
             </div>
 
             <div style={buttonRowStyle}>
+              {fastIntakeKind === "Asset Label" && intakeFiles.length ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      const saved = await createInboxItemFromDraft();
+                      if (saved) await analyzeInboxItem(saved);
+                    })();
+                  }}
+                  disabled={intakePhotoNeedsName}
+                  style={{
+                    ...goldButtonStyle,
+                    opacity: intakePhotoNeedsName ? 0.55 : 1,
+                  }}
+                >
+                  Save to Inbox &amp; Analyze
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void createInboxItemFromDraft()}
-                style={goldButtonStyle}
+                disabled={intakePhotoNeedsName}
+                style={
+                  fastIntakeKind === "Asset Label" && intakeFiles.length
+                    ? {
+                        ...secondaryButtonStyle,
+                        opacity: intakePhotoNeedsName ? 0.55 : 1,
+                      }
+                    : {
+                        ...goldButtonStyle,
+                        opacity: intakePhotoNeedsName ? 0.55 : 1,
+                      }
+                }
               >
                 Save to Inbox
               </button>
               <button
                 type="button"
                 onClick={() => void saveIntakeDocument()}
-                disabled={Boolean(fastIntakeDuplicateWarning)}
+                disabled={
+                  Boolean(fastIntakeDuplicateWarning) || intakePhotoNeedsName
+                }
                 style={{
                   ...goldButtonStyle,
-                  opacity: fastIntakeDuplicateWarning ? 0.55 : 1,
+                  opacity:
+                    fastIntakeDuplicateWarning || intakePhotoNeedsName
+                      ? 0.55
+                      : 1,
                 }}
               >
                 Approve and Save
