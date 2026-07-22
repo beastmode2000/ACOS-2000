@@ -4855,6 +4855,7 @@ export default function AtlasPage() {
     weatherDays.find((day) => day.date === selectedWeatherDate) ??
     weatherDays[0];
   const selectedCalendar = calendarDraft;
+
   function dirtyKey(recordType: string, id?: string) {
     return `${recordType}:${id || ""}`;
   }
@@ -5544,6 +5545,7 @@ export default function AtlasPage() {
         detail: item.notes,
         screen: "locations" as Screen,
         locationId: item.id,
+        relatedIds: [`location:${item.id}`],
       })),
       ...mapLabels.map((item) => ({
         id: `map-${item.id}`,
@@ -5559,6 +5561,10 @@ export default function AtlasPage() {
         ].join(" "),
         screen: "map" as Screen,
         mapLabelId: item.id,
+        relatedIds: [
+          `map:${item.id}`,
+          ...(item.vendorIds || []).map((id) => `vendor:${id}`),
+        ],
       })),
       ...assetRecords.map((item) => ({
         id: `asset-${item.id}`,
@@ -5568,6 +5574,11 @@ export default function AtlasPage() {
         detail: [item.make, item.model, item.serial, item.notes].join(" "),
         screen: "assets" as Screen,
         assetId: item.id,
+        relatedIds: [
+          `asset:${item.id}`,
+          item.locationId ? `location:${item.locationId}` : "",
+          ...(item.vendorIds || []).map((id) => `vendor:${id}`),
+        ].filter(Boolean),
       })),
       ...vendorRecords.map((item) => ({
         id: `vendor-${item.id}`,
@@ -5577,6 +5588,7 @@ export default function AtlasPage() {
         detail: [item.phone, item.email, item.website, item.notes].join(" "),
         screen: "vendors" as Screen,
         vendorId: item.id,
+        relatedIds: [`vendor:${item.id}`],
       })),
       ...contactRecords.map((item) => ({
         id: `contact-${item.id}`,
@@ -5595,6 +5607,7 @@ export default function AtlasPage() {
         ].join(" "),
         screen: "contacts" as Screen,
         contactId: item.id,
+        relatedIds: [`contact:${item.id}`],
       })),
       ...serviceRecords.map((item) => ({
         id: `wo-${item.id}`,
@@ -5604,6 +5617,17 @@ export default function AtlasPage() {
         detail: `${assetName(item.assetId)} ${vendorName(item.vendorId)} ${item.notes}`,
         screen: "history" as Screen,
         serviceId: item.id,
+        assetId: item.assetId || undefined,
+        vendorId: item.vendorId || undefined,
+        procedureId: item.procedureId || undefined,
+        locationId: item.locationId || undefined,
+        relatedIds: [
+          `work-order:${item.id}`,
+          item.assetId ? `asset:${item.assetId}` : "",
+          item.vendorId ? `vendor:${item.vendorId}` : "",
+          item.procedureId ? `procedure:${item.procedureId}` : "",
+          item.locationId ? `location:${item.locationId}` : "",
+        ].filter(Boolean),
       })),
       ...procedureRecords.map((item) => ({
         id: `procedure-${item.id}`,
@@ -5613,6 +5637,12 @@ export default function AtlasPage() {
         detail: item.steps.join(" "),
         screen: "procedures" as Screen,
         procedureId: item.id,
+        relatedIds: [
+          `procedure:${item.id}`,
+          ...(item.linkedAssetIds || []).map((id) => `asset:${id}`),
+          ...(item.linkedLocationIds || []).map((id) => `location:${id}`),
+          ...(item.linkedVendorIds || []).map((id) => `vendor:${id}`),
+        ],
       })),
       ...calendarItems.map((item) => ({
         id: `calendar-${item.id}`,
@@ -5622,6 +5652,21 @@ export default function AtlasPage() {
         detail: `${item.area} ${item.notes || ""} ${item.linkedName || ""}`,
         screen: "calendar" as Screen,
         calendarId: item.id,
+        relatedIds: [
+          `calendar:${item.id}`,
+          item.linkedId && item.linkedType === "Asset"
+            ? `asset:${item.linkedId}`
+            : "",
+          item.linkedId && item.linkedType === "Location"
+            ? `location:${item.linkedId}`
+            : "",
+          item.linkedId && item.linkedType === "Vendor"
+            ? `vendor:${item.linkedId}`
+            : "",
+          item.linkedId && item.linkedType === "Work Order"
+            ? `work-order:${item.linkedId}`
+            : "",
+        ].filter(Boolean),
       })),
       ...partRecords.map((item) => ({
         id: `part-${item.id}`,
@@ -5631,6 +5676,12 @@ export default function AtlasPage() {
         detail: item.notes,
         screen: "parts" as Screen,
         partId: item.id,
+        relatedIds: [
+          `part:${item.id}`,
+          item.locationId ? `location:${item.locationId}` : "",
+          item.assetId ? `asset:${item.assetId}` : "",
+          item.vendorId ? `vendor:${item.vendorId}` : "",
+        ].filter(Boolean),
       })),
       ...allDocuments.map((item) => ({
         id: `document-${item.id}`,
@@ -5639,6 +5690,21 @@ export default function AtlasPage() {
         subtitle: `${item.type} · ${item.area}`,
         detail: `${item.notes} ${item.pastedText || ""} ${item.targetName || ""}`,
         screen: "documents" as Screen,
+        relatedIds: [
+          `document:${item.id}`,
+          item.targetId && item.targetType === "Asset"
+            ? `asset:${item.targetId}`
+            : "",
+          item.targetId && item.targetType === "Location"
+            ? `location:${item.targetId}`
+            : "",
+          item.targetId && item.targetType === "Vendor"
+            ? `vendor:${item.targetId}`
+            : "",
+          item.targetId && item.targetType === "Work Order"
+            ? `work-order:${item.targetId}`
+            : "",
+        ].filter(Boolean),
       })),
       ...photos.map((item) => ({
         id: `photo-${item.id}`,
@@ -5648,6 +5714,10 @@ export default function AtlasPage() {
         detail: `${assetName(item.assetId)} ${item.createdAt || ""}`,
         screen: "assets" as Screen,
         assetId: item.assetId,
+        relatedIds: [
+          `photo:${item.id}`,
+          item.assetId ? `asset:${item.assetId}` : "",
+        ].filter(Boolean),
       })),
       ...allManualRecords.map((item) => ({
         id: `manual-${item.id}`,
@@ -5657,6 +5727,10 @@ export default function AtlasPage() {
         detail: `${item.manufacturer} ${item.model} ${item.documentNumber} ${item.notes}`,
         screen: "manuals" as Screen,
         manualId: item.id,
+        relatedIds: [
+          `manual:${item.id}`,
+          item.linkedAssetId ? `asset:${item.linkedAssetId}` : "",
+        ].filter(Boolean),
       })),
       ...workLinks.map((item) => ({
         id: `link-${item.id}`,
@@ -24090,4 +24164,3 @@ const linkStyle: React.CSSProperties = {
 };
 
       
-
