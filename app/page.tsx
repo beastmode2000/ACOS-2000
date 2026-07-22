@@ -11124,6 +11124,36 @@ export default function AtlasPage() {
           ),
         )
       : [];
+    const locationAssetIds = new Set(locationAssets.map((asset) => asset.id));
+    const locationWorkOrders = selectedLocation.id
+      ? serviceRecords.filter((record) =>
+          selectedLocation.id === "general"
+            ? true
+            : record.locationId === selectedLocation.id ||
+              locationAssetIds.has(record.assetId),
+        )
+      : [];
+    const locationHistory = locationWorkOrders
+      .flatMap((record) => {
+        const savedCompletions = (record.serviceHistory || []).map((entry) => ({
+          id: `${record.id}-${entry.id}`,
+          workOrderId: record.id,
+          date: entry.completedAt || record.lastCompletedDate || record.date,
+          title: record.title,
+          status: "Completed" as ServiceStatus,
+        }));
+        if (savedCompletions.length) return savedCompletions;
+        return [
+          {
+            id: record.id,
+            workOrderId: record.id,
+            date: record.lastCompletedDate || record.date,
+            title: record.title,
+            status: record.status,
+          },
+        ];
+      })
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 
     return (
       <ListDrawerLayout
@@ -11450,6 +11480,60 @@ export default function AtlasPage() {
                   <p style={mutedSmallStyle}>
                     No assets are assigned to this location.
                   </p>
+                )}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>
+                      {selectedLocation.id === "general"
+                        ? "Property History"
+                        : "Location History"}
+                    </div>
+                    <strong>{locationHistory.length} work records</strong>
+                  </div>
+                  <span style={mutedSmallStyle}>Newest first</span>
+                </div>
+                {locationHistory.length ? (
+                  <div style={{ display: "grid", gap: 7 }}>
+                    {locationHistory.slice(0, 12).map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedServiceId(entry.workOrderId);
+                          setScreen("history");
+                        }}
+                        style={{
+                          ...compactLinkedRowStyle,
+                          width: "100%",
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 10,
+                          padding: "9px 10px",
+                        }}
+                      >
+                        <span style={{ minWidth: 0 }}>
+                          <strong>{entry.title}</strong>
+                          <small style={mutedSmallStyle}>
+                            {entry.date ? formatDate(String(entry.date).slice(0, 10)) : "No date"}
+                          </small>
+                        </span>
+                        <span style={badgeStyle(entry.status)}>{entry.status}</span>
+                      </button>
+                    ))}
+                    {locationHistory.length > 12 ? (
+                      <button
+                        type="button"
+                        onClick={() => setScreen("history")}
+                        style={secondaryButtonStyle}
+                      >
+                        View All Property Work
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p style={mutedSmallStyle}>No work history is linked yet.</p>
                 )}
               </section>
 
@@ -16106,6 +16190,7 @@ export default function AtlasPage() {
     const requestIsCompleted = (request: OwnerRequestRecord) => {
       const linked = linkedWorkOrderFor(request);
       return (
+        request.status === "Converted to Work Order" ||
         request.status === "Closed" ||
         request.status === "Declined" ||
         linked?.status === "Completed"
