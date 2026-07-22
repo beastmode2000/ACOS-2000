@@ -42,6 +42,7 @@ import MaintenancePlanningIntelligence, {
 } from "./components/ai/MaintenancePlanningIntelligence";
 import AtlasIntelligenceRecommendations from "./components/ai/AtlasIntelligenceRecommendations";
 import DocumentIntelligencePanel from "./components/ai/DocumentIntelligencePanel";
+import PhotoIntelligencePanel from "./components/ai/PhotoIntelligencePanel";
 import { findRelatedRecords } from "./lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -12352,6 +12353,37 @@ export default function AtlasPage() {
                   ) : (
                     <div style={assetEmptyStateStyle}>No photos attached.</div>
                   )}
+                  <PhotoIntelligencePanel
+                    asset={selectedAsset}
+                    photos={selectedAssetPhotos}
+                    photoSource={photoSource}
+                    colors={colors}
+                    onSaveAsset={async (patch, summary) => {
+                      const updated = normalizeAsset({
+                        ...selectedAsset,
+                        ...patch,
+                        notes: [selectedAsset.notes, `Photo Intelligence: ${summary}`]
+                          .filter(Boolean)
+                          .join("\n"),
+                      });
+                      const saved = await postAtlasRecord("assets", updated);
+                      if (!saved) throw new Error("Atlas could not save the asset details.");
+                      setAssetRecords((current) =>
+                        byName(current.map((item) => item.id === updated.id ? updated : item)),
+                      );
+                      clearRecordDirty("asset", updated.id);
+                      showSaveToast("Asset details approved and saved.");
+                    }}
+                    onDraftWorkOrder={(draft) =>
+                      addWorkOrder({
+                        assetId: selectedAsset.id,
+                        locationId: selectedAsset.locationId || "",
+                        title: draft.title,
+                        notes: draft.notes,
+                        priority: draft.priority,
+                      })
+                    }
+                  />
                 </section>
               </div>
 
