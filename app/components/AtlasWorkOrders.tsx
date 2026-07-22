@@ -137,7 +137,7 @@ function dayDistance(dateValue: string) {
   const due = parseDate(dateValue);
   if (!due) return Number.POSITIVE_INFINITY;
   const oneDay = 24 * 60 * 60 * 1000;
-  return Math.round((due.getTime() - startOfToday().getTime()) / oneDay);
+  return Math.floor((due.getTime() - startOfToday().getTime()) / oneDay);
 }
 
 function myWorkGroup(record: any) {
