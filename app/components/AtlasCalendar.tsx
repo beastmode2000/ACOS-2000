@@ -628,7 +628,7 @@ export default function AtlasCalendar(
               onClick={closeDetail}
               style={secondaryButtonStyle}
             >
-              ✕ Close
+              X Close
             </button>
           </div>
 
@@ -695,7 +695,7 @@ export default function AtlasCalendar(
                                 }}
                               >
                                 {event.completed
-                                  ? "✓ "
+                                  ? "Done: "
                                   : ""}
                                 {event.title}
                               </strong>
@@ -737,7 +737,7 @@ export default function AtlasCalendar(
                                 background: `${eventColor.hex}18`,
                               }}
                             >
-                              ✓ Done
+                              Done
                             </span>
                           ) : null}
                         </div>
@@ -1337,7 +1337,7 @@ export default function AtlasCalendar(
                   }
                   style={normalControlStyle}
                 >
-                  {isMobile ? "‹" : "Previous"}
+                  Previous
                 </button>
 
                 <button
@@ -1360,7 +1360,7 @@ export default function AtlasCalendar(
                   }
                   style={normalControlStyle}
                 >
-                  {isMobile ? "›" : "Next"}
+                  Next
                 </button>
 
                 {!isMobile ? (
