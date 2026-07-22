@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SearchResult } from "../../lib/atlas-types";
 
 type Props = {
@@ -27,8 +27,32 @@ type Recommendation = {
   title: string;
   detail: string;
   tone: "urgent" | "warning" | "info";
+  group: "Overdue Work" | "Missing Procedures" | "Inventory" | "Documents" | "Service History";
   result: SearchResult;
 };
+
+type Decision = "later" | "resolved" | "dismissed";
+type Decisions = Record<string, Decision>;
+
+const DECISIONS_KEY = "atlas-intelligence-recommendation-decisions-v1";
+
+function readDecisions(): Decisions {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(DECISIONS_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDecisions(value: Decisions) {
+  try {
+    window.localStorage.setItem(DECISIONS_KEY, JSON.stringify(value));
+  } catch {
+    // Recommendation preferences are optional.
+  }
+}
 
 function ageInDays(value: string, today: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return Number.POSITIVE_INFINITY;
@@ -47,6 +71,22 @@ export default function AtlasIntelligenceRecommendations({
   onOpen,
   colors,
 }: Props) {
+  const [decisions, setDecisions] = useState<Decisions>({});
+  const [showFinished, setShowFinished] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  useEffect(() => setDecisions(readDecisions()), []);
+
+  function setDecision(id: string, decision?: Decision) {
+    setDecisions((current) => {
+      const next = { ...current };
+      if (decision) next[id] = decision;
+      else delete next[id];
+      saveDecisions(next);
+      return next;
+    });
+  }
+
   const recommendations = useMemo(() => {
     const next: Recommendation[] = [];
 
@@ -64,6 +104,7 @@ export default function AtlasIntelligenceRecommendations({
           title: `Overdue: ${record.title || "Untitled Work Order"}`,
           detail: `Due ${record.date}${record.priority ? ` · ${record.priority} priority` : ""}`,
           tone: "urgent",
+          group: "Overdue Work",
           result: {
             id: `wo-${record.id}`,
             type: "Work Order",
@@ -93,6 +134,7 @@ export default function AtlasIntelligenceRecommendations({
           title: `Missing procedure: ${asset.name}`,
           detail: "No linked procedure is recorded for this active asset.",
           tone: "warning",
+          group: "Missing Procedures",
           result: {
             id: `asset-${asset.id}`,
             type: "Asset",
@@ -118,6 +160,7 @@ export default function AtlasIntelligenceRecommendations({
           title: `${Number(part.quantity || 0) <= 0 ? "Out of stock" : "Low stock"}: ${part.name}`,
           detail: `Quantity ${Number(part.quantity || 0)} · Minimum ${Number(part.minQuantity || 0)}`,
           tone: Number(part.quantity || 0) <= 0 ? "urgent" : "warning",
+          group: "Inventory",
           result: {
             id: `part-${part.id}`,
             type: "Part",
@@ -144,6 +187,7 @@ export default function AtlasIntelligenceRecommendations({
           title: `Unlinked document: ${document.title || "Untitled Document"}`,
           detail: "This document is not linked to a property record.",
           tone: "info",
+          group: "Documents",
           result: {
             id: `document-${document.id}`,
             type: "Document",
@@ -176,6 +220,7 @@ export default function AtlasIntelligenceRecommendations({
           title: `Review service history: ${asset.name}`,
           detail: "No completed service is recorded within the last 180 days.",
           tone: "info",
+          group: "Service History",
           result: {
             id: `asset-${asset.id}`,
             type: "Asset",
@@ -198,6 +243,21 @@ export default function AtlasIntelligenceRecommendations({
   const warningCount = recommendations.filter(
     (item) => item.tone === "warning",
   ).length;
+  const finishedCount = recommendations.filter((item) =>
+    ["resolved", "dismissed"].includes(decisions[item.id] || ""),
+  ).length;
+  const visibleRecommendations = recommendations.filter((item) =>
+    showFinished
+      ? true
+      : decisions[item.id] !== "resolved" && decisions[item.id] !== "dismissed",
+  );
+  const groups = [
+    "Overdue Work",
+    "Missing Procedures",
+    "Inventory",
+    "Documents",
+    "Service History",
+  ] as const;
 
   return (
     <section
@@ -228,8 +288,58 @@ export default function AtlasIntelligenceRecommendations({
           : "No current record gaps were detected."}
       </p>
 
+      {finishedCount ? (
+        <button
+          type="button"
+          onClick={() => setShowFinished((current) => !current)}
+          style={{
+            marginBottom: 10,
+            border: `1px solid ${colors.line}`,
+            borderRadius: 9,
+            background: colors.panel,
+            color: colors.navy,
+            padding: "7px 9px",
+            cursor: "pointer",
+            fontSize: 11,
+            fontWeight: 850,
+          }}
+        >
+          {showFinished ? "Hide" : "Show"} {finishedCount} resolved or dismissed
+        </button>
+      ) : null}
+
       <div style={{ display: "grid", gap: 8 }}>
-        {recommendations.map((item) => {
+        {groups.map((group) => {
+          const items = visibleRecommendations.filter((item) => item.group === group);
+          if (!items.length) return null;
+          const collapsed = Boolean(collapsedGroups[group]);
+          return (
+            <section key={group} style={{ display: "grid", gap: 7 }}>
+              <button
+                type="button"
+                onClick={() =>
+                  setCollapsedGroups((current) => ({
+                    ...current,
+                    [group]: !current[group],
+                  }))
+                }
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  border: 0,
+                  background: "transparent",
+                  color: colors.navy,
+                  padding: "5px 2px",
+                  cursor: "pointer",
+                  fontWeight: 950,
+                  textAlign: "left",
+                }}
+              >
+                <span>{group}</span>
+                <span>{items.length} {collapsed ? "+" : "-"}</span>
+              </button>
+              {!collapsed
+                ? items.map((item) => {
           const accent =
             item.tone === "urgent"
               ? colors.red
@@ -237,10 +347,8 @@ export default function AtlasIntelligenceRecommendations({
                 ? colors.gold
                 : "#3973B7";
           return (
-            <button
+            <article
               key={item.id}
-              type="button"
-              onClick={() => onOpen(item.result)}
               style={{
                 display: "grid",
                 gap: 4,
@@ -252,14 +360,29 @@ export default function AtlasIntelligenceRecommendations({
                 background: colors.panel,
                 color: colors.navy,
                 textAlign: "left",
-                cursor: "pointer",
               }}
             >
               <strong style={{ fontSize: 13 }}>{item.title}</strong>
               <span style={{ color: colors.muted, fontSize: 11 }}>
                 {item.detail}
               </span>
-            </button>
+              {decisions[item.id] ? (
+                <span style={{ color: colors.muted, fontSize: 10, fontWeight: 850 }}>
+                  Marked {decisions[item.id]}
+                </span>
+              ) : null}
+              <span style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 3 }}>
+                <button type="button" onClick={() => onOpen(item.result)} style={actionStyle(colors)}>Open Record</button>
+                <button type="button" onClick={() => setDecision(item.id, "later")} style={actionStyle(colors)}>Review Later</button>
+                <button type="button" onClick={() => setDecision(item.id, "resolved")} style={actionStyle(colors)}>Resolved</button>
+                <button type="button" onClick={() => setDecision(item.id, "dismissed")} style={actionStyle(colors)}>Dismiss</button>
+                {decisions[item.id] ? <button type="button" onClick={() => setDecision(item.id)} style={actionStyle(colors)}>Undo</button> : null}
+              </span>
+            </article>
+          );
+                })
+                : null}
+            </section>
           );
         })}
       </div>
@@ -267,3 +390,15 @@ export default function AtlasIntelligenceRecommendations({
   );
 }
 
+function actionStyle(colors: Props["colors"]): React.CSSProperties {
+  return {
+    border: `1px solid ${colors.line}`,
+    borderRadius: 7,
+    background: colors.card,
+    color: colors.navy,
+    padding: "5px 7px",
+    cursor: "pointer",
+    fontSize: 10,
+    fontWeight: 800,
+  };
+}
