@@ -3011,6 +3011,16 @@ function ListDrawerLayout(props: {
 }) {
   const drawerScrollRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!props.isMobile || !props.mobileDrawerOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") props.onMobileDrawerClose?.();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [props.isMobile, props.mobileDrawerOpen, props.onMobileDrawerClose]);
+
   useLayoutEffect(() => {
     const resetDrawerScroll = () => {
       const drawer = drawerScrollRef.current;
@@ -3197,7 +3207,7 @@ function ListDrawerLayout(props: {
             display: "grid",
             alignItems: "stretch",
             justifyItems: "stretch",
-            padding: 0,
+            padding: "max(8px, env(safe-area-inset-top)) 8px 0",
           }}
           onClick={(event) => {
             if (event.currentTarget === event.target) {
@@ -3209,13 +3219,14 @@ function ListDrawerLayout(props: {
             ref={drawerScrollRef}
             style={{
               width: "100%",
-              height: "100dvh",
+              height: "calc(100dvh - max(8px, env(safe-area-inset-top)))",
               minWidth: 0,
               overflowY: "auto",
               overflowX: "hidden",
               background: colors.card,
               WebkitOverflowScrolling: "touch",
               overscrollBehavior: "contain",
+              borderRadius: "18px 18px 0 0",
               paddingBottom: "max(24px, env(safe-area-inset-bottom))",
             }}
           >
@@ -3474,7 +3485,9 @@ export default function AtlasPage() {
     const mobileDetailOpen =
       isMobile &&
       ((screen === "documents" && Boolean(selectedDocumentId)) ||
-        (screen === "procedures" && Boolean(selectedProcedureId)));
+        (screen === "procedures" && Boolean(selectedProcedureId)) ||
+        (screen === "locations" && locationMobileDrawerOpen) ||
+        (screen === "map" && mapMobileDrawerOpen));
 
     if (!mobileDetailOpen) return;
 
@@ -3487,7 +3500,14 @@ export default function AtlasPage() {
       document.body.style.overflow = previousOverflow;
       document.body.style.overscrollBehavior = previousOverscroll;
     };
-  }, [isMobile, screen, selectedDocumentId, selectedProcedureId]);
+  }, [
+    isMobile,
+    screen,
+    selectedDocumentId,
+    selectedProcedureId,
+    locationMobileDrawerOpen,
+    mapMobileDrawerOpen,
+  ]);
 
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
@@ -8339,6 +8359,7 @@ export default function AtlasPage() {
     event: React.PointerEvent<HTMLButtonElement>,
     labelId: string,
   ) {
+    if (isMobile) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     draggingLabelRef.current = labelId;
@@ -10796,8 +10817,12 @@ export default function AtlasPage() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setActiveMapPanelTab("info")}
+                    onClick={() => {
+                      if (isMobile) setMapMobileDrawerOpen(false);
+                      else setActiveMapPanelTab("info");
+                    }}
                     style={mapIconButtonStyle}
+                    aria-label={isMobile ? "Close map details" : "Show map information"}
                   >
                     ×
                   </button>
@@ -10966,9 +10991,9 @@ export default function AtlasPage() {
                   {selectedMapLabel.photos?.length ? (
                     <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
                       <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({selectedMapLabel.photos.length})</summary>
-                      <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
+                      <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", overflowX: "hidden", padding: "0 8px 8px" }}>
                       {selectedMapLabel.photos.map((photo) => (
-                        <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 6, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
+                        <div key={photo.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "minmax(0, 1fr) auto auto", alignItems: "center", gap: 6, minWidth: 0, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
                             <button type="button" onClick={() => openUploadedFile(photo)} style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}>{photo.name || "Map photo"}</button>
                             <button
                               type="button"
