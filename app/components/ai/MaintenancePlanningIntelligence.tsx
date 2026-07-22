@@ -552,7 +552,7 @@ export default function MaintenancePlanningIntelligence({
                   cursor: savingId ? "wait" : "pointer",
                 }}
               >
-                ×
+                Close
               </button>
             </div>
 
@@ -877,4 +877,3 @@ function PlanningLine({ label }: { label: string }) {
     </div>
   );
 }
-
