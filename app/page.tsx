@@ -3691,6 +3691,19 @@ export default function AtlasPage() {
     }
   }
 
+  function openSavedAsset(assetId: string) {
+    if (!assetId) return;
+    setInboxReviewOpen(false);
+    setScreen("assets", { replace: true });
+    setSelectedAssetId(assetId);
+
+    window.requestAnimationFrame(() => {
+      setSelectedAssetId(assetId);
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+    window.setTimeout(() => setSelectedAssetId(assetId), 80);
+  }
+
   useEffect(() => {
     return () => {
       if (saveToastTimerRef.current !== null) {
@@ -7061,6 +7074,10 @@ export default function AtlasPage() {
       resetIntakeDraft();
       setIntakeMessage(success);
       setDocumentSearch("");
+      if (finalTargetKind === "Asset" && finalTargetId) {
+        showSaveToast(`${title} was saved to ${finalTargetName}.`);
+        openSavedAsset(finalTargetId);
+      }
     } catch (error) {
       setIntakeMessage(
         error instanceof Error ? error.message : "Fast Intake save failed.",
@@ -15152,13 +15169,11 @@ export default function AtlasPage() {
         status: "Saved",
       });
 
-      setSelectedAssetId(asset.id);
-      setInboxReviewOpen(false);
       setInboxMessage(`Saved to ${asset.name}.`);
       showSaveToast(
         `${item.title} and missing label details were saved to ${asset.name}.`,
       );
-      setScreen("assets");
+      openSavedAsset(asset.id);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "The asset update did not save.";
