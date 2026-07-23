@@ -139,6 +139,16 @@ async function ensureAssetColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS manufacturer text`;
 }
 
+async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_calendar_items ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_documents ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_asset_photos ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+}
+
 
 async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
   await sql`
@@ -600,7 +610,7 @@ function mapPhoto(row: JsonRecord) {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const sql = getSql();
     await ensureAssetColumns(sql);
@@ -608,10 +618,13 @@ export async function GET() {
     await ensureCalendarColumns(sql);
     await ensureContactsTable(sql);
     await ensurePartsTable(sql);
+    await ensurePropertyColumns(sql);
+    const propertyId = asString(request.nextUrl.searchParams.get("propertyId")) || "2000";
 
     const locationRows = (await sql`
       SELECT id, name, type, zone, notes, sort_order
       FROM atlas_locations
+      WHERE property_id = ${propertyId}
       ORDER BY sort_order ASC, name ASC
     `) as unknown as JsonRecord[];
 
@@ -628,6 +641,7 @@ export async function GET() {
     const assetRows = (await sql`
       SELECT id, name, location_id, category, status, make, model, year, manufacturer, serial, notes, vendor_ids, documents
       FROM atlas_assets
+      WHERE property_id = ${propertyId}
       ORDER BY name ASC
     `) as unknown as JsonRecord[];
 
@@ -702,6 +716,7 @@ export async function GET() {
         photos,
         documents
       FROM atlas_work_orders
+      WHERE property_id = ${propertyId}
       ORDER BY (CASE WHEN due_date_initialized THEN due_date_value ELSE date END) ASC NULLS LAST, title ASC
     `) as unknown as JsonRecord[];
 
@@ -729,18 +744,21 @@ export async function GET() {
         instance_id,
         status
       FROM atlas_calendar_items
+      WHERE property_id = ${propertyId}
       ORDER BY COALESCE(item_date, date) ASC, time ASC NULLS LAST, title ASC
     `) as unknown as JsonRecord[];
 
     const documentRows = (await sql`
       SELECT id, title, area, type, linked_asset_id, notes
       FROM atlas_documents
+      WHERE property_id = ${propertyId}
       ORDER BY title ASC
     `) as unknown as JsonRecord[];
 
     const photoRows = (await sql`
       SELECT id, asset_id, name, data_url, created_at
       FROM atlas_asset_photos
+      WHERE property_id = ${propertyId}
       ORDER BY created_at DESC
     `) as unknown as JsonRecord[];
 
@@ -748,6 +766,7 @@ export async function GET() {
       SELECT id, name, category, location_id, asset_id, vendor_id,
              quantity, min_quantity, status, notes
       FROM atlas_parts
+      WHERE property_id = ${propertyId}
       ORDER BY lower(name) ASC
     `) as unknown as JsonRecord[];
 
@@ -785,6 +804,8 @@ export async function POST(request: NextRequest) {
   }
   try {
     const sql = getSql();
+    await ensurePartsTable(sql);
+    await ensurePropertyColumns(sql);
     const body = (await request.json().catch(function () {
       return {};
     })) as JsonRecord;
@@ -794,6 +815,7 @@ export async function POST(request: NextRequest) {
       body.record && typeof body.record === "object"
         ? (body.record as JsonRecord)
         : {};
+    const propertyId = asString(record.propertyId) || "2000";
 
     await recordChange(
       sql,
@@ -843,6 +865,7 @@ export async function POST(request: NextRequest) {
           sort_order = EXCLUDED.sort_order
       `;
 
+      await sql`UPDATE atlas_locations SET property_id = ${propertyId} WHERE id = ${id}`;
       return NextResponse.json({ ok: true, id });
     }
 
@@ -963,6 +986,7 @@ export async function POST(request: NextRequest) {
           updated_at = NOW()
       `;
 
+      await sql`UPDATE atlas_assets SET property_id = ${propertyId} WHERE id = ${id}`;
       return NextResponse.json({ ok: true, id });
     }
 
@@ -1202,6 +1226,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      await sql`UPDATE atlas_work_orders SET property_id = ${propertyId} WHERE id = ${id}`;
+
       return NextResponse.json({
         ok: true,
         id,
@@ -1290,6 +1316,7 @@ export async function POST(request: NextRequest) {
           updated_at = NOW()
       `;
 
+      await sql`UPDATE atlas_calendar_items SET property_id = ${propertyId} WHERE id = ${id}`;
       return NextResponse.json({ ok: true, id });
     }
 
@@ -1330,6 +1357,7 @@ export async function POST(request: NextRequest) {
           notes = EXCLUDED.notes,
           updated_at = NOW()
       `;
+      await sql`UPDATE atlas_parts SET property_id = ${propertyId} WHERE id = ${id}`;
       return NextResponse.json({ ok: true, id });
     }
 
@@ -1365,6 +1393,7 @@ export async function POST(request: NextRequest) {
           updated_at = NOW()
       `;
 
+      await sql`UPDATE atlas_documents SET property_id = ${propertyId} WHERE id = ${id}`;
       return NextResponse.json({ ok: true, id });
     }
 
@@ -1396,6 +1425,7 @@ export async function POST(request: NextRequest) {
           data_url = COALESCE(NULLIF(EXCLUDED.data_url, ''), atlas_asset_photos.data_url)
       `;
 
+      await sql`UPDATE atlas_asset_photos SET property_id = ${propertyId} WHERE id = ${id}`;
       return NextResponse.json({ ok: true, id });
     }
 
