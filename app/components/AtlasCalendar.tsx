@@ -1464,6 +1464,8 @@ export default function AtlasCalendar(
                   ...calendarFilterDropdownStyle,
                   marginLeft: "auto",
                   position: "relative",
+                  overflow: "visible",
+                  zIndex: 60,
                 }}
               >
                 <summary
