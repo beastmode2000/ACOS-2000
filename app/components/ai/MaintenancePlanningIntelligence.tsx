@@ -145,6 +145,51 @@ export default function MaintenancePlanningIntelligence({
     [today, upcomingRecurring],
   );
 
+  const procedureReadiness = useMemo(
+    () =>
+      procedures
+        .map((procedure) => {
+          const issues: string[] = [];
+          if (!String(procedure.purpose || "").trim())
+            issues.push("missing purpose");
+          if (!Array.isArray(procedure.steps) || !procedure.steps.length)
+            issues.push("no steps");
+          if (!String(procedure.safetyNotes || "").trim())
+            issues.push("no safety notes");
+          if (
+            !String(procedure.toolsParts || "").trim() &&
+            !(procedure.requiredTools || []).length &&
+            !(procedure.requiredParts || []).length
+          )
+            issues.push("no tools or parts");
+          if (
+            !(procedure.linkedAssetIds || []).length &&
+            !(procedure.linkedLocationIds || []).length
+          )
+            issues.push("not linked to an asset or location");
+          if (procedure.status === "Draft") issues.push("still a draft");
+
+          return {
+            procedure,
+            issues,
+            ready: issues.length === 0,
+          };
+        })
+        .sort(
+          (left, right) =>
+            right.issues.length - left.issues.length ||
+            left.procedure.title.localeCompare(right.procedure.title),
+        ),
+    [procedures],
+  );
+
+  const readyProcedureCount = procedureReadiness.filter(
+    (item) => item.ready,
+  ).length;
+  const proceduresNeedingReview = procedureReadiness.filter(
+    (item) => !item.ready,
+  );
+
   const suggestions = useMemo(() => {
     const results: MaintenanceSuggestion[] = [];
 
@@ -262,7 +307,8 @@ export default function MaintenancePlanningIntelligence({
           <div style={{ fontSize: 13, opacity: 0.8 }}>
             {overdueRecurring.length} overdue · {dueWithin7.length} due within
             7 days · {dueWithin30.length} due within 30 days ·{" "}
-            {suggestions.length} schedule suggestions
+            {suggestions.length} schedule suggestions · {readyProcedureCount}{" "}
+            procedures ready
           </div>
         </div>
 
@@ -310,7 +356,7 @@ export default function MaintenancePlanningIntelligence({
           display: "grid",
           gridTemplateColumns: isMobile
             ? "repeat(2, minmax(0, 1fr))"
-            : "repeat(4, minmax(0, 1fr))",
+            : "repeat(5, minmax(0, 1fr))",
           gap: 10,
         }}
       >
@@ -336,6 +382,12 @@ export default function MaintenancePlanningIntelligence({
           label="Next 30 Days"
           value={dueWithin30.length}
           detail="Upcoming workload"
+          colors={colors}
+        />
+        <SummaryCard
+          label="Procedures Ready"
+          value={readyProcedureCount}
+          detail={`${proceduresNeedingReview.length} need review`}
           colors={colors}
         />
       </div>
@@ -458,6 +510,58 @@ export default function MaintenancePlanningIntelligence({
             <Empty>
               All current maintenance procedures already have recurring work.
             </Empty>
+          )}
+        </Panel>
+
+        <Panel title="Procedure Readiness" colors={colors}>
+          {proceduresNeedingReview.length ? (
+            proceduresNeedingReview.slice(0, 6).map(({ procedure, issues }) => (
+              <div
+                key={procedure.id}
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 11,
+                  background: colors.card,
+                  padding: 11,
+                }}
+              >
+                <div style={{ fontWeight: 900, fontSize: 13 }}>
+                  {procedure.title || "Untitled procedure"}
+                </div>
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 11,
+                    opacity: 0.72,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Needs: {issues.join(" · ")}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAskAtlas(
+                      `Review the Atlas procedure "${procedure.title}". Help me improve its purpose, safety notes, required tools and parts, step-by-step checklist, and record links. Do not save changes without my approval.`,
+                    )
+                  }
+                  style={{
+                    marginTop: 9,
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 8,
+                    background: colors.panel,
+                    padding: "7px 9px",
+                    fontSize: 11,
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  Improve with Ask Atlas
+                </button>
+              </div>
+            ))
+          ) : (
+            <Empty>All procedures have the core information and links.</Empty>
           )}
         </Panel>
 
