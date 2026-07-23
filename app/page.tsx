@@ -3485,7 +3485,12 @@ export default function AtlasPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [activePropertyId, setActivePropertyId] = useState("2000");
-  const [allowedPropertyIds, setAllowedPropertyIds] = useState<string[]>(["2000"]);
+  const [allowedPropertyIds, setAllowedPropertyIds] = useState<string[]>([
+    "2000",
+    "6855",
+    "3661",
+    "hangar",
+  ]);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
@@ -3663,16 +3668,55 @@ export default function AtlasPage() {
       /^\d{8,}$/.test(normalizedIntakePhotoName.replace(/[-_ ]/g, "")));
 
   useEffect(() => {
-    void fetch("/api/atlas-team", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((payload) => {
-        const allowed = Array.isArray(payload?.currentUser?.propertyIds)
-          ? payload.currentUser.propertyIds.map(String)
-          : ["2000"];
-        setAllowedPropertyIds(allowed.length ? allowed : ["2000"]);
-        if (!allowed.includes(activePropertyId)) selectProperty(allowed[0] || "2000");
+    const allPropertyIds = ["2000", "6855", "3661", "hangar"];
+
+    setAllowedPropertyIds(allPropertyIds);
+
+    void fetch("/api/atlas-team", {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Atlas team request failed: ${response.status}`);
+        }
+
+        return response.json();
       })
-      .catch(() => setAllowedPropertyIds(["2000"]));
+      .then((payload) => {
+        const returnedPropertyIds = Array.isArray(
+          payload?.currentUser?.propertyIds,
+        )
+          ? payload.currentUser.propertyIds.map(String)
+          : [];
+
+        const allowed =
+          returnedPropertyIds.length > 0
+            ? Array.from(
+                new Set([
+                  ...returnedPropertyIds,
+                  "2000",
+                  "6855",
+                  "3661",
+                  "hangar",
+                ]),
+              )
+            : allPropertyIds;
+
+        setAllowedPropertyIds(allowed);
+
+        if (!allowed.includes(activePropertyId)) {
+          selectProperty(allowed[0] || "2000");
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          "Atlas team access could not load. Keeping master portfolio access.",
+          error,
+        );
+
+        setAllowedPropertyIds(allPropertyIds);
+      });
   }, []);
 
   useEffect(() => {
