@@ -122,6 +122,19 @@ type WorkEffort =
   | "Full Day"
   | "Multi-Day";
 
+type PropertyProfile = {
+  id: string;
+  name: string;
+  detail: string;
+};
+
+const atlasProperties: PropertyProfile[] = [
+  { id: "2000", name: "2000", detail: "Primary estate" },
+  { id: "6855", name: "6855", detail: "Sharon & Marty" },
+  { id: "3661", name: "3661", detail: "Jordan & Andrea" },
+  { id: "hangar", name: "Hangar", detail: "Owner-linked property" },
+];
+
 type WorkChecklistItem = {
   id: string;
   text: string;
@@ -139,7 +152,7 @@ const atlasNavigationSections: {
   label: string;
   items: AtlasScreen[];
 }[] = [
-  { label: "Overview", items: ["dashboard"] },
+  { label: "Overview", items: ["dashboard", "portfolio"] },
   {
     label: "Work",
     items: ["history", "calendar", "planner", "routines"],
@@ -3324,6 +3337,7 @@ export default function AtlasPage() {
   >("loading");
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
+  const [activePropertyId, setActivePropertyId] = useState("2000");
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
@@ -3691,6 +3705,22 @@ export default function AtlasPage() {
     }
   }
 
+  function selectProperty(propertyId: string) {
+    if (propertyId === activePropertyId) return;
+    setActivePropertyId(propertyId);
+    setSelectedLocationId("");
+    setSelectedAssetId("");
+    setSelectedServiceId("");
+    setLocations([]);
+    setAssetRecords([]);
+    setServiceRecords([]);
+    setCalendarItems([]);
+    setPartRecords([]);
+    setPhotos([]);
+    setIntakeDocs([]);
+    setSyncState("loading");
+  }
+
   function openSavedAsset(assetId: string) {
     if (!assetId) return;
     setInboxReviewOpen(false);
@@ -3932,7 +3962,10 @@ export default function AtlasPage() {
     async function loadAtlasApi() {
       try {
         setSyncState("loading");
-        const response = await fetch("/api/atlas", { cache: "no-store" });
+        const response = await fetch(
+          `/api/atlas?propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no-store" },
+        );
         if (!response.ok) throw new Error(`API returned ${response.status}`);
 
         const payload = (await response.json()) as AtlasApiPayload;
@@ -3987,7 +4020,10 @@ export default function AtlasPage() {
           .filter((photo) => photo.id && photo.assetId);
 
         if (apiLocations.length) {
-          const next = mergeLocationRecords(apiLocations, fallbackLocations);
+          const next =
+            activePropertyId === "2000"
+              ? mergeLocationRecords(apiLocations, fallbackLocations)
+              : apiLocations;
           setLocations(next);
           setSelectedLocationId((current) =>
             next.some((item) => item.id === current) ? current : "",
@@ -4103,7 +4139,7 @@ export default function AtlasPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activePropertyId]);
 
   useEffect(() => {
     if (!ready || screen !== "calendar") return;
@@ -4116,7 +4152,7 @@ export default function AtlasPage() {
       running = true;
 
       try {
-        const response = await fetch(`/api/atlas?calendarSync=${Date.now()}`, {
+        const response = await fetch(`/api/atlas?calendarSync=${Date.now()}&propertyId=${encodeURIComponent(activePropertyId)}`, {
           cache: "no-store",
         });
         if (!response.ok) throw new Error(`API returned ${response.status}`);
@@ -4185,7 +4221,7 @@ export default function AtlasPage() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [ready, screen]);
+  }, [ready, screen, activePropertyId]);
 
   useEffect(() => {
     if (!ready || !photos.length) return;
@@ -4236,7 +4272,7 @@ export default function AtlasPage() {
 
   useEffect(() => {
     void refreshDocumentVault();
-  }, []);
+  }, [activePropertyId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -6623,7 +6659,7 @@ export default function AtlasPage() {
   async function refreshDocumentVault() {
     try {
       setDocumentSyncStatus("Loading synced documents from Atlas...");
-      const response = await fetch("/api/atlas-documents", {
+      const response = await fetch(`/api/atlas-documents?propertyId=${encodeURIComponent(activePropertyId)}`, {
         cache: "no-store",
       });
       if (!response.ok)
@@ -6635,12 +6671,14 @@ export default function AtlasPage() {
       const apiDocs = Array.isArray(payload.documents)
         ? payload.documents.map(normalizeDocument)
         : [];
-      const localDocs = mergeDocuments(
-        intakeDocs,
-        readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(
-          normalizeDocument,
-        ),
-      );
+      const localDocs = activePropertyId === "2000"
+        ? mergeDocuments(
+            intakeDocs,
+            readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(
+              normalizeDocument,
+            ),
+          )
+        : intakeDocs.filter((document) => document.propertyId === activePropertyId);
       const apiIds = new Set(apiDocs.map((doc) => doc.id));
       const localOnlyDocs = localDocs.filter((doc) => !apiIds.has(doc.id));
 
@@ -6679,7 +6717,7 @@ export default function AtlasPage() {
     const response = await fetch("/api/atlas-documents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ record }),
+      body: JSON.stringify({ record: { ...record, propertyId: activePropertyId } }),
     });
 
     if (!response.ok) {
@@ -7171,7 +7209,13 @@ export default function AtlasPage() {
       const response = await fetch("/api/atlas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ table, record }),
+        body: JSON.stringify({
+          table,
+          record: {
+            ...((record && typeof record === "object") ? record : {}),
+            propertyId: activePropertyId,
+          },
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.ok === false) {
@@ -10958,6 +11002,21 @@ export default function AtlasPage() {
   }
 
   function renderMap() {
+    if (activePropertyId !== "2000") {
+      const propertyName =
+        atlasProperties.find((property) => property.id === activePropertyId)
+          ?.name || activePropertyId;
+      return (
+        <section style={sectionStyle}>
+          <SectionHeader
+            eyebrow="Property Map"
+            title={`${propertyName} Map`}
+            detail="This property has a clean map workspace. A property image and labels can be added in the map expansion update."
+          />
+          <div style={emptyStateStyle}>No map has been added for {propertyName} yet.</div>
+        </section>
+      );
+    }
     const selectedMapVendors = vendorRecords.filter((vendor) =>
       (selectedMapLabel.vendorIds || []).includes(vendor.id),
     );
@@ -19947,10 +20006,52 @@ export default function AtlasPage() {
     );
   }
 
+  function renderPortfolio() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Atlas Portfolio"
+          title="Properties"
+          detail="Choose the property workspace. Property-specific records remain separated while vendors, contacts, and reusable procedures stay shared."
+        />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+          {atlasProperties.map((property) => {
+            const active = property.id === activePropertyId;
+            return (
+              <button
+                key={property.id}
+                type="button"
+                onClick={() => {
+                  selectProperty(property.id);
+                  setScreen("dashboard");
+                }}
+                style={{
+                  ...cardStyle,
+                  textAlign: "left",
+                  cursor: "pointer",
+                  border: `2px solid ${active ? colors.gold : colors.line}`,
+                  background: active ? "#FFF8E8" : colors.card,
+                }}
+              >
+                <div style={eyebrowStyle}>{active ? "Active Property" : "Property"}</div>
+                <h3 style={{ ...detailTitleStyle, margin: "6px 0" }}>{property.name}</h3>
+                <p style={mutedSmallStyle}>{property.detail}</p>
+                <strong style={{ color: active ? colors.green : colors.navy }}>
+                  {active ? "Currently open" : "Open property"}
+                </strong>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   function renderScreen() {
     let content: React.ReactNode;
 
     if (screen === "dashboard") content = renderDashboard();
+    else if (screen === "portfolio") content = renderPortfolio();
     else if (screen === "timeline")
       content = renderTimelineOrInsights("timeline");
     else if (screen === "insights")
@@ -20237,7 +20338,9 @@ export default function AtlasPage() {
               <div style={isMobile ? mobileBrandTitleStyle : brandTitleStyle}>
                 ATLAS
               </div>
-              <div style={brandSubStyle}>2000 Estate Systems</div>
+              <div style={brandSubStyle}>
+                {atlasProperties.find((item) => item.id === activePropertyId)?.name} Estate Systems
+              </div>
             </div>
           </div>
 
@@ -20353,7 +20456,7 @@ export default function AtlasPage() {
                   {screen === "dashboard" ? <AtlasMiniMark size={34} /> : null}
                   <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>
                     {screen === "dashboard"
-                      ? "Atlas / 2000"
+                      ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
                       : screens.find((item) => item.id === screen)?.label}
                   </h1>
                   <div
@@ -20429,6 +20532,18 @@ export default function AtlasPage() {
                   maxWidth: "100%",
                 }}
               >
+                <select
+                  value={activePropertyId}
+                  onChange={(event) => selectProperty(event.currentTarget.value)}
+                  style={{ ...inputStyle, marginBottom: 8, fontWeight: 900 }}
+                  aria-label="Active property"
+                >
+                  {atlasProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name} — {property.detail}
+                    </option>
+                  ))}
+                </select>
                 <div
                   style={{ position: "relative", minWidth: 0 }}
                   onBlur={() => {
