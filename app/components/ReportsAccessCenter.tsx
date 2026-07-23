@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 type Row = Record<string, unknown>;
-type Role = "Master" | "Administrator" | "Operations" | "Viewer";
-type Member = { id: string; name: string; email: string; role: Role; active: boolean };
+type Role = "Master" | "Administrator" | "Manager" | "Employee" | "Vendor" | "Viewer";
+type Permissions = { view:boolean; edit:boolean; approve:boolean; delete:boolean; manageUsers:boolean };
+type Member = { id: string; name: string; email: string; role: Role; active: boolean; propertyIds:string[]; permissions:Permissions; inviteStatus?:string };
 type ReportKey = "workOrders" | "assets" | "vendors" | "contacts" | "procedures" | "calendar" | "documents";
 
 type Props = {
@@ -14,9 +15,9 @@ type Props = {
 };
 
 const defaultTeam: Member[] = [
-  { id: "nick", name: "Nick Thornton", email: "nthornton87@yahoo.com", role: "Master", active: true },
-  { id: "steve", name: "Steve", email: "stevem@arcticmgnt.com", role: "Administrator", active: true },
-  { id: "kenji", name: "Kenji", email: "kenjij@arcticmgnt.com", role: "Administrator", active: true },
+  { id: "nick", name: "Nick Thornton", email: "nthornton87@yahoo.com", role: "Master", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
+  { id: "steve", name: "Steve", email: "stevem@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
+  { id: "kenji", name: "Kenji", email: "kenjij@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
 ];
 const reports: Array<[ReportKey, string]> = [
   ["workOrders", "Work Orders"], ["assets", "Assets"], ["vendors", "Vendors"],
@@ -26,8 +27,17 @@ const reports: Array<[ReportKey, string]> = [
 const descriptions: Record<Role, string> = {
   Master: "Full Atlas access, reports, and access management.",
   Administrator: "Full operations access and reporting.",
-  Operations: "Daily work, assets, procedures, calendar, and reports.",
+  Manager: "Manage daily operations and approve work without managing users.",
+  Employee: "Complete assigned work and update operating records.",
+  Vendor: "Limited view access to approved property and work information.",
   Viewer: "View records and reports without management access.",
+};
+const properties = [["2000","2000"],["6855","6855"],["3661","3661"],["hangar","Hangar"]] as const;
+const permissionLabels: Array<[keyof Permissions,string]> = [["view","View"],["edit","Edit"],["approve","Approve"],["delete","Delete"],["manageUsers","Manage Users"]];
+const roleDefaults: Record<Role, Permissions> = {
+  Master:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, Administrator:{view:true,edit:true,approve:true,delete:true,manageUsers:true},
+  Manager:{view:true,edit:true,approve:true,delete:false,manageUsers:false}, Employee:{view:true,edit:true,approve:false,delete:false,manageUsers:false},
+  Vendor:{view:true,edit:false,approve:false,delete:false,manageUsers:false}, Viewer:{view:true,edit:false,approve:false,delete:false,manageUsers:false},
 };
 
 function csvValue(value: unknown) {
@@ -56,7 +66,8 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [message, setMessage] = useState("");
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [newRole, setNewRole] = useState<Role>("Operations");
+  const [newRole, setNewRole] = useState<Role>("Employee");
+  const [newPropertyIds, setNewPropertyIds] = useState<string[]>(["2000"]);
   const [inviteLink, setInviteLink] = useState("");
   const [backups, setBackups] = useState<Array<Record<string, unknown>>>([]);
   const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
@@ -75,7 +86,9 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
         if (!payload.ok || !Array.isArray(payload.members)) return;
         setTeam(payload.members.map((member: Omit<Member, "role"> & { role: string }) => ({
           ...member,
-          role: member.role === "master" ? "Master" : member.role === "administrator" ? "Administrator" : member.role === "operations" ? "Operations" : "Viewer",
+          role: member.role === "master" ? "Master" : member.role === "administrator" ? "Administrator" : member.role === "manager" ? "Manager" : member.role === "employee" || member.role === "operations" ? "Employee" : member.role === "vendor" ? "Vendor" : "Viewer",
+          propertyIds: Array.isArray((member as any).propertyIds) ? (member as any).propertyIds : ["2000"],
+          permissions: { ...roleDefaults.Viewer, ...((member as any).permissions || {}) },
         })));
       })
       .catch(() => setMessage("Atlas could not load shared access settings."));
@@ -108,7 +121,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
 
   async function createInvite() {
     if (!newName.trim() || !newEmail.includes("@")) { setMessage("Enter the employee name and email."); return; }
-    const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member:{ id:`team-${Date.now()}`, name:newName.trim(), email:newEmail.trim(), role:newRole.toLowerCase(), active:true } }) });
+    const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member:{ id:`team-${Date.now()}`, name:newName.trim(), email:newEmail.trim(), role:newRole.toLowerCase(), active:true, propertyIds:newPropertyIds, permissions:roleDefaults[newRole] } }) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) { setMessage(String(payload.error || "Invitation could not be created.")); return; }
     const link = `${window.location.origin}${payload.invitePath}`;
@@ -211,13 +224,22 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
             <div key={member.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 12, background: colors.panel, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px, 1.2fr) minmax(210px, 1.3fr) minmax(155px, .8fr) auto", gap: 10, alignItems: "center" }}>
               <strong style={{ color: colors.navy }}>{member.name}</strong>
               <span style={{ color: colors.muted, fontSize: 13 }}>{member.email}</span>
-              <select value={member.role} disabled={member.role === "Master"} onChange={(event) => updateMember(member.id, { role: event.currentTarget.value as Role })} style={control}>
-                {(["Master", "Administrator", "Operations", "Viewer"] as Role[]).map((role) => <option key={role}>{role}</option>)}
+              <select value={member.role} disabled={member.role === "Master"} onChange={(event) => { const role=event.currentTarget.value as Role; updateMember(member.id, { role, permissions:roleDefaults[role] }); }} style={control}>
+                {(["Master", "Administrator", "Manager", "Employee", "Vendor", "Viewer"] as Role[]).map((role) => <option key={role}>{role}</option>)}
               </select>
               <label style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 800, whiteSpace: "nowrap" }}>
                 <input type="checkbox" checked={member.active} disabled={member.role === "Master"} onChange={(event) => updateMember(member.id, { active: event.currentTarget.checked })} /> Active
               </label>
               <div style={{ gridColumn: isMobile ? "1" : "1 / -1", color: colors.muted, fontSize: 12 }}>{descriptions[member.role]}</div>
+              <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",gap:12,flexWrap:"wrap"}}>
+                <strong style={{color:colors.navy,fontSize:12}}>Properties:</strong>
+                {properties.map(([id,label])=><label key={id} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" disabled={member.role==="Master"} checked={member.propertyIds.includes(id)} onChange={(event)=>updateMember(member.id,{propertyIds:event.currentTarget.checked?[...member.propertyIds,id]:member.propertyIds.filter((value)=>value!==id)})}/>{label}</label>)}
+              </div>
+              <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",gap:12,flexWrap:"wrap"}}>
+                <strong style={{color:colors.navy,fontSize:12}}>Permissions:</strong>
+                {permissionLabels.map(([key,label])=><label key={key} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" disabled={member.role==="Master"} checked={member.permissions[key]} onChange={(event)=>updateMember(member.id,{permissions:{...member.permissions,[key]:event.currentTarget.checked}})}/>{label}</label>)}
+              </div>
+              <div style={{gridColumn:isMobile?"1":"1 / -1",fontSize:12,fontWeight:900,color:member.inviteStatus==="Accepted"?colors.green:colors.muted}}>Invitation: {member.inviteStatus || "Existing Access"}</div>
             </div>
           ))}
         </div>
@@ -226,9 +248,10 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
           <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1.3fr .8fr auto",gap:10}}>
             <input value={newName} onChange={(e)=>setNewName(e.currentTarget.value)} placeholder="Employee name" style={control}/>
             <input value={newEmail} onChange={(e)=>setNewEmail(e.currentTarget.value)} placeholder="Employee email" style={control}/>
-            <select value={newRole} onChange={(e)=>setNewRole(e.currentTarget.value as Role)} style={control}><option>Administrator</option><option>Operations</option><option>Viewer</option></select>
+            <select value={newRole} onChange={(e)=>setNewRole(e.currentTarget.value as Role)} style={control}><option>Administrator</option><option>Manager</option><option>Employee</option><option>Vendor</option><option>Viewer</option></select>
             <button type="button" onClick={()=>void createInvite()} style={button}>Create Invite</button>
           </div>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}><strong style={{color:colors.navy,fontSize:12}}>Property access:</strong>{properties.map(([id,label])=><label key={id} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={newPropertyIds.includes(id)} onChange={(event)=>setNewPropertyIds((current)=>event.currentTarget.checked?[...current,id]:current.filter((value)=>value!==id))}/>{label}</label>)}</div>
           {inviteLink ? <div style={{display:"grid",gap:6}}><span style={{fontSize:12,color:colors.muted}}>Invitation expires in 7 days. Copy and send this link:</span><input readOnly value={inviteLink} onFocus={(e)=>e.currentTarget.select()} style={control}/></div> : null}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
