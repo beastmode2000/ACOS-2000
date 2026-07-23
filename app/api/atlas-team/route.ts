@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, members, currentUser: {
       email,
       role: currentRole,
-      propertyIds: currentRole === "master" ? ["2000","6855","3661","hangar"] : current?.propertyIds || ["2000"],
+      propertyIds: currentRole === "master" || !email ? ["2000","6855","3661","hangar"] : current?.propertyIds || ["2000"],
       permissions: current?.permissions || rolePermissions[normalizeRole(currentRole)],
     } });
   } catch (error) {
