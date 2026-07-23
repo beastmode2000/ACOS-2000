@@ -59,24 +59,46 @@ export async function GET(request: NextRequest) {
       (row) => row.date && String(row.date).slice(0, 10) < today,
     );
     const high = workRows.filter((row) => row.priority === "High");
-    const summary = [
+    const workSummary = [
       due.length ? `${due.length} due today` : "",
       overdue.length ? `${overdue.length} overdue` : "",
       high.length ? `${high.length} high priority` : "",
-      partRows.length ? `${partRows.length} low-stock parts` : "",
     ].filter(Boolean);
 
-    if (!summary.length) {
+    if (!workSummary.length && !partRows.length) {
       return NextResponse.json({ ok: true, sent: 0, message: "Nothing due." });
     }
 
-    const result = await sendAtlasPush({
-      title: "Atlas Daily Property Brief",
-      body: summary.join(" · "),
-      url: "/#dashboard",
-      tag: `atlas-daily-${today}`,
+    const results = [];
+    if (workSummary.length) {
+      results.push(
+        await sendAtlasPush({
+          title: "Atlas Daily Work Brief",
+          body: workSummary.join(" · "),
+          url: "/#history",
+          tag: `atlas-daily-work-${today}`,
+          category: "work",
+        }),
+      );
+    }
+    if (partRows.length) {
+      results.push(
+        await sendAtlasPush({
+          title: "Atlas Inventory Alert",
+          body: `${partRows.length} low or out-of-stock part${
+            partRows.length === 1 ? "" : "s"
+          } need review.`,
+          url: "/#parts",
+          tag: `atlas-daily-inventory-${today}`,
+          category: "inventory",
+        }),
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      sent: results.reduce((total, result) => total + result.sent, 0),
+      failed: results.reduce((total, result) => total + result.failed, 0),
     });
-    return NextResponse.json({ ok: true, ...result });
   } catch {
     return NextResponse.json(
       { ok: false, error: "Daily notifications could not run." },
@@ -84,4 +106,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
