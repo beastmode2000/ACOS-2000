@@ -29,6 +29,7 @@ export const colors = {
 
 export const screens: { id: AtlasScreen; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "portfolio", label: "Portfolio" },
   { id: "timeline", label: "Timeline" },
   { id: "insights", label: "Insights" },
   { id: "inbox", label: "Inbox" },
