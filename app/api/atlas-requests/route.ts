@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { NextRequest, NextResponse } from "next/server";
+import { sendAtlasPush } from "../../lib/server/atlas-push";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -336,9 +337,17 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `;
 
+    const savedRequest = normalizeRequest(rows[0]);
+    await sendAtlasPush({
+      title: "New Atlas Owner Request",
+      body: `${savedRequest.title || "Maintenance Request"}${savedRequest.requesterName ? ` · ${savedRequest.requesterName}` : ""}`,
+      url: "/#requests",
+      tag: `atlas-request-${savedRequest.id}`,
+    }).catch(() => undefined);
+
     return NextResponse.json({
       ok: true,
-      request: normalizeRequest(rows[0]),
+      request: savedRequest,
       message: "Your request was submitted.",
     });
   } catch (error) {
