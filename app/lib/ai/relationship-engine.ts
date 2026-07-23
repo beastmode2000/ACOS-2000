@@ -28,6 +28,13 @@ const IGNORED_TOKENS = new Set([
   "photo",
 ]);
 
+export type RelationshipExplanation = {
+  score: number;
+  confidence: "Direct" | "Strong" | "Possible";
+  label: string;
+  sharedKeys: string[];
+};
+
 function relationshipTokens(value: string) {
   return Array.from(
     new Set(
@@ -40,20 +47,107 @@ function relationshipTokens(value: string) {
   );
 }
 
-function relationshipIds(record: SearchResult) {
-  return [
-    ...(record.relatedIds || []),
-    record.locationId,
-    record.assetId,
-    record.vendorId,
-    record.contactId,
-    record.serviceId,
-    record.mapLabelId,
-    record.procedureId,
-    record.calendarId,
-    record.partId,
-    record.manualId,
-  ].filter(Boolean);
+function relationshipKeys(record: SearchResult) {
+  return Array.from(
+    new Set(
+      [
+        ...(record.relatedIds || []),
+        record.locationId ? `location:${record.locationId}` : "",
+        record.assetId ? `asset:${record.assetId}` : "",
+        record.vendorId ? `vendor:${record.vendorId}` : "",
+        record.contactId ? `contact:${record.contactId}` : "",
+        record.serviceId ? `work-order:${record.serviceId}` : "",
+        record.mapLabelId ? `map:${record.mapLabelId}` : "",
+        record.procedureId ? `procedure:${record.procedureId}` : "",
+        record.calendarId ? `calendar:${record.calendarId}` : "",
+        record.partId ? `part:${record.partId}` : "",
+        record.manualId ? `manual:${record.manualId}` : "",
+      ].filter(Boolean),
+    ),
+  );
+}
+
+function keyLabel(key: string) {
+  const kind = key.split(":")[0];
+  if (kind === "asset") return "the same asset";
+  if (kind === "location") return "the same location";
+  if (kind === "vendor") return "the same vendor";
+  if (kind === "work-order") return "a work order";
+  if (kind === "procedure") return "a procedure";
+  if (kind === "document") return "a document";
+  if (kind === "manual") return "a manual";
+  if (kind === "part") return "an inventory part";
+  if (kind === "calendar") return "a calendar item";
+  if (kind === "contact") return "the same contact";
+  if (kind === "map") return "the same map record";
+  return "an Atlas record";
+}
+
+export function explainRelationship(
+  source: SearchResult,
+  candidate: SearchResult,
+): RelationshipExplanation {
+  const sourceText =
+    `${source.title} ${source.subtitle} ${source.detail}`.trim();
+  const candidateText =
+    `${candidate.title} ${candidate.subtitle} ${candidate.detail}`.trim();
+  const sourceKeys = new Set(relationshipKeys(source));
+  const sharedKeys = relationshipKeys(candidate).filter((key) =>
+    sourceKeys.has(key),
+  );
+
+  let score = 0;
+  if (sharedKeys.length) score += 20 + Math.min(20, sharedKeys.length * 5);
+
+  const sourceTokens = relationshipTokens(sourceText);
+  const candidateTokens = new Set(relationshipTokens(candidateText));
+  const sharedTokens = sourceTokens.filter((token) =>
+    candidateTokens.has(token),
+  );
+  score += sharedTokens.reduce(
+    (total, token) => total + (token.length >= 7 ? 3 : 2),
+    0,
+  );
+
+  const sourceTitle = source.title.trim().toLowerCase();
+  const candidateTitle = candidate.title.trim().toLowerCase();
+  if (sourceTitle.length >= 4 && candidateText.toLowerCase().includes(sourceTitle))
+    score += 9;
+  if (
+    candidateTitle.length >= 4 &&
+    sourceText.toLowerCase().includes(candidateTitle)
+  )
+    score += 7;
+
+  if (sharedKeys.length) {
+    const labels = Array.from(new Set(sharedKeys.map(keyLabel)));
+    return {
+      score,
+      confidence: "Direct",
+      label: `Connected through ${labels.slice(0, 2).join(" and ")}`,
+      sharedKeys,
+    };
+  }
+
+  if (score >= 9) {
+    return {
+      score,
+      confidence: "Strong",
+      label: sharedTokens.length
+        ? `Strong record match: ${sharedTokens.slice(0, 3).join(", ")}`
+        : "Strong Atlas record match",
+      sharedKeys,
+    };
+  }
+
+  return {
+    score,
+    confidence: "Possible",
+    label: sharedTokens.length
+      ? `Possible match: ${sharedTokens.slice(0, 3).join(", ")}`
+      : "Possible related record",
+    sharedKeys,
+  };
 }
 
 export function findRelatedRecords(
@@ -61,48 +155,22 @@ export function findRelatedRecords(
   allRecords: SearchResult[],
   limit = 10,
 ) {
-  const sourceText = `${source.title} ${source.subtitle} ${source.detail}`;
-  const sourceTokens = relationshipTokens(sourceText);
-  const sourceIds = new Set(relationshipIds(source));
-
   return allRecords
     .filter((candidate) => candidate.id !== source.id)
-    .map((candidate) => {
-      let score = 0;
-      const candidateIds = relationshipIds(candidate);
-
-      const sharedIds = candidateIds.filter((id) => sourceIds.has(id));
-      if (sharedIds.length) score += 12 + Math.min(12, sharedIds.length * 4);
-
-      const candidateText =
-        `${candidate.title} ${candidate.subtitle} ${candidate.detail}`.toLowerCase();
-
-      for (const token of sourceTokens) {
-        if (candidateText.includes(token)) score += token.length >= 7 ? 3 : 2;
-      }
-
-      if (
-        source.title.length >= 4 &&
-        candidateText.includes(source.title.toLowerCase())
-      ) {
-        score += 8;
-      }
-
-      if (
-        candidate.title.length >= 4 &&
-        sourceText.toLowerCase().includes(candidate.title.toLowerCase())
-      ) {
-        score += 6;
-      }
-
-      return { candidate, score };
-    })
-    .filter((entry) => entry.score >= 4)
+    .map((candidate) => ({
+      candidate,
+      explanation: explainRelationship(source, candidate),
+    }))
+    .filter(({ explanation }) =>
+      explanation.sharedKeys.length
+        ? explanation.score >= 20
+        : explanation.score >= 6,
+    )
     .sort(
       (left, right) =>
-        right.score - left.score ||
+        right.explanation.score - left.explanation.score ||
         left.candidate.title.localeCompare(right.candidate.title),
     )
     .slice(0, limit)
-    .map((entry) => entry.candidate);
+    .map(({ candidate }) => candidate);
 }
