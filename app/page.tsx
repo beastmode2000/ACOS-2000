@@ -3338,6 +3338,7 @@ export default function AtlasPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [activePropertyId, setActivePropertyId] = useState("2000");
+  const [allowedPropertyIds, setAllowedPropertyIds] = useState<string[]>(["2000"]);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
@@ -3513,6 +3514,19 @@ export default function AtlasPage() {
         normalizedIntakePhotoName,
       ) ||
       /^\d{8,}$/.test(normalizedIntakePhotoName.replace(/[-_ ]/g, "")));
+
+  useEffect(() => {
+    void fetch("/api/atlas-team", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => {
+        const allowed = Array.isArray(payload?.currentUser?.propertyIds)
+          ? payload.currentUser.propertyIds.map(String)
+          : ["2000"];
+        setAllowedPropertyIds(allowed.length ? allowed : ["2000"]);
+        if (!allowed.includes(activePropertyId)) selectProperty(allowed[0] || "2000");
+      })
+      .catch(() => setAllowedPropertyIds(["2000"]));
+  }, []);
 
   useEffect(() => {
     if (!intakePhotoNeedsName) return;
@@ -7241,7 +7255,7 @@ export default function AtlasPage() {
       const response = await fetch("/api/atlas", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ table, id }),
+        body: JSON.stringify({ table, id, propertyId: activePropertyId }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.ok === false) {
@@ -20015,7 +20029,7 @@ export default function AtlasPage() {
           detail="Choose the property workspace. Property-specific records remain separated while vendors, contacts, and reusable procedures stay shared."
         />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-          {atlasProperties.map((property) => {
+          {atlasProperties.filter((property) => allowedPropertyIds.includes(property.id)).map((property) => {
             const active = property.id === activePropertyId;
             return (
               <button
@@ -20538,7 +20552,7 @@ export default function AtlasPage() {
                   style={{ ...inputStyle, marginBottom: 8, fontWeight: 900 }}
                   aria-label="Active property"
                 >
-                  {atlasProperties.map((property) => (
+                  {atlasProperties.filter((property) => allowedPropertyIds.includes(property.id)).map((property) => (
                     <option key={property.id} value={property.id}>
                       {property.name} — {property.detail}
                     </option>
