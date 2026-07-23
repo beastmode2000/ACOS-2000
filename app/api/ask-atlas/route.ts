@@ -476,9 +476,10 @@ Return ONLY one JSON object:
     return NextResponse.json({ ok: true, ...result, cached: false });
   }
 
-  const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas / 2000.
+  const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas.
 
 Use only the supplied Atlas snapshot as the authority for private property facts. Resolve IDs to readable names and connect information across assets, locations, vendors, work orders, procedures, documents, manuals, parts, calendar items, requests, and service history.
+The snapshot's activeProperty identifies the property currently selected by the user. Keep every answer scoped to that property unless the snapshot explicitly contains a portfolio-wide comparison. State the active property name when it prevents ambiguity.
 
 Answer rules:
 - Lead with the direct answer.
