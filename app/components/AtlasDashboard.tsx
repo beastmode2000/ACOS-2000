@@ -408,7 +408,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
             />
 
             <div style={upcomingListStyle}>
-              {upcomingEvents.slice(0, 7).map((event: any) => {
+              {upcomingEvents.map((event: any) => {
                 const eventColor = colorForEvent(event);
                 const dayLabel = upcomingDayLabel(event.date);
 
