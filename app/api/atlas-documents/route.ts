@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 type AtlasDocumentRecord = {
+  propertyId?: string;
   id?: string;
   title?: string;
   area?: string;
@@ -37,6 +38,7 @@ function cleanDocument(record: AtlasDocumentRecord): Required<AtlasDocumentRecor
 
   return {
     id: cleanString(record.id, `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+    propertyId: cleanString(record.propertyId, "2000"),
     title,
     area: cleanString(record.area, targetName),
     type: cleanString(record.type, "Paperwork / Scan"),
@@ -87,9 +89,10 @@ async function ensureDocumentsTable(sql: SqlClient) {
     create index if not exists atlas_documents_target_idx
     on atlas_documents (target_type, target_id)
   `;
+  await sql`alter table atlas_documents add column if not exists property_id text not null default '2000'`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const databaseUrl = getDatabaseUrl();
 
@@ -107,10 +110,12 @@ export async function GET() {
 
     const sql = neon(databaseUrl);
     await ensureDocumentsTable(sql);
+    const propertyId = cleanString(new URL(request.url).searchParams.get("propertyId"), "2000");
 
     const rows = (await sql`
       select record
       from atlas_documents
+      where property_id = ${propertyId}
       order by lower(title) asc, created_at desc
       limit 500
     `) as { record: AtlasDocumentRecord }[];
@@ -148,6 +153,7 @@ export async function POST(request: Request) {
     await sql`
       insert into atlas_documents (
         id,
+        property_id,
         title,
         target_type,
         target_id,
@@ -158,6 +164,7 @@ export async function POST(request: Request) {
       )
       values (
         ${record.id},
+        ${record.propertyId},
         ${record.title},
         ${record.targetType},
         ${record.targetId},
@@ -167,6 +174,7 @@ export async function POST(request: Request) {
         now()
       )
       on conflict (id) do update set
+        property_id = excluded.property_id,
         title = excluded.title,
         target_type = excluded.target_type,
         target_id = excluded.target_id,
