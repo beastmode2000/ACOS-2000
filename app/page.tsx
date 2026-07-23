@@ -5778,6 +5778,27 @@ export default function AtlasPage() {
           item.vendorId ? `vendor:${item.vendorId}` : "",
         ].filter(Boolean),
       })),
+      ...requestRecords.map((item) => ({
+        id: `request-${item.id}`,
+        type: "Request",
+        title: item.title || "Owner Request",
+        subtitle: `${item.status} · ${item.priority}`,
+        detail: [
+          item.description,
+          item.locationName,
+          item.assetName,
+          item.requesterName,
+          item.preferredTiming,
+        ].join(" "),
+        screen: "requests" as Screen,
+        requestId: item.id,
+        relatedIds: [
+          `request:${item.id}`,
+          item.convertedWorkOrderId
+            ? `work-order:${item.convertedWorkOrderId}`
+            : "",
+        ].filter(Boolean),
+      })),
       ...allDocuments.map((item) => ({
         id: `document-${item.id}`,
         type: "Document",
@@ -9129,6 +9150,111 @@ export default function AtlasPage() {
         finishAssistantAnswer(`Updated asset: ${updated.name}`);
       }
 
+      if (pendingAssistantAction.kind === "recurring-maintenance") {
+        const record = normalizeService({
+          id: uid("pm"),
+          assetId: pendingAssistantAction.assetId,
+          vendorId: pendingAssistantAction.vendorId,
+          locationId: pendingAssistantAction.locationId,
+          date: todayISO(),
+          title: pendingAssistantAction.title,
+          status: "Open",
+          priority: pendingAssistantAction.priority,
+          notes: pendingAssistantAction.notes,
+          recurring: true,
+          recurrenceInterval: pendingAssistantAction.recurrenceInterval,
+          recurrenceUnit: pendingAssistantAction.recurrenceUnit,
+          season: "Year-Round",
+          workType: "Preventive Maintenance",
+          workCategory: "🔧 Maintenance",
+          photos: [],
+          documents: [],
+          checklist: [],
+          notesHistory: [],
+          serviceHistory: [],
+        });
+        const saved = await postAtlasRecord("work_orders", record);
+        if (!saved) {
+          throw new Error("The recurring maintenance record did not save.");
+        }
+        setServiceRecords((current) => byTitle([record, ...current]));
+        setSelectedServiceId(record.id);
+        finishAssistantAnswer(
+          `Created recurring maintenance: ${record.title}, every ${record.recurrenceInterval} ${record.recurrenceUnit.toLowerCase()}.`,
+        );
+      }
+
+      if (pendingAssistantAction.kind === "request-convert") {
+        const request = requestRecords.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!request) throw new Error("Atlas could not find that request.");
+        if (request.convertedWorkOrderId) {
+          throw new Error("That request was already converted.");
+        }
+
+        const asset = assetRecords.find(
+          (item) =>
+            request.assetName &&
+            item.name.trim().toLowerCase() ===
+              request.assetName.trim().toLowerCase(),
+        );
+        const record = normalizeService({
+          id: uid("service"),
+          assetId: asset?.id || "",
+          date: todayISO(),
+          title: request.title || "Owner Request",
+          status: "Open",
+          priority: request.priority || "Medium",
+          notes: [
+            request.description,
+            request.locationName ? `Location: ${request.locationName}` : "",
+            request.assetName ? `Requested asset: ${request.assetName}` : "",
+            request.requesterName ? `Requested by: ${request.requesterName}` : "",
+            request.preferredTiming
+              ? `Preferred timing: ${request.preferredTiming}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          photos: request.photos || [],
+          documents: [],
+        });
+        const saved = await postAtlasRecord("work_orders", record);
+        if (!saved) {
+          throw new Error(
+            "The work order did not save, so the request was left unchanged.",
+          );
+        }
+
+        const response = await fetch("/api/atlas-requests", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: request.id,
+            status: "Converted to Work Order",
+            convertedWorkOrderId: record.id,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok === false) {
+          throw new Error(
+            "The work order saved, but Atlas could not move the request to History.",
+          );
+        }
+        const updatedRequest = payload.request as OwnerRequestRecord;
+        setServiceRecords((current) => byTitle([record, ...current]));
+        setRequestRecords((current) =>
+          current.map((item) =>
+            item.id === updatedRequest.id ? updatedRequest : item,
+          ),
+        );
+        setSelectedServiceId(record.id);
+        finishAssistantAnswer(
+          `Converted request to work order: ${record.title}`,
+        );
+      }
+
       setPendingAssistantAction(null);
     } catch (error) {
       finishAssistantAnswer(
@@ -9428,6 +9554,18 @@ export default function AtlasPage() {
         minQuantity: item.minQuantity,
         status: item.status,
         notes: cleanText(item.notes),
+      })),
+      requests: requestRecords.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        status: item.status,
+        priority: item.priority,
+        description: cleanText(item.description),
+        locationName: cleanText(item.locationName, 200),
+        assetName: cleanText(item.assetName, 200),
+        requesterName: cleanText(item.requesterName, 200),
+        preferredTiming: cleanText(item.preferredTiming, 200),
+        convertedWorkOrderId: item.convertedWorkOrderId || "",
       })),
       documents: intakeDocs.map((item) => ({
         id: item.id,
@@ -20047,6 +20185,13 @@ export default function AtlasPage() {
                           )?.name
                         : pendingAssistantAction.kind === "asset-update"
                           ? pendingAssistantAction.targetTitle
+                          : pendingAssistantAction.kind ===
+                              "recurring-maintenance"
+                            ? assetRecords.find(
+                                (item) =>
+                                  item.id ===
+                                  pendingAssistantAction.assetId,
+                              )?.name
                       : pendingAssistantAction.kind === "procedure"
                         ? assetRecords.find(
                             (item) =>
