@@ -1014,7 +1014,9 @@ export default function AtlasCalendar(
                           key={option}
                           value={option}
                         >
-                          {option}
+                          {option === "Weekdays"
+                            ? "Weekdays (Mon-Fri)"
+                            : option}
                         </option>
                       ))}
                   </select>
@@ -1458,6 +1460,20 @@ export default function AtlasCalendar(
                   ))}
                 </select>
               ) : null}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const today = todayISO();
+                  setSelectedCalendarDate(today);
+                  addCalendarItem(today);
+                  setEditorOpen(true);
+                  setDetailOpen(true);
+                }}
+                style={activeControlStyle}
+              >
+                + Add Event
+              </button>
 
               <details
                 style={{
