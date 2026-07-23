@@ -44,6 +44,7 @@ import AtlasIntelligenceRecommendations from "./components/ai/AtlasIntelligenceR
 import DocumentIntelligencePanel from "./components/ai/DocumentIntelligencePanel";
 import PhotoIntelligencePanel from "./components/ai/PhotoIntelligencePanel";
 import AtlasGroupedSearchResults from "./components/ai/AtlasGroupedSearchResults";
+import AtlasNotifications from "./components/AtlasNotifications";
 import { findRelatedRecords } from "./lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -14411,6 +14412,27 @@ export default function AtlasPage() {
                     </option>
                   ))}
                 </select>
+                <AtlasNotifications
+                  workOrders={serviceRecords}
+                  parts={partRecords}
+                  inboxItems={inboxItems}
+                  requests={requestRecords}
+                  colors={colors}
+                  isMobile={isMobile}
+                  onOpenWork={(id) => {
+                    setSelectedServiceId(id);
+                    setScreen("history");
+                  }}
+                  onOpenInbox={(id) => {
+                    setSelectedInboxId(id);
+                    setScreen("inbox");
+                  }}
+                  onOpenRequest={(id) => {
+                    setSelectedRequestId(id);
+                    setScreen("requests");
+                  }}
+                  onOpenParts={() => setScreen("parts")}
+                />
                 <div
                   style={{
                     display: "flex",
