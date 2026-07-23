@@ -1022,6 +1022,9 @@ function normalizeService(
     completionHistory: Array.isArray(record.completionHistory)
       ? record.completionHistory.map(String).filter(Boolean)
       : [],
+    estimatedCost: Math.max(0, Number(record.estimatedCost || 0)),
+    actualCost: Math.max(0, Number(record.actualCost || 0)),
+    invoiceNumber: String(record.invoiceNumber || ""),
     workType:
       record.workType === "Quick Task" ||
       record.workType === "Work Order" ||
