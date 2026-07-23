@@ -5154,12 +5154,20 @@ export default function AtlasPage() {
 
   const upcomingEvents = useMemo(() => {
     const today = todayISO();
-    return [...expandedCalendarItems]
-      .filter((item) => item.date >= today)
+    const tomorrowDate = calendarDateValue(today);
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = localISODate(tomorrowDate);
+    const futureEvents = [...expandedCalendarItems]
+      .filter((item) => item.date > today)
       .sort((a, b) =>
         `${a.date} ${a.time || ""}`.localeCompare(`${b.date} ${b.time || ""}`),
-      )
-      .slice(0, 6);
+      );
+    const tomorrowEvents = futureEvents.filter((item) => item.date === tomorrow);
+    const laterEvents = futureEvents.filter((item) => item.date > tomorrow);
+    return [
+      ...tomorrowEvents,
+      ...laterEvents.slice(0, Math.max(0, 7 - tomorrowEvents.length)),
+    ];
   }, [expandedCalendarItems]);
 
   const q = query.trim().toLowerCase();
