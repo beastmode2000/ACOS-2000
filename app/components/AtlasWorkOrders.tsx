@@ -2129,7 +2129,18 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         )}
                       </div>
                       {!workEditorOpen ? (
-                        <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: 34, minWidth: 34, height: 34, minHeight: 34, padding: 0, borderRadius: 8 }} aria-label="Edit work order details" title="Edit work order details">{SYMBOL.edit}</button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          {selectedService.status !== "Completed" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDetailAction("complete")}
+                              style={{ ...goldButtonStyle, width: "auto", minHeight: 34, padding: "7px 12px", whiteSpace: "nowrap" }}
+                            >
+                              Mark Done
+                            </button>
+                          ) : null}
+                          <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: 34, minWidth: 34, height: 34, minHeight: 34, padding: 0, borderRadius: 8 }} aria-label="Edit work order details" title="Edit work order details">{SYMBOL.edit}</button>
+                        </div>
                       ) : null}
                     </div>
 
