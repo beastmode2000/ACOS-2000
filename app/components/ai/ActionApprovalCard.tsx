@@ -36,7 +36,15 @@ export default function ActionApprovalCard({
             ? "Update Work Order"
             : action.kind === "calendar-update"
               ? "Reschedule Calendar Event"
-              : "Update Inventory";
+              : action.kind === "part-update"
+                ? "Update Inventory"
+                : action.kind === "part-create"
+                  ? "Create Inventory Part"
+                  : action.kind === "asset-update"
+                    ? "Update Asset"
+                    : action.kind === "recurring-maintenance"
+                      ? "Create Recurring Maintenance"
+                      : "Convert Request to Work Order";
 
   return (
     <div
@@ -110,6 +118,40 @@ export default function ActionApprovalCard({
           {action.minQuantity !== undefined ? (
             <div>Minimum stock → {action.minQuantity}</div>
           ) : null}
+        </div>
+      ) : null}
+
+      {action.kind === "part-create" ? (
+        <div style={{ display: "grid", gap: 5, fontSize: 12, opacity: 0.78 }}>
+          <div>Starting quantity → {action.quantity}</div>
+          <div>Minimum stock → {action.minQuantity}</div>
+          {assetName ? <div>Linked asset → {assetName}</div> : null}
+        </div>
+      ) : null}
+
+      {action.kind === "asset-update" ? (
+        <div style={{ display: "grid", gap: 5, fontSize: 12, opacity: 0.78 }}>
+          {action.status ? <div>Status → {action.status}</div> : null}
+          {action.noteToAppend ? (
+            <div>Add note → {action.noteToAppend}</div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {action.kind === "recurring-maintenance" ? (
+        <div style={{ display: "grid", gap: 5, fontSize: 12, opacity: 0.78 }}>
+          <div>
+            Repeats every {action.recurrenceInterval}{" "}
+            {action.recurrenceUnit.toLowerCase()}
+          </div>
+          <div>Priority → {action.priority}</div>
+          {assetName ? <div>Asset → {assetName}</div> : null}
+        </div>
+      ) : null}
+
+      {action.kind === "request-convert" ? (
+        <div style={{ fontSize: 12, opacity: 0.78 }}>
+          Creates a new work order and moves this owner request into History.
         </div>
       ) : null}
 
