@@ -387,6 +387,7 @@ export type CalendarColorName =
 export type CalendarRepeat =
   | "None"
   | "Daily"
+  | "Weekdays"
   | "Weekly"
   | "Monthly"
   | "Yearly"
