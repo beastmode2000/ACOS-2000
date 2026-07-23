@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { SearchResult } from "../../lib/atlas-types";
+import { explainRelationship } from "../../lib/ai/relationship-engine";
 
 type Props = {
   selected?: SearchResult;
@@ -205,6 +206,7 @@ export default function RelationshipPanel({
             const saved = decisionByKey.get(pairKey(selected.id, result.id));
             const approved = saved?.decision === "approved";
             const dismissed = saved?.decision === "dismissed";
+            const explanation = explainRelationship(selected, result);
 
             return (
               <div
@@ -254,6 +256,41 @@ export default function RelationshipPanel({
                       {result.subtitle}
                     </div>
                   ) : null}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      flexWrap: "wrap",
+                      marginTop: 6,
+                    }}
+                  >
+                    <span
+                      style={{
+                        borderRadius: 999,
+                        padding: "3px 7px",
+                        background:
+                          explanation.confidence === "Direct"
+                            ? "#E9F7EE"
+                            : explanation.confidence === "Strong"
+                              ? "#FFF4D6"
+                              : "#EEF4FF",
+                        color:
+                          explanation.confidence === "Direct"
+                            ? "#176B3A"
+                            : explanation.confidence === "Strong"
+                              ? "#8A641A"
+                              : "#315A9A",
+                        fontSize: 10,
+                        fontWeight: 900,
+                      }}
+                    >
+                      {explanation.confidence}
+                    </span>
+                    <span style={{ fontSize: 11, opacity: 0.72 }}>
+                      {explanation.label}
+                    </span>
+                  </div>
                 </button>
 
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
