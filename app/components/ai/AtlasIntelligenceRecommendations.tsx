@@ -27,7 +27,7 @@ type Recommendation = {
   title: string;
   detail: string;
   tone: "urgent" | "warning" | "info";
-  group: "Overdue Work" | "Missing Procedures" | "Inventory" | "Documents" | "Service History";
+  group: "Overdue Work" | "Missing Procedures" | "Inventory" | "Documents" | "Service History" | "Record Links";
   result: SearchResult;
 };
 
@@ -59,6 +59,21 @@ function ageInDays(value: string, today: string) {
   const left = new Date(`${value}T12:00:00`).getTime();
   const right = new Date(`${today}T12:00:00`).getTime();
   return Math.floor((right - left) / 86_400_000);
+}
+
+function assetImportance(asset: any) {
+  const text = `${asset.name || ""} ${asset.category || ""}`.toLowerCase();
+  let score = 0;
+  if (
+    /generator|boiler|hvac|water|filter|pump|pool|fire|electric|refriger|freezer|irrigation|security|shut.?off/.test(
+      text,
+    )
+  )
+    score += 50;
+  if (/vehicle|boat|dock|lift|spa|appliance/.test(text)) score += 25;
+  if (asset.status === "Monitor") score += 15;
+  if (asset.status === "Offline") score += 100;
+  return score;
 }
 
 export default function AtlasIntelligenceRecommendations({
@@ -97,10 +112,16 @@ export default function AtlasIntelligenceRecommendations({
           record.date &&
           String(record.date) < today,
       )
-      .slice(0, 6)
+      .sort(
+        (left, right) =>
+          String(left.date).localeCompare(String(right.date)) ||
+          (right.priority === "High" ? 1 : 0) -
+            (left.priority === "High" ? 1 : 0),
+      )
+      .slice(0, 8)
       .forEach((record) =>
         next.push({
-          id: `overdue-${record.id}`,
+          id: `overdue-${record.id}-${record.date}`,
           title: `Overdue: ${record.title || "Untitled Work Order"}`,
           detail: `Due ${record.date}${record.priority ? ` · ${record.priority} priority` : ""}`,
           tone: "urgent",
@@ -127,7 +148,12 @@ export default function AtlasIntelligenceRecommendations({
             (procedure.linkedAssetIds || []).includes(asset.id),
           ),
       )
-      .slice(0, 6)
+      .sort(
+        (left, right) =>
+          assetImportance(right) - assetImportance(left) ||
+          String(left.name).localeCompare(String(right.name)),
+      )
+      .slice(0, 8)
       .forEach((asset) =>
         next.push({
           id: `procedure-${asset.id}`,
@@ -156,9 +182,12 @@ export default function AtlasIntelligenceRecommendations({
       .slice(0, 6)
       .forEach((part) =>
         next.push({
-          id: `part-${part.id}`,
+          id: `part-${part.id}-${Number(part.quantity || 0)}`,
           title: `${Number(part.quantity || 0) <= 0 ? "Out of stock" : "Low stock"}: ${part.name}`,
-          detail: `Quantity ${Number(part.quantity || 0)} · Minimum ${Number(part.minQuantity || 0)}`,
+          detail: `Quantity ${Number(part.quantity || 0)} · Minimum ${Number(part.minQuantity || 0)} · Reorder at least ${Math.max(
+            0,
+            Number(part.minQuantity || 0) - Number(part.quantity || 0),
+          )}`,
           tone: Number(part.quantity || 0) <= 0 ? "urgent" : "warning",
           group: "Inventory",
           result: {
@@ -199,6 +228,34 @@ export default function AtlasIntelligenceRecommendations({
         }),
       );
 
+    workOrders
+      .filter(
+        (record) =>
+          record.status !== "Completed" &&
+          !record.assetId &&
+          !record.locationId,
+      )
+      .slice(0, 5)
+      .forEach((record) =>
+        next.push({
+          id: `links-${record.id}-${record.status || "Open"}`,
+          title: `Unlinked work: ${record.title || "Untitled Work Order"}`,
+          detail:
+            "This active work order has no linked asset or location, which limits history and recommendations.",
+          tone: "info",
+          group: "Record Links",
+          result: {
+            id: `wo-${record.id}`,
+            type: "Work Order",
+            title: record.title || "Untitled Work Order",
+            subtitle: record.status || "Open",
+            detail: record.notes || "",
+            screen: "history",
+            serviceId: record.id,
+          },
+        }),
+      );
+
     assets
       .filter((asset) => asset.status !== "Offline")
       .filter((asset) => {
@@ -213,10 +270,22 @@ export default function AtlasIntelligenceRecommendations({
           .at(-1);
         return !completed || ageInDays(completed, today) > 180;
       })
-      .slice(0, 5)
+      .sort(
+        (left, right) =>
+          assetImportance(right) - assetImportance(left) ||
+          String(left.name).localeCompare(String(right.name)),
+      )
+      .slice(0, 6)
       .forEach((asset) =>
         next.push({
-          id: `service-${asset.id}`,
+          id: `service-${asset.id}-${workOrders
+            .filter(
+              (record) =>
+                record.assetId === asset.id && record.status === "Completed",
+            )
+            .map((record) => record.lastCompletedDate || record.date || "none")
+            .sort()
+            .at(-1) || "none"}`,
           title: `Review service history: ${asset.name}`,
           detail: "No completed service is recorded within the last 180 days.",
           tone: "info",
@@ -257,6 +326,7 @@ export default function AtlasIntelligenceRecommendations({
     "Inventory",
     "Documents",
     "Service History",
+    "Record Links",
   ] as const;
 
   return (
