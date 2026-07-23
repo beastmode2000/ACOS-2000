@@ -1449,6 +1449,7 @@ const calendarPlainColors: {
 const repeatOptions: CalendarRepeat[] = [
   "None",
   "Daily",
+  "Weekdays",
   "Weekly",
   "Monthly",
   "Yearly",
@@ -1851,6 +1852,10 @@ function isRecurringInstanceOnDate(event: CalendarItem, date: string) {
   const distance = daysBetween(event.date, date);
   if (distance < 0) return false;
   if (event.repeat === "Daily") return true;
+  if (event.repeat === "Weekdays") {
+    const day = calendarDateValue(date).getDay();
+    return day >= 1 && day <= 5;
+  }
   if (event.repeat === "Weekly" || event.repeat === "Custom")
     return distance % 7 === 0;
 
@@ -6288,7 +6293,7 @@ export default function AtlasPage() {
         createdAt: file.createdAt || new Date().toISOString(),
       }));
 
-      if (!imagePhotos.length) {
+    if (!imagePhotos.length) {
       setDatabaseStatus(
         "Atlas could not read that image. Try Copy image instead of Copy link.",
       );
