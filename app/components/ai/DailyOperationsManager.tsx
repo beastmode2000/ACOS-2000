@@ -66,6 +66,19 @@ export default function DailyOperationsManager({
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 4);
 
+  const assetsWithoutProcedure = assets
+    .filter(
+      (asset) =>
+        !procedures.some((procedure) =>
+          (procedure.linkedAssetIds || []).includes(asset.id),
+        ),
+    )
+    .slice(0, 5);
+
+  const workWithoutPhotos = activeWork.filter(
+    (item) => !(item.photos || []).length,
+  ).length;
+
   const weather = weatherDays.find((day) => day.date === today) || weatherDays[0];
   const weatherAdvice = weather
     ? weather.precipChance >= 60
@@ -77,11 +90,11 @@ export default function DailyOperationsManager({
           : "Good general work window for outdoor maintenance and inspections."
     : "Weather data is not available yet.";
 
-  function openAtlasScreen(screen: "calendar" | "weather") {
-    const nextUrl = `${window.location.pathname}${window.location.search}#${screen}`;
-    window.history.pushState({ atlasScreen: screen }, "", nextUrl);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  }
+  const attentionCount =
+    highPriority.length +
+    overdue.length +
+    assetsWithoutProcedure.length +
+    workWithoutPhotos;
 
   function openScheduleItem(item: CalendarItem) {
     if (item.source === "work-order" && item.linkedId) {
@@ -89,7 +102,6 @@ export default function DailyOperationsManager({
       return;
     }
     onOpenCalendar(item);
-    openAtlasScreen("calendar");
   }
 
   return (
@@ -99,12 +111,12 @@ export default function DailyOperationsManager({
         border: `1px solid ${colors.line}`,
         background: colors.card,
         overflow: "hidden",
-        marginBottom: 10,
+        marginBottom: 16,
       }}
     >
       <div
         style={{
-          padding: isMobile ? 13 : 16,
+          padding: isMobile ? 16 : 20,
           background: colors.navy,
           color: "#FFFFFF",
           display: "flex",
@@ -130,8 +142,8 @@ export default function DailyOperationsManager({
             Today’s Property Brief
           </h2>
           <div style={{ opacity: 0.8, fontSize: 13 }}>
-            {dateLabel(today)} · {todayEvents.length} today ·{" "}
-            {upcomingEvents.length} upcoming
+            {dateLabel(today)} · {attentionCount} item
+            {attentionCount === 1 ? "" : "s"} needing review
           </div>
         </div>
 
@@ -158,12 +170,12 @@ export default function DailyOperationsManager({
 
       <div
         style={{
-          padding: isMobile ? 10 : 12,
+          padding: isMobile ? 14 : 18,
           display: "grid",
           gridTemplateColumns: isMobile
             ? "1fr"
             : "repeat(2, minmax(0, 1fr))",
-          gap: 8,
+          gap: 12,
         }}
       >
         <BriefingCard title="Today’s Schedule" colors={colors}>
@@ -209,28 +221,14 @@ export default function DailyOperationsManager({
         </BriefingCard>
 
         <BriefingCard title="Weather Guidance" colors={colors}>
-          <button
-            type="button"
-            onClick={() => openAtlasScreen("weather")}
-            style={{
-              width: "100%",
-              border: 0,
-              background: "transparent",
-              padding: 0,
-              color: "inherit",
-              textAlign: "left",
-              cursor: "pointer",
-            }}
-          >
-            <div style={{ lineHeight: 1.45, fontSize: 13 }}>{weatherAdvice}</div>
-            {weather ? (
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.72 }}>
-                High {Math.round(weather.high)}° · Rain{" "}
-                {Math.round(weather.precipChance)}% · Wind{" "}
-                {Math.round(weather.windMax)} mph
-              </div>
-            ) : null}
-          </button>
+          <div style={{ lineHeight: 1.55, fontSize: 13 }}>{weatherAdvice}</div>
+          {weather ? (
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.72 }}>
+              High {Math.round(weather.high)}° · Rain{" "}
+              {Math.round(weather.precipChance)}% · Wind{" "}
+              {Math.round(weather.windMax)} mph
+            </div>
+          ) : null}
         </BriefingCard>
 
         <BriefingCard title="Tomorrow & Upcoming" colors={colors}>
@@ -249,6 +247,44 @@ export default function DailyOperationsManager({
           )}
         </BriefingCard>
 
+        <BriefingCard title="Atlas Notices" colors={colors}>
+          <NoticeLine
+            count={assetsWithoutProcedure.length}
+            label="assets shown without a linked procedure"
+          />
+          <NoticeLine
+            count={workWithoutPhotos}
+            label="open work orders without photos"
+          />
+          <NoticeLine count={overdue.length} label="overdue work items" />
+        </BriefingCard>
+
+        <BriefingCard title="Suggested AI Checks" colors={colors}>
+          <ActionLink
+            label="Review overdue work"
+            onClick={() =>
+              onAskAtlas(
+                "Review all overdue work orders, explain what needs attention first, and suggest a realistic order for completing them.",
+              )
+            }
+          />
+          <ActionLink
+            label="Find missing procedures"
+            onClick={() =>
+              onAskAtlas(
+                "Show important assets that do not have linked procedures and recommend which procedures should be created first.",
+              )
+            }
+          />
+          <ActionLink
+            label="Prepare management update"
+            onClick={() =>
+              onAskAtlas(
+                "Prepare a concise management update covering completed work, open issues, vendor visits, upcoming work, and anything needing a decision.",
+              )
+            }
+          />
+        </BriefingCard>
       </div>
     </section>
   );
@@ -269,13 +305,13 @@ function BriefingCard({
         border: `1px solid ${colors.line}`,
         borderRadius: 14,
         background: colors.panel,
-        padding: 10,
+        padding: 14,
         minWidth: 0,
       }}
     >
       <div
         style={{
-        marginBottom: 6,
+          marginBottom: 10,
           fontSize: 12,
           fontWeight: 950,
           letterSpacing: "0.06em",
@@ -284,7 +320,7 @@ function BriefingCard({
       >
         {title}
       </div>
-      <div style={{ display: "grid", gap: 5 }}>{children}</div>
+      <div style={{ display: "grid", gap: 7 }}>{children}</div>
     </div>
   );
 }
@@ -309,7 +345,7 @@ function BriefingButton({
         border: `1px solid ${colors.line}`,
         borderRadius: 10,
         background: colors.card,
-        padding: "7px 9px",
+        padding: "9px 10px",
         textAlign: "left",
         cursor: "pointer",
       }}
