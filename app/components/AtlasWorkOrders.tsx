@@ -149,6 +149,40 @@ function parseDate(value: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function recurrencePreviewDates(record: any, count = 3) {
+  const start = parseDate(String(record.date || ""));
+  if (!start || !record.recurring) return [];
+
+  const interval = Math.max(
+    1,
+    Math.floor(Number(record.recurrenceInterval || 1)),
+  );
+  const unit = String(record.recurrenceUnit || "Weeks");
+  const endKey = dateKey(String(record.recurrenceEndDate || ""));
+  const dates: string[] = [];
+  let cursor = new Date(start);
+
+  for (let index = 0; index < count; index += 1) {
+    if (unit === "Days") cursor.setDate(cursor.getDate() + interval);
+    else if (unit === "Months")
+      cursor.setMonth(cursor.getMonth() + interval);
+    else if (unit === "Years")
+      cursor.setFullYear(cursor.getFullYear() + interval);
+    else cursor.setDate(cursor.getDate() + interval * 7);
+
+    const nextKey = [
+      cursor.getFullYear(),
+      String(cursor.getMonth() + 1).padStart(2, "0"),
+      String(cursor.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    if (endKey && nextKey > endKey) break;
+    dates.push(nextKey);
+  }
+
+  return dates;
+}
+
 function dayDistance(dateValue: string) {
   const dueKey = dateKey(dateValue);
   if (!dueKey) return Number.POSITIVE_INFINITY;
@@ -2503,6 +2537,57 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         updateWorkOrder({ recurrenceEndDate: value })
                       }
                     />
+                    <div
+                      style={{
+                        gridColumn: "1 / -1",
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 10,
+                        background: "#F8FAFC",
+                        padding: 10,
+                      }}
+                    >
+                      <strong style={{ display: "block", marginBottom: 5 }}>
+                        Upcoming schedule
+                      </strong>
+                      <div style={mutedSmallStyle}>
+                        {selectedService.date
+                          ? `Current due date: ${formatDate(selectedService.date)}`
+                          : "Add a next-due date to start this schedule."}
+                      </div>
+                      {recurrencePreviewDates(selectedService).length ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 6,
+                            marginTop: 8,
+                          }}
+                        >
+                          {recurrencePreviewDates(selectedService).map(
+                            (date) => (
+                              <span key={date} style={recurringBadgeStyle}>
+                                {formatDate(date)}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      ) : selectedService.date ? (
+                        <div style={{ ...mutedSmallStyle, marginTop: 6 }}>
+                          No later occurrence falls before the stop date.
+                        </div>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void saveWorkOrderRecord()}
+                      style={{
+                        ...goldButtonStyle,
+                        gridColumn: "1 / -1",
+                        width: "100%",
+                      }}
+                    >
+                      Save Recurring Schedule
+                    </button>
                   </div>
                 ) : null}
               </section>
