@@ -45,6 +45,7 @@ import DocumentIntelligencePanel from "./components/ai/DocumentIntelligencePanel
 import PhotoIntelligencePanel from "./components/ai/PhotoIntelligencePanel";
 import AtlasGroupedSearchResults from "./components/ai/AtlasGroupedSearchResults";
 import AtlasNotifications from "./components/AtlasNotifications";
+import AtlasPortfolioCenter from "./components/AtlasPortfolioCenter";
 import { findRelatedRecords } from "./lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -20310,35 +20311,18 @@ export default function AtlasPage() {
           title="Properties"
           detail="Choose the property workspace. Property-specific records remain separated while vendors, contacts, and reusable procedures stay shared."
         />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-          {atlasProperties.filter((property) => allowedPropertyIds.includes(property.id)).map((property) => {
-            const active = property.id === activePropertyId;
-            return (
-              <button
-                key={property.id}
-                type="button"
-                onClick={() => {
-                  selectProperty(property.id);
-                  setScreen("dashboard");
-                }}
-                style={{
-                  ...cardStyle,
-                  textAlign: "left",
-                  cursor: "pointer",
-                  border: `2px solid ${active ? colors.gold : colors.line}`,
-                  background: active ? "#FFF8E8" : colors.card,
-                }}
-              >
-                <div style={eyebrowStyle}>{active ? "Active Property" : "Property"}</div>
-                <h3 style={{ ...detailTitleStyle, margin: "6px 0" }}>{property.name}</h3>
-                <p style={mutedSmallStyle}>{property.detail}</p>
-                <strong style={{ color: active ? colors.green : colors.navy }}>
-                  {active ? "Currently open" : "Open property"}
-                </strong>
-              </button>
-            );
-          })}
-        </div>
+        <AtlasPortfolioCenter
+          properties={atlasProperties.filter((property) =>
+            allowedPropertyIds.includes(property.id),
+          )}
+          activePropertyId={activePropertyId}
+          isMobile={isMobile}
+          colors={colors}
+          onOpenProperty={(propertyId, nextScreen) => {
+            selectProperty(propertyId);
+            setScreen(nextScreen);
+          }}
+        />
       </section>
     );
   }
