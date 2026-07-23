@@ -196,6 +196,16 @@ function dayDistance(dateValue: string) {
   );
 }
 
+function isInCalendarMonth(dateValue: string, monthOffset: number) {
+  const key = dateKey(dateValue);
+  if (!key) return false;
+  const [year, month] = key.split("-").map(Number);
+  const target = new Date();
+  target.setDate(1);
+  target.setMonth(target.getMonth() + monthOffset);
+  return year === target.getFullYear() && month === target.getMonth() + 1;
+}
+
 function myWorkGroup(record: any) {
   if (record.status === "Completed") return "";
   const distance = dayDistance(String(record.date || ""));
@@ -617,17 +627,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       (dueDateFilter === "Next 7 Days" &&
         dueDistance >= 0 &&
         dueDistance <= 7) ||
+      (dueDateFilter === "This Month" &&
+        isInCalendarMonth(String(record.date || ""), 0)) ||
       (dueDateFilter === "Next Month" &&
-        dueDistance >= 0 &&
-        dueDistance <= 30) ||
+        isInCalendarMonth(String(record.date || ""), 1)) ||
       (dueDateFilter === "No Due Date" && !String(record.date || "").trim());
     const matchesLocation =
       locationFilter === "All" ||
+      (locationFilter === "None" && !String(record.locationId || "")) ||
       String(record.locationId || "") === locationFilter;
     const matchesAsset =
       assetFilter === "All" || String(record.assetId || "") === assetFilter;
     const matchesAssigned =
       assignedFilter === "All" ||
+      (assignedFilter === "None" && !String(record.assignedTo || "")) ||
       String(record.assignedTo || "") === assignedFilter;
     const matchesSearch =
       !search ||
@@ -755,6 +768,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     0,
     completedHistoryLimit,
   );
+
+  const activeFilterCount = [
+    categoryFilter,
+    typeFilter,
+    statusFilter,
+    dueDateFilter,
+    locationFilter,
+    assetFilter,
+    assignedFilter,
+  ].filter((value) => value !== "All").length + (localSearch.trim() ? 1 : 0);
+
+  function setQuickDateFilter(value: string) {
+    setDueDateFilter((current) => (current === value ? "All" : value));
+  }
 
   const tabCounts = useMemo(() => {
     const result: Record<string, number> = {};
@@ -1806,6 +1833,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   }}
                 >
                   Search &amp; Filters
+                  {activeFilterCount
+                    ? ` · ${activeFilterCount} active · ${visibleRecords.length} result${
+                        visibleRecords.length === 1 ? "" : "s"
+                      }`
+                    : ""}
                 </summary>
                 <div
                   style={{
@@ -1883,6 +1915,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <option value="Overdue">Overdue</option>
                   <option value="Today">Due Today</option>
                   <option value="Next 7 Days">Next 7 Days</option>
+                  <option value="This Month">This Month</option>
                   <option value="Next Month">Next Month</option>
                   <option value="No Due Date">No Due Date</option>
                 </select>
@@ -1894,6 +1927,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   style={controlStyle}
                 >
                   <option value="All">All Locations</option>
+                  <option value="None">No Location</option>
                   {byName(locationRecords).map((location: any) => (
                     <option key={location.id} value={location.id}>
                       {location.name}
@@ -1922,6 +1956,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   style={controlStyle}
                 >
                   <option value="All">Anyone Assigned</option>
+                  <option value="None">Unassigned</option>
                   {byName(contactRecords).map((contact: any) => (
                     <option
                       key={contact.id || contact.name}
@@ -1950,6 +1985,45 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               </details>
             </section>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(3, minmax(0, 1fr))"
+                  : "repeat(3, minmax(120px, 180px))",
+                gap: 7,
+              }}
+            >
+              {[
+                ["Today", "Today"],
+                ["Next 7 Days", "Next 7 Days"],
+                ["Next Month", "Next Month"],
+              ].map(([label, value]) => {
+                const selected = dueDateFilter === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setQuickDateFilter(value)}
+                    style={{
+                      ...secondaryButtonStyle,
+                      width: "100%",
+                      minWidth: 0,
+                      padding: isMobile ? "8px 5px" : "8px 10px",
+                      background: selected ? colors.navy : "#FFFFFF",
+                      color: selected ? "#FFFFFF" : colors.navy,
+                      borderColor: selected ? colors.navy : colors.line,
+                      fontSize: isMobile ? 11 : 12,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
 
             {activeSection?.kind === "my-work" ? (
               renderMyWorkList()
