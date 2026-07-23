@@ -70,22 +70,149 @@ function money(value: number) {
 
 function printReport(title: string, rows: Row[]) {
   if (!rows.length) return;
-  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
   const escape = (value: unknown) =>
     String(value ?? "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
+  const reportKey = title.toLowerCase();
+  const preferredColumns =
+    reportKey.includes("work order")
+      ? [
+          ["title", "Work Order"],
+          ["status", "Status"],
+          ["priority", "Priority"],
+          ["date", "Due Date"],
+          ["assignedTo", "Assigned To"],
+          ["assetId", "Asset"],
+          ["locationId", "Location"],
+          ["vendorId", "Vendor"],
+          ["estimatedCost", "Estimated"],
+          ["actualCost", "Actual"],
+          ["invoiceNumber", "Invoice"],
+        ]
+      : reportKey.includes("asset")
+        ? [
+            ["name", "Asset"],
+            ["category", "Category"],
+            ["location", "Location"],
+            ["status", "Status"],
+            ["make", "Make"],
+            ["model", "Model"],
+            ["serialNumber", "Serial Number"],
+            ["vendorId", "Vendor"],
+          ]
+        : reportKey.includes("vendor")
+          ? [
+              ["name", "Vendor"],
+              ["category", "Category"],
+              ["contactName", "Contact"],
+              ["phone", "Phone"],
+              ["email", "Email"],
+              ["status", "Status"],
+            ]
+          : reportKey.includes("contact")
+            ? [
+                ["name", "Name"],
+                ["company", "Company"],
+                ["role", "Role"],
+                ["phone", "Phone"],
+                ["email", "Email"],
+              ]
+            : reportKey.includes("procedure")
+              ? [
+                  ["title", "Procedure"],
+                  ["status", "Status"],
+                  ["category", "Category"],
+                  ["estimatedTime", "Estimated Time"],
+                  ["assetId", "Asset"],
+                  ["locationId", "Location"],
+                ]
+              : reportKey.includes("calendar")
+                ? [
+                    ["title", "Event"],
+                    ["date", "Date"],
+                    ["startTime", "Start"],
+                    ["endTime", "End"],
+                    ["category", "Category"],
+                    ["location", "Location"],
+                  ]
+                : [
+                    ["title", "Document"],
+                    ["name", "Name"],
+                    ["type", "Type"],
+                    ["status", "Status"],
+                    ["createdAt", "Saved"],
+                  ];
+  const aliases: Record<string, string[]> = {
+    title: ["title", "name"],
+    name: ["name", "title"],
+    date: ["date", "item_date", "dueDate"],
+    assignedTo: ["assignedTo", "assigned_to"],
+    assetId: ["assetName", "asset", "assetId", "asset_id"],
+    locationId: ["locationName", "location", "locationId", "location_id"],
+    vendorId: ["vendorName", "vendor", "vendorId", "vendor_id"],
+    estimatedCost: ["estimatedCost", "estimated_cost"],
+    actualCost: ["actualCost", "actual_cost"],
+    invoiceNumber: ["invoiceNumber", "invoice_number"],
+    serialNumber: ["serialNumber", "serial", "serial_number"],
+    contactName: ["contactName", "contact", "contact_name"],
+    estimatedTime: ["estimatedTime", "estimated_time"],
+    startTime: ["startTime", "start_time"],
+    endTime: ["endTime", "end_time"],
+    createdAt: ["createdAt", "created_at"],
+  };
+  const columns = preferredColumns
+    .map(([key, label]) => ({
+      key,
+      label,
+      source: (aliases[key] || [key]).find((candidate) =>
+        rows.some((row) => row[candidate] !== undefined && row[candidate] !== ""),
+      ),
+    }))
+    .filter((column) => Boolean(column.source));
+  const formatPrintValue = (key: string, value: unknown) => {
+    if (value === undefined || value === null || value === "") return "—";
+    if (key === "estimatedCost" || key === "actualCost") {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? money(numeric) : String(value);
+    }
+    if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? "" : "s"}`;
+    if (typeof value === "object") return "Attached";
+    const text = String(value);
+    return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+  };
+  const estimated = rows.reduce(
+    (total, row) => total + Number(row.estimatedCost || row.estimated_cost || 0),
+    0,
+  );
+  const actual = rows.reduce(
+    (total, row) => total + Number(row.actualCost || row.actual_cost || 0),
+    0,
+  );
   const popup = window.open("", "_blank");
   if (!popup) return;
   popup.document.write(`<!doctype html><html><head><title>${escape(title)}</title><style>
-    body{font-family:Arial,sans-serif;color:#071b2f;margin:28px}
-    h1{margin:0 0 4px}.meta{color:#637487;margin-bottom:18px}
-    table{width:100%;border-collapse:collapse;font-size:10px}
-    th,td{border:1px solid #d8e0e8;padding:6px;text-align:left;vertical-align:top;word-break:break-word}
-    th{background:#071b2f;color:white}
-    @media print{body{margin:12px}}
-  </style></head><body><h1>${escape(title)}</h1><div class="meta">${rows.length} records · ${new Date().toLocaleString()}</div><table><thead><tr>${headers.map((header)=>`<th>${escape(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row)=>`<tr>${headers.map((header)=>`<td>${escape(typeof row[header] === "object" ? JSON.stringify(row[header]) : row[header])}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`);
+    @page{size:landscape;margin:.45in}
+    *{box-sizing:border-box}
+    body{font-family:Arial,sans-serif;color:#071b2f;margin:0;background:#fff}
+    .header{display:flex;align-items:center;gap:12px;border-bottom:3px solid #c99a3d;padding-bottom:10px;margin-bottom:12px}
+    .logo{width:48px;height:48px;object-fit:contain}
+    h1{font-size:22px;margin:0 0 3px}.meta{color:#637487;font-size:10px}
+    .summary{display:flex;gap:8px;margin:0 0 12px}
+    .stat{border:1px solid #d8e0e8;border-radius:7px;padding:7px 10px;min-width:115px}
+    .stat span{display:block;color:#637487;font-size:8px;text-transform:uppercase;font-weight:700}
+    .stat strong{font-size:14px}
+    table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8px}
+    th,td{border:1px solid #d8e0e8;padding:5px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+    th{background:#071b2f;color:white;font-size:8px}
+    tbody tr:nth-child(even){background:#f5f8fb}
+    tr{break-inside:avoid}
+  </style></head><body>
+    <div class="header"><img class="logo" src="/atlas-logo.png" alt="Atlas"><div><h1>${escape(title)}</h1><div class="meta">${rows.length} records · ${escape(new Date().toLocaleString())}</div></div></div>
+    ${reportKey.includes("work order") ? `<div class="summary"><div class="stat"><span>Work Orders</span><strong>${rows.length}</strong></div><div class="stat"><span>Estimated</span><strong>${escape(money(estimated))}</strong></div><div class="stat"><span>Actual</span><strong>${escape(money(actual))}</strong></div></div>` : ""}
+    <table><thead><tr>${columns.map((column)=>`<th>${escape(column.label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row)=>`<tr>${columns.map((column)=>`<td>${escape(formatPrintValue(column.key, row[column.source!]))}</td>`).join("")}</tr>`).join("")}</tbody></table>
+  </body></html>`);
   popup.document.close();
   popup.focus();
   window.setTimeout(() => {
