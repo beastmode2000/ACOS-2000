@@ -64,6 +64,13 @@ function asPositiveInteger(value: unknown, fallback = 1) {
   return parsed;
 }
 
+function asMoney(value: unknown) {
+  if (value === "" || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Number(parsed.toFixed(2));
+}
+
 function asArray(value: unknown) {
   if (Array.isArray(value)) return value;
   return [];
@@ -417,6 +424,18 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS service_history jsonb NOT NULL DEFAULT '[]'::jsonb
   `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS estimated_cost numeric(12,2)
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS actual_cost numeric(12,2)
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS invoice_number text
+  `;
 }
 
 async function ensureProcedureColumns(sql: ReturnType<typeof neon>) {
@@ -556,6 +575,9 @@ function mapWorkOrder(row: JsonRecord) {
     checklist: asArray(row.checklist),
     notesHistory: asArray(row.notes_history),
     serviceHistory: asArray(row.service_history),
+    estimatedCost: Number(row.estimated_cost || 0),
+    actualCost: Number(row.actual_cost || 0),
+    invoiceNumber: row.invoice_number ? String(row.invoice_number) : "",
     photos: asArray(row.photos),
     documents: asArray(row.documents),
   };
@@ -872,6 +894,9 @@ export async function GET(request: NextRequest) {
         checklist,
         notes_history,
         service_history,
+        estimated_cost,
+        actual_cost,
+        invoice_number,
         photos,
         documents
       FROM atlas_work_orders
@@ -1290,6 +1315,9 @@ export async function POST(request: NextRequest) {
           checklist = ${jsonArray(record.checklist)}::jsonb,
           notes_history = ${jsonArray(record.notesHistory)}::jsonb,
           service_history = ${jsonArray(record.serviceHistory)}::jsonb,
+          estimated_cost = ${asMoney(record.estimatedCost)},
+          actual_cost = ${asMoney(record.actualCost)},
+          invoice_number = ${nullableString(record.invoiceNumber)},
           photos = ${jsonArray(record.photos)}::jsonb,
           documents = ${jsonArray(record.documents)}::jsonb,
           updated_at = NOW()
@@ -1329,6 +1357,9 @@ export async function POST(request: NextRequest) {
             checklist,
             notes_history,
             service_history,
+            estimated_cost,
+            actual_cost,
+            invoice_number,
             photos,
             documents,
             updated_at
@@ -1363,6 +1394,9 @@ export async function POST(request: NextRequest) {
             ${jsonArray(record.checklist)}::jsonb,
             ${jsonArray(record.notesHistory)}::jsonb,
             ${jsonArray(record.serviceHistory)}::jsonb,
+            ${asMoney(record.estimatedCost)},
+            ${asMoney(record.actualCost)},
+            ${nullableString(record.invoiceNumber)},
             ${jsonArray(record.photos)}::jsonb,
             ${jsonArray(record.documents)}::jsonb,
             NOW()
