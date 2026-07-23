@@ -60,6 +60,37 @@ function downloadCsv(name: string, rows: Row[]) {
   URL.revokeObjectURL(url);
 }
 
+function money(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function printReport(title: string, rows: Row[]) {
+  if (!rows.length) return;
+  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+  const escape = (value: unknown) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const popup = window.open("", "_blank", "noopener,noreferrer");
+  if (!popup) return;
+  popup.document.write(`<!doctype html><html><head><title>${escape(title)}</title><style>
+    body{font-family:Arial,sans-serif;color:#071b2f;margin:28px}
+    h1{margin:0 0 4px}.meta{color:#637487;margin-bottom:18px}
+    table{width:100%;border-collapse:collapse;font-size:10px}
+    th,td{border:1px solid #d8e0e8;padding:6px;text-align:left;vertical-align:top;word-break:break-word}
+    th{background:#071b2f;color:white}
+    @media print{body{margin:12px}}
+  </style></head><body><h1>${escape(title)}</h1><div class="meta">${rows.length} records · ${new Date().toLocaleString()}</div><table><thead><tr>${headers.map((header)=>`<th>${escape(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row)=>`<tr>${headers.map((header)=>`<td>${escape(typeof row[header] === "object" ? JSON.stringify(row[header]) : row[header])}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`);
+  popup.document.close();
+  popup.focus();
+  popup.print();
+}
+
 export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [report, setReport] = useState<ReportKey>("workOrders");
   const [team, setTeam] = useState<Member[]>(defaultTeam);
@@ -159,6 +190,22 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
     { mode:"high" as const, label:"High priority", count:activeWork.filter((row)=>row.priority==="High").length },
     { mode:"week" as const, label:"Due within 7 days", count:activeWork.filter((row)=>row.date && String(row.date)>=today && String(row.date)<=nextWeek).length },
   ];
+  const estimatedTotal = data.workOrders.reduce(
+    (total, row) => total + Number(row.estimatedCost || 0),
+    0,
+  );
+  const actualTotal = data.workOrders.reduce(
+    (total, row) => total + Number(row.actualCost || 0),
+    0,
+  );
+  const completedCount = data.workOrders.filter((row) =>
+    ["Completed", "Closed"].includes(String(row.status || "")),
+  ).length;
+  const missingCostCount = data.workOrders.filter(
+    (row) =>
+      ["Completed", "Closed"].includes(String(row.status || "")) &&
+      !Number(row.actualCost || 0),
+  ).length;
 
   const statuses = useMemo(() => Array.from(new Set(data[report].map((row)=>String(row.status || "")).filter(Boolean))).sort(), [data, report]);
   const priorities = useMemo(() => Array.from(new Set(data[report].map((row)=>String(row.priority || "")).filter(Boolean))).sort(), [data, report]);
@@ -197,12 +244,21 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
         <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Reports & Export</div>
         <h2 style={{ margin: "5px 0", color: colors.navy }}>Download Atlas records</h2>
         <p style={{ margin: "0 0 16px", color: colors.muted }}>Choose a report and download a spreadsheet-ready CSV file.</p>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(4,minmax(0,1fr))",gap:8,marginBottom:12}}>
+          {[
+            ["Estimated", money(estimatedTotal)],
+            ["Actual", money(actualTotal)],
+            ["Completed", String(completedCount)],
+            ["Missing completed costs", String(missingCostCount)],
+          ].map(([label,value])=><div key={label} style={{border:`1px solid ${colors.line}`,borderRadius:10,background:colors.panel,padding:10}}><span style={{display:"block",fontSize:10,fontWeight:900,color:colors.muted,textTransform:"uppercase"}}>{label}</span><strong style={{fontSize:18,color:colors.navy}}>{value}</strong></div>)}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1fr) auto", gap: 10 }}>
           <select value={report} onChange={(event) => { setReport(event.currentTarget.value as ReportKey); clearFilters(); }} style={control}>
             {reports.map(([value, label]) => <option key={value} value={value}>{label} ({data[value].length})</option>)}
           </select>
           <button type="button" onClick={() => downloadCsv(report, filteredRows)} disabled={!filteredRows.length} style={{ ...button, opacity: filteredRows.length ? 1 : .55 }}>Download Filtered CSV</button>
         </div>
+        <button type="button" onClick={() => printReport(`Atlas ${reports.find(([key])=>key===report)?.[1] || "Report"}`, filteredRows)} disabled={!filteredRows.length} style={{...button,marginTop:10,background:"#fff",border:`1px solid ${colors.line}`,opacity:filteredRows.length?1:.55}}>Print / Save PDF</button>
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.4fr repeat(5,minmax(120px,.7fr)) auto",gap:8,marginTop:10}}>
           <input value={search} onChange={(e)=>setSearch(e.currentTarget.value)} placeholder="Search this report" style={control}/>
           <input type="date" value={dateFrom} onChange={(e)=>setDateFrom(e.currentTarget.value)} aria-label="From date" style={control}/>
