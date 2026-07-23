@@ -113,6 +113,8 @@ async function verifySessionCookie(
       expiresAt?: number;
       email?: string;
       role?: string;
+      propertyIds?: string[];
+      permissions?: Record<string, boolean>;
     };
     if (payload.username !== expectedUsername) return null;
     if (!payload.expiresAt || Date.now() > payload.expiresAt) return null;
@@ -192,6 +194,8 @@ export async function middleware(request: NextRequest) {
     );
     requestHeaders.set("x-atlas-user-email", session?.email || "");
     requestHeaders.set("x-atlas-user-role", session?.role || "administrator");
+    requestHeaders.set("x-atlas-property-ids", JSON.stringify(session?.propertyIds || ["2000"]));
+    requestHeaders.set("x-atlas-permissions", JSON.stringify(session?.permissions || {}));
 
     const response = NextResponse.next({
       request: { headers: requestHeaders },
