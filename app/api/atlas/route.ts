@@ -640,6 +640,141 @@ export async function GET(request: NextRequest) {
     await ensureContactsTable(sql);
     await ensurePartsTable(sql);
     await ensurePropertyColumns(sql);
+    if (request.nextUrl.searchParams.get("portfolio") === "1") {
+      const propertyIds = ["2000", "6855", "3661", "hangar"];
+      const accessible = (
+        await Promise.all(
+          propertyIds.map(async (propertyId) => ({
+            propertyId,
+            allowed: await authorizeAtlasRequest(
+              sql,
+              request,
+              propertyId,
+              "view",
+            ),
+          })),
+        )
+      )
+        .filter((item) => item.allowed)
+        .map((item) => item.propertyId);
+      const accessibleSet = new Set(accessible);
+
+      const [
+        locationCounts,
+        assetCounts,
+        workCounts,
+        partCounts,
+        calendarCounts,
+        documentCounts,
+      ] = await Promise.all([
+        sql`
+          SELECT property_id, COUNT(*)::int AS total
+          FROM atlas_locations
+          GROUP BY property_id
+        `,
+        sql`
+          SELECT
+            property_id,
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (
+              WHERE status IN ('Offline', 'Monitor')
+            )::int AS risks
+          FROM atlas_assets
+          GROUP BY property_id
+        `,
+        sql`
+          SELECT
+            property_id,
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (
+              WHERE status NOT IN ('Completed', 'Closed', 'Cancelled')
+            )::int AS open,
+            COUNT(*) FILTER (
+              WHERE status NOT IN ('Completed', 'Closed', 'Cancelled')
+                AND COALESCE(due_date_value, date) < CURRENT_DATE
+            )::int AS overdue,
+            COUNT(*) FILTER (
+              WHERE status NOT IN ('Completed', 'Closed', 'Cancelled')
+                AND priority = 'High'
+            )::int AS high_priority,
+            COUNT(*) FILTER (
+              WHERE status IN ('Completed', 'Closed')
+            )::int AS completed
+          FROM atlas_work_orders
+          GROUP BY property_id
+        `,
+        sql`
+          SELECT
+            property_id,
+            COUNT(*) FILTER (
+              WHERE quantity <= min_quantity
+                 OR status IN ('Low', 'Out', 'Order')
+            )::int AS low_stock
+          FROM atlas_parts
+          GROUP BY property_id
+        `,
+        sql`
+          SELECT
+            property_id,
+            COUNT(*) FILTER (
+              WHERE COALESCE(item_date, date) >= CURRENT_DATE
+                AND COALESCE(item_date, date) < CURRENT_DATE + INTERVAL '30 days'
+                AND completed = false
+            )::int AS upcoming
+          FROM atlas_calendar_items
+          GROUP BY property_id
+        `,
+        sql`
+          SELECT property_id, COUNT(*)::int AS total
+          FROM atlas_documents
+          GROUP BY property_id
+        `,
+      ]);
+
+      const rowMap = (
+        rows: readonly Record<string, unknown>[],
+      ) =>
+        new Map(
+          rows
+            .filter((row) => accessibleSet.has(String(row.property_id)))
+            .map((row) => [String(row.property_id), row]),
+        );
+      const locationsByProperty = rowMap(locationCounts);
+      const assetsByProperty = rowMap(assetCounts);
+      const workByProperty = rowMap(workCounts);
+      const partsByProperty = rowMap(partCounts);
+      const calendarByProperty = rowMap(calendarCounts);
+      const documentsByProperty = rowMap(documentCounts);
+      const number = (value: unknown) => Number(value || 0);
+
+      return NextResponse.json({
+        ok: true,
+        source: "neon",
+        generatedAt: new Date().toISOString(),
+        properties: accessible.map((propertyId) => {
+          const locations = locationsByProperty.get(propertyId) || {};
+          const assets = assetsByProperty.get(propertyId) || {};
+          const work = workByProperty.get(propertyId) || {};
+          const parts = partsByProperty.get(propertyId) || {};
+          const calendar = calendarByProperty.get(propertyId) || {};
+          const documents = documentsByProperty.get(propertyId) || {};
+          return {
+            propertyId,
+            locations: number(locations.total),
+            assets: number(assets.total),
+            assetRisks: number(assets.risks),
+            workOrders: number(work.total),
+            openWork: number(work.open),
+            overdueWork: number(work.overdue),
+            highPriorityWork: number(work.high_priority),
+            completedWork: number(work.completed),
+            lowStockParts: number(parts.low_stock),
+            upcomingEvents: number(calendar.upcoming),
+            documents: number(documents.total),
+          };
+        }),
+      });
+    }
     const propertyId = asString(request.nextUrl.searchParams.get("propertyId")) || "2000";
     if (!(await authorizeAtlasRequest(sql, request, propertyId, "view"))) {
       return NextResponse.json({ ok:false, error:"You do not have access to this property." }, { status:403 });
