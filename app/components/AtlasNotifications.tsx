@@ -25,6 +25,21 @@ type Alert = {
 
 const READ_KEY = "atlas-notification-read-v1";
 const BROWSER_KEY = "atlas-browser-notifications-v1";
+const PREFERENCES_KEY = "atlas-notification-preferences-v1";
+
+type NotificationPreferences = {
+  work: boolean;
+  inventory: boolean;
+  requests: boolean;
+  inbox: boolean;
+};
+
+const DEFAULT_PREFERENCES: NotificationPreferences = {
+  work: true,
+  inventory: true,
+  requests: true,
+  inbox: true,
+};
 
 function localDateKey() {
   const date = new Date();
@@ -43,18 +58,24 @@ export default function AtlasNotifications(props: Props) {
   const [readIds, setReadIds] = useState<string[]>([]);
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState("");
+  const [preferences, setPreferences] =
+    useState<NotificationPreferences>(DEFAULT_PREFERENCES);
 
   useEffect(() => {
     try {
       setReadIds(JSON.parse(localStorage.getItem(READ_KEY) || "[]"));
       setBrowserEnabled(localStorage.getItem(BROWSER_KEY) === "true");
+      setPreferences({
+        ...DEFAULT_PREFERENCES,
+        ...JSON.parse(localStorage.getItem(PREFERENCES_KEY) || "{}"),
+      });
     } catch {}
   }, []);
 
   const alerts = useMemo(() => {
     const today = localDateKey();
     const next: Alert[] = [];
-    props.workOrders.forEach((record) => {
+    if (preferences.work) props.workOrders.forEach((record) => {
       if (["Completed", "Closed", "Cancelled"].includes(String(record.status))) return;
       const due = recordDateKey(record.date);
       const overdue = Boolean(due && due < today);
@@ -69,20 +90,20 @@ export default function AtlasNotifications(props: Props) {
         open: () => props.onOpenWork(String(record.id)),
       });
     });
-    props.parts.forEach((part) => {
+    if (preferences.inventory) props.parts.forEach((part) => {
       const quantity = Number(part.quantity || 0);
       const minimum = Number(part.minQuantity || 0);
       if (quantity > minimum && !["Low", "Out", "Order"].includes(String(part.status))) return;
       next.push({ id:`part-${part.id}-${quantity}`, title:part.name || "Inventory item", detail:`Low stock · ${quantity} available`, tone:"attention", open:props.onOpenParts });
     });
-    props.inboxItems.filter((item) => ["New", "Needs Review"].includes(String(item.status))).forEach((item) => {
+    if (preferences.inbox) props.inboxItems.filter((item) => ["New", "Needs Review"].includes(String(item.status))).forEach((item) => {
       next.push({ id:`inbox-${item.id}-${item.status}`, title:item.title || "Inbox item", detail:item.status === "New" ? "New Inbox item" : "Waiting for review", tone:"info", open:()=>props.onOpenInbox(String(item.id)) });
     });
-    props.requests.filter((request) => ["New", "Open", "Needs Review"].includes(String(request.status))).forEach((request) => {
+    if (preferences.requests) props.requests.filter((request) => ["New", "Open", "Needs Review"].includes(String(request.status))).forEach((request) => {
       next.push({ id:`request-${request.id}-${request.status}`, title:request.title || "Owner request", detail:`Owner request · ${request.status}`, tone:"attention", open:()=>props.onOpenRequest(String(request.id)) });
     });
     return next.slice(0, 50);
-  }, [props.workOrders, props.parts, props.inboxItems, props.requests]);
+  }, [props.workOrders, props.parts, props.inboxItems, props.requests, preferences]);
 
   const unread = alerts.filter((alert) => !readIds.includes(alert.id));
 
@@ -175,6 +196,7 @@ export default function AtlasNotifications(props: Props) {
         body: JSON.stringify({
           subscription: subscription.toJSON(),
           propertyId: "all",
+          preferences,
         }),
       });
       if (!response.ok) throw new Error("Atlas could not save this device.");
@@ -191,6 +213,36 @@ export default function AtlasNotifications(props: Props) {
     }
   }
 
+  async function updateNotificationPreference(
+    key: keyof NotificationPreferences,
+    enabled: boolean,
+  ) {
+    const next = { ...preferences, [key]: enabled };
+    setPreferences(next);
+    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(next));
+    setNotificationMessage("Notification choices saved.");
+
+    if (!browserEnabled || !("serviceWorker" in navigator)) return;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) return;
+      await fetch("/api/atlas-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: subscription.toJSON(),
+          propertyId: "all",
+          preferences: next,
+        }),
+      });
+    } catch {
+      setNotificationMessage(
+        "Choices are saved on this phone and will sync on the next update.",
+      );
+    }
+  }
+
   return (
     <div style={{ position:"relative", marginBottom:8 }}>
       <button type="button" onClick={()=>setOpen((value)=>!value)} style={{width:"100%",minHeight:42,border:`1px solid ${props.colors.line}`,borderRadius:10,background:"#fff",color:props.colors.navy,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 11px"}}>
@@ -200,6 +252,19 @@ export default function AtlasNotifications(props: Props) {
         <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><strong>Atlas Notifications</strong><button type="button" onClick={markAllRead} style={{border:0,background:"transparent",fontWeight:800,cursor:"pointer"}}>Mark all read</button></div>
         <label style={{display:"flex",gap:8,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={browserEnabled} onChange={()=>void toggleBrowserAlerts()}/>Phone / browser alerts on this device</label>
         {notificationMessage ? <div style={{padding:"7px 8px",borderRadius:8,background:props.colors.panel,fontSize:11,fontWeight:750}}>{notificationMessage}</div> : null}
+        <div style={{display:"grid",gridTemplateColumns:props.isMobile?"1fr":"repeat(2, minmax(0, 1fr))",gap:6,padding:"4px 0"}}>
+          {([
+            ["work", "Due, overdue & high-priority work"],
+            ["inventory", "Low and out-of-stock parts"],
+            ["requests", "New owner requests"],
+            ["inbox", "New Inbox items"],
+          ] as const).map(([key, label]) => (
+            <label key={key} style={{display:"flex",gap:7,alignItems:"flex-start",fontSize:11,fontWeight:750,border:`1px solid ${props.colors.line}`,borderRadius:8,padding:7}}>
+              <input type="checkbox" checked={preferences[key]} onChange={(event)=>void updateNotificationPreference(key,event.currentTarget.checked)}/>
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
         {alerts.length ? alerts.map((alert)=><button key={alert.id} type="button" onClick={()=>{setOpen(false);alert.open();}} style={{textAlign:"left",border:`1px solid ${props.colors.line}`,borderLeft:`4px solid ${alert.tone==="urgent"?"#B42318":alert.tone==="attention"?props.colors.gold:"#3B82F6"}`,borderRadius:9,background:readIds.includes(alert.id)?props.colors.panel:"#fff",padding:10,cursor:"pointer"}}><strong style={{display:"block",color:props.colors.navy}}>{alert.title}</strong><span style={{fontSize:12,color:props.colors.muted}}>{alert.detail}</span></button>) : <div style={{padding:14,color:props.colors.muted}}>No active notifications.</div>}
       </div> : null}
     </div>
