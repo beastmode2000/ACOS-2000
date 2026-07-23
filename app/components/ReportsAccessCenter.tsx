@@ -76,7 +76,7 @@ function printReport(title: string, rows: Row[]) {
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
-  const popup = window.open("", "_blank", "noopener,noreferrer");
+  const popup = window.open("", "_blank");
   if (!popup) return;
   popup.document.write(`<!doctype html><html><head><title>${escape(title)}</title><style>
     body{font-family:Arial,sans-serif;color:#071b2f;margin:28px}
@@ -88,7 +88,9 @@ function printReport(title: string, rows: Row[]) {
   </style></head><body><h1>${escape(title)}</h1><div class="meta">${rows.length} records · ${new Date().toLocaleString()}</div><table><thead><tr>${headers.map((header)=>`<th>${escape(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row)=>`<tr>${headers.map((header)=>`<td>${escape(typeof row[header] === "object" ? JSON.stringify(row[header]) : row[header])}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`);
   popup.document.close();
   popup.focus();
-  popup.print();
+  window.setTimeout(() => {
+    popup.print();
+  }, 300);
 }
 
 export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
