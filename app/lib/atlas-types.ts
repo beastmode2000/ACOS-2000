@@ -535,6 +535,7 @@ export type SearchResult = {
   procedureId?: string;
   calendarId?: string;
   partId?: string;
+  requestId?: string;
   manualId?: string;
   relatedIds?: string[];
 };
