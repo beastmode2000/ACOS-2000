@@ -9062,6 +9062,72 @@ export default function AtlasPage() {
         );
       }
 
+      if (pendingAssistantAction.kind === "part-create") {
+        const duplicate = partRecords.find(
+          (item) =>
+            item.name.trim().toLowerCase() ===
+            pendingAssistantAction.title.trim().toLowerCase(),
+        );
+        if (duplicate) {
+          throw new Error(
+            `${duplicate.name} already exists. Ask Atlas to update its quantity instead.`,
+          );
+        }
+
+        const quantity = pendingAssistantAction.quantity;
+        const minQuantity = pendingAssistantAction.minQuantity;
+        const status: PartStatus =
+          quantity <= 0 ? "Out" : quantity <= minQuantity ? "Low" : "In Stock";
+        const record = normalizePart({
+          id: uid("part"),
+          name: pendingAssistantAction.title,
+          category: "General",
+          locationId: pendingAssistantAction.locationId,
+          assetId: pendingAssistantAction.assetId,
+          vendorId: pendingAssistantAction.vendorId,
+          quantity,
+          minQuantity,
+          status,
+          notes: `Created through Ask Atlas on ${todayISO()}.`,
+        });
+
+        const saved = await postAtlasRecord("parts", record);
+        if (!saved) throw new Error("The new inventory part did not save.");
+        setPartRecords((current) => byName([record, ...current]));
+        setSelectedPartId(record.id);
+        finishAssistantAnswer(
+          `Created inventory part: ${record.name} with ${record.quantity} on hand and a minimum of ${record.minQuantity}.`,
+        );
+      }
+
+      if (pendingAssistantAction.kind === "asset-update") {
+        const existing = assetRecords.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!existing) throw new Error("Atlas could not find that asset.");
+
+        const noteToAppend = pendingAssistantAction.noteToAppend?.trim();
+        const updated = normalizeAsset({
+          ...existing,
+          status: pendingAssistantAction.status || existing.status,
+          notes: noteToAppend
+            ? [existing.notes, noteToAppend].filter(Boolean).join("\n\n")
+            : existing.notes,
+        });
+
+        const saved = await postAtlasRecord("assets", updated);
+        if (!saved) throw new Error("The asset update did not save.");
+        setAssetRecords((current) =>
+          byName(
+            current.map((item) =>
+              item.id === updated.id ? updated : item,
+            ),
+          ),
+        );
+        setSelectedAssetId(updated.id);
+        finishAssistantAnswer(`Updated asset: ${updated.name}`);
+      }
+
       setPendingAssistantAction(null);
     } catch (error) {
       finishAssistantAnswer(
@@ -19973,6 +20039,13 @@ export default function AtlasPage() {
                       ? assetRecords.find(
                           (item) => item.id === pendingAssistantAction.assetId,
                         )?.name
+                      : pendingAssistantAction.kind === "part-create"
+                        ? assetRecords.find(
+                            (item) =>
+                              item.id === pendingAssistantAction.assetId,
+                          )?.name
+                        : pendingAssistantAction.kind === "asset-update"
+                          ? pendingAssistantAction.targetTitle
                       : pendingAssistantAction.kind === "procedure"
                         ? assetRecords.find(
                             (item) =>
