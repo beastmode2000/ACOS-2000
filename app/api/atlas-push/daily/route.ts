@@ -54,45 +54,69 @@ export async function GET(request: NextRequest) {
       LIMIT 20
     `;
 
-    const due = workRows.filter((row) => String(row.date || "").slice(0, 10) === today);
-    const overdue = workRows.filter(
-      (row) => row.date && String(row.date).slice(0, 10) < today,
-    );
-    const high = workRows.filter((row) => row.priority === "High");
-    const workSummary = [
-      due.length ? `${due.length} due today` : "",
-      overdue.length ? `${overdue.length} overdue` : "",
-      high.length ? `${high.length} high priority` : "",
-    ].filter(Boolean);
-
-    if (!workSummary.length && !partRows.length) {
+    if (!workRows.length && !partRows.length) {
       return NextResponse.json({ ok: true, sent: 0, message: "Nothing due." });
     }
 
     const results = [];
-    if (workSummary.length) {
-      results.push(
-        await sendAtlasPush({
-          title: "Atlas Daily Work Brief",
-          body: workSummary.join(" · "),
-          url: "/#history",
-          tag: `atlas-daily-work-${today}`,
-          category: "work",
-        }),
+    const propertyIds = Array.from(
+      new Set(
+        [...workRows, ...partRows]
+          .map((row) => String(row.property_id || "2000"))
+          .filter(Boolean),
+      ),
+    );
+
+    for (const propertyId of propertyIds) {
+      const propertyWork = workRows.filter(
+        (row) => String(row.property_id || "2000") === propertyId,
       );
-    }
-    if (partRows.length) {
-      results.push(
-        await sendAtlasPush({
-          title: "Atlas Inventory Alert",
-          body: `${partRows.length} low or out-of-stock part${
-            partRows.length === 1 ? "" : "s"
-          } need review.`,
-          url: "/#parts",
-          tag: `atlas-daily-inventory-${today}`,
-          category: "inventory",
-        }),
+      const propertyParts = partRows.filter(
+        (row) => String(row.property_id || "2000") === propertyId,
       );
+      const due = propertyWork.filter(
+        (row) => String(row.date || "").slice(0, 10) === today,
+      );
+      const overdue = propertyWork.filter(
+        (row) => row.date && String(row.date).slice(0, 10) < today,
+      );
+      const high = propertyWork.filter((row) => row.priority === "High");
+      const workSummary = [
+        due.length ? `${due.length} due today` : "",
+        overdue.length ? `${overdue.length} overdue` : "",
+        high.length ? `${high.length} high priority` : "",
+      ].filter(Boolean);
+
+      if (workSummary.length) {
+        results.push(
+          await sendAtlasPush(
+            {
+              title: `Atlas ${propertyId} Work Brief`,
+              body: workSummary.join(" · "),
+              url: "/#history",
+              tag: `atlas-daily-work-${propertyId}-${today}`,
+              category: "work",
+            },
+            propertyId,
+          ),
+        );
+      }
+      if (propertyParts.length) {
+        results.push(
+          await sendAtlasPush(
+            {
+              title: `Atlas ${propertyId} Inventory`,
+              body: `${propertyParts.length} low or out-of-stock part${
+                propertyParts.length === 1 ? "" : "s"
+              } need review.`,
+              url: "/#parts",
+              tag: `atlas-daily-inventory-${propertyId}-${today}`,
+              category: "inventory",
+            },
+            propertyId,
+          ),
+        );
+      }
     }
     return NextResponse.json({
       ok: true,
