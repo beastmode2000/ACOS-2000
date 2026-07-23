@@ -343,6 +343,7 @@ export async function POST(request: NextRequest) {
       body: `${savedRequest.title || "Maintenance Request"}${savedRequest.requesterName ? ` · ${savedRequest.requesterName}` : ""}`,
       url: "/#requests",
       tag: `atlas-request-${savedRequest.id}`,
+      category: "requests",
     }).catch(() => undefined);
 
     return NextResponse.json({
