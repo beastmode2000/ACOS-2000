@@ -86,33 +86,19 @@ export function AtlasMiniMark({ size = 30 }: { size?: number }) {
         placeItems: "center",
         overflow: "hidden",
         position: "relative",
-        background: colors.navy,
+        background: "#FFFFFF",
         border: `1px solid ${colors.gold2}`,
         boxShadow: "0 5px 14px rgba(7,27,47,0.12)",
       }}
     >
-      <span
-        style={{
-          color: colors.gold2,
-          fontWeight: 900,
-          fontSize: Math.max(12, Math.round(size * 0.48)),
-          lineHeight: 1,
-        }}
-      >
-        A
-      </span>
-
       <img
-        src="/atlas-logo.png"
-        alt=""
-        onError={(event) => {
-          event.currentTarget.style.display = "none";
-        }}
+        src="/atlas-logo.png?v=atlas-real-logo"
+        alt="Atlas"
         style={{
           position: "absolute",
-          inset: 2,
-          width: `calc(100% - 4px)`,
-          height: `calc(100% - 4px)`,
+          inset: 0,
+          width: "100%",
+          height: "100%",
           objectFit: "contain",
         }}
       />
