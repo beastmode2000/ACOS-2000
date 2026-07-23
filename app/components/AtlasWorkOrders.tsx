@@ -2179,6 +2179,25 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               </section>
 
               <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Cost & Invoice</div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={fieldLabelStyle}>Estimated Cost</span>
+                    <input type="number" min="0" step="0.01" value={selectedService.estimatedCost || ""} onChange={(event) => updateWorkOrder({ estimatedCost: Number(event.currentTarget.value || 0) })} style={inputStyle} />
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={fieldLabelStyle}>Actual Cost</span>
+                    <input type="number" min="0" step="0.01" value={selectedService.actualCost || ""} onChange={(event) => updateWorkOrder({ actualCost: Number(event.currentTarget.value || 0) })} style={inputStyle} />
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={fieldLabelStyle}>Invoice Number</span>
+                    <input value={selectedService.invoiceNumber || ""} onChange={(event) => updateWorkOrder({ invoiceNumber: event.currentTarget.value })} style={inputStyle} />
+                  </label>
+                </div>
+                <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Costs and invoice numbers are included in Atlas reports and CSV exports.</p>
+              </section>
+
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
                 <div style={{ ...eyebrowStyle, marginBottom: 10 }}>Internal Notes</div>
                 <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={4} placeholder="Add internal notes here..." style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} />
                 <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>These notes stay inside Atlas.</p>
