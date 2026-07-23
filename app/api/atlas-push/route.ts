@@ -32,6 +32,10 @@ export async function POST(request: NextRequest) {
     const subscription = body.subscription;
     const endpoint = String(subscription?.endpoint || "").trim();
     const propertyId = String(body.propertyId || "all").trim() || "all";
+    const preferences =
+      body.preferences && typeof body.preferences === "object"
+        ? body.preferences
+        : {};
     if (!endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
       return NextResponse.json(
         { ok: false, error: "The device subscription is incomplete." },
@@ -46,6 +50,7 @@ export async function POST(request: NextRequest) {
         subscription,
         property_id,
         user_agent,
+        preferences,
         updated_at
       )
       VALUES (
@@ -53,12 +58,14 @@ export async function POST(request: NextRequest) {
         ${JSON.stringify(subscription)}::jsonb,
         ${propertyId},
         ${request.headers.get("user-agent") || ""},
+        ${JSON.stringify(preferences)}::jsonb,
         now()
       )
       ON CONFLICT (endpoint) DO UPDATE SET
         subscription = EXCLUDED.subscription,
         property_id = EXCLUDED.property_id,
         user_agent = EXCLUDED.user_agent,
+        preferences = EXCLUDED.preferences,
         updated_at = now()
     `;
 
@@ -91,4 +98,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-
