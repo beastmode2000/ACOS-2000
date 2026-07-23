@@ -1,5 +1,6 @@
 export type Screen =
   | "dashboard"
+  | "portfolio"
   | "map"
   | "locations"
   | "assets"
@@ -57,6 +58,7 @@ export type UploadedFileRecord = {
 };
 
 export type LocationRecord = {
+  propertyId?: string;
   id: string;
   name: string;
   type: string;
@@ -114,6 +116,7 @@ export type ContactRecord = {
 };
 
 export type AssetRecord = {
+  propertyId?: string;
   id: string;
   name: string;
   locationId: string;
@@ -129,6 +132,7 @@ export type AssetRecord = {
 };
 
 export type ServiceRecord = {
+  propertyId?: string;
   id: string;
   assetId: string;
   vendorId?: string;
@@ -286,6 +290,7 @@ export type InboxItemRecord = {
 };
 
 export type DocumentRecord = {
+  propertyId?: string;
   id: string;
   title: string;
   area: string;
@@ -331,6 +336,7 @@ export type ManualRecord = {
 };
 
 export type PartRecord = {
+  propertyId?: string;
   id: string;
   name: string;
   category: string;
@@ -410,6 +416,7 @@ export type CalendarColor = {
 };
 
 export type CalendarItem = {
+  propertyId?: string;
   id: string;
   date: string;
   time?: string;
@@ -457,6 +464,7 @@ export type WorkPlanTask = {
 };
 
 export type PhotoRecord = {
+  propertyId?: string;
   id: string;
   assetId: string;
   name: string;
