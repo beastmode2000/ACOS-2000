@@ -56,6 +56,144 @@ type CacheEntry = {
 
 const manualCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const CONTEXT_LIMIT = 260_000;
+
+const QUESTION_STOP_WORDS = new Set([
+  "what",
+  "when",
+  "where",
+  "which",
+  "show",
+  "tell",
+  "find",
+  "about",
+  "with",
+  "from",
+  "that",
+  "this",
+  "have",
+  "does",
+  "need",
+  "atlas",
+  "property",
+]);
+
+function questionTokens(question: string) {
+  return Array.from(
+    new Set(
+      question
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .split(/\s+/)
+        .filter(
+          (token) =>
+            token.length >= 3 && !QUESTION_STOP_WORDS.has(token),
+        ),
+    ),
+  );
+}
+
+function removeHeavyData(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(removeHeavyData);
+  if (!value || typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !/^(dataUrl|base64|blob|binary|thumbnail)$/i.test(key))
+      .map(([key, entry]) => [key, removeHeavyData(entry)]),
+  );
+}
+
+function recordSearchText(value: unknown) {
+  if (!value || typeof value !== "object") return String(value ?? "");
+  const record = value as Record<string, unknown>;
+  return [
+    record.name,
+    record.title,
+    record.label,
+    record.category,
+    record.status,
+    record.priority,
+    record.date,
+    record.notes,
+    record.purpose,
+    record.make,
+    record.manufacturer,
+    record.model,
+    record.serial,
+    record.assetName,
+    record.locationName,
+    record.vendorName,
+    record.requesterName,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function arrayLimit(key: string) {
+  const normalized = key.toLowerCase();
+  if (/work|service/.test(normalized)) return 80;
+  if (/calendar|event/.test(normalized)) return 60;
+  if (/asset|location/.test(normalized)) return 60;
+  if (/procedure|manual/.test(normalized)) return 45;
+  if (/document|request|vendor/.test(normalized)) return 35;
+  return 40;
+}
+
+function selectRelevantSnapshot(snapshot: unknown, question: string) {
+  const cleaned = removeHeavyData(snapshot);
+  const initial = JSON.stringify(cleaned ?? {});
+  if (initial.length <= CONTEXT_LIMIT) return initial;
+  if (!cleaned || typeof cleaned !== "object" || Array.isArray(cleaned))
+    return initial.slice(0, CONTEXT_LIMIT);
+
+  const tokens = questionTokens(question);
+  const broadQuestion =
+    tokens.length <= 1 ||
+    /\b(today|overdue|upcoming|everything|all|weekly|plan|priority)\b/i.test(
+      question,
+    );
+
+  const compact = Object.fromEntries(
+    Object.entries(cleaned as Record<string, unknown>).map(([key, value]) => {
+      if (!Array.isArray(value)) return [key, value];
+
+      const ranked = value
+        .map((record, index) => {
+          const text = recordSearchText(record);
+          const matchScore = tokens.reduce(
+            (score, token) =>
+              score + (text.includes(token) ? Math.max(2, token.length) : 0),
+            0,
+          );
+          const operationalScore =
+            /\b(overdue|open|scheduled|in progress|high|monitor|new|needs review)\b/.test(
+              text,
+            )
+              ? 4
+              : 0;
+          return { record, index, score: matchScore + operationalScore };
+        })
+        .sort(
+          (left, right) =>
+            right.score - left.score || left.index - right.index,
+        );
+
+      const limit = arrayLimit(key);
+      const selected = broadQuestion
+        ? ranked.slice(0, limit)
+        : [
+            ...ranked.filter((entry) => entry.score > 0).slice(0, limit),
+            ...ranked.filter((entry) => entry.score === 0).slice(0, 8),
+          ].slice(0, limit);
+
+      return [key, selected.map((entry) => entry.record)];
+    }),
+  );
+
+  return JSON.stringify(compact);
+}
 
 function extractOutputText(payload: OpenAIResponsePayload): string {
   if (typeof payload.output_text === "string" && payload.output_text.trim()) {
@@ -240,7 +378,7 @@ export async function POST(request: NextRequest) {
 
   let atlasJson = "{}";
   try {
-    atlasJson = JSON.stringify(body.atlas ?? {});
+    atlasJson = selectRelevantSnapshot(body.atlas ?? {}, question);
   } catch {
     return NextResponse.json(
       { ok: false, error: "Atlas could not prepare its records." },
@@ -340,7 +478,17 @@ Return ONLY one JSON object:
 
   const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas / 2000.
 
-Use only the Atlas snapshot as the authority for private property facts. Resolve IDs to readable names. Never invent records, dates, vendors, costs, maintenance history, or document contents. Give a direct useful answer. If the answer is not in Atlas, say so clearly.
+Use only the supplied Atlas snapshot as the authority for private property facts. Resolve IDs to readable names and connect information across assets, locations, vendors, work orders, procedures, documents, manuals, parts, calendar items, requests, and service history.
+
+Answer rules:
+- Lead with the direct answer.
+- Use exact Atlas names, dates, statuses, and quantities when available.
+- Explain the strongest connected evidence without dumping unrelated records.
+- Distinguish completed history from open or upcoming work.
+- When useful, finish with one practical next action.
+- Never invent records, dates, vendors, costs, maintenance history, relationships, or document contents.
+- If Atlas does not contain enough evidence, say exactly what is missing.
+- Do not claim anything was changed or saved.
 
 Return ONLY one JSON object with this exact shape:
 {
