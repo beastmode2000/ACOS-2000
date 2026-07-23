@@ -56,6 +56,24 @@ export type PendingAssistantAction =
       targetTitle: string;
       quantity?: number;
       minQuantity?: number;
+    }
+  | {
+      id: string;
+      kind: "part-create";
+      title: string;
+      quantity: number;
+      minQuantity: number;
+      locationId: string;
+      assetId: string;
+      vendorId: string;
+    }
+  | {
+      id: string;
+      kind: "asset-update";
+      targetId: string;
+      targetTitle: string;
+      status?: "Online" | "Offline" | "Seasonal" | "Monitor";
+      noteToAppend?: string;
     };
 
 type PlannerOptions = {
@@ -173,6 +191,30 @@ function parseInventoryValue(
   return undefined;
 }
 
+function parseNewPartTitle(question: string) {
+  const match = question.match(
+    /\b(?:create|make|add)\s+(?:a\s+)?(?:new\s+)?(?:part|parts record|inventory item)\s+(?:for\s+)?["“]?(.+?)["”]?(?=\s+with\s+(?:quantity|count|stock|minimum|min)|\s+(?:quantity|count|stock|minimum|min)\s+(?:to|at|is)|[.!?]?$)/i,
+  );
+  return match?.[1]?.trim().replace(/^["“]|["”]$/g, "") || "";
+}
+
+function parseAssetStatus(question: string) {
+  const normalized = question.toLowerCase();
+  if (/\bstatus\s+(?:to|as)\s+offline\b|\bmark\s+offline\b/.test(normalized)) {
+    return "Offline" as const;
+  }
+  if (/\bstatus\s+(?:to|as)\s+online\b|\bmark\s+online\b/.test(normalized)) {
+    return "Online" as const;
+  }
+  if (/\bstatus\s+(?:to|as)\s+seasonal\b|\bmark\s+seasonal\b/.test(normalized)) {
+    return "Seasonal" as const;
+  }
+  if (/\bstatus\s+(?:to|as)\s+monitor\b|\bmark\s+(?:as\s+)?monitor\b/.test(normalized)) {
+    return "Monitor" as const;
+  }
+  return undefined;
+}
+
 export function planAssistantAction({
   question,
   matches,
@@ -191,6 +233,7 @@ export function planAssistantAction({
   const requestedStatus = parseWorkOrderStatus(question);
   const requestedPriority = parsePriority(question);
   const requestedNote = parseNote(question);
+  const requestedAssetStatus = parseAssetStatus(question);
   const isQuestionOnly =
     /\?$/.test(question.trim()) ||
     /^(what|which|who|where|when|why|how|show|list|find|are|is|do|does|can|could|should|would)\b/.test(
@@ -198,6 +241,39 @@ export function planAssistantAction({
     );
   const hasExplicitUpdateCommand =
     /\b(update|edit|change|mark|set|add note|append note|reopen|close)\b/.test(normalized);
+
+  const newPartTitle = parseNewPartTitle(question);
+  if (newPartTitle) {
+    return {
+      id: createId("assistant-action"),
+      kind: "part-create",
+      title: newPartTitle,
+      quantity: parseInventoryValue(question, "quantity") ?? 0,
+      minQuantity: parseInventoryValue(question, "minimum") ?? 1,
+      locationId: location?.locationId || "general",
+      assetId: asset?.assetId || "",
+      vendorId: vendor?.vendorId || "",
+    };
+  }
+
+  if (
+    asset?.assetId &&
+    !isQuestionOnly &&
+    hasExplicitUpdateCommand &&
+    Boolean(requestedAssetStatus || requestedNote) &&
+    /\b(asset|equipment|status|note|online|offline|seasonal|monitor)\b/.test(
+      normalized,
+    )
+  ) {
+    return {
+      id: createId("assistant-action"),
+      kind: "asset-update",
+      targetId: asset.assetId,
+      targetTitle: asset.title,
+      status: requestedAssetStatus,
+      noteToAppend: requestedNote,
+    };
+  }
 
   if (
     part?.partId &&
