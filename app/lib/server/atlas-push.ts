@@ -6,6 +6,7 @@ export type AtlasPushPayload = {
   body: string;
   url?: string;
   tag?: string;
+  category?: "work" | "inventory" | "requests" | "inbox";
 };
 
 function getSql() {
@@ -25,9 +26,14 @@ export async function ensurePushSchema() {
       subscription jsonb NOT NULL,
       property_id text NOT NULL DEFAULT 'all',
       user_agent text NOT NULL DEFAULT '',
+      preferences jsonb NOT NULL DEFAULT '{}'::jsonb,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )
+  `;
+  await sql`
+    ALTER TABLE atlas_push_subscriptions
+    ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{}'::jsonb
   `;
 }
 
@@ -51,9 +57,9 @@ export async function sendAtlasPush(
   const sql = getSql();
   const rows =
     propertyId === "all"
-      ? await sql`SELECT endpoint, subscription FROM atlas_push_subscriptions`
+      ? await sql`SELECT endpoint, subscription, preferences FROM atlas_push_subscriptions`
       : await sql`
-          SELECT endpoint, subscription
+          SELECT endpoint, subscription, preferences
           FROM atlas_push_subscriptions
           WHERE property_id = 'all' OR property_id = ${propertyId}
         `;
@@ -63,6 +69,11 @@ export async function sendAtlasPush(
 
   await Promise.all(
     rows.map(async (row) => {
+      const preferences =
+        row.preferences && typeof row.preferences === "object"
+          ? (row.preferences as Record<string, unknown>)
+          : {};
+      if (payload.category && preferences[payload.category] === false) return;
       try {
         await webPush.sendNotification(
           row.subscription as webPush.PushSubscription,
@@ -83,4 +94,3 @@ export async function sendAtlasPush(
 
   return { sent, failed, configured: true };
 }
-
