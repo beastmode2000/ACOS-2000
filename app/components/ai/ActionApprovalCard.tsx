@@ -34,7 +34,9 @@ export default function ActionApprovalCard({
           ? "Create Draft Procedure"
           : action.kind === "work-order-update"
             ? "Update Work Order"
-            : "Reschedule Calendar Event";
+            : action.kind === "calendar-update"
+              ? "Reschedule Calendar Event"
+              : "Update Inventory";
 
   return (
     <div
@@ -97,6 +99,17 @@ export default function ActionApprovalCard({
         <div style={{ fontSize: 12, opacity: 0.72 }}>
           Move to {formattedDate || action.date}
           {action.time ? ` • ${action.time}` : " • All day"}
+        </div>
+      ) : null}
+
+      {action.kind === "part-update" ? (
+        <div style={{ display: "grid", gap: 5, fontSize: 12, opacity: 0.78 }}>
+          {action.quantity !== undefined ? (
+            <div>Quantity → {action.quantity}</div>
+          ) : null}
+          {action.minQuantity !== undefined ? (
+            <div>Minimum stock → {action.minQuantity}</div>
+          ) : null}
         </div>
       ) : null}
 
