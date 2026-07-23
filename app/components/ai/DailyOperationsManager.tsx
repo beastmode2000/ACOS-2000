@@ -10,7 +10,8 @@ import type {
 
 type Props = {
   assets: AssetRecord[];
-  calendarItems: CalendarItem[];
+  todayEvents: CalendarItem[];
+  upcomingEvents: CalendarItem[];
   procedures: ProcedureRecord[];
   serviceRecords: ServiceRecord[];
   weatherDays: WeatherDay[];
@@ -40,7 +41,8 @@ function dateLabel(date: string) {
 
 export default function DailyOperationsManager({
   assets,
-  calendarItems,
+  todayEvents,
+  upcomingEvents,
   procedures,
   serviceRecords,
   weatherDays,
@@ -51,10 +53,6 @@ export default function DailyOperationsManager({
   onOpenWorkOrder,
   onAskAtlas,
 }: Props) {
-  const todayEvents = calendarItems
-    .filter((item) => item.date === today && !item.completed)
-    .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
-
   const activeWork = serviceRecords.filter(
     (item) => !["Completed", "Closed", "Cancelled"].includes(item.status),
   );
@@ -66,20 +64,6 @@ export default function DailyOperationsManager({
   const overdue = activeWork
     .filter((item) => item.date && item.date < today)
     .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 4);
-
-  const upcomingVisits = calendarItems
-    .filter(
-      (item) =>
-        item.date >= today &&
-        !item.completed &&
-        /vendor|service|inspection|repair|visit|meeting|appointment/i.test(
-          `${item.title} ${item.notes || ""} ${item.linkedType || ""}`,
-        ),
-    )
-    .sort((a, b) =>
-      `${a.date} ${a.time || ""}`.localeCompare(`${b.date} ${b.time || ""}`),
-    )
     .slice(0, 4);
 
   const assetsWithoutProcedure = assets
@@ -111,6 +95,14 @@ export default function DailyOperationsManager({
     overdue.length +
     assetsWithoutProcedure.length +
     workWithoutPhotos;
+
+  function openScheduleItem(item: CalendarItem) {
+    if (item.source === "work-order" && item.linkedId) {
+      onOpenWorkOrder(item.linkedId);
+      return;
+    }
+    onOpenCalendar(item);
+  }
 
   return (
     <section
@@ -188,12 +180,14 @@ export default function DailyOperationsManager({
       >
         <BriefingCard title="Today’s Schedule" colors={colors}>
           {todayEvents.length ? (
-            todayEvents.slice(0, 5).map((item) => (
+            todayEvents.map((item) => (
               <BriefingButton
-                key={item.id}
+                key={item.instanceId || item.id}
                 title={item.title}
-                detail={item.time || "All day"}
-                onClick={() => onOpenCalendar(item)}
+                detail={`${item.time || "All day"} · ${
+                  item.categoryLabel || item.area || "Calendar"
+                }`}
+                onClick={() => openScheduleItem(item)}
                 colors={colors}
               />
             ))
@@ -237,19 +231,19 @@ export default function DailyOperationsManager({
           ) : null}
         </BriefingCard>
 
-        <BriefingCard title="Upcoming Visits" colors={colors}>
-          {upcomingVisits.length ? (
-            upcomingVisits.map((item) => (
+        <BriefingCard title="Tomorrow & Upcoming" colors={colors}>
+          {upcomingEvents.length ? (
+            upcomingEvents.map((item) => (
               <BriefingButton
-                key={item.id}
+                key={item.instanceId || item.id}
                 title={item.title}
-                detail={`${dateLabel(item.date)}${item.time ? ` · ${item.time}` : ""}`}
-                onClick={() => onOpenCalendar(item)}
+                detail={`${dateLabel(item.date)} · ${item.time || "All day"}`}
+                onClick={() => openScheduleItem(item)}
                 colors={colors}
               />
             ))
           ) : (
-            <EmptyLine>No vendor or service visits found.</EmptyLine>
+            <EmptyLine>Nothing else is scheduled yet.</EmptyLine>
           )}
         </BriefingCard>
 
@@ -400,4 +394,3 @@ function ActionLink({
     </button>
   );
 }
-
