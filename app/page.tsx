@@ -10995,6 +10995,7 @@ export default function AtlasPage() {
       <AtlasInsightsTimeline
         mode={mode}
         serviceRecords={serviceRecords}
+        requestRecords={requestRecords}
         todayEvents={todayEvents}
         upcomingEvents={upcomingEvents}
         weatherDays={weatherDays}
@@ -11011,6 +11012,7 @@ export default function AtlasPage() {
         locationName={locationName}
         setScreen={setScreen}
         setSelectedServiceId={setSelectedServiceId}
+        setSelectedRequestId={setSelectedRequestId}
         openCalendarItem={openCalendarItem}
       />
     );
