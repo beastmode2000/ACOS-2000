@@ -9,7 +9,9 @@ type AtlasUser = {
   name: string;
   email: string;
   password: string;
-  role: "master" | "administrator" | "operations" | "viewer";
+  role: "master" | "administrator" | "manager" | "employee" | "vendor" | "viewer";
+  propertyIds?: string[];
+  permissions?: Record<string, boolean>;
 };
 
 function getUsers(): AtlasUser[] {
@@ -40,10 +42,10 @@ async function loadSavedAccess(user: AtlasUser) {
   if (!url) return user;
   try {
     const sql = neon(url);
-    const rows = await sql`SELECT role, active FROM atlas_team_access WHERE lower(email) = ${user.email.toLowerCase()} LIMIT 1`;
+    const rows = await sql`SELECT role, active, property_ids, permissions FROM atlas_team_access WHERE lower(email) = ${user.email.toLowerCase()} LIMIT 1`;
     const row = rows[0] as { role?: AtlasUser["role"]; active?: boolean } | undefined;
     if (row?.active === false) return null;
-    return row?.role ? { ...user, role: row.role } : user;
+    return row?.role ? { ...user, role: String(row.role)==="operations" ? "employee" : row.role, propertyIds: Array.isArray((row as any).property_ids) ? (row as any).property_ids : ["2000"], permissions: ((row as any).permissions || {}) as Record<string, boolean> } : user;
   } catch {
     return user;
   }
@@ -54,13 +56,13 @@ async function loadInvitedUser(email: string, password: string): Promise<AtlasUs
   if (!url) return null;
   try {
     const sql = neon(url);
-    const rows = await sql`SELECT name, email, role, active, password_hash, password_salt FROM atlas_team_access WHERE lower(email)=${email} LIMIT 1`;
+    const rows = await sql`SELECT name, email, role, active, password_hash, password_salt, property_ids, permissions FROM atlas_team_access WHERE lower(email)=${email} LIMIT 1`;
     const row = rows[0] as Record<string, unknown> | undefined;
     if (!row || row.active === false || !row.password_hash || !row.password_salt) return null;
     const actual = pbkdf2Sync(password, String(row.password_salt), 210000, 32, "sha256");
     const expected = Buffer.from(String(row.password_hash), "hex");
     if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
-    return { name:String(row.name), email:String(row.email), password:"", role:String(row.role) as AtlasUser["role"] };
+    return { name:String(row.name), email:String(row.email), password:"", role:(String(row.role)==="operations" ? "employee" : String(row.role)) as AtlasUser["role"], propertyIds:Array.isArray(row.property_ids) ? row.property_ids.map(String) : ["2000"], permissions:(row.permissions && typeof row.permissions === "object" ? row.permissions : {}) as Record<string, boolean> };
   } catch { return null; }
 }
 
@@ -165,6 +167,8 @@ export async function POST(request: NextRequest) {
       username: sessionUsername,
       email: user.email,
       role: user.role,
+      propertyIds: user.propertyIds || ["2000"],
+      permissions: user.permissions || {},
       expiresAt,
     })
   );
@@ -180,6 +184,8 @@ export async function POST(request: NextRequest) {
       name: user.name,
       email: user.email,
       role: user.role,
+      propertyIds: user.propertyIds || ["2000"],
+      permissions: user.permissions || {},
     },
   });
 
