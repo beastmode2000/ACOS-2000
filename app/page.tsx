@@ -9028,6 +9028,40 @@ export default function AtlasPage() {
         );
       }
 
+      if (pendingAssistantAction.kind === "part-update") {
+        const existing = partRecords.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!existing) throw new Error("Atlas could not find that part.");
+
+        const quantity =
+          pendingAssistantAction.quantity ?? existing.quantity;
+        const minQuantity =
+          pendingAssistantAction.minQuantity ?? existing.minQuantity;
+        const status: PartStatus =
+          quantity <= 0 ? "Out" : quantity <= minQuantity ? "Low" : "In Stock";
+        const updated = normalizePart({
+          ...existing,
+          quantity,
+          minQuantity,
+          status,
+        });
+
+        const saved = await postAtlasRecord("parts", updated);
+        if (!saved) throw new Error("The inventory update did not save.");
+        setPartRecords((current) =>
+          byName(
+            current.map((item) =>
+              item.id === updated.id ? updated : item,
+            ),
+          ),
+        );
+        setSelectedPartId(updated.id);
+        finishAssistantAnswer(
+          `Updated inventory: ${updated.name} now has ${updated.quantity} on hand with a minimum of ${updated.minQuantity}.`,
+        );
+      }
+
       setPendingAssistantAction(null);
     } catch (error) {
       finishAssistantAnswer(
