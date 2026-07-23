@@ -4296,37 +4296,41 @@ export default function AtlasPage() {
           }
         }
 
-        // Merge shared records into every recovered browser copy. Same-ID
-        // records are combined field-by-field so an incomplete API row cannot
-        // strip recurrence, time, reminder, notes, links, or category details.
-        if (apiCalendar.length > 0) {
-          const sharedItems = apiCalendar
+        // Merge shared calendar rows with browser-saved rows.
+        // Recovery must also run when Neon currently has zero calendar rows.
+        const sharedItems = apiCalendar
+          .map(normalizeCalendar)
+          .filter((item) => item.id && item.date && item.title);
+
+        setCalendarItems((current) => {
+          const browserItems = current
             .map(normalizeCalendar)
             .filter((item) => item.id && item.date && item.title);
 
-          if (sharedItems.length > 0) {
-            setCalendarItems((current) => {
-              const next = mergeCalendarItemRecords(current, sharedItems);
-              saveStoredArray(storageKeys.calendar[0], next);
+          const next =
+            sharedItems.length > 0
+              ? mergeCalendarItemRecords(browserItems, sharedItems)
+              : byTitle(browserItems);
 
-              const sharedIds = new Set(sharedItems.map((item) => item.id));
-              const browserOnlyItems = current.filter(
-                (item) => item.id && !sharedIds.has(item.id),
-              );
+          if (next.length > 0) {
+            saveStoredArray(storageKeys.calendar[0], next);
+          }
 
-              // Repair browser-only events back into shared Atlas instead of
-              // silently dropping them after a calendar update or bad sync.
-              for (const item of browserOnlyItems) {
-                void postAtlasRecord("calendar", {
-                  ...item,
-                  status: item.completed ? "Completed" : "Scheduled",
-                });
-              }
+          const sharedIds = new Set(sharedItems.map((item) => item.id));
+          const browserOnlyItems = browserItems.filter(
+            (item) => !sharedIds.has(item.id),
+          );
 
-              return next;
+          for (const item of browserOnlyItems) {
+            void postAtlasRecord("calendar", {
+              ...item,
+              propertyId: activePropertyId,
+              status: item.completed ? "Completed" : "Scheduled",
             });
           }
-        }
+
+          return next;
+        });
 
         if (apiParts.length) {
           const next = byName(apiParts.map(normalizePart));
@@ -4399,11 +4403,27 @@ export default function AtlasPage() {
           .filter((item) => item.id && item.date && item.title);
 
         setCalendarItems((current) => {
+          const browserItems = current
+            .map(normalizeCalendar)
+            .filter((item) => item.id && item.date && item.title);
+
           if (sharedCalendar.length === 0) {
-            return current;
+            for (const item of browserItems) {
+              void postAtlasRecord("calendar", {
+                ...item,
+                propertyId: activePropertyId,
+                status: item.completed ? "Completed" : "Scheduled",
+              });
+            }
+
+            if (browserItems.length > 0) {
+              saveStoredArray(storageKeys.calendar[0], browserItems);
+            }
+
+            return browserItems;
           }
 
-          const next = mergeCalendarItemRecords(current, sharedCalendar);
+          const next = mergeCalendarItemRecords(browserItems, sharedCalendar);
           const signature = (items: CalendarItem[]) =>
             items
               .map(
