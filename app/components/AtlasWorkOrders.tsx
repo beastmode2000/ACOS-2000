@@ -121,23 +121,45 @@ function categoryDisplayLabel(category: string) {
   );
 }
 
+function dateKey(value: unknown) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const iso = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function todayKey() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function parseDate(value: string) {
-  if (!value) return null;
-  const parsed = new Date(`${value}T12:00:00`);
+  const key = dateKey(value);
+  if (!key) return null;
+  const parsed = new Date(`${key}T12:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function startOfToday() {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
 function dayDistance(dateValue: string) {
-  const due = parseDate(dateValue);
-  if (!due) return Number.POSITIVE_INFINITY;
+  const dueKey = dateKey(dateValue);
+  if (!dueKey) return Number.POSITIVE_INFINITY;
+  const [dueYear, dueMonth, dueDay] = dueKey.split("-").map(Number);
+  const [todayYear, todayMonth, todayDay] = todayKey().split("-").map(Number);
   const oneDay = 24 * 60 * 60 * 1000;
-  return Math.floor((due.getTime() - startOfToday().getTime()) / oneDay);
+  return Math.round(
+    (Date.UTC(dueYear, dueMonth - 1, dueDay) -
+      Date.UTC(todayYear, todayMonth - 1, todayDay)) /
+      oneDay,
+  );
 }
 
 function myWorkGroup(record: any) {
