@@ -42,6 +42,7 @@ export default function AtlasNotifications(props: Props) {
   const [open, setOpen] = useState(false);
   const [readIds, setReadIds] = useState<string[]>([]);
   const [browserEnabled, setBrowserEnabled] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState("");
 
   useEffect(() => {
     try {
@@ -91,7 +92,17 @@ export default function AtlasNotifications(props: Props) {
     const noticeKey = `atlas-notified-${alert.id}`;
     if (sessionStorage.getItem(noticeKey)) return;
     sessionStorage.setItem(noticeKey, "true");
-    new Notification(alert.title, { body: alert.detail, icon: "/atlas-icon-192.png" });
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.ready.then((registration) =>
+        registration.showNotification(alert.title, {
+          body: alert.detail,
+          icon: "/atlas-icon-192.png",
+          badge: "/atlas-icon-192.png",
+          tag: alert.id,
+          data: { url: "/#dashboard" },
+        }),
+      );
+    }
   }, [browserEnabled, unread]);
 
   function markAllRead() {
@@ -100,15 +111,84 @@ export default function AtlasNotifications(props: Props) {
     localStorage.setItem(READ_KEY, JSON.stringify(ids));
   }
 
+  function applicationServerKey(value: string) {
+    const padding = "=".repeat((4 - (value.length % 4)) % 4);
+    const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = window.atob(base64);
+    return Uint8Array.from(raw, (character) => character.charCodeAt(0));
+  }
+
   async function toggleBrowserAlerts() {
-    if (typeof Notification === "undefined") return;
-    if (!browserEnabled) {
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") return;
+    setNotificationMessage("");
+    if (
+      typeof Notification === "undefined" ||
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window)
+    ) {
+      setNotificationMessage("Push notifications are not supported on this device.");
+      return;
     }
-    const next = !browserEnabled;
-    setBrowserEnabled(next);
-    localStorage.setItem(BROWSER_KEY, String(next));
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const existing = await registration.pushManager.getSubscription();
+
+      if (browserEnabled) {
+        if (existing) {
+          await fetch("/api/atlas-push", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint: existing.endpoint }),
+          });
+          await existing.unsubscribe();
+        }
+        setBrowserEnabled(false);
+        localStorage.setItem(BROWSER_KEY, "false");
+        setNotificationMessage("Phone alerts are off on this device.");
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setNotificationMessage("Notification permission was not approved.");
+        return;
+      }
+
+      const keyResponse = await fetch("/api/atlas-push", {
+        cache: "no-store",
+      });
+      const keyPayload = await keyResponse.json();
+      if (!keyResponse.ok || !keyPayload.publicKey) {
+        throw new Error("Push notifications are not configured yet.");
+      }
+
+      const subscription =
+        existing ||
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey(keyPayload.publicKey),
+        }));
+
+      const response = await fetch("/api/atlas-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: subscription.toJSON(),
+          propertyId: "all",
+        }),
+      });
+      if (!response.ok) throw new Error("Atlas could not save this device.");
+
+      setBrowserEnabled(true);
+      localStorage.setItem(BROWSER_KEY, "true");
+      setNotificationMessage("Phone alerts are enabled on this device.");
+    } catch (error) {
+      setNotificationMessage(
+        error instanceof Error
+          ? error.message
+          : "Atlas could not change notification settings.",
+      );
+    }
   }
 
   return (
@@ -118,10 +198,10 @@ export default function AtlasNotifications(props: Props) {
       </button>
       {open ? <div style={{position:"absolute",top:48,right:0,zIndex:120,width:props.isMobile?"min(94vw, 420px)":"420px",maxHeight:"65vh",overflowY:"auto",border:`1px solid ${props.colors.line}`,borderRadius:14,background:"#fff",boxShadow:"0 18px 45px rgba(7,27,47,.2)",padding:12,display:"grid",gap:8}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><strong>Atlas Notifications</strong><button type="button" onClick={markAllRead} style={{border:0,background:"transparent",fontWeight:800,cursor:"pointer"}}>Mark all read</button></div>
-        <label style={{display:"flex",gap:8,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={browserEnabled} onChange={()=>void toggleBrowserAlerts()}/>Browser alerts on this device</label>
+        <label style={{display:"flex",gap:8,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={browserEnabled} onChange={()=>void toggleBrowserAlerts()}/>Phone / browser alerts on this device</label>
+        {notificationMessage ? <div style={{padding:"7px 8px",borderRadius:8,background:props.colors.panel,fontSize:11,fontWeight:750}}>{notificationMessage}</div> : null}
         {alerts.length ? alerts.map((alert)=><button key={alert.id} type="button" onClick={()=>{setOpen(false);alert.open();}} style={{textAlign:"left",border:`1px solid ${props.colors.line}`,borderLeft:`4px solid ${alert.tone==="urgent"?"#B42318":alert.tone==="attention"?props.colors.gold:"#3B82F6"}`,borderRadius:9,background:readIds.includes(alert.id)?props.colors.panel:"#fff",padding:10,cursor:"pointer"}}><strong style={{display:"block",color:props.colors.navy}}>{alert.title}</strong><span style={{fontSize:12,color:props.colors.muted}}>{alert.detail}</span></button>) : <div style={{padding:14,color:props.colors.muted}}>No active notifications.</div>}
       </div> : null}
     </div>
   );
 }
-
