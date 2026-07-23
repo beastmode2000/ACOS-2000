@@ -472,6 +472,25 @@ function readFirstNonEmptyStoredArray<T>(
   return fallback;
 }
 
+function readAllStoredArrays<T>(keys: string[]): T[] {
+  if (typeof window === "undefined") return [];
+
+  const combined: T[] = [];
+
+  for (const key of keys) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) combined.push(...(parsed as T[]));
+    } catch {
+      continue;
+    }
+  }
+
+  return combined;
+}
+
 function saveStoredArray<T>(key: string, value: T[]) {
   if (typeof window === "undefined") return false;
 
@@ -1203,17 +1222,92 @@ function mergeCalendarItemRecords(
 ): CalendarItem[] {
   const merged = new Map<string, CalendarItem>();
 
-  browserItems
-    .map(normalizeCalendar)
-    .filter((item) => item.id && item.date && item.title)
-    .forEach((item) => merged.set(item.id, item));
+  const mergeSameId = (
+    browserRecord: CalendarItem,
+    sharedRecord: CalendarItem,
+  ): CalendarItem => {
+    const browser = normalizeCalendar(browserRecord);
+    const shared = normalizeCalendar(sharedRecord);
 
-  // Shared records win when the same ID exists, while browser-only records
-  // remain available and can be repaired back into the shared database.
-  sharedItems
-    .map(normalizeCalendar)
-    .filter((item) => item.id && item.date && item.title)
-    .forEach((item) => merged.set(item.id, item));
+    const browserHasRepeat =
+      Boolean(browser.repeat) && browser.repeat !== "None";
+    const sharedHasRepeat =
+      Boolean(shared.repeat) && shared.repeat !== "None";
+
+    const repeat =
+      sharedHasRepeat || !browserHasRepeat ? shared.repeat : browser.repeat;
+    const reminder =
+      shared.reminder && shared.reminder !== "None"
+        ? shared.reminder
+        : browser.reminder;
+    const notes = shared.notes.trim() ? shared.notes : browser.notes;
+    const linkedType =
+      shared.linkedType && shared.linkedType !== "None"
+        ? shared.linkedType
+        : browser.linkedType;
+    const linkedId = shared.linkedId.trim()
+      ? shared.linkedId
+      : browser.linkedId;
+    const linkedName = shared.linkedName.trim()
+      ? shared.linkedName
+      : browser.linkedName;
+    const categoryLabel =
+      shared.categoryLabel.trim() &&
+      shared.categoryLabel !== "Maintenance"
+        ? shared.categoryLabel
+        : browser.categoryLabel || shared.categoryLabel;
+    const area =
+      shared.area.trim() && shared.area !== "Maintenance"
+        ? shared.area
+        : browser.area || shared.area;
+    const colorId =
+      shared.colorId && shared.colorId !== "maintenance"
+        ? shared.colorId
+        : browser.colorId || shared.colorId;
+    const colorName =
+      shared.colorId && shared.colorId !== "maintenance"
+        ? shared.colorName
+        : browser.colorName || shared.colorName;
+    const time = shared.time.trim() ? shared.time : browser.time;
+
+    return normalizeCalendar({
+      ...browser,
+      ...shared,
+      time,
+      area,
+      categoryLabel,
+      colorId,
+      colorName,
+      allDay: shared.allDay || (!shared.time && browser.allDay),
+      repeat,
+      reminder,
+      notes,
+      linkedType,
+      linkedId,
+      linkedName,
+    });
+  };
+
+  const addRecord = (record: CalendarItem, source: "browser" | "shared") => {
+    const normalized = normalizeCalendar(record);
+    if (!normalized.id || !normalized.date || !normalized.title) return;
+
+    const existing = merged.get(normalized.id);
+    if (!existing) {
+      merged.set(normalized.id, normalized);
+      return;
+    }
+
+    merged.set(
+      normalized.id,
+      source === "shared"
+        ? mergeSameId(existing, normalized)
+        : mergeSameId(normalized, existing),
+    );
+  };
+
+  browserItems.forEach((item) => addRecord(item, "browser"));
+  sharedItems.forEach((item) => addRecord(item, "shared"));
 
   return byTitle(Array.from(merged.values()));
 }
@@ -3906,10 +4000,14 @@ export default function AtlasPage() {
       storageKeys.procedures,
       fallbackProcedures,
     ).map(normalizeProcedure);
-    const storedCalendar = readFirstNonEmptyStoredArray<CalendarItem>(
+    const allStoredCalendarItems = readAllStoredArrays<CalendarItem>(
       storageKeys.calendar,
-      fallbackCalendar,
-    ).map(normalizeCalendar);
+    );
+    const storedCalendar = (
+      allStoredCalendarItems.length
+        ? mergeCalendarItemRecords(allStoredCalendarItems, [])
+        : fallbackCalendar.map(normalizeCalendar)
+    );
     const storedCalendarColors = readStoredArray<CalendarColor>(
       storageKeys.calendarColors,
       defaultCalendarColors,
@@ -4154,9 +4252,9 @@ export default function AtlasPage() {
           }
         }
 
-        // Merge the shared calendar into the browser copy. The API must never
-        // erase valid browser-only events during startup. Shared records win
-        // only when the same event ID exists in both places.
+        // Merge shared records into every recovered browser copy. Same-ID
+        // records are combined field-by-field so an incomplete API row cannot
+        // strip recurrence, time, reminder, notes, links, or category details.
         if (apiCalendar.length > 0) {
           const sharedItems = apiCalendar
             .map(normalizeCalendar)
@@ -4267,6 +4365,10 @@ export default function AtlasPage() {
               .map(
                 (item) =>
                   `${item.id}|${item.date}|${item.time || ""}|${item.title}|${
+                    item.repeat || "None"
+                  }|${item.reminder || "None"}|${item.categoryLabel || item.area || ""}|${
+                    item.notes || ""
+                  }|${item.linkedType || "None"}|${item.linkedId || ""}|${
                     item.completed ? "1" : "0"
                   }`,
               )
@@ -4277,6 +4379,33 @@ export default function AtlasPage() {
           }
 
           saveStoredArray(storageKeys.calendar[0], next);
+
+          const sharedById = new Map(
+            sharedCalendar.map((item) => [item.id, item] as const),
+          );
+          for (const item of next) {
+            const shared = sharedById.get(item.id);
+            const sharedSignature = shared
+              ? `${shared.repeat || "None"}|${shared.reminder || "None"}|${
+                  shared.time || ""
+                }|${shared.notes || ""}|${shared.linkedType || "None"}|${
+                  shared.linkedId || ""
+                }|${shared.categoryLabel || shared.area || ""}`
+              : "";
+            const recoveredSignature = `${item.repeat || "None"}|${
+              item.reminder || "None"
+            }|${item.time || ""}|${item.notes || ""}|${
+              item.linkedType || "None"
+            }|${item.linkedId || ""}|${item.categoryLabel || item.area || ""}`;
+
+            if (!shared || sharedSignature !== recoveredSignature) {
+              void postAtlasRecord("calendar", {
+                ...item,
+                status: item.completed ? "Completed" : "Scheduled",
+              });
+            }
+          }
+
           return next;
         });
         setSyncState("synced");
