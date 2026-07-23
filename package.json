@@ -6,9 +6,11 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "latest",
+    "@types/web-push": "^3.6.4",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "latest",
