@@ -150,6 +150,9 @@ export type ServiceRecord = {
   season?: WorkSeason;
   lastCompletedDate?: string;
   completionHistory?: string[];
+  estimatedCost?: number;
+  actualCost?: number;
+  invoiceNumber?: string;
   photos?: UploadedFileRecord[];
   documents?: UploadedFileRecord[];
 };
