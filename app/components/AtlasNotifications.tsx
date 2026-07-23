@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 type Props = {
+  propertyId: string;
+  propertyName: string;
   workOrders: any[];
   parts: any[];
   inboxItems: any[];
@@ -26,6 +28,7 @@ type Alert = {
 const READ_KEY = "atlas-notification-read-v1";
 const BROWSER_KEY = "atlas-browser-notifications-v1";
 const PREFERENCES_KEY = "atlas-notification-preferences-v1";
+const PROPERTY_SCOPE_KEY = "atlas-notification-property-scope-v1";
 
 type NotificationPreferences = {
   work: boolean;
@@ -58,6 +61,7 @@ export default function AtlasNotifications(props: Props) {
   const [readIds, setReadIds] = useState<string[]>([]);
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState("");
+  const [propertyScope, setPropertyScope] = useState<"all" | "current">("all");
   const [preferences, setPreferences] =
     useState<NotificationPreferences>(DEFAULT_PREFERENCES);
 
@@ -69,6 +73,11 @@ export default function AtlasNotifications(props: Props) {
         ...DEFAULT_PREFERENCES,
         ...JSON.parse(localStorage.getItem(PREFERENCES_KEY) || "{}"),
       });
+      setPropertyScope(
+        localStorage.getItem(PROPERTY_SCOPE_KEY) === "current"
+          ? "current"
+          : "all",
+      );
     } catch {}
   }, []);
 
@@ -195,7 +204,7 @@ export default function AtlasNotifications(props: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subscription: subscription.toJSON(),
-          propertyId: "all",
+          propertyId: propertyScope === "current" ? props.propertyId : "all",
           preferences,
         }),
       });
@@ -232,7 +241,7 @@ export default function AtlasNotifications(props: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subscription: subscription.toJSON(),
-          propertyId: "all",
+          propertyId: propertyScope === "current" ? props.propertyId : "all",
           preferences: next,
         }),
       });
@@ -243,14 +252,72 @@ export default function AtlasNotifications(props: Props) {
     }
   }
 
+  async function updatePropertyScope(scope: "all" | "current") {
+    setPropertyScope(scope);
+    localStorage.setItem(PROPERTY_SCOPE_KEY, scope);
+    setNotificationMessage(
+      scope === "current"
+        ? `Phone alerts limited to ${props.propertyName}.`
+        : "Phone alerts include all properties.",
+    );
+
+    if (!browserEnabled || !("serviceWorker" in navigator)) return;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) return;
+      await fetch("/api/atlas-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: subscription.toJSON(),
+          propertyId: scope === "current" ? props.propertyId : "all",
+          preferences,
+        }),
+      });
+    } catch {
+      setNotificationMessage(
+        "The property choice is saved on this phone and will sync later.",
+      );
+    }
+  }
+
   return (
     <div style={{ position:"relative", marginBottom:8 }}>
       <button type="button" onClick={()=>setOpen((value)=>!value)} style={{width:"100%",minHeight:42,border:`1px solid ${props.colors.line}`,borderRadius:10,background:"#fff",color:props.colors.navy,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 11px"}}>
         <span>Notifications</span><span style={{minWidth:24,height:24,borderRadius:999,background:unread.length?props.colors.gold:props.colors.panel,display:"inline-grid",placeItems:"center",fontSize:12}}>{unread.length}</span>
       </button>
-      {open ? <div style={{position:"absolute",top:48,right:0,zIndex:120,width:props.isMobile?"min(94vw, 420px)":"420px",maxHeight:"65vh",overflowY:"auto",border:`1px solid ${props.colors.line}`,borderRadius:14,background:"#fff",boxShadow:"0 18px 45px rgba(7,27,47,.2)",padding:12,display:"grid",gap:8}}>
-        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><strong>Atlas Notifications</strong><button type="button" onClick={markAllRead} style={{border:0,background:"transparent",fontWeight:800,cursor:"pointer"}}>Mark all read</button></div>
+      {open ? <div style={{
+        position:props.isMobile?"fixed":"absolute",
+        top:props.isMobile?12:48,
+        right:props.isMobile?10:0,
+        left:props.isMobile?10:"auto",
+        bottom:props.isMobile?12:"auto",
+        zIndex:props.isMobile?10020:120,
+        width:props.isMobile?"auto":"420px",
+        maxWidth:props.isMobile?"none":"calc(100vw - 24px)",
+        maxHeight:props.isMobile?"calc(100dvh - 24px)":"65vh",
+        overflowY:"auto",
+        WebkitOverflowScrolling:"touch",
+        border:`1px solid ${props.colors.line}`,
+        borderRadius:14,
+        background:"#fff",
+        boxShadow:"0 18px 45px rgba(7,27,47,.2)",
+        padding:12,
+        display:"grid",
+        alignContent:"start",
+        gap:8
+      }}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",paddingRight:props.isMobile?42:0}}><strong>Atlas Notifications</strong><button type="button" onClick={markAllRead} style={{border:0,background:"transparent",fontWeight:800,cursor:"pointer"}}>Mark all read</button></div>
+        {props.isMobile ? <button type="button" onClick={()=>setOpen(false)} aria-label="Close notifications" style={{position:"absolute",top:8,right:8,width:36,height:36,border:`1px solid ${props.colors.line}`,borderRadius:9,background:"#fff",fontSize:20,fontWeight:900,cursor:"pointer"}}>×</button> : null}
         <label style={{display:"flex",gap:8,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={browserEnabled} onChange={()=>void toggleBrowserAlerts()}/>Phone / browser alerts on this device</label>
+        <label style={{display:"grid",gap:4,fontSize:11,fontWeight:800}}>
+          Phone alert property
+          <select value={propertyScope} onChange={(event)=>void updatePropertyScope(event.currentTarget.value === "current" ? "current" : "all")} style={{minHeight:38,border:`1px solid ${props.colors.line}`,borderRadius:8,background:"#fff",padding:"7px 9px",fontWeight:800}}>
+            <option value="all">All properties</option>
+            <option value="current">{props.propertyName} only</option>
+          </select>
+        </label>
         {notificationMessage ? <div style={{padding:"7px 8px",borderRadius:8,background:props.colors.panel,fontSize:11,fontWeight:750}}>{notificationMessage}</div> : null}
         <div style={{display:"grid",gridTemplateColumns:props.isMobile?"1fr":"repeat(2, minmax(0, 1fr))",gap:6,padding:"4px 0"}}>
           {([
