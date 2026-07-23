@@ -5,6 +5,7 @@ import React, { useMemo, useState } from "react";
 type Props = {
   mode: "timeline" | "insights";
   serviceRecords?: any[];
+  requestRecords?: any[];
   todayEvents?: any[];
   upcomingEvents?: any[];
   weatherDays?: any[];
@@ -21,6 +22,7 @@ type Props = {
   locationName?: (id?: string) => string;
   setScreen: (screen: string) => void;
   setSelectedServiceId: (id: string) => void;
+  setSelectedRequestId?: (id: string) => void;
   openCalendarItem: (event: any) => void;
 };
 
@@ -61,6 +63,7 @@ function workType(record: any) {
 export default function AtlasInsightsTimeline({
   mode,
   serviceRecords = [],
+  requestRecords = [],
   todayEvents = [],
   upcomingEvents = [],
   weatherDays = [],
@@ -77,6 +80,7 @@ export default function AtlasInsightsTimeline({
   locationName = () => "No location",
   setScreen,
   setSelectedServiceId,
+  setSelectedRequestId = () => undefined,
   openCalendarItem,
 }: Props) {
   const [timelineSearch, setTimelineSearch] = useState("");
@@ -208,6 +212,7 @@ export default function AtlasInsightsTimeline({
     const entries: any[] = [];
 
     serviceRecords.forEach((record) => {
+      const recordedCompletionDays = new Set<string>();
       const snapshots = Array.isArray(record.serviceHistory)
         ? record.serviceHistory
         : Array.isArray(record.completionSnapshots)
@@ -215,13 +220,16 @@ export default function AtlasInsightsTimeline({
           : [];
 
       snapshots.forEach((snapshot: any, index: number) => {
+        const snapshotDate =
+          snapshot.completedAt ||
+          snapshot.completedDate ||
+          snapshot.date ||
+          record.lastCompletedDate;
+        const snapshotDay = String(snapshotDate || "").slice(0, 10);
+        if (snapshotDay) recordedCompletionDays.add(snapshotDay);
         entries.push({
           id: `${record.id}-service-${snapshot.id || index}`,
-          date:
-            snapshot.completedAt ||
-            snapshot.completedDate ||
-            snapshot.date ||
-            record.lastCompletedDate,
+          date: snapshotDate,
           type: "Completed Work",
           icon: "✅",
           title: snapshot.title || record.title,
@@ -237,6 +245,9 @@ export default function AtlasInsightsTimeline({
         : [];
 
       history.forEach((date: string, index: number) => {
+        const completionDay = String(date || "").slice(0, 10);
+        if (completionDay && recordedCompletionDays.has(completionDay)) return;
+        if (completionDay) recordedCompletionDays.add(completionDay);
         entries.push({
           id: `${record.id}-history-${index}`,
           date,
@@ -247,6 +258,24 @@ export default function AtlasInsightsTimeline({
           record,
         });
       });
+
+      if (
+        record.status === "Completed" &&
+        !recordedCompletionDays.size
+      ) {
+        entries.push({
+          id: `${record.id}-completed-record`,
+          date:
+            record.completedAt ||
+            record.lastCompletedDate ||
+            record.date,
+          type: "Completed Work",
+          icon: "✅",
+          title: record.title,
+          description: `${category(record)} · ${assetName(record.assetId)}`,
+          record,
+        });
+      }
 
       const notes = Array.isArray(record.notesHistory)
         ? record.notesHistory
@@ -282,6 +311,55 @@ export default function AtlasInsightsTimeline({
       });
     });
 
+    requestRecords.forEach((request) => {
+      if (request.submittedAt) {
+        entries.push({
+          id: `request-${request.id}-submitted`,
+          date: request.submittedAt,
+          type: "Owner Request",
+          icon: "📥",
+          title: request.title || "Owner request",
+          description: [
+            request.requesterName
+              ? `Submitted by ${request.requesterName}`
+              : "Owner request submitted",
+            request.locationName,
+            request.assetName,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          request,
+        });
+      }
+
+      if (
+        request.convertedWorkOrderId ||
+        request.status === "Converted to Work Order"
+      ) {
+        entries.push({
+          id: `request-${request.id}-converted`,
+          date: request.updatedAt || request.submittedAt,
+          type: "Converted Request",
+          icon: "🔁",
+          title: request.title || "Owner request",
+          description: "Converted into a tracked work order",
+          request,
+        });
+      } else if (
+        ["Closed", "Declined", "Completed"].includes(String(request.status))
+      ) {
+        entries.push({
+          id: `request-${request.id}-history`,
+          date: request.updatedAt || request.submittedAt,
+          type: "Request History",
+          icon: "📋",
+          title: request.title || "Owner request",
+          description: `Request ${String(request.status).toLowerCase()}`,
+          request,
+        });
+      }
+    });
+
     [...todayEvents, ...upcomingEvents].forEach((event) => {
       entries.push({
         id: `calendar-${event.instanceId || event.id}`,
@@ -312,6 +390,7 @@ export default function AtlasInsightsTimeline({
   }, [
     assetName,
     serviceRecords,
+    requestRecords,
     timelineSearch,
     timelineType,
     todayEvents,
@@ -647,6 +726,9 @@ export default function AtlasInsightsTimeline({
             <option>Work Note</option>
             <option>Photo</option>
             <option>Calendar</option>
+            <option>Owner Request</option>
+            <option>Converted Request</option>
+            <option>Request History</option>
           </select>
           <button
             type="button"
@@ -676,6 +758,11 @@ export default function AtlasInsightsTimeline({
                   if (entry.event) {
                     openCalendarItem(entry.event);
                     setScreen("calendar");
+                    return;
+                  }
+                  if (entry.request) {
+                    setSelectedRequestId(entry.request.id);
+                    setScreen("requests");
                   }
                 }}
                 style={{
