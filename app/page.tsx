@@ -1197,6 +1197,27 @@ function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
   };
 }
 
+function mergeCalendarItemRecords(
+  browserItems: CalendarItem[],
+  sharedItems: CalendarItem[],
+): CalendarItem[] {
+  const merged = new Map<string, CalendarItem>();
+
+  browserItems
+    .map(normalizeCalendar)
+    .filter((item) => item.id && item.date && item.title)
+    .forEach((item) => merged.set(item.id, item));
+
+  // Shared records win when the same ID exists, while browser-only records
+  // remain available and can be repaired back into the shared database.
+  sharedItems
+    .map(normalizeCalendar)
+    .filter((item) => item.id && item.date && item.title)
+    .forEach((item) => merged.set(item.id, item));
+
+  return byTitle(Array.from(merged.values()));
+}
+
 function normalizePart(record: Partial<PartRecord>): PartRecord {
   const name = String(record.name ?? "Unnamed Part");
   return {
@@ -4133,17 +4154,35 @@ export default function AtlasPage() {
           }
         }
 
-        // A non-empty shared calendar is authoritative. An empty response must
-        // never erase a valid browser copy or replace the visible calendar.
+        // Merge the shared calendar into the browser copy. The API must never
+        // erase valid browser-only events during startup. Shared records win
+        // only when the same event ID exists in both places.
         if (apiCalendar.length > 0) {
-          const next = byTitle(
-            apiCalendar
-              .map(normalizeCalendar)
-              .filter((item) => item.id && item.date && item.title),
-          );
-          if (next.length > 0) {
-            setCalendarItems(next);
-            saveStoredArray(storageKeys.calendar[0], next);
+          const sharedItems = apiCalendar
+            .map(normalizeCalendar)
+            .filter((item) => item.id && item.date && item.title);
+
+          if (sharedItems.length > 0) {
+            setCalendarItems((current) => {
+              const next = mergeCalendarItemRecords(current, sharedItems);
+              saveStoredArray(storageKeys.calendar[0], next);
+
+              const sharedIds = new Set(sharedItems.map((item) => item.id));
+              const browserOnlyItems = current.filter(
+                (item) => item.id && !sharedIds.has(item.id),
+              );
+
+              // Repair browser-only events back into shared Atlas instead of
+              // silently dropping them after a calendar update or bad sync.
+              for (const item of browserOnlyItems) {
+                void postAtlasRecord("calendar", {
+                  ...item,
+                  status: item.completed ? "Completed" : "Scheduled",
+                });
+              }
+
+              return next;
+            });
           }
         }
 
@@ -4218,10 +4257,11 @@ export default function AtlasPage() {
           .filter((item) => item.id && item.date && item.title);
 
         setCalendarItems((current) => {
-          const next = byTitle(sharedCalendar);
-          if (next.length === 0) {
+          if (sharedCalendar.length === 0) {
             return current;
           }
+
+          const next = mergeCalendarItemRecords(current, sharedCalendar);
           const signature = (items: CalendarItem[]) =>
             items
               .map(
@@ -7911,41 +7951,51 @@ export default function AtlasPage() {
     setCalendarItems((current) => {
       const original = current.find((item) => item.id === record.id);
       const exists = Boolean(original);
+      let next: CalendarItem[];
 
-      if (!exists) return byTitle([record, ...current]);
+      if (!exists) {
+        next = byTitle([record, ...current]);
+      } else {
+        const originalRepeats =
+          original?.repeat && original.repeat !== "None";
+        const titleChanged =
+          String(original?.title || "") !== String(record.title || "");
 
-      const originalRepeats = original?.repeat && original.repeat !== "None";
-      const titleChanged =
-        String(original?.title || "") !== String(record.title || "");
+        next = byTitle(
+          current.map((item) => {
+            if (item.id === record.id) return record;
 
-      return byTitle(
-        current.map((item) => {
-          if (item.id === record.id) return record;
+            if (!originalRepeats || !titleChanged) return item;
 
-          if (!originalRepeats || !titleChanged) return item;
+            const sameExplicitSeries =
+              Boolean((original as any)?.seriesId) &&
+              (item as any)?.seriesId === (original as any)?.seriesId;
 
-          const sameExplicitSeries =
-            Boolean((original as any)?.seriesId) &&
-            (item as any)?.seriesId === (original as any)?.seriesId;
+            const sameLegacyRecurringSeries =
+              item.source === "manual" &&
+              item.repeat === original.repeat &&
+              item.title === original.title &&
+              String(item.linkedType || "") ===
+                String(original.linkedType || "") &&
+              String(item.linkedId || "") ===
+                String(original.linkedId || "");
 
-          const sameLegacyRecurringSeries =
-            item.source === "manual" &&
-            item.repeat === original.repeat &&
-            item.title === original.title &&
-            String(item.linkedType || "") ===
-              String(original.linkedType || "") &&
-            String(item.linkedId || "") === String(original.linkedId || "");
+            if (!sameExplicitSeries && !sameLegacyRecurringSeries) {
+              return item;
+            }
 
-          if (!sameExplicitSeries && !sameLegacyRecurringSeries) {
-            return item;
-          }
+            return {
+              ...item,
+              title: record.title,
+            };
+          }),
+        );
+      }
 
-          return {
-            ...item,
-            title: record.title,
-          };
-        }),
-      );
+      // Persist the exact state update immediately. This prevents a reload or
+      // background refresh from restoring the previous browser calendar.
+      saveStoredArray(storageKeys.calendar[0], next);
+      return next;
     });
 
     const labelExists = calendarColors.some(
@@ -7994,8 +8044,11 @@ export default function AtlasPage() {
       return;
     const deleted = await deleteAtlasRecord("calendar", id);
     if (!deleted) return;
-    const remaining = calendarItems.filter((item) => item.id !== id);
-    setCalendarItems(byTitle(remaining));
+    const remaining = byTitle(
+      calendarItems.filter((item) => item.id !== id),
+    );
+    saveStoredArray(storageKeys.calendar[0], remaining);
+    setCalendarItems(remaining);
     setSelectedCalendarId("");
     setCalendarDraft(blankCalendarItem(selectedCalendarDate));
     setCalendarDirty(false);
