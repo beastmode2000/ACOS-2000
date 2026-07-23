@@ -74,6 +74,24 @@ export type PendingAssistantAction =
       targetTitle: string;
       status?: "Online" | "Offline" | "Seasonal" | "Monitor";
       noteToAppend?: string;
+    }
+  | {
+      id: string;
+      kind: "recurring-maintenance";
+      title: string;
+      notes: string;
+      priority: "Low" | "Medium" | "High";
+      assetId: string;
+      vendorId: string;
+      locationId: string;
+      recurrenceInterval: number;
+      recurrenceUnit: "Days" | "Weeks" | "Months" | "Years";
+    }
+  | {
+      id: string;
+      kind: "request-convert";
+      targetId: string;
+      targetTitle: string;
     };
 
 type PlannerOptions = {
@@ -176,11 +194,11 @@ function parseInventoryValue(
   const patterns =
     field === "quantity"
       ? [
-          /\b(?:quantity|count|stock|on hand)\s+(?:to|at|is)\s+(\d+)\b/i,
+          /\b(?:quantity|count|stock|on hand)\s+(?:(?:to|at|is)\s+)?(\d+)\b/i,
           /\bset\s+(\d+)\s+(?:in stock|on hand)\b/i,
         ]
       : [
-          /\b(?:minimum|min|reorder level|minimum stock)\s+(?:to|at|is)\s+(\d+)\b/i,
+          /\b(?:minimum|min|reorder level|minimum stock)\s+(?:(?:to|at|is)\s+)?(\d+)\b/i,
           /\bset\s+minimum\s+(\d+)\b/i,
         ];
 
@@ -215,6 +233,63 @@ function parseAssetStatus(question: string) {
   return undefined;
 }
 
+function parseRecurrence(question: string): {
+  interval: number;
+  unit: "Days" | "Weeks" | "Months" | "Years";
+} {
+  const normalized = question.toLowerCase();
+  if (/\b(daily|every day)\b/.test(normalized)) {
+    return { interval: 1, unit: "Days" };
+  }
+  if (/\b(weekly|every week)\b/.test(normalized)) {
+    return { interval: 1, unit: "Weeks" };
+  }
+  if (/\b(biweekly|every other week)\b/.test(normalized)) {
+    return { interval: 2, unit: "Weeks" };
+  }
+  if (/\b(monthly|every month)\b/.test(normalized)) {
+    return { interval: 1, unit: "Months" };
+  }
+  if (/\b(quarterly|every quarter)\b/.test(normalized)) {
+    return { interval: 3, unit: "Months" };
+  }
+  if (/\b(yearly|annually|annual|every year)\b/.test(normalized)) {
+    return { interval: 1, unit: "Years" };
+  }
+
+  const match = question.match(
+    /\bevery\s+(\d+)\s+(day|days|week|weeks|month|months|year|years)\b/i,
+  );
+  if (match) {
+    const rawUnit = match[2].toLowerCase();
+    const unit = rawUnit.startsWith("day")
+      ? "Days"
+      : rawUnit.startsWith("week")
+        ? "Weeks"
+        : rawUnit.startsWith("month")
+          ? "Months"
+          : "Years";
+    return { interval: Math.max(1, Number(match[1])), unit };
+  }
+
+  return { interval: 1, unit: "Months" };
+}
+
+function recurringMaintenanceTitle(question: string, fallback: string) {
+  const cleaned = question
+    .replace(
+      /\b(create|make|add|schedule|prepare)\s+(?:a\s+)?(?:new\s+)?(?:recurring|preventive|preventative)?\s*(?:maintenance|work order)?\s*(?:for\s+)?/i,
+      "",
+    )
+    .replace(
+      /\s+\b(?:daily|weekly|biweekly|monthly|quarterly|yearly|annually|annual|every\s+(?:other\s+)?(?:\d+\s+)?(?:day|days|week|weeks|month|months|quarter|year|years))\b.*$/i,
+      "",
+    )
+    .trim()
+    .replace(/^[,.:;-]+|[,.:;-]+$/g, "");
+  return cleaned || fallback;
+}
+
 export function planAssistantAction({
   question,
   matches,
@@ -229,6 +304,7 @@ export function planAssistantAction({
   const workOrder = matches.find((item) => item.type === "Work Order");
   const calendar = matches.find((item) => item.type === "Calendar");
   const part = matches.find((item) => item.type === "Part");
+  const request = matches.find((item) => item.type === "Request");
 
   const requestedStatus = parseWorkOrderStatus(question);
   const requestedPriority = parsePriority(question);
@@ -253,6 +329,47 @@ export function planAssistantAction({
       locationId: location?.locationId || "general",
       assetId: asset?.assetId || "",
       vendorId: vendor?.vendorId || "",
+    };
+  }
+
+  if (
+    request?.requestId &&
+    !isQuestionOnly &&
+    /\b(convert|turn|make)\b/.test(normalized) &&
+    /\brequest\b/.test(normalized) &&
+    /\bwork order\b/.test(normalized)
+  ) {
+    return {
+      id: createId("assistant-action"),
+      kind: "request-convert",
+      targetId: request.requestId,
+      targetTitle: request.title,
+    };
+  }
+
+  if (
+    !isQuestionOnly &&
+    /\b(create|make|add|schedule|prepare)\b/.test(normalized) &&
+    /\b(recurring|preventive|preventative|daily|weekly|biweekly|monthly|quarterly|yearly|annually|annual|every\s+(?:other\s+)?(?:\d+\s+)?(?:day|days|week|weeks|month|months|quarter|year|years))\b/.test(
+      normalized,
+    ) &&
+    /\b(maintenance|work order|service|inspection|check)\b/.test(normalized)
+  ) {
+    const recurrence = parseRecurrence(question);
+    return {
+      id: createId("assistant-action"),
+      kind: "recurring-maintenance",
+      title: recurringMaintenanceTitle(
+        question,
+        asset ? `${asset.title} Maintenance` : "Recurring Maintenance",
+      ),
+      notes: `Prepared by Ask Atlas from: "${question}"`,
+      priority: requestedPriority || "Medium",
+      assetId: asset?.assetId || "",
+      vendorId: vendor?.vendorId || "",
+      locationId: location?.locationId || "",
+      recurrenceInterval: recurrence.interval,
+      recurrenceUnit: recurrence.unit,
     };
   }
 
