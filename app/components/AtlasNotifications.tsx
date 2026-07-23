@@ -29,6 +29,12 @@ const READ_KEY = "atlas-notification-read-v1";
 const BROWSER_KEY = "atlas-browser-notifications-v1";
 const PREFERENCES_KEY = "atlas-notification-preferences-v1";
 const PROPERTY_SCOPE_KEY = "atlas-notification-property-scope-v1";
+const NOTIFICATION_PROPERTIES = [
+  { id: "2000", name: "2000" },
+  { id: "6855", name: "6855" },
+  { id: "3661", name: "3661" },
+  { id: "hangar", name: "Hangar" },
+] as const;
 
 type NotificationPreferences = {
   work: boolean;
@@ -61,7 +67,8 @@ export default function AtlasNotifications(props: Props) {
   const [readIds, setReadIds] = useState<string[]>([]);
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState("");
-  const [propertyScope, setPropertyScope] = useState<"all" | "current">("all");
+  const [notificationPropertyId, setNotificationPropertyId] =
+    useState("all");
   const [preferences, setPreferences] =
     useState<NotificationPreferences>(DEFAULT_PREFERENCES);
 
@@ -73,10 +80,10 @@ export default function AtlasNotifications(props: Props) {
         ...DEFAULT_PREFERENCES,
         ...JSON.parse(localStorage.getItem(PREFERENCES_KEY) || "{}"),
       });
-      setPropertyScope(
-        localStorage.getItem(PROPERTY_SCOPE_KEY) === "current"
-          ? "current"
-          : "all",
+      const savedPropertyId =
+        localStorage.getItem(PROPERTY_SCOPE_KEY) || "all";
+      setNotificationPropertyId(
+        savedPropertyId === "current" ? props.propertyId : savedPropertyId,
       );
     } catch {}
   }, []);
@@ -204,7 +211,7 @@ export default function AtlasNotifications(props: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subscription: subscription.toJSON(),
-          propertyId: propertyScope === "current" ? props.propertyId : "all",
+          propertyId: notificationPropertyId,
           preferences,
         }),
       });
@@ -241,7 +248,7 @@ export default function AtlasNotifications(props: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subscription: subscription.toJSON(),
-          propertyId: propertyScope === "current" ? props.propertyId : "all",
+          propertyId: notificationPropertyId,
           preferences: next,
         }),
       });
@@ -252,12 +259,21 @@ export default function AtlasNotifications(props: Props) {
     }
   }
 
-  async function updatePropertyScope(scope: "all" | "current") {
-    setPropertyScope(scope);
-    localStorage.setItem(PROPERTY_SCOPE_KEY, scope);
+  async function updateNotificationProperty(propertyId: string) {
+    const validPropertyId =
+      propertyId === "all" ||
+      NOTIFICATION_PROPERTIES.some((property) => property.id === propertyId)
+        ? propertyId
+        : "all";
+    setNotificationPropertyId(validPropertyId);
+    localStorage.setItem(PROPERTY_SCOPE_KEY, validPropertyId);
+    const propertyName =
+      NOTIFICATION_PROPERTIES.find(
+        (property) => property.id === validPropertyId,
+      )?.name || "";
     setNotificationMessage(
-      scope === "current"
-        ? `Phone alerts limited to ${props.propertyName}.`
+      validPropertyId !== "all"
+        ? `Phone alerts limited to ${propertyName}.`
         : "Phone alerts include all properties.",
     );
 
@@ -271,7 +287,7 @@ export default function AtlasNotifications(props: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subscription: subscription.toJSON(),
-          propertyId: scope === "current" ? props.propertyId : "all",
+          propertyId: validPropertyId,
           preferences,
         }),
       });
@@ -313,9 +329,13 @@ export default function AtlasNotifications(props: Props) {
         <label style={{display:"flex",gap:8,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={browserEnabled} onChange={()=>void toggleBrowserAlerts()}/>Phone / browser alerts on this device</label>
         <label style={{display:"grid",gap:4,fontSize:11,fontWeight:800}}>
           Phone alert property
-          <select value={propertyScope} onChange={(event)=>void updatePropertyScope(event.currentTarget.value === "current" ? "current" : "all")} style={{minHeight:38,border:`1px solid ${props.colors.line}`,borderRadius:8,background:"#fff",padding:"7px 9px",fontWeight:800}}>
+          <select value={notificationPropertyId} onChange={(event)=>void updateNotificationProperty(event.currentTarget.value)} style={{minHeight:38,border:`1px solid ${props.colors.line}`,borderRadius:8,background:"#fff",padding:"7px 9px",fontWeight:800}}>
             <option value="all">All properties</option>
-            <option value="current">{props.propertyName} only</option>
+            {NOTIFICATION_PROPERTIES.map((property) => (
+              <option key={property.id} value={property.id}>
+                {property.name} only
+              </option>
+            ))}
           </select>
         </label>
         {notificationMessage ? <div style={{padding:"7px 8px",borderRadius:8,background:props.colors.panel,fontSize:11,fontWeight:750}}>{notificationMessage}</div> : null}
