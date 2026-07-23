@@ -450,6 +450,28 @@ function readStoredArray<T>(keys: string[], fallback: T[]): T[] {
   return fallback;
 }
 
+function readFirstNonEmptyStoredArray<T>(
+  keys: string[],
+  fallback: T[],
+): T[] {
+  if (typeof window === "undefined") return fallback;
+
+  for (const key of keys) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed as T[];
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return fallback;
+}
+
 function saveStoredArray<T>(key: string, value: T[]) {
   if (typeof window === "undefined") return false;
 
@@ -3738,7 +3760,6 @@ export default function AtlasPage() {
     setLocations([]);
     setAssetRecords([]);
     setServiceRecords([]);
-    setCalendarItems([]);
     setPartRecords([]);
     setPhotos([]);
     setIntakeDocs([]);
@@ -3864,7 +3885,7 @@ export default function AtlasPage() {
       storageKeys.procedures,
       fallbackProcedures,
     ).map(normalizeProcedure);
-    const storedCalendar = readStoredArray<CalendarItem>(
+    const storedCalendar = readFirstNonEmptyStoredArray<CalendarItem>(
       storageKeys.calendar,
       fallbackCalendar,
     ).map(normalizeCalendar);
@@ -3910,10 +3931,11 @@ export default function AtlasPage() {
     setProcedureRecords(
       storedProcedures.length ? byTitle(storedProcedures) : fallbackProcedures,
     );
-    // Keep the visible calendar empty until shared Atlas data loads.
-    // Browser records remain available for safe recovery, but obsolete
-    // hardcoded seeds no longer flash during startup.
-    setCalendarItems([]);
+    // Restore the newest non-empty browser copy immediately. The shared
+    // database may replace it only when the API returns saved calendar items.
+    setCalendarItems(
+      byTitle(storedCalendar.length ? storedCalendar : fallbackCalendar),
+    );
     setCalendarColors(mergeCalendarColors(storedCalendarColors));
     setPartRecords(storedParts.length ? byName(storedParts) : fallbackParts);
     const mergedWorkLinks = [...storedWorkLinks];
@@ -4111,17 +4133,18 @@ export default function AtlasPage() {
           }
         }
 
-        // The shared database is authoritative after a successful load. This
-        // prevents deleted or obsolete browser calendar items from flashing or
-        // silently uploading themselves again on another device.
-        {
+        // A non-empty shared calendar is authoritative. An empty response must
+        // never erase a valid browser copy or replace the visible calendar.
+        if (apiCalendar.length > 0) {
           const next = byTitle(
             apiCalendar
               .map(normalizeCalendar)
               .filter((item) => item.id && item.date && item.title),
           );
-          setCalendarItems(next);
-          saveStoredArray(storageKeys.calendar[0], next);
+          if (next.length > 0) {
+            setCalendarItems(next);
+            saveStoredArray(storageKeys.calendar[0], next);
+          }
         }
 
         if (apiParts.length) {
@@ -4196,6 +4219,9 @@ export default function AtlasPage() {
 
         setCalendarItems((current) => {
           const next = byTitle(sharedCalendar);
+          if (next.length === 0) {
+            return current;
+          }
           const signature = (items: CalendarItem[]) =>
             items
               .map(
@@ -4436,7 +4462,7 @@ export default function AtlasPage() {
   }, [ready, procedureRecords]);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || calendarItems.length === 0) return;
     saveStoredArray(storageKeys.calendar[0], calendarItems);
   }, [ready, calendarItems]);
 
