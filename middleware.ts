@@ -41,6 +41,13 @@ function isPublicPath(request: NextRequest) {
   if (pathname === "/invite") return true;
   if (pathname === "/api/atlas-invite") return true;
   if (pathname === "/api/atlas-logout") return true;
+  if (
+    pathname === "/api/atlas-push/daily" &&
+    process.env.CRON_SECRET &&
+    request.headers.get("authorization") ===
+      `Bearer ${process.env.CRON_SECRET}`
+  )
+    return true;
 
   if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(pathname)) {
     return true;
