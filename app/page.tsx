@@ -9180,6 +9180,15 @@ export default function AtlasPage() {
 
     const atlasSnapshot = {
       generatedAt: new Date().toISOString(),
+      activeProperty: {
+        id: activePropertyId,
+        name:
+          atlasProperties.find((property) => property.id === activePropertyId)
+            ?.name || activePropertyId,
+        detail:
+          atlasProperties.find((property) => property.id === activePropertyId)
+            ?.detail || "",
+      },
       counts: {
         locations: locations.length,
         assets: assetRecords.length,
@@ -20725,6 +20734,12 @@ export default function AtlasPage() {
                   ))}
                 </select>
                 <AtlasNotifications
+                  propertyId={activePropertyId}
+                  propertyName={
+                    atlasProperties.find(
+                      (property) => property.id === activePropertyId,
+                    )?.name || activePropertyId
+                  }
                   workOrders={serviceRecords}
                   parts={partRecords}
                   inboxItems={inboxItems}
