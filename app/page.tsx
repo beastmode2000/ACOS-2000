@@ -6288,7 +6288,7 @@ export default function AtlasPage() {
         createdAt: file.createdAt || new Date().toISOString(),
       }));
 
-    if (!imagePhotos.length) {
+      if (!imagePhotos.length) {
       setDatabaseStatus(
         "Atlas could not read that image. Try Copy image instead of Copy link.",
       );
@@ -11101,7 +11101,8 @@ export default function AtlasPage() {
       <>
         <DailyOperationsManager
           assets={assetRecords}
-          calendarItems={calendarItems}
+          todayEvents={todayEvents}
+          upcomingEvents={upcomingEvents}
           procedures={procedureRecords}
           serviceRecords={serviceRecords}
           weatherDays={weatherDays}
