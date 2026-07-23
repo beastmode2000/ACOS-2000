@@ -149,6 +149,27 @@ async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
 }
 
+async function authorizeAtlasRequest(
+  sql: ReturnType<typeof neon>,
+  request: NextRequest,
+  propertyId: string,
+  permission: "view" | "edit" | "delete",
+) {
+  const email = (request.headers.get("x-atlas-user-email") || "").toLowerCase();
+  const headerRole = request.headers.get("x-atlas-user-role") || "administrator";
+  if (!email || headerRole === "master") return true;
+  const rows = await sql`SELECT role, active, property_ids, permissions FROM atlas_team_access WHERE lower(email)=${email} LIMIT 1`;
+  const row = rows[0] as Record<string, unknown> | undefined;
+  if (!row || row.active === false) return false;
+  const role = String(row.role || headerRole);
+  const propertyIds = Array.isArray(row.property_ids) ? row.property_ids.map(String) : ["2000"];
+  if (!propertyIds.includes(propertyId)) return false;
+  if (permission === "view") return true;
+  const permissions = row.permissions && typeof row.permissions === "object" ? row.permissions as Record<string, unknown> : {};
+  const defaults = role === "administrator" || role === "manager" ? { edit:true, delete:role === "administrator" } : { edit:role === "employee", delete:false };
+  return permission === "edit" ? Boolean(permissions.edit ?? defaults.edit) : Boolean(permissions.delete ?? defaults.delete);
+}
+
 
 async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
   await sql`
@@ -620,6 +641,9 @@ export async function GET(request: NextRequest) {
     await ensurePartsTable(sql);
     await ensurePropertyColumns(sql);
     const propertyId = asString(request.nextUrl.searchParams.get("propertyId")) || "2000";
+    if (!(await authorizeAtlasRequest(sql, request, propertyId, "view"))) {
+      return NextResponse.json({ ok:false, error:"You do not have access to this property." }, { status:403 });
+    }
 
     const locationRows = (await sql`
       SELECT id, name, type, zone, notes, sort_order
@@ -816,6 +840,9 @@ export async function POST(request: NextRequest) {
         ? (body.record as JsonRecord)
         : {};
     const propertyId = asString(record.propertyId) || "2000";
+    if (!(await authorizeAtlasRequest(sql, request, propertyId, "edit"))) {
+      return NextResponse.json({ ok:false, error:"You do not have permission to edit this property." }, { status:403 });
+    }
 
     await recordChange(
       sql,
@@ -1453,17 +1480,19 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (["viewer", "operations"].includes(request.headers.get("x-atlas-user-role") || "")) {
-    return NextResponse.json({ ok: false, error: "This role cannot delete Atlas records." }, { status: 403 });
-  }
   try {
     const sql = getSql();
+    await ensurePropertyColumns(sql);
     const body = (await request.json().catch(function () {
       return {};
     })) as JsonRecord;
 
     const table = cleanTable(body.table);
     const id = asString(body.id);
+    const propertyId = asString(body.propertyId) || "2000";
+    if (!(await authorizeAtlasRequest(sql, request, propertyId, "delete"))) {
+      return NextResponse.json({ ok:false, error:"You do not have permission to delete records for this property." }, { status:403 });
+    }
 
     if (!table || !id) {
       return NextResponse.json(
