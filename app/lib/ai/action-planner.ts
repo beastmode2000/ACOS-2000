@@ -48,6 +48,14 @@ export type PendingAssistantAction =
       date: string;
       time: string;
       allDay: boolean;
+    }
+  | {
+      id: string;
+      kind: "part-update";
+      targetId: string;
+      targetTitle: string;
+      quantity?: number;
+      minQuantity?: number;
     };
 
 type PlannerOptions = {
@@ -143,6 +151,28 @@ function parseNote(question: string) {
   return match?.[1]?.trim() || undefined;
 }
 
+function parseInventoryValue(
+  question: string,
+  field: "quantity" | "minimum",
+) {
+  const patterns =
+    field === "quantity"
+      ? [
+          /\b(?:quantity|count|stock|on hand)\s+(?:to|at|is)\s+(\d+)\b/i,
+          /\bset\s+(\d+)\s+(?:in stock|on hand)\b/i,
+        ]
+      : [
+          /\b(?:minimum|min|reorder level|minimum stock)\s+(?:to|at|is)\s+(\d+)\b/i,
+          /\bset\s+minimum\s+(\d+)\b/i,
+        ];
+
+  for (const pattern of patterns) {
+    const match = question.match(pattern);
+    if (match) return Number(match[1]);
+  }
+  return undefined;
+}
+
 export function planAssistantAction({
   question,
   matches,
@@ -156,6 +186,7 @@ export function planAssistantAction({
   const location = matches.find((item) => item.type === "Location");
   const workOrder = matches.find((item) => item.type === "Work Order");
   const calendar = matches.find((item) => item.type === "Calendar");
+  const part = matches.find((item) => item.type === "Part");
 
   const requestedStatus = parseWorkOrderStatus(question);
   const requestedPriority = parsePriority(question);
@@ -167,6 +198,28 @@ export function planAssistantAction({
     );
   const hasExplicitUpdateCommand =
     /\b(update|edit|change|mark|set|add note|append note|reopen|close)\b/.test(normalized);
+
+  if (
+    part?.partId &&
+    !isQuestionOnly &&
+    /\b(update|edit|change|set)\b/.test(normalized) &&
+    /\b(quantity|count|stock|on hand|minimum|min|reorder level)\b/.test(
+      normalized,
+    )
+  ) {
+    const quantity = parseInventoryValue(question, "quantity");
+    const minQuantity = parseInventoryValue(question, "minimum");
+    if (quantity !== undefined || minQuantity !== undefined) {
+      return {
+        id: createId("assistant-action"),
+        kind: "part-update",
+        targetId: part.partId,
+        targetTitle: part.title,
+        quantity,
+        minQuantity,
+      };
+    }
+  }
 
   if (
     workOrder?.serviceId &&
