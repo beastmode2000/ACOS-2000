@@ -395,7 +395,7 @@ export default function DailyOperationsManager({
   const activeWork = effectiveServiceRecords.filter((item) => !isClosedStatus(item.status));
   const completedToday = effectiveServiceRecords.filter(
     (item) =>
-      ((item.status === "Completed" || item.status === "Closed") &&
+      (item.status === "Completed" &&
         (item.date === today ||
           (item as any).lastCompletedDate === today)) ||
       (item as any).lastCompletedDate === today,
