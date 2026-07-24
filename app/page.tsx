@@ -11440,42 +11440,22 @@ export default function AtlasPage() {
           today={todayISO()}
           isMobile={isMobile}
           colors={colors}
-          onOpenCalendar={openCalendarItem}
+          onOpenCalendar={(item) => {
+            setScreen("calendar");
+            window.setTimeout(() => openCalendarItem(item), 0);
+          }}
+          onOpenCalendarPage={() => {
+            setScreen("calendar");
+          }}
           onOpenWorkOrder={(id) => {
             setSelectedServiceId(id);
             setScreen("history");
           }}
+          onOpenWorkOrdersPage={() => {
+            setSelectedServiceId("");
+            setScreen("history");
+          }}
           onAskAtlas={(prompt) => {
-            if (
-              prompt ===
-                "Review today’s calendar and help me use the open time effectively." ||
-              prompt ===
-                "Review my upcoming calendar and identify anything I should prepare for."
-            ) {
-              setScreen("calendar");
-              return;
-            }
-
-            if (
-              prompt ===
-              "Review my open work and confirm whether anything should be treated as a priority today."
-            ) {
-              setSelectedServiceId("");
-              setScreen("history");
-              return;
-            }
-
-            if (
-              prompt ===
-                "Use today’s weather to recommend the best order for outdoor, indoor, irrigation, dock, and maintenance work." ||
-              prompt ===
-                "Review the current Atlas notices, explain what needs attention, and recommend the best next actions." ||
-              prompt ===
-                "Run the most useful daily operational checks for 2000 and summarize what needs my attention."
-            ) {
-              return;
-            }
-
             setAssistantQuestion(prompt);
             setScreen("assistant");
             window.setTimeout(() => void askAtlas(prompt), 0);
