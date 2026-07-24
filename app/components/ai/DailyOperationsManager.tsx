@@ -25,7 +25,9 @@ type Props = {
     panel: string;
   };
   onOpenCalendar: (item: CalendarItem) => void;
+  onOpenCalendarPage: () => void;
   onOpenWorkOrder: (id: string) => void;
+  onOpenWorkOrdersPage: () => void;
   onAskAtlas: (prompt: string) => void;
 };
 
@@ -82,7 +84,9 @@ export default function DailyOperationsManager({
   isMobile,
   colors,
   onOpenCalendar,
+  onOpenCalendarPage,
   onOpenWorkOrder,
+  onOpenWorkOrdersPage,
   onAskAtlas,
 }: Props) {
   const sortedTodayEvents = [...todayEvents]
@@ -363,11 +367,7 @@ export default function DailyOperationsManager({
           icon="▣"
           tone="schedule"
           colors={colors}
-          onClick={
-            visibleTodayEvents[0]
-              ? () => onOpenCalendar(visibleTodayEvents[0])
-              : undefined
-          }
+          onClick={onOpenCalendarPage}
         >
           {visibleTodayEvents.length ? (
             visibleTodayEvents.map((item) => (
@@ -396,11 +396,7 @@ export default function DailyOperationsManager({
           icon="→"
           tone="upcoming"
           colors={colors}
-          onClick={
-            visibleUpcomingEvents[0]
-              ? () => onOpenCalendar(visibleUpcomingEvents[0])
-              : undefined
-          }
+          onClick={onOpenCalendarPage}
         >
           {visibleUpcomingEvents.length ? (
             visibleUpcomingEvents.map((item) => (
@@ -511,11 +507,7 @@ export default function DailyOperationsManager({
           icon="!"
           tone="priority"
           colors={colors}
-          onClick={
-            visiblePriorityWork[0]
-              ? () => onOpenWorkOrder(visiblePriorityWork[0].id)
-              : undefined
-          }
+          onClick={onOpenWorkOrdersPage}
         >
           {visiblePriorityWork.length ? (
             visiblePriorityWork.map((item) => (
