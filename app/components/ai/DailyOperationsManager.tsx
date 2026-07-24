@@ -162,12 +162,12 @@ export default function DailyOperationsManager({
       : 0;
 
   const healthDeductions =
-    Math.min(overdue.length * 4, 20) +
-    Math.min(highPriority.length * 2, 10) +
-    (workWithoutPhotos > 5 ? 4 : 0) +
-    (assetsWithoutProcedure.length > 10 ? 4 : 0);
+    Math.min(overdue.length * 5, 30) +
+    Math.min(highPriority.length * 2, 12) +
+    Math.min(workWithoutPhotos, 6) +
+    Math.min(Math.floor(assetsWithoutProcedure.length / 5), 6);
 
-  const healthScore = Math.max(70, 100 - healthDeductions);
+  const healthScore = Math.max(55, 100 - healthDeductions);
   const healthLabel =
     healthScore >= 94
       ? "Excellent"
@@ -225,8 +225,31 @@ export default function DailyOperationsManager({
     weatherAdvice,
   ].join(" ");
 
+  const todayFocus = [
+    overdue.length
+      ? `Start with ${overdue[0]?.title || "the oldest overdue work order"}${
+          overdue.length > 1 ? `, then clear ${overdue.length - 1} additional overdue item${overdue.length - 1 === 1 ? "" : "s"}` : ""
+        }.`
+      : dueToday.length
+        ? `Begin with ${dueToday[0]?.title || "today’s first due work order"}.`
+        : sortedTodayEvents.length
+          ? `Prepare for ${sortedTodayEvents[0]?.title || "the first scheduled event"}.`
+          : "Use the open schedule for preventive maintenance and property inspections.",
+    vendorEvents.length
+      ? `Confirm access and scope before ${vendorEvents[0]?.linkedName || vendorEvents[0]?.title || "the first vendor"} arrives.`
+      : null,
+    todayWeather?.precipChance >= 60
+      ? "Finish exposed outdoor work before conditions worsen."
+      : todayWeather?.high >= 85
+        ? "Complete outdoor work early and check irrigation coverage."
+        : todayWeather?.windMax >= 20
+          ? "Avoid exposed ladder and dock work."
+          : "Outdoor maintenance has a favorable work window.",
+  ].filter(Boolean) as string[];
+
   return (
     <section
+      className="atlas-dashboard-shell"
       style={{
         marginBottom: 18,
         borderRadius: 24,
@@ -341,6 +364,70 @@ export default function DailyOperationsManager({
           />
         </div>
       </header>
+
+      <div
+        style={{
+          padding: isMobile ? "14px 14px 0" : "16px 18px 0",
+          background: colors.card,
+        }}
+      >
+        <div
+          className="atlas-focus-strip"
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "auto minmax(0, 1fr)",
+            alignItems: "start",
+            gap: isMobile ? 8 : 16,
+            borderRadius: 16,
+            padding: isMobile ? 14 : "15px 17px",
+            background: `linear-gradient(135deg, ${colors.gold}22, ${colors.panel})`,
+            border: `1px solid ${colors.gold}66`,
+          }}
+        >
+          <div
+            style={{
+              color: colors.navy,
+              fontSize: 11,
+              fontWeight: 950,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              whiteSpace: "nowrap",
+              paddingTop: 2,
+            }}
+          >
+            Today’s Focus
+          </div>
+
+          <div style={{ display: "grid", gap: 5 }}>
+            {todayFocus.map((item, index) => (
+              <div
+                key={`${item}-${index}`}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  fontSize: isMobile ? 12 : 13,
+                  lineHeight: 1.45,
+                  fontWeight: index === 0 ? 800 : 650,
+                  color: colors.navy,
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    color: colors.gold,
+                    fontWeight: 950,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  {index + 1}
+                </span>
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <div style={{ padding: isMobile ? 14 : 18 }}>
         <div
@@ -641,6 +728,103 @@ export default function DailyOperationsManager({
           />
         </div>
       </div>
+
+      <style jsx global>{`
+        .atlas-dashboard-shell {
+          animation: atlas-dashboard-enter 220ms ease-out both;
+        }
+
+        .atlas-dashboard-card {
+          transition:
+            transform 170ms ease,
+            box-shadow 170ms ease,
+            border-color 170ms ease,
+            background 170ms ease;
+        }
+
+        .atlas-dashboard-card-clickable:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 24px rgba(15, 31, 48, 0.1);
+          border-color: rgba(183, 148, 62, 0.48) !important;
+        }
+
+        .atlas-dashboard-card-clickable:active {
+          transform: translateY(0) scale(0.995);
+        }
+
+        .atlas-dashboard-card-clickable:focus-visible,
+        .atlas-row-button:focus-visible,
+        .atlas-quick-action:focus-visible {
+          outline: 3px solid rgba(183, 148, 62, 0.42);
+          outline-offset: 2px;
+        }
+
+        .atlas-row-button {
+          transition:
+            padding-left 150ms ease,
+            background 150ms ease;
+          border-radius: 8px;
+        }
+
+        .atlas-row-button:hover {
+          padding-left: 7px !important;
+          background: rgba(15, 31, 48, 0.035) !important;
+        }
+
+        .atlas-row-button:active {
+          background: rgba(15, 31, 48, 0.065) !important;
+        }
+
+        .atlas-quick-action {
+          transition:
+            transform 150ms ease,
+            background 150ms ease,
+            border-color 150ms ease;
+        }
+
+        .atlas-quick-action:hover {
+          transform: translateY(-1px);
+          background: rgba(183, 148, 62, 0.12) !important;
+          border-color: rgba(183, 148, 62, 0.42) !important;
+        }
+
+        .atlas-focus-strip {
+          animation: atlas-focus-enter 280ms ease-out 60ms both;
+        }
+
+        @keyframes atlas-dashboard-enter {
+          from {
+            opacity: 0;
+            transform: translateY(5px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes atlas-focus-enter {
+          from {
+            opacity: 0;
+            transform: translateY(-4px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .atlas-dashboard-shell,
+          .atlas-focus-strip,
+          .atlas-dashboard-card,
+          .atlas-row-button,
+          .atlas-quick-action {
+            animation: none !important;
+            transition: none !important;
+          }
+        }
+      `}</style>
     </section>
   );
 }
@@ -718,6 +902,7 @@ function HeroCard({
           onClick();
         }
       }}
+      className="atlas-dashboard-card atlas-dashboard-card-clickable"
       style={{
         borderRadius: 18,
         padding: 16,
@@ -750,6 +935,7 @@ function StandardCard({
 }) {
   return (
     <div
+      className={`atlas-dashboard-card${onClick ? " atlas-dashboard-card-clickable" : ""}`}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
@@ -867,6 +1053,7 @@ function RowButton({
 
   return (
     <button
+      className="atlas-row-button"
       type="button"
       onClick={(event) => {
         event.stopPropagation();
@@ -982,6 +1169,7 @@ function QuickAction({
 }) {
   return (
     <button
+      className="atlas-quick-action"
       type="button"
       onClick={onClick}
       style={{
