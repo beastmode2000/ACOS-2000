@@ -176,6 +176,7 @@ export default function DailyOperationsManager({
   const [visitOpen, setVisitOpen] = useState(false);
   const [visitVendors, setVisitVendors] = useState<VisitVendor[]>([]);
   const [visitSaving, setVisitSaving] = useState(false);
+  const [recentlyCompleted, setRecentlyCompleted] = useState<Record<string, string>>({});
   const [visitDraft, setVisitDraft] = useState<VisitDraft>({
     vendorId: "",
     vendorName: "",
@@ -240,15 +241,6 @@ export default function DailyOperationsManager({
       return;
     }
 
-    const routineButton = Array.from(
-      document.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((button) => button.textContent?.trim() === "Routines");
-
-    if (routineButton) {
-      routineButton.click();
-      return;
-    }
-
     window.dispatchEvent(
       new CustomEvent("atlas:navigate", {
         detail: { screen: "routines" },
@@ -307,6 +299,8 @@ export default function DailyOperationsManager({
     setActionError("");
 
     const timestamp = Date.now();
+    const completedAt = new Date().toISOString();
+
     const calendarRecord = {
       id: `visit-calendar-${timestamp}`,
       date: today,
@@ -319,7 +313,7 @@ export default function DailyOperationsManager({
       repeat: "None",
       reminder: "None",
       notes,
-      linkedType: selectedVendor ? "Vendor" : "None",
+      linkedType: selectedVendor ? "Vendor" : undefined,
       linkedId: selectedVendor?.id || "",
       linkedName: vendorName,
       completed: true,
@@ -338,26 +332,10 @@ export default function DailyOperationsManager({
       notes,
       recurring: false,
       lastCompletedDate: today,
+      completedAt,
       completionHistory: [today],
       workType: "Quick Task",
       workCategory: "Vendor Visit",
-      serviceHistory: [
-        {
-          id: `visit-history-${timestamp}`,
-          completedAt: new Date().toISOString(),
-          statusBefore: "Scheduled",
-          dueDate: today,
-          notes,
-          assetId: visitDraft.assetId,
-          vendorId: selectedVendor?.id || "",
-          procedureId: "",
-          locationId: "",
-          checklist: [],
-          notesHistory: [],
-          photos: [],
-          documents: [],
-        },
-      ],
       photos: [],
       documents: [],
     };
@@ -401,6 +379,11 @@ export default function DailyOperationsManager({
         ...current,
         [workRecord.id]: workRecord as ServiceRecord,
       }));
+      setRecentlyCompleted((current) => ({
+        ...current,
+        [`work:${workRecord.id}`]: completedAt,
+        [`calendar:${calendarRecord.id}`]: completedAt,
+      }));
       setVisitOpen(false);
       setVisitDraft({
         vendorId: "",
@@ -423,6 +406,56 @@ export default function DailyOperationsManager({
       );
     } finally {
       setVisitSaving(false);
+    }
+  }
+
+  async function saveQuickWorkNote(item: ServiceRecord, note: string) {
+    const trimmed = note.trim();
+    if (!trimmed) return;
+
+    const history = Array.isArray((item as any).notesHistory)
+      ? [...((item as any).notesHistory as any[])]
+      : [];
+    history.push({
+      id: `note-${Date.now()}`,
+      text: trimmed,
+      createdAt: new Date().toISOString(),
+    });
+
+    const updated = { ...item, notesHistory: history } as ServiceRecord;
+    setWorkOverrides((current) => ({ ...current, [item.id]: updated }));
+
+    const response = await fetch("/api/atlas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ table: "work_orders", record: updated }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || "Note could not be saved.");
+    }
+  }
+
+  async function saveQuickCalendarNote(item: CalendarItem, note: string) {
+    const trimmed = note.trim();
+    if (!trimmed) return;
+
+    const key = calendarItemKey(item);
+    const updated = {
+      ...item,
+      notes: [item.notes, trimmed].filter(Boolean).join("\n\n"),
+    } as CalendarItem;
+
+    setCalendarOverrides((current) => ({ ...current, [key]: updated }));
+
+    const response = await fetch("/api/atlas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ table: "calendar", record: updated }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || "Note could not be saved.");
     }
   }
 
@@ -500,6 +533,10 @@ export default function DailyOperationsManager({
     } as ServiceRecord;
 
     setWorkOverrides((current) => ({ ...current, [item.id]: updated }));
+    setRecentlyCompleted((current) => ({
+      ...current,
+      [actionId]: String((updated as any).completedAt || new Date().toISOString()),
+    }));
     setBusyAction(actionId);
     setActionError("");
 
@@ -562,6 +599,10 @@ export default function DailyOperationsManager({
     } as CalendarItem;
 
     setCalendarOverrides((current) => ({ ...current, [key]: updated }));
+    setRecentlyCompleted((current) => ({
+      ...current,
+      [actionId]: new Date().toISOString(),
+    }));
     setBusyAction(actionId);
     setActionError("");
 
@@ -717,8 +758,10 @@ export default function DailyOperationsManager({
         all.findIndex((candidate) => candidate.id === item.id) === index,
     )
     .sort((a, b) => {
-      const aDone = (a as any).lastCompletedDate === today || a.status === "Completed";
-      const bDone = (b as any).lastCompletedDate === today || b.status === "Completed";
+      const aDone =
+        (a as any).lastCompletedDate === today || a.status === "Completed";
+      const bDone =
+        (b as any).lastCompletedDate === today || b.status === "Completed";
       return Number(aDone) - Number(bDone);
     })
     .slice(0, 7);
@@ -902,7 +945,6 @@ export default function DailyOperationsManager({
     onOpenCalendarPage,
     onOpenWorkOrder,
     onOpenWorkOrdersPage,
-    onOpenRoutinesPage,
     overdue,
     routineOccurrence,
     routineTasks.length,
@@ -963,7 +1005,8 @@ export default function DailyOperationsManager({
   ].filter(Boolean) as string[];
 
   return (
-    <section
+    <>
+      <section
       className="atlas-dashboard-shell"
       style={{
         marginBottom: 18,
@@ -1413,19 +1456,29 @@ export default function DailyOperationsManager({
               }}
             >
               {[...routineTasks]
-                .sort((a, b) => Number(Boolean(a.completed)) - Number(Boolean(b.completed)))
+                .sort(
+                  (a, b) =>
+                    Number(Boolean(a.completed)) -
+                    Number(Boolean(b.completed)),
+                )
                 .map((task) => (
                   <button
                     key={task.id}
                     type="button"
                     disabled={Boolean(busyAction)}
                     onClick={() => void toggleRoutineTask(task.id)}
-                    title={task.completed ? "Mark routine task not done" : "Mark routine task done"}
+                    title={
+                      task.completed
+                        ? "Mark routine task not done"
+                        : "Mark routine task done"
+                    }
                     style={{
                       borderRadius: 999,
                       padding: "6px 9px",
                       background: task.completed ? "#EEF8F2" : "#FFFFFF",
-                      border: `1px solid ${task.completed ? "#B9D8C5" : colors.line}`,
+                      border: `1px solid ${
+                        task.completed ? "#B9D8C5" : colors.line
+                      }`,
                       color: task.completed ? "#087443" : colors.navy,
                       fontSize: 11,
                       fontWeight: 750,
@@ -1436,6 +1489,8 @@ export default function DailyOperationsManager({
                         busyAction !== `routine:${task.id}`
                           ? 0.55
                           : 1,
+                      transition:
+                        "background 180ms ease, transform 180ms ease, opacity 180ms ease",
                     }}
                   >
                     {busyAction === `routine:${task.id}`
@@ -1443,8 +1498,6 @@ export default function DailyOperationsManager({
                       : `${task.completed ? "✓" : "○"} ${task.title}`}
                   </button>
                 ))}
-            </div>
-          ) : null}
             </div>
           ) : null}
         </div>
@@ -1508,6 +1561,24 @@ export default function DailyOperationsManager({
                     (item as any).lastCompletedDate === today ||
                     item.status === "Completed"
                   }
+                  completedAt={
+                    recentlyCompleted[`work:${item.id}`] ||
+                    String((item as any).completedAt || "")
+                  }
+                  nextDue={
+                    item.recurring && item.date ? shortDateLabel(item.date) : ""
+                  }
+                  notes={
+                    Array.isArray((item as any).notesHistory)
+                      ? (item as any).notesHistory
+                          .slice(-3)
+                          .map((entry: any) => String(entry.text || ""))
+                          .filter(Boolean)
+                      : []
+                  }
+                  photoCount={(item.photos || []).length}
+                  onAddNote={(note) => saveQuickWorkNote(item, note)}
+                  onAddPhoto={() => onOpenWorkOrder(item.id)}
                   colors={colors}
                   isMobile={isMobile}
                   preview={{
@@ -1570,6 +1641,15 @@ export default function DailyOperationsManager({
                     `calendar:${calendarItemKey(item)}`
                   }
                   completed={Boolean(item.completed)}
+                  completedAt={
+                    recentlyCompleted[
+                      `calendar:${calendarItemKey(item)}`
+                    ] || ""
+                  }
+                  notes={item.notes ? [item.notes] : []}
+                  photoCount={0}
+                  onAddNote={(note) => saveQuickCalendarNote(item, note)}
+                  onAddPhoto={() => onOpenCalendar(item)}
                   colors={colors}
                   isMobile={isMobile}
                   preview={{
@@ -1971,6 +2051,21 @@ export default function DailyOperationsManager({
           }
         }
 
+        @keyframes atlas-completed-pop {
+          from {
+            opacity: 0.35;
+            transform: translateY(-3px) scale(0.995);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .atlas-completed-row {
+          animation: atlas-completed-pop 220ms ease-out both;
+        }
+
         @keyframes atlas-focus-enter {
           from {
             opacity: 0;
@@ -1993,187 +2088,356 @@ export default function DailyOperationsManager({
           }
         }
       `}</style>
-    </section>
+      </section>
+
+      <VisitLoggerModal
+        open={visitOpen}
+        saving={visitSaving}
+        vendors={visitVendors}
+        assets={assets}
+        draft={visitDraft}
+        colors={colors}
+        isMobile={isMobile}
+        error={actionError}
+        onChange={setVisitDraft}
+        onClose={() => {
+          if (!visitSaving) setVisitOpen(false);
+        }}
+        onSave={() => void saveVisit()}
+      />
+    </>
   );
-      {visitOpen ? (
+}
+
+
+function VisitLoggerModal({
+  open,
+  saving,
+  vendors,
+  assets,
+  draft,
+  colors,
+  isMobile,
+  error,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  saving: boolean;
+  vendors: VisitVendor[];
+  assets: AssetRecord[];
+  draft: VisitDraft;
+  colors: Props["colors"];
+  isMobile: boolean;
+  error: string;
+  onChange: React.Dispatch<React.SetStateAction<VisitDraft>>;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  if (!open) return null;
+
+  const inputStyle: React.CSSProperties = {
+    minHeight: 42,
+    borderRadius: 10,
+    border: `1px solid ${colors.line}`,
+    padding: "0 10px",
+    background: "#FFFFFF",
+    color: colors.navy,
+    font: "inherit",
+  };
+
+  const fieldStyle: React.CSSProperties = {
+    display: "grid",
+    gap: 5,
+    fontSize: 11,
+    fontWeight: 850,
+  };
+
+  return (
+    <div
+      role="presentation"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 10000,
+        display: "grid",
+        placeItems: "center",
+        padding: 16,
+        background: "rgba(7, 27, 47, 0.56)",
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Log vendor visit"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: "min(620px, 100%)",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          borderRadius: 18,
+          background: "#FFFFFF",
+          border: `1px solid ${colors.line}`,
+          boxShadow: "0 24px 70px rgba(7,27,47,0.28)",
+          padding: isMobile ? 16 : 20,
+          color: colors.navy,
+        }}
+      >
         <div
-          role="presentation"
-          onClick={() => {
-            if (!visitSaving) setVisitOpen(false);
-          }}
           style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 10000,
-            display: "grid",
-            placeItems: "center",
-            padding: 16,
-            background: "rgba(7, 27, 47, 0.56)",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 16,
           }}
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Log vendor visit"
-            onClick={(event) => event.stopPropagation()}
+          <div>
+            <div
+              style={{
+                color: colors.gold,
+                fontSize: 10,
+                fontWeight: 950,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+              }}
+            >
+              Quick History Entry
+            </div>
+            <h3 style={{ margin: "4px 0 0", fontSize: 22 }}>
+              Log Vendor Visit
+            </h3>
+            <p
+              style={{
+                margin: "5px 0 0",
+                fontSize: 12,
+                color: "#64748B",
+              }}
+            >
+              Saves the visit to the calendar, vendor-linked history, and linked
+              asset history.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onClose}
             style={{
-              width: "min(620px, 100%)",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              borderRadius: 18,
-              background: "#FFFFFF",
-              border: `1px solid ${colors.line}`,
-              boxShadow: "0 24px 70px rgba(7,27,47,0.28)",
-              padding: isMobile ? 16 : 20,
-              color: colors.navy,
+              border: 0,
+              background: "transparent",
+              fontSize: 22,
+              cursor: "pointer",
+              color: "#64748B",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: 12,
-                marginBottom: 16,
+            ×
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gap: 12,
+          }}
+        >
+          <label style={fieldStyle}>
+            Vendor
+            <select
+              value={draft.vendorId}
+              onChange={(event) => {
+                const vendor = vendors.find(
+                  (item) => item.id === event.target.value,
+                );
+                onChange((current) => ({
+                  ...current,
+                  vendorId: event.target.value,
+                  vendorName: vendor?.name || current.vendorName,
+                }));
               }}
+              style={inputStyle}
             >
-              <div>
-                <div
-                  style={{
-                    color: colors.gold,
-                    fontSize: 10,
-                    fontWeight: 950,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Quick History Entry
-                </div>
-                <h3 style={{ margin: "4px 0 0", fontSize: 22 }}>
-                  Log Vendor Visit
-                </h3>
-                <p style={{ margin: "5px 0 0", fontSize: 12, color: "#64748B" }}>
-                  Saves the visit to the calendar, vendor history, and linked asset history.
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={visitSaving}
-                onClick={() => setVisitOpen(false)}
-                style={{
-                  border: 0,
-                  background: "transparent",
-                  fontSize: 22,
-                  cursor: "pointer",
-                  color: "#64748B",
-                }}
-              >
-                ×
-              </button>
-            </div>
+              <option value="">Enter vendor manually</option>
+              {vendors.map((vendor) => (
+                <option key={vendor.id} value={vendor.id}>
+                  {vendor.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                gap: 12,
-              }}
+          {!draft.vendorId ? (
+            <label style={fieldStyle}>
+              Vendor name
+              <input
+                value={draft.vendorName}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    vendorName: event.target.value,
+                  }))
+                }
+                placeholder="Sunstream"
+                style={inputStyle}
+              />
+            </label>
+          ) : null}
+
+          <label style={fieldStyle}>
+            Contact
+            <input
+              value={draft.contactName}
+              onChange={(event) =>
+                onChange((current) => ({
+                  ...current,
+                  contactName: event.target.value,
+                }))
+              }
+              placeholder="Shaman"
+              style={inputStyle}
+            />
+          </label>
+
+          <label style={fieldStyle}>
+            Time
+            <input
+              type="time"
+              value={draft.time}
+              onChange={(event) =>
+                onChange((current) => ({
+                  ...current,
+                  time: event.target.value,
+                }))
+              }
+              style={inputStyle}
+            />
+          </label>
+
+          <label style={fieldStyle}>
+            Linked asset
+            <select
+              value={draft.assetId}
+              onChange={(event) =>
+                onChange((current) => ({
+                  ...current,
+                  assetId: event.target.value,
+                }))
+              }
+              style={inputStyle}
             >
-              <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>
-                Vendor
-                <select
-                  value={visitDraft.vendorId}
-                  onChange={(event) => {
-                    const vendor = visitVendors.find(
-                      (item) => item.id === event.target.value,
-                    );
-                    setVisitDraft((current) => ({
-                      ...current,
-                      vendorId: event.target.value,
-                      vendorName: vendor?.name || current.vendorName,
-                    }));
-                  }}
-                  style={{
-                    minHeight: 42,
-                    borderRadius: 10,
-                    border: `1px solid ${colors.line}`,
-                    padding: "0 10px",
-                    background: "#FFFFFF",
-                  }}
-                >
-                  <option value="">Enter vendor manually</option>
-                  {visitVendors.map((vendor) => (
-                    <option key={vendor.id} value={vendor.id}>
-                      {vendor.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <option value="">No asset</option>
+              {[...assets]
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+        </div>
 
-              {!visitDraft.vendorId ? (
-                <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>
-                  Vendor name
-                  <input
-                    value={visitDraft.vendorName}
-                    onChange={(event) =>
-                      setVisitDraft((current) => ({
-                        ...current,
-                        vendorName: event.target.value,
-                      }))
-                    }
-                    placeholder="Sunstream"
-                    style={{
-                      minHeight: 42,
-                      borderRadius: 10,
-                      border: `1px solid ${colors.line}`,
-                      padding: "0 10px",
-                    }}
-                  />
-                </label>
-              ) : (
-                <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>
-                  Contact
-                  <input
-                    value={visitDraft.contactName}
-                    onChange={(event) =>
-                      setVisitDraft((current) => ({
-                        ...current,
-                        contactName: event.target.value,
-                      }))
-                    }
-                    placeholder="Shaman"
-                    style={{
-                      minHeight: 42,
-                      borderRadius: 10,
-                      border: `1px solid ${colors.line}`,
-                      padding: "0 10px",
-                    }}
-                  />
-                </label>
-              )}
+        <label style={{ ...fieldStyle, marginTop: 12 }}>
+          Purpose
+          <input
+            value={draft.purpose}
+            onChange={(event) =>
+              onChange((current) => ({
+                ...current,
+                purpose: event.target.value,
+              }))
+            }
+            placeholder="Last-minute dock lift service"
+            style={inputStyle}
+          />
+        </label>
 
-              {!visitDraft.vendorId ? (
-                <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>
-                  Contact
-                  <input
-                    value={visitDraft.contactName}
-                    onChange={(event) =>
-                      setVisitDraft((current) => ({
-                        ...current,
-                        contactName: event.target.value,
-                      }))
-                    }
-                    placeholder="Shaman"
-                    style={{
-                      minHeight: 42,
-                      borderRadius: 10,
-                      border: `1px solid ${colors.line}`,
-                      padding: "0 10px",
-                    }}
-                  />
-                </label>
-              ) : null}
+        <label style={{ ...fieldStyle, marginTop: 12 }}>
+          Notes
+          <textarea
+            value={draft.notes}
+            onChange={(event) =>
+              onChange((current) => ({
+                ...current,
+                notes: event.target.value,
+              }))
+            }
+            placeholder="What was inspected, repaired, found, or recommended?"
+            rows={5}
+            style={{
+              ...inputStyle,
+              minHeight: 110,
+              padding: 10,
+              resize: "vertical",
+            }}
+          />
+        </label>
 
+        {error ? (
+          <div
+            style={{
+              marginTop: 12,
+              borderRadius: 10,
+              padding: "9px 10px",
+              background: "#FFF1F1",
+              color: "#A94D4D",
+              fontSize: 11,
+              fontWeight: 750,
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 9,
+            marginTop: 16,
+          }}
+        >
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onClose}
+            style={{
+              border: `1px solid ${colors.line}`,
+              borderRadius: 10,
+              padding: "10px 13px",
+              background: "#FFFFFF",
+              color: colors.navy,
+              fontWeight: 850,
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onSave}
+            style={{
+              border: 0,
+              borderRadius: 10,
+              padding: "10px 14px",
+              background: colors.navy,
+              color: "#FFFFFF",
+              fontWeight: 900,
+              cursor: saving ? "wait" : "pointer",
+              opacity: saving ? 0.65 : 1,
+            }}
+          >
+            {saving ? "Saving…" : "Save Visit"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Metric({
@@ -2372,161 +2636,6 @@ function CardHeader({
       )}
     </div>
   );
-
-              <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>
-                Time
-                <input
-                  type="time"
-                  value={visitDraft.time}
-                  onChange={(event) =>
-                    setVisitDraft((current) => ({
-                      ...current,
-                      time: event.target.value,
-                    }))
-                  }
-                  style={{
-                    minHeight: 42,
-                    borderRadius: 10,
-                    border: `1px solid ${colors.line}`,
-                    padding: "0 10px",
-                  }}
-                />
-              </label>
-
-              <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>
-                Linked asset
-                <select
-                  value={visitDraft.assetId}
-                  onChange={(event) =>
-                    setVisitDraft((current) => ({
-                      ...current,
-                      assetId: event.target.value,
-                    }))
-                  }
-                  style={{
-                    minHeight: 42,
-                    borderRadius: 10,
-                    border: `1px solid ${colors.line}`,
-                    padding: "0 10px",
-                    background: "#FFFFFF",
-                  }}
-                >
-                  <option value="">No asset</option>
-                  {[...assets]
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </div>
-
-            <label
-              style={{
-                display: "grid",
-                gap: 5,
-                marginTop: 12,
-                fontSize: 11,
-                fontWeight: 850,
-              }}
-            >
-              Purpose
-              <input
-                value={visitDraft.purpose}
-                onChange={(event) =>
-                  setVisitDraft((current) => ({
-                    ...current,
-                    purpose: event.target.value,
-                  }))
-                }
-                placeholder="Last-minute dock lift service"
-                style={{
-                  minHeight: 42,
-                  borderRadius: 10,
-                  border: `1px solid ${colors.line}`,
-                  padding: "0 10px",
-                }}
-              />
-            </label>
-
-            <label
-              style={{
-                display: "grid",
-                gap: 5,
-                marginTop: 12,
-                fontSize: 11,
-                fontWeight: 850,
-              }}
-            >
-              Notes
-              <textarea
-                value={visitDraft.notes}
-                onChange={(event) =>
-                  setVisitDraft((current) => ({
-                    ...current,
-                    notes: event.target.value,
-                  }))
-                }
-                placeholder="What was inspected, repaired, found, or recommended?"
-                rows={5}
-                style={{
-                  borderRadius: 10,
-                  border: `1px solid ${colors.line}`,
-                  padding: 10,
-                  resize: "vertical",
-                  font: "inherit",
-                }}
-              />
-            </label>
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 9,
-                marginTop: 16,
-              }}
-            >
-              <button
-                type="button"
-                disabled={visitSaving}
-                onClick={() => setVisitOpen(false)}
-                style={{
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 10,
-                  padding: "10px 13px",
-                  background: "#FFFFFF",
-                  color: colors.navy,
-                  fontWeight: 850,
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={visitSaving}
-                onClick={() => void saveVisit()}
-                style={{
-                  border: 0,
-                  borderRadius: 10,
-                  padding: "10px 14px",
-                  background: colors.navy,
-                  color: "#FFFFFF",
-                  fontWeight: 900,
-                  cursor: visitSaving ? "wait" : "pointer",
-                  opacity: visitSaving ? 0.65 : 1,
-                }}
-              >
-                {visitSaving ? "Saving…" : "Save Visit"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
 }
 
 function RowButton({
@@ -2538,6 +2647,12 @@ function RowButton({
   onDone,
   doneBusy = false,
   completed = false,
+  completedAt = "",
+  nextDue = "",
+  notes = [],
+  photoCount = 0,
+  onAddNote,
+  onAddPhoto,
   colors,
   preview,
   isMobile = false,
@@ -2550,10 +2665,41 @@ function RowButton({
   onDone?: () => void;
   doneBusy?: boolean;
   completed?: boolean;
+  completedAt?: string;
+  nextDue?: string;
+  notes?: string[];
+  photoCount?: number;
+  onAddNote?: (note: string) => Promise<void>;
+  onAddPhoto?: () => void;
   colors: Props["colors"];
   preview?: AtlasHoverPreviewData;
   isMobile?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const [quickNote, setQuickNote] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteWindowOpen, setNoteWindowOpen] = useState(false);
+
+  useEffect(() => {
+    if (!completedAt) {
+      setNoteWindowOpen(false);
+      return;
+    }
+
+    const completedTime = new Date(completedAt).getTime();
+    if (!Number.isFinite(completedTime)) return;
+
+    const remaining = 30_000 - (Date.now() - completedTime);
+    if (remaining <= 0) {
+      setNoteWindowOpen(false);
+      return;
+    }
+
+    setNoteWindowOpen(true);
+    const timer = window.setTimeout(() => setNoteWindowOpen(false), remaining);
+    return () => window.clearTimeout(timer);
+  }, [completedAt]);
+
   const badgeStyles =
     badgeTone === "danger"
       ? { background: "rgba(217,112,112,0.13)", color: "#A94D4D" }
@@ -2563,6 +2709,25 @@ function RowButton({
           ? { background: "rgba(59,110,155,0.12)", color: "#315F85" }
           : { background: "rgba(15,31,48,0.07)", color: "#52606B" };
 
+  const completionLabel = completedAt
+    ? new Date(completedAt).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "";
+
+  async function submitQuickNote() {
+    if (!onAddNote || !quickNote.trim() || noteSaving) return;
+    setNoteSaving(true);
+    try {
+      await onAddNote(quickNote);
+      setQuickNote("");
+      setNoteWindowOpen(false);
+    } finally {
+      setNoteSaving(false);
+    }
+  }
+
   return (
     <AtlasFocusTarget
       id={`dashboard-row-${title}-${detail}`}
@@ -2570,17 +2735,18 @@ function RowButton({
       className="atlas-preview-anchor"
     >
       <div
+        className={completed ? "atlas-completed-row" : undefined}
         style={{
           display: "grid",
-          gridTemplateColumns: onDone
-            ? "minmax(0, 1fr) auto"
-            : "1fr",
+          gridTemplateColumns: onDone ? "minmax(0, 1fr) auto" : "1fr",
           alignItems: "center",
           gap: 8,
           borderTop: `1px solid ${completed ? "#B9D8C5" : colors.line}`,
-          padding: "8px 8px 0",
-          borderRadius: completed ? 10 : 0,
+          padding: completed ? 9 : "8px 0 0",
+          borderRadius: completed ? 11 : 0,
           background: completed ? "#F1F9F4" : "transparent",
+          transition:
+            "background 180ms ease, transform 180ms ease, opacity 180ms ease",
         }}
       >
         <button
@@ -2588,14 +2754,17 @@ function RowButton({
           type="button"
           onClick={(event) => {
             event.stopPropagation();
+            if (completed) {
+              setExpanded((current) => !current);
+              return;
+            }
             onClick();
           }}
           style={{
             width: "100%",
             border: 0,
             background: "transparent",
-            padding:
-              preview && isMobile ? "2px 34px 2px 0" : "2px 0",
+            padding: preview && isMobile ? "2px 34px 2px 0" : "2px 0",
             textAlign: "left",
             cursor: "pointer",
             color: completed ? "#087443" : "inherit",
@@ -2619,7 +2788,8 @@ function RowButton({
                   textDecoration: completed ? "line-through" : "none",
                 }}
               >
-                {completed ? "✓ " : ""}{title}
+                {completed ? "✓ " : ""}
+                {title}
               </div>
               <div
                 style={{
@@ -2629,7 +2799,10 @@ function RowButton({
                   opacity: 0.57,
                 }}
               >
-                {detail}
+                {completed && completionLabel
+                  ? `Completed ${completionLabel}`
+                  : detail}
+                {completed && nextDue ? ` · Next due ${nextDue}` : ""}
               </div>
             </div>
 
@@ -2660,9 +2833,7 @@ function RowButton({
             }}
             style={{
               minWidth: 54,
-              border: `1px solid ${
-                doneBusy ? colors.line : "#B9D8C5"
-              }`,
+              border: `1px solid ${doneBusy ? colors.line : "#B9D8C5"}`,
               borderRadius: 999,
               padding: "7px 9px",
               background: doneBusy ? "#F4F6F8" : "#EEF8F2",
@@ -2676,14 +2847,135 @@ function RowButton({
             {doneBusy ? "Saving…" : "✓ Done"}
           </button>
         ) : null}
+
+        {completed && expanded ? (
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              borderTop: "1px solid #D9EBDD",
+              paddingTop: 9,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontSize: 11, color: "#416655", lineHeight: 1.5 }}>
+              {notes.length
+                ? notes.map((note, index) => (
+                    <div key={`${note}-${index}`}>• {note}</div>
+                  ))
+                : "No completion notes yet."}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 7,
+                alignItems: "center",
+              }}
+            >
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClick();
+                }}
+                style={{
+                  border: "1px solid #B9D8C5",
+                  borderRadius: 999,
+                  padding: "6px 9px",
+                  background: "#FFFFFF",
+                  color: "#087443",
+                  fontSize: 10,
+                  fontWeight: 850,
+                  cursor: "pointer",
+                }}
+              >
+                Open record
+              </button>
+
+              {onAddPhoto ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onAddPhoto();
+                  }}
+                  style={{
+                    border: "1px solid #B9D8C5",
+                    borderRadius: 999,
+                    padding: "6px 9px",
+                    background: "#FFFFFF",
+                    color: "#087443",
+                    fontSize: 10,
+                    fontWeight: 850,
+                    cursor: "pointer",
+                  }}
+                >
+                  + Add Photo{photoCount ? ` (${photoCount})` : ""}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {completed && noteWindowOpen && onAddNote ? (
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) auto",
+              gap: 7,
+              alignItems: "center",
+            }}
+          >
+            <input
+              value={quickNote}
+              onChange={(event) => setQuickNote(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submitQuickNote();
+                }
+              }}
+              placeholder="Add a quick completion note…"
+              style={{
+                minHeight: 36,
+                borderRadius: 9,
+                border: "1px solid #B9D8C5",
+                padding: "0 9px",
+                fontSize: 11,
+              }}
+            />
+            <button
+              type="button"
+              disabled={noteSaving || !quickNote.trim()}
+              onClick={(event) => {
+                event.stopPropagation();
+                void submitQuickNote();
+              }}
+              style={{
+                minHeight: 36,
+                border: 0,
+                borderRadius: 9,
+                padding: "0 11px",
+                background: "#087443",
+                color: "#FFFFFF",
+                fontSize: 10,
+                fontWeight: 900,
+                cursor: noteSaving ? "wait" : "pointer",
+                opacity: noteSaving || !quickNote.trim() ? 0.55 : 1,
+              }}
+            >
+              {noteSaving ? "Saving…" : "Save Note"}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {preview ? (
-        <AtlasHoverPreview
-          data={preview}
-          isMobile={isMobile}
-          onOpen={onClick}
-        />
+        <AtlasHoverPreview data={preview} isMobile={isMobile} onOpen={onClick} />
       ) : null}
     </AtlasFocusTarget>
   );
