@@ -189,11 +189,7 @@ export default function DailyOperationsManager({
         }`;
 
   const prioritySummaryIcon =
-    priorityWork.length === 0
-      ? "✓"
-      : priorityWork.length <= 2
-        ? "●"
-        : "●";
+    priorityWork.length === 0 ? "✓" : "●";
 
   const prioritySummaryColor =
     priorityWork.length === 0
@@ -277,11 +273,8 @@ export default function DailyOperationsManager({
             }}
           >
             <span>{dateLabel(today)}</span>
-
             <SummaryDivider />
-
             <span>{scheduleSummary}</span>
-
             <SummaryDivider />
 
             <span
@@ -300,18 +293,15 @@ export default function DailyOperationsManager({
               >
                 {prioritySummaryIcon}
               </span>
-
               <span>{prioritySummary}</span>
             </span>
 
             <SummaryDivider />
-
             <span>{headerWeather}</span>
 
             {vendorNames.length > 0 && (
               <>
                 <SummaryDivider />
-
                 <span>
                   Vendor:{" "}
                   {vendorNames.length === 1
@@ -373,16 +363,11 @@ export default function DailyOperationsManager({
           icon="▣"
           tone="schedule"
           colors={colors}
-          onClick={() => {
-            if (sortedTodayEvents[0]) {
-              onOpenCalendar(sortedTodayEvents[0]);
-              return;
-            }
-
-            onAskAtlas(
-              "Review today’s calendar and help me use the open time effectively.",
-            );
-          }}
+          onClick={
+            visibleTodayEvents[0]
+              ? () => onOpenCalendar(visibleTodayEvents[0])
+              : undefined
+          }
         >
           {visibleTodayEvents.length ? (
             visibleTodayEvents.map((item) => (
@@ -411,16 +396,11 @@ export default function DailyOperationsManager({
           icon="→"
           tone="upcoming"
           colors={colors}
-          onClick={() => {
-            if (sortedUpcomingEvents[0]) {
-              onOpenCalendar(sortedUpcomingEvents[0]);
-              return;
-            }
-
-            onAskAtlas(
-              "Review my upcoming calendar and identify anything I should prepare for.",
-            );
-          }}
+          onClick={
+            visibleUpcomingEvents[0]
+              ? () => onOpenCalendar(visibleUpcomingEvents[0])
+              : undefined
+          }
         >
           {visibleUpcomingEvents.length ? (
             visibleUpcomingEvents.map((item) => (
@@ -455,11 +435,6 @@ export default function DailyOperationsManager({
           icon={todayWeather ? weatherIcon(todayWeather.code) : "◌"}
           tone="weather"
           colors={colors}
-          onClick={() =>
-            onAskAtlas(
-              "Use today’s weather to recommend the best order for outdoor, indoor, irrigation, dock, and maintenance work.",
-            )
-          }
         >
           {todayWeather ? (
             <>
@@ -536,16 +511,11 @@ export default function DailyOperationsManager({
           icon="!"
           tone="priority"
           colors={colors}
-          onClick={() => {
-            if (priorityWork[0]) {
-              onOpenWorkOrder(priorityWork[0].id);
-              return;
-            }
-
-            onAskAtlas(
-              "Review my open work and confirm whether anything should be treated as a priority today.",
-            );
-          }}
+          onClick={
+            visiblePriorityWork[0]
+              ? () => onOpenWorkOrder(visiblePriorityWork[0].id)
+              : undefined
+          }
         >
           {visiblePriorityWork.length ? (
             visiblePriorityWork.map((item) => (
@@ -598,22 +568,15 @@ export default function DailyOperationsManager({
           title="Atlas Notices"
           icon="i"
           colors={colors}
-          onClick={() =>
-            onAskAtlas(
-              "Review the current Atlas notices, explain what needs attention, and recommend the best next actions.",
-            )
-          }
         >
           <NoticeLine
             count={assetsWithoutProcedure.length}
             label="assets shown without a linked procedure"
           />
-
           <NoticeLine
             count={workWithoutPhotos}
             label="open work orders without photos"
           />
-
           <NoticeLine
             count={overdue.length}
             label="overdue work items"
@@ -624,11 +587,6 @@ export default function DailyOperationsManager({
           title="Suggested AI Checks"
           icon="✦"
           colors={colors}
-          onClick={() =>
-            onAskAtlas(
-              "Run the most useful daily operational checks for 2000 and summarize what needs my attention.",
-            )
-          }
         >
           <ActionLink
             label="Review overdue work"
@@ -692,26 +650,21 @@ function BriefingCard({
             ? "rgba(190, 92, 92, 0.1)"
             : "rgba(90, 102, 115, 0.08)";
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!onClick) return;
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onClick();
+    }
+  };
+
   return (
     <div
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
-      aria-label={onClick ? `Open ${title}` : undefined}
-      onClick={(event) => {
-        if (!onClick) return;
-
-        const target = event.target as HTMLElement;
-        if (target.closest("button, a, input, select, textarea")) return;
-
-        onClick();
-      }}
-      onKeyDown={(event) => {
-        if (!onClick) return;
-        if (event.key !== "Enter" && event.key !== " ") return;
-
-        event.preventDefault();
-        onClick();
-      }}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
       style={{
         border: `1px solid ${colors.line}`,
         borderRadius: 14,
@@ -720,7 +673,6 @@ function BriefingCard({
         minWidth: 0,
         boxSizing: "border-box",
         cursor: onClick ? "pointer" : "default",
-        transition: "transform 120ms ease, box-shadow 120ms ease",
       }}
     >
       <div
@@ -790,7 +742,10 @@ function BriefingButton({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
       style={{
         position: "relative",
         width: "100%",
@@ -918,7 +873,10 @@ function ActionLink({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
       style={{
         border: 0,
         padding: "3px 0",
