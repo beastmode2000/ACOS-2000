@@ -140,6 +140,21 @@ export default function DailyOperationsManager({
   const todayWeather =
     weatherDays.find((day) => day.date === today) || null;
 
+  const todayVendorEvents = sortedTodayEvents.filter(
+    (item) =>
+      item.linkedType === "Vendor" ||
+      item.categoryLabel?.toLowerCase().includes("vendor") ||
+      item.area?.toLowerCase().includes("vendor"),
+  );
+
+  const vendorNames = Array.from(
+    new Set(
+      todayVendorEvents
+        .map((item) => item.linkedName || item.title)
+        .filter(Boolean),
+    ),
+  );
+
   const weatherAdvice = todayWeather
     ? todayWeather.precipChance >= 60
       ? "Wet-weather day: prioritize indoor, mechanical, document, and inspection work."
@@ -164,11 +179,32 @@ export default function DailyOperationsManager({
         ? "Good Afternoon"
         : "Good Evening";
 
+  const prioritySummary =
+    priorityWork.length === 0
+      ? "Nothing overdue"
+      : `${priorityWork.length} priority ${
+          priorityWork.length === 1 ? "item" : "items"
+        }`;
+
+  const prioritySummaryIcon =
+    priorityWork.length === 0
+      ? "✅"
+      : priorityWork.length <= 2
+        ? "🟡"
+        : "🔴";
+
+  const scheduleSummary =
+    sortedTodayEvents.length === 0
+      ? "Open schedule"
+      : `${sortedTodayEvents.length} scheduled ${
+          sortedTodayEvents.length === 1 ? "item" : "items"
+        }`;
+
   const headerWeather = todayWeather
-    ? `${Math.round(todayWeather.high)}° ${weatherCondition(
-        todayWeather.code,
-      )}`
-    : "Weather unavailable";
+    ? `${weatherIcon(todayWeather.code)} ${Math.round(
+        todayWeather.high,
+      )}° ${weatherCondition(todayWeather.code)}`
+    : "🌡️ Weather unavailable";
 
   return (
     <section
@@ -192,7 +228,7 @@ export default function DailyOperationsManager({
           flexDirection: isMobile ? "column" : "row",
         }}
       >
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div
             style={{
               color: colors.gold,
@@ -216,34 +252,50 @@ export default function DailyOperationsManager({
 
           <div
             style={{
-              fontSize: isMobile ? 13 : 14,
-              fontWeight: 750,
               display: "flex",
               flexWrap: "wrap",
               alignItems: "center",
-              gap: isMobile ? 5 : 7,
+              gap: isMobile ? 6 : 8,
+              fontSize: isMobile ? 13 : 14,
+              fontWeight: 750,
               lineHeight: 1.5,
             }}
           >
             <span>{dateLabel(today)}</span>
 
-            <span style={{ opacity: 0.45 }}>•</span>
+            <SummaryDivider />
 
-            <span>
-              {sortedTodayEvents.length} scheduled{" "}
-              {sortedTodayEvents.length === 1 ? "item" : "items"}
+            <span>{scheduleSummary}</span>
+
+            <SummaryDivider />
+
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <span aria-hidden="true">{prioritySummaryIcon}</span>
+              <span>{prioritySummary}</span>
             </span>
 
-            <span style={{ opacity: 0.45 }}>•</span>
-
-            <span>
-              {priorityWork.length} priority{" "}
-              {priorityWork.length === 1 ? "item" : "items"}
-            </span>
-
-            <span style={{ opacity: 0.45 }}>•</span>
+            <SummaryDivider />
 
             <span>{headerWeather}</span>
+
+            {vendorNames.length > 0 && (
+              <>
+                <SummaryDivider />
+
+                <span>
+                  Vendor:{" "}
+                  {vendorNames.length === 1
+                    ? vendorNames[0]
+                    : `${vendorNames[0]} +${vendorNames.length - 1}`}
+                </span>
+              </>
+            )}
           </div>
 
           <div
@@ -488,6 +540,10 @@ export default function DailyOperationsManager({
       </div>
     </section>
   );
+}
+
+function SummaryDivider() {
+  return <span style={{ opacity: 0.4 }}>•</span>;
 }
 
 function BriefingCard({
