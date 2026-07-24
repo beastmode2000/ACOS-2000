@@ -552,3 +552,58 @@ a:focus-visible {
     transition: none !important;
   }
 }
+
+/* Atlas 3.3 — Dashboard Focus Mode */
+.atlas-focus-target {
+  position: relative;
+  border-radius: 12px;
+  transition:
+    opacity 170ms ease,
+    transform 170ms ease,
+    filter 170ms ease,
+    box-shadow 170ms ease,
+    background-color 170ms ease;
+}
+
+.atlas-focus-focused {
+  z-index: 7;
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 2px rgba(201, 154, 61, 0.72),
+    0 12px 28px rgba(7, 27, 47, 0.14);
+  background: rgba(255, 248, 229, 0.72);
+}
+
+.atlas-focus-related {
+  z-index: 6;
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1px rgba(201, 154, 61, 0.42),
+    0 8px 20px rgba(7, 27, 47, 0.08);
+  background: rgba(255, 251, 239, 0.46);
+}
+
+.atlas-focus-dimmed {
+  opacity: 0.38;
+  filter: saturate(0.72);
+}
+
+@media (hover: none), (max-width: 760px) {
+  .atlas-focus-target,
+  .atlas-focus-focused,
+  .atlas-focus-related,
+  .atlas-focus-dimmed {
+    opacity: 1;
+    filter: none;
+    transform: none;
+    box-shadow: none;
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-focus-target {
+    transition: none;
+  }
+}
