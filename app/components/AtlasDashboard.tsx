@@ -281,7 +281,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                   marginBottom: 4,
                 }}
               >
-                Today at 2000
+                Activity Timeline
               </h2>
 
               <p
@@ -290,7 +290,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                   color: "rgba(255,255,255,0.78)",
                 }}
               >
-                Daily schedule, upcoming commitments, and weather.
+                Latest activity across the estate.
               </p>
             </div>
           </div>
