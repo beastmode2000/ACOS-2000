@@ -212,12 +212,6 @@ export default function DailyOperationsManager({
       item.area?.toLowerCase().includes("vendor"),
   );
 
-  const totalTodayItems = dueToday.length + completedToday.length;
-  const progressPercent =
-    totalTodayItems > 0
-      ? Math.round((completedToday.length / totalTodayItems) * 100)
-      : 0;
-
   const healthDeductions =
     Math.min(overdue.length * 5, 30) +
     Math.min(highPriority.length * 2, 12) +
@@ -276,6 +270,15 @@ export default function DailyOperationsManager({
   const routineProgress =
     routineTasks.length > 0
       ? Math.round((completedRoutineTasks / routineTasks.length) * 100)
+      : 0;
+
+  const totalWorkItems = dueToday.length + completedToday.length;
+  const totalTodayItems = totalWorkItems + routineTasks.length;
+  const completedTodayItems =
+    completedToday.length + completedRoutineTasks;
+  const progressPercent =
+    totalTodayItems > 0
+      ? Math.round((completedTodayItems / totalTodayItems) * 100)
       : 0;
 
 
@@ -1048,7 +1051,7 @@ export default function DailyOperationsManager({
                 {progressPercent}%
               </div>
               <div style={{ fontSize: 12, opacity: 0.6 }}>
-                {completedToday.length} of {totalTodayItems || 0} complete
+                {completedTodayItems} of {totalTodayItems || 0} complete
               </div>
             </div>
 
@@ -1073,7 +1076,7 @@ export default function DailyOperationsManager({
             </div>
 
             <div style={{ marginTop: 12, fontSize: 12, lineHeight: 1.5, opacity: 0.66 }}>
-              Based on work orders due today and completed today.
+              Includes today’s routine tasks and work-order progress.
             </div>
           </StandardCard>
 
