@@ -4296,41 +4296,17 @@ export default function AtlasPage() {
           }
         }
 
-        // Merge shared calendar rows with browser-saved rows.
-        // Recovery must also run when Neon currently has zero calendar rows.
-        const sharedItems = apiCalendar
-          .map(normalizeCalendar)
-          .filter((item) => item.id && item.date && item.title);
-
-        setCalendarItems((current) => {
-          const browserItems = current
+        // A successful Neon response is authoritative for the active property.
+        // Browser storage is only an offline loading cache and must never
+        // recreate records that were intentionally deleted from Neon.
+        const sharedItems = byTitle(
+          apiCalendar
             .map(normalizeCalendar)
-            .filter((item) => item.id && item.date && item.title);
+            .filter((item) => item.id && item.date && item.title),
+        );
 
-          const next =
-            sharedItems.length > 0
-              ? mergeCalendarItemRecords(browserItems, sharedItems)
-              : byTitle(browserItems);
-
-          if (next.length > 0) {
-            saveStoredArray(storageKeys.calendar[0], next);
-          }
-
-          const sharedIds = new Set(sharedItems.map((item) => item.id));
-          const browserOnlyItems = browserItems.filter(
-            (item) => !sharedIds.has(item.id),
-          );
-
-          for (const item of browserOnlyItems) {
-            void postAtlasRecord("calendar", {
-              ...item,
-              propertyId: activePropertyId,
-              status: item.completed ? "Completed" : "Scheduled",
-            });
-          }
-
-          return next;
-        });
+        saveStoredArray(storageKeys.calendar[0], sharedItems);
+        setCalendarItems(sharedItems);
 
         if (apiParts.length) {
           const next = byName(apiParts.map(normalizePart));
@@ -4402,28 +4378,9 @@ export default function AtlasPage() {
           .map(normalizeCalendar)
           .filter((item) => item.id && item.date && item.title);
 
+        const next = byTitle(sharedCalendar);
+
         setCalendarItems((current) => {
-          const browserItems = current
-            .map(normalizeCalendar)
-            .filter((item) => item.id && item.date && item.title);
-
-          if (sharedCalendar.length === 0) {
-            for (const item of browserItems) {
-              void postAtlasRecord("calendar", {
-                ...item,
-                propertyId: activePropertyId,
-                status: item.completed ? "Completed" : "Scheduled",
-              });
-            }
-
-            if (browserItems.length > 0) {
-              saveStoredArray(storageKeys.calendar[0], browserItems);
-            }
-
-            return browserItems;
-          }
-
-          const next = mergeCalendarItemRecords(browserItems, sharedCalendar);
           const signature = (items: CalendarItem[]) =>
             items
               .map(
@@ -4438,40 +4395,11 @@ export default function AtlasPage() {
               )
               .join("\n");
 
-          if (signature(current) === signature(next)) {
-            return current;
-          }
-
-          saveStoredArray(storageKeys.calendar[0], next);
-
-          const sharedById = new Map(
-            sharedCalendar.map((item) => [item.id, item] as const),
-          );
-          for (const item of next) {
-            const shared = sharedById.get(item.id);
-            const sharedSignature = shared
-              ? `${shared.repeat || "None"}|${shared.reminder || "None"}|${
-                  shared.time || ""
-                }|${shared.notes || ""}|${shared.linkedType || "None"}|${
-                  shared.linkedId || ""
-                }|${shared.categoryLabel || shared.area || ""}`
-              : "";
-            const recoveredSignature = `${item.repeat || "None"}|${
-              item.reminder || "None"
-            }|${item.time || ""}|${item.notes || ""}|${
-              item.linkedType || "None"
-            }|${item.linkedId || ""}|${item.categoryLabel || item.area || ""}`;
-
-            if (!shared || sharedSignature !== recoveredSignature) {
-              void postAtlasRecord("calendar", {
-                ...item,
-                status: item.completed ? "Completed" : "Scheduled",
-              });
-            }
-          }
-
+          if (signature(current) === signature(next)) return current;
           return next;
         });
+
+        saveStoredArray(storageKeys.calendar[0], next);
         setSyncState("synced");
         setLastSyncedAt(
           new Intl.DateTimeFormat(undefined, {
@@ -4695,7 +4623,7 @@ export default function AtlasPage() {
   }, [ready, procedureRecords]);
 
   useEffect(() => {
-    if (!ready || calendarItems.length === 0) return;
+    if (!ready) return;
     saveStoredArray(storageKeys.calendar[0], calendarItems);
   }, [ready, calendarItems]);
 
@@ -7521,6 +7449,7 @@ export default function AtlasPage() {
       const response = await fetch("/api/atlas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify({
           table,
           record: {
@@ -7529,20 +7458,29 @@ export default function AtlasPage() {
           },
         }),
       });
+
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) {
+
+      if (!response.ok || payload?.ok !== true) {
         throw new Error(
           payload?.error || `Atlas save returned ${response.status}`,
         );
       }
-      setDatabaseStatus("Saved to Atlas API.");
+
+      if (!payload?.id) {
+        throw new Error("Atlas API did not confirm the saved record ID.");
+      }
+
+      setDatabaseStatus("Saved to shared Atlas.");
       return true;
     } catch (error) {
-      setDatabaseStatus(
+      const message =
         error instanceof Error
-          ? `Saved in browser, but Atlas API save failed: ${error.message}`
-          : "Saved in browser. Atlas API save did not complete.",
-      );
+          ? error.message
+          : "Unknown Atlas save failure.";
+
+      console.error(`[Atlas ${table} save failed]`, error);
+      setDatabaseStatus(`Atlas API save failed: ${message}`);
       return false;
     }
   }
@@ -8141,6 +8079,21 @@ export default function AtlasPage() {
       source: "manual",
     });
 
+    setDatabaseStatus("Saving calendar event to shared Atlas...");
+
+    const saved = await postAtlasRecord("calendar", {
+      ...record,
+      propertyId: activePropertyId,
+      status: record.completed ? "Completed" : "Scheduled",
+    });
+
+    if (!saved) {
+      setDatabaseStatus(
+        "Calendar event was not saved. It was not added locally because it would not appear on your other devices.",
+      );
+      return;
+    }
+
     setCalendarItems((current) => {
       const original = current.find((item) => item.id === record.id);
       const exists = Boolean(original);
@@ -8185,8 +8138,6 @@ export default function AtlasPage() {
         );
       }
 
-      // Persist the exact state update immediately. This prevents a reload or
-      // background refresh from restoring the previous browser calendar.
       saveStoredArray(storageKeys.calendar[0], next);
       return next;
     });
@@ -8194,6 +8145,7 @@ export default function AtlasPage() {
     const labelExists = calendarColors.some(
       (item) => item.label.toLowerCase() === record.area.toLowerCase(),
     );
+
     if (!labelExists) {
       const plain = plainColor(record.colorName);
       setCalendarColors((current) => [
@@ -8208,20 +8160,10 @@ export default function AtlasPage() {
     }
 
     setSelectedCalendarDate(record.date);
+    setSelectedCalendarId(record.id);
     setCalendarCursor(calendarDateValue(record.date));
-
-    const saved = await postAtlasRecord("calendar", {
-      ...record,
-      status: record.completed ? "Completed" : "Scheduled",
-    });
-
-    if (!saved) {
-      setDatabaseStatus(
-        "Calendar event is still visible on this device, but it did not sync. Do not assume it is on the other device.",
-      );
-      return;
-    }
-
+    setCalendarDraft(record);
+    setCalendarDirty(false);
     setDatabaseStatus("Calendar event saved to shared Atlas.");
     resetCalendarEntryForm(record.date);
   }
