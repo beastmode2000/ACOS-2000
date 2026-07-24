@@ -102,6 +102,33 @@ function isClosedStatus(status?: string) {
   return ["Completed", "Closed", "Cancelled"].includes(status || "");
 }
 
+function calendarItemKey(item: CalendarItem) {
+  return String(item.instanceId || item.id);
+}
+
+function nextRecurrenceDate(record: any, fromDate: string) {
+  const parsed = new Date(`${fromDate}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return fromDate;
+
+  const interval = Math.max(
+    1,
+    Math.floor(Number(record.recurrenceInterval || 1)),
+  );
+  const unit = String(record.recurrenceUnit || "Weeks");
+
+  if (unit === "Days") parsed.setDate(parsed.getDate() + interval);
+  else if (unit === "Months") parsed.setMonth(parsed.getMonth() + interval);
+  else if (unit === "Years")
+    parsed.setFullYear(parsed.getFullYear() + interval);
+  else parsed.setDate(parsed.getDate() + interval * 7);
+
+  return [
+    parsed.getFullYear(),
+    String(parsed.getMonth() + 1).padStart(2, "0"),
+    String(parsed.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 export default function DailyOperationsManager({
   assets,
   todayEvents,
@@ -121,6 +148,24 @@ export default function DailyOperationsManager({
   const [routineOccurrence, setRoutineOccurrence] =
     useState<RoutineOccurrence | null>(null);
   const [routineLoading, setRoutineLoading] = useState(true);
+  const [workOverrides, setWorkOverrides] = useState<
+    Record<string, ServiceRecord>
+  >({});
+  const [calendarOverrides, setCalendarOverrides] = useState<
+    Record<string, CalendarItem>
+  >({});
+  const [busyAction, setBusyAction] = useState("");
+  const [actionError, setActionError] = useState("");
+
+  const effectiveServiceRecords = serviceRecords.map(
+    (item) => workOverrides[item.id] || item,
+  );
+  const effectiveTodayEvents = todayEvents.map(
+    (item) => calendarOverrides[calendarItemKey(item)] || item,
+  );
+  const effectiveUpcomingEvents = upcomingEvents.map(
+    (item) => calendarOverrides[calendarItemKey(item)] || item,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -160,11 +205,186 @@ export default function DailyOperationsManager({
     };
   }, [today]);
 
-  const sortedTodayEvents = [...todayEvents]
+  async function toggleRoutineTask(taskId: string) {
+    if (!routineOccurrence || busyAction) return;
+
+    const previous = routineOccurrence;
+    const optimistic: RoutineOccurrence = {
+      ...previous,
+      tasks: previous.tasks.map((task) =>
+        task.id === taskId
+          ? { ...task, completed: !Boolean(task.completed) }
+          : task,
+      ),
+    };
+
+    setRoutineOccurrence(optimistic);
+    setBusyAction(`routine:${taskId}`);
+    setActionError("");
+
+    try {
+      const response = await fetch("/api/atlas-routines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggle-task",
+          date: today,
+          taskId,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok || !payload?.occurrence) {
+        throw new Error(
+          payload?.error || "Routine task could not be updated.",
+        );
+      }
+
+      setRoutineOccurrence(payload.occurrence);
+    } catch (error) {
+      setRoutineOccurrence(previous);
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Routine task could not be updated.",
+      );
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function completeWorkOrder(item: ServiceRecord) {
+    const actionId = `work:${item.id}`;
+    if (busyAction) return;
+
+    const previous = workOverrides[item.id];
+    const history = Array.isArray((item as any).completionHistory)
+      ? [...((item as any).completionHistory as unknown[])]
+      : [];
+
+    if (!history.includes(today)) history.push(today);
+
+    const isRecurring = Boolean((item as any).recurring);
+    const nextDate = isRecurring
+      ? nextRecurrenceDate(item, String((item as any).date || today))
+      : String((item as any).date || today);
+
+    const updated = {
+      ...item,
+      status: isRecurring ? "Open" : "Completed",
+      date: nextDate,
+      lastCompletedDate: today,
+      completedAt: new Date().toISOString(),
+      completionHistory: history,
+    } as ServiceRecord;
+
+    setWorkOverrides((current) => ({ ...current, [item.id]: updated }));
+    setBusyAction(actionId);
+    setActionError("");
+
+    try {
+      const response = await fetch("/api/atlas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table: "work_orders", record: updated }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(
+          payload?.error || "Work order could not be completed.",
+        );
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("atlas:data-changed", {
+          detail: { table: "work_orders", id: item.id },
+        }),
+      );
+    } catch (error) {
+      setWorkOverrides((current) => {
+        const next = { ...current };
+        if (previous) next[item.id] = previous;
+        else delete next[item.id];
+        return next;
+      });
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Work order could not be completed.",
+      );
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function completeCalendarItem(item: CalendarItem) {
+    const key = calendarItemKey(item);
+    const actionId = `calendar:${key}`;
+    if (busyAction) return;
+
+    const previous = calendarOverrides[key];
+    const isOccurrence = Boolean(
+      item.instanceId && item.instanceId !== item.id,
+    );
+
+    const updated = {
+      ...item,
+      id: isOccurrence ? String(item.instanceId) : item.id,
+      originalId: isOccurrence
+        ? String(item.originalId || item.id)
+        : item.originalId,
+      instanceId: isOccurrence ? String(item.instanceId) : item.instanceId,
+      repeat: isOccurrence ? "None" : item.repeat,
+      completed: true,
+      status: "Completed",
+    } as CalendarItem;
+
+    setCalendarOverrides((current) => ({ ...current, [key]: updated }));
+    setBusyAction(actionId);
+    setActionError("");
+
+    try {
+      const response = await fetch("/api/atlas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table: "calendar", record: updated }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(
+          payload?.error || "Calendar item could not be completed.",
+        );
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("atlas:data-changed", {
+          detail: { table: "calendar", id: updated.id },
+        }),
+      );
+    } catch (error) {
+      setCalendarOverrides((current) => {
+        const next = { ...current };
+        if (previous) next[key] = previous;
+        else delete next[key];
+        return next;
+      });
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Calendar item could not be completed.",
+      );
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  const sortedTodayEvents = [...effectiveTodayEvents]
     .filter((item) => !item.completed)
     .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
 
-  const sortedUpcomingEvents = [...upcomingEvents]
+  const sortedUpcomingEvents = [...effectiveUpcomingEvents]
     .filter((item) => !item.completed && item.date > today)
     .sort((a, b) =>
       `${a.date} ${a.time || "99:99"}`.localeCompare(
@@ -172,9 +392,13 @@ export default function DailyOperationsManager({
       ),
     );
 
-  const activeWork = serviceRecords.filter((item) => !isClosedStatus(item.status));
-  const completedToday = serviceRecords.filter(
-    (item) => item.status === "Completed" && item.date === today,
+  const activeWork = effectiveServiceRecords.filter((item) => !isClosedStatus(item.status));
+  const completedToday = effectiveServiceRecords.filter(
+    (item) =>
+      ((item.status === "Completed" || item.status === "Closed") &&
+        (item.date === today ||
+          (item as any).lastCompletedDate === today)) ||
+      (item as any).lastCompletedDate === today,
   );
 
   const overdue = activeWork
@@ -278,10 +502,16 @@ export default function DailyOperationsManager({
       ? Math.round((completedRoutineTasks / routineTasks.length) * 100)
       : 0;
 
+  const completedCalendarToday = effectiveTodayEvents.filter(
+    (item) => item.completed,
+  ).length;
   const totalWorkItems = dueToday.length + completedToday.length;
-  const totalTodayItems = totalWorkItems + routineTasks.length;
+  const totalTodayItems =
+    totalWorkItems + routineTasks.length + effectiveTodayEvents.length;
   const completedTodayItems =
-    completedToday.length + completedRoutineTasks;
+    completedToday.length +
+    completedRoutineTasks +
+    completedCalendarToday;
   const progressPercent =
     totalTodayItems > 0
       ? Math.round((completedTodayItems / totalTodayItems) * 100)
@@ -760,6 +990,23 @@ export default function DailyOperationsManager({
               </div>
             </div>
 
+            {actionError ? (
+              <div
+                role="alert"
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  background: "#FFF0EE",
+                  border: "1px solid #F3C5BE",
+                  color: "#9E2F24",
+                  fontSize: 11,
+                  fontWeight: 750,
+                }}
+              >
+                {actionError}
+              </div>
+            ) : null}
+
             {routineOccurrence && routineTasks.length ? (
               <div
                 style={{
@@ -913,8 +1160,12 @@ export default function DailyOperationsManager({
               }}
             >
               {incompleteRoutineTasks.slice(0, 4).map((task) => (
-                <span
+                <button
                   key={task.id}
+                  type="button"
+                  disabled={Boolean(busyAction)}
+                  onClick={() => void toggleRoutineTask(task.id)}
+                  title="Mark routine task done"
                   style={{
                     borderRadius: 999,
                     padding: "6px 9px",
@@ -923,10 +1174,18 @@ export default function DailyOperationsManager({
                     color: colors.navy,
                     fontSize: 11,
                     fontWeight: 750,
+                    cursor: busyAction ? "wait" : "pointer",
+                    opacity:
+                      busyAction &&
+                      busyAction !== `routine:${task.id}`
+                        ? 0.55
+                        : 1,
                   }}
                 >
-                  {task.title}
-                </span>
+                  {busyAction === `routine:${task.id}`
+                    ? "Saving…"
+                    : `✓ ${task.title}`}
+                </button>
               ))}
               {incompleteRoutineTasks.length > 4 ? (
                 <span
@@ -993,6 +1252,8 @@ export default function DailyOperationsManager({
                         : "neutral"
                   }
                   onClick={() => onOpenWorkOrder(item.id)}
+                  onDone={() => void completeWorkOrder(item)}
+                  doneBusy={busyAction === `work:${item.id}`}
                   colors={colors}
                   isMobile={isMobile}
                   preview={{
@@ -1045,6 +1306,11 @@ export default function DailyOperationsManager({
                   badge={item.linkedType || item.categoryLabel || "Event"}
                   badgeTone="info"
                   onClick={() => onOpenCalendar(item)}
+                  onDone={() => void completeCalendarItem(item)}
+                  doneBusy={
+                    busyAction ===
+                    `calendar:${calendarItemKey(item)}`
+                  }
                   colors={colors}
                   isMobile={isMobile}
                   preview={{
@@ -1130,7 +1396,7 @@ export default function DailyOperationsManager({
             </div>
 
             <div style={{ marginTop: 12, fontSize: 12, lineHeight: 1.5, opacity: 0.66 }}>
-              Includes today’s routine tasks and work-order progress.
+              Includes today’s routine, work orders, and calendar items.
             </div>
           </StandardCard>
 
@@ -1214,6 +1480,11 @@ export default function DailyOperationsManager({
                   badge="Vendor"
                   badgeTone="info"
                   onClick={() => onOpenCalendar(item)}
+                  onDone={() => void completeCalendarItem(item)}
+                  doneBusy={
+                    busyAction ===
+                    `calendar:${calendarItemKey(item)}`
+                  }
                   colors={colors}
                   isMobile={isMobile}
                   preview={{
@@ -1254,6 +1525,11 @@ export default function DailyOperationsManager({
                   badge={item.linkedType || "Event"}
                   badgeTone="neutral"
                   onClick={() => onOpenCalendar(item)}
+                  onDone={() => void completeCalendarItem(item)}
+                  doneBusy={
+                    busyAction ===
+                    `calendar:${calendarItemKey(item)}`
+                  }
                   colors={colors}
                   isMobile={isMobile}
                   preview={{
@@ -1666,6 +1942,8 @@ function RowButton({
   badge,
   badgeTone,
   onClick,
+  onDone,
+  doneBusy = false,
   colors,
   preview,
   isMobile = false,
@@ -1675,6 +1953,8 @@ function RowButton({
   badge: string;
   badgeTone: "danger" | "warning" | "info" | "neutral";
   onClick: () => void;
+  onDone?: () => void;
+  doneBusy?: boolean;
   colors: Props["colors"];
   preview?: AtlasHoverPreviewData;
   isMobile?: boolean;
@@ -1694,71 +1974,111 @@ function RowButton({
       tokens={focusTokensFromPreview(preview, title)}
       className="atlas-preview-anchor"
     >
-      <button
-        className="atlas-row-button"
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onClick();
-        }}
+      <div
         style={{
-          width: "100%",
-          border: 0,
+          display: "grid",
+          gridTemplateColumns: onDone
+            ? "minmax(0, 1fr) auto"
+            : "1fr",
+          alignItems: "center",
+          gap: 8,
           borderTop: `1px solid ${colors.line}`,
-          background: "transparent",
-          padding: preview && isMobile ? "10px 42px 2px 0" : "10px 0 2px",
-          textAlign: "left",
-          cursor: "pointer",
-          color: "inherit",
+          paddingTop: 8,
         }}
       >
-        <div
+        <button
+          className="atlas-row-button"
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onClick();
+          }}
           style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 10,
+            width: "100%",
+            border: 0,
+            background: "transparent",
+            padding:
+              preview && isMobile ? "2px 34px 2px 0" : "2px 0",
+            textAlign: "left",
+            cursor: "pointer",
+            color: "inherit",
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 850,
-                lineHeight: 1.35,
-                overflowWrap: "anywhere",
-              }}
-            >
-              {title}
-            </div>
-            <div
-              style={{
-                marginTop: 3,
-                fontSize: 11,
-                lineHeight: 1.4,
-                opacity: 0.57,
-              }}
-            >
-              {detail}
-            </div>
-          </div>
-
-          <span
+          <div
             style={{
-              ...badgeStyles,
-              flex: "0 0 auto",
-              borderRadius: 999,
-              padding: "4px 7px",
-              fontSize: 9,
-              fontWeight: 850,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 10,
             }}
           >
-            {badge}
-          </span>
-        </div>
-      </button>
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 850,
+                  lineHeight: 1.35,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {title}
+              </div>
+              <div
+                style={{
+                  marginTop: 3,
+                  fontSize: 11,
+                  lineHeight: 1.4,
+                  opacity: 0.57,
+                }}
+              >
+                {detail}
+              </div>
+            </div>
+
+            <span
+              style={{
+                ...badgeStyles,
+                flex: "0 0 auto",
+                borderRadius: 999,
+                padding: "4px 7px",
+                fontSize: 9,
+                fontWeight: 850,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {badge}
+            </span>
+          </div>
+        </button>
+
+        {onDone ? (
+          <button
+            type="button"
+            disabled={doneBusy}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDone();
+            }}
+            style={{
+              minWidth: 54,
+              border: `1px solid ${
+                doneBusy ? colors.line : "#B9D8C5"
+              }`,
+              borderRadius: 999,
+              padding: "7px 9px",
+              background: doneBusy ? "#F4F6F8" : "#EEF8F2",
+              color: doneBusy ? "#64748B" : "#087443",
+              cursor: doneBusy ? "wait" : "pointer",
+              fontSize: 10,
+              fontWeight: 900,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {doneBusy ? "Saving…" : "✓ Done"}
+          </button>
+        ) : null}
+      </div>
 
       {preview ? (
         <AtlasHoverPreview
