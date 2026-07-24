@@ -37,9 +37,6 @@ import AskAtlasWeeklyMaintenancePlanner, {
   type WeeklyMaintenancePlanItem,
 } from "./components/ai/AskAtlasWeeklyMaintenancePlanner";
 import DailyOperationsManager from "./components/ai/DailyOperationsManager";
-import MaintenancePlanningIntelligence, {
-  type MaintenanceSuggestion,
-} from "./components/ai/MaintenancePlanningIntelligence";
 import AtlasIntelligenceRecommendations from "./components/ai/AtlasIntelligenceRecommendations";
 import DocumentIntelligencePanel from "./components/ai/DocumentIntelligencePanel";
 import PhotoIntelligencePanel from "./components/ai/PhotoIntelligencePanel";
@@ -11528,60 +11525,6 @@ export default function AtlasPage() {
           workPlanTargetHours={workPlanTargetHours}
           workPlanTasks={workPlanTasks}
           eyebrowStyle={eyebrowStyle}
-        />
-        <MaintenancePlanningIntelligence
-          assets={assetRecords}
-          procedures={procedureRecords}
-          serviceRecords={serviceRecords}
-          weatherDays={weatherDays}
-          today={todayISO()}
-          isMobile={isMobile}
-          colors={colors}
-          onCreatePreventiveMaintenance={async (
-            suggestion: MaintenanceSuggestion,
-          ) => {
-            const record = normalizeService({
-              id: uid("pm"),
-              assetId: suggestion.assetId,
-              procedureId: suggestion.procedureId,
-              date: todayISO(),
-              title: suggestion.title,
-              status: "Open",
-              priority: suggestion.priority,
-              notes: `Created from preventive maintenance suggestion. ${suggestion.reason}`,
-              recurring: true,
-              recurrenceInterval: suggestion.interval,
-              recurrenceUnit: suggestion.unit,
-              season: suggestion.season,
-              workType: "Preventive Maintenance",
-              workCategory: "🔧 Maintenance",
-              photos: [],
-              documents: [],
-              checklist: [],
-              notesHistory: [],
-              serviceHistory: [],
-            });
-            const saved = await postAtlasRecord("work_orders", record);
-            if (!saved)
-              throw new Error(
-                "The preventive maintenance record did not save.",
-              );
-            setServiceRecords((current) => byTitle([record, ...current]));
-            setSelectedServiceId(record.id);
-            setDatabaseStatus(
-              `Created preventive maintenance: ${record.title}`,
-            );
-          }}
-          onOpenWorkOrder={(id) => {
-            setSelectedServiceId(id);
-            setScreen("history");
-          }}
-          onOpenPlanner={() => setScreen("planner")}
-          onAskAtlas={(prompt) => {
-            setAssistantQuestion(prompt);
-            setScreen("assistant");
-            window.setTimeout(() => void askAtlas(prompt), 0);
-          }}
         />
       </>
     );
