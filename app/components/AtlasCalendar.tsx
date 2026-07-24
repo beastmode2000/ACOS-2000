@@ -121,15 +121,112 @@ function calendarDateKey(value: unknown): string {
   }
 
   const text = String(value).trim();
-  const directMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
-
-  if (directMatch) return directMatch[1];
+  const direct = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (direct) return direct[1];
 
   const parsed = new Date(text);
-
   if (Number.isNaN(parsed.getTime())) return "";
 
   return parsed.toISOString().slice(0, 10);
+}
+
+function eventType(event: any): {
+  icon: string;
+  label: string;
+} {
+  const category = String(
+    event.categoryLabel || event.area || "",
+  ).toLowerCase();
+  const linkedType = String(event.linkedType || "").toLowerCase();
+  const source = String(event.source || "").toLowerCase();
+  const title = String(event.title || "").toLowerCase();
+
+  if (
+    linkedType === "work order" ||
+    source.includes("work") ||
+    category.includes("work order")
+  ) {
+    return { icon: "🔧", label: "Work Order" };
+  }
+
+  if (
+    category.includes("vendor") ||
+    linkedType === "vendor" ||
+    title.includes("vendor")
+  ) {
+    return { icon: "🚚", label: "Vendor Visit" };
+  }
+
+  if (
+    category.includes("birthday") ||
+    title.includes("birthday")
+  ) {
+    return { icon: "🎂", label: "Birthday" };
+  }
+
+  if (
+    source.includes("holiday") ||
+    category.includes("holiday")
+  ) {
+    return { icon: "🎉", label: "Holiday" };
+  }
+
+  if (
+    event.repeat &&
+    event.repeat !== "None"
+  ) {
+    return { icon: "🔁", label: "Recurring Event" };
+  }
+
+  if (
+    linkedType === "asset" ||
+    category.includes("maintenance")
+  ) {
+    return { icon: "🛠️", label: "Asset Maintenance" };
+  }
+
+  return { icon: "📅", label: "Calendar Event" };
+}
+
+function hoverText(event: any): string {
+  const type = eventType(event);
+  const parts = [
+    `${type.icon} ${event.title || "Untitled event"}`,
+    event.allDay ? "All day" : event.time || "No time",
+    type.label,
+  ];
+
+  if (event.linkedName) {
+    parts.push(`${event.linkedType || "Linked"}: ${event.linkedName}`);
+  }
+
+  if (event.location) {
+    parts.push(`Location: ${event.location}`);
+  }
+
+  if (event.notes) {
+    parts.push(String(event.notes).slice(0, 180));
+  }
+
+  return parts.join("\n");
+}
+
+function sortAgenda(events: any[]): any[] {
+  return [...events].sort((a, b) => {
+    if (Boolean(a.allDay) !== Boolean(b.allDay)) {
+      return a.allDay ? -1 : 1;
+    }
+
+    const timeCompare = String(a.time || "").localeCompare(
+      String(b.time || ""),
+    );
+
+    if (timeCompare !== 0) return timeCompare;
+
+    return String(a.title || "").localeCompare(
+      String(b.title || ""),
+    );
+  });
 }
 
 export default function AtlasCalendar(
@@ -149,7 +246,6 @@ export default function AtlasCalendar(
     calendarColors,
     calendarCursor,
     calendarDayNameStyle,
-    calendarDoneBadgeStyle,
     calendarFilterDropdownStyle,
     calendarFilterLabels,
     calendarFilterListItemStyle,
@@ -226,7 +322,6 @@ export default function AtlasCalendar(
 
   React.useEffect(() => {
     if (!selectedCalendarId) return;
-
     setEditorOpen(true);
     setDetailOpen(true);
   }, [selectedCalendarId]);
@@ -234,25 +329,28 @@ export default function AtlasCalendar(
   React.useEffect(() => {
     if (!detailOpen) return;
 
-    const closeOnEscape = (event: KeyboardEvent) => {
+    const onEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       closeDetail();
     };
 
-    window.addEventListener("keydown", closeOnEscape);
-
-    return () => {
-      window.removeEventListener("keydown", closeOnEscape);
-    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
   }, [detailOpen, selectedCalendarDate]);
 
-  const hasSelectedEvent = Boolean(selectedCalendarId);
   const todayKey = calendarDateKey(todayISO());
-  const activeCategoryFilterCount = calendarFilterLabels.filter(
-    (label: string) => calendarCategoryFilters[label] === false,
-  ).length;
+  const hasSelectedEvent = Boolean(selectedCalendarId);
+
+  const activeCategoryFilterCount =
+    calendarFilterLabels.filter(
+      (label: string) =>
+        calendarCategoryFilters[label] === false,
+    ).length;
+
   const hasActiveFilters =
-    !showUsHolidays || !showJewishHolidays || activeCategoryFilterCount > 0;
+    !showUsHolidays ||
+    !showJewishHolidays ||
+    activeCategoryFilterCount > 0;
 
   const calendarTitle =
     calendarView === "week"
@@ -274,6 +372,11 @@ export default function AtlasCalendar(
 
     return weeks;
   }, [monthCells]);
+
+  const agendaEvents = React.useMemo(
+    () => sortAgenda(selectedDayEvents),
+    [selectedDayEvents],
+  );
 
   const linkedOptions = React.useMemo(() => {
     if (selectedCalendar.linkedType === "Asset") {
@@ -362,30 +465,24 @@ export default function AtlasCalendar(
     if (!selectedCalendarId) return;
 
     await deleteCalendarItem(selectedCalendarId);
-
-    setSelectedCalendarId("");
-    setCalendarDraft(
-      blankCalendarItem(selectedCalendarDate),
-    );
-    setEditorOpen(false);
-    setDetailOpen(false);
+    closeDetail();
   }
 
   function renderCalendarCell(cell: any) {
     const dateKey = calendarDateKey(cell.date);
 
     const events = dateKey
-      ? expandedCalendarItems.filter(
-          (event: any) =>
-            calendarDateKey(event.date) === dateKey,
+      ? sortAgenda(
+          expandedCalendarItems.filter(
+            (event: any) =>
+              calendarDateKey(event.date) === dateKey,
+          ),
         )
       : [];
 
     const selected =
       dateKey === calendarDateKey(selectedCalendarDate);
-
     const today = dateKey === todayKey;
-
     const weather = dateKey
       ? weatherByDate.get(dateKey)
       : undefined;
@@ -482,10 +579,12 @@ export default function AtlasCalendar(
             .slice(0, visibleLimit)
             .map((event: any) => {
               const eventColor = colorForEvent(event);
+              const type = eventType(event);
 
               return (
                 <span
                   key={event.instanceId || event.id}
+                  title={hoverText(event)}
                   onClick={(mouseEvent) => {
                     mouseEvent.stopPropagation();
                     editEvent(event);
@@ -501,25 +600,16 @@ export default function AtlasCalendar(
                       ? "1px 2px"
                       : "3px 5px",
                     color: eventColor.hex,
-                    background: event.completed
-                      ? `${eventColor.hex}22`
-                      : `${eventColor.hex}0F`,
+                    background: `${eventColor.hex}0F`,
                     fontSize: isMobile ? 7 : 11,
                     fontWeight: 800,
                     lineHeight: isMobile ? 1.05 : 1.2,
                     cursor: "pointer",
                   }}
                 >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: isMobile ? 3 : 6,
-                      height: isMobile ? 3 : 6,
-                      flex: "0 0 auto",
-                      borderRadius: 999,
-                      background: eventColor.hex,
-                    }}
-                  />
+                  <span aria-hidden="true">
+                    {type.icon}
+                  </span>
 
                   <span
                     style={{
@@ -527,9 +617,6 @@ export default function AtlasCalendar(
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
-                      textDecoration: event.completed
-                        ? "line-through"
-                        : "none",
                     }}
                   >
                     {event.title}
@@ -614,9 +701,7 @@ export default function AtlasCalendar(
             }}
           >
             <div>
-              <div style={eyebrowStyle}>
-                Calendar Details
-              </div>
+              <div style={eyebrowStyle}>Day Agenda</div>
 
               <h2
                 style={{
@@ -645,12 +730,16 @@ export default function AtlasCalendar(
               }}
             >
               <section style={calendarTodayBoxStyle}>
-                <div style={eyebrowStyle}>Scheduled</div>
+                <div style={eyebrowStyle}>
+                  {agendaEvents.length
+                    ? `${agendaEvents.length} Scheduled`
+                    : "Scheduled"}
+                </div>
 
-                {selectedDayEvents.length ? (
-                  selectedDayEvents.map((event: any) => {
-                    const eventColor =
-                      colorForEvent(event);
+                {agendaEvents.length ? (
+                  agendaEvents.map((event: any) => {
+                    const eventColor = colorForEvent(event);
+                    const type = eventType(event);
 
                     return (
                       <button
@@ -658,14 +747,13 @@ export default function AtlasCalendar(
                           event.instanceId || event.id
                         }
                         type="button"
+                        title={hoverText(event)}
                         onClick={() => editEvent(event)}
                         style={{
                           ...calendarTodayItemStyle,
                           borderColor: eventColor.hex,
                           borderLeft: `6px solid ${eventColor.hex}`,
-                          background: event.completed
-                            ? `${eventColor.hex}22`
-                            : `${eventColor.hex}0F`,
+                          background: `${eventColor.hex}0F`,
                         }}
                       >
                         <div
@@ -676,47 +764,53 @@ export default function AtlasCalendar(
                           <div
                             style={{
                               display: "flex",
-                              alignItems: "center",
+                              alignItems: "flex-start",
                               gap: 10,
                               minWidth: 0,
                             }}
                           >
                             <span
+                              aria-hidden="true"
                               style={{
-                                ...calendarColorDotStyle,
-                                background: eventColor.hex,
+                                fontSize: 18,
+                                lineHeight: 1.2,
                               }}
-                            />
+                            >
+                              {type.icon}
+                            </span>
 
                             <div style={{ minWidth: 0 }}>
                               <strong
                                 style={{
                                   display: "block",
                                   color: eventColor.hex,
-                                  textDecoration:
-                                    event.completed
-                                      ? "line-through"
-                                      : "none",
+                                  fontSize: 15,
                                 }}
                               >
-                                {event.completed
-                                  ? "Done: "
-                                  : ""}
                                 {event.title}
                               </strong>
 
-                              <span>
+                              <span
+                                style={{
+                                  display: "block",
+                                  marginTop: 3,
+                                }}
+                              >
                                 {event.allDay
                                   ? "All day"
                                   : event.time ||
                                     "No time"}{" "}
-                                · {eventColor.label}
+                                · {type.label}
                               </span>
 
                               {event.repeat &&
-                              event.repeat !== "None" &&
-                              event.source === "manual" ? (
-                                <span>
+                              event.repeat !== "None" ? (
+                                <span
+                                  style={{
+                                    display: "block",
+                                    marginTop: 3,
+                                  }}
+                                >
                                   Repeats {event.repeat}
                                 </span>
                               ) : null}
@@ -724,27 +818,44 @@ export default function AtlasCalendar(
                               {event.linkedType &&
                               event.linkedType !== "None" &&
                               event.linkedName ? (
-                                <span>
-                                  Linked:{" "}
+                                <span
+                                  style={{
+                                    display: "block",
+                                    marginTop: 3,
+                                  }}
+                                >
+                                  {event.linkedType}:{" "}
                                   {event.linkedName}
+                                </span>
+                              ) : null}
+
+                              {event.notes ? (
+                                <span
+                                  style={{
+                                    display: "block",
+                                    marginTop: 6,
+                                    color: colors.muted,
+                                  }}
+                                >
+                                  {String(event.notes).slice(
+                                    0,
+                                    140,
+                                  )}
+                                  {String(event.notes).length >
+                                  140
+                                    ? "…"
+                                    : ""}
                                 </span>
                               ) : null}
                             </div>
                           </div>
 
-                          {event.completed ? (
-                            <span
-                              style={{
-                                ...calendarDoneBadgeStyle,
-                                color: eventColor.hex,
-                                borderColor:
-                                  eventColor.hex,
-                                background: `${eventColor.hex}18`,
-                              }}
-                            >
-                              Done
-                            </span>
-                          ) : null}
+                          <span
+                            style={{
+                              ...calendarColorDotStyle,
+                              background: eventColor.hex,
+                            }}
+                          />
                         </div>
                       </button>
                     );
@@ -838,6 +949,7 @@ export default function AtlasCalendar(
                   </span>
 
                   <input
+                    type="time"
                     value={selectedCalendar.time || ""}
                     disabled={
                       Boolean(selectedCalendar.allDay)
@@ -951,8 +1063,7 @@ export default function AtlasCalendar(
 
                   <select
                     value={
-                      selectedCalendar.colorName ||
-                      ""
+                      selectedCalendar.colorName || ""
                     }
                     onChange={(event) =>
                       updateCalendarItem({
@@ -1077,8 +1188,7 @@ export default function AtlasCalendar(
 
                   <select
                     value={
-                      selectedCalendar.linkedType ||
-                      ""
+                      selectedCalendar.linkedType || ""
                     }
                     onChange={(event) =>
                       updateCalendarItem({
@@ -1179,24 +1289,6 @@ export default function AtlasCalendar(
                   }
                   multiline
                 />
-
-                <label style={checkboxLineStyle}>
-                  <input
-                    type="checkbox"
-                    checked={
-                      Boolean(
-                        selectedCalendar.completed,
-                      )
-                    }
-                    onChange={(event) =>
-                      updateCalendarItem({
-                        completed:
-                          event.currentTarget.checked,
-                      })
-                    }
-                  />
-                  Completed
-                </label>
               </div>
 
               <div
@@ -1351,7 +1443,6 @@ export default function AtlasCalendar(
                   type="button"
                   onClick={() => {
                     const today = todayISO();
-
                     setCalendarCursor(new Date());
                     showDay(today);
                   }}
@@ -1494,7 +1585,14 @@ export default function AtlasCalendar(
                     whiteSpace: "nowrap",
                   }}
                 >
-                  Filters{hasActiveFilters ? ` (${activeCategoryFilterCount + (!showUsHolidays ? 1 : 0) + (!showJewishHolidays ? 1 : 0)} hidden)` : ""}
+                  Filters
+                  {hasActiveFilters
+                    ? ` (${activeCategoryFilterCount +
+                        (!showUsHolidays ? 1 : 0) +
+                        (!showJewishHolidays
+                          ? 1
+                          : 0)} hidden)`
+                    : ""}
                 </summary>
 
                 <div
