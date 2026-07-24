@@ -8,6 +8,7 @@ type RoutineTask = {
   id: string;
   title: string;
   enabled: boolean;
+  completed?: boolean;
 };
 
 type RoutineTemplate = {
@@ -63,6 +64,9 @@ function normalizeTasks(value: unknown): RoutineTask[] {
             : `routine-task-${Date.now()}-${index}`,
         title,
         enabled: record.enabled !== false,
+        ...(typeof record.completed === "boolean"
+          ? { completed: record.completed }
+          : {}),
       };
     })
     .filter((task): task is RoutineTask => Boolean(task));
@@ -187,7 +191,6 @@ async function ensureTables(sql: ReturnType<typeof neon>) {
 
 function weekdayFromDate(dateKey: string) {
   const day = new Date(`${dateKey}T12:00:00`).getDay();
-
   return day >= 1 && day <= 5 ? day : 0;
 }
 
@@ -204,13 +207,13 @@ async function loadTemplates(sql: ReturnType<typeof neon>) {
   return rows.map((row) => ({
     day: Number(row.day_of_week),
     name: String(row.name || "Routine"),
-    tasks: normalizeTasks(row.tasks),
+    tasks: normalizeTasks(row.tasks).map(({ completed: _completed, ...task }) => task),
   }));
 }
 
 async function getOrCreateOccurrence(
   sql: ReturnType<typeof neon>,
-  dateKey: string
+  dateKey: string,
 ) {
   const day = weekdayFromDate(dateKey);
 
@@ -249,7 +252,9 @@ async function getOrCreateOccurrence(
     const occurrenceTasks = normalizeTasks(template.tasks)
       .filter((task) => task.enabled)
       .map((task) => ({
-        ...task,
+        id: task.id,
+        title: task.title,
+        enabled: task.enabled,
         completed: false,
       }));
 
@@ -290,9 +295,56 @@ async function getOrCreateOccurrence(
         date: dateKey,
         day: Number(row.day_of_week),
         name: String(row.routine_name || "Routine"),
-        tasks: Array.isArray(row.tasks) ? row.tasks : [],
+        tasks: normalizeTasks(row.tasks),
       }
     : null;
+}
+
+async function refreshOccurrenceForDate(
+  sql: ReturnType<typeof neon>,
+  dateKey: string,
+  day: number,
+  name: string,
+  templateTasks: RoutineTask[],
+) {
+  if (weekdayFromDate(dateKey) !== day) {
+    return;
+  }
+
+  const rows = (await sql`
+    SELECT tasks
+    FROM atlas_routine_occurrences
+    WHERE occurrence_date = ${dateKey}::date
+    LIMIT 1
+  `) as unknown as Array<Record<string, unknown>>;
+
+  if (!rows.length) {
+    return;
+  }
+
+  const existingTasks = normalizeTasks(rows[0].tasks);
+  const completedById = new Map(
+    existingTasks.map((task) => [task.id, Boolean(task.completed)]),
+  );
+
+  const refreshedTasks = templateTasks
+    .filter((task) => task.enabled)
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      enabled: task.enabled,
+      completed: completedById.get(task.id) || false,
+    }));
+
+  await sql`
+    UPDATE atlas_routine_occurrences
+    SET
+      day_of_week = ${day},
+      routine_name = ${name},
+      tasks = ${JSON.stringify(refreshedTasks)}::jsonb,
+      updated_at = NOW()
+    WHERE occurrence_date = ${dateKey}::date
+  `;
 }
 
 export async function GET(request: NextRequest) {
@@ -301,9 +353,7 @@ export async function GET(request: NextRequest) {
 
     await ensureTables(sql);
 
-    const dateKey = asDateKey(
-      request.nextUrl.searchParams.get("date")
-    );
+    const dateKey = asDateKey(request.nextUrl.searchParams.get("date"));
 
     const [templates, occurrence] = await Promise.all([
       loadTemplates(sql),
@@ -320,11 +370,9 @@ export async function GET(request: NextRequest) {
       {
         ok: false,
         error:
-          error instanceof Error
-            ? error.message
-            : "Routine read failed",
+          error instanceof Error ? error.message : "Routine read failed",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -336,7 +384,7 @@ export async function POST(request: NextRequest) {
         ok: false,
         error: "Viewer access is read-only.",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
@@ -345,32 +393,26 @@ export async function POST(request: NextRequest) {
 
     await ensureTables(sql);
 
-    const body =
-      (await request.json()) as Record<string, unknown>;
-
+    const body = (await request.json()) as Record<string, unknown>;
     const action = String(body.action || "");
 
     if (action === "save-template") {
       const day = Number(body.day);
 
-      if (
-        !Number.isInteger(day) ||
-        day < 1 ||
-        day > 5
-      ) {
+      if (!Number.isInteger(day) || day < 1 || day > 5) {
         return NextResponse.json(
           {
             ok: false,
             error: "Invalid routine day",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
-      const name =
-        String(body.name || "Routine").trim() || "Routine";
-
-      const tasks = normalizeTasks(body.tasks);
+      const name = String(body.name || "Routine").trim() || "Routine";
+      const tasks = normalizeTasks(body.tasks).map(
+        ({ completed: _completed, ...task }) => task,
+      );
 
       await sql`
         INSERT INTO atlas_routine_templates (
@@ -392,8 +434,41 @@ export async function POST(request: NextRequest) {
           updated_at = NOW()
       `;
 
+      const requestedDate =
+        typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+          ? body.date
+          : "";
+
+      const utcToday = new Date().toISOString().slice(0, 10);
+      const utcYesterdayDate = new Date();
+      utcYesterdayDate.setUTCDate(utcYesterdayDate.getUTCDate() - 1);
+      const utcYesterday = utcYesterdayDate.toISOString().slice(0, 10);
+
+      const candidateDates = Array.from(
+        new Set(
+          [requestedDate, utcToday, utcYesterday].filter(Boolean),
+        ),
+      );
+
+      for (const candidateDate of candidateDates) {
+        await refreshOccurrenceForDate(
+          sql,
+          candidateDate,
+          day,
+          name,
+          tasks,
+        );
+      }
+
+      const responseDate = requestedDate || candidateDates.find(
+        (candidateDate) => weekdayFromDate(candidateDate) === day,
+      );
+
       return NextResponse.json({
         ok: true,
+        occurrence: responseDate
+          ? await getOrCreateOccurrence(sql, responseDate)
+          : null,
       });
     }
 
@@ -401,10 +476,7 @@ export async function POST(request: NextRequest) {
       const dateKey = asDateKey(body.date);
       const taskId = String(body.taskId || "");
 
-      const occurrence = await getOrCreateOccurrence(
-        sql,
-        dateKey
-      );
+      const occurrence = await getOrCreateOccurrence(sql, dateKey);
 
       if (!occurrence) {
         return NextResponse.json(
@@ -412,25 +484,17 @@ export async function POST(request: NextRequest) {
             ok: false,
             error: "No weekday routine",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
-      const tasks = occurrence.tasks.map(
-        (item: unknown) => {
-          const task =
-            item && typeof item === "object"
-              ? {
-                  ...(item as Record<string, unknown>),
-                }
-              : {};
-
-          if (String(task.id || "") === taskId) {
-            task.completed = !Boolean(task.completed);
-          }
-
-          return task;
-        }
+      const tasks = occurrence.tasks.map((item) =>
+        item.id === taskId
+          ? {
+              ...item,
+              completed: !Boolean(item.completed),
+            }
+          : item,
       );
 
       await sql`
@@ -455,18 +519,16 @@ export async function POST(request: NextRequest) {
         ok: false,
         error: "Unsupported routine action",
       },
-      { status: 400 }
+      { status: 400 },
     );
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
         error:
-          error instanceof Error
-            ? error.message
-            : "Routine save failed",
+          error instanceof Error ? error.message : "Routine save failed",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
