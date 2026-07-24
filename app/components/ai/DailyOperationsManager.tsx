@@ -137,10 +137,6 @@ export default function DailyOperationsManager({
     (item) => !(item.photos || []).length,
   ).length;
 
-  /*
-   * Weather must represent today only.
-   * Do not silently use tomorrow or the first future forecast.
-   */
   const todayWeather =
     weatherDays.find((day) => day.date === today) || null;
 
@@ -158,6 +154,21 @@ export default function DailyOperationsManager({
     priorityWork.length +
     assetsWithoutProcedure.length +
     workWithoutPhotos;
+
+  const currentHour = new Date().getHours();
+
+  const greeting =
+    currentHour < 12
+      ? "Good Morning"
+      : currentHour < 17
+        ? "Good Afternoon"
+        : "Good Evening";
+
+  const headerWeather = todayWeather
+    ? `${Math.round(todayWeather.high)}° ${weatherCondition(
+        todayWeather.code,
+      )}`
+    : "Weather unavailable";
 
   return (
     <section
@@ -200,16 +211,49 @@ export default function DailyOperationsManager({
               fontSize: isMobile ? 22 : 26,
             }}
           >
-            Today’s Property Brief
+            {greeting}, Nick
           </h2>
 
           <div
             style={{
-              opacity: 0.8,
-              fontSize: 13,
+              fontSize: isMobile ? 13 : 14,
+              fontWeight: 750,
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: isMobile ? 5 : 7,
+              lineHeight: 1.5,
             }}
           >
-            {dateLabel(today)} · {attentionCount} item
+            <span>{dateLabel(today)}</span>
+
+            <span style={{ opacity: 0.45 }}>•</span>
+
+            <span>
+              {sortedTodayEvents.length} scheduled{" "}
+              {sortedTodayEvents.length === 1 ? "item" : "items"}
+            </span>
+
+            <span style={{ opacity: 0.45 }}>•</span>
+
+            <span>
+              {priorityWork.length} priority{" "}
+              {priorityWork.length === 1 ? "item" : "items"}
+            </span>
+
+            <span style={{ opacity: 0.45 }}>•</span>
+
+            <span>{headerWeather}</span>
+          </div>
+
+          <div
+            style={{
+              marginTop: 4,
+              opacity: 0.68,
+              fontSize: 12,
+            }}
+          >
+            Today’s Property Brief · {attentionCount} item
             {attentionCount === 1 ? "" : "s"} needing review
           </div>
         </div>
@@ -247,7 +291,6 @@ export default function DailyOperationsManager({
           alignItems: "stretch",
         }}
       >
-        {/* Row 1: Today and Upcoming */}
         <BriefingCard
           title="Today’s Schedule"
           colors={colors}
@@ -292,7 +335,6 @@ export default function DailyOperationsManager({
           )}
         </BriefingCard>
 
-        {/* Row 2: Today's Weather and Priority Work */}
         <BriefingCard
           title="Today’s Weather"
           colors={colors}
@@ -392,7 +434,6 @@ export default function DailyOperationsManager({
           )}
         </BriefingCard>
 
-        {/* Everything below remains in its existing position */}
         <BriefingCard
           title="Atlas Notices"
           colors={colors}
