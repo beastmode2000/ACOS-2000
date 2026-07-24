@@ -31,14 +31,20 @@ type Props = {
   onAskAtlas: (prompt: string) => void;
 };
 
-type CardTone = "default" | "schedule" | "upcoming" | "weather" | "priority";
-
 function dateLabel(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
 
-  if (Number.isNaN(parsed.getTime())) {
-    return date;
-  }
+  return parsed.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function shortDateLabel(date: string) {
+  const parsed = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
 
   return parsed.toLocaleDateString(undefined, {
     weekday: "short",
@@ -56,7 +62,6 @@ function weatherCondition(code: number) {
   if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "Rain";
   if ([71, 73, 75, 77, 85, 86].includes(code)) return "Snow";
   if ([95, 96, 99].includes(code)) return "Thunderstorms";
-
   return "Weather";
 }
 
@@ -69,8 +74,11 @@ function weatherIcon(code: number) {
   if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "🌧️";
   if ([71, 73, 75, 77, 85, 86].includes(code)) return "❄️";
   if ([95, 96, 99].includes(code)) return "⛈️";
-
   return "🌡️";
+}
+
+function isClosedStatus(status?: string) {
+  return ["Completed", "Closed", "Cancelled"].includes(status || "");
 }
 
 export default function DailyOperationsManager({
@@ -91,9 +99,7 @@ export default function DailyOperationsManager({
 }: Props) {
   const sortedTodayEvents = [...todayEvents]
     .filter((item) => !item.completed)
-    .sort((a, b) =>
-      (a.time || "99:99").localeCompare(b.time || "99:99"),
-    );
+    .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
 
   const sortedUpcomingEvents = [...upcomingEvents]
     .filter((item) => !item.completed && item.date > today)
@@ -103,602 +109,715 @@ export default function DailyOperationsManager({
       ),
     );
 
-  const activeWork = serviceRecords.filter(
-    (item) =>
-      !["Completed", "Closed", "Cancelled"].includes(item.status),
+  const activeWork = serviceRecords.filter((item) => !isClosedStatus(item.status));
+  const completedToday = serviceRecords.filter(
+    (item) => item.status === "Completed" && item.date === today,
   );
+
+  const overdue = activeWork
+    .filter((item) => item.date && item.date < today)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const dueToday = activeWork
+    .filter((item) => item.date === today)
+    .sort((a, b) => (a.priority || "").localeCompare(b.priority || ""));
 
   const highPriority = activeWork
     .filter((item) => item.priority === "High")
     .sort((a, b) =>
-      (a.date || "9999-12-31").localeCompare(
-        b.date || "9999-12-31",
-      ),
-    )
-    .slice(0, 5);
+      (a.date || "9999-12-31").localeCompare(b.date || "9999-12-31"),
+    );
 
-  const overdue = activeWork
-    .filter((item) => item.date && item.date < today)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 5);
-
-  const priorityWork = [...highPriority, ...overdue]
+  const priorityWork = [...overdue, ...dueToday, ...highPriority]
     .filter(
       (item, index, all) =>
-        all.findIndex((candidate) => candidate.id === item.id) ===
-        index,
+        all.findIndex((candidate) => candidate.id === item.id) === index,
     )
-    .slice(0, 5);
+    .slice(0, 6);
 
-  const assetsWithoutProcedure = assets
-    .filter(
-      (asset) =>
-        !procedures.some((procedure) =>
-          (procedure.linkedAssetIds || []).includes(asset.id),
-        ),
-    )
-    .slice(0, 5);
+  const assetsWithoutProcedure = assets.filter(
+    (asset) =>
+      !procedures.some((procedure) =>
+        (procedure.linkedAssetIds || []).includes(asset.id),
+      ),
+  );
 
   const workWithoutPhotos = activeWork.filter(
     (item) => !(item.photos || []).length,
   ).length;
 
-  const todayWeather =
-    weatherDays.find((day) => day.date === today) || null;
+  const todayWeather = weatherDays.find((day) => day.date === today) || null;
 
-  const todayVendorEvents = sortedTodayEvents.filter(
+  const vendorEvents = sortedTodayEvents.filter(
     (item) =>
       item.linkedType === "Vendor" ||
       item.categoryLabel?.toLowerCase().includes("vendor") ||
       item.area?.toLowerCase().includes("vendor"),
   );
 
-  const vendorNames = Array.from(
-    new Set(
-      todayVendorEvents
-        .map((item) => item.linkedName || item.title)
-        .filter(Boolean),
-    ),
-  );
+  const totalTodayItems = dueToday.length + completedToday.length;
+  const progressPercent =
+    totalTodayItems > 0
+      ? Math.round((completedToday.length / totalTodayItems) * 100)
+      : 0;
+
+  const healthDeductions =
+    Math.min(overdue.length * 4, 20) +
+    Math.min(highPriority.length * 2, 10) +
+    (workWithoutPhotos > 5 ? 4 : 0) +
+    (assetsWithoutProcedure.length > 10 ? 4 : 0);
+
+  const healthScore = Math.max(70, 100 - healthDeductions);
+  const healthLabel =
+    healthScore >= 94
+      ? "Excellent"
+      : healthScore >= 86
+        ? "Good"
+        : healthScore >= 78
+          ? "Needs attention"
+          : "At risk";
+
+  const healthColor =
+    healthScore >= 94
+      ? "#65B985"
+      : healthScore >= 86
+        ? "#8DB56A"
+        : healthScore >= 78
+          ? "#D7A84B"
+          : "#D97070";
 
   const weatherAdvice = todayWeather
     ? todayWeather.precipChance >= 60
-      ? "Wet-weather day: prioritize indoor, mechanical, document, and inspection work."
+      ? "Prioritize indoor work and finish exposed outdoor tasks early."
       : todayWeather.high >= 85
-        ? "Hot day: handle outdoor work early and prioritize irrigation checks."
+        ? "Handle outdoor work early and verify irrigation coverage."
         : todayWeather.windMax >= 20
-          ? "Windy conditions: avoid exposed ladder, dock, and loose-material work."
-          : "Good general work window for outdoor maintenance and inspections."
-    : "Today’s weather has not loaded yet.";
-
-  const attentionCount =
-    priorityWork.length +
-    assetsWithoutProcedure.length +
-    workWithoutPhotos;
+          ? "Avoid exposed ladder, dock, and loose-material work."
+          : "Good conditions for outdoor maintenance and inspections."
+    : "Weather data has not loaded yet.";
 
   const currentHour = new Date().getHours();
-
   const greeting =
     currentHour < 12
-      ? "Good Morning"
+      ? "Good morning"
       : currentHour < 17
-        ? "Good Afternoon"
-        : "Good Evening";
+        ? "Good afternoon"
+        : "Good evening";
 
-  const prioritySummary =
-    priorityWork.length === 0
-      ? "Nothing overdue"
-      : `${priorityWork.length} priority ${
-          priorityWork.length === 1 ? "item" : "items"
-        }`;
+  const visibleSchedule = sortedTodayEvents.slice(0, 5);
+  const visiblePriority = priorityWork.slice(0, 5);
+  const visibleUpcoming = sortedUpcomingEvents.slice(0, 4);
 
-  const prioritySummaryIcon =
-    priorityWork.length === 0 ? "✓" : "●";
-
-  const prioritySummaryColor =
-    priorityWork.length === 0
-      ? "#7CCB9B"
-      : priorityWork.length <= 2
-        ? "#E7C35A"
-        : "#F08080";
-
-  const scheduleSummary =
-    sortedTodayEvents.length === 0
-      ? "Open schedule"
-      : `${sortedTodayEvents.length} scheduled ${
-          sortedTodayEvents.length === 1 ? "item" : "items"
-        }`;
-
-  const headerWeather = todayWeather
-    ? `${weatherIcon(todayWeather.code)} ${Math.round(
-        todayWeather.high,
-      )}° ${weatherCondition(todayWeather.code)}`
-    : "🌡️ Weather unavailable";
-
-  const visibleTodayEvents = sortedTodayEvents.slice(0, 4);
-  const visibleUpcomingEvents = sortedUpcomingEvents.slice(0, 4);
-  const visiblePriorityWork = priorityWork.slice(0, 4);
+  const briefingSentence = [
+    `You have ${sortedTodayEvents.length} scheduled ${
+      sortedTodayEvents.length === 1 ? "event" : "events"
+    } today.`,
+    priorityWork.length
+      ? `${priorityWork.length} priority ${
+          priorityWork.length === 1 ? "item needs" : "items need"
+        } attention.`
+      : "No priority work is currently overdue.",
+    vendorEvents.length
+      ? `${vendorEvents.length} vendor ${
+          vendorEvents.length === 1 ? "visit is" : "visits are"
+        } on today’s schedule.`
+      : "No vendor visits are identified today.",
+    weatherAdvice,
+  ].join(" ");
 
   return (
     <section
       style={{
-        borderRadius: 20,
-        border: `1px solid ${colors.line}`,
-        background: colors.card,
+        marginBottom: 18,
+        borderRadius: 24,
         overflow: "hidden",
-        marginBottom: 16,
-        boxShadow: "0 8px 28px rgba(15, 31, 48, 0.08)",
+        background: colors.card,
+        border: `1px solid ${colors.line}`,
+        boxShadow: "0 14px 38px rgba(15, 31, 48, 0.1)",
       }}
     >
-      <div
+      <header
         style={{
-          padding: isMobile ? 16 : 20,
-          background: colors.navy,
+          padding: isMobile ? 18 : 24,
+          background: `linear-gradient(135deg, ${colors.navy} 0%, #183B55 100%)`,
           color: "#FFFFFF",
-          display: "flex",
-          alignItems: isMobile ? "flex-start" : "center",
-          justifyContent: "space-between",
-          gap: 14,
-          flexDirection: isMobile ? "column" : "row",
         }}
       >
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              color: colors.gold,
-              fontSize: 11,
-              fontWeight: 900,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-            }}
-          >
-            AI Daily Operations Manager
-          </div>
-
-          <h2
-            style={{
-              margin: "5px 0 4px",
-              fontSize: isMobile ? 22 : 26,
-              letterSpacing: "-0.015em",
-            }}
-          >
-            {greeting}, Nick
-          </h2>
-
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: isMobile ? 6 : 8,
-              fontSize: isMobile ? 13 : 14,
-              fontWeight: 700,
-              lineHeight: 1.5,
-            }}
-          >
-            <span>{dateLabel(today)}</span>
-            <SummaryDivider />
-            <span>{scheduleSummary}</span>
-            <SummaryDivider />
-
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  color: prioritySummaryColor,
-                  fontWeight: 950,
-                }}
-              >
-                {prioritySummaryIcon}
-              </span>
-              <span>{prioritySummary}</span>
-            </span>
-
-            <SummaryDivider />
-            <span>{headerWeather}</span>
-
-            {vendorNames.length > 0 && (
-              <>
-                <SummaryDivider />
-                <span>
-                  Vendor:{" "}
-                  {vendorNames.length === 1
-                    ? vendorNames[0]
-                    : `${vendorNames[0]} +${vendorNames.length - 1}`}
-                </span>
-              </>
-            )}
-          </div>
-
-          <div
-            style={{
-              marginTop: 5,
-              opacity: 0.62,
-              fontSize: 12,
-            }}
-          >
-            Today’s Property Brief · {attentionCount} item
-            {attentionCount === 1 ? "" : "s"} needing review
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() =>
-            onAskAtlas(
-              "Build a detailed plan for today using my calendar, open work orders, weather, priorities, and property locations.",
-            )
-          }
+        <div
           style={{
-            border: 0,
-            borderRadius: 11,
-            background: colors.gold,
-            color: colors.navy,
-            padding: "11px 14px",
-            fontWeight: 900,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.12)",
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            justifyContent: "space-between",
+            alignItems: isMobile ? "stretch" : "flex-start",
+            gap: 18,
           }}
         >
-          Build Today’s Plan
-        </button>
-      </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                color: colors.gold,
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Daily Operations
+            </div>
 
-      <div
-        style={{
-          padding: isMobile ? 14 : 18,
-          display: "grid",
-          gridTemplateColumns: isMobile
-            ? "1fr"
-            : "repeat(2, minmax(0, 1fr))",
-          gap: 14,
-          alignItems: "start",
-        }}
-      >
-        <BriefingCard
-          title="Today’s Schedule"
-          icon="▣"
-          tone="schedule"
-          colors={colors}
-          onClick={onOpenCalendarPage}
+            <h2
+              style={{
+                margin: "7px 0 3px",
+                fontSize: isMobile ? 25 : 31,
+                lineHeight: 1.1,
+                letterSpacing: "-0.025em",
+              }}
+            >
+              {greeting}, Nick
+            </h2>
+
+            <div style={{ fontSize: 14, opacity: 0.72, fontWeight: 650 }}>
+              {dateLabel(today)}
+            </div>
+
+            <p
+              style={{
+                maxWidth: 820,
+                margin: "13px 0 0",
+                fontSize: isMobile ? 13 : 14,
+                lineHeight: 1.65,
+                opacity: 0.86,
+              }}
+            >
+              {briefingSentence}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              onAskAtlas(
+                "Build a detailed plan for today using my calendar, open work orders, weather, priorities, vendors, and property locations.",
+              )
+            }
+            style={{
+              border: 0,
+              borderRadius: 12,
+              background: colors.gold,
+              color: colors.navy,
+              padding: "12px 16px",
+              fontWeight: 900,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              boxShadow: "0 6px 18px rgba(0,0,0,0.18)",
+            }}
+          >
+            Build Today’s Plan
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "repeat(2, minmax(0, 1fr))"
+              : "repeat(5, minmax(0, 1fr))",
+            gap: 10,
+            marginTop: 20,
+          }}
         >
-          {visibleTodayEvents.length ? (
-            visibleTodayEvents.map((item) => (
-              <BriefingButton
-                key={item.instanceId || item.id}
-                title={item.title}
-                detail={item.allDay ? "All day" : item.time || "No time"}
-                onClick={() => onOpenCalendar(item)}
-                colors={colors}
+          <Metric label="Estate Health" value={`${healthScore}`} detail={healthLabel} accent={healthColor} />
+          <Metric label="Schedule" value={`${sortedTodayEvents.length}`} detail="events today" />
+          <Metric label="Priority" value={`${priorityWork.length}`} detail="need attention" />
+          <Metric label="Vendors" value={`${vendorEvents.length}`} detail="scheduled today" />
+          <Metric
+            label="Weather"
+            value={
+              todayWeather
+                ? `${Math.round(todayWeather.high)}°`
+                : "—"
+            }
+            detail={todayWeather ? weatherCondition(todayWeather.code) : "Unavailable"}
+          />
+        </div>
+      </header>
+
+      <div style={{ padding: isMobile ? 14 : 18 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "1fr"
+              : "minmax(0, 1.15fr) minmax(0, 1fr)",
+            gap: 14,
+            alignItems: "stretch",
+          }}
+        >
+          <HeroCard
+            title="Priority Work"
+            eyebrow={
+              overdue.length
+                ? `${overdue.length} overdue`
+                : priorityWork.length
+                  ? `${priorityWork.length} active priorities`
+                  : "Everything current"
+            }
+            icon="!"
+            colors={colors}
+            onClick={onOpenWorkOrdersPage}
+          >
+            {visiblePriority.length ? (
+              visiblePriority.map((item) => (
+                <RowButton
+                  key={item.id}
+                  title={item.title}
+                  detail={
+                    item.date && item.date < today
+                      ? `Overdue · ${shortDateLabel(item.date)}`
+                      : item.date === today
+                        ? "Due today"
+                        : item.date
+                          ? shortDateLabel(item.date)
+                          : "No due date"
+                  }
+                  badge={item.priority || "Medium"}
+                  badgeTone={
+                    item.date && item.date < today
+                      ? "danger"
+                      : item.priority === "High"
+                        ? "warning"
+                        : "neutral"
+                  }
+                  onClick={() => onOpenWorkOrder(item.id)}
+                  colors={colors}
+                />
+              ))
+            ) : (
+              <EmptyState
+                icon="✓"
+                title="No urgent work"
+                detail="No high-priority or overdue work orders."
               />
-            ))
-          ) : (
-            <EmptyLine>No scheduled events today.</EmptyLine>
-          )}
+            )}
+          </HeroCard>
 
-          {sortedTodayEvents.length > visibleTodayEvents.length && (
-            <MoreLine
-              count={sortedTodayEvents.length - visibleTodayEvents.length}
-              label="more scheduled"
-            />
-          )}
-        </BriefingCard>
-
-        <BriefingCard
-          title="Upcoming"
-          icon="→"
-          tone="upcoming"
-          colors={colors}
-          onClick={onOpenCalendarPage}
-        >
-          {visibleUpcomingEvents.length ? (
-            visibleUpcomingEvents.map((item) => (
-              <BriefingButton
-                key={item.instanceId || item.id}
-                title={item.title}
-                detail={`${dateLabel(item.date)}${
-                  item.allDay
-                    ? " · All day"
-                    : item.time
-                      ? ` · ${item.time}`
-                      : ""
-                }`}
-                onClick={() => onOpenCalendar(item)}
-                colors={colors}
+          <HeroCard
+            title="Today’s Schedule"
+            eyebrow={`${sortedTodayEvents.length} scheduled`}
+            icon="▣"
+            colors={colors}
+            onClick={onOpenCalendarPage}
+          >
+            {visibleSchedule.length ? (
+              visibleSchedule.map((item) => (
+                <RowButton
+                  key={item.instanceId || item.id}
+                  title={item.title}
+                  detail={item.allDay ? "All day" : item.time || "No time"}
+                  badge={item.linkedType || item.categoryLabel || "Event"}
+                  badgeTone="info"
+                  onClick={() => onOpenCalendar(item)}
+                  colors={colors}
+                />
+              ))
+            ) : (
+              <EmptyState
+                icon="○"
+                title="Open schedule"
+                detail="No calendar events are scheduled today."
               />
-            ))
-          ) : (
-            <EmptyLine>No upcoming calendar events.</EmptyLine>
-          )}
+            )}
+          </HeroCard>
+        </div>
 
-          {sortedUpcomingEvents.length > visibleUpcomingEvents.length && (
-            <MoreLine
-              count={sortedUpcomingEvents.length - visibleUpcomingEvents.length}
-              label="more upcoming"
-            />
-          )}
-        </BriefingCard>
-
-        <BriefingCard
-          title="Today’s Weather"
-          icon={todayWeather ? weatherIcon(todayWeather.code) : "◌"}
-          tone="weather"
-          colors={colors}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "1fr"
+              : "repeat(3, minmax(0, 1fr))",
+            gap: 14,
+            marginTop: 14,
+          }}
         >
-          {todayWeather ? (
-            <>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  marginBottom: 2,
-                }}
-              >
-                <div
-                  aria-hidden="true"
-                  style={{
-                    fontSize: 32,
-                    lineHeight: 1,
-                  }}
-                >
-                  {weatherIcon(todayWeather.code)}
-                </div>
-
-                <div>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 850,
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    {weatherCondition(todayWeather.code)}
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: 3,
-                      fontSize: 13,
-                      opacity: 0.62,
-                    }}
-                  >
-                    High {Math.round(todayWeather.high)}° · Low{" "}
-                    {Math.round(todayWeather.low)}°
-                  </div>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  lineHeight: 1.55,
-                  fontSize: 13,
-                  opacity: 0.86,
-                }}
-              >
-                {weatherAdvice}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 3,
-                  fontSize: 12,
-                  opacity: 0.58,
-                }}
-              >
-                Rain {Math.round(todayWeather.precipChance)}% · Wind{" "}
-                {Math.round(todayWeather.windMax)} mph
-              </div>
-            </>
-          ) : (
-            <EmptyLine>Today’s weather has not loaded yet.</EmptyLine>
-          )}
-        </BriefingCard>
-
-        <BriefingCard
-          title="Priority Work"
-          icon="!"
-          tone="priority"
-          colors={colors}
-          onClick={onOpenWorkOrdersPage}
-        >
-          {visiblePriorityWork.length ? (
-            visiblePriorityWork.map((item) => (
-              <BriefingButton
-                key={item.id}
-                title={item.title}
-                detail={`${item.priority || "Medium"} · ${
-                  item.date && item.date < today
-                    ? `Overdue ${dateLabel(item.date)}`
-                    : item.date
-                      ? dateLabel(item.date)
-                      : "No due date"
-                }`}
-                onClick={() => onOpenWorkOrder(item.id)}
-                colors={colors}
-                accent={
-                  item.date && item.date < today
-                    ? "#D97070"
-                    : item.priority === "High"
-                      ? "#D7A84B"
-                      : undefined
-                }
-              />
-            ))
-          ) : (
+          <StandardCard title="Today’s Progress" icon="✓" colors={colors}>
             <div
               style={{
                 display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 13,
-                color: "#4C9069",
-                fontWeight: 750,
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                gap: 12,
               }}
             >
-              <span aria-hidden="true">✓</span>
-              <span>No high-priority or overdue work.</span>
+              <div style={{ fontSize: 30, fontWeight: 900, color: colors.navy }}>
+                {progressPercent}%
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.6 }}>
+                {completedToday.length} of {totalTodayItems || 0} complete
+              </div>
             </div>
+
+            <div
+              style={{
+                height: 10,
+                borderRadius: 999,
+                overflow: "hidden",
+                background: "rgba(15,31,48,0.08)",
+                marginTop: 12,
+              }}
+            >
+              <div
+                style={{
+                  width: `${progressPercent}%`,
+                  height: "100%",
+                  borderRadius: 999,
+                  background: colors.gold,
+                  transition: "width 180ms ease",
+                }}
+              />
+            </div>
+
+            <div style={{ marginTop: 12, fontSize: 12, lineHeight: 1.5, opacity: 0.66 }}>
+              Based on work orders due today and completed today.
+            </div>
+          </StandardCard>
+
+          <StandardCard title="Estate Health" icon="◆" colors={colors}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div
+                style={{
+                  width: 70,
+                  height: 70,
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  border: `7px solid ${healthColor}`,
+                  fontSize: 21,
+                  fontWeight: 950,
+                  color: colors.navy,
+                  flex: "0 0 auto",
+                }}
+              >
+                {healthScore}
+              </div>
+
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 900 }}>{healthLabel}</div>
+                <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.45, opacity: 0.62 }}>
+                  {overdue.length
+                    ? `${overdue.length} overdue item${overdue.length === 1 ? "" : "s"} lowering the score.`
+                    : "No overdue work is affecting the score."}
+                </div>
+              </div>
+            </div>
+          </StandardCard>
+
+          <StandardCard title="Today’s Conditions" icon={todayWeather ? weatherIcon(todayWeather.code) : "◌"} colors={colors}>
+            {todayWeather ? (
+              <>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <span style={{ fontSize: 30, fontWeight: 900, color: colors.navy }}>
+                    {Math.round(todayWeather.high)}°
+                  </span>
+                  <span style={{ fontSize: 14, fontWeight: 800 }}>
+                    {weatherCondition(todayWeather.code)}
+                  </span>
+                </div>
+                <div style={{ marginTop: 7, fontSize: 13, lineHeight: 1.55, opacity: 0.76 }}>
+                  {weatherAdvice}
+                </div>
+                <div style={{ marginTop: 9, fontSize: 11, opacity: 0.55 }}>
+                  Low {Math.round(todayWeather.low)}° · Rain {Math.round(todayWeather.precipChance)}% · Wind {Math.round(todayWeather.windMax)} mph
+                </div>
+              </>
+            ) : (
+              <EmptyState
+                icon="◌"
+                title="Weather unavailable"
+                detail="The dashboard will update when weather data loads."
+              />
+            )}
+          </StandardCard>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "1fr"
+              : vendorEvents.length
+                ? "repeat(3, minmax(0, 1fr))"
+                : "repeat(2, minmax(0, 1fr))",
+            gap: 14,
+            marginTop: 14,
+          }}
+        >
+          {vendorEvents.length > 0 && (
+            <StandardCard title="Vendors Today" icon="◆" colors={colors}>
+              {vendorEvents.slice(0, 4).map((item) => (
+                <RowButton
+                  key={item.instanceId || item.id}
+                  title={item.linkedName || item.title}
+                  detail={item.allDay ? "All day" : item.time || "No time"}
+                  badge="Vendor"
+                  badgeTone="info"
+                  onClick={() => onOpenCalendar(item)}
+                  colors={colors}
+                />
+              ))}
+            </StandardCard>
           )}
 
-          {priorityWork.length > visiblePriorityWork.length && (
-            <MoreLine
-              count={priorityWork.length - visiblePriorityWork.length}
-              label="more priority items"
+          <StandardCard title="Upcoming" icon="→" colors={colors} onClick={onOpenCalendarPage}>
+            {visibleUpcoming.length ? (
+              visibleUpcoming.map((item) => (
+                <RowButton
+                  key={item.instanceId || item.id}
+                  title={item.title}
+                  detail={`${shortDateLabel(item.date)}${
+                    item.allDay ? " · All day" : item.time ? ` · ${item.time}` : ""
+                  }`}
+                  badge={item.linkedType || "Event"}
+                  badgeTone="neutral"
+                  onClick={() => onOpenCalendar(item)}
+                  colors={colors}
+                />
+              ))
+            ) : (
+              <EmptyState
+                icon="○"
+                title="Nothing upcoming"
+                detail="No future calendar events are currently shown."
+              />
+            )}
+          </StandardCard>
+
+          <StandardCard title="Atlas Notices" icon="i" colors={colors}>
+            <NoticeLine
+              count={assetsWithoutProcedure.length}
+              label="assets without a linked procedure"
             />
-          )}
-        </BriefingCard>
+            <NoticeLine
+              count={workWithoutPhotos}
+              label="open work orders without photos"
+            />
+            <NoticeLine count={overdue.length} label="overdue work orders" />
+          </StandardCard>
+        </div>
 
-        <BriefingCard
-          title="Atlas Notices"
-          icon="i"
-          colors={colors}
+        <div
+          style={{
+            marginTop: 14,
+            borderTop: `1px solid ${colors.line}`,
+            paddingTop: 14,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+          }}
         >
-          <NoticeLine
-            count={assetsWithoutProcedure.length}
-            label="assets shown without a linked procedure"
-          />
-          <NoticeLine
-            count={workWithoutPhotos}
-            label="open work orders without photos"
-          />
-          <NoticeLine
-            count={overdue.length}
-            label="overdue work items"
-          />
-        </BriefingCard>
-
-        <BriefingCard
-          title="Suggested AI Checks"
-          icon="✦"
-          colors={colors}
-        >
-          <ActionLink
+          <QuickAction
             label="Review overdue work"
             onClick={() =>
               onAskAtlas(
-                "Review all overdue work orders, explain what needs attention first, and suggest a realistic order for completing them.",
+                "Review all overdue work orders, explain what needs attention first, and suggest a realistic completion order.",
               )
             }
           />
-
-          <ActionLink
+          <QuickAction
             label="Find missing procedures"
             onClick={() =>
               onAskAtlas(
-                "Show important assets that do not have linked procedures and recommend which procedures should be created first.",
+                "Show important assets without linked procedures and recommend which procedures should be created first.",
               )
             }
           />
-
-          <ActionLink
+          <QuickAction
             label="Prepare management update"
             onClick={() =>
               onAskAtlas(
-                "Prepare a concise management update covering completed work, open issues, vendor visits, upcoming work, and anything needing a decision.",
+                "Prepare a concise management update covering completed work, open issues, vendor visits, upcoming work, and decisions needed.",
               )
             }
           />
-        </BriefingCard>
+        </div>
       </div>
     </section>
   );
 }
 
-function SummaryDivider() {
-  return <span style={{ opacity: 0.32 }}>•</span>;
+function Metric({
+  label,
+  value,
+  detail,
+  accent,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  accent?: string;
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: 13,
+        padding: "11px 12px",
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.1)",
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 850,
+          opacity: 0.58,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 4,
+          fontSize: 21,
+          fontWeight: 950,
+          color: accent || "#FFFFFF",
+        }}
+      >
+        {value}
+      </div>
+      <div style={{ marginTop: 1, fontSize: 11, opacity: 0.6 }}>{detail}</div>
+    </div>
+  );
 }
 
-function BriefingCard({
+function HeroCard({
+  title,
+  eyebrow,
+  icon,
+  colors,
+  onClick,
+  children,
+}: {
+  title: string;
+  eyebrow: string;
+  icon: string;
+  colors: Props["colors"];
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      style={{
+        borderRadius: 18,
+        padding: 16,
+        background: colors.panel,
+        border: `1px solid ${colors.line}`,
+        cursor: "pointer",
+        minWidth: 0,
+        boxShadow: "0 5px 16px rgba(15,31,48,0.05)",
+        transition: "transform 160ms ease, box-shadow 160ms ease",
+      }}
+    >
+      <CardHeader title={title} eyebrow={eyebrow} icon={icon} colors={colors} />
+      <div style={{ display: "grid", gap: 8 }}>{children}</div>
+    </div>
+  );
+}
+
+function StandardCard({
   title,
   icon,
-  tone = "default",
   colors,
-  children,
   onClick,
+  children,
 }: {
   title: string;
   icon: string;
-  tone?: CardTone;
   colors: Props["colors"];
-  children: React.ReactNode;
   onClick?: () => void;
+  children: React.ReactNode;
 }) {
-  const iconBackground =
-    tone === "schedule"
-      ? "rgba(59, 110, 155, 0.1)"
-      : tone === "upcoming"
-        ? "rgba(93, 105, 140, 0.1)"
-        : tone === "weather"
-          ? "rgba(215, 168, 75, 0.12)"
-          : tone === "priority"
-            ? "rgba(190, 92, 92, 0.1)"
-            : "rgba(90, 102, 115, 0.08)";
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!onClick) return;
-
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onClick();
-    }
-  };
-
   return (
     <div
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={handleKeyDown}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
       style={{
-        border: `1px solid ${colors.line}`,
-        borderRadius: 14,
+        borderRadius: 16,
+        padding: 15,
         background: colors.panel,
-        padding: 14,
-        minWidth: 0,
-        boxSizing: "border-box",
+        border: `1px solid ${colors.line}`,
         cursor: onClick ? "pointer" : "default",
+        minWidth: 0,
       }}
     >
-      <div
-        style={{
-          marginBottom: 10,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-        }}
-      >
+      <CardHeader title={title} icon={icon} colors={colors} />
+      <div style={{ display: "grid", gap: 8 }}>{children}</div>
+    </div>
+  );
+}
+
+function CardHeader({
+  title,
+  eyebrow,
+  icon,
+  colors,
+}: {
+  title: string;
+  eyebrow?: string;
+  icon: string;
+  colors: Props["colors"];
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+        marginBottom: 12,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
         <span
           aria-hidden="true"
           style={{
-            width: 24,
-            height: 24,
-            borderRadius: 8,
-            background: iconBackground,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
+            width: 28,
+            height: 28,
+            borderRadius: 9,
+            background: "rgba(15,31,48,0.07)",
+            display: "grid",
+            placeItems: "center",
+            fontWeight: 950,
+            color: colors.navy,
             flex: "0 0 auto",
-            fontSize: 13,
-            fontWeight: 900,
-            opacity: 0.8,
           }}
         >
           {icon}
         </span>
-
         <span
           style={{
-            fontSize: 12,
-            fontWeight: 900,
-            letterSpacing: "0.035em",
+            fontSize: 13,
+            fontWeight: 950,
+            letterSpacing: "0.02em",
             textTransform: "uppercase",
           }}
         >
@@ -706,31 +825,46 @@ function BriefingCard({
         </span>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 7,
-        }}
-      >
-        {children}
-      </div>
+      {eyebrow && (
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 750,
+            opacity: 0.52,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {eyebrow}
+        </span>
+      )}
     </div>
   );
 }
 
-function BriefingButton({
+function RowButton({
   title,
   detail,
+  badge,
+  badgeTone,
   onClick,
   colors,
-  accent,
 }: {
   title: string;
   detail: string;
+  badge: string;
+  badgeTone: "danger" | "warning" | "info" | "neutral";
   onClick: () => void;
   colors: Props["colors"];
-  accent?: string;
 }) {
+  const badgeStyles =
+    badgeTone === "danger"
+      ? { background: "rgba(217,112,112,0.13)", color: "#A94D4D" }
+      : badgeTone === "warning"
+        ? { background: "rgba(215,168,75,0.16)", color: "#946B16" }
+        : badgeTone === "info"
+          ? { background: "rgba(59,110,155,0.12)", color: "#315F85" }
+          : { background: "rgba(15,31,48,0.07)", color: "#52606B" };
+
   return (
     <button
       type="button"
@@ -739,123 +873,107 @@ function BriefingButton({
         onClick();
       }}
       style={{
-        position: "relative",
         width: "100%",
-        border: `1px solid ${colors.line}`,
-        borderRadius: 10,
-        background: colors.card,
-        padding: accent ? "9px 10px 9px 13px" : "9px 10px",
+        border: 0,
+        borderTop: `1px solid ${colors.line}`,
+        background: "transparent",
+        padding: "10px 0 2px",
         textAlign: "left",
         cursor: "pointer",
         color: "inherit",
-        minWidth: 0,
-        overflow: "hidden",
       }}
     >
-      {accent && (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 850,
+              lineHeight: 1.35,
+              overflowWrap: "anywhere",
+            }}
+          >
+            {title}
+          </div>
+          <div
+            style={{
+              marginTop: 3,
+              fontSize: 11,
+              lineHeight: 1.4,
+              opacity: 0.57,
+            }}
+          >
+            {detail}
+          </div>
+        </div>
+
         <span
-          aria-hidden="true"
           style={{
-            position: "absolute",
-            top: 7,
-            bottom: 7,
-            left: 0,
-            width: 3,
-            borderRadius: "0 3px 3px 0",
-            background: accent,
+            ...badgeStyles,
+            flex: "0 0 auto",
+            borderRadius: 999,
+            padding: "4px 7px",
+            fontSize: 9,
+            fontWeight: 850,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
           }}
-        />
-      )}
-
-      <div
-        style={{
-          fontWeight: 800,
-          fontSize: 13,
-          lineHeight: 1.35,
-          overflowWrap: "anywhere",
-        }}
-      >
-        {title}
-      </div>
-
-      <div
-        style={{
-          fontSize: 11,
-          opacity: 0.57,
-          marginTop: 3,
-          lineHeight: 1.4,
-          overflowWrap: "anywhere",
-        }}
-      >
-        {detail}
+        >
+          {badge}
+        </span>
       </div>
     </button>
   );
 }
 
-function EmptyLine({
-  children,
+function EmptyState({
+  icon,
+  title,
+  detail,
 }: {
-  children: React.ReactNode;
+  icon: string;
+  title: string;
+  detail: string;
 }) {
   return (
     <div
       style={{
-        fontSize: 13,
-        opacity: 0.62,
-        lineHeight: 1.5,
+        padding: "14px 4px",
+        textAlign: "center",
       }}
     >
-      {children}
+      <div style={{ fontSize: 22, opacity: 0.65 }}>{icon}</div>
+      <div style={{ marginTop: 6, fontSize: 13, fontWeight: 850 }}>{title}</div>
+      <div style={{ marginTop: 3, fontSize: 11, opacity: 0.55 }}>{detail}</div>
     </div>
   );
 }
 
-function MoreLine({
-  count,
-  label,
-}: {
-  count: number;
-  label: string;
-}) {
-  return (
-    <div
-      style={{
-        paddingTop: 2,
-        fontSize: 11,
-        fontWeight: 700,
-        opacity: 0.52,
-      }}
-    >
-      +{count} {label}
-    </div>
-  );
-}
-
-function NoticeLine({
-  count,
-  label,
-}: {
-  count: number;
-  label: string;
-}) {
+function NoticeLine({ count, label }: { count: number; label: string }) {
   return (
     <div
       style={{
         display: "flex",
-        gap: 8,
         alignItems: "baseline",
-        fontSize: 13,
-        lineHeight: 1.45,
+        gap: 9,
+        padding: "8px 0",
+        borderTop: "1px solid rgba(15,31,48,0.07)",
       }}
     >
-      <strong style={{ minWidth: 15 }}>{count}</strong>
-      <span style={{ opacity: 0.66 }}>{label}</span>
+      <strong style={{ minWidth: 22, fontSize: 16 }}>{count}</strong>
+      <span style={{ fontSize: 12, opacity: 0.64 }}>{label}</span>
     </div>
   );
 }
 
-function ActionLink({
+function QuickAction({
   label,
   onClick,
 }: {
@@ -865,23 +983,19 @@ function ActionLink({
   return (
     <button
       type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
+      onClick={onClick}
       style={{
-        border: 0,
-        padding: "3px 0",
-        background: "transparent",
+        border: "1px solid rgba(15,31,48,0.1)",
+        borderRadius: 999,
+        padding: "8px 11px",
+        background: "rgba(15,31,48,0.035)",
         color: "inherit",
-        textAlign: "left",
-        fontSize: 13,
-        fontWeight: 750,
         cursor: "pointer",
-        opacity: 0.82,
+        fontSize: 12,
+        fontWeight: 750,
       }}
     >
-      {label} <span style={{ opacity: 0.5 }}>→</span>
+      {label} →
     </button>
   );
 }
