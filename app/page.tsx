@@ -3936,6 +3936,69 @@ export default function AtlasPage() {
     window.setTimeout(() => setSelectedAssetId(assetId), 80);
   }
 
+  function openCalendarLinkedRecord(event: CalendarItem) {
+    const linkedType = String(event.linkedType || "");
+    const linkedId = String(event.linkedId || "");
+
+    if (!linkedId || !linkedType || linkedType === "None") {
+      return false;
+    }
+
+    if (linkedType === "Asset") {
+      setScreen("assets");
+      setSelectedAssetId(linkedId);
+      setAssetEditorOpen(false);
+
+      window.requestAnimationFrame(() => {
+        setSelectedAssetId(linkedId);
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      });
+
+      return true;
+    }
+
+    if (linkedType === "Location") {
+      setScreen("locations");
+      setSelectedLocationId(linkedId);
+      setLocationEditorOpen(false);
+      setLocationMobileDrawerOpen(isMobile);
+
+      window.requestAnimationFrame(() => {
+        setSelectedLocationId(linkedId);
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      });
+
+      return true;
+    }
+
+    if (linkedType === "Vendor") {
+      setScreen("vendors");
+      setSelectedVendorId(linkedId);
+
+      window.requestAnimationFrame(() => {
+        setSelectedVendorId(linkedId);
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      });
+
+      return true;
+    }
+
+    if (linkedType === "Work Order") {
+      setScreen("history");
+      setSelectedServiceId(linkedId);
+      setWorkOrdersOpenKey((current) => current + 1);
+
+      window.requestAnimationFrame(() => {
+        setSelectedServiceId(linkedId);
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      });
+
+      return true;
+    }
+
+    return false;
+  }
+
   useEffect(() => {
     return () => {
       if (saveToastTimerRef.current !== null) {
@@ -14042,6 +14105,7 @@ export default function AtlasPage() {
         moveCalendarYear={moveCalendarYear}
         mutedSmallStyle={mutedSmallStyle}
         openCalendarItem={openCalendarItem}
+        onOpenLinkedRecord={openCalendarLinkedRecord}
         reminderOptions={reminderOptions}
         repeatOptions={repeatOptions}
         saveCalendarItem={saveCalendarItem}
