@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import type {
   AssetRecord,
   CalendarItem,
@@ -7,6 +8,20 @@ import type {
   ServiceRecord,
   WeatherDay,
 } from "../../lib/atlas-types";
+
+type RoutineTask = {
+  id: string;
+  title: string;
+  enabled: boolean;
+  completed?: boolean;
+};
+
+type RoutineOccurrence = {
+  date: string;
+  day: number;
+  name: string;
+  tasks: RoutineTask[];
+};
 
 type Props = {
   assets: AssetRecord[];
@@ -97,6 +112,48 @@ export default function DailyOperationsManager({
   onOpenWorkOrdersPage,
   onAskAtlas,
 }: Props) {
+  const [routineOccurrence, setRoutineOccurrence] =
+    useState<RoutineOccurrence | null>(null);
+  const [routineLoading, setRoutineLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRoutine() {
+      setRoutineLoading(true);
+
+      try {
+        const response = await fetch(
+          `/api/atlas-routines?date=${encodeURIComponent(today)}`,
+          { cache: "no-store" },
+        );
+        const payload = await response.json();
+
+        if (!cancelled) {
+          setRoutineOccurrence(
+            response.ok && payload?.ok && payload?.occurrence
+              ? payload.occurrence
+              : null,
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setRoutineOccurrence(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setRoutineLoading(false);
+        }
+      }
+    }
+
+    void loadRoutine();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [today]);
+
   const sortedTodayEvents = [...todayEvents]
     .filter((item) => !item.completed)
     .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
@@ -208,7 +265,111 @@ export default function DailyOperationsManager({
   const visiblePriority = priorityWork.slice(0, 5);
   const visibleUpcoming = sortedUpcomingEvents.slice(0, 4);
 
+  const routineTasks = routineOccurrence?.tasks || [];
+  const completedRoutineTasks = routineTasks.filter(
+    (task) => task.completed,
+  ).length;
+  const incompleteRoutineTasks = routineTasks.filter(
+    (task) => !task.completed,
+  );
+  const routineProgress =
+    routineTasks.length > 0
+      ? Math.round((completedRoutineTasks / routineTasks.length) * 100)
+      : 0;
+
+  const missionItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      title: string;
+      detail: string;
+      tone: "routine" | "urgent" | "schedule" | "weather";
+      action: () => void;
+    }> = [];
+
+    if (routineOccurrence) {
+      items.push({
+        id: "routine",
+        title: routineOccurrence.name,
+        detail: routineTasks.length
+          ? `${completedRoutineTasks} of ${routineTasks.length} complete`
+          : "No tasks added",
+        tone: "routine",
+        action: onOpenWorkOrdersPage,
+      });
+    }
+
+    if (overdue.length) {
+      items.push({
+        id: "overdue",
+        title: overdue[0]?.title || "Overdue work",
+        detail:
+          overdue.length === 1
+            ? "1 overdue work order"
+            : `${overdue.length} overdue work orders`,
+        tone: "urgent",
+        action: () => onOpenWorkOrder(overdue[0].id),
+      });
+    } else if (dueToday.length) {
+      items.push({
+        id: "due-today",
+        title: dueToday[0]?.title || "Work due today",
+        detail:
+          dueToday.length === 1
+            ? "1 work order due today"
+            : `${dueToday.length} work orders due today`,
+        tone: "urgent",
+        action: () => onOpenWorkOrder(dueToday[0].id),
+      });
+    }
+
+    if (sortedTodayEvents.length) {
+      const firstEvent = sortedTodayEvents[0];
+      items.push({
+        id: "schedule",
+        title: firstEvent.title,
+        detail: firstEvent.time
+          ? `${firstEvent.time}${vendorEvents.length ? " · vendor schedule active" : ""}`
+          : vendorEvents.length
+            ? "Vendor schedule active"
+            : "Scheduled today",
+        tone: "schedule",
+        action: () => onOpenCalendar(firstEvent),
+      });
+    }
+
+    items.push({
+      id: "weather",
+      title: todayWeather
+        ? `${Math.round(todayWeather.high)}° · ${weatherCondition(todayWeather.code)}`
+        : "Weather unavailable",
+      detail: weatherAdvice,
+      tone: "weather",
+      action: onOpenCalendarPage,
+    });
+
+    return items.slice(0, 4);
+  }, [
+    completedRoutineTasks,
+    dueToday,
+    onOpenCalendar,
+    onOpenCalendarPage,
+    onOpenWorkOrder,
+    onOpenWorkOrdersPage,
+    overdue,
+    routineOccurrence,
+    routineTasks.length,
+    sortedTodayEvents,
+    todayWeather,
+    vendorEvents.length,
+    weatherAdvice,
+  ]);
+
   const briefingSentence = [
+    routineOccurrence
+      ? `${routineOccurrence.name} is ${completedRoutineTasks} of ${routineTasks.length} complete.`
+      : routineLoading
+        ? "Today’s routine is loading."
+        : "No weekday routine is scheduled today.",
     `You have ${sortedTodayEvents.length} scheduled ${
       sortedTodayEvents.length === 1 ? "event" : "events"
     } today.`,
@@ -374,58 +535,230 @@ export default function DailyOperationsManager({
         <div
           className="atlas-focus-strip"
           style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "auto minmax(0, 1fr)",
-            alignItems: "start",
-            gap: isMobile ? 8 : 16,
-            borderRadius: 16,
-            padding: isMobile ? 14 : "15px 17px",
-            background: `linear-gradient(135deg, ${colors.gold}22, ${colors.panel})`,
+            borderRadius: 18,
+            padding: isMobile ? 14 : 17,
+            background: `linear-gradient(135deg, ${colors.gold}20, ${colors.panel})`,
             border: `1px solid ${colors.gold}66`,
           }}
         >
           <div
             style={{
-              color: colors.navy,
-              fontSize: 11,
-              fontWeight: 950,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              whiteSpace: "nowrap",
-              paddingTop: 2,
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              alignItems: isMobile ? "stretch" : "center",
+              justifyContent: "space-between",
+              gap: 12,
+              marginBottom: 13,
             }}
           >
-            Today’s Focus
-          </div>
-
-          <div style={{ display: "grid", gap: 5 }}>
-            {todayFocus.map((item, index) => (
+            <div>
               <div
-                key={`${item}-${index}`}
                 style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 8,
-                  fontSize: isMobile ? 12 : 13,
-                  lineHeight: 1.45,
-                  fontWeight: index === 0 ? 800 : 650,
-                  color: colors.navy,
+                  color: colors.gold,
+                  fontSize: 11,
+                  fontWeight: 950,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
                 }}
               >
-                <span
-                  aria-hidden="true"
+                Today’s Mission
+              </div>
+              <div
+                style={{
+                  marginTop: 3,
+                  color: colors.navy,
+                  fontSize: isMobile ? 19 : 22,
+                  fontWeight: 950,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Operations Command Center
+              </div>
+            </div>
+
+            {routineOccurrence && routineTasks.length ? (
+              <div
+                style={{
+                  minWidth: isMobile ? 0 : 180,
+                  padding: "9px 11px",
+                  borderRadius: 12,
+                  background: "#FFFFFF",
+                  border: `1px solid ${colors.line}`,
+                }}
+              >
+                <div
                   style={{
-                    color: colors.gold,
-                    fontWeight: 950,
-                    lineHeight: 1.35,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    fontSize: 11,
+                    fontWeight: 850,
+                    color: colors.navy,
+                    marginBottom: 6,
                   }}
                 >
-                  {index + 1}
-                </span>
-                <span>{item}</span>
+                  <span>Routine Progress</span>
+                  <span>{routineProgress}%</span>
+                </div>
+                <div
+                  style={{
+                    height: 7,
+                    borderRadius: 99,
+                    overflow: "hidden",
+                    background: "#E8EEF3",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${routineProgress}%`,
+                      height: "100%",
+                      borderRadius: 99,
+                      background: colors.gold,
+                      transition: "width 220ms ease",
+                    }}
+                  />
+                </div>
               </div>
-            ))}
+            ) : null}
           </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(2, minmax(0, 1fr))",
+              gap: 9,
+            }}
+          >
+            {missionItems.map((item) => {
+              const icon =
+                item.tone === "routine"
+                  ? "✓"
+                  : item.tone === "urgent"
+                    ? "!"
+                    : item.tone === "schedule"
+                      ? "◷"
+                      : "☀";
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={item.action}
+                  className="atlas-mission-card"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "34px minmax(0, 1fr)",
+                    alignItems: "center",
+                    gap: 10,
+                    width: "100%",
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 13,
+                    background: "#FFFFFF",
+                    padding: "11px 12px",
+                    color: colors.navy,
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 10,
+                      display: "grid",
+                      placeItems: "center",
+                      background:
+                        item.tone === "urgent"
+                          ? "#FFF0EE"
+                          : item.tone === "routine"
+                            ? "#EEF8F2"
+                            : item.tone === "schedule"
+                              ? "#EEF4FA"
+                              : "#FFF7E8",
+                      color:
+                        item.tone === "urgent"
+                          ? "#B42318"
+                          : item.tone === "routine"
+                            ? "#087443"
+                            : item.tone === "schedule"
+                              ? colors.navy
+                              : "#9A6A00",
+                      fontWeight: 950,
+                    }}
+                  >
+                    {icon}
+                  </span>
+
+                  <span style={{ minWidth: 0 }}>
+                    <strong
+                      style={{
+                        display: "block",
+                        fontSize: 13,
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {item.title}
+                    </strong>
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: 2,
+                        fontSize: 11,
+                        lineHeight: 1.4,
+                        color: "#64748B",
+                      }}
+                    >
+                      {item.detail}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {incompleteRoutineTasks.length ? (
+            <div
+              style={{
+                marginTop: 11,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 7,
+              }}
+            >
+              {incompleteRoutineTasks.slice(0, 4).map((task) => (
+                <span
+                  key={task.id}
+                  style={{
+                    borderRadius: 999,
+                    padding: "6px 9px",
+                    background: "#FFFFFF",
+                    border: `1px solid ${colors.line}`,
+                    color: colors.navy,
+                    fontSize: 11,
+                    fontWeight: 750,
+                  }}
+                >
+                  {task.title}
+                </span>
+              ))}
+              {incompleteRoutineTasks.length > 4 ? (
+                <span
+                  style={{
+                    borderRadius: 999,
+                    padding: "6px 9px",
+                    color: "#64748B",
+                    fontSize: 11,
+                    fontWeight: 750,
+                  }}
+                >
+                  +{incompleteRoutineTasks.length - 4} more
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -790,6 +1123,28 @@ export default function DailyOperationsManager({
 
         .atlas-focus-strip {
           animation: atlas-focus-enter 280ms ease-out 60ms both;
+        }
+
+        .atlas-mission-card {
+          transition:
+            transform 150ms ease,
+            box-shadow 150ms ease,
+            border-color 150ms ease;
+        }
+
+        .atlas-mission-card:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 7px 18px rgba(15, 31, 48, 0.08);
+          border-color: rgba(183, 148, 62, 0.42) !important;
+        }
+
+        .atlas-mission-card:active {
+          transform: translateY(0);
+        }
+
+        .atlas-mission-card:focus-visible {
+          outline: 3px solid rgba(183, 148, 62, 0.42);
+          outline-offset: 2px;
         }
 
         @keyframes atlas-dashboard-enter {
