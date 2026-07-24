@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import AtlasHoverPreview, {
+  type AtlasHoverPreviewData,
+} from "../AtlasHoverPreview";
 import type {
   AssetRecord,
   CalendarItem,
@@ -988,6 +991,30 @@ export default function DailyOperationsManager({
                   }
                   onClick={() => onOpenWorkOrder(item.id)}
                   colors={colors}
+                  isMobile={isMobile}
+                  preview={{
+                    kind: "Work Order",
+                    title: item.title,
+                    status: item.status || "Open",
+                    summary:
+                      item.date && item.date < today
+                        ? `This work order is overdue and should be reviewed before lower-priority work.`
+                        : item.date === today
+                          ? "This work order is due today."
+                          : "Active work currently included in the estate priority queue.",
+                    fields: [
+                      { label: "Priority", value: item.priority || "Medium" },
+                      {
+                        label: "Due",
+                        value: item.date ? shortDateLabel(item.date) : "No due date",
+                      },
+                      { label: "Status", value: item.status || "Open" },
+                      {
+                        label: "Photos",
+                        value: `${(item.photos || []).length}`,
+                      },
+                    ],
+                  }}
                 />
               ))
             ) : (
@@ -1016,6 +1043,30 @@ export default function DailyOperationsManager({
                   badgeTone="info"
                   onClick={() => onOpenCalendar(item)}
                   colors={colors}
+                  isMobile={isMobile}
+                  preview={{
+                    kind: "Calendar Event",
+                    title: item.title,
+                    status: item.allDay ? "All day" : item.time || "Scheduled",
+                    summary: item.linkedName
+                      ? `Scheduled event linked to ${item.linkedName}.`
+                      : "Scheduled estate calendar event.",
+                    fields: [
+                      { label: "Date", value: shortDateLabel(item.date) },
+                      {
+                        label: "Time",
+                        value: item.allDay ? "All day" : item.time || "No time",
+                      },
+                      {
+                        label: "Type",
+                        value: item.linkedType || item.categoryLabel || "Event",
+                      },
+                      {
+                        label: "Linked",
+                        value: item.linkedName || "Not linked",
+                      },
+                    ],
+                  }}
                 />
               ))
             ) : (
@@ -1161,6 +1212,28 @@ export default function DailyOperationsManager({
                   badgeTone="info"
                   onClick={() => onOpenCalendar(item)}
                   colors={colors}
+                  isMobile={isMobile}
+                  preview={{
+                    kind: "Vendor Visit",
+                    title: item.linkedName || item.title,
+                    status: item.allDay ? "All day" : item.time || "Scheduled",
+                    summary: `Vendor activity scheduled for ${shortDateLabel(item.date)}.`,
+                    fields: [
+                      { label: "Date", value: shortDateLabel(item.date) },
+                      {
+                        label: "Arrival",
+                        value: item.allDay ? "All day" : item.time || "No time",
+                      },
+                      {
+                        label: "Event",
+                        value: item.title,
+                      },
+                      {
+                        label: "Area",
+                        value: item.area || item.categoryLabel || "Not specified",
+                      },
+                    ],
+                  }}
                 />
               ))}
             </StandardCard>
@@ -1179,6 +1252,30 @@ export default function DailyOperationsManager({
                   badgeTone="neutral"
                   onClick={() => onOpenCalendar(item)}
                   colors={colors}
+                  isMobile={isMobile}
+                  preview={{
+                    kind: "Upcoming Event",
+                    title: item.title,
+                    status: shortDateLabel(item.date),
+                    summary: item.linkedName
+                      ? `Upcoming event linked to ${item.linkedName}.`
+                      : "Upcoming estate calendar event.",
+                    fields: [
+                      { label: "Date", value: shortDateLabel(item.date) },
+                      {
+                        label: "Time",
+                        value: item.allDay ? "All day" : item.time || "No time",
+                      },
+                      {
+                        label: "Type",
+                        value: item.linkedType || item.categoryLabel || "Event",
+                      },
+                      {
+                        label: "Linked",
+                        value: item.linkedName || "Not linked",
+                      },
+                    ],
+                  }}
                 />
               ))
             ) : (
@@ -1567,6 +1664,8 @@ function RowButton({
   badgeTone,
   onClick,
   colors,
+  preview,
+  isMobile = false,
 }: {
   title: string;
   detail: string;
@@ -1574,6 +1673,8 @@ function RowButton({
   badgeTone: "danger" | "warning" | "info" | "neutral";
   onClick: () => void;
   colors: Props["colors"];
+  preview?: AtlasHoverPreviewData;
+  isMobile?: boolean;
 }) {
   const badgeStyles =
     badgeTone === "danger"
@@ -1585,71 +1686,81 @@ function RowButton({
           : { background: "rgba(15,31,48,0.07)", color: "#52606B" };
 
   return (
-    <button
-      className="atlas-row-button"
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
-      style={{
-        width: "100%",
-        border: 0,
-        borderTop: `1px solid ${colors.line}`,
-        background: "transparent",
-        padding: "10px 0 2px",
-        textAlign: "left",
-        cursor: "pointer",
-        color: "inherit",
-      }}
-    >
-      <div
+    <div className="atlas-preview-anchor">
+      <button
+        className="atlas-row-button"
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick();
+        }}
         style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 10,
+          width: "100%",
+          border: 0,
+          borderTop: `1px solid ${colors.line}`,
+          background: "transparent",
+          padding: preview && isMobile ? "10px 42px 2px 0" : "10px 0 2px",
+          textAlign: "left",
+          cursor: "pointer",
+          color: "inherit",
         }}
       >
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 850,
-              lineHeight: 1.35,
-              overflowWrap: "anywhere",
-            }}
-          >
-            {title}
-          </div>
-          <div
-            style={{
-              marginTop: 3,
-              fontSize: 11,
-              lineHeight: 1.4,
-              opacity: 0.57,
-            }}
-          >
-            {detail}
-          </div>
-        </div>
-
-        <span
+        <div
           style={{
-            ...badgeStyles,
-            flex: "0 0 auto",
-            borderRadius: 999,
-            padding: "4px 7px",
-            fontSize: 9,
-            fontWeight: 850,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 10,
           }}
         >
-          {badge}
-        </span>
-      </div>
-    </button>
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 850,
+                lineHeight: 1.35,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {title}
+            </div>
+            <div
+              style={{
+                marginTop: 3,
+                fontSize: 11,
+                lineHeight: 1.4,
+                opacity: 0.57,
+              }}
+            >
+              {detail}
+            </div>
+          </div>
+
+          <span
+            style={{
+              ...badgeStyles,
+              flex: "0 0 auto",
+              borderRadius: 999,
+              padding: "4px 7px",
+              fontSize: 9,
+              fontWeight: 850,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {badge}
+          </span>
+        </div>
+      </button>
+
+      {preview ? (
+        <AtlasHoverPreview
+          data={preview}
+          isMobile={isMobile}
+          onOpen={onClick}
+        />
+      ) : null}
+    </div>
   );
 }
 
