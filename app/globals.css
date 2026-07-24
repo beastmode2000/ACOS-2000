@@ -331,3 +331,224 @@ a:focus-visible {
     transition: none !important;
   }
 }
+
+
+/* Atlas 3.2 — live intelligence previews */
+.atlas-preview-anchor {
+  position: relative;
+  min-width: 0;
+}
+
+.atlas-intelligence-preview-root {
+  position: static;
+}
+
+.atlas-intelligence-preview {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% - 2px);
+  left: 18px;
+  width: min(340px, calc(100vw - 40px));
+  padding: 16px;
+  border: 1px solid rgba(201, 154, 61, 0.46);
+  border-radius: 17px;
+  color: var(--atlas-text);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.985), rgba(248, 250, 252, 0.985));
+  box-shadow:
+    0 26px 70px rgba(7, 20, 36, 0.22),
+    0 8px 24px rgba(7, 20, 36, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(8px) scale(0.975);
+  transform-origin: 28px top;
+  transition:
+    opacity 150ms ease,
+    visibility 150ms ease,
+    transform 190ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.atlas-intelligence-preview::before {
+  position: absolute;
+  top: -6px;
+  left: 28px;
+  width: 11px;
+  height: 11px;
+  border-top: 1px solid rgba(201, 154, 61, 0.46);
+  border-left: 1px solid rgba(201, 154, 61, 0.46);
+  background: #ffffff;
+  transform: rotate(45deg);
+  content: "";
+}
+
+.atlas-preview-kicker {
+  color: var(--atlas-gold-600);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.atlas-preview-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 5px;
+}
+
+.atlas-preview-title-row h4 {
+  min-width: 0;
+  margin: 0;
+  color: var(--atlas-navy-950);
+  font-size: 17px;
+  line-height: 1.25;
+  letter-spacing: -0.018em;
+  overflow-wrap: anywhere;
+}
+
+.atlas-preview-status {
+  flex: 0 0 auto;
+  max-width: 128px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: var(--atlas-navy-800);
+  background: rgba(201, 154, 61, 0.14);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atlas-preview-summary {
+  margin: 10px 0 0;
+  color: #5f6f7f;
+  font-size: 12px;
+  line-height: 1.52;
+}
+
+.atlas-preview-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 13px 0 0;
+}
+
+.atlas-preview-fields > div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 31, 48, 0.07);
+  border-radius: 11px;
+  background: rgba(15, 31, 48, 0.035);
+}
+
+.atlas-preview-fields dt {
+  color: #7b8793;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.atlas-preview-fields dd {
+  margin: 4px 0 0;
+  color: var(--atlas-navy-950);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+.atlas-preview-open-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 12px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 11px;
+  color: #ffffff;
+  background: var(--atlas-navy-900);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  transition:
+    transform 150ms ease,
+    background 150ms ease;
+}
+
+.atlas-preview-open-button:hover {
+  background: var(--atlas-navy-950);
+  transform: translateY(-1px);
+}
+
+.atlas-preview-info-trigger {
+  position: absolute;
+  z-index: 12;
+  top: 15px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px !important;
+  padding: 0;
+  border: 1px solid rgba(201, 154, 61, 0.34);
+  border-radius: 999px;
+  color: var(--atlas-navy-900);
+  background: rgba(201, 154, 61, 0.12);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .atlas-preview-anchor:hover > .atlas-intelligence-preview-root > .atlas-intelligence-preview,
+  .atlas-preview-anchor:focus-within > .atlas-intelligence-preview-root > .atlas-intelligence-preview {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 900px) {
+  .atlas-intelligence-preview {
+    position: fixed;
+    z-index: 250;
+    top: auto;
+    right: 14px;
+    bottom: 14px;
+    left: 14px;
+    width: auto;
+    max-height: min(74vh, 560px);
+    overflow-y: auto;
+    transform: translateY(18px) scale(0.985);
+    transform-origin: center bottom;
+  }
+
+  .atlas-intelligence-preview::before {
+    display: none;
+  }
+
+  .atlas-intelligence-preview-root--open > .atlas-intelligence-preview {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-intelligence-preview,
+  .atlas-preview-open-button {
+    transition: none !important;
+  }
+}
