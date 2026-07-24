@@ -187,15 +187,38 @@ export default function DailyOperationsManager({
     assetId: "",
   });
 
-  const effectiveServiceRecords = serviceRecords.map(
-    (item) => workOverrides[item.id] || item,
-  );
-  const effectiveTodayEvents = todayEvents.map(
-    (item) => calendarOverrides[calendarItemKey(item)] || item,
-  );
-  const effectiveUpcomingEvents = upcomingEvents.map(
-    (item) => calendarOverrides[calendarItemKey(item)] || item,
-  );
+  const effectiveServiceRecords = [
+    ...serviceRecords.map((item) => workOverrides[item.id] || item),
+    ...Object.values(workOverrides).filter(
+      (item) => !serviceRecords.some((existing) => existing.id === item.id),
+    ),
+  ];
+
+  const effectiveTodayEvents = [
+    ...todayEvents.map(
+      (item) => calendarOverrides[calendarItemKey(item)] || item,
+    ),
+    ...Object.values(calendarOverrides).filter(
+      (item) =>
+        item.date === today &&
+        !todayEvents.some(
+          (existing) => calendarItemKey(existing) === calendarItemKey(item),
+        ),
+    ),
+  ];
+
+  const effectiveUpcomingEvents = [
+    ...upcomingEvents.map(
+      (item) => calendarOverrides[calendarItemKey(item)] || item,
+    ),
+    ...Object.values(calendarOverrides).filter(
+      (item) =>
+        item.date > today &&
+        !upcomingEvents.some(
+          (existing) => calendarItemKey(existing) === calendarItemKey(item),
+        ),
+    ),
+  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -873,7 +896,7 @@ export default function DailyOperationsManager({
       title: string;
       detail: string;
       tone: "routine" | "urgent" | "schedule" | "weather";
-      action: () => void;
+      action?: () => void;
     }> = [];
 
     if (routineOccurrence) {
@@ -884,7 +907,10 @@ export default function DailyOperationsManager({
           ? `${completedRoutineTasks} of ${routineTasks.length} complete`
           : "No tasks added",
         tone: "routine",
-        action: openRoutineChecklist,
+        action:
+          completedRoutineTasks < routineTasks.length
+            ? openRoutineChecklist
+            : undefined,
       });
     }
 
@@ -934,7 +960,7 @@ export default function DailyOperationsManager({
         : "Weather unavailable",
       detail: weatherAdvice,
       tone: "weather",
-      action: onOpenCalendarPage,
+      action: undefined,
     });
 
     return items.slice(0, 4);
@@ -942,9 +968,7 @@ export default function DailyOperationsManager({
     completedRoutineTasks,
     dueToday,
     onOpenCalendar,
-    onOpenCalendarPage,
     onOpenWorkOrder,
-    onOpenWorkOrdersPage,
     overdue,
     routineOccurrence,
     routineTasks.length,
@@ -1372,6 +1396,7 @@ export default function DailyOperationsManager({
                 <button
                   key={item.id}
                   type="button"
+                  disabled={!item.action}
                   onClick={item.action}
                   className="atlas-mission-card"
                   style={{
@@ -1386,7 +1411,7 @@ export default function DailyOperationsManager({
                     padding: "11px 12px",
                     color: colors.navy,
                     textAlign: "left",
-                    cursor: "pointer",
+                    cursor: item.action ? "pointer" : "default",
                   }}
                 >
                   <span
@@ -1815,15 +1840,38 @@ export default function DailyOperationsManager({
                 <RowButton
                   key={item.instanceId || item.id}
                   title={item.linkedName || item.title}
-                  detail={item.allDay ? "All day" : item.time || "No time"}
-                  badge="Vendor"
-                  badgeTone="info"
+                  detail={
+                    item.completed
+                      ? `${item.linkedName || item.title} was onsite${
+                          item.time ? ` · ${item.time}` : ""
+                        }${
+                          item.notes?.includes("Contact:")
+                            ? ` · ${item.notes.split("\n")[0].replace("Contact:", "").trim()}`
+                            : ""
+                        }`
+                      : item.allDay
+                        ? "All day"
+                        : item.time || "No time"
+                  }
+                  badge={item.completed ? "Completed" : "Vendor"}
+                  badgeTone={item.completed ? "neutral" : "info"}
                   onClick={() => onOpenCalendar(item)}
-                  onDone={() => void completeCalendarItem(item)}
+                  onDone={
+                    item.completed
+                      ? undefined
+                      : () => void completeCalendarItem(item)
+                  }
                   doneBusy={
                     busyAction ===
                     `calendar:${calendarItemKey(item)}`
                   }
+                  completed={Boolean(item.completed)}
+                  completedAt={
+                    recentlyCompleted[
+                      `calendar:${calendarItemKey(item)}`
+                    ] || ""
+                  }
+                  notes={item.notes ? [item.notes] : []}
                   colors={colors}
                   isMobile={isMobile}
                   preview={{
@@ -1864,11 +1912,6 @@ export default function DailyOperationsManager({
                   badge={item.linkedType || "Event"}
                   badgeTone="neutral"
                   onClick={() => onOpenCalendar(item)}
-                  onDone={() => void completeCalendarItem(item)}
-                  doneBusy={
-                    busyAction ===
-                    `calendar:${calendarItemKey(item)}`
-                  }
                   colors={colors}
                   isMobile={isMobile}
                   preview={{
