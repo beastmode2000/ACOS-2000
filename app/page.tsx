@@ -4296,14 +4296,117 @@ export default function AtlasPage() {
           }
         }
 
-        // A successful Neon response is authoritative for the active property.
-        // Browser storage is only an offline loading cache and must never
-        // recreate records that were intentionally deleted from Neon.
-        const sharedItems = byTitle(
-          apiCalendar
+             // Neon remains authoritative after the one-time phone recovery.
+        // The phone currently contains older calendar events that were saved
+        // only in that device's browser storage. On the first phone load after
+        // this update, upload those missing manual events into shared Atlas.
+        const normalizedSharedItems = apiCalendar
+          .map(normalizeCalendar)
+          .filter((item) => item.id && item.date && item.title);
+
+        let sharedItems = byTitle(normalizedSharedItems);
+
+        const phoneRecoveryKey =
+          `atlas-calendar-phone-recovery-v1-${activePropertyId}`;
+
+        const isPhoneDevice =
+          typeof window !== "undefined" &&
+          window.matchMedia("(max-width: 900px)").matches;
+
+        const phoneRecoveryAlreadyCompleted =
+          typeof window !== "undefined" &&
+          window.localStorage.getItem(phoneRecoveryKey) === "done";
+
+        if (isPhoneDevice && !phoneRecoveryAlreadyCompleted) {
+          setDatabaseStatus(
+            "Recovering this phone's calendar into shared Atlas...",
+          );
+
+          const phoneStoredItems = mergeCalendarItemRecords(
+            readAllStoredArrays<CalendarItem>(storageKeys.calendar),
+            [],
+          )
             .map(normalizeCalendar)
-            .filter((item) => item.id && item.date && item.title),
-        );
+            .filter(
+              (item) =>
+                item.id &&
+                item.date &&
+                item.title &&
+                item.source === "manual",
+            );
+
+          const sharedIds = new Set(
+            normalizedSharedItems.map((item) => item.id),
+          );
+
+          const eventSignature = (item: CalendarItem) =>
+            [
+              item.date,
+              item.time || "",
+              item.title.trim().toLowerCase(),
+              item.repeat || "None",
+              item.categoryLabel || item.area || "",
+            ].join("|");
+
+          const sharedSignatures = new Set(
+            normalizedSharedItems.map(eventSignature),
+          );
+
+          const missingPhoneItems = phoneStoredItems.filter((item) => {
+            return (
+              !sharedIds.has(item.id) &&
+              !sharedSignatures.has(eventSignature(item))
+            );
+          });
+
+          if (missingPhoneItems.length > 0) {
+            const uploadResults = await Promise.all(
+              missingPhoneItems.map(async (item) => {
+                const saved = await postAtlasRecord("calendar", {
+                  ...item,
+                  propertyId: activePropertyId,
+                  status: item.completed ? "Completed" : "Scheduled",
+                });
+
+                return {
+                  item,
+                  saved,
+                };
+              }),
+            );
+
+            const successfullyRecoveredItems = uploadResults
+              .filter((result) => result.saved)
+              .map((result) => result.item);
+
+            sharedItems = byTitle([
+              ...normalizedSharedItems,
+              ...successfullyRecoveredItems,
+            ]);
+
+            const allRecovered = uploadResults.every(
+              (result) => result.saved,
+            );
+
+            if (allRecovered) {
+              window.localStorage.setItem(phoneRecoveryKey, "done");
+
+              setDatabaseStatus(
+                `${successfullyRecoveredItems.length} phone calendar events recovered into shared Atlas.`,
+              );
+            } else {
+              setDatabaseStatus(
+                `${successfullyRecoveredItems.length} phone events recovered. Some events did not upload and Atlas will retry next time.`,
+              );
+            }
+          } else {
+            window.localStorage.setItem(phoneRecoveryKey, "done");
+
+            setDatabaseStatus(
+              "This phone's calendar is already stored in shared Atlas.",
+            );
+          }
+        }
 
         saveStoredArray(storageKeys.calendar[0], sharedItems);
         setCalendarItems(sharedItems);
