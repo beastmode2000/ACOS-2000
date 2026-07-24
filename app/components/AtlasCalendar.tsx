@@ -79,6 +79,7 @@ type AtlasCalendarProps = {
   moveCalendarYear: any;
   mutedSmallStyle: React.CSSProperties;
   openCalendarItem: any;
+  onOpenLinkedRecord?: (event: any) => boolean | void;
   reminderOptions: string[];
   repeatOptions: string[];
   saveCalendarItem: any;
@@ -284,6 +285,7 @@ export default function AtlasCalendar(
     moveCalendarYear,
     mutedSmallStyle,
     openCalendarItem,
+    onOpenLinkedRecord,
     reminderOptions,
     repeatOptions,
     saveCalendarItem,
@@ -438,6 +440,32 @@ export default function AtlasCalendar(
     setDetailOpen(true);
   }
 
+  function openEvent(event: any) {
+    const linkedType = String(event?.linkedType || "");
+    const linkedId = String(event?.linkedId || "");
+
+    if (
+      linkedId &&
+      linkedType &&
+      linkedType !== "None" &&
+      onOpenLinkedRecord
+    ) {
+      const handled = onOpenLinkedRecord(event);
+
+      if (handled !== false) {
+        setDetailOpen(false);
+        setEditorOpen(false);
+        setSelectedCalendarId("");
+        setCalendarDraft(
+          blankCalendarItem(selectedCalendarDate),
+        );
+        return;
+      }
+    }
+
+    editEvent(event);
+  }
+
   function startNewEvent() {
     addCalendarItem(selectedCalendarDate);
     setEditorOpen(true);
@@ -587,7 +615,7 @@ export default function AtlasCalendar(
                   title={hoverText(event)}
                   onClick={(mouseEvent) => {
                     mouseEvent.stopPropagation();
-                    editEvent(event);
+                    openEvent(event);
                   }}
                   style={{
                     display: "flex",
@@ -748,7 +776,7 @@ export default function AtlasCalendar(
                         }
                         type="button"
                         title={hoverText(event)}
-                        onClick={() => editEvent(event)}
+                        onClick={() => openEvent(event)}
                         style={{
                           ...calendarTodayItemStyle,
                           borderColor: eventColor.hex,
