@@ -29,6 +29,8 @@ type Props = {
   onAskAtlas: (prompt: string) => void;
 };
 
+type CardTone = "default" | "schedule" | "upcoming" | "weather" | "priority";
+
 function dateLabel(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
 
@@ -188,10 +190,17 @@ export default function DailyOperationsManager({
 
   const prioritySummaryIcon =
     priorityWork.length === 0
-      ? "✅"
+      ? "✓"
       : priorityWork.length <= 2
-        ? "🟡"
-        : "🔴";
+        ? "●"
+        : "●";
+
+  const prioritySummaryColor =
+    priorityWork.length === 0
+      ? "#7CCB9B"
+      : priorityWork.length <= 2
+        ? "#E7C35A"
+        : "#F08080";
 
   const scheduleSummary =
     sortedTodayEvents.length === 0
@@ -206,6 +215,10 @@ export default function DailyOperationsManager({
       )}° ${weatherCondition(todayWeather.code)}`
     : "🌡️ Weather unavailable";
 
+  const visibleTodayEvents = sortedTodayEvents.slice(0, 4);
+  const visibleUpcomingEvents = sortedUpcomingEvents.slice(0, 4);
+  const visiblePriorityWork = priorityWork.slice(0, 4);
+
   return (
     <section
       style={{
@@ -214,6 +227,7 @@ export default function DailyOperationsManager({
         background: colors.card,
         overflow: "hidden",
         marginBottom: 16,
+        boxShadow: "0 8px 28px rgba(15, 31, 48, 0.08)",
       }}
     >
       <div
@@ -233,8 +247,8 @@ export default function DailyOperationsManager({
             style={{
               color: colors.gold,
               fontSize: 11,
-              fontWeight: 950,
-              letterSpacing: "0.12em",
+              fontWeight: 900,
+              letterSpacing: "0.1em",
               textTransform: "uppercase",
             }}
           >
@@ -245,6 +259,7 @@ export default function DailyOperationsManager({
             style={{
               margin: "5px 0 4px",
               fontSize: isMobile ? 22 : 26,
+              letterSpacing: "-0.015em",
             }}
           >
             {greeting}, Nick
@@ -257,7 +272,7 @@ export default function DailyOperationsManager({
               alignItems: "center",
               gap: isMobile ? 6 : 8,
               fontSize: isMobile ? 13 : 14,
-              fontWeight: 750,
+              fontWeight: 700,
               lineHeight: 1.5,
             }}
           >
@@ -276,7 +291,16 @@ export default function DailyOperationsManager({
                 gap: 5,
               }}
             >
-              <span aria-hidden="true">{prioritySummaryIcon}</span>
+              <span
+                aria-hidden="true"
+                style={{
+                  color: prioritySummaryColor,
+                  fontWeight: 950,
+                }}
+              >
+                {prioritySummaryIcon}
+              </span>
+
               <span>{prioritySummary}</span>
             </span>
 
@@ -300,8 +324,8 @@ export default function DailyOperationsManager({
 
           <div
             style={{
-              marginTop: 4,
-              opacity: 0.68,
+              marginTop: 5,
+              opacity: 0.62,
               fontSize: 12,
             }}
           >
@@ -323,9 +347,10 @@ export default function DailyOperationsManager({
             background: colors.gold,
             color: colors.navy,
             padding: "11px 14px",
-            fontWeight: 950,
+            fontWeight: 900,
             cursor: "pointer",
             whiteSpace: "nowrap",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.12)",
           }}
         >
           Build Today’s Plan
@@ -339,16 +364,18 @@ export default function DailyOperationsManager({
           gridTemplateColumns: isMobile
             ? "1fr"
             : "repeat(2, minmax(0, 1fr))",
-          gap: 12,
-          alignItems: "stretch",
+          gap: 14,
+          alignItems: "start",
         }}
       >
         <BriefingCard
           title="Today’s Schedule"
+          icon="▣"
+          tone="schedule"
           colors={colors}
         >
-          {sortedTodayEvents.length ? (
-            sortedTodayEvents.slice(0, 5).map((item) => (
+          {visibleTodayEvents.length ? (
+            visibleTodayEvents.map((item) => (
               <BriefingButton
                 key={item.instanceId || item.id}
                 title={item.title}
@@ -360,14 +387,23 @@ export default function DailyOperationsManager({
           ) : (
             <EmptyLine>No scheduled events today.</EmptyLine>
           )}
+
+          {sortedTodayEvents.length > visibleTodayEvents.length && (
+            <MoreLine
+              count={sortedTodayEvents.length - visibleTodayEvents.length}
+              label="more scheduled"
+            />
+          )}
         </BriefingCard>
 
         <BriefingCard
           title="Upcoming"
+          icon="→"
+          tone="upcoming"
           colors={colors}
         >
-          {sortedUpcomingEvents.length ? (
-            sortedUpcomingEvents.slice(0, 5).map((item) => (
+          {visibleUpcomingEvents.length ? (
+            visibleUpcomingEvents.map((item) => (
               <BriefingButton
                 key={item.instanceId || item.id}
                 title={item.title}
@@ -385,10 +421,19 @@ export default function DailyOperationsManager({
           ) : (
             <EmptyLine>No upcoming calendar events.</EmptyLine>
           )}
+
+          {sortedUpcomingEvents.length > visibleUpcomingEvents.length && (
+            <MoreLine
+              count={sortedUpcomingEvents.length - visibleUpcomingEvents.length}
+              label="more upcoming"
+            />
+          )}
         </BriefingCard>
 
         <BriefingCard
           title="Today’s Weather"
+          icon={todayWeather ? weatherIcon(todayWeather.code) : "◌"}
+          tone="weather"
           colors={colors}
         >
           {todayWeather ? (
@@ -404,7 +449,7 @@ export default function DailyOperationsManager({
                 <div
                   aria-hidden="true"
                   style={{
-                    fontSize: 34,
+                    fontSize: 32,
                     lineHeight: 1,
                   }}
                 >
@@ -415,7 +460,8 @@ export default function DailyOperationsManager({
                   <div
                     style={{
                       fontSize: 16,
-                      fontWeight: 900,
+                      fontWeight: 850,
+                      letterSpacing: "-0.01em",
                     }}
                   >
                     {weatherCondition(todayWeather.code)}
@@ -425,7 +471,7 @@ export default function DailyOperationsManager({
                     style={{
                       marginTop: 3,
                       fontSize: 13,
-                      opacity: 0.72,
+                      opacity: 0.62,
                     }}
                   >
                     High {Math.round(todayWeather.high)}° · Low{" "}
@@ -438,6 +484,7 @@ export default function DailyOperationsManager({
                 style={{
                   lineHeight: 1.55,
                   fontSize: 13,
+                  opacity: 0.86,
                 }}
               >
                 {weatherAdvice}
@@ -447,7 +494,7 @@ export default function DailyOperationsManager({
                 style={{
                   marginTop: 3,
                   fontSize: 12,
-                  opacity: 0.72,
+                  opacity: 0.58,
                 }}
               >
                 Rain {Math.round(todayWeather.precipChance)}% · Wind{" "}
@@ -461,10 +508,12 @@ export default function DailyOperationsManager({
 
         <BriefingCard
           title="Priority Work"
+          icon="!"
+          tone="priority"
           colors={colors}
         >
-          {priorityWork.length ? (
-            priorityWork.map((item) => (
+          {visiblePriorityWork.length ? (
+            visiblePriorityWork.map((item) => (
               <BriefingButton
                 key={item.id}
                 title={item.title}
@@ -477,17 +526,42 @@ export default function DailyOperationsManager({
                 }`}
                 onClick={() => onOpenWorkOrder(item.id)}
                 colors={colors}
+                accent={
+                  item.date && item.date < today
+                    ? "#D97070"
+                    : item.priority === "High"
+                      ? "#D7A84B"
+                      : undefined
+                }
               />
             ))
           ) : (
-            <EmptyLine>
-              No high-priority or overdue work.
-            </EmptyLine>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                color: "#4C9069",
+                fontWeight: 750,
+              }}
+            >
+              <span aria-hidden="true">✓</span>
+              <span>No high-priority or overdue work.</span>
+            </div>
+          )}
+
+          {priorityWork.length > visiblePriorityWork.length && (
+            <MoreLine
+              count={priorityWork.length - visiblePriorityWork.length}
+              label="more priority items"
+            />
           )}
         </BriefingCard>
 
         <BriefingCard
           title="Atlas Notices"
+          icon="i"
           colors={colors}
         >
           <NoticeLine
@@ -508,6 +582,7 @@ export default function DailyOperationsManager({
 
         <BriefingCard
           title="Suggested AI Checks"
+          icon="✦"
           colors={colors}
         >
           <ActionLink
@@ -543,18 +618,33 @@ export default function DailyOperationsManager({
 }
 
 function SummaryDivider() {
-  return <span style={{ opacity: 0.4 }}>•</span>;
+  return <span style={{ opacity: 0.32 }}>•</span>;
 }
 
 function BriefingCard({
   title,
+  icon,
+  tone = "default",
   colors,
   children,
 }: {
   title: string;
+  icon: string;
+  tone?: CardTone;
   colors: Props["colors"];
   children: React.ReactNode;
 }) {
+  const iconBackground =
+    tone === "schedule"
+      ? "rgba(59, 110, 155, 0.1)"
+      : tone === "upcoming"
+        ? "rgba(93, 105, 140, 0.1)"
+        : tone === "weather"
+          ? "rgba(215, 168, 75, 0.12)"
+          : tone === "priority"
+            ? "rgba(190, 92, 92, 0.1)"
+            : "rgba(90, 102, 115, 0.08)";
+
   return (
     <div
       style={{
@@ -563,20 +653,46 @@ function BriefingCard({
         background: colors.panel,
         padding: 14,
         minWidth: 0,
-        height: "100%",
         boxSizing: "border-box",
       }}
     >
       <div
         style={{
           marginBottom: 10,
-          fontSize: 12,
-          fontWeight: 950,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
         }}
       >
-        {title}
+        <span
+          aria-hidden="true"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 8,
+            background: iconBackground,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: "0 0 auto",
+            fontSize: 13,
+            fontWeight: 900,
+            opacity: 0.8,
+          }}
+        >
+          {icon}
+        </span>
+
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 900,
+            letterSpacing: "0.035em",
+            textTransform: "uppercase",
+          }}
+        >
+          {title}
+        </span>
       </div>
 
       <div
@@ -596,32 +712,52 @@ function BriefingButton({
   detail,
   onClick,
   colors,
+  accent,
 }: {
   title: string;
   detail: string;
   onClick: () => void;
   colors: Props["colors"];
+  accent?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
+        position: "relative",
         width: "100%",
         border: `1px solid ${colors.line}`,
         borderRadius: 10,
         background: colors.card,
-        padding: "9px 10px",
+        padding: accent ? "9px 10px 9px 13px" : "9px 10px",
         textAlign: "left",
         cursor: "pointer",
         color: "inherit",
         minWidth: 0,
+        overflow: "hidden",
       }}
     >
+      {accent && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 7,
+            bottom: 7,
+            left: 0,
+            width: 3,
+            borderRadius: "0 3px 3px 0",
+            background: accent,
+          }}
+        />
+      )}
+
       <div
         style={{
-          fontWeight: 850,
+          fontWeight: 800,
           fontSize: 13,
+          lineHeight: 1.35,
           overflowWrap: "anywhere",
         }}
       >
@@ -631,8 +767,9 @@ function BriefingButton({
       <div
         style={{
           fontSize: 11,
-          opacity: 0.68,
+          opacity: 0.57,
           marginTop: 3,
+          lineHeight: 1.4,
           overflowWrap: "anywhere",
         }}
       >
@@ -651,11 +788,32 @@ function EmptyLine({
     <div
       style={{
         fontSize: 13,
-        opacity: 0.68,
+        opacity: 0.62,
         lineHeight: 1.5,
       }}
     >
       {children}
+    </div>
+  );
+}
+
+function MoreLine({
+  count,
+  label,
+}: {
+  count: number;
+  label: string;
+}) {
+  return (
+    <div
+      style={{
+        paddingTop: 2,
+        fontSize: 11,
+        fontWeight: 700,
+        opacity: 0.52,
+      }}
+    >
+      +{count} {label}
     </div>
   );
 }
@@ -674,10 +832,11 @@ function NoticeLine({
         gap: 8,
         alignItems: "baseline",
         fontSize: 13,
+        lineHeight: 1.45,
       }}
     >
-      <strong>{count}</strong>
-      <span style={{ opacity: 0.75 }}>{label}</span>
+      <strong style={{ minWidth: 15 }}>{count}</strong>
+      <span style={{ opacity: 0.66 }}>{label}</span>
     </div>
   );
 }
@@ -695,16 +854,17 @@ function ActionLink({
       onClick={onClick}
       style={{
         border: 0,
-        padding: 0,
+        padding: "3px 0",
         background: "transparent",
         color: "inherit",
         textAlign: "left",
-        fontWeight: 850,
+        fontSize: 13,
+        fontWeight: 750,
         cursor: "pointer",
-        textDecoration: "underline",
+        opacity: 0.82,
       }}
     >
-      {label}
+      {label} <span style={{ opacity: 0.5 }}>→</span>
     </button>
   );
 }
