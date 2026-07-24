@@ -1028,10 +1028,6 @@ export default function DailyOperationsManager({
           : "Outdoor maintenance has a favorable work window.",
   ].filter(Boolean) as string[];
 
-  // The Dashboard now uses AtlasDashboard as its only command-center surface.
-  // Keep this complete component intact for future reuse, but do not render it.
-  if (true) return null;
-
   return (
     <>
       <section
