@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo } from "react";
-import AtlasRoutines from "./AtlasRoutines";
 
 type AtlasDashboardProps = {
   [key: string]: any;
@@ -378,12 +377,6 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           <div style={noticeStyle}>Activity will appear as requests and work are updated.</div>
         )}
       </section>
-
-      <AtlasRoutines
-        mode="dashboard"
-        isMobile={isMobile}
-        onOpenManager={() => setScreen("routines")}
-      />
 
       <section style={sectionStyle}>
         <SectionHeader
