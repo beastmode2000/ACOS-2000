@@ -281,7 +281,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                   marginBottom: 4,
                 }}
               >
-                Activity Timeline
+                2000 Operations
               </h2>
 
               <p
@@ -290,7 +290,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                   color: "rgba(255,255,255,0.78)",
                 }}
               >
-                Latest activity across the estate.
+                Current schedule, priorities, conditions, and estate activity.
               </p>
             </div>
           </div>
@@ -319,8 +319,8 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
         <SectionHeader
           brand
           eyebrow="Property Record"
-          title="Recent Activity"
-          detail="The newest requests, completed work, and work notes across Atlas."
+          title="Activity Timeline"
+          detail="The newest requests, completed work, vendor activity, and work notes across Atlas."
           right={
             <button
               type="button"
