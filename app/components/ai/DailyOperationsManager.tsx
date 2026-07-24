@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import AtlasHoverPreview, {
   type AtlasHoverPreviewData,
 } from "../AtlasHoverPreview";
+import AtlasFocusTarget, {
+  focusTokensFromPreview,
+} from "../AtlasFocusMode";
 import type {
   AssetRecord,
   CalendarItem,
@@ -1686,7 +1689,11 @@ function RowButton({
           : { background: "rgba(15,31,48,0.07)", color: "#52606B" };
 
   return (
-    <div className="atlas-preview-anchor">
+    <AtlasFocusTarget
+      id={`dashboard-row-${title}-${detail}`}
+      tokens={focusTokensFromPreview(preview, title)}
+      className="atlas-preview-anchor"
+    >
       <button
         className="atlas-row-button"
         type="button"
@@ -1760,7 +1767,7 @@ function RowButton({
           onOpen={onClick}
         />
       ) : null}
-    </div>
+    </AtlasFocusTarget>
   );
 }
 
