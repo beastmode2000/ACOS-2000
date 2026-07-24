@@ -373,6 +373,16 @@ export default function DailyOperationsManager({
           icon="▣"
           tone="schedule"
           colors={colors}
+          onClick={() => {
+            if (sortedTodayEvents[0]) {
+              onOpenCalendar(sortedTodayEvents[0]);
+              return;
+            }
+
+            onAskAtlas(
+              "Review today’s calendar and help me use the open time effectively.",
+            );
+          }}
         >
           {visibleTodayEvents.length ? (
             visibleTodayEvents.map((item) => (
@@ -401,6 +411,16 @@ export default function DailyOperationsManager({
           icon="→"
           tone="upcoming"
           colors={colors}
+          onClick={() => {
+            if (sortedUpcomingEvents[0]) {
+              onOpenCalendar(sortedUpcomingEvents[0]);
+              return;
+            }
+
+            onAskAtlas(
+              "Review my upcoming calendar and identify anything I should prepare for.",
+            );
+          }}
         >
           {visibleUpcomingEvents.length ? (
             visibleUpcomingEvents.map((item) => (
@@ -435,6 +455,11 @@ export default function DailyOperationsManager({
           icon={todayWeather ? weatherIcon(todayWeather.code) : "◌"}
           tone="weather"
           colors={colors}
+          onClick={() =>
+            onAskAtlas(
+              "Use today’s weather to recommend the best order for outdoor, indoor, irrigation, dock, and maintenance work.",
+            )
+          }
         >
           {todayWeather ? (
             <>
@@ -511,6 +536,16 @@ export default function DailyOperationsManager({
           icon="!"
           tone="priority"
           colors={colors}
+          onClick={() => {
+            if (priorityWork[0]) {
+              onOpenWorkOrder(priorityWork[0].id);
+              return;
+            }
+
+            onAskAtlas(
+              "Review my open work and confirm whether anything should be treated as a priority today.",
+            );
+          }}
         >
           {visiblePriorityWork.length ? (
             visiblePriorityWork.map((item) => (
@@ -563,6 +598,11 @@ export default function DailyOperationsManager({
           title="Atlas Notices"
           icon="i"
           colors={colors}
+          onClick={() =>
+            onAskAtlas(
+              "Review the current Atlas notices, explain what needs attention, and recommend the best next actions.",
+            )
+          }
         >
           <NoticeLine
             count={assetsWithoutProcedure.length}
@@ -584,6 +624,11 @@ export default function DailyOperationsManager({
           title="Suggested AI Checks"
           icon="✦"
           colors={colors}
+          onClick={() =>
+            onAskAtlas(
+              "Run the most useful daily operational checks for 2000 and summarize what needs my attention.",
+            )
+          }
         >
           <ActionLink
             label="Review overdue work"
@@ -627,12 +672,14 @@ function BriefingCard({
   tone = "default",
   colors,
   children,
+  onClick,
 }: {
   title: string;
   icon: string;
   tone?: CardTone;
   colors: Props["colors"];
   children: React.ReactNode;
+  onClick?: () => void;
 }) {
   const iconBackground =
     tone === "schedule"
@@ -647,6 +694,24 @@ function BriefingCard({
 
   return (
     <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `Open ${title}` : undefined}
+      onClick={(event) => {
+        if (!onClick) return;
+
+        const target = event.target as HTMLElement;
+        if (target.closest("button, a, input, select, textarea")) return;
+
+        onClick();
+      }}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key !== "Enter" && event.key !== " ") return;
+
+        event.preventDefault();
+        onClick();
+      }}
       style={{
         border: `1px solid ${colors.line}`,
         borderRadius: 14,
@@ -654,6 +719,8 @@ function BriefingCard({
         padding: 14,
         minWidth: 0,
         boxSizing: "border-box",
+        cursor: onClick ? "pointer" : "default",
+        transition: "transform 120ms ease, box-shadow 120ms ease",
       }}
     >
       <div
