@@ -243,6 +243,7 @@ export default function DailyOperationsManager({
           ? "#D7A84B"
           : "#D97070";
 
+
   const weatherAdvice = todayWeather
     ? todayWeather.precipChance >= 60
       ? "Prioritize indoor work and finish exposed outdoor tasks early."
@@ -276,6 +277,79 @@ export default function DailyOperationsManager({
     routineTasks.length > 0
       ? Math.round((completedRoutineTasks / routineTasks.length) * 100)
       : 0;
+
+
+  const healthDrivers = [
+    {
+      id: "routine",
+      label: "Routine completion",
+      detail: routineTasks.length
+        ? `${completedRoutineTasks} of ${routineTasks.length} complete`
+        : "No routine tasks scheduled",
+      positive: routineTasks.length === 0 || routineProgress >= 60,
+      impact:
+        routineTasks.length === 0
+          ? 0
+          : routineProgress >= 80
+            ? 2
+            : routineProgress >= 60
+              ? 1
+              : -2,
+    },
+    {
+      id: "overdue",
+      label: "Overdue work",
+      detail: overdue.length
+        ? `${overdue.length} overdue ${overdue.length === 1 ? "item" : "items"}`
+        : "No overdue work orders",
+      positive: overdue.length === 0,
+      impact: overdue.length === 0 ? 2 : -Math.min(overdue.length * 2, 6),
+    },
+    {
+      id: "priority",
+      label: "Priority workload",
+      detail: highPriority.length
+        ? `${highPriority.length} high-priority ${highPriority.length === 1 ? "item" : "items"}`
+        : "No high-priority backlog",
+      positive: highPriority.length === 0,
+      impact: highPriority.length === 0 ? 1 : -Math.min(highPriority.length, 4),
+    },
+    {
+      id: "procedures",
+      label: "Asset coverage",
+      detail: assetsWithoutProcedure.length
+        ? `${assetsWithoutProcedure.length} assets without linked procedures`
+        : "All assets have procedure coverage",
+      positive: assetsWithoutProcedure.length === 0,
+      impact: assetsWithoutProcedure.length === 0 ? 1 : -1,
+    },
+    {
+      id: "weather",
+      label: "Work conditions",
+      detail: todayWeather
+        ? weatherCondition(todayWeather.code)
+        : "Weather unavailable",
+      positive:
+        !todayWeather ||
+        (todayWeather.precipChance < 60 && todayWeather.windMax < 20),
+      impact:
+        !todayWeather
+          ? 0
+          : todayWeather.precipChance >= 60 || todayWeather.windMax >= 20
+            ? -1
+            : 1,
+    },
+  ];
+
+  const strongestPositiveDriver =
+    healthDrivers
+      .filter((driver) => driver.impact > 0)
+      .sort((a, b) => b.impact - a.impact)[0] || null;
+
+  const strongestNegativeDriver =
+    healthDrivers
+      .filter((driver) => driver.impact < 0)
+      .sort((a, b) => a.impact - b.impact)[0] || null;
 
   const missionItems = useMemo(() => {
     const items: Array<{
@@ -365,25 +439,31 @@ export default function DailyOperationsManager({
   ]);
 
   const briefingSentence = [
+    `${greeting}, Nick.`,
     routineOccurrence
-      ? `${routineOccurrence.name} is ${completedRoutineTasks} of ${routineTasks.length} complete.`
+      ? routineTasks.length
+        ? `${routineOccurrence.name} is ${completedRoutineTasks} of ${routineTasks.length} complete.`
+        : `${routineOccurrence.name} has no tasks scheduled.`
       : routineLoading
         ? "Today’s routine is loading."
         : "No weekday routine is scheduled today.",
-    `You have ${sortedTodayEvents.length} scheduled ${
-      sortedTodayEvents.length === 1 ? "event" : "events"
-    } today.`,
-    priorityWork.length
-      ? `${priorityWork.length} priority ${
-          priorityWork.length === 1 ? "item needs" : "items need"
-        } attention.`
-      : "No priority work is currently overdue.",
+    overdue.length
+      ? `${overdue.length} overdue ${overdue.length === 1 ? "work order needs" : "work orders need"} attention, led by ${overdue[0]?.title || "the oldest item"}.`
+      : dueToday.length
+        ? `${dueToday.length} ${dueToday.length === 1 ? "work order is" : "work orders are"} due today.`
+        : "There are no overdue work orders.",
+    sortedTodayEvents.length
+      ? `${sortedTodayEvents.length} scheduled ${sortedTodayEvents.length === 1 ? "event is" : "events are"} on today’s calendar${sortedTodayEvents[0]?.title ? `, beginning with ${sortedTodayEvents[0].title}` : ""}.`
+      : "The calendar is open today.",
     vendorEvents.length
-      ? `${vendorEvents.length} vendor ${
-          vendorEvents.length === 1 ? "visit is" : "visits are"
-        } on today’s schedule.`
-      : "No vendor visits are identified today.",
+      ? `${vendorEvents.length} vendor ${vendorEvents.length === 1 ? "visit is" : "visits are"} identified.`
+      : "No vendor visits are identified.",
     weatherAdvice,
+    strongestNegativeDriver
+      ? `Estate Health is ${healthScore}, mainly affected by ${strongestNegativeDriver.label.toLowerCase()}.`
+      : strongestPositiveDriver
+        ? `Estate Health is ${healthScore}, supported by ${strongestPositiveDriver.label.toLowerCase()}.`
+        : `Estate Health is ${healthScore}.`,
   ].join(" ");
 
   const todayFocus = [
@@ -481,7 +561,7 @@ export default function DailyOperationsManager({
             type="button"
             onClick={() =>
               onAskAtlas(
-                "Build a detailed plan for today using my calendar, open work orders, weather, priorities, vendors, and property locations.",
+                "Create a prioritized daily operations plan using today’s routine, calendar, overdue and due work orders, vendors, weather, estate-health drivers, and property locations. Put the most time-sensitive work first.",
               )
             }
             style={{
@@ -523,6 +603,101 @@ export default function DailyOperationsManager({
             }
             detail={todayWeather ? weatherCondition(todayWeather.code) : "Unavailable"}
           />
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            padding: 13,
+            borderRadius: 15,
+            background: "rgba(255,255,255,0.07)",
+            border: "1px solid rgba(255,255,255,0.1)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: 9,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: "0.09em",
+                textTransform: "uppercase",
+                color: colors.gold,
+              }}
+            >
+              Estate Health Drivers
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                opacity: 0.68,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Why the score changed
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(5, minmax(0, 1fr))",
+              gap: 8,
+            }}
+          >
+            {healthDrivers.map((driver) => (
+              <div
+                key={driver.id}
+                style={{
+                  minWidth: 0,
+                  padding: "9px 10px",
+                  borderRadius: 11,
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 11,
+                    fontWeight: 850,
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      color: driver.positive ? "#7DD3A8" : "#F6A6A6",
+                      fontWeight: 950,
+                    }}
+                  >
+                    {driver.positive ? "▲" : "▼"}
+                  </span>
+                  <span>{driver.label}</span>
+                </div>
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 10,
+                    lineHeight: 1.35,
+                    opacity: 0.62,
+                  }}
+                >
+                  {driver.detail}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </header>
 
