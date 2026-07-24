@@ -3795,6 +3795,7 @@ export default function AtlasPage() {
   const [calendarCursor, setCalendarCursor] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
   const [selectedCalendarId, setSelectedCalendarId] = useState("");
+  const [selectedCalendarOccurrenceDate, setSelectedCalendarOccurrenceDate] = useState("");
   const [calendarDraft, setCalendarDraft] = useState<CalendarItem>(() =>
     blankCalendarItem(todayISO()),
   );
@@ -8054,6 +8055,7 @@ export default function AtlasPage() {
     const targetDate = date || selectedCalendarDate || todayISO();
     setSelectedCalendarDate(targetDate);
     setSelectedCalendarId("");
+    setSelectedCalendarOccurrenceDate("");
     setCalendarDraft(blankCalendarItem(targetDate));
     setCalendarDirty(false);
     setCalendarIntakeText("");
@@ -8061,13 +8063,23 @@ export default function AtlasPage() {
     setScreen("calendar");
   }
 
-  function startEditCalendarItem(id: string) {
+  function startEditCalendarItem(id: string, occurrenceDate?: string) {
     const event = calendarItems.find((item) => item.id === id);
     if (!event) return;
     const normalized = normalizeCalendar(event);
+    const clickedOccurrenceDate = occurrenceDate || normalized.date;
+    const isRecurringOccurrence =
+      normalized.repeat !== "None" && clickedOccurrenceDate !== normalized.date;
+
     setSelectedCalendarId(normalized.id);
-    setSelectedCalendarDate(normalized.date);
-    setCalendarDraft({ ...normalized });
+    setSelectedCalendarOccurrenceDate(
+      isRecurringOccurrence ? clickedOccurrenceDate : "",
+    );
+    setSelectedCalendarDate(clickedOccurrenceDate);
+    setCalendarDraft({
+      ...normalized,
+      date: clickedOccurrenceDate,
+    });
     setCalendarDirty(false);
   }
 
@@ -8085,7 +8097,7 @@ export default function AtlasPage() {
       return;
     }
 
-    startEditCalendarItem(event.originalId || event.id);
+    startEditCalendarItem(event.originalId || event.id, event.date);
   }
 
   function addCalendarItem(date?: string) {
@@ -8122,7 +8134,7 @@ export default function AtlasPage() {
         linkedType: nextLinkedType,
         linkedId: patch.linkedId ?? current.linkedId ?? "",
         linkedName: patch.linkedName ?? current.linkedName ?? "",
-        completed: patch.completed ?? current.completed ?? false,
+        completed: false,
         source: "manual",
       };
 
@@ -8139,6 +8151,7 @@ export default function AtlasPage() {
 
   function resetCalendarEntryForm(date = selectedCalendarDate || todayISO()) {
     setSelectedCalendarId("");
+    setSelectedCalendarOccurrenceDate("");
     setCalendarDraft(blankCalendarItem(date));
     setCalendarDirty(false);
     setCalendarIntakeText("");
@@ -8146,6 +8159,16 @@ export default function AtlasPage() {
   }
 
   async function saveCalendarItem() {
+    const originalSeriesRecord = selectedCalendarId
+      ? calendarItems.find((item) => item.id === selectedCalendarId)
+      : undefined;
+    const displayedOccurrenceWasUnchanged =
+      Boolean(selectedCalendarOccurrenceDate) &&
+      calendarDraft.date === selectedCalendarOccurrenceDate;
+    const dateToPersist = displayedOccurrenceWasUnchanged
+      ? originalSeriesRecord?.date || calendarDraft.date
+      : calendarDraft.date;
+
     const record: CalendarItem = normalizeCalendar({
       ...calendarDraft,
       id: selectedCalendarId || uid("cal"),
@@ -8160,7 +8183,7 @@ export default function AtlasPage() {
         calendarDraft.area ||
         "Maintenance"
       ).trim(),
-      date: calendarDraft.date || selectedCalendarDate || todayISO(),
+      date: dateToPersist || selectedCalendarDate || todayISO(),
       time: calendarDraft.allDay ? "" : calendarDraft.time || "",
       colorId:
         calendarDraft.colorId ||
@@ -8184,7 +8207,7 @@ export default function AtlasPage() {
       linkedType: calendarDraft.linkedType || "None",
       linkedId: calendarDraft.linkedId || "",
       linkedName: calendarDraft.linkedName || "",
-      completed: !!calendarDraft.completed,
+      completed: false,
       source: "manual",
     });
 
@@ -8193,7 +8216,7 @@ export default function AtlasPage() {
     const saved = await postAtlasRecord("calendar", {
       ...record,
       propertyId: activePropertyId,
-      status: record.completed ? "Completed" : "Scheduled",
+      status: "Scheduled",
     });
 
     if (!saved) {
@@ -8268,13 +8291,19 @@ export default function AtlasPage() {
       ]);
     }
 
-    setSelectedCalendarDate(record.date);
+    const dateToKeepOpen = selectedCalendarOccurrenceDate || record.date;
+    setSelectedCalendarDate(dateToKeepOpen);
     setSelectedCalendarId(record.id);
-    setCalendarCursor(calendarDateValue(record.date));
+    setSelectedCalendarOccurrenceDate(
+      selectedCalendarOccurrenceDate && record.repeat !== "None"
+        ? selectedCalendarOccurrenceDate
+        : "",
+    );
+    setCalendarCursor(calendarDateValue(dateToKeepOpen));
     setCalendarDraft(record);
     setCalendarDirty(false);
     setDatabaseStatus("Calendar event saved to shared Atlas.");
-    resetCalendarEntryForm(record.date);
+    resetCalendarEntryForm(dateToKeepOpen);
   }
 
   async function deleteCalendarItem(id: string) {
@@ -8294,6 +8323,7 @@ export default function AtlasPage() {
     saveStoredArray(storageKeys.calendar[0], remaining);
     setCalendarItems(remaining);
     setSelectedCalendarId("");
+    setSelectedCalendarOccurrenceDate("");
     setCalendarDraft(blankCalendarItem(selectedCalendarDate));
     setCalendarDirty(false);
   }
