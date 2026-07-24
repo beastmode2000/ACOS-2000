@@ -221,7 +221,28 @@ async function getOrCreateOccurrence(
     return null;
   }
 
-  let rows = (await sql`
+  const templateRows = (await sql`
+    SELECT
+      day_of_week,
+      name,
+      tasks
+    FROM atlas_routine_templates
+    WHERE day_of_week = ${day}
+    LIMIT 1
+  `) as unknown as Array<Record<string, unknown>>;
+
+  const template = templateRows[0];
+
+  if (!template) {
+    return null;
+  }
+
+  const templateName = String(template.name || "Routine");
+  const templateTasks = normalizeTasks(template.tasks).filter(
+    (task) => task.enabled,
+  );
+
+  const occurrenceRows = (await sql`
     SELECT
       occurrence_date,
       day_of_week,
@@ -232,31 +253,13 @@ async function getOrCreateOccurrence(
     LIMIT 1
   `) as unknown as Array<Record<string, unknown>>;
 
-  if (!rows.length) {
-    const templates = (await sql`
-      SELECT
-        day_of_week,
-        name,
-        tasks
-      FROM atlas_routine_templates
-      WHERE day_of_week = ${day}
-      LIMIT 1
-    `) as unknown as Array<Record<string, unknown>>;
-
-    const template = templates[0];
-
-    if (!template) {
-      return null;
-    }
-
-    const occurrenceTasks = normalizeTasks(template.tasks)
-      .filter((task) => task.enabled)
-      .map((task) => ({
-        id: task.id,
-        title: task.title,
-        enabled: task.enabled,
-        completed: false,
-      }));
+  if (!occurrenceRows.length) {
+    const occurrenceTasks = templateTasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      enabled: task.enabled,
+      completed: false,
+    }));
 
     await sql`
       INSERT INTO atlas_routine_occurrences (
@@ -269,35 +272,63 @@ async function getOrCreateOccurrence(
       VALUES (
         ${dateKey}::date,
         ${day},
-        ${String(template.name || "Routine")},
+        ${templateName},
         ${JSON.stringify(occurrenceTasks)}::jsonb,
         NOW()
       )
       ON CONFLICT (occurrence_date) DO NOTHING
     `;
 
-    rows = (await sql`
-      SELECT
-        occurrence_date,
-        day_of_week,
-        routine_name,
-        tasks
-      FROM atlas_routine_occurrences
-      WHERE occurrence_date = ${dateKey}::date
-      LIMIT 1
-    `) as unknown as Array<Record<string, unknown>>;
+    return {
+      date: dateKey,
+      day,
+      name: templateName,
+      tasks: occurrenceTasks,
+    };
   }
 
-  const row = rows[0];
+  const occurrence = occurrenceRows[0];
+  const existingTasks = normalizeTasks(occurrence.tasks);
+  const completedById = new Map(
+    existingTasks.map((task) => [task.id, Boolean(task.completed)]),
+  );
 
-  return row
-    ? {
-        date: dateKey,
-        day: Number(row.day_of_week),
-        name: String(row.routine_name || "Routine"),
-        tasks: normalizeTasks(row.tasks),
-      }
-    : null;
+  const synchronizedTasks = templateTasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    enabled: task.enabled,
+    completed: completedById.get(task.id) || false,
+  }));
+
+  const existingComparable = existingTasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    enabled: task.enabled,
+    completed: Boolean(task.completed),
+  }));
+
+  const needsSynchronization =
+    String(occurrence.routine_name || "") !== templateName ||
+    JSON.stringify(existingComparable) !== JSON.stringify(synchronizedTasks);
+
+  if (needsSynchronization) {
+    await sql`
+      UPDATE atlas_routine_occurrences
+      SET
+        day_of_week = ${day},
+        routine_name = ${templateName},
+        tasks = ${JSON.stringify(synchronizedTasks)}::jsonb,
+        updated_at = NOW()
+      WHERE occurrence_date = ${dateKey}::date
+    `;
+  }
+
+  return {
+    date: dateKey,
+    day,
+    name: templateName,
+    tasks: synchronizedTasks,
+  };
 }
 
 async function refreshOccurrenceForDate(
