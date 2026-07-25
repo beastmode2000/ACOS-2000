@@ -417,6 +417,12 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     color: colors.text,
   };
 
+  const searchControlStyle: React.CSSProperties = {
+    ...controlStyle,
+    border: `1px solid ${colors.navy}`,
+    boxShadow: "0 0 0 1px rgba(15, 31, 48, 0.05)",
+  };
+
   const filterPanelStyle: React.CSSProperties = {
     display: "grid",
     gap: 10,
@@ -445,34 +451,62 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     cursor: "pointer",
   });
 
-  const commandCenterStyle: React.CSSProperties = {
-    display: "grid",
-    gap: isMobile ? 14 : 18,
-    padding: isMobile ? 18 : 24,
+  const dashboardShellStyle: React.CSSProperties = {
+    marginBottom: 18,
     borderRadius: 24,
-    color: "#FFFFFF",
-    background: `linear-gradient(135deg, ${colors.navy} 0%, #183B55 100%)`,
-    boxShadow: "0 14px 38px rgba(15, 31, 48, 0.1)",
     overflow: "hidden",
+    background: colors.card,
+    border: `1px solid ${colors.line}`,
+    boxShadow: "0 14px 38px rgba(15, 31, 48, 0.1)",
+  };
+
+  const dashboardHeaderStyle: React.CSSProperties = {
+    padding: isMobile ? 18 : 24,
+    background: `linear-gradient(135deg, ${colors.navy} 0%, #183B55 100%)`,
+    color: "#FFFFFF",
   };
 
   const commandMetricGridStyle: React.CSSProperties = {
     display: "grid",
     gridTemplateColumns: isMobile
       ? "repeat(2, minmax(0, 1fr))"
-      : "repeat(6, minmax(0, 1fr))",
+      : "repeat(5, minmax(0, 1fr))",
     gap: 10,
+    marginTop: 20,
   };
 
   const commandMetricStyle: React.CSSProperties = {
     display: "grid",
     gap: 4,
     minWidth: 0,
-    padding: isMobile ? "11px 10px" : "13px 12px",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    borderRadius: 13,
-    background: "rgba(255, 255, 255, 0.08)",
-    backdropFilter: "blur(4px)",
+    padding: "13px 14px",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    background: "rgba(255,255,255,0.08)",
+  };
+
+  const driverPanelStyle: React.CSSProperties = {
+    marginTop: 14,
+    padding: 13,
+    borderRadius: 15,
+    background: "rgba(255,255,255,0.07)",
+    border: "1px solid rgba(255,255,255,0.1)",
+  };
+
+  const driverGridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "1fr"
+      : "repeat(5, minmax(0, 1fr))",
+    gap: 9,
+  };
+
+  const driverItemStyle: React.CSSProperties = {
+    minWidth: 0,
+    padding: "10px 12px",
+    borderRadius: 12,
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.09)",
   };
 
   const summaryGridStyle: React.CSSProperties = {
@@ -541,87 +575,220 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       }
       list={
         <div style={stackStyle}>
-          <section style={commandCenterStyle}>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: isMobile ? "column" : "row",
-                alignItems: isMobile ? "stretch" : "flex-start",
-                justifyContent: "space-between",
-                gap: 14,
-              }}
-            >
+          <section style={dashboardShellStyle}>
+            <header style={dashboardHeaderStyle}>
               <div style={{ minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 12,
+                    color: colors.gold,
+                    fontSize: 11,
                     fontWeight: 900,
                     letterSpacing: "0.12em",
                     textTransform: "uppercase",
-                    color: colors.gold,
                   }}
                 >
-                  Atlas Operations
+                  Work Management
                 </div>
+
                 <h2
                   style={{
-                    margin: "5px 0 4px",
-                    fontSize: isMobile ? 23 : 28,
+                    margin: "7px 0 3px",
+                    fontSize: isMobile ? 25 : 31,
                     lineHeight: 1.1,
+                    letterSpacing: "-0.025em",
                   }}
                 >
                   Work Orders Command Center
                 </h2>
-                <p
+
+                <div
                   style={{
-                    maxWidth: 760,
-                    margin: 0,
-                    color: "rgba(255, 255, 255, 0.78)",
-                    lineHeight: 1.5,
+                    fontSize: 14,
+                    opacity: 0.72,
+                    fontWeight: 650,
                   }}
                 >
-                  Current workload, urgent items, upcoming work, preventive
-                  maintenance, and recent completions for this property.
+                  Active workload and service history
+                </div>
+
+                <p
+                  style={{
+                    maxWidth: 820,
+                    margin: "13px 0 0",
+                    fontSize: isMobile ? 13 : 14,
+                    lineHeight: 1.65,
+                    opacity: 0.86,
+                  }}
+                >
+                  {commandCenter.overdue
+                    ? `${commandCenter.overdue} overdue work order${commandCenter.overdue === 1 ? " needs" : "s need"} attention. `
+                    : "There are no overdue work orders. "}
+                  {commandCenter.dueToday
+                    ? `${commandCenter.dueToday} item${commandCenter.dueToday === 1 ? " is" : "s are"} due today. `
+                    : "Nothing is due today. "}
+                  {commandCenter.highPriority
+                    ? `${commandCenter.highPriority} high-priority item${commandCenter.highPriority === 1 ? " remains" : "s remain"} active. `
+                    : "There is no high-priority backlog. "}
+                  {commandCenter.recurring} recurring maintenance item
+                  {commandCenter.recurring === 1 ? " is" : "s are"} currently
+                  tracked.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={addWorkOrder}
-                style={{
-                  ...goldButtonStyle,
-                  flex: "0 0 auto",
-                  alignSelf: isMobile ? "stretch" : "flex-start",
-                }}
-              >
-                Add Work
-              </button>
-            </div>
+              <div style={commandMetricGridStyle}>
+                {[
+                  ["Open Work", commandCenter.open, "active items"],
+                  ["Due Today", commandCenter.dueToday, "scheduled today"],
+                  ["Overdue", commandCenter.overdue, "need attention"],
+                  ["High Priority", commandCenter.highPriority, "active priority"],
+                  [
+                    "Completed",
+                    commandCenter.completedThisWeek,
+                    "finished this week",
+                  ],
+                ].map(([label, value, detail]) => (
+                  <div key={String(label)} style={commandMetricStyle}>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 900,
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                        opacity: 0.64,
+                      }}
+                    >
+                      {label}
+                    </span>
+                    <strong style={{ fontSize: 25, lineHeight: 1.05 }}>
+                      {value}
+                    </strong>
+                    <span style={{ fontSize: 12, opacity: 0.72 }}>
+                      {detail}
+                    </span>
+                  </div>
+                ))}
+              </div>
 
-            <div style={commandMetricGridStyle}>
-              {[
-                ["Open", commandCenter.open],
-                ["Due Today", commandCenter.dueToday],
-                ["Overdue", commandCenter.overdue],
-                ["High Priority", commandCenter.highPriority],
-                ["Completed This Week", commandCenter.completedThisWeek],
-                ["Recurring", commandCenter.recurring],
-              ].map(([label, value]) => (
-                <div key={String(label)} style={commandMetricStyle}>
-                  <strong style={{ fontSize: isMobile ? 23 : 27 }}>
-                    {value}
-                  </strong>
-                  <span
+              <div style={driverPanelStyle}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    marginBottom: 9,
+                  }}
+                >
+                  <div
                     style={{
-                      fontSize: 12,
-                      color: "rgba(255, 255, 255, 0.72)",
+                      fontSize: 11,
+                      fontWeight: 900,
+                      letterSpacing: "0.09em",
+                      textTransform: "uppercase",
+                      color: colors.gold,
                     }}
                   >
-                    {label}
-                  </span>
+                    Workload Drivers
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      opacity: 0.68,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    What needs attention
+                  </div>
                 </div>
-              ))}
-            </div>
+
+                <div style={driverGridStyle}>
+                  {[
+                    {
+                      label: "Overdue work",
+                      value: commandCenter.overdue
+                        ? `${commandCenter.overdue} overdue`
+                        : "No overdue work",
+                      symbol: commandCenter.overdue ? "▼" : "▲",
+                      accent: commandCenter.overdue ? "#FCA5A5" : "#86E1B5",
+                    },
+                    {
+                      label: "Today’s schedule",
+                      value: commandCenter.dueToday
+                        ? `${commandCenter.dueToday} due today`
+                        : "Schedule is open",
+                      symbol: commandCenter.dueToday ? "●" : "▲",
+                      accent: commandCenter.dueToday ? colors.gold : "#86E1B5",
+                    },
+                    {
+                      label: "Priority workload",
+                      value: commandCenter.highPriority
+                        ? `${commandCenter.highPriority} high priority`
+                        : "No high-priority backlog",
+                      symbol: commandCenter.highPriority ? "▼" : "▲",
+                      accent: commandCenter.highPriority ? "#FCA5A5" : "#86E1B5",
+                    },
+                    {
+                      label: "Preventive maintenance",
+                      value: `${commandCenter.recurring} recurring`,
+                      symbol: "▲",
+                      accent: "#86E1B5",
+                    },
+                    {
+                      label: "Completion pace",
+                      value: `${commandCenter.completedThisWeek} this week`,
+                      symbol: commandCenter.completedThisWeek ? "▲" : "●",
+                      accent: commandCenter.completedThisWeek
+                        ? "#86E1B5"
+                        : "rgba(255,255,255,0.6)",
+                    },
+                  ].map((driver) => (
+                    <div key={driver.label} style={driverItemStyle}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 7,
+                          minWidth: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            color: driver.accent,
+                            fontWeight: 900,
+                            fontSize: 11,
+                          }}
+                        >
+                          {driver.symbol}
+                        </span>
+                        <strong
+                          style={{
+                            minWidth: 0,
+                            fontSize: 12,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {driver.label}
+                        </strong>
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 11,
+                          opacity: 0.68,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {driver.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </header>
           </section>
 
           <section style={summaryGridStyle}>
@@ -874,7 +1041,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 value={localSearch}
                 onChange={(event) => setLocalSearch(event.currentTarget.value)}
                 placeholder="Search work, asset, vendor, category..."
-                style={controlStyle}
+                style={searchControlStyle}
               />
 
               <select
