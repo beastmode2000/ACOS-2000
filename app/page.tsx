@@ -21197,6 +21197,170 @@ export default function AtlasPage() {
     );
   }
 
+  function renderPageVisualSummary() {
+    const openWorkOrders = serviceRecords.filter(
+      (record) => record.status !== "Completed",
+    ).length;
+    const completedWorkOrders = serviceRecords.filter(
+      (record) => record.status === "Completed",
+    ).length;
+    const onlineAssets = assetRecords.filter(
+      (asset) => asset.status === "Online",
+    ).length;
+    const attentionAssets = assetRecords.filter(
+      (asset) => asset.status === "Offline" || asset.status === "Monitor",
+    ).length;
+    const linkedDocuments = intakeDocs.filter(
+      (document) => document.targetType && document.targetType !== "General",
+    ).length;
+    const activeProcedures = procedureRecords.filter(
+      (procedure) => procedure.status !== "Draft",
+    ).length;
+    const lowParts = partRecords.filter(
+      (part) => part.status === "Low" || part.status === "Out" || part.status === "Order",
+    ).length;
+
+    const summaryByScreen: Partial<
+      Record<Screen, { title: string; detail: string; cards: Array<{ label: string; value: string | number; note: string }> }>
+    > = {
+      locations: {
+        title: "Property at a glance",
+        detail: "A visual snapshot of spaces, assigned equipment, and current work across this property.",
+        cards: [
+          { label: "Locations", value: locations.length, note: "Mapped property areas" },
+          { label: "Assets", value: assetRecords.length, note: "Equipment and systems" },
+          { label: "Open Work", value: openWorkOrders, note: "Across all locations" },
+        ],
+      },
+      assets: {
+        title: "Asset health",
+        detail: "Quick context before opening the detailed asset list and service history.",
+        cards: [
+          { label: "Total Assets", value: assetRecords.length, note: "Tracked on this property" },
+          { label: "Online", value: onlineAssets, note: "Operating normally" },
+          { label: "Needs Attention", value: attentionAssets, note: "Offline or monitored" },
+        ],
+      },
+      history: {
+        title: "Work order pulse",
+        detail: "See the active workload, completed history, and recurring maintenance position immediately.",
+        cards: [
+          { label: "Open", value: openWorkOrders, note: "Current workload" },
+          { label: "Completed", value: completedWorkOrders, note: "Recorded history" },
+          { label: "Recurring", value: serviceRecords.filter((record) => record.recurring).length, note: "Preventive maintenance" },
+        ],
+      },
+      vendors: {
+        title: "Vendor network",
+        detail: "A fast view of service coverage and the vendors connected to property work.",
+        cards: [
+          { label: "Vendors", value: vendorRecords.length, note: "Saved companies" },
+          { label: "Linked Assets", value: assetRecords.filter((asset) => asset.vendorIds.length > 0).length, note: "Assets with vendor support" },
+          { label: "Vendor Work", value: serviceRecords.filter((record) => Boolean(record.vendorId)).length, note: "Linked work orders" },
+        ],
+      },
+      documents: {
+        title: "Document vault",
+        detail: "See document coverage and organization before browsing individual records.",
+        cards: [
+          { label: "Documents", value: intakeDocs.length, note: "Stored records" },
+          { label: "Linked", value: linkedDocuments, note: "Attached to Atlas records" },
+          { label: "Categories", value: new Set(intakeDocs.map((document) => document.type || "Uncategorized")).size, note: "Document groups" },
+        ],
+      },
+      procedures: {
+        title: "Procedure readiness",
+        detail: "A quick operational view of documented standards and drafts still being developed.",
+        cards: [
+          { label: "Procedures", value: procedureRecords.length, note: "Total documented" },
+          { label: "Active", value: activeProcedures, note: "SOP or maintenance ready" },
+          { label: "Drafts", value: procedureRecords.filter((procedure) => procedure.status === "Draft").length, note: "Still in development" },
+        ],
+      },
+      parts: {
+        title: "Inventory condition",
+        detail: "Current stock health before opening the detailed parts list.",
+        cards: [
+          { label: "Parts", value: partRecords.length, note: "Tracked inventory items" },
+          { label: "In Stock", value: partRecords.filter((part) => part.status === "In Stock").length, note: "Available now" },
+          { label: "Attention", value: lowParts, note: "Low, out, or order" },
+        ],
+      },
+    };
+
+    const summary = summaryByScreen[screen];
+    if (!summary) return null;
+
+    return (
+      <section
+        style={{
+          ...sectionStyle,
+          marginBottom: 16,
+          padding: isMobile ? 16 : 20,
+          background:
+            "linear-gradient(135deg, rgba(255,255,255,0.98), rgba(246,248,252,0.96))",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "flex-end",
+            flexWrap: "wrap",
+            marginBottom: 14,
+          }}
+        >
+          <div>
+            <p style={{ ...eyebrowStyle, marginBottom: 5 }}>Visual Summary</p>
+            <h2 style={{ ...sectionTitleStyle, marginBottom: 5 }}>{summary.title}</h2>
+            <p style={{ ...mutedSmallStyle, maxWidth: 720 }}>{summary.detail}</p>
+          </div>
+          <span style={badgeStyle(atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId)}>
+            {atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId}
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "1fr"
+              : "repeat(3, minmax(0, 1fr))",
+            gap: 12,
+          }}
+        >
+          {summary.cards.map((card) => (
+            <div
+              key={card.label}
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 16,
+                padding: 15,
+                background: colors.card,
+                boxShadow: "0 8px 22px rgba(15, 23, 42, 0.05)",
+              }}
+            >
+              <p style={{ ...mutedSmallStyle, marginBottom: 6 }}>{card.label}</p>
+              <strong
+                style={{
+                  display: "block",
+                  color: colors.navy,
+                  fontSize: isMobile ? 24 : 28,
+                  lineHeight: 1,
+                  marginBottom: 7,
+                }}
+              >
+                {card.value}
+              </strong>
+              <p style={mutedSmallStyle}>{card.note}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   function renderScreen() {
     let content: React.ReactNode;
 
@@ -21235,7 +21399,12 @@ export default function AtlasPage() {
       return content;
     }
 
-    return <div style={sectionNavyBackdropStyle}>{content}</div>;
+    return (
+      <div style={sectionNavyBackdropStyle}>
+        {renderPageVisualSummary()}
+        {content}
+      </div>
+    );
   }
 
   return (
