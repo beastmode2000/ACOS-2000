@@ -202,6 +202,7 @@ export default function AtlasInsightsTimeline({
   const [customEvents, setCustomEvents] = useState<CustomTimelineEvent[]>([]);
   const [showAddEvent, setShowAddEvent] = useState(false);
   const [settledGroupIndex, setSettledGroupIndex] = useState(0);
+  const [isMobileTimeline, setIsMobileTimeline] = useState(false);
   const [draft, setDraft] = useState({
     date: new Date().toISOString().slice(0, 10),
     title: "",
@@ -221,6 +222,21 @@ export default function AtlasInsightsTimeline({
 
   useEffect(() => {
     setCustomEvents(readCustomEvents());
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 700px)");
+
+    const updateMobileTimeline = () => {
+      setIsMobileTimeline(mediaQuery.matches);
+    };
+
+    updateMobileTimeline();
+    mediaQuery.addEventListener("change", updateMobileTimeline);
+
+    return () => {
+      mediaQuery.removeEventListener("change", updateMobileTimeline);
+    };
   }, []);
 
   useEffect(() => {
@@ -1608,7 +1624,7 @@ export default function AtlasInsightsTimeline({
               fontWeight: 800,
             }}
           >
-            <span>Drag, swipe, or scroll to explore</span>
+            <span>{isMobileTimeline ? "Swipe or use arrows" : "Drag, swipe, or scroll to explore"}</span>
             <button
               type="button"
               aria-label="Previous timeline period"
@@ -1652,6 +1668,8 @@ export default function AtlasInsightsTimeline({
               ref={horizontalRef}
               onScroll={settleCarouselSelection}
               onWheel={(event) => {
+                if (isMobileTimeline) return;
+
                 const delta =
                   Math.abs(event.deltaX) > Math.abs(event.deltaY)
                     ? event.deltaX
@@ -1677,17 +1695,21 @@ export default function AtlasInsightsTimeline({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
+                gap: isMobileTimeline ? 12 : 10,
                 overflowX: "auto",
                 overflowY: "hidden",
                 scrollSnapType: "x mandatory",
                 scrollBehavior: "smooth",
-                perspective: 1800,
-                padding: "24px max(42%, 260px) 26px",
-                height: 430,
-                minHeight: 430,
-                maxHeight: 430,
+                perspective: isMobileTimeline ? "none" : 1800,
+                padding: isMobileTimeline
+                  ? "12px max(12px, calc((100vw - 100%) / 2)) 18px"
+                  : "24px max(42%, 260px) 26px",
+                height: isMobileTimeline ? 382 : 430,
+                minHeight: isMobileTimeline ? 382 : 430,
+                maxHeight: isMobileTimeline ? 382 : 430,
                 scrollbarWidth: "none",
+                WebkitOverflowScrolling: "touch",
+                overscrollBehaviorX: "contain",
                 touchAction: "pan-x",
               }}
             >
@@ -1695,12 +1717,31 @@ export default function AtlasInsightsTimeline({
                 const distance = Math.abs(index - settledGroupIndex);
                 const isActive = distance === 0;
                 const isNeighbor = distance === 1;
-                const scale = isActive ? 1 : isNeighbor ? 0.88 : 0.76;
-                const cardWidth = 330;
-                const opacity = isActive ? 1 : isNeighbor ? 0.72 : 0.42;
-                const translateY = isActive ? 0 : isNeighbor ? 22 : 38;
-                const rotateY =
-                  index < settledGroupIndex
+                const scale = isMobileTimeline
+                  ? 1
+                  : isActive
+                    ? 1
+                    : isNeighbor
+                      ? 0.88
+                      : 0.76;
+                const cardWidth = isMobileTimeline ? "calc(100vw - 40px)" : 330;
+                const opacity = isMobileTimeline
+                  ? 1
+                  : isActive
+                    ? 1
+                    : isNeighbor
+                      ? 0.72
+                      : 0.42;
+                const translateY = isMobileTimeline
+                  ? 0
+                  : isActive
+                    ? 0
+                    : isNeighbor
+                      ? 22
+                      : 38;
+                const rotateY = isMobileTimeline
+                  ? 0
+                  : index < settledGroupIndex
                     ? 6
                     : index > settledGroupIndex
                       ? -6
@@ -1737,17 +1778,27 @@ export default function AtlasInsightsTimeline({
                       if (featured) setSelectedEntryId(featured.id);
                     }}
                     style={{
-                      flex: `0 0 ${cardWidth}px`,
+                      flex: isMobileTimeline
+                        ? `0 0 ${cardWidth}`
+                        : `0 0 ${cardWidth}px`,
                       width: cardWidth,
-                      height: 386,
+                      maxWidth: isMobileTimeline ? 420 : undefined,
+                      height: isMobileTimeline ? 350 : 386,
                       scrollSnapAlign: "center",
                       scrollSnapStop: "always",
-                      transform: `translate3d(0, ${translateY}px, 0) rotateY(${rotateY}deg) scale(${scale})`,
+                      transform: isMobileTimeline
+                        ? "none"
+                        : `translate3d(0, ${translateY}px, 0) rotateY(${rotateY}deg) scale(${scale})`,
                       transformOrigin: "center center",
-                      transition:
-                        "transform 220ms ease, opacity 220ms ease, filter 220ms ease, border-color 220ms ease, box-shadow 220ms ease",
+                      transition: isMobileTimeline
+                        ? "border-color 180ms ease, box-shadow 180ms ease"
+                        : "transform 220ms ease, opacity 220ms ease, filter 220ms ease, border-color 220ms ease, box-shadow 220ms ease",
                       opacity,
-                      filter: isActive ? "brightness(1)" : "brightness(0.72)",
+                      filter: isMobileTimeline
+                        ? "none"
+                        : isActive
+                          ? "brightness(1)"
+                          : "brightness(0.72)",
                       border:
                         isActive
                           ? `2px solid ${colors.gold}`
@@ -1776,7 +1827,7 @@ export default function AtlasInsightsTimeline({
                       <strong
                         style={{
                           display: "block",
-                          fontSize: isActive ? 30 : 20,
+                          fontSize: isMobileTimeline ? 25 : isActive ? 30 : 20,
                           lineHeight: 1,
                           whiteSpace: "normal",
                         }}
