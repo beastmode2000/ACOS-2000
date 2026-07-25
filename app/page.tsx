@@ -14230,10 +14230,10 @@ export default function AtlasPage() {
   function renderWorkOrders() {
     return (
       <div className="atlas-work-orders-page">
-        <style>{`
-          .atlas-work-orders-page input[placeholder="Search work, asset, vendor, category..."] {
-            border: 1px solid #8EA5B8 !important;
-            box-shadow: 0 0 0 1px rgba(15, 31, 48, 0.04) !important;
+              <style>{`
+          .atlas-work-orders-page input[placeholder*="Search work"] {
+            border: 2px solid #8EA5B8 !important;
+            box-shadow: none !important;
           }
         `}</style>
         <AtlasWorkOrders
