@@ -3912,16 +3912,33 @@ export default function AtlasPage() {
 
   function selectProperty(propertyId: string) {
     if (propertyId === activePropertyId) return;
+
     setActivePropertyId(propertyId);
+
     setSelectedLocationId("");
     setSelectedAssetId("");
     setSelectedServiceId("");
+    setSelectedVendorId("");
+    setSelectedContactId("");
+    setSelectedProcedureId("");
+    setSelectedCalendarId("");
+    setSelectedPartId("");
+    setSelectedDocumentId("");
+    setSelectedRequestId("");
+
     setLocations([]);
     setAssetRecords([]);
+    setVendorRecords([]);
+    setContactRecords([]);
     setServiceRecords([]);
+    setProcedureRecords([]);
+    setCalendarItems([]);
     setPartRecords([]);
     setPhotos([]);
     setIntakeDocs([]);
+    setRequestRecords([]);
+
+    setCalendarDraft(blankCalendarItem(todayISO()));
     setSyncState("loading");
   }
 
@@ -4291,72 +4308,77 @@ export default function AtlasPage() {
           .map(normalizePhotoRecord)
           .filter((photo) => photo.id && photo.assetId);
 
-        if (apiLocations.length) {
-          const next =
-            activePropertyId === "2000"
-              ? mergeLocationRecords(apiLocations, fallbackLocations)
-              : apiLocations;
-          setLocations(next);
-          setSelectedLocationId((current) =>
-            next.some((item) => item.id === current) ? current : "",
-          );
-        }
+        const nextLocations =
+          activePropertyId === "2000"
+            ? mergeLocationRecords(apiLocations, fallbackLocations)
+            : apiLocations;
+        const nextAssets = byName(apiAssets.map(normalizeAsset));
+        const nextVendors = byName(apiVendors.map(normalizeVendor));
+        const nextContacts = byName(apiContacts.map(normalizeContact));
+        const nextServices = byTitle(apiServices.map(normalizeService));
 
-        if (apiAssets.length) {
-          const next = byName(apiAssets.map(normalizeAsset));
-          setAssetRecords(next);
-          setSelectedAssetId((current) =>
-            next.some((item) => item.id === current) ? current : "",
-          );
-        }
+        const normalizedApiProcedures = apiProcedures.map(normalizeProcedure);
+        const nextProcedures =
+          activePropertyId === "2000"
+            ? (() => {
+                const existingTitles = new Set(
+                  normalizedApiProcedures.map((item) =>
+                    item.title.trim().toLowerCase(),
+                  ),
+                );
+                const missingSeeds = fallbackProcedures.filter(
+                  (seed) =>
+                    !existingTitles.has(seed.title.trim().toLowerCase()),
+                );
 
-        if (apiVendors.length) {
-          const next = byName(apiVendors.map(normalizeVendor));
-          setVendorRecords(next);
-          setSelectedVendorId((current) =>
-            next.some((item) => item.id === current) ? current : "",
-          );
-        }
+                for (const seed of missingSeeds) {
+                  void postAtlasRecord("procedures", {
+                    ...seed,
+                    propertyId: activePropertyId,
+                  });
+                }
 
-        if (apiContacts.length) {
-          const next = byName(apiContacts.map(normalizeContact));
-          setContactRecords(next);
-          saveStoredArray(storageKeys.contacts[0], next);
-        } else {
-          for (const contact of readStoredArray<ContactRecord>(storageKeys.contacts, [])) {
-            void postAtlasRecord("contacts", contact);
-          }
-        }
+                return byTitle([
+                  ...normalizedApiProcedures,
+                  ...missingSeeds,
+                ]);
+              })()
+            : byTitle(normalizedApiProcedures);
 
-        if (apiServices.length) {
-          const next = byTitle(apiServices.map(normalizeService));
-          setServiceRecords(next);
-          setSelectedServiceId((current) =>
-            next.some((item) => item.id === current) ? current : "",
-          );
-        }
+        const nextParts = byName(apiParts.map(normalizePart));
 
-        if (apiProcedures.length) {
-          const normalizedApi = apiProcedures.map(normalizeProcedure);
-          const existingTitles = new Set(
-            normalizedApi.map((item) => item.title.trim().toLowerCase()),
-          );
-          const missingSeeds = fallbackProcedures.filter(
-            (seed) => !existingTitles.has(seed.title.trim().toLowerCase()),
-          );
-          const next = byTitle([...normalizedApi, ...missingSeeds]);
-          setProcedureRecords(next);
-          setSelectedProcedureId((current) =>
-            next.some((item) => item.id === current) ? current : "",
-          );
-          for (const seed of missingSeeds) {
-            void postAtlasRecord("procedures", seed);
-          }
-        } else {
-          setProcedureRecords(byTitle(fallbackProcedures));
-          for (const seed of fallbackProcedures) {
-            void postAtlasRecord("procedures", seed);
-          }
+        setLocations(nextLocations);
+        setAssetRecords(nextAssets);
+        setVendorRecords(nextVendors);
+        setContactRecords(nextContacts);
+        setServiceRecords(nextServices);
+        setProcedureRecords(nextProcedures);
+        setPartRecords(nextParts);
+
+        setSelectedLocationId((current) =>
+          nextLocations.some((item) => item.id === current) ? current : "",
+        );
+        setSelectedAssetId((current) =>
+          nextAssets.some((item) => item.id === current) ? current : "",
+        );
+        setSelectedVendorId((current) =>
+          nextVendors.some((item) => item.id === current) ? current : "",
+        );
+        setSelectedContactId((current) =>
+          nextContacts.some((item) => item.id === current) ? current : "",
+        );
+        setSelectedServiceId((current) =>
+          nextServices.some((item) => item.id === current) ? current : "",
+        );
+        setSelectedProcedureId((current) =>
+          nextProcedures.some((item) => item.id === current) ? current : "",
+        );
+        setSelectedPartId((current) =>
+          nextParts.some((item) => item.id === current) ? current : "",
+        );
+
+        if (activePropertyId === "2000") {
+          saveStoredArray(storageKeys.contacts[0], nextContacts);
         }
 
         // One-time phone recovery: upload calendar records that exist only in
@@ -4379,7 +4401,11 @@ export default function AtlasPage() {
           typeof window !== "undefined" &&
           window.localStorage.getItem(phoneRecoveryKey) === "done";
 
-        if (isPhoneDevice && !phoneRecoveryAlreadyCompleted) {
+        if (
+          activePropertyId === "2000" &&
+          isPhoneDevice &&
+          !phoneRecoveryAlreadyCompleted
+        ) {
           setDatabaseStatus(
             "Recovering this phone's calendar into shared Atlas...",
           );
@@ -4480,25 +4506,20 @@ export default function AtlasPage() {
           }
         }
 
-        saveStoredArray(storageKeys.calendar[0], sharedItems);
+        if (activePropertyId === "2000") {
+          saveStoredArray(storageKeys.calendar[0], sharedItems);
+        }
         setCalendarItems(sharedItems);
+        setSelectedCalendarId((current) =>
+          sharedItems.some((item) => item.id === current) ? current : "",
+        );
 
-        if (apiParts.length) {
-          const next = byName(apiParts.map(normalizePart));
-          setPartRecords(next);
-        }
-
-        if (apiPhotos.length) {
-          await cachePhotoRecords(apiPhotos);
-          setPhotos((current) => {
-            const next = mergePhotoRecords(current, apiPhotos);
-            persistPhotoRecords(next);
-            return next;
-          });
-        }
+        await cachePhotoRecords(apiPhotos);
+        setPhotos(apiPhotos);
+        persistPhotoRecords(apiPhotos);
 
         setDatabaseStatus(
-          `Atlas loaded: ${apiAssets.length || assetRecords.length} assets, ${apiVendors.length || vendorRecords.length} vendors, ${apiServices.length || serviceRecords.length} work orders.`,
+          `Atlas loaded: ${nextAssets.length} assets, ${nextVendors.length} vendors, ${nextServices.length} work orders.`,
         );
         setSyncState("synced");
         setLastSyncedAt(
@@ -4692,15 +4713,25 @@ export default function AtlasPage() {
 
     async function loadRequests() {
       try {
-        const response = await fetch("/api/atlas-requests", {
-          cache: "no-store",
-        });
+        const response = await fetch(
+          `/api/atlas-requests?propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no-store" },
+        );
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload?.ok === false) {
           throw new Error(payload?.error || "Requests could not be loaded.");
         }
         if (cancelled) return;
-        const next = Array.isArray(payload.requests) ? payload.requests : [];
+        const rawRequests = Array.isArray(payload.requests)
+          ? payload.requests
+          : [];
+        const next = rawRequests.filter((item: OwnerRequestRecord & { propertyId?: string }) => {
+          const requestPropertyId = String(item.propertyId || "");
+          if (activePropertyId === "2000") {
+            return !requestPropertyId || requestPropertyId === "2000";
+          }
+          return requestPropertyId === activePropertyId;
+        });
         setRequestRecords(next);
         setRequestPortalToken(String(payload.portalToken || ""));
         setSelectedRequestId((current) =>
@@ -4728,7 +4759,7 @@ export default function AtlasPage() {
     return () => {
       cancelled = true;
     };
-  }, [ready]);
+  }, [ready, activePropertyId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -11790,6 +11821,17 @@ export default function AtlasPage() {
           }}
         />
         <AtlasDashboard
+          activePropertyId={activePropertyId}
+          activePropertyName={
+            atlasProperties.find(
+              (property) => property.id === activePropertyId,
+            )?.name || activePropertyId
+          }
+          activePropertyDetail={
+            atlasProperties.find(
+              (property) => property.id === activePropertyId,
+            )?.detail || ""
+          }
           SectionHeader={SectionHeader}
           StatCard={StatCard}
           addCalendarItem={addCalendarItem}
