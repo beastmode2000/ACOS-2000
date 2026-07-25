@@ -1210,6 +1210,8 @@ function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
     linkedName: String(record.linkedName || ""),
     completed: Boolean(record.completed || record.status === "Completed"),
     source: record.source || "manual",
+    originalId: String(record.originalId || ""),
+    instanceId: String(record.instanceId || ""),
   };
 }
 
@@ -5460,11 +5462,28 @@ export default function AtlasPage() {
     const month = calendarCursor.getMonth();
     const start = localISODate(new Date(year, month - 1, 1));
     const end = localISODate(new Date(year, month + 2, 0));
-    const expanded: CalendarItem[] = [];
+    const expanded = new Map<string, CalendarItem>();
+
+    const occurrenceOverrides = new Map<string, CalendarItem>();
+    visibleCalendarItems.forEach((item) => {
+      const originalId = String(item.originalId || "");
+      const instanceId = String(item.instanceId || "");
+      if (originalId && instanceId) {
+        occurrenceOverrides.set(instanceId, item);
+      }
+    });
 
     visibleCalendarItems.forEach((item) => {
+      const originalId = String(item.originalId || "");
+      const instanceId = String(item.instanceId || "");
+
+      if (originalId && instanceId) {
+        expanded.set(instanceId, item);
+        return;
+      }
+
       if (!item.repeat || item.repeat === "None" || item.source !== "manual") {
-        expanded.push(item);
+        expanded.set(String(item.instanceId || item.id), item);
         return;
       }
 
@@ -5473,18 +5492,24 @@ export default function AtlasPage() {
       while (date <= finalDate) {
         const dateKey = localISODate(date);
         if (isRecurringInstanceOnDate(item, dateKey)) {
-          expanded.push({
-            ...item,
-            date: dateKey,
-            originalId: item.id,
-            instanceId: `${item.id}-${dateKey}`,
-          });
+          const generatedInstanceId = `${item.id}-${dateKey}`;
+          const savedOccurrence = occurrenceOverrides.get(generatedInstanceId);
+
+          expanded.set(
+            generatedInstanceId,
+            savedOccurrence || {
+              ...item,
+              date: dateKey,
+              originalId: item.id,
+              instanceId: generatedInstanceId,
+            },
+          );
         }
         date.setDate(date.getDate() + 1);
       }
     });
 
-    return expanded;
+    return Array.from(expanded.values());
   }, [visibleCalendarItems, calendarCursor]);
 
   const calendarFilterLabels = useMemo(() => {
