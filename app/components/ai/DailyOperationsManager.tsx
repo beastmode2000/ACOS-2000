@@ -766,6 +766,66 @@ export default function DailyOperationsManager({
           : "Good conditions for outdoor maintenance and inspections."
     : "Weather data has not loaded yet.";
 
+  const weatherSeverity = todayWeather
+    ? todayWeather.precipChance >= 70 || todayWeather.windMax >= 28
+      ? "alert"
+      : todayWeather.precipChance >= 40 ||
+          todayWeather.windMax >= 18 ||
+          todayWeather.high >= 88 ||
+          todayWeather.low <= 35
+        ? "watch"
+        : "ideal"
+    : "unknown";
+
+  const outdoorWindow = todayWeather
+    ? todayWeather.precipChance >= 60
+      ? { time: "Before 10:00 AM", rating: "Limited", reason: "Rain risk increases later; complete exposed work first." }
+      : todayWeather.high >= 85
+        ? { time: "7:00–11:00 AM", rating: "Best", reason: "Cooler temperatures favor landscaping, dock, and exterior work." }
+        : todayWeather.windMax >= 20
+          ? { time: "8:00 AM–Noon", rating: "Caution", reason: "Use the calmer morning period and avoid exposed ladder work." }
+          : { time: "8:00 AM–3:00 PM", rating: "Excellent", reason: "Stable conditions support most exterior maintenance." }
+    : { time: "Weather pending", rating: "Unknown", reason: "The work window will update when weather data loads." };
+
+  const weatherTimeline = todayWeather
+    ? [
+        { time: "7 AM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.18), icon: weatherIcon(todayWeather.code), rain: Math.max(0, Math.round(todayWeather.precipChance * 0.55)) },
+        { time: "9 AM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.38), icon: weatherIcon(todayWeather.code), rain: Math.max(0, Math.round(todayWeather.precipChance * 0.7)) },
+        { time: "11 AM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.62), icon: weatherIcon(todayWeather.code), rain: Math.round(todayWeather.precipChance) },
+        { time: "1 PM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.84), icon: weatherIcon(todayWeather.code), rain: Math.round(todayWeather.precipChance) },
+        { time: "3 PM", temp: Math.round(todayWeather.high), icon: weatherIcon(todayWeather.code), rain: Math.max(0, Math.round(todayWeather.precipChance * 0.85)) },
+        { time: "5 PM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.72), icon: weatherIcon(todayWeather.code), rain: Math.max(0, Math.round(todayWeather.precipChance * 0.65)) },
+      ]
+    : [];
+
+  const propertyImpact = todayWeather
+    ? [
+        { label: "Landscaping", score: todayWeather.precipChance >= 60 ? 38 : todayWeather.high >= 88 ? 62 : 92 },
+        { label: "Painting", score: todayWeather.precipChance >= 35 ? 24 : todayWeather.windMax >= 18 ? 58 : 90 },
+        { label: "Dock & Marine", score: todayWeather.windMax >= 22 ? 32 : todayWeather.precipChance >= 60 ? 48 : 88 },
+        { label: "Pool & Spa", score: todayWeather.precipChance >= 70 ? 52 : 86 },
+        { label: "Roof / Ladder", score: todayWeather.windMax >= 18 || todayWeather.precipChance >= 35 ? 28 : 84 },
+        { label: "Pressure Washing", score: todayWeather.windMax >= 22 ? 46 : 82 },
+      ]
+    : [];
+
+  const aiRecommendations = todayWeather
+    ? [
+        todayWeather.precipChance >= 60
+          ? "Move paint, roof, and pressure-washing work indoors or reschedule it."
+          : "Exterior paint and inspection work have a workable weather window.",
+        todayWeather.high >= 85
+          ? "Run landscaping and dock tasks early; check irrigation after peak heat."
+          : "Landscaping can remain in the normal daytime sequence.",
+        todayWeather.windMax >= 20
+          ? "Hold exposed ladder, tree, and loose-material work until wind drops."
+          : "Dock and exterior access conditions are favorable.",
+        vendorEvents.length
+          ? `Confirm access, work area, and weather-sensitive scope for ${vendorEvents[0]?.linkedName || vendorEvents[0]?.title || "today’s vendor"}.`
+          : "Use the open vendor window for preventive inspections or backlog cleanup.",
+      ]
+    : ["Weather recommendations will appear when conditions load."];
+
   const currentHour = new Date().getHours();
   const greeting =
     currentHour < 12
@@ -1529,6 +1589,18 @@ export default function DailyOperationsManager({
       </div>
 
       <div style={{ padding: isMobile ? 14 : 18 }}>
+        <WeatherCommandCenter
+          weather={todayWeather}
+          timeline={weatherTimeline}
+          outdoorWindow={outdoorWindow}
+          severity={weatherSeverity}
+          recommendations={aiRecommendations}
+          impacts={propertyImpact}
+          colors={colors}
+          isMobile={isMobile}
+          onAskAtlas={onAskAtlas}
+        />
+
         <div
           style={{
             display: "grid",
@@ -1794,31 +1866,24 @@ export default function DailyOperationsManager({
             </div>
           </StandardCard>
 
-          <StandardCard title="Today’s Conditions" icon={todayWeather ? weatherIcon(todayWeather.code) : "◌"} colors={colors}>
-            {todayWeather ? (
-              <>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <span style={{ fontSize: 30, fontWeight: 900, color: colors.navy }}>
-                    {Math.round(todayWeather.high)}°
-                  </span>
-                  <span style={{ fontSize: 14, fontWeight: 800 }}>
-                    {weatherCondition(todayWeather.code)}
-                  </span>
-                </div>
-                <div style={{ marginTop: 7, fontSize: 13, lineHeight: 1.55, opacity: 0.76 }}>
-                  {weatherAdvice}
-                </div>
-                <div style={{ marginTop: 9, fontSize: 11, opacity: 0.55 }}>
-                  Low {Math.round(todayWeather.low)}° · Rain {Math.round(todayWeather.precipChance)}% · Wind {Math.round(todayWeather.windMax)} mph
-                </div>
-              </>
-            ) : (
-              <EmptyState
-                icon="◌"
-                title="Weather unavailable"
-                detail="The dashboard will update when weather data loads."
-              />
-            )}
+          <StandardCard title="Daily Work Focus" icon="◎" colors={colors}>
+            <div style={{ fontSize: 13, lineHeight: 1.55, color: colors.navy, fontWeight: 750 }}>
+              {todayFocus[0]}
+            </div>
+            {todayFocus.slice(1).map((item, index) => (
+              <div
+                key={`${item}-${index}`}
+                style={{
+                  paddingTop: 8,
+                  borderTop: `1px solid ${colors.line}`,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  color: "#64748B",
+                }}
+              >
+                {item}
+              </div>
+            ))}
           </StandardCard>
         </div>
 
@@ -2479,6 +2544,227 @@ function VisitLoggerModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function WeatherCommandCenter({
+  weather,
+  timeline,
+  outdoorWindow,
+  severity,
+  recommendations,
+  impacts,
+  colors,
+  isMobile,
+  onAskAtlas,
+}: {
+  weather: WeatherDay | null;
+  timeline: Array<{ time: string; temp: number; icon: string; rain: number }>;
+  outdoorWindow: { time: string; rating: string; reason: string };
+  severity: string;
+  recommendations: string[];
+  impacts: Array<{ label: string; score: number }>;
+  colors: Props["colors"];
+  isMobile: boolean;
+  onAskAtlas: (prompt: string) => void;
+}) {
+  const severityLabel =
+    severity === "alert"
+      ? "Weather Alert"
+      : severity === "watch"
+        ? "Conditions Watch"
+        : severity === "ideal"
+          ? "Ideal Conditions"
+          : "Weather Pending";
+
+  const severityTone =
+    severity === "alert"
+      ? { bg: "#FFF0EE", border: "#F3C5BE", text: "#A7352A" }
+      : severity === "watch"
+        ? { bg: "#FFF8E8", border: "#EBCF8F", text: "#8A6500" }
+        : { bg: "#EEF8F2", border: "#B9D8C5", text: "#087443" };
+
+  return (
+    <section
+      style={{
+        marginBottom: 14,
+        borderRadius: 20,
+        overflow: "hidden",
+        border: `1px solid ${colors.line}`,
+        background: colors.panel,
+        boxShadow: "0 8px 24px rgba(15,31,48,0.07)",
+      }}
+    >
+      <div
+        style={{
+          padding: isMobile ? 16 : 20,
+          background: `linear-gradient(135deg, ${colors.navy} 0%, #24516F 62%, #2E6587 100%)`,
+          color: "#FFFFFF",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            justifyContent: "space-between",
+            alignItems: isMobile ? "stretch" : "flex-start",
+            gap: 16,
+          }}
+        >
+          <div>
+            <div style={{ color: colors.gold, fontSize: 10, fontWeight: 950, letterSpacing: "0.11em", textTransform: "uppercase" }}>
+              Operations Weather Center
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 7 }}>
+              <span style={{ fontSize: 38 }}>{weather ? weatherIcon(weather.code) : "◌"}</span>
+              <div>
+                <div style={{ fontSize: isMobile ? 31 : 38, lineHeight: 1, fontWeight: 950 }}>
+                  {weather ? `${Math.round(weather.high)}°` : "—"}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8, fontWeight: 750 }}>
+                  {weather ? weatherCondition(weather.code) : "Weather unavailable"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 8,
+              minWidth: isMobile ? 0 : 330,
+            }}
+          >
+            <WeatherStat label="Low" value={weather ? `${Math.round(weather.low)}°` : "—"} />
+            <WeatherStat label="Rain" value={weather ? `${Math.round(weather.precipChance)}%` : "—"} />
+            <WeatherStat label="Wind" value={weather ? `${Math.round(weather.windMax)} mph` : "—"} />
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 16,
+            display: "flex",
+            gap: 8,
+            overflowX: "auto",
+            paddingBottom: 3,
+          }}
+        >
+          {timeline.length ? timeline.map((hour) => (
+            <div
+              key={hour.time}
+              style={{
+                minWidth: 86,
+                padding: "10px 9px",
+                borderRadius: 12,
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.11)",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 10, opacity: 0.65, fontWeight: 800 }}>{hour.time}</div>
+              <div style={{ marginTop: 4, fontSize: 19 }}>{hour.icon}</div>
+              <div style={{ marginTop: 2, fontSize: 16, fontWeight: 900 }}>{hour.temp}°</div>
+              <div style={{ marginTop: 2, fontSize: 9, opacity: 0.58 }}>{hour.rain}% rain</div>
+            </div>
+          )) : (
+            <div style={{ fontSize: 12, opacity: 0.7 }}>Hourly conditions will appear when weather loads.</div>
+          )}
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: isMobile ? 14 : 18,
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.05fr) minmax(0, 1fr) minmax(0, 1fr)",
+          gap: 12,
+        }}
+      >
+        <div style={{ borderRadius: 15, padding: 14, border: `1px solid ${colors.line}`, background: "#FFFFFF" }}>
+          <div style={{ fontSize: 10, fontWeight: 950, color: colors.gold, letterSpacing: "0.09em", textTransform: "uppercase" }}>
+            Best Outdoor Work Window
+          </div>
+          <div style={{ marginTop: 6, fontSize: 21, fontWeight: 950, color: colors.navy }}>{outdoorWindow.time}</div>
+          <div style={{ marginTop: 5, display: "inline-flex", borderRadius: 999, padding: "5px 8px", background: severityTone.bg, border: `1px solid ${severityTone.border}`, color: severityTone.text, fontSize: 10, fontWeight: 900 }}>
+            {outdoorWindow.rating}
+          </div>
+          <div style={{ marginTop: 9, fontSize: 12, lineHeight: 1.5, color: "#64748B" }}>{outdoorWindow.reason}</div>
+        </div>
+
+        <div style={{ borderRadius: 15, padding: 14, border: `1px solid ${severityTone.border}`, background: severityTone.bg }}>
+          <div style={{ fontSize: 10, fontWeight: 950, color: severityTone.text, letterSpacing: "0.09em", textTransform: "uppercase" }}>
+            Weather Status
+          </div>
+          <div style={{ marginTop: 6, fontSize: 18, fontWeight: 950, color: colors.navy }}>{severityLabel}</div>
+          <div style={{ marginTop: 7, fontSize: 12, lineHeight: 1.5, color: "#64748B" }}>
+            {weather
+              ? severity === "alert"
+                ? "Weather is likely to materially affect exterior operations."
+                : severity === "watch"
+                  ? "Plan around heat, wind, rain, or cold-sensitive work."
+                  : "Conditions support normal exterior operations."
+              : "Waiting for the latest property forecast."}
+          </div>
+        </div>
+
+        <div style={{ borderRadius: 15, padding: 14, border: `1px solid ${colors.line}`, background: "#FFFFFF" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+            <div style={{ fontSize: 10, fontWeight: 950, color: colors.gold, letterSpacing: "0.09em", textTransform: "uppercase" }}>
+              Estate AI Recommendations
+            </div>
+            <button
+              type="button"
+              onClick={() => onAskAtlas("Build a weather-aware estate operations plan for today, including outdoor work windows, vendor timing, irrigation, dock, pool, landscaping, painting, and safety constraints.")}
+              style={{ border: 0, borderRadius: 999, padding: "5px 8px", background: colors.navy, color: "#FFFFFF", fontSize: 9, fontWeight: 900, cursor: "pointer" }}
+            >
+              Expand
+            </button>
+          </div>
+          <div style={{ marginTop: 7, display: "grid", gap: 6 }}>
+            {recommendations.slice(0, 3).map((item, index) => (
+              <div key={`${item}-${index}`} style={{ fontSize: 11, lineHeight: 1.45, color: "#526274" }}>
+                • {item}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: isMobile ? "0 14px 14px" : "0 18px 18px" }}>
+        <div style={{ borderRadius: 15, border: `1px solid ${colors.line}`, padding: 14, background: "#FFFFFF" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 11 }}>
+            <div style={{ fontSize: 12, fontWeight: 950, color: colors.navy }}>Property Impact</div>
+            <div style={{ fontSize: 10, color: "#64748B" }}>Suitability for today’s conditions</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 9 }}>
+            {impacts.length ? impacts.map((impact) => (
+              <div key={impact.label} style={{ padding: "9px 10px", borderRadius: 11, background: colors.panel, border: `1px solid ${colors.line}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, fontWeight: 850, color: colors.navy }}>
+                  <span>{impact.label}</span>
+                  <span>{impact.score}</span>
+                </div>
+                <div style={{ marginTop: 6, height: 6, borderRadius: 99, overflow: "hidden", background: "#E7EDF2" }}>
+                  <div style={{ width: `${impact.score}%`, height: "100%", borderRadius: 99, background: impact.score >= 80 ? "#65B985" : impact.score >= 55 ? "#D7A84B" : "#D97070" }} />
+                </div>
+              </div>
+            )) : (
+              <div style={{ fontSize: 12, color: "#64748B" }}>Impact scoring will appear when weather loads.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WeatherStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ padding: "9px 10px", borderRadius: 11, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.11)" }}>
+      <div style={{ fontSize: 9, opacity: 0.58, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 850 }}>{label}</div>
+      <div style={{ marginTop: 3, fontSize: 14, fontWeight: 900 }}>{value}</div>
     </div>
   );
 }
