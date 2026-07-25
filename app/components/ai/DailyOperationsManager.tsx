@@ -787,16 +787,6 @@ export default function DailyOperationsManager({
           : { time: "8:00 AM–3:00 PM", rating: "Excellent", reason: "Stable conditions support most exterior maintenance." }
     : { time: "Weather pending", rating: "Unknown", reason: "The work window will update when weather data loads." };
 
-  const weatherTimeline = todayWeather
-    ? [
-        { time: "7 AM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.18), icon: weatherIcon(todayWeather.code), rain: Math.max(0, Math.round(todayWeather.precipChance * 0.55)) },
-        { time: "9 AM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.38), icon: weatherIcon(todayWeather.code), rain: Math.max(0, Math.round(todayWeather.precipChance * 0.7)) },
-        { time: "11 AM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.62), icon: weatherIcon(todayWeather.code), rain: Math.round(todayWeather.precipChance) },
-        { time: "1 PM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.84), icon: weatherIcon(todayWeather.code), rain: Math.round(todayWeather.precipChance) },
-        { time: "3 PM", temp: Math.round(todayWeather.high), icon: weatherIcon(todayWeather.code), rain: Math.max(0, Math.round(todayWeather.precipChance * 0.85)) },
-        { time: "5 PM", temp: Math.round(todayWeather.low + (todayWeather.high - todayWeather.low) * 0.72), icon: weatherIcon(todayWeather.code), rain: Math.max(0, Math.round(todayWeather.precipChance * 0.65)) },
-      ]
-    : [];
 
   const propertyImpact = todayWeather
     ? [
@@ -2053,7 +2043,6 @@ export default function DailyOperationsManager({
         <WeatherCommandCenter
           weather={todayWeather}
           forecastDays={weatherDays.slice(0, 7)}
-          timeline={weatherTimeline}
           outdoorWindow={outdoorWindow}
           severity={weatherSeverity}
           recommendations={aiRecommendations}
@@ -2578,7 +2567,6 @@ function VisitLoggerModal({
 function WeatherCommandCenter({
   weather,
   forecastDays,
-  timeline,
   outdoorWindow,
   severity,
   recommendations,
@@ -2589,7 +2577,6 @@ function WeatherCommandCenter({
 }: {
   weather: WeatherDay | null;
   forecastDays: WeatherDay[];
-  timeline: Array<{ time: string; temp: number; icon: string; rain: number }>;
   outdoorWindow: { time: string; rating: string; reason: string };
   severity: string;
   recommendations: string[];
@@ -2779,36 +2766,6 @@ function WeatherCommandCenter({
             </div>
           )}
 
-          <div
-            style={{
-              marginTop: 13,
-              display: "grid",
-              gridTemplateColumns: timeline.length
-                ? `repeat(${timeline.length}, minmax(0, 1fr))`
-                : "1fr",
-              gap: 7,
-            }}
-          >
-            {timeline.length ? timeline.map((hour) => (
-              <div
-                key={hour.time}
-                style={{
-                  minWidth: 0,
-                  padding: "8px 6px",
-                  borderRadius: 10,
-                  background: "rgba(8,31,52,0.24)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: 9, opacity: 0.66, fontWeight: 850 }}>{hour.time}</div>
-                <div style={{ marginTop: 3, fontSize: 16 }}>{hour.icon}</div>
-                <div style={{ marginTop: 1, fontSize: 14, fontWeight: 900 }}>{hour.temp}°</div>
-              </div>
-            )) : (
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Hourly conditions will appear when weather loads.</div>
-            )}
-          </div>
         </div>
       </button>
 
