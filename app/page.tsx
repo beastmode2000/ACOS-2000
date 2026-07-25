@@ -8,7 +8,6 @@ import React, {
   useState,
 } from "react";
 import AtlasCalendar from "./components/AtlasCalendar";
-import AtlasDashboard from "./components/AtlasDashboard";
 import AtlasRoutines from "./components/AtlasRoutines";
 import { AtlasWorkOrders } from "./components/AtlasWorkOrders";
 import AtlasInsightsTimeline from "./components/AtlasInsightsTimeline";
@@ -11842,118 +11841,40 @@ export default function AtlasPage() {
 
   function renderDashboard() {
     return (
-      <>
-        <DailyOperationsManager
-          assets={assetRecords}
-          todayEvents={todayEvents}
-          upcomingEvents={upcomingEvents}
-          procedures={procedureRecords}
-          serviceRecords={serviceRecords}
-          weatherDays={weatherDays}
-          today={todayISO()}
-          isMobile={isMobile}
-          colors={colors}
-          onOpenCalendar={(item) => {
-            setScreen("calendar");
-            window.setTimeout(() => openCalendarItem(item), 0);
-          }}
-          onOpenCalendarPage={() => {
-            setScreen("calendar");
-          }}
-          onOpenWorkOrder={(id) => {
-            setSelectedServiceId(id);
-            setScreen("history");
-          }}
-          onOpenWorkOrdersPage={() => {
-            setSelectedServiceId("");
-            setScreen("history");
-          }}
-          onAskAtlas={(prompt) => {
-            setAssistantQuestion(prompt);
-            setScreen("assistant");
-            window.setTimeout(() => void askAtlas(prompt), 0);
-          }}
-        />
-        <AtlasDashboard
-          activePropertyId={activePropertyId}
-          activePropertyName={
-            atlasProperties.find(
-              (property) => property.id === activePropertyId,
-            )?.name || activePropertyId
-          }
-          activePropertyDetail={
-            atlasProperties.find(
-              (property) => property.id === activePropertyId,
-            )?.detail || ""
-          }
-          SectionHeader={SectionHeader}
-          StatCard={StatCard}
-          addCalendarItem={addCalendarItem}
-          assetName={assetName}
-          badgeStyle={badgeStyle}
-          buttonRowStyle={buttonRowStyle}
-          calendarWeatherIconStyle={calendarWeatherIconStyle}
-          categoryForEvent={categoryForEvent}
-          colorForEvent={colorForEvent}
-          colors={colors}
-          dashboardAdviceStyle={dashboardAdviceStyle}
-          dashboardStackStyle={dashboardStackStyle}
-          dashboardWeatherDayStyle={dashboardWeatherDayStyle}
-          dashboardWeatherMiniStyle={dashboardWeatherMiniStyle}
-          dashboardWeatherStripStyle={dashboardWeatherStripStyle}
-          dashboardWeatherTempStyle={dashboardWeatherTempStyle}
-          dashboardWeatherTopStyle={dashboardWeatherTopStyle}
-          eventColorPillStyle={eventColorPillStyle}
-          formatDate={formatDate}
-          goldButtonStyle={goldButtonStyle}
-          irrigationAdvice={irrigationAdvice}
-          isMobile={isMobile}
-          listStyle={listStyle}
-          logoCandidates={logoCandidates}
-          logoIndex={logoIndex}
-          mutedSmallStyle={mutedSmallStyle}
-          noticeStyle={noticeStyle}
-          openCalendarItem={openCalendarItem}
-          requestRecords={requestRecords}
-          quickLinkCardStyle={quickLinkCardStyle}
-          quickLinksGridStyle={quickLinksGridStyle}
-          renderCalendarIntakeCard={renderCalendarIntakeCard}
-          secondaryButtonStyle={secondaryButtonStyle}
-          sectionStyle={sectionStyle}
-          sectionTitleStyle={sectionTitleStyle}
-          serviceRecords={serviceRecords}
-          setLogoIndex={setLogoIndex}
-          setScreen={setScreen}
-          setSelectedRequestId={setSelectedRequestId}
-          setSelectedServiceId={setSelectedServiceId}
-          statGridStyle={statGridStyle}
-          todayEventStyle={todayEventStyle}
-          todayEvents={todayEvents}
-          todayISO={todayISO}
-          upcomingDayLabel={upcomingDayLabel}
-          upcomingDayPillStyle={upcomingDayPillStyle}
-          upcomingEvents={upcomingEvents}
-          upcomingInfoStyle={upcomingInfoStyle}
-          upcomingItemStyle={upcomingItemStyle}
-          upcomingListStyle={upcomingListStyle}
-          upcomingTodayPillStyle={upcomingTodayPillStyle}
-          upcomingDotStyle={upcomingDotStyle}
-          weatherDays={weatherDays}
-          weatherIcon={weatherIcon}
-          weatherStatus={weatherStatus}
-          workLinkLogoFallbackStyle={workLinkLogoFallbackStyle}
-          workLinkLogoImageStyle={workLinkLogoImageStyle}
-          workLinkLogoStyle={workLinkLogoStyle}
-          workLinkOpenStyle={workLinkOpenStyle}
-          workLinkTextStyle={workLinkTextStyle}
-          workLinks={workLinks}
-          workOrderCardStyle={workOrderCardStyle}
-          workOrderStripStyle={workOrderStripStyle}
-          workPlanTargetHours={workPlanTargetHours}
-          workPlanTasks={workPlanTasks}
-          eyebrowStyle={eyebrowStyle}
-        />
-      </>
+      <DailyOperationsManager
+        assets={assetRecords}
+        todayEvents={todayEvents}
+        upcomingEvents={upcomingEvents}
+        procedures={procedureRecords}
+        serviceRecords={serviceRecords}
+        weatherDays={weatherDays}
+        today={todayISO()}
+        isMobile={isMobile}
+        colors={colors}
+        onOpenCalendar={(item) => {
+          setScreen("calendar");
+          window.setTimeout(() => openCalendarItem(item), 0);
+        }}
+        onOpenCalendarPage={() => {
+          setScreen("calendar");
+        }}
+        onOpenWorkOrder={(id) => {
+          setSelectedServiceId(id);
+          setScreen("history");
+        }}
+        onOpenWorkOrdersPage={() => {
+          setSelectedServiceId("");
+          setScreen("history");
+        }}
+        onOpenRoutinesPage={() => {
+          setScreen("routines");
+        }}
+        onAskAtlas={(prompt) => {
+          setAssistantQuestion(prompt);
+          setScreen("assistant");
+          window.setTimeout(() => void askAtlas(prompt), 0);
+        }}
+      />
     );
   }
 
