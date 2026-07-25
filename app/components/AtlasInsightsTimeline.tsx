@@ -194,6 +194,7 @@ export default function AtlasInsightsTimeline({
   const [selectedEntryId, setSelectedEntryId] = useState("");
   const [customEvents, setCustomEvents] = useState<CustomTimelineEvent[]>([]);
   const [showAddEvent, setShowAddEvent] = useState(false);
+  const [carouselPosition, setCarouselPosition] = useState(0);
   const [draft, setDraft] = useState({
     date: new Date().toISOString().slice(0, 10),
     title: "",
@@ -206,6 +207,7 @@ export default function AtlasInsightsTimeline({
     afterPhoto: "",
   });
   const horizontalRef = useRef<HTMLDivElement | null>(null);
+  const carouselFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     setCustomEvents(readCustomEvents());
@@ -666,6 +668,104 @@ export default function AtlasInsightsTimeline({
   const selectedEntry =
     timelineEntries.find((entry) => entry.id === selectedEntryId) ||
     timelineEntries[timelineEntries.length - 1];
+
+  const activeGroupIndex = groupedTimeline.length
+    ? Math.max(0, Math.min(groupedTimeline.length - 1, Math.round(carouselPosition)))
+    : 0;
+  const activeGroup = groupedTimeline[activeGroupIndex];
+  const activeGroupLabel = activeGroup?.[0] || "";
+  const activeGroupEntries = activeGroup?.[1] || [];
+
+  useEffect(() => {
+    if (!groupedTimeline.length) {
+      setCarouselPosition(0);
+      return;
+    }
+
+    const targetIndex = groupedTimeline.length - 1;
+    setCarouselPosition(targetIndex);
+
+    const frame = window.requestAnimationFrame(() => {
+      const container = horizontalRef.current;
+      const target = container?.querySelector<HTMLElement>(
+        `[data-timeline-group-index="${targetIndex}"]`,
+      );
+      target?.scrollIntoView({
+        behavior: "auto",
+        block: "nearest",
+        inline: "center",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [zoom, groupedTimeline.length]);
+
+  useEffect(() => {
+    if (!activeGroupEntries.length) return;
+    if (activeGroupEntries.some((entry) => entry.id === selectedEntryId)) return;
+    setSelectedEntryId(activeGroupEntries[activeGroupEntries.length - 1].id);
+  }, [activeGroupEntries, selectedEntryId]);
+
+  const updateCarouselPosition = () => {
+    if (carouselFrameRef.current !== null) {
+      window.cancelAnimationFrame(carouselFrameRef.current);
+    }
+
+    carouselFrameRef.current = window.requestAnimationFrame(() => {
+      const container = horizontalRef.current;
+      if (!container) return;
+
+      const center = container.getBoundingClientRect().left + container.clientWidth / 2;
+      const cards = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-timeline-group-index]"),
+      );
+
+      if (!cards.length) return;
+
+      let nearestIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+
+      cards.forEach((card, index) => {
+        const rect = card.getBoundingClientRect();
+        const distance = Math.abs(rect.left + rect.width / 2 - center);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      });
+
+      const current = cards[nearestIndex];
+      const previous = cards[Math.max(0, nearestIndex - 1)];
+      const next = cards[Math.min(cards.length - 1, nearestIndex + 1)];
+      const currentCenter = current.getBoundingClientRect().left + current.offsetWidth / 2;
+      const direction = currentCenter < center ? 1 : -1;
+      const neighbor = direction > 0 ? next : previous;
+      const neighborCenter =
+        neighbor.getBoundingClientRect().left + neighbor.offsetWidth / 2;
+      const span = Math.max(1, Math.abs(neighborCenter - currentCenter));
+      const fraction = Math.max(-0.49, Math.min(0.49, (center - currentCenter) / span));
+
+      setCarouselPosition(nearestIndex + fraction);
+    });
+  };
+
+  const scrollCarousel = (direction: -1 | 1) => {
+    const container = horizontalRef.current;
+    if (!container || !groupedTimeline.length) return;
+
+    const targetIndex = Math.max(
+      0,
+      Math.min(groupedTimeline.length - 1, activeGroupIndex + direction),
+    );
+    const target = container.querySelector<HTMLElement>(
+      `[data-timeline-group-index="${targetIndex}"]`,
+    );
+    target?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  };
 
   const pageGrid: React.CSSProperties = {
     display: "grid",
@@ -1153,23 +1253,26 @@ export default function AtlasInsightsTimeline({
         </div>
       </section>
 
-      <section style={sectionStyle}>
+      <section
+        style={{
+          ...sectionStyle,
+          padding: 0,
+          overflow: "hidden",
+          background:
+            "linear-gradient(180deg, #071B2B 0%, #09283D 58%, #061725 100%)",
+          borderColor: "rgba(255,255,255,0.12)",
+        }}
+      >
         <div
           style={{
             display: "flex",
             flexWrap: "wrap",
             justifyContent: "space-between",
-            gap: 10,
+            gap: 12,
             alignItems: "center",
-            marginBottom: 14,
+            padding: "16px 18px 8px",
           }}
         >
-          <div>
-            <strong style={{ display: "block" }}>Timeline Scale</strong>
-            <span style={mutedSmallStyle}>
-              Change the scale without losing your selected filters.
-            </span>
-          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {(["Days", "Months", "Years", "Decades"] as TimelineZoom[]).map(
               (value) => (
@@ -1177,59 +1280,396 @@ export default function AtlasInsightsTimeline({
                   key={value}
                   type="button"
                   onClick={() => setZoom(value)}
-                  style={value === zoom ? goldButtonStyle : secondaryButtonStyle}
+                  style={{
+                    ...(value === zoom
+                      ? goldButtonStyle
+                      : secondaryButtonStyle),
+                    minHeight: 36,
+                    borderColor:
+                      value === zoom
+                        ? colors.gold
+                        : "rgba(255,255,255,0.18)",
+                    background:
+                      value === zoom
+                        ? colors.gold
+                        : "rgba(255,255,255,0.04)",
+                    color: value === zoom ? colors.text : "#FFFFFF",
+                  }}
                 >
                   {value}
                 </button>
               ),
             )}
           </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              color: "rgba(255,255,255,0.72)",
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            <span>Drag, swipe, or scroll to explore</span>
+            <button
+              type="button"
+              aria-label="Previous timeline period"
+              onClick={() => scrollCarousel(-1)}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "rgba(255,255,255,0.08)",
+                color: "#FFFFFF",
+                cursor: "pointer",
+                fontSize: 20,
+              }}
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              aria-label="Next timeline period"
+              onClick={() => scrollCarousel(1)}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "rgba(255,255,255,0.08)",
+                color: "#FFFFFF",
+                cursor: "pointer",
+                fontSize: 20,
+              }}
+            >
+              ›
+            </button>
+          </div>
         </div>
 
         {groupedTimeline.length ? (
-          <div
-            ref={horizontalRef}
-            style={{
-              display: "flex",
-              gap: 14,
-              overflowX: "auto",
-              scrollSnapType: "x proximity",
-              padding: "4px 2px 14px",
-            }}
-          >
-            {groupedTimeline.map(([label, entries]) => (
+          <>
+            <div
+              ref={horizontalRef}
+              onScroll={updateCarouselPosition}
+              onWheel={(event) => {
+                if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+                event.preventDefault();
+                horizontalRef.current?.scrollBy({
+                  left: event.deltaY,
+                  behavior: "auto",
+                });
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 18,
+                overflowX: "auto",
+                overflowY: "hidden",
+                scrollSnapType: "x mandatory",
+                scrollBehavior: "smooth",
+                perspective: 1400,
+                padding: "24px max(42%, 260px) 34px",
+                minHeight: 430,
+                scrollbarWidth: "none",
+                touchAction: "pan-x",
+              }}
+            >
+              {groupedTimeline.map(([label, entries], index) => {
+                const distance = Math.abs(index - carouselPosition);
+                const focus = Math.max(0, 1 - Math.min(distance, 3) / 3);
+                const scale = 0.56 + focus * 0.44;
+                const cardWidth = 92 + focus * 250;
+                const opacity = 0.34 + focus * 0.66;
+                const translateY = (1 - focus) * 42;
+                const rotateY =
+                  index < carouselPosition
+                    ? 12 * (1 - focus)
+                    : index > carouselPosition
+                      ? -12 * (1 - focus)
+                      : 0;
+                const hero =
+                  entries
+                    .map(
+                      (entry) =>
+                        entry.afterPhoto ||
+                        entry.photo ||
+                        entry.beforePhoto ||
+                        "",
+                    )
+                    .find(Boolean) || "";
+                const featured =
+                  entries.find((entry) => entry.isMilestone) ||
+                  entries[entries.length - 1];
+
+                return (
+                  <button
+                    key={label}
+                    data-timeline-group-index={index}
+                    type="button"
+                    onClick={() => {
+                      const target = horizontalRef.current?.querySelector<HTMLElement>(
+                        `[data-timeline-group-index="${index}"]`,
+                      );
+                      target?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "nearest",
+                        inline: "center",
+                      });
+                      if (featured) setSelectedEntryId(featured.id);
+                    }}
+                    style={{
+                      flex: `0 0 ${cardWidth}px`,
+                      width: cardWidth,
+                      height: 310 + focus * 76,
+                      scrollSnapAlign: "center",
+                      transform: `translateY(${translateY}px) rotateY(${rotateY}deg) scale(${scale})`,
+                      transformOrigin: "center bottom",
+                      transition:
+                        "width 180ms ease, flex-basis 180ms ease, transform 180ms ease, opacity 180ms ease, filter 180ms ease",
+                      opacity,
+                      filter:
+                        focus > 0.72
+                          ? "brightness(1)"
+                          : `brightness(${0.58 + focus * 0.42})`,
+                      border:
+                        focus > 0.72
+                          ? `2px solid ${colors.gold}`
+                          : "1px solid rgba(255,255,255,0.22)",
+                      borderRadius: 18,
+                      background:
+                        focus > 0.72
+                          ? "#FFFFFF"
+                          : "linear-gradient(180deg, #17364E 0%, #0A2133 100%)",
+                      color: focus > 0.72 ? colors.text : "#FFFFFF",
+                      overflow: "hidden",
+                      padding: 0,
+                      textAlign: "left",
+                      cursor: "pointer",
+                      boxShadow:
+                        focus > 0.72
+                          ? "0 24px 55px rgba(0,0,0,0.40)"
+                          : "0 12px 24px rgba(0,0,0,0.20)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: focus > 0.72 ? "18px 18px 12px" : "14px 12px 9px",
+                      }}
+                    >
+                      <strong
+                        style={{
+                          display: "block",
+                          fontSize: focus > 0.72 ? 30 : 20,
+                          lineHeight: 1,
+                          whiteSpace: "normal",
+                        }}
+                      >
+                        {label}
+                      </strong>
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 5,
+                          fontSize: 12,
+                          opacity: 0.7,
+                        }}
+                      >
+                        {entries.length} {entries.length === 1 ? "event" : "events"}
+                      </span>
+                    </div>
+
+                    {hero ? (
+                      <img
+                        src={hero}
+                        alt=""
+                        style={{
+                          width: "100%",
+                          height: focus > 0.72 ? 154 : 126,
+                          objectFit: "cover",
+                          display: "block",
+                          borderTop:
+                            focus > 0.72
+                              ? `1px solid ${colors.line}`
+                              : "1px solid rgba(255,255,255,0.12)",
+                          borderBottom:
+                            focus > 0.72
+                              ? `1px solid ${colors.line}`
+                              : "1px solid rgba(255,255,255,0.12)",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          height: focus > 0.72 ? 154 : 126,
+                          background:
+                            "radial-gradient(circle at 30% 20%, rgba(201,154,61,0.28), transparent 45%), linear-gradient(135deg, #244B65, #0B2335)",
+                          display: "grid",
+                          placeItems: "center",
+                          fontSize: focus > 0.72 ? 38 : 24,
+                          fontWeight: 900,
+                          color: "rgba(255,255,255,0.72)",
+                        }}
+                      >
+                        {entries.length}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        padding: focus > 0.72 ? 14 : 11,
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      {featured?.isMilestone ? (
+                        <span
+                          style={{
+                            color: colors.gold,
+                            fontSize: 11,
+                            fontWeight: 900,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          ★ Milestone
+                        </span>
+                      ) : null}
+                      <strong
+                        style={{
+                          fontSize: focus > 0.72 ? 16 : 13,
+                          display: "-webkit-box",
+                          WebkitLineClamp: focus > 0.72 ? 2 : 1,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {featured?.title || "Property history"}
+                      </strong>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          lineHeight: 1.4,
+                          opacity: 0.7,
+                          display: "-webkit-box",
+                          WebkitLineClamp: focus > 0.72 ? 3 : 1,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {featured?.description || "Timeline records"}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div
+              style={{
+                position: "relative",
+                height: 44,
+                margin: "0 18px 8px",
+              }}
+            >
               <div
-                key={label}
                 style={{
-                  flex: zoom === "Days" ? "0 0 280px" : "0 0 340px",
-                  scrollSnapAlign: "start",
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 16,
-                  background: colors.panel,
-                  overflow: "hidden",
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: 12,
+                  borderTop: `1px dashed ${colors.gold}`,
+                  opacity: 0.72,
+                }}
+              />
+              {groupedTimeline.map(([label], index) => {
+                const denominator = Math.max(1, groupedTimeline.length - 1);
+                const left = (index / denominator) * 100;
+                const isActive = index === activeGroupIndex;
+                return (
+                  <button
+                    key={`rail-${label}`}
+                    type="button"
+                    onClick={() => {
+                      const target = horizontalRef.current?.querySelector<HTMLElement>(
+                        `[data-timeline-group-index="${index}"]`,
+                      );
+                      target?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "nearest",
+                        inline: "center",
+                      });
+                    }}
+                    style={{
+                      position: "absolute",
+                      left: `${left}%`,
+                      top: isActive ? 3 : 7,
+                      transform: "translateX(-50%)",
+                      width: isActive ? 20 : 10,
+                      height: isActive ? 20 : 10,
+                      borderRadius: 999,
+                      border: `2px solid ${colors.gold}`,
+                      background: isActive ? colors.gold : "#09283D",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                    aria-label={`Open ${label}`}
+                  />
+                );
+              })}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: "28px 0 auto",
+                  textAlign: "center",
+                  color: colors.gold,
+                  fontWeight: 900,
+                  fontSize: 12,
                 }}
               >
+                {activeGroupLabel}
+              </div>
+            </div>
+
+            <div
+              style={{
+                margin: "0 12px 12px",
+                background: "#FFFFFF",
+                borderRadius: 16,
+                border: `1px solid ${colors.line}`,
+                padding: 12,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 12,
+                color: colors.text,
+              }}
+            >
+              <div style={card}>
                 <div
                   style={{
-                    padding: "12px 14px",
-                    borderBottom: `1px solid ${colors.line}`,
-                    background: "#FFFFFF",
+                    fontSize: 11,
+                    fontWeight: 900,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: colors.muted,
                   }}
                 >
-                  <strong>{label}</strong>
-                  <span style={{ ...mutedSmallStyle, display: "block" }}>
-                    {entries.length} {entries.length === 1 ? "event" : "events"}
-                  </span>
+                  Events in {activeGroupLabel}
                 </div>
-                <div style={{ display: "grid", gap: 8, padding: 10 }}>
-                  {entries.map((entry) => (
+                <div style={{ display: "grid", gap: 8, maxHeight: 300, overflowY: "auto" }}>
+                  {activeGroupEntries.map((entry) => (
                     <button
                       key={entry.id}
                       type="button"
                       onClick={() => setSelectedEntryId(entry.id)}
                       style={{
                         ...clickableCard,
-                        padding: 11,
+                        padding: 10,
+                        gridTemplateColumns: "30px minmax(0, 1fr)",
+                        alignItems: "center",
                         borderColor:
                           selectedEntry?.id === entry.id
                             ? colors.gold
@@ -1240,212 +1680,225 @@ export default function AtlasInsightsTimeline({
                             : "#FFFFFF",
                       }}
                     >
-                      <div
+                      <span
                         style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 9,
                           display: "grid",
-                          gridTemplateColumns: "34px minmax(0, 1fr)",
-                          gap: 9,
-                          alignItems: "center",
+                          placeItems: "center",
+                          background: entry.isMilestone
+                            ? "#FFF4D6"
+                            : colors.panel,
+                          border: `1px solid ${
+                            entry.isMilestone ? colors.gold : colors.line
+                          }`,
+                          fontWeight: 900,
                         }}
                       >
-                        <span
+                        {entry.icon}
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <strong
                           style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 10,
-                            display: "grid",
-                            placeItems: "center",
-                            background: entry.isMilestone
-                              ? "#FFF4D6"
-                              : colors.panel,
-                            border: `1px solid ${
-                              entry.isMilestone ? colors.gold : colors.line
-                            }`,
-                            fontWeight: 900,
+                            display: "block",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          {entry.icon}
+                          {entry.title}
+                        </strong>
+                        <span style={{ ...mutedSmallStyle, display: "block" }}>
+                          {dateLabel(entry.date)} · {entry.type}
                         </span>
-                        <span style={{ minWidth: 0 }}>
-                          <strong
-                            style={{
-                              display: "block",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {entry.title}
-                          </strong>
-                          <span style={{ ...mutedSmallStyle, display: "block" }}>
-                            {dateLabel(entry.date)} · {entry.type}
-                          </span>
-                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {selectedEntry ? (
+                <div style={card}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          color: colors.gold,
+                          fontSize: 11,
+                          fontWeight: 900,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {selectedEntry.isMilestone
+                          ? "Property Milestone"
+                          : selectedEntry.type}
                       </div>
-                      {entry.photo ? (
+                      <h3 style={{ margin: "5px 0 4px" }}>
+                        {selectedEntry.title}
+                      </h3>
+                    </div>
+                    <span style={mutedSmallStyle}>
+                      {dateLabel(selectedEntry.date)}
+                    </span>
+                  </div>
+
+                  <p style={{ margin: 0, lineHeight: 1.6 }}>
+                    {selectedEntry.description}
+                  </p>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 12,
+                      fontSize: 12,
+                      color: colors.muted,
+                    }}
+                  >
+                    {selectedEntry.locationId ? (
+                      <span>Location: {locationName(selectedEntry.locationId)}</span>
+                    ) : null}
+                    {selectedEntry.assetId ? (
+                      <span>Asset: {assetName(selectedEntry.assetId)}</span>
+                    ) : null}
+                    {selectedEntry.vendorId ? (
+                      <span>Vendor: {vendorName(selectedEntry.vendorId)}</span>
+                    ) : null}
+                  </div>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {selectedEntry.record ||
+                    selectedEntry.event ||
+                    selectedEntry.request ? (
+                      <button
+                        type="button"
+                        onClick={() => openEntry(selectedEntry)}
+                        style={goldButtonStyle}
+                      >
+                        Open Linked Record
+                      </button>
+                    ) : null}
+                    {selectedEntry.custom ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          deleteCustomEvent(selectedEntry.custom!.id)
+                        }
+                        style={secondaryButtonStyle}
+                      >
+                        Delete Historical Event
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div style={noticeStyle}>Select an event to view its details.</div>
+              )}
+
+              <div style={card}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 900,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: colors.muted,
+                  }}
+                >
+                  Before / After
+                </div>
+
+                {selectedEntry?.beforePhoto || selectedEntry?.afterPhoto ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        selectedEntry.beforePhoto && selectedEntry.afterPhoto
+                          ? "1fr 1fr"
+                          : "1fr",
+                      gap: 10,
+                    }}
+                  >
+                    {selectedEntry.beforePhoto ? (
+                      <figure style={{ margin: 0 }}>
                         <img
-                          src={entry.photo}
-                          alt=""
+                          src={selectedEntry.beforePhoto}
+                          alt="Before"
                           style={{
                             width: "100%",
-                            height: 120,
+                            height: 190,
                             objectFit: "cover",
                             borderRadius: 10,
                             border: `1px solid ${colors.line}`,
                           }}
                         />
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
+                        <figcaption style={{ ...mutedSmallStyle, marginTop: 5 }}>
+                          Before
+                        </figcaption>
+                      </figure>
+                    ) : null}
+                    {selectedEntry.afterPhoto ? (
+                      <figure style={{ margin: 0 }}>
+                        <img
+                          src={selectedEntry.afterPhoto}
+                          alt="After"
+                          style={{
+                            width: "100%",
+                            height: 190,
+                            objectFit: "cover",
+                            borderRadius: 10,
+                            border: `1px solid ${colors.line}`,
+                          }}
+                        />
+                        <figcaption style={{ ...mutedSmallStyle, marginTop: 5 }}>
+                          After
+                        </figcaption>
+                      </figure>
+                    ) : null}
+                  </div>
+                ) : selectedEntry?.photo ? (
+                  <img
+                    src={selectedEntry.photo}
+                    alt=""
+                    style={{
+                      width: "100%",
+                      height: 220,
+                      objectFit: "cover",
+                      borderRadius: 10,
+                      border: `1px solid ${colors.line}`,
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      ...noticeStyle,
+                      minHeight: 180,
+                      display: "grid",
+                      placeItems: "center",
+                      textAlign: "center",
+                    }}
+                  >
+                    No visual media is attached to this timeline event.
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            </div>
+          </>
         ) : (
-          <div style={noticeStyle}>
+          <div style={{ ...noticeStyle, margin: 18 }}>
             No timeline records match the selected filters.
           </div>
         )}
       </section>
-
-      {selectedEntry ? (
-        <section style={sectionStyle}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1.15fr) minmax(280px, 0.85fr)",
-              gap: 18,
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  color: colors.gold,
-                  fontSize: 12,
-                  fontWeight: 900,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                }}
-              >
-                {selectedEntry.isMilestone ? "Property Milestone" : selectedEntry.type}
-              </div>
-              <h3 style={{ margin: "5px 0 4px" }}>{selectedEntry.title}</h3>
-              <div style={{ ...mutedSmallStyle, marginBottom: 14 }}>
-                {dateLabel(selectedEntry.date)}
-                {selectedEntry.locationId
-                  ? ` · ${locationName(selectedEntry.locationId)}`
-                  : ""}
-                {selectedEntry.assetId
-                  ? ` · ${assetName(selectedEntry.assetId)}`
-                  : ""}
-                {selectedEntry.vendorId
-                  ? ` · ${vendorName(selectedEntry.vendorId)}`
-                  : ""}
-              </div>
-              <p style={{ margin: 0, lineHeight: 1.6 }}>
-                {selectedEntry.description}
-              </p>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
-                {selectedEntry.record || selectedEntry.event || selectedEntry.request ? (
-                  <button
-                    type="button"
-                    onClick={() => openEntry(selectedEntry)}
-                    style={goldButtonStyle}
-                  >
-                    Open Linked Record
-                  </button>
-                ) : null}
-                {selectedEntry.custom ? (
-                  <button
-                    type="button"
-                    onClick={() => deleteCustomEvent(selectedEntry.custom!.id)}
-                    style={secondaryButtonStyle}
-                  >
-                    Delete Historical Event
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            <div>
-              {selectedEntry.beforePhoto || selectedEntry.afterPhoto ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      selectedEntry.beforePhoto && selectedEntry.afterPhoto
-                        ? "1fr 1fr"
-                        : "1fr",
-                    gap: 10,
-                  }}
-                >
-                  {selectedEntry.beforePhoto ? (
-                    <figure style={{ margin: 0 }}>
-                      <img
-                        src={selectedEntry.beforePhoto}
-                        alt="Before"
-                        style={{
-                          width: "100%",
-                          height: 220,
-                          objectFit: "cover",
-                          borderRadius: 12,
-                          border: `1px solid ${colors.line}`,
-                        }}
-                      />
-                      <figcaption style={{ ...mutedSmallStyle, marginTop: 6 }}>
-                        Before
-                      </figcaption>
-                    </figure>
-                  ) : null}
-                  {selectedEntry.afterPhoto ? (
-                    <figure style={{ margin: 0 }}>
-                      <img
-                        src={selectedEntry.afterPhoto}
-                        alt="After"
-                        style={{
-                          width: "100%",
-                          height: 220,
-                          objectFit: "cover",
-                          borderRadius: 12,
-                          border: `1px solid ${colors.line}`,
-                        }}
-                      />
-                      <figcaption style={{ ...mutedSmallStyle, marginTop: 6 }}>
-                        After
-                      </figcaption>
-                    </figure>
-                  ) : null}
-                </div>
-              ) : selectedEntry.photo ? (
-                <img
-                  src={selectedEntry.photo}
-                  alt=""
-                  style={{
-                    width: "100%",
-                    maxHeight: 300,
-                    objectFit: "cover",
-                    borderRadius: 12,
-                    border: `1px solid ${colors.line}`,
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    ...noticeStyle,
-                    minHeight: 180,
-                    display: "grid",
-                    placeItems: "center",
-                    textAlign: "center",
-                  }}
-                >
-                  No visual media is attached to this timeline event.
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      ) : null}
 
       {showAddEvent ? (
         <div
