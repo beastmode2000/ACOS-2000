@@ -1031,6 +1031,64 @@ export async function POST(request: NextRequest) {
       return {};
     })) as JsonRecord;
 
+    const action = asString(body.action);
+
+    if (action === "repair6855Calendar") {
+      const sourcePropertyId = "6855";
+      const destinationPropertyId = "2000";
+
+      if (!(await authorizeAtlasRequest(sql, request, sourcePropertyId, "edit"))) {
+        return NextResponse.json(
+          { ok: false, error: "You do not have permission to repair this property." },
+          { status: 403 },
+        );
+      }
+
+      if (!(await authorizeAtlasRequest(sql, request, destinationPropertyId, "edit"))) {
+        return NextResponse.json(
+          { ok: false, error: "You do not have permission to restore the 2000 calendar." },
+          { status: 403 },
+        );
+      }
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS atlas_data_repairs (
+          id text PRIMARY KEY,
+          completed_at timestamptz NOT NULL DEFAULT NOW()
+        )
+      `;
+
+      const completed = (await sql`
+        SELECT id
+        FROM atlas_data_repairs
+        WHERE id = 'repair-6855-calendar-to-2000-v1'
+        LIMIT 1
+      `) as unknown as JsonRecord[];
+
+      if (completed.length) {
+        return NextResponse.json({ ok: true, moved: 0, alreadyCompleted: true });
+      }
+
+      const movedRows = (await sql`
+        UPDATE atlas_calendar_items
+        SET property_id = ${destinationPropertyId}, updated_at = NOW()
+        WHERE property_id = ${sourcePropertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+
+      await sql`
+        INSERT INTO atlas_data_repairs (id, completed_at)
+        VALUES ('repair-6855-calendar-to-2000-v1', NOW())
+        ON CONFLICT (id) DO NOTHING
+      `;
+
+      return NextResponse.json({
+        ok: true,
+        moved: movedRows.length,
+        alreadyCompleted: false,
+      });
+    }
+
     const table = cleanTable(body.table);
     const record =
       body.record && typeof body.record === "object"
