@@ -80,7 +80,6 @@ type AtlasCalendarProps = {
   mutedSmallStyle: React.CSSProperties;
   openCalendarItem: any;
   onOpenLinkedRecord?: (event: any) => boolean | void;
-  onToggleCompleted?: (event: any) => boolean | Promise<boolean>;
   onConvertToWorkOrder?: (event: any) => boolean | Promise<boolean>;
   reminderOptions: string[];
   repeatOptions: string[];
@@ -288,7 +287,6 @@ export default function AtlasCalendar(
     mutedSmallStyle,
     openCalendarItem,
     onOpenLinkedRecord,
-    onToggleCompleted,
     onConvertToWorkOrder,
     reminderOptions,
     repeatOptions,
@@ -500,22 +498,9 @@ export default function AtlasCalendar(
     closeDetail();
   }
 
-  async function toggleCompleted(event: any) {
-    if (!onToggleCompleted) return;
-    await onToggleCompleted(event);
-  }
-
   async function convertToWorkOrder(event: any) {
     if (!onConvertToWorkOrder) return;
     await onConvertToWorkOrder(event);
-  }
-
-  function canCompleteEvent(event: any) {
-    return (
-      event.source === "manual" ||
-      event.source === "work-order" ||
-      event.linkedType === "Work Order"
-    );
   }
 
   function canConvertEvent(event: any) {
@@ -929,18 +914,6 @@ export default function AtlasCalendar(
                               style={secondaryButtonStyle}
                             >
                               Open {event.linkedType}
-                            </button>
-                          ) : null}
-
-                          {canCompleteEvent(event) ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void toggleCompleted(event);
-                              }}
-                              style={completed ? secondaryButtonStyle : goldButtonStyle}
-                            >
-                              {completed ? "Reopen" : "Complete"}
                             </button>
                           ) : null}
 
