@@ -215,6 +215,8 @@ export default function AtlasInsightsTimeline({
   });
   const horizontalRef = useRef<HTMLDivElement | null>(null);
   const carouselSettleTimerRef = useRef<number | null>(null);
+  const carouselWheelLockRef = useRef(false);
+  const carouselWheelUnlockTimerRef = useRef<number | null>(null);
   const filtersRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -240,6 +242,9 @@ export default function AtlasInsightsTimeline({
     () => () => {
       if (carouselSettleTimerRef.current !== null) {
         window.clearTimeout(carouselSettleTimerRef.current);
+      }
+      if (carouselWheelUnlockTimerRef.current !== null) {
+        window.clearTimeout(carouselWheelUnlockTimerRef.current);
       }
     },
     [],
@@ -1647,17 +1652,27 @@ export default function AtlasInsightsTimeline({
               ref={horizontalRef}
               onScroll={settleCarouselSelection}
               onWheel={(event) => {
-                const container = horizontalRef.current;
-                if (!container) return;
-
                 const delta =
                   Math.abs(event.deltaX) > Math.abs(event.deltaY)
                     ? event.deltaX
                     : event.deltaY;
 
-                if (!delta) return;
+                if (Math.abs(delta) < 8) return;
                 event.preventDefault();
-                container.scrollLeft += delta;
+
+                if (carouselWheelLockRef.current) return;
+
+                carouselWheelLockRef.current = true;
+                scrollCarousel(delta > 0 ? 1 : -1);
+
+                if (carouselWheelUnlockTimerRef.current !== null) {
+                  window.clearTimeout(carouselWheelUnlockTimerRef.current);
+                }
+
+                carouselWheelUnlockTimerRef.current = window.setTimeout(() => {
+                  carouselWheelLockRef.current = false;
+                  carouselWheelUnlockTimerRef.current = null;
+                }, 420);
               }}
               style={{
                 display: "flex",
