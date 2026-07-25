@@ -448,12 +448,11 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const commandCenterStyle: React.CSSProperties = {
     display: "grid",
     gap: isMobile ? 14 : 18,
-    padding: isMobile ? 16 : 22,
-    borderRadius: 18,
+    padding: isMobile ? 18 : 24,
+    borderRadius: 24,
     color: "#FFFFFF",
-    background:
-      "linear-gradient(135deg, #102A43 0%, #174A78 55%, #1E5F94 100%)",
-    boxShadow: "0 14px 34px rgba(16, 42, 67, 0.18)",
+    background: `linear-gradient(135deg, ${colors.navy} 0%, #183B55 100%)`,
+    boxShadow: "0 14px 38px rgba(15, 31, 48, 0.1)",
     overflow: "hidden",
   };
 
@@ -470,9 +469,9 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     gap: 4,
     minWidth: 0,
     padding: isMobile ? "11px 10px" : "13px 12px",
-    border: "1px solid rgba(255, 255, 255, 0.18)",
+    border: "1px solid rgba(255, 255, 255, 0.1)",
     borderRadius: 13,
-    background: "rgba(255, 255, 255, 0.09)",
+    background: "rgba(255, 255, 255, 0.08)",
     backdropFilter: "blur(4px)",
   };
 
@@ -559,7 +558,7 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     fontWeight: 900,
                     letterSpacing: "0.12em",
                     textTransform: "uppercase",
-                    opacity: 0.78,
+                    color: colors.gold,
                   }}
                 >
                   Atlas Operations
