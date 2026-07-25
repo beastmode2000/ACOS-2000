@@ -1994,94 +1994,86 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
                 </span>
               </div>
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <div style={{ display: "grid", gap: 12 }}>
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 15 }}>
+                {!workEditorOpen ? (
                   <div style={{ display: "grid", gap: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={eyebrowStyle}>Information</div>
-                        {workEditorOpen ? (
-                          <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, marginTop: 5, fontSize: isMobile ? 20 : 24, fontWeight: 800 }} />
-                        ) : (
-                          <h2 style={{ margin: "5px 0 0", color: colors.text, fontSize: isMobile ? 22 : 27, lineHeight: 1.2 }}>{selectedService.title || "Untitled Work Order"}</h2>
-                        )}
-                      </div>
-                      {!workEditorOpen ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          {selectedService.status !== "Completed" ? (
-                            <button
-                              type="button"
-                              onClick={() => handleDetailAction("complete")}
-                              style={{ ...goldButtonStyle, width: "auto", minHeight: 34, padding: "7px 12px", whiteSpace: "nowrap" }}
-                            >
-                              Mark Done
-                            </button>
-                          ) : null}
-                          <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: 34, minWidth: 34, height: 34, minHeight: 34, padding: 0, borderRadius: 8 }} aria-label="Edit work order details" title="Edit work order details">{SYMBOL.edit}</button>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={eyebrowStyle}>Work Order</div>
+                        <h2 style={{ margin: "4px 0 7px", color: colors.text, fontSize: isMobile ? 22 : 27, lineHeight: 1.18 }}>
+                          {selectedService.title || "Untitled Work Order"}
+                        </h2>
+                        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                          <span style={badgeStyle(selectedService.status || "Open")}>{selectedService.status || "Open"}</span>
+                          <span style={badgeStyle(selectedService.priority || "Medium")}>{selectedService.priority || "Normal"}</span>
+                          <span style={{ ...mutedSmallStyle, fontWeight: 700 }}>{itemType(selectedService) === "Preventive Maintenance" ? "Recurring" : itemType(selectedService)}</span>
                         </div>
-                      ) : null}
-                    </div>
-
-                    {workEditorOpen ? (
-                      <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} placeholder="Describe the work that is needed" style={{ ...inputStyle, minHeight: 82, resize: "vertical" }} />
-                    ) : (
-                      <p style={{ margin: 0, color: colors.muted, fontSize: 13, lineHeight: 1.5 }}>{selectedService.notes || "No description added."}</p>
-                    )}
-
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-                      {workEditorOpen ? (
-                        <>
-                          <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
-                          <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Status</span><select value={selectedService.status || "Open"} onChange={(event) => updateWorkOrder({ status: event.currentTarget.value })} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="In Progress">In Progress</option><option value="Waiting">Waiting</option><option value="Monitor">Monitor</option><option value="Completed">Completed</option></select></label>
-                          <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Priority</span><select value={selectedService.priority || "Medium"} onChange={(event) => updateWorkOrder({ priority: event.currentTarget.value })} style={inputStyle}><option value="High">High</option><option value="Medium">Normal</option><option value="Low">Low</option></select></label>
-                          <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Work Type</span><select value={itemType(selectedService)} onChange={(event) => { const workType = event.currentTarget.value as WorkItemType; updateWorkOrder({ workType, recurring: workType === "Preventive Maintenance" ? true : selectedService.recurring }); }} style={inputStyle}><option value="Quick Task">Task</option><option value="Work Order">Work Order</option><option value="Preventive Maintenance">Recurring</option><option value="Project">Project</option></select></label>
-                        </>
-                      ) : (
-                        <>
-                          <div><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><div style={{ marginTop: 4 }}>{selectedService.date ? formatDate(selectedService.date) : "No due date"}</div></div>
-                          <div><span style={fieldLabelStyle}>Status</span><div style={{ marginTop: 4 }}><span style={badgeStyle(selectedService.status || "Open")}>{selectedService.status || "Open"}</span></div></div>
-                          <div><span style={fieldLabelStyle}>Priority</span><div style={{ marginTop: 4 }}><span style={badgeStyle(selectedService.priority || "Medium")}>{selectedService.priority || "Normal"}</span></div></div>
-                          <div><span style={fieldLabelStyle}>Work Type</span><div style={{ marginTop: 4 }}>{itemType(selectedService)}</div></div>
-                        </>
-                      )}
-                    </div>
-
-                    {workEditorOpen ? (
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <button type="button" onClick={() => setWorkEditorOpen(false)} style={secondaryButtonStyle}>Cancel</button>
-                        <button type="button" onClick={() => { void saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto" }}>Save Details</button>
                       </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+                        {selectedService.status !== "Completed" ? (
+                          <button type="button" onClick={() => handleDetailAction("complete")} style={{ ...goldButtonStyle, width: "auto", minHeight: 34, padding: "7px 11px" }}>
+                            Done
+                          </button>
+                        ) : null}
+                        <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "7px 10px" }}>
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+
+                    {selectedService.notes ? (
+                      <p style={{ margin: 0, color: colors.muted, fontSize: 13, lineHeight: 1.5 }}>{selectedService.notes}</p>
                     ) : null}
+
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))", gap: 10, paddingTop: 2 }}>
+                      <div><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due"}</span><div style={{ marginTop: 3, fontWeight: 700 }}>{selectedService.date ? formatDate(selectedService.date) : "Not set"}</div></div>
+                      <div><span style={fieldLabelStyle}>Asset</span><div style={{ marginTop: 3, fontWeight: 700 }}>{assetRecords.find((asset: any) => asset.id === selectedService.assetId)?.name || "None"}</div></div>
+                      <div><span style={fieldLabelStyle}>Location</span><div style={{ marginTop: 3, fontWeight: 700 }}>{locationRecords.find((location: any) => location.id === selectedService.locationId)?.name || "None"}</div></div>
+                      <div><span style={fieldLabelStyle}>Sub-Location</span><div style={{ marginTop: 3, fontWeight: 700 }}>{selectedService.subLocation || "None"}</div></div>
+                      <div><span style={fieldLabelStyle}>Assigned</span><div style={{ marginTop: 3, fontWeight: 700 }}>{selectedService.assignedTo || "Unassigned"}</div></div>
+                      <div><span style={fieldLabelStyle}>Vendor</span><div style={{ marginTop: 3, fontWeight: 700 }}>{vendorRecords.find((vendor: any) => vendor.id === selectedService.vendorId)?.name || "None"}</div></div>
+                      <div><span style={fieldLabelStyle}>Category</span><div style={{ marginTop: 3, fontWeight: 700 }}>{categoryDisplayLabel(categoryLabel(selectedService))}</div></div>
+                      <div><span style={fieldLabelStyle}>Recurring</span><div style={{ marginTop: 3, fontWeight: 700 }}>{selectedService.recurring ? `Every ${selectedService.recurrenceInterval || 1} ${selectedService.recurrenceUnit || "Weeks"}` : "No"}</div></div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 11 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                      <div style={eyebrowStyle}>Edit Work Order</div>
+                      <button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button>
+                    </div>
+                    <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
+                    <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} placeholder="Description" style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} />
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 9 }}>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Status</span><select value={selectedService.status || "Open"} onChange={(event) => updateWorkOrder({ status: event.currentTarget.value })} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="In Progress">In Progress</option><option value="Waiting">Waiting</option><option value="Monitor">Monitor</option><option value="Completed">Completed</option></select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Priority</span><select value={selectedService.priority || "Medium"} onChange={(event) => updateWorkOrder({ priority: event.currentTarget.value })} style={inputStyle}><option value="High">High</option><option value="Medium">Normal</option><option value="Low">Low</option></select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Type</span><select value={itemType(selectedService)} onChange={(event) => { const workType = event.currentTarget.value as WorkItemType; updateWorkOrder({ workType, recurring: workType === "Preventive Maintenance" ? true : selectedService.recurring }); }} style={inputStyle}><option value="Quick Task">Task</option><option value="Work Order">Work Order</option><option value="Preventive Maintenance">Recurring</option><option value="Project">Project</option></select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder(assetPhotoPatch(event.currentTarget.value))} style={inputStyle}><option value="">No asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => updateWorkOrder({ locationId: event.currentTarget.value })} style={inputStyle}><option value="">No location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Sub-Location</span><input value={selectedService.subLocation || ""} onChange={(event) => updateWorkOrder({ subLocation: event.currentTarget.value })} style={inputStyle} /></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => updateWorkOrder({ workCategory: event.currentTarget.value, emoji: categoryEmoji(event.currentTarget.value) })} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => updateWorkOrder({ assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => updateWorkOrder({ vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <button type="button" onClick={() => { void saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto" }}>Save</button>
+                    </div>
+                  </div>
+                )}
               </section>
 
-              <details open style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
-                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>
-                  Assignment
-                </summary>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder(assetPhotoPatch(event.currentTarget.value))} style={inputStyle}><option value="">No linked asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => updateWorkOrder({ locationId: event.currentTarget.value })} style={inputStyle}><option value="">No linked location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Sub-Location</span><input value={selectedService.subLocation || ""} onChange={(event) => updateWorkOrder({ subLocation: event.currentTarget.value })} placeholder="Mechanical Room, Dock, Kitchen..." style={inputStyle} /></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => updateWorkOrder({ workCategory: event.currentTarget.value, emoji: categoryEmoji(event.currentTarget.value) })} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => updateWorkOrder({ assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => updateWorkOrder({ vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
-                </div>
-              </details>
-
               <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 9 }}>
                   <div>
                     <div style={eyebrowStyle}>Procedure</div>
-                    <strong>{(selectedService.checklist || []).length ? `${(selectedService.checklist || []).filter((item: ChecklistItem) => item.completed).length} of ${(selectedService.checklist || []).length} complete` : "No steps added"}</strong>
+                    <strong>{(selectedService.checklist || []).length ? `${(selectedService.checklist || []).filter((item: ChecklistItem) => item.completed).length} of ${(selectedService.checklist || []).length} complete` : "No steps"}</strong>
                   </div>
                 </div>
-
                 {(selectedService.checklist || []).length ? (
-                  <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ display: "grid", gap: 5 }}>
                     {(selectedService.checklist || []).map((item: ChecklistItem, index: number) => (
-                      <div key={item.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", alignItems: "center", gap: 9, padding: "8px 9px", border: `1px solid ${colors.line}`, borderRadius: 9, background: item.completed ? "#F8FAFC" : "#FFFFFF" }}>
+                      <div key={item.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", alignItems: "center", gap: 9, padding: "8px 9px", borderBottom: `1px solid ${colors.line}` }}>
                         <input type="checkbox" checked={Boolean(item.completed)} onChange={() => toggleChecklistItem(item.id)} aria-label={`Complete step ${index + 1}`} />
                         <span style={{ color: item.completed ? colors.muted : colors.text, textDecoration: item.completed ? "line-through" : "none", fontSize: 13 }}>{item.text}</span>
                         <button type="button" onClick={() => deleteChecklistItem(item.id)} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", padding: 4 }} aria-label={`Remove step ${index + 1}`}>{SYMBOL.close}</button>
@@ -2089,209 +2081,60 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     ))}
                   </div>
                 ) : null}
-
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, marginTop: 10 }}>
-                  <input value={newChecklistText} onChange={(event) => setNewChecklistText(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addChecklistItem(); } }} placeholder="Add procedure step" style={inputStyle} />
-                  <button type="button" onClick={addChecklistItem} style={{ ...secondaryButtonStyle, width: "auto", padding: "7px 11px" }}>Add Step</button>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, marginTop: 9 }}>
+                  <input value={newChecklistText} onChange={(event) => setNewChecklistText(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addChecklistItem(); } }} placeholder="Add step" style={inputStyle} />
+                  <button type="button" onClick={addChecklistItem} style={{ ...secondaryButtonStyle, width: "auto", padding: "7px 10px" }}>Add</button>
                 </div>
               </section>
 
-              <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Cost & Invoice</summary>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
-                  <label style={{ display: "grid", gap: 5 }}>
-                    <span style={fieldLabelStyle}>Estimated Cost</span>
-                    <input type="number" min="0" step="0.01" value={selectedService.estimatedCost || ""} onChange={(event) => updateWorkOrder({ estimatedCost: Number(event.currentTarget.value || 0) })} style={inputStyle} />
-                  </label>
-                  <label style={{ display: "grid", gap: 5 }}>
-                    <span style={fieldLabelStyle}>Actual Cost</span>
-                    <input type="number" min="0" step="0.01" value={selectedService.actualCost || ""} onChange={(event) => updateWorkOrder({ actualCost: Number(event.currentTarget.value || 0) })} style={inputStyle} />
-                  </label>
-                  <label style={{ display: "grid", gap: 5 }}>
-                    <span style={fieldLabelStyle}>Invoice Number</span>
-                    <input value={selectedService.invoiceNumber || ""} onChange={(event) => updateWorkOrder({ invoiceNumber: event.currentTarget.value })} style={inputStyle} />
-                  </label>
-                </div>
-              </details>
-
-              <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Internal Notes</summary>
-                <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={4} placeholder="Add internal notes here..." style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} />
-              </details>
-
-              <div style={{ ...buttonRowStyle, justifyContent: "flex-end", padding: "0 0 4px" }}>
-                <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto", minHeight: 36, padding: "7px 13px" }}>Save</button>
-              </div>
-
-              <section style={detailSectionStyle}>
-                <div style={detailSectionHeaderStyle}>
-                  <div>
-                    <div style={eyebrowStyle}>Photos</div>
-                    <strong>
-                      {(selectedService.photos || []).length} attached
-                    </strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => photoInputRef.current?.click()}
-                    style={secondaryButtonStyle}
-                  >
-                    Add Photos
-                  </button>
-                </div>
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(event) =>
-                    void addPhotos(event.currentTarget.files)
-                  }
-                  style={{ display: "none" }}
-                />
-                {photoMessage ? (
-                  <p style={mutedSmallStyle}>{photoMessage}</p>
-                ) : null}
+              <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Photos ({(selectedService.photos || []).length})</summary>
+                <input ref={photoInputRef} type="file" accept="image/*" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} style={{ display: "none" }} />
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, width: "auto" }}>Add Photos</button></div>
+                {photoMessage ? <p style={mutedSmallStyle}>{photoMessage}</p> : null}
                 {(selectedService.photos || []).length ? (
-                  <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF" }}>
-                    <summary style={{ padding: "8px 10px", cursor: "pointer", color: colors.text, fontSize: 12, fontWeight: 700 }}>
-                      Photos ({(selectedService.photos || []).length})
-                    </summary>
-                    <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
-                      {(selectedService.photos || []).map((photo: PhotoLike) => {
-                        const source = photoSource(photo);
-                        return (
-                          <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
-                            {source ? (
-                              <a href={source} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
-                                {photo.name || "Work photo"}
-                              </a>
-                            ) : (
-                              <span style={mutedSmallStyle}>{photo.name || "Photo unavailable"}</span>
-                            )}
-                            <button type="button" onClick={() => removePhoto(photo.id)} style={{ ...dangerButtonStyle, padding: "6px 8px" }}>Remove</button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </details>
-                ) : null}
-              </section>
-
-              <section style={detailSectionStyle}>
-                <div style={detailSectionHeaderStyle}>
-                  <div>
-                    <div style={eyebrowStyle}>Service History</div>
-                    <strong>
-                      {(selectedService.serviceHistory || []).length} saved
-                      completion snapshot
-                      {(selectedService.serviceHistory || []).length === 1
-                        ? ""
-                        : "s"}
-                    </strong>
+                  <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
+                    {(selectedService.photos || []).map((photo: PhotoLike) => {
+                      const source = photoSource(photo);
+                      return <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px solid ${colors.line}` }}>{source ? <a href={source} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>{photo.name || "Work photo"}</a> : <span style={mutedSmallStyle}>{photo.name || "Photo unavailable"}</span>}<button type="button" onClick={() => removePhoto(photo.id)} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 12 }}>Remove</button></div>;
+                    })}
                   </div>
-                </div>
+                ) : null}
+              </details>
+
+              <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>History ({(selectedService.serviceHistory || []).length})</summary>
                 {(selectedService.serviceHistory || []).length ? (
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 8,
-                      maxHeight: 150,
-                      overflowY: "auto",
-                    }}
-                  >
-                    {(selectedService.serviceHistory || []).map(
-                      (entry: any) => (
-                        <div
-                          key={entry.id}
-                          style={{
-                            border: `1px solid ${colors.line}`,
-                            borderRadius: 10,
-                            padding: 10,
-                            background: "#F8FAFC",
-                          }}
-                        >
-                          <strong>
-                            {new Date(entry.completedAt).toLocaleString()}
-                          </strong>
-                          <div style={mutedSmallStyle}>
-                            Due {formatDate(entry.dueDate)} ·{" "}
-                            {entry.statusBefore}
-                          </div>
-                          <div style={mutedSmallStyle}>
-                            {
-                              (entry.checklist || []).filter(
-                                (item: any) => item.completed,
-                              ).length
-                            }
-                            /{(entry.checklist || []).length} checklist items
-                            complete · {(entry.photos || []).length} photo(s)
-                          </div>
-                          {entry.notes ? (
-                            <p style={{ marginBottom: 0 }}>{entry.notes}</p>
-                          ) : null}
-                        </div>
-                      ),
-                    )}
+                  <div style={{ display: "grid", gap: 0, marginTop: 8 }}>
+                    {(selectedService.serviceHistory || []).map((entry: any) => (
+                      <div key={entry.id} style={{ padding: "9px 0", borderBottom: `1px solid ${colors.line}` }}>
+                        <strong style={{ display: "block", fontSize: 13 }}>Completed {new Date(entry.completedAt).toLocaleDateString()}</strong>
+                        <span style={mutedSmallStyle}>{(entry.checklist || []).filter((item: any) => item.completed).length}/{(entry.checklist || []).length} steps · {(entry.photos || []).length} photos</span>
+                        {entry.notes ? <p style={{ margin: "5px 0 0", fontSize: 12 }}>{entry.notes}</p> : null}
+                      </div>
+                    ))}
                   </div>
                 ) : null}
-              </section>
+              </details>
 
-
-              <section
-                style={{
-                  ...detailSectionStyle,
-                  padding: 10,
-                  gap: 7,
-                  background: "#F8FAFC",
-                }}
-              >
-                <div
-                  style={{
-                    color: colors.muted,
-                    fontSize: 12,
-                    fontWeight: 400,
-                    letterSpacing: 0.2,
-                  }}
-                >
-                  Work Order Actions
+              <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Cost, Invoice & Notes</summary>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 9, marginTop: 9 }}>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated Cost</span><input type="number" min="0" step="0.01" value={selectedService.estimatedCost || ""} onChange={(event) => updateWorkOrder({ estimatedCost: Number(event.currentTarget.value || 0) })} style={inputStyle} /></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Actual Cost</span><input type="number" min="0" step="0.01" value={selectedService.actualCost || ""} onChange={(event) => updateWorkOrder({ actualCost: Number(event.currentTarget.value || 0) })} style={inputStyle} /></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Invoice</span><input value={selectedService.invoiceNumber || ""} onChange={(event) => updateWorkOrder({ invoiceNumber: event.currentTarget.value })} style={inputStyle} /></label>
                 </div>
-                <select
-                  value=""
-                  onChange={(event) => {
-                    handleDetailAction(event.currentTarget.value);
-                    event.currentTarget.value = "";
-                  }}
-                  style={{
-                    ...controlStyle,
-                    minHeight: 40,
-                    color: colors.muted,
-                    fontSize: 13,
-                    fontWeight: 400,
-                    background: "#FFFFFF",
-                  }}
-                  aria-label="Work order actions"
-                >
-                  <option value="">Choose an action...</option>
-                  {selectedService.status === "Completed" ? (
-                    <option value="reopen">Reopen Work Order</option>
-                  ) : (
-                    <>
-                      <option value="start">Start Work</option>
-                      <option value="complete">
-                        {selectedService.recurring
-                          ? "Complete & Move to Next Due"
-                          : "Mark Done"}
-                      </option>
-                      <option value="reschedule">Reschedule</option>
-                      <option value="tomorrow">Move to Tomorrow</option>
-                      <option value="next-week">Move to Next Week</option>
-                      <option value="convert">Convert Work Type</option>
-                    </>
-                  )}
+                <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={3} placeholder="Internal notes" style={{ ...inputStyle, minHeight: 78, resize: "vertical", marginTop: 9 }} />
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto" }}>Save</button></div>
+              </details>
+
+              <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
+                <select value="" onChange={(event) => { handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, minHeight: 38, color: colors.muted, fontSize: 13, fontWeight: 500, background: "#FFFFFF" }} aria-label="Work order actions">
+                  <option value="">Actions...</option>
+                  {selectedService.status === "Completed" ? <option value="reopen">Reopen</option> : <><option value="start">Start</option><option value="complete">{selectedService.recurring ? "Complete & Advance" : "Mark Done"}</option><option value="reschedule">Reschedule</option><option value="tomorrow">Tomorrow</option><option value="next-week">Next Week</option><option value="convert">Convert Type</option></>}
                   <option value="photo">Add Photo</option>
-                  <option value="duplicate">Duplicate Work Order</option>
-                  <option value="delete">Delete Work Order</option>
+                  <option value="duplicate">Duplicate</option>
+                  <option value="delete">Delete</option>
                 </select>
 
                 {selectedService.recurring ? (
