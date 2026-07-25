@@ -4257,8 +4257,15 @@ export default function AtlasPage() {
         );
         if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-        const payload = (await response.json()) as AtlasApiPayload;
+        const payload = (await response.json()) as AtlasApiPayload & { propertyId?: string };
         if (cancelled) return;
+
+        const responsePropertyId = String(payload.propertyId || activePropertyId);
+        if (responsePropertyId !== activePropertyId) {
+          throw new Error(
+            `Atlas property response mismatch: requested ${activePropertyId}, received ${responsePropertyId}`,
+          );
+        }
 
         const apiLocations = Array.isArray(payload.locations)
           ? payload.locations
@@ -4389,6 +4396,21 @@ export default function AtlasPage() {
           .filter((item) => item.id && item.date && item.title);
 
         let sharedItems = byTitle(normalizedSharedItems);
+
+        // Only 2000 may use the legacy browser calendar as an emergency fallback.
+        // Empty properties such as 6855 must remain empty and must never inherit 2000 data.
+        if (activePropertyId === "2000" && sharedItems.length === 0) {
+          const stored2000Calendar = mergeCalendarItemRecords(
+            readAllStoredArrays<CalendarItem>(storageKeys.calendar),
+            [],
+          )
+            .map(normalizeCalendar)
+            .filter((item) => item.id && item.date && item.title);
+
+          if (stored2000Calendar.length > 0) {
+            sharedItems = byTitle(stored2000Calendar);
+          }
+        }
 
         const phoneRecoveryKey =
           `atlas-calendar-phone-recovery-v2-${activePropertyId}`;
@@ -4561,8 +4583,11 @@ export default function AtlasPage() {
         });
         if (!response.ok) throw new Error(`API returned ${response.status}`);
 
-        const payload = (await response.json()) as AtlasApiPayload;
+        const payload = (await response.json()) as AtlasApiPayload & { propertyId?: string };
         if (cancelled || payload?.ok === false) return;
+
+        const responsePropertyId = String(payload.propertyId || activePropertyId);
+        if (responsePropertyId !== activePropertyId) return;
 
         const sharedCalendar = (
           Array.isArray(payload.calendarItems)
@@ -4575,6 +4600,12 @@ export default function AtlasPage() {
           .filter((item) => item.id && item.date && item.title);
 
         const next = byTitle(sharedCalendar);
+
+        // An empty 2000 response must not erase a browser-restored calendar.
+        // Non-2000 properties are allowed to be truly empty.
+        if (activePropertyId === "2000" && next.length === 0) {
+          return;
+        }
 
         setCalendarItems((current) => {
           const signature = (items: CalendarItem[]) =>
@@ -4595,7 +4626,9 @@ export default function AtlasPage() {
           return next;
         });
 
-        saveStoredArray(storageKeys.calendar[0], next);
+        if (activePropertyId === "2000") {
+          saveStoredArray(storageKeys.calendar[0], next);
+        }
         setSyncState("synced");
         setLastSyncedAt(
           new Intl.DateTimeFormat(undefined, {
