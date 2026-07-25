@@ -2052,6 +2052,7 @@ export default function DailyOperationsManager({
 
         <WeatherCommandCenter
           weather={todayWeather}
+          forecastDays={weatherDays.slice(0, 7)}
           timeline={weatherTimeline}
           outdoorWindow={outdoorWindow}
           severity={weatherSeverity}
@@ -2183,6 +2184,32 @@ export default function DailyOperationsManager({
             opacity: 1;
             transform: translateY(0);
           }
+        }
+
+        .atlas-weather-hero > div {
+          transition: filter 160ms ease, transform 160ms ease;
+        }
+
+        .atlas-weather-hero:hover > div {
+          filter: brightness(1.06);
+        }
+
+        .atlas-weather-hero:active > div {
+          transform: scale(0.998);
+        }
+
+        .atlas-weather-hero:focus-visible {
+          outline: 3px solid rgba(183, 148, 62, 0.5);
+          outline-offset: 3px;
+          border-radius: 20px;
+        }
+
+        .atlas-weather-day {
+          transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
+        }
+
+        .atlas-weather-hero:hover .atlas-weather-day {
+          transform: translateY(-1px);
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -2550,6 +2577,7 @@ function VisitLoggerModal({
 
 function WeatherCommandCenter({
   weather,
+  forecastDays,
   timeline,
   outdoorWindow,
   severity,
@@ -2560,6 +2588,7 @@ function WeatherCommandCenter({
   onAskAtlas,
 }: {
   weather: WeatherDay | null;
+  forecastDays: WeatherDay[];
   timeline: Array<{ time: string; temp: number; icon: string; rain: number }>;
   outdoorWindow: { time: string; rating: string; reason: string };
   severity: string;
@@ -2569,6 +2598,20 @@ function WeatherCommandCenter({
   isMobile: boolean;
   onAskAtlas: (prompt: string) => void;
 }) {
+  function openWeatherPage() {
+    window.dispatchEvent(
+      new CustomEvent("atlas:navigate", {
+        detail: { screen: "weather" },
+      }),
+    );
+  }
+
+  const visibleForecastDays = forecastDays.length
+    ? forecastDays.slice(0, isMobile ? 4 : 7)
+    : weather
+      ? [weather]
+      : [];
+
   const severityLabel =
     severity === "alert"
       ? "Weather Alert"
@@ -2596,84 +2639,178 @@ function WeatherCommandCenter({
         boxShadow: "0 8px 24px rgba(15,31,48,0.07)",
       }}
     >
-      <div
+      <button
+        type="button"
+        onClick={openWeatherPage}
+        aria-label="Open full weather forecast"
+        className="atlas-weather-hero"
         style={{
-          padding: isMobile ? 16 : 20,
-          background: `linear-gradient(135deg, ${colors.navy} 0%, #24516F 62%, #2E6587 100%)`,
-          color: "#FFFFFF",
+          width: "100%",
+          display: "block",
+          padding: 0,
+          border: 0,
+          background: "transparent",
+          color: "inherit",
+          textAlign: "left",
+          cursor: "pointer",
         }}
       >
         <div
           style={{
-            display: "flex",
-            flexDirection: isMobile ? "column" : "row",
-            justifyContent: "space-between",
-            alignItems: isMobile ? "stretch" : "flex-start",
-            gap: 16,
+            padding: isMobile ? 16 : 20,
+            background: `linear-gradient(135deg, ${colors.navy} 0%, #24516F 62%, #2E6587 100%)`,
+            color: "#FFFFFF",
           }}
         >
-          <div>
-            <div style={{ color: colors.gold, fontSize: 10, fontWeight: 950, letterSpacing: "0.11em", textTransform: "uppercase" }}>
-              Operations Weather Center
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 7 }}>
-              <span style={{ fontSize: 38 }}>{weather ? weatherIcon(weather.code) : "◌"}</span>
-              <div>
-                <div style={{ fontSize: isMobile ? 31 : 38, lineHeight: 1, fontWeight: 950 }}>
-                  {weather ? `${Math.round(weather.high)}°` : "—"}
-                </div>
-                <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8, fontWeight: 750 }}>
-                  {weather ? weatherCondition(weather.code) : "Weather unavailable"}
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 8,
-              minWidth: isMobile ? 0 : 330,
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "minmax(0, 1.25fr) minmax(360px, 0.9fr)",
+              gap: 18,
+              alignItems: "center",
             }}
           >
-            <WeatherStat label="Low" value={weather ? `${Math.round(weather.low)}°` : "—"} />
-            <WeatherStat label="Rain" value={weather ? `${Math.round(weather.precipChance)}%` : "—"} />
-            <WeatherStat label="Wind" value={weather ? `${Math.round(weather.windMax)} mph` : "—"} />
-          </div>
-        </div>
+            <div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <div style={{ color: colors.gold, fontSize: 10, fontWeight: 950, letterSpacing: "0.11em", textTransform: "uppercase" }}>
+                  Operations Weather Center
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 850, opacity: 0.72 }}>
+                  View full weather →
+                </div>
+              </div>
 
-        <div
-          style={{
-            marginTop: 16,
-            display: "flex",
-            gap: 8,
-            overflowX: "auto",
-            paddingBottom: 3,
-          }}
-        >
-          {timeline.length ? timeline.map((hour) => (
+              <div style={{ display: "flex", alignItems: "center", gap: 13, marginTop: 9 }}>
+                <span style={{ fontSize: isMobile ? 42 : 48 }}>{weather ? weatherIcon(weather.code) : "◌"}</span>
+                <div>
+                  <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 10 }}>
+                    <span style={{ fontSize: isMobile ? 36 : 46, lineHeight: 1, fontWeight: 950 }}>
+                      {weather ? `${Math.round(weather.high)}°` : "—"}
+                    </span>
+                    <span style={{ fontSize: 16, fontWeight: 900 }}>
+                      {weather ? weatherCondition(weather.code) : "Weather unavailable"}
+                    </span>
+                  </div>
+                  {weather ? (
+                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.72, fontWeight: 700 }}>
+                      High {Math.round(weather.high)}° · Low {Math.round(weather.low)}° · Rain {Math.round(weather.precipChance)}%
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
             <div
-              key={hour.time}
               style={{
-                minWidth: 86,
-                padding: "10px 9px",
-                borderRadius: 12,
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.11)",
-                textAlign: "center",
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 9,
               }}
             >
-              <div style={{ fontSize: 10, opacity: 0.65, fontWeight: 800 }}>{hour.time}</div>
-              <div style={{ marginTop: 4, fontSize: 19 }}>{hour.icon}</div>
-              <div style={{ marginTop: 2, fontSize: 16, fontWeight: 900 }}>{hour.temp}°</div>
-              <div style={{ marginTop: 2, fontSize: 9, opacity: 0.58 }}>{hour.rain}% rain</div>
+              <WeatherStat label="Low" value={weather ? `${Math.round(weather.low)}°` : "—"} />
+              <WeatherStat label="Rain" value={weather ? `${Math.round(weather.precipChance)}%` : "—"} />
+              <WeatherStat label="Wind" value={weather ? `${Math.round(weather.windMax)} mph` : "—"} />
             </div>
-          )) : (
-            <div style={{ fontSize: 12, opacity: 0.7 }}>Hourly conditions will appear when weather loads.</div>
+          </div>
+
+          {visibleForecastDays.length ? (
+            <div
+              style={{
+                marginTop: 18,
+                display: "grid",
+                gridTemplateColumns: `repeat(${visibleForecastDays.length}, minmax(0, 1fr))`,
+                gap: 9,
+              }}
+            >
+              {visibleForecastDays.map((day, index) => {
+                const parsed = new Date(`${day.date}T12:00:00`);
+                const dayName = Number.isNaN(parsed.getTime())
+                  ? day.date
+                  : parsed.toLocaleDateString(undefined, {
+                      weekday: index === 0 ? undefined : "short",
+                      month: index === 0 ? "short" : undefined,
+                      day: index === 0 ? "numeric" : undefined,
+                    });
+                const label = index === 0 ? "Today" : dayName;
+
+                return (
+                  <div
+                    key={day.date}
+                    className="atlas-weather-day"
+                    style={{
+                      minWidth: 0,
+                      padding: isMobile ? "10px 7px" : "12px 9px",
+                      borderRadius: 13,
+                      background: index === 0
+                        ? "rgba(183,148,62,0.18)"
+                        : "rgba(255,255,255,0.075)",
+                      border: index === 0
+                        ? `1px solid ${colors.gold}`
+                        : "1px solid rgba(255,255,255,0.12)",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div style={{ fontSize: 10, opacity: index === 0 ? 1 : 0.7, fontWeight: 900, textTransform: "uppercase" }}>
+                      {label}
+                    </div>
+                    <div style={{ marginTop: 7, fontSize: 24 }}>{weatherIcon(day.code)}</div>
+                    <div style={{ marginTop: 5, fontSize: 17, fontWeight: 950 }}>
+                      {Math.round(day.high)}° <span style={{ fontSize: 12, opacity: 0.62 }}>{Math.round(day.low)}°</span>
+                    </div>
+                    <div style={{ marginTop: 3, fontSize: 9, opacity: 0.62 }}>
+                      {Math.round(day.precipChance)}% rain
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ marginTop: 16, fontSize: 12, opacity: 0.7 }}>
+              Forecast details will appear when weather loads.
+            </div>
           )}
+
+          <div
+            style={{
+              marginTop: 13,
+              display: "grid",
+              gridTemplateColumns: timeline.length
+                ? `repeat(${timeline.length}, minmax(0, 1fr))`
+                : "1fr",
+              gap: 7,
+            }}
+          >
+            {timeline.length ? timeline.map((hour) => (
+              <div
+                key={hour.time}
+                style={{
+                  minWidth: 0,
+                  padding: "8px 6px",
+                  borderRadius: 10,
+                  background: "rgba(8,31,52,0.24)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: 9, opacity: 0.66, fontWeight: 850 }}>{hour.time}</div>
+                <div style={{ marginTop: 3, fontSize: 16 }}>{hour.icon}</div>
+                <div style={{ marginTop: 1, fontSize: 14, fontWeight: 900 }}>{hour.temp}°</div>
+              </div>
+            )) : (
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Hourly conditions will appear when weather loads.</div>
+            )}
+          </div>
         </div>
-      </div>
+      </button>
 
       <div
         style={{
