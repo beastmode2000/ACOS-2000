@@ -427,10 +427,8 @@ export function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   const searchControlStyle: React.CSSProperties = {
     ...controlStyle,
-    border: "3px solid #0F1F30",
-    boxShadow: "0 0 0 2px rgba(15, 31, 48, 0.12)",
-    background: "#FFFFFF",
-    fontWeight: 700,
+    border: `1px solid ${colors.navy}`,
+    boxShadow: "0 0 0 1px rgba(15, 31, 48, 0.05)",
   };
 
   const filterPanelStyle: React.CSSProperties = {
@@ -1051,7 +1049,13 @@ export function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 value={localSearch}
                 onChange={(event) => setLocalSearch(event.currentTarget.value)}
                 placeholder="Search work, asset, vendor, category..."
-                style={searchControlStyle}
+                style={{
+                  ...searchControlStyle,
+                  border: "1px solid #0F1F30",
+                  outline: "1px solid #0F1F30",
+                  outlineOffset: "-1px",
+                  backgroundColor: "#FFFFFF",
+                }}
               />
 
               <select
