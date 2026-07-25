@@ -17,6 +17,8 @@ type RoutineTemplate = {
   tasks: RoutineTask[];
 };
 
+const DEFAULT_PROPERTY_ID = "2000";
+
 function getSql() {
   const connectionString =
     process.env.DATABASE_URL ||
@@ -28,6 +30,19 @@ function getSql() {
   }
 
   return neon(connectionString);
+}
+
+function cleanPropertyId(value: unknown) {
+  const propertyId = typeof value === "string" ? value.trim() : "";
+  return propertyId || DEFAULT_PROPERTY_ID;
+}
+
+function propertyIdFromRequest(request: NextRequest) {
+  return cleanPropertyId(
+    request.nextUrl.searchParams.get("propertyId") ||
+      request.nextUrl.searchParams.get("property_id") ||
+      request.headers.get("x-atlas-property-id"),
+  );
 }
 
 function asDateKey(value: unknown) {
@@ -72,27 +87,13 @@ function normalizeTasks(value: unknown): RoutineTask[] {
     .filter((task): task is RoutineTask => Boolean(task));
 }
 
-async function ensureTables(sql: ReturnType<typeof neon>) {
-  await sql`
-    CREATE TABLE IF NOT EXISTS atlas_routine_templates (
-      day_of_week integer PRIMARY KEY CHECK (day_of_week BETWEEN 1 AND 5),
-      name text NOT NULL,
-      tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
-      updated_at timestamptz NOT NULL DEFAULT NOW()
-    )
-  `;
+function weekdayFromDate(dateKey: string) {
+  const day = new Date(`${dateKey}T12:00:00`).getDay();
+  return day >= 1 && day <= 5 ? day : 0;
+}
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS atlas_routine_occurrences (
-      occurrence_date date PRIMARY KEY,
-      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 5),
-      routine_name text NOT NULL,
-      tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
-      updated_at timestamptz NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  const seeds: RoutineTemplate[] = [
+function seedTemplates(): RoutineTemplate[] {
+  return [
     {
       day: 1,
       name: "Monday Morning Routine",
@@ -171,48 +172,112 @@ async function ensureTables(sql: ReturnType<typeof neon>) {
       ],
     },
   ];
+}
 
-  for (const seed of seeds) {
+async function ensureTables(sql: ReturnType<typeof neon>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_routine_templates (
+      property_id text NOT NULL DEFAULT '2000',
+      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 5),
+      name text NOT NULL,
+      tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_routine_occurrences (
+      property_id text NOT NULL DEFAULT '2000',
+      occurrence_date date NOT NULL,
+      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 5),
+      routine_name text NOT NULL,
+      tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    ALTER TABLE atlas_routine_templates
+    ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_routine_occurrences
+    ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'
+  `;
+
+  // The original tables used global primary keys. Remove those so the same
+  // weekday/date can exist independently for every property.
+  await sql`
+    ALTER TABLE atlas_routine_templates
+    DROP CONSTRAINT IF EXISTS atlas_routine_templates_pkey
+  `;
+
+  await sql`
+    ALTER TABLE atlas_routine_occurrences
+    DROP CONSTRAINT IF EXISTS atlas_routine_occurrences_pkey
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS atlas_routine_templates_property_day_uidx
+    ON atlas_routine_templates (property_id, day_of_week)
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS atlas_routine_occurrences_property_date_uidx
+    ON atlas_routine_occurrences (property_id, occurrence_date)
+  `;
+}
+
+async function ensurePropertySeeds(
+  sql: ReturnType<typeof neon>,
+  propertyId: string,
+) {
+  for (const seed of seedTemplates()) {
     await sql`
       INSERT INTO atlas_routine_templates (
+        property_id,
         day_of_week,
         name,
         tasks
       )
       VALUES (
+        ${propertyId},
         ${seed.day},
         ${seed.name},
         ${JSON.stringify(seed.tasks)}::jsonb
       )
-      ON CONFLICT (day_of_week) DO NOTHING
+      ON CONFLICT (property_id, day_of_week) DO NOTHING
     `;
   }
 }
 
-function weekdayFromDate(dateKey: string) {
-  const day = new Date(`${dateKey}T12:00:00`).getDay();
-  return day >= 1 && day <= 5 ? day : 0;
-}
-
-async function loadTemplates(sql: ReturnType<typeof neon>) {
+async function loadTemplates(
+  sql: ReturnType<typeof neon>,
+  propertyId: string,
+) {
   const rows = (await sql`
     SELECT
       day_of_week,
       name,
       tasks
     FROM atlas_routine_templates
+    WHERE property_id = ${propertyId}
     ORDER BY day_of_week ASC
   `) as unknown as Array<Record<string, unknown>>;
 
   return rows.map((row) => ({
     day: Number(row.day_of_week),
     name: String(row.name || "Routine"),
-    tasks: normalizeTasks(row.tasks).map(({ completed: _completed, ...task }) => task),
+    tasks: normalizeTasks(row.tasks).map(
+      ({ completed: _completed, ...task }) => task,
+    ),
   }));
 }
 
 async function getOrCreateOccurrence(
   sql: ReturnType<typeof neon>,
+  propertyId: string,
   dateKey: string,
 ) {
   const day = weekdayFromDate(dateKey);
@@ -227,7 +292,8 @@ async function getOrCreateOccurrence(
       name,
       tasks
     FROM atlas_routine_templates
-    WHERE day_of_week = ${day}
+    WHERE property_id = ${propertyId}
+      AND day_of_week = ${day}
     LIMIT 1
   `) as unknown as Array<Record<string, unknown>>;
 
@@ -249,7 +315,8 @@ async function getOrCreateOccurrence(
       routine_name,
       tasks
     FROM atlas_routine_occurrences
-    WHERE occurrence_date = ${dateKey}::date
+    WHERE property_id = ${propertyId}
+      AND occurrence_date = ${dateKey}::date
     LIMIT 1
   `) as unknown as Array<Record<string, unknown>>;
 
@@ -263,6 +330,7 @@ async function getOrCreateOccurrence(
 
     await sql`
       INSERT INTO atlas_routine_occurrences (
+        property_id,
         occurrence_date,
         day_of_week,
         routine_name,
@@ -270,16 +338,18 @@ async function getOrCreateOccurrence(
         updated_at
       )
       VALUES (
+        ${propertyId},
         ${dateKey}::date,
         ${day},
         ${templateName},
         ${JSON.stringify(occurrenceTasks)}::jsonb,
         NOW()
       )
-      ON CONFLICT (occurrence_date) DO NOTHING
+      ON CONFLICT (property_id, occurrence_date) DO NOTHING
     `;
 
     return {
+      propertyId,
       date: dateKey,
       day,
       name: templateName,
@@ -319,11 +389,13 @@ async function getOrCreateOccurrence(
         routine_name = ${templateName},
         tasks = ${JSON.stringify(synchronizedTasks)}::jsonb,
         updated_at = NOW()
-      WHERE occurrence_date = ${dateKey}::date
+      WHERE property_id = ${propertyId}
+        AND occurrence_date = ${dateKey}::date
     `;
   }
 
   return {
+    propertyId,
     date: dateKey,
     day,
     name: templateName,
@@ -333,6 +405,7 @@ async function getOrCreateOccurrence(
 
 async function refreshOccurrenceForDate(
   sql: ReturnType<typeof neon>,
+  propertyId: string,
   dateKey: string,
   day: number,
   name: string,
@@ -345,7 +418,8 @@ async function refreshOccurrenceForDate(
   const rows = (await sql`
     SELECT tasks
     FROM atlas_routine_occurrences
-    WHERE occurrence_date = ${dateKey}::date
+    WHERE property_id = ${propertyId}
+      AND occurrence_date = ${dateKey}::date
     LIMIT 1
   `) as unknown as Array<Record<string, unknown>>;
 
@@ -374,25 +448,28 @@ async function refreshOccurrenceForDate(
       routine_name = ${name},
       tasks = ${JSON.stringify(refreshedTasks)}::jsonb,
       updated_at = NOW()
-    WHERE occurrence_date = ${dateKey}::date
+    WHERE property_id = ${propertyId}
+      AND occurrence_date = ${dateKey}::date
   `;
 }
 
 export async function GET(request: NextRequest) {
   try {
     const sql = getSql();
-
-    await ensureTables(sql);
-
+    const propertyId = propertyIdFromRequest(request);
     const dateKey = asDateKey(request.nextUrl.searchParams.get("date"));
 
+    await ensureTables(sql);
+    await ensurePropertySeeds(sql, propertyId);
+
     const [templates, occurrence] = await Promise.all([
-      loadTemplates(sql),
-      getOrCreateOccurrence(sql, dateKey),
+      loadTemplates(sql, propertyId),
+      getOrCreateOccurrence(sql, propertyId, dateKey),
     ]);
 
     return NextResponse.json({
       ok: true,
+      propertyId,
       templates,
       occurrence,
     });
@@ -421,11 +498,16 @@ export async function POST(request: NextRequest) {
 
   try {
     const sql = getSql();
+    const body = (await request.json()) as Record<string, unknown>;
+    const propertyId = cleanPropertyId(
+      body.propertyId ||
+        body.property_id ||
+        request.headers.get("x-atlas-property-id"),
+    );
+    const action = String(body.action || "");
 
     await ensureTables(sql);
-
-    const body = (await request.json()) as Record<string, unknown>;
-    const action = String(body.action || "");
+    await ensurePropertySeeds(sql, propertyId);
 
     if (action === "save-template") {
       const day = Number(body.day);
@@ -447,18 +529,20 @@ export async function POST(request: NextRequest) {
 
       await sql`
         INSERT INTO atlas_routine_templates (
+          property_id,
           day_of_week,
           name,
           tasks,
           updated_at
         )
         VALUES (
+          ${propertyId},
           ${day},
           ${name},
           ${JSON.stringify(tasks)}::jsonb,
           NOW()
         )
-        ON CONFLICT (day_of_week)
+        ON CONFLICT (property_id, day_of_week)
         DO UPDATE SET
           name = EXCLUDED.name,
           tasks = EXCLUDED.tasks,
@@ -466,7 +550,8 @@ export async function POST(request: NextRequest) {
       `;
 
       const requestedDate =
-        typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+        typeof body.date === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(body.date)
           ? body.date
           : "";
 
@@ -476,14 +561,13 @@ export async function POST(request: NextRequest) {
       const utcYesterday = utcYesterdayDate.toISOString().slice(0, 10);
 
       const candidateDates = Array.from(
-        new Set(
-          [requestedDate, utcToday, utcYesterday].filter(Boolean),
-        ),
+        new Set([requestedDate, utcToday, utcYesterday].filter(Boolean)),
       );
 
       for (const candidateDate of candidateDates) {
         await refreshOccurrenceForDate(
           sql,
+          propertyId,
           candidateDate,
           day,
           name,
@@ -491,14 +575,17 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const responseDate = requestedDate || candidateDates.find(
-        (candidateDate) => weekdayFromDate(candidateDate) === day,
-      );
+      const responseDate =
+        requestedDate ||
+        candidateDates.find(
+          (candidateDate) => weekdayFromDate(candidateDate) === day,
+        );
 
       return NextResponse.json({
         ok: true,
+        propertyId,
         occurrence: responseDate
-          ? await getOrCreateOccurrence(sql, responseDate)
+          ? await getOrCreateOccurrence(sql, propertyId, responseDate)
           : null,
       });
     }
@@ -506,8 +593,11 @@ export async function POST(request: NextRequest) {
     if (action === "toggle-task") {
       const dateKey = asDateKey(body.date);
       const taskId = String(body.taskId || "");
-
-      const occurrence = await getOrCreateOccurrence(sql, dateKey);
+      const occurrence = await getOrCreateOccurrence(
+        sql,
+        propertyId,
+        dateKey,
+      );
 
       if (!occurrence) {
         return NextResponse.json(
@@ -533,11 +623,13 @@ export async function POST(request: NextRequest) {
         SET
           tasks = ${JSON.stringify(tasks)}::jsonb,
           updated_at = NOW()
-        WHERE occurrence_date = ${dateKey}::date
+        WHERE property_id = ${propertyId}
+          AND occurrence_date = ${dateKey}::date
       `;
 
       return NextResponse.json({
         ok: true,
+        propertyId,
         occurrence: {
           ...occurrence,
           tasks,
