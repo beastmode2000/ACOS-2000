@@ -80,6 +80,8 @@ type AtlasCalendarProps = {
   mutedSmallStyle: React.CSSProperties;
   openCalendarItem: any;
   onOpenLinkedRecord?: (event: any) => boolean | void;
+  onToggleCompleted?: (event: any) => boolean | Promise<boolean>;
+  onConvertToWorkOrder?: (event: any) => boolean | Promise<boolean>;
   reminderOptions: string[];
   repeatOptions: string[];
   saveCalendarItem: any;
@@ -286,6 +288,8 @@ export default function AtlasCalendar(
     mutedSmallStyle,
     openCalendarItem,
     onOpenLinkedRecord,
+    onToggleCompleted,
+    onConvertToWorkOrder,
     reminderOptions,
     repeatOptions,
     saveCalendarItem,
@@ -494,6 +498,32 @@ export default function AtlasCalendar(
 
     await deleteCalendarItem(selectedCalendarId);
     closeDetail();
+  }
+
+  async function toggleCompleted(event: any) {
+    if (!onToggleCompleted) return;
+    await onToggleCompleted(event);
+  }
+
+  async function convertToWorkOrder(event: any) {
+    if (!onConvertToWorkOrder) return;
+    await onConvertToWorkOrder(event);
+  }
+
+  function canCompleteEvent(event: any) {
+    return (
+      event.source === "manual" ||
+      event.source === "work-order" ||
+      event.linkedType === "Work Order"
+    );
+  }
+
+  function canConvertEvent(event: any) {
+    return (
+      event.source === "manual" &&
+      event.linkedType !== "Work Order" &&
+      Boolean(event.id)
+    );
   }
 
   function renderCalendarCell(cell: any) {
@@ -768,124 +798,165 @@ export default function AtlasCalendar(
                   agendaEvents.map((event: any) => {
                     const eventColor = colorForEvent(event);
                     const type = eventType(event);
+                    const completed = Boolean(event.completed);
 
                     return (
-                      <button
-                        key={
-                          event.instanceId || event.id
-                        }
-                        type="button"
+                      <div
+                        key={event.instanceId || event.id}
                         title={hoverText(event)}
-                        onClick={() => openEvent(event)}
                         style={{
                           ...calendarTodayItemStyle,
                           borderColor: eventColor.hex,
                           borderLeft: `6px solid ${eventColor.hex}`,
-                          background: `${eventColor.hex}0F`,
+                          background: completed
+                            ? "#F2F4F7"
+                            : `${eventColor.hex}0F`,
+                          opacity: completed ? 0.72 : 1,
+                          display: "grid",
+                          gap: 10,
                         }}
                       >
-                        <div
-                          style={
-                            calendarSelectedEventRowStyle
-                          }
+                        <button
+                          type="button"
+                          onClick={() => openEvent(event)}
+                          style={{
+                            border: 0,
+                            padding: 0,
+                            background: "transparent",
+                            textAlign: "left",
+                            cursor: "pointer",
+                            width: "100%",
+                          }}
                         >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "flex-start",
-                              gap: 10,
-                              minWidth: 0,
-                            }}
-                          >
-                            <span
-                              aria-hidden="true"
+                          <div style={calendarSelectedEventRowStyle}>
+                            <div
                               style={{
-                                fontSize: 18,
-                                lineHeight: 1.2,
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: 10,
+                                minWidth: 0,
                               }}
                             >
-                              {type.icon}
-                            </span>
-
-                            <div style={{ minWidth: 0 }}>
-                              <strong
-                                style={{
-                                  display: "block",
-                                  color: eventColor.hex,
-                                  fontSize: 15,
-                                }}
-                              >
-                                {event.title}
-                              </strong>
-
                               <span
-                                style={{
-                                  display: "block",
-                                  marginTop: 3,
-                                }}
+                                aria-hidden="true"
+                                style={{ fontSize: 18, lineHeight: 1.2 }}
                               >
-                                {event.allDay
-                                  ? "All day"
-                                  : event.time ||
-                                    "No time"}{" "}
-                                · {type.label}
+                                {completed ? "✅" : type.icon}
                               </span>
 
-                              {event.repeat &&
-                              event.repeat !== "None" ? (
-                                <span
+                              <div style={{ minWidth: 0 }}>
+                                <strong
                                   style={{
                                     display: "block",
-                                    marginTop: 3,
+                                    color: completed
+                                      ? colors.muted
+                                      : eventColor.hex,
+                                    fontSize: 15,
+                                    textDecoration: completed
+                                      ? "line-through"
+                                      : "none",
                                   }}
                                 >
-                                  Repeats {event.repeat}
-                                </span>
-                              ) : null}
+                                  {event.title}
+                                </strong>
 
-                              {event.linkedType &&
-                              event.linkedType !== "None" &&
-                              event.linkedName ? (
-                                <span
-                                  style={{
-                                    display: "block",
-                                    marginTop: 3,
-                                  }}
-                                >
-                                  {event.linkedType}:{" "}
-                                  {event.linkedName}
+                                <span style={{ display: "block", marginTop: 3 }}>
+                                  {event.allDay
+                                    ? "All day"
+                                    : event.time || "No time"}{" "}
+                                  · {type.label}
                                 </span>
-                              ) : null}
 
-                              {event.notes ? (
-                                <span
-                                  style={{
-                                    display: "block",
-                                    marginTop: 6,
-                                    color: colors.muted,
-                                  }}
-                                >
-                                  {String(event.notes).slice(
-                                    0,
-                                    140,
-                                  )}
-                                  {String(event.notes).length >
-                                  140
-                                    ? "…"
-                                    : ""}
-                                </span>
-                              ) : null}
+                                {event.repeat && event.repeat !== "None" ? (
+                                  <span style={{ display: "block", marginTop: 3 }}>
+                                    Repeats {event.repeat}
+                                  </span>
+                                ) : null}
+
+                                {event.linkedType &&
+                                event.linkedType !== "None" &&
+                                event.linkedName ? (
+                                  <span style={{ display: "block", marginTop: 3 }}>
+                                    {event.linkedType}: {event.linkedName}
+                                  </span>
+                                ) : null}
+
+                                {event.notes ? (
+                                  <span
+                                    style={{
+                                      display: "block",
+                                      marginTop: 6,
+                                      color: colors.muted,
+                                    }}
+                                  >
+                                    {String(event.notes).slice(0, 140)}
+                                    {String(event.notes).length > 140 ? "…" : ""}
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
-                          </div>
 
-                          <span
-                            style={{
-                              ...calendarColorDotStyle,
-                              background: eventColor.hex,
-                            }}
-                          />
+                            <span
+                              style={{
+                                ...calendarColorDotStyle,
+                                background: eventColor.hex,
+                              }}
+                            />
+                          </div>
+                        </button>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => editEvent(event)}
+                            style={secondaryButtonStyle}
+                          >
+                            Quick Edit
+                          </button>
+
+                          {event.linkedId &&
+                          event.linkedType &&
+                          event.linkedType !== "None" ? (
+                            <button
+                              type="button"
+                              onClick={() => openEvent(event)}
+                              style={secondaryButtonStyle}
+                            >
+                              Open {event.linkedType}
+                            </button>
+                          ) : null}
+
+                          {canCompleteEvent(event) ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void toggleCompleted(event);
+                              }}
+                              style={completed ? secondaryButtonStyle : goldButtonStyle}
+                            >
+                              {completed ? "Reopen" : "Complete"}
+                            </button>
+                          ) : null}
+
+                          {canConvertEvent(event) ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void convertToWorkOrder(event);
+                              }}
+                              style={secondaryButtonStyle}
+                            >
+                              Convert to Work Order
+                            </button>
+                          ) : null}
                         </div>
-                      </button>
+                      </div>
                     );
                   })
                 ) : (
