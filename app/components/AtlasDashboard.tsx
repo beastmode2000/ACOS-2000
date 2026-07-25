@@ -32,6 +32,9 @@ function categoryLabel(record: any) {
 
 export default function AtlasDashboard(props: AtlasDashboardProps) {
   const {
+    activePropertyId = "2000",
+    activePropertyName = "2000",
+    activePropertyDetail = "",
     SectionHeader,
     addCalendarItem,
     assetName,
@@ -280,7 +283,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                   marginBottom: 4,
                 }}
               >
-                2000 Operations
+                {activePropertyName} Operations
               </h2>
 
               <p
@@ -289,7 +292,9 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                   color: "rgba(255,255,255,0.78)",
                 }}
               >
-                Current schedule, priorities, conditions, and estate activity.
+                {activePropertyDetail
+                  ? `${activePropertyDetail} · Current schedule, priorities, conditions, and property activity.`
+                  : "Current schedule, priorities, conditions, and property activity."}
               </p>
             </div>
           </div>
@@ -319,7 +324,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
           brand
           eyebrow="Property Record"
           title="Activity Timeline"
-          detail="The newest requests, completed work, vendor activity, and work notes across Atlas."
+          detail={`The newest requests, completed work, vendor activity, and work notes for ${activePropertyName}.`}
           right={
             <button
               type="button"
