@@ -4251,6 +4251,27 @@ export default function AtlasPage() {
     async function loadAtlasApi() {
       try {
         setSyncState("loading");
+
+        // One-time emergency repair: records accidentally written to the empty
+        // 6855 calendar are moved back to 2000 before 6855 is loaded. The API
+        // records completion in Neon, so this cannot run twice.
+        if (activePropertyId === "6855") {
+          const repairResponse = await fetch("/api/atlas", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({ action: "repair6855Calendar" }),
+          });
+
+          const repairPayload = await repairResponse.json().catch(() => ({}));
+          if (!repairResponse.ok || repairPayload?.ok !== true) {
+            throw new Error(
+              repairPayload?.error ||
+                `Calendar repair returned ${repairResponse.status}`,
+            );
+          }
+        }
+
         const response = await fetch(
           `/api/atlas?propertyId=${encodeURIComponent(activePropertyId)}`,
           { cache: "no-store" },
