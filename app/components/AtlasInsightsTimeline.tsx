@@ -23,6 +23,7 @@ type TimelineEntry = {
   id: string;
   date: string;
   type: string;
+  category?: string;
   icon: string;
   title: string;
   description: string;
@@ -187,6 +188,12 @@ export default function AtlasInsightsTimeline({
 }: Props) {
   const [timelineSearch, setTimelineSearch] = useState("");
   const [timelineType, setTimelineType] = useState("All");
+  const [timelineCategory, setTimelineCategory] = useState("All");
+  const [milestonesOnly, setMilestonesOnly] = useState(false);
+  const [photosOnly, setPhotosOnly] = useState(false);
+  const [beforeAfterOnly, setBeforeAfterOnly] = useState(false);
+  const [completedOnly, setCompletedOnly] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [timelineLocation, setTimelineLocation] = useState("All");
   const [timelineAsset, setTimelineAsset] = useState("All");
   const [timelineVendor, setTimelineVendor] = useState("All");
@@ -195,6 +202,7 @@ export default function AtlasInsightsTimeline({
   const [customEvents, setCustomEvents] = useState<CustomTimelineEvent[]>([]);
   const [showAddEvent, setShowAddEvent] = useState(false);
   const [carouselPosition, setCarouselPosition] = useState(0);
+  const [settledGroupIndex, setSettledGroupIndex] = useState(0);
   const [draft, setDraft] = useState({
     date: new Date().toISOString().slice(0, 10),
     title: "",
@@ -208,10 +216,39 @@ export default function AtlasInsightsTimeline({
   });
   const horizontalRef = useRef<HTMLDivElement | null>(null);
   const carouselFrameRef = useRef<number | null>(null);
+  const carouselSettleTimerRef = useRef<number | null>(null);
+  const filtersRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setCustomEvents(readCustomEvents());
   }, []);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!showFilters) return;
+      if (
+        filtersRef.current &&
+        !filtersRef.current.contains(event.target as Node)
+      ) {
+        setShowFilters(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showFilters]);
+
+  useEffect(
+    () => () => {
+      if (carouselSettleTimerRef.current !== null) {
+        window.clearTimeout(carouselSettleTimerRef.current);
+      }
+      if (carouselFrameRef.current !== null) {
+        window.cancelAnimationFrame(carouselFrameRef.current);
+      }
+    },
+    [],
+  );
 
   const activeRecords = useMemo(
     () => serviceRecords.filter((record) => record.status !== "Completed"),
@@ -363,6 +400,7 @@ export default function AtlasInsightsTimeline({
           id: `${record.id}-service-${snapshot.id || index}`,
           date: snapshotDate,
           type: "Completed Work",
+          category: category(record),
           icon: "✓",
           title: snapshot.title || record.title,
           description:
@@ -401,6 +439,7 @@ export default function AtlasInsightsTimeline({
           id: `${record.id}-history-${index}`,
           date,
           type: "Completed Work",
+          category: category(record),
           icon: "✓",
           title: record.title,
           description: `${category(record)} · ${assetName(record.assetId)}`,
@@ -423,6 +462,7 @@ export default function AtlasInsightsTimeline({
             record.lastCompletedDate ||
             record.date,
           type: "Completed Work",
+          category: category(record),
           icon: "✓",
           title: record.title,
           description: `${category(record)} · ${assetName(record.assetId)}`,
@@ -445,6 +485,7 @@ export default function AtlasInsightsTimeline({
           id: `${record.id}-note-${note.id || index}`,
           date: note.createdAt || note.date,
           type: "Work Note",
+          category: category(record),
           icon: "N",
           title: record.title,
           description: note.text || note.note || note.body || "Work note added",
@@ -462,6 +503,7 @@ export default function AtlasInsightsTimeline({
           id: `${record.id}-photo-${photo.id || index}`,
           date: photo.createdAt,
           type: "Photo",
+          category: category(record),
           icon: "P",
           title: record.title,
           description: photo.name || "Work photo added",
@@ -480,6 +522,7 @@ export default function AtlasInsightsTimeline({
           id: `request-${request.id}-submitted`,
           date: request.submittedAt,
           type: "Owner Request",
+          category: String(request.category || request.workCategory || "Requests"),
           icon: "R",
           title: request.title || "Owner request",
           description: [
@@ -505,6 +548,7 @@ export default function AtlasInsightsTimeline({
           id: `request-${request.id}-converted`,
           date: request.updatedAt || request.submittedAt,
           type: "Converted Request",
+          category: String(request.category || request.workCategory || "Requests"),
           icon: "↻",
           title: request.title || "Owner request",
           description: "Converted into a tracked work order",
@@ -519,6 +563,7 @@ export default function AtlasInsightsTimeline({
           id: `request-${request.id}-history`,
           date: request.updatedAt || request.submittedAt,
           type: "Request History",
+          category: String(request.category || request.workCategory || "Requests"),
           icon: "R",
           title: request.title || "Owner request",
           description: `Request ${String(request.status).toLowerCase()}`,
@@ -534,6 +579,7 @@ export default function AtlasInsightsTimeline({
         id: `calendar-${event.instanceId || event.id}`,
         date: event.date,
         type: "Calendar",
+        category: String(event.categoryLabel || event.area || "Calendar"),
         icon: "C",
         title: event.title,
         description: `${event.time || (event.allDay ? "All day" : "No time")} · ${
@@ -556,6 +602,7 @@ export default function AtlasInsightsTimeline({
           id: event.id,
           date: event.date,
           type: event.type,
+          category: event.type === "Landscape" ? "🌳 Landscaping" : event.type,
           icon: "★",
           title: event.title,
           description: event.description || "Custom property history event",
@@ -597,6 +644,12 @@ export default function AtlasInsightsTimeline({
       }
     });
 
+    const categories = [...new Set(
+      rawTimelineEntries
+        .map((entry) => entry.category)
+        .filter((value): value is string => Boolean(value)),
+    )].sort((a, b) => a.localeCompare(b));
+
     return {
       locations: [...locations.entries()].sort((a, b) =>
         a[1].localeCompare(b[1]),
@@ -607,6 +660,7 @@ export default function AtlasInsightsTimeline({
       vendors: [...vendors.entries()].sort((a, b) =>
         a[1].localeCompare(b[1]),
       ),
+      categories,
     };
   }, [assetName, locationName, rawTimelineEntries, vendorName]);
 
@@ -615,6 +669,27 @@ export default function AtlasInsightsTimeline({
 
     return rawTimelineEntries
       .filter((entry) => timelineType === "All" || entry.type === timelineType)
+      .filter(
+        (entry) =>
+          timelineCategory === "All" || entry.category === timelineCategory,
+      )
+      .filter((entry) => !milestonesOnly || Boolean(entry.isMilestone))
+      .filter(
+        (entry) =>
+          !photosOnly ||
+          Boolean(entry.photo || entry.beforePhoto || entry.afterPhoto),
+      )
+      .filter(
+        (entry) =>
+          !beforeAfterOnly ||
+          Boolean(entry.beforePhoto || entry.afterPhoto),
+      )
+      .filter(
+        (entry) =>
+          !completedOnly ||
+          entry.type === "Completed Work" ||
+          String(entry.record?.status || "").toLowerCase() === "completed",
+      )
       .filter(
         (entry) =>
           timelineLocation === "All" ||
@@ -633,6 +708,7 @@ export default function AtlasInsightsTimeline({
           entry.title,
           entry.description,
           entry.type,
+          entry.category || "",
           entry.locationId ? locationName(entry.locationId) : "",
           entry.assetId ? assetName(entry.assetId) : "",
           entry.vendorId ? vendorName(entry.vendorId) : "",
@@ -646,7 +722,12 @@ export default function AtlasInsightsTimeline({
     assetName,
     locationName,
     rawTimelineEntries,
+    beforeAfterOnly,
+    completedOnly,
+    milestonesOnly,
+    photosOnly,
     timelineAsset,
+    timelineCategory,
     timelineLocation,
     timelineSearch,
     timelineType,
@@ -670,7 +751,7 @@ export default function AtlasInsightsTimeline({
     timelineEntries[timelineEntries.length - 1];
 
   const activeGroupIndex = groupedTimeline.length
-    ? Math.max(0, Math.min(groupedTimeline.length - 1, Math.round(carouselPosition)))
+    ? Math.max(0, Math.min(groupedTimeline.length - 1, settledGroupIndex))
     : 0;
   const activeGroup = groupedTimeline[activeGroupIndex];
   const activeGroupLabel = activeGroup?.[0] || "";
@@ -684,6 +765,7 @@ export default function AtlasInsightsTimeline({
 
     const targetIndex = groupedTimeline.length - 1;
     setCarouselPosition(targetIndex);
+    setSettledGroupIndex(targetIndex);
 
     const frame = window.requestAnimationFrame(() => {
       const container = horizontalRef.current;
@@ -746,6 +828,14 @@ export default function AtlasInsightsTimeline({
       const fraction = Math.max(-0.49, Math.min(0.49, (center - currentCenter) / span));
 
       setCarouselPosition(nearestIndex + fraction);
+
+      if (carouselSettleTimerRef.current !== null) {
+        window.clearTimeout(carouselSettleTimerRef.current);
+      }
+      carouselSettleTimerRef.current = window.setTimeout(() => {
+        setSettledGroupIndex(nearestIndex);
+        carouselSettleTimerRef.current = null;
+      }, 180);
     });
   };
 
@@ -760,6 +850,7 @@ export default function AtlasInsightsTimeline({
     const target = container.querySelector<HTMLElement>(
       `[data-timeline-group-index="${targetIndex}"]`,
     );
+    setSettledGroupIndex(targetIndex);
     target?.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
@@ -1180,76 +1271,299 @@ export default function AtlasInsightsTimeline({
         </div>
       </section>
 
-      <section style={sectionStyle}>
-        <div style={toolbar}>
+      <section style={{ ...sectionStyle, position: "relative", zIndex: 20 }}>
+        <div style={{ ...toolbar, alignItems: "center" }}>
           <input
             value={timelineSearch}
             onChange={(event) => setTimelineSearch(event.target.value)}
             placeholder="Search property history..."
-            style={{ ...inputStyle, flex: "1 1 260px" }}
+            style={{ ...inputStyle, flex: "1 1 300px", minWidth: 220 }}
           />
-          <select
-            value={timelineType}
-            onChange={(event) => setTimelineType(event.target.value)}
-            style={inputStyle}
-          >
-            <option>All</option>
-            <option>Completed Work</option>
-            <option>Work Note</option>
-            <option>Photo</option>
-            <option>Calendar</option>
-            <option>Owner Request</option>
-            <option>Converted Request</option>
-            <option>Request History</option>
-            <option>Milestone</option>
-            <option>Renovation</option>
-            <option>Landscape</option>
-            <option>Installation</option>
-            <option>Estate Event</option>
-          </select>
-          <select
-            value={timelineLocation}
-            onChange={(event) => setTimelineLocation(event.target.value)}
-            style={inputStyle}
-          >
-            <option value="All">All locations</option>
-            {filterOptions.locations.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
-          </select>
-          <select
-            value={timelineAsset}
-            onChange={(event) => setTimelineAsset(event.target.value)}
-            style={inputStyle}
-          >
-            <option value="All">All assets</option>
-            {filterOptions.assets.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
-          </select>
-          <select
-            value={timelineVendor}
-            onChange={(event) => setTimelineVendor(event.target.value)}
-            style={inputStyle}
-          >
-            <option value="All">All vendors</option>
-            {filterOptions.vendors.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => {
-              setTimelineSearch("");
-              setTimelineType("All");
-              setTimelineLocation("All");
-              setTimelineAsset("All");
-              setTimelineVendor("All");
-            }}
-            style={secondaryButtonStyle}
-          >
-            Clear
-          </button>
+
+          <div ref={filtersRef} style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setShowFilters((current) => !current)}
+              style={{
+                ...secondaryButtonStyle,
+                minWidth: 118,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                borderColor:
+                  [
+                    timelineType !== "All",
+                    timelineCategory !== "All",
+                    timelineLocation !== "All",
+                    timelineAsset !== "All",
+                    timelineVendor !== "All",
+                    milestonesOnly,
+                    photosOnly,
+                    beforeAfterOnly,
+                    completedOnly,
+                  ].filter(Boolean).length > 0
+                    ? colors.gold
+                    : colors.line,
+              }}
+            >
+              Filters
+              {[
+                timelineType !== "All",
+                timelineCategory !== "All",
+                timelineLocation !== "All",
+                timelineAsset !== "All",
+                timelineVendor !== "All",
+                milestonesOnly,
+                photosOnly,
+                beforeAfterOnly,
+                completedOnly,
+              ].filter(Boolean).length > 0 ? (
+                <span
+                  style={{
+                    minWidth: 20,
+                    height: 20,
+                    padding: "0 6px",
+                    borderRadius: 999,
+                    display: "inline-grid",
+                    placeItems: "center",
+                    background: colors.gold,
+                    color: colors.text,
+                    fontSize: 11,
+                    fontWeight: 900,
+                  }}
+                >
+                  {
+                    [
+                      timelineType !== "All",
+                      timelineCategory !== "All",
+                      timelineLocation !== "All",
+                      timelineAsset !== "All",
+                      timelineVendor !== "All",
+                      milestonesOnly,
+                      photosOnly,
+                      beforeAfterOnly,
+                      completedOnly,
+                    ].filter(Boolean).length
+                  }
+                </span>
+              ) : (
+                <span aria-hidden="true">⌄</span>
+              )}
+            </button>
+
+            {showFilters ? (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 8px)",
+                  right: 0,
+                  width: "min(390px, calc(100vw - 34px))",
+                  maxHeight: "min(620px, calc(100vh - 160px))",
+                  overflowY: "auto",
+                  padding: 14,
+                  borderRadius: 14,
+                  border: `1px solid ${colors.line}`,
+                  background: "#FFFFFF",
+                  boxShadow: "0 20px 50px rgba(8,37,58,0.22)",
+                  display: "grid",
+                  gap: 12,
+                  color: colors.text,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <strong>Timeline Filters</strong>
+                  <button
+                    type="button"
+                    onClick={() => setShowFilters(false)}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 999,
+                      border: `1px solid ${colors.line}`,
+                      background: colors.panel,
+                      cursor: "pointer",
+                    }}
+                    aria-label="Close filters"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <label style={{ display: "grid", gap: 5, fontSize: 12, fontWeight: 800 }}>
+                  Category
+                  <select
+                    value={timelineCategory}
+                    onChange={(event) => setTimelineCategory(event.target.value)}
+                    style={{ ...inputStyle, width: "100%" }}
+                  >
+                    <option value="All">All categories</option>
+                    {filterOptions.categories.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: 5, fontSize: 12, fontWeight: 800 }}>
+                  Event type
+                  <select
+                    value={timelineType}
+                    onChange={(event) => setTimelineType(event.target.value)}
+                    style={{ ...inputStyle, width: "100%" }}
+                  >
+                    <option>All</option>
+                    <option>Completed Work</option>
+                    <option>Work Note</option>
+                    <option>Photo</option>
+                    <option>Calendar</option>
+                    <option>Owner Request</option>
+                    <option>Converted Request</option>
+                    <option>Request History</option>
+                    <option>Milestone</option>
+                    <option>Renovation</option>
+                    <option>Landscape</option>
+                    <option>Installation</option>
+                    <option>Estate Event</option>
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: 5, fontSize: 12, fontWeight: 800 }}>
+                  Location
+                  <select
+                    value={timelineLocation}
+                    onChange={(event) => setTimelineLocation(event.target.value)}
+                    style={{ ...inputStyle, width: "100%" }}
+                  >
+                    <option value="All">All locations</option>
+                    {filterOptions.locations.map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: 5, fontSize: 12, fontWeight: 800 }}>
+                  Asset
+                  <select
+                    value={timelineAsset}
+                    onChange={(event) => setTimelineAsset(event.target.value)}
+                    style={{ ...inputStyle, width: "100%" }}
+                  >
+                    <option value="All">All assets</option>
+                    {filterOptions.assets.map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: 5, fontSize: 12, fontWeight: 800 }}>
+                  Vendor
+                  <select
+                    value={timelineVendor}
+                    onChange={(event) => setTimelineVendor(event.target.value)}
+                    style={{ ...inputStyle, width: "100%" }}
+                  >
+                    <option value="All">All vendors</option>
+                    {filterOptions.vendors.map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    ["Milestones", milestonesOnly, setMilestonesOnly],
+                    ["Photos", photosOnly, setPhotosOnly],
+                    ["Before / After", beforeAfterOnly, setBeforeAfterOnly],
+                    ["Completed Work", completedOnly, setCompletedOnly],
+                  ].map(([label, checked, setter]) => (
+                    <label
+                      key={String(label)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        minHeight: 40,
+                        padding: "8px 10px",
+                        borderRadius: 10,
+                        border: `1px solid ${checked ? colors.gold : colors.line}`,
+                        background: checked ? "#FFF8E7" : colors.panel,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(checked)}
+                        onChange={(event) =>
+                          (setter as React.Dispatch<React.SetStateAction<boolean>>)(
+                            event.target.checked,
+                          )
+                        }
+                      />
+                      {String(label)}
+                    </label>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    paddingTop: 4,
+                    borderTop: `1px solid ${colors.line}`,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTimelineType("All");
+                      setTimelineCategory("All");
+                      setTimelineLocation("All");
+                      setTimelineAsset("All");
+                      setTimelineVendor("All");
+                      setMilestonesOnly(false);
+                      setPhotosOnly(false);
+                      setBeforeAfterOnly(false);
+                      setCompletedOnly(false);
+                    }}
+                    style={secondaryButtonStyle}
+                  >
+                    Clear Filters
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowFilters(false)}
+                    style={goldButtonStyle}
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </section>
 
@@ -1411,6 +1725,7 @@ export default function AtlasInsightsTimeline({
                     data-timeline-group-index={index}
                     type="button"
                     onClick={() => {
+                      setSettledGroupIndex(index);
                       const target = horizontalRef.current?.querySelector<HTMLElement>(
                         `[data-timeline-group-index="${index}"]`,
                       );
@@ -1641,13 +1956,15 @@ export default function AtlasInsightsTimeline({
                 borderRadius: 16,
                 border: `1px solid ${colors.line}`,
                 padding: 12,
+                minHeight: 390,
+                alignItems: "stretch",
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
                 gap: 12,
                 color: colors.text,
               }}
             >
-              <div style={card}>
+              <div style={{ ...card, minHeight: 340, alignContent: "start" }}>
                 <div
                   style={{
                     fontSize: 11,
@@ -1719,7 +2036,7 @@ export default function AtlasInsightsTimeline({
               </div>
 
               {selectedEntry ? (
-                <div style={card}>
+                <div style={{ ...card, minHeight: 340, alignContent: "start" }}>
                   <div
                     style={{
                       display: "flex",
@@ -1804,7 +2121,7 @@ export default function AtlasInsightsTimeline({
                 <div style={noticeStyle}>Select an event to view its details.</div>
               )}
 
-              <div style={card}>
+              <div style={{ ...card, minHeight: 340, alignContent: "start" }}>
                 <div
                   style={{
                     fontSize: 11,
