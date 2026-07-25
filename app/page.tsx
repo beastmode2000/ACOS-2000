@@ -1,6 +1,3 @@
-APP/PAGE.TSX — PART 01 OF 08
-Paste into an empty app/page.tsx file.
-
 "use client";
 
 import React, {
