@@ -1954,19 +1954,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 }}
               >
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => void deleteWorkOrderRecord(selectedService)}
-                    style={{
-                      ...dangerButtonStyle,
-                      width: "auto",
-                      padding: "7px 10px",
-                      border: 0,
-                      background: "transparent",
-                    }}
-                  >
-                    Delete Work Order
-                  </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -1981,7 +1968,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   }}
                   aria-label="Back to work orders"
                 >
-                  {SYMBOL.back} Back to Work Orders
+                  {SYMBOL.back} Work Orders
                 </button>
                 <button
                   type="button"
@@ -2006,19 +1993,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </span>
               </div>
               <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(250px, 40%) minmax(0, 60%)", gap: 18 }}>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {photoSource((selectedService.photos || [])[0]) ? (
-                      <img src={photoSource(selectedService.photos[0])} alt={selectedService.title || "Work order"} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 10 }} />
-                    ) : (
-                      <button type="button" onClick={() => photoInputRef.current?.click()} style={{ width: "100%", aspectRatio: "4 / 3", border: `1px dashed ${colors.line}`, borderRadius: 10, background: "#F8FAFC", color: colors.muted, cursor: "pointer" }}>Add Work Order Photo</button>
-                    )}
-                    <button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, fontWeight: 500 }}>Add / Change Photo</button>
-                  </div>
+                <div style={{ display: "grid", gap: 12 }}>
                   <div style={{ display: "grid", gap: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={eyebrowStyle}>Work Order Details</div>
+                        <div style={eyebrowStyle}>Information</div>
                         {workEditorOpen ? (
                           <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, marginTop: 5, fontSize: isMobile ? 20 : 24, fontWeight: 800 }} />
                         ) : (
@@ -2071,12 +2050,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         <button type="button" onClick={() => { void saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto" }}>Save Details</button>
                       </div>
                     ) : null}
-                  </div>
                 </div>
               </section>
 
               <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Atlas Assignment</div>
+                <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Assignment</div>
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder(assetPhotoPatch(event.currentTarget.value))} style={inputStyle}><option value="">No linked asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => updateWorkOrder({ locationId: event.currentTarget.value })} style={inputStyle}><option value="">No linked location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
@@ -2086,8 +2064,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               </section>
 
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Cost & Invoice</div>
+              <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Cost & Invoice</summary>
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                   <label style={{ display: "grid", gap: 5 }}>
                     <span style={fieldLabelStyle}>Estimated Cost</span>
@@ -2102,14 +2080,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <input value={selectedService.invoiceNumber || ""} onChange={(event) => updateWorkOrder({ invoiceNumber: event.currentTarget.value })} style={inputStyle} />
                   </label>
                 </div>
-                <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Costs and invoice numbers are included in Atlas reports and CSV exports.</p>
-              </section>
+              </details>
 
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <div style={{ ...eyebrowStyle, marginBottom: 10 }}>Internal Notes</div>
+              <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Internal Notes</summary>
                 <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={4} placeholder="Add internal notes here..." style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} />
-                <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>These notes stay inside Atlas.</p>
-              </section>
+              </details>
 
               <div style={{ ...buttonRowStyle, justifyContent: "flex-start", padding: "2px 0 8px" }}>
                 <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto" }}>Save Changes</button>
@@ -2229,184 +2205,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
               </section>
 
-              <section style={{ ...detailSectionStyle, display: "none" }}>
-                <div style={eyebrowStyle}>Notes</div>
-                <textarea
-                  value={selectedService.notes || ""}
-                  onChange={(event) =>
-                    updateWorkOrder({ notes: event.currentTarget.value })
-                  }
-                  rows={2}
-                  style={{ ...inputStyle, resize: "vertical", minHeight: 58 }}
-                />
-              </section>
-
-              <details style={{ ...detailSectionStyle, display: "none" }}>
-                <summary
-                  style={{
-                    cursor: "pointer",
-                    fontWeight: 800,
-                    listStyle: "none",
-                  }}
-                >
-                  Category & Type
-                </summary>
-
-                <div style={{ ...formGridStyle, marginTop: 12 }}>
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Work Type</span>
-                    <select
-                      value={itemType(selectedService)}
-                      onChange={(event) => {
-                        const workType = event.currentTarget
-                          .value as WorkItemType;
-                        updateWorkOrder({
-                          workType,
-                          recurring:
-                            workType === "Preventive Maintenance"
-                              ? true
-                              : selectedService.recurring,
-                        });
-                      }}
-                      style={inputStyle}
-                    >
-                      <option value="Quick Task">Task</option>
-                      <option value="Work Order">Work Order</option>
-                      <option value="Preventive Maintenance">
-                        Preventive Maintenance
-                      </option>
-                      <option value="Project">Project</option>
-                    </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Category</span>
-                    <select
-                      value={categoryLabel(selectedService)}
-                      onChange={(event) => {
-                        const workCategory = event.currentTarget.value;
-                        updateWorkOrder({
-                          workCategory,
-                          emoji: categoryEmoji(workCategory),
-                        });
-                      }}
-                      style={inputStyle}
-                    >
-                      {!categories.includes(categoryLabel(selectedService)) ? (
-                        <option value={categoryLabel(selectedService)}>
-                          {categoryDisplayLabel(categoryLabel(selectedService))}
-                        </option>
-                      ) : null}
-                      {categories
-                        .filter((category) => category !== "All")
-                        .map((category) => (
-                          <option key={category} value={category}>
-                            {categoryDisplayLabel(category)}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setManageCategoriesOpen((open) => !open)}
-                  style={{ ...miniButtonStyle, marginTop: 10 }}
-                >
-                  {manageCategoriesOpen ? "Close Category Manager" : "Manage Categories"}
-                </button>
-
-                {manageCategoriesOpen ? (
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 10,
-                      marginTop: 10,
-                      paddingTop: 10,
-                      borderTop: `1px solid ${colors.line}`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: isMobile
-                          ? "1fr"
-                          : "minmax(0, 1fr) auto",
-                        gap: 8,
-                      }}
-                    >
-                      <input
-                        value={newCategory}
-                        onChange={(event) =>
-                          setNewCategory(event.currentTarget.value)
-                        }
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            addCategory();
-                          }
-                        }}
-                        placeholder="New category name"
-                        style={controlStyle}
-                      />
-                      <button
-                        type="button"
-                        onClick={addCategory}
-                        style={goldButtonStyle}
-                      >
-                        Add Category
-                      </button>
-                    </div>
-
-                    <div style={{ display: "grid", gap: 7 }}>
-                      {categoryChoices.map((category) => (
-                        <div
-                          key={category}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 10,
-                            padding: "8px 0",
-                            borderBottom: `1px solid ${colors.line}`,
-                          }}
-                        >
-                          <strong>{categoryDisplayLabel(category)}</strong>
-                          <div
-                            style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => renameCategory(category)}
-                              style={miniButtonStyle}
-                            >
-                              Rename
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeCategory(category)}
-                              style={{
-                                ...dangerButtonStyle,
-                                padding: "7px 10px",
-                              }}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={restoreDefaultCategories}
-                      style={secondaryButtonStyle}
-                    >
-                      Restore Default Categories
-                    </button>
-                  </div>
-                ) : null}
-              </details>
 
               <section
                 style={{
@@ -2607,248 +2405,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         }
       />
 
-      {false ? (
-      <section
-        style={{
-          marginTop: 18,
-          padding: isMobile ? 12 : 18,
-          border: `1px solid ${colors.line}`,
-          borderRadius: 16,
-          background: colors.card || "#FFFFFF",
-          color: colors.text,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-            marginBottom: completedHistoryOpen ? 14 : 0,
-          }}
-        >
-          <div>
-            <div style={eyebrowStyle}>Completed History</div>
-            <h3 style={{ ...editorHeaderStyle, margin: "4px 0" }}>
-              Completed Work Orders
-            </h3>
-            <p style={{ ...mutedSmallStyle, margin: 0 }}>
-              Completed work orders, newest first.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setCompletedHistoryOpen((open) => !open)}
-            style={{ ...secondaryButtonStyle, fontWeight: 500 }}
-          >
-            {completedHistoryOpen ? `Hide History ${SYMBOL.up}` : `Show History ${SYMBOL.down}`}
-          </button>
-        </div>
-
-        {completedHistoryOpen ? (
-          completedHistoryRecords.length ? (
-            <>
-              <div style={{ overflowX: "auto" }}>
-                <div
-                  style={{
-                    minWidth: isMobile ? 760 : 980,
-                    display: "grid",
-                    gap: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "minmax(270px, 2fr) 145px 150px 150px 150px 190px",
-                      gap: 12,
-                      padding: "0 10px 9px",
-                      color: colors.muted,
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span>Title</span>
-                    <span>Completed</span>
-                    <span>Asset</span>
-                    <span>Location</span>
-                    <span>Category</span>
-                    <span>Actions</span>
-                  </div>
-
-                  {visibleCompletedHistory.map((record: any) => {
-                    const photo = (record.photos || [])[0] as
-                      | PhotoLike
-                      | undefined;
-                    const source = photo ? photoSource(photo) : "";
-                    const location = locationRecords.find(
-                      (item: any) => item.id === record.locationId,
-                    );
-                    return (
-                      <div
-                        key={record.id}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns:
-                            "minmax(270px, 2fr) 145px 150px 150px 150px 190px",
-                          gap: 12,
-                          alignItems: "center",
-                          padding: 10,
-                          borderTop: `1px solid ${colors.line}`,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNewWorkOpen(false);
-                            setDetailOpen(true);
-                            setSelectedServiceId(record.id);
-                          }}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            minWidth: 0,
-                            padding: 0,
-                            border: 0,
-                            background: "transparent",
-                            color: colors.text,
-                            textAlign: "left",
-                            cursor: "pointer",
-                          }}
-                        >
-                          {source ? (
-                            <img
-                              src={source}
-                              alt=""
-                              style={{
-                                width: 64,
-                                height: 46,
-                                flex: "0 0 auto",
-                                objectFit: "cover",
-                                borderRadius: 8,
-                              }}
-                            />
-                          ) : (
-                            <span
-                              aria-hidden="true"
-                              style={{
-                                width: 64,
-                                height: 46,
-                                display: "grid",
-                                placeItems: "center",
-                                flex: "0 0 auto",
-                                borderRadius: 8,
-                                background: "#F1F5F9",
-                                fontSize: 22,
-                              }}
-                            >
-                              {categoryEmoji(categoryLabel(record))}
-                            </span>
-                          )}
-                          <span style={{ minWidth: 0 }}>
-                            <strong
-                              style={{
-                                display: "block",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {record.title || "Untitled Work"}
-                            </strong>
-                            <small style={mutedSmallStyle}>
-                              {record.assignedTo
-                                ? `Completed by ${record.assignedTo}`
-                                : "Completed"}
-                            </small>
-                          </span>
-                        </button>
-                        <span style={{ fontSize: 13 }}>
-                          {completedTime(record)
-                            ? new Date(completedTime(record)).toLocaleString()
-                            : "—"}
-                        </span>
-                        <span style={{ fontSize: 13 }}>
-                          {record.assetId ? assetName(record.assetId) : "—"}
-                        </span>
-                        <span style={{ fontSize: 13 }}>
-                          {location?.name || "—"}
-                        </span>
-                        <span style={{ fontSize: 13 }}>
-                          {categoryDisplayLabel(categoryLabel(record))}
-                        </span>
-                        <span style={{ display: "flex", gap: 8 }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNewWorkOpen(false);
-                              setDetailOpen(true);
-                              setSelectedServiceId(record.id);
-                            }}
-                            style={{ ...secondaryButtonStyle, padding: "7px 11px" }}
-                          >
-                            View / Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void deleteWorkOrderRecord(record)}
-                            style={{ ...dangerButtonStyle, padding: "7px 10px" }}
-                            aria-label={`Delete ${record.title || "work order"}`}
-                            title="Delete work order"
-                          >
-                            Delete
-                          </button>
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 12,
-                  marginTop: 12,
-                  color: colors.muted,
-                  fontSize: 13,
-                }}
-              >
-                <span>
-                  Showing 1 to {visibleCompletedHistory.length} of{" "}
-                  {completedHistoryRecords.length} completed items
-                </span>
-                {completedHistoryLimit < completedHistoryRecords.length ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCompletedHistoryLimit((limit) => limit + 5)
-                    }
-                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
-                  >
-                    Load More {SYMBOL.down}
-                  </button>
-                ) : completedHistoryRecords.length > 5 ? (
-                  <button
-                    type="button"
-                    onClick={() => setCompletedHistoryLimit(5)}
-                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
-                  >
-                    Show Less {SYMBOL.up}
-                  </button>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <div style={noticeStyle}>No completed work orders yet.</div>
-          )
-        ) : null}
-      </section>
-      ) : null}
     </>
   );
 }
