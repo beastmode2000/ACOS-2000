@@ -3280,9 +3280,6 @@ function ListDrawerLayout(props: {
           alignItems: "start",
         };
 
-APP/PAGE.TSX — PART 02 OF 08
-Paste immediately after Part 01.
-
   const desktopListStyle: React.CSSProperties = props.isMobile
     ? listPanelStyle
     : isCalendarLayout
@@ -6565,9 +6562,6 @@ export default function AtlasPage() {
     if (kind === "Work Order Issue") {
       setFastIntakeSaveMode("Create Work Order");
       setIntakeTargetKind("Asset");
-APP/PAGE.TSX — PART 03 OF 08
-Paste immediately after Part 02.
-
       return;
     }
 
@@ -9850,9 +9844,6 @@ Paste immediately after Part 02.
             item.name.trim().toLowerCase() ===
             pendingAssistantAction.title.trim().toLowerCase(),
         );
-APP/PAGE.TSX — PART 04 OF 08
-Paste immediately after Part 03.
-
         if (duplicate) {
           throw new Error(
             `${duplicate.name} already exists. Ask Atlas to update its quantity instead.`,
@@ -13135,9 +13126,6 @@ Paste immediately after Part 03.
                         aria-label="Edit all asset information"
                         title="Edit asset information"
                       >
-APP/PAGE.TSX — PART 05 OF 08
-Paste immediately after Part 04.
-
                         ✏
                       </button>
                     ) : (
@@ -16420,9 +16408,6 @@ Paste immediately after Part 04.
                               alignItems: "center",
                               gap: 10,
                               flexWrap: "wrap",
-APP/PAGE.TSX — PART 06 OF 08
-Paste immediately after Part 05.
-
                             }}
                           >
                             <strong style={{ overflowWrap: "anywhere" }}>
@@ -19705,9 +19690,6 @@ Paste immediately after Part 05.
             >
               <div>
                 <div style={eyebrowStyle}>App Editor</div>
-APP/PAGE.TSX — PART 07 OF 08
-Paste immediately after Part 06.
-
                 <h3 style={detailTitleStyle}>
                   {workLinkDraft.id ? "Edit App" : "Add App"}
                 </h3>
@@ -22990,9 +22972,6 @@ const mobileMenuSelectStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.08)",
   color: "#FFFFFF",
   borderRadius: 14,
-APP/PAGE.TSX — PART 08 OF 08
-Paste immediately after Part 07.
-
   padding: "12px 13px",
   fontSize: 15,
   fontWeight: 900,
