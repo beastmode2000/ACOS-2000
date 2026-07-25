@@ -80,6 +80,56 @@ function isDueNow(record: any) {
   return due <= soon;
 }
 
+function startOfToday() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function dateFromValue(value: unknown) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  const date = new Date(
+    text.includes("T") ? text : `${text}T12:00:00`,
+  );
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function recordCompletionDate(record: any) {
+  const direct = dateFromValue(record.lastCompletedDate);
+  if (direct) return direct;
+
+  const completionHistory = Array.isArray(record.completionHistory)
+    ? record.completionHistory
+        .map((value: unknown) => dateFromValue(value))
+        .filter((value: Date | null): value is Date => Boolean(value))
+    : [];
+
+  const serviceHistory = Array.isArray(record.serviceHistory)
+    ? record.serviceHistory
+        .map((entry: any) => dateFromValue(entry?.completedAt))
+        .filter((value: Date | null): value is Date => Boolean(value))
+    : [];
+
+  const candidates = [...completionHistory, ...serviceHistory];
+
+  if (candidates.length) {
+    return candidates.sort((a, b) => b.getTime() - a.getTime())[0];
+  }
+
+  return record.status === "Completed" ? dateFromValue(record.date) : null;
+}
+
+function daysFromToday(value: unknown) {
+  const date = dateFromValue(value);
+  if (!date) return null;
+
+  const oneDay = 24 * 60 * 60 * 1000;
+  return Math.round((date.getTime() - startOfToday().getTime()) / oneDay);
+}
+
 type AtlasWorkOrdersProps = {
   ListDrawerLayout: any;
   Field: any;
@@ -258,6 +308,104 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     return Object.fromEntries(TYPE_TABS.map((tab) => [tab.id, count(tab.id)]));
   }, [filteredServices]);
 
+  const commandCenter = useMemo(() => {
+    const today = startOfToday();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+
+    const nextSevenDays = new Date(today);
+    nextSevenDays.setDate(today.getDate() + 7);
+
+    const openRecords = filteredServices.filter(
+      (record: any) => record.status !== "Completed",
+    );
+
+    const dueToday = openRecords.filter(
+      (record: any) => daysFromToday(record.date) === 0,
+    );
+
+    const overdue = openRecords
+      .filter((record: any) => {
+        const distance = daysFromToday(record.date);
+        return distance !== null && distance < 0;
+      })
+      .sort((a: any, b: any) =>
+        String(a.date || "").localeCompare(String(b.date || "")),
+      );
+
+    const highPriority = openRecords.filter(
+      (record: any) => record.priority === "High",
+    );
+
+    const recurring = openRecords.filter((record: any) =>
+      Boolean(record.recurring),
+    );
+
+    const completedThisWeek = filteredServices.filter((record: any) => {
+      if (record.status !== "Completed") return false;
+      const completedAt = recordCompletionDate(record);
+      return Boolean(completedAt && completedAt >= weekStart && completedAt <= new Date());
+    });
+
+    const recentlyCompleted = filteredServices
+      .filter((record: any) => record.status === "Completed")
+      .map((record: any) => ({
+        record,
+        completedAt: recordCompletionDate(record),
+      }))
+      .sort(
+        (a: any, b: any) =>
+          (b.completedAt?.getTime() || 0) - (a.completedAt?.getTime() || 0),
+      )
+      .slice(0, 4);
+
+    const dueThisWeek = openRecords
+      .filter((record: any) => {
+        const date = dateFromValue(record.date);
+        return Boolean(date && date >= today && date <= nextSevenDays);
+      })
+      .sort((a: any, b: any) =>
+        String(a.date || "").localeCompare(String(b.date || "")),
+      )
+      .slice(0, 4);
+
+    const needsAttention = [...openRecords]
+      .filter((record: any) => {
+        const distance = daysFromToday(record.date);
+        return record.priority === "High" || (distance !== null && distance < 0);
+      })
+      .sort((a: any, b: any) => {
+        const aOverdue = (daysFromToday(a.date) ?? 9999) < 0 ? 0 : 1;
+        const bOverdue = (daysFromToday(b.date) ?? 9999) < 0 ? 0 : 1;
+        if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+        if (a.priority !== b.priority) return a.priority === "High" ? -1 : 1;
+        return String(a.date || "").localeCompare(String(b.date || ""));
+      })
+      .slice(0, 4);
+
+    const aging = overdue
+      .map((record: any) => ({
+        record,
+        age: Math.abs(daysFromToday(record.date) || 0),
+      }))
+      .filter((item: any) => item.age >= 14)
+      .sort((a: any, b: any) => b.age - a.age)
+      .slice(0, 4);
+
+    return {
+      open: openRecords.length,
+      dueToday: dueToday.length,
+      overdue: overdue.length,
+      highPriority: highPriority.length,
+      completedThisWeek: completedThisWeek.length,
+      recurring: recurring.length,
+      recentlyCompleted,
+      dueThisWeek,
+      needsAttention,
+      aging,
+    };
+  }, [filteredServices]);
+
   const controlStyle: React.CSSProperties = {
     width: "100%",
     minHeight: 44,
@@ -297,6 +445,90 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     cursor: "pointer",
   });
 
+  const commandCenterStyle: React.CSSProperties = {
+    display: "grid",
+    gap: isMobile ? 14 : 18,
+    padding: isMobile ? 16 : 22,
+    borderRadius: 18,
+    color: "#FFFFFF",
+    background:
+      "linear-gradient(135deg, #102A43 0%, #174A78 55%, #1E5F94 100%)",
+    boxShadow: "0 14px 34px rgba(16, 42, 67, 0.18)",
+    overflow: "hidden",
+  };
+
+  const commandMetricGridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "repeat(2, minmax(0, 1fr))"
+      : "repeat(6, minmax(0, 1fr))",
+    gap: 10,
+  };
+
+  const commandMetricStyle: React.CSSProperties = {
+    display: "grid",
+    gap: 4,
+    minWidth: 0,
+    padding: isMobile ? "11px 10px" : "13px 12px",
+    border: "1px solid rgba(255, 255, 255, 0.18)",
+    borderRadius: 13,
+    background: "rgba(255, 255, 255, 0.09)",
+    backdropFilter: "blur(4px)",
+  };
+
+  const summaryGridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "1fr"
+      : "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+  };
+
+  const summaryCardStyle: React.CSSProperties = {
+    minWidth: 0,
+    padding: 14,
+    border: `1px solid ${colors.line}`,
+    borderRadius: 15,
+    background: "#FFFFFF",
+  };
+
+  const summaryRecordButtonStyle: React.CSSProperties = {
+    width: "100%",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 0",
+    border: 0,
+    borderBottom: `1px solid ${colors.line}`,
+    background: "transparent",
+    color: colors.text,
+    textAlign: "left",
+    cursor: "pointer",
+  };
+
+  const openSummaryRecord = (record: any) => {
+    setSelectedServiceId(record.id);
+  };
+
+  const showAllWork = () => {
+    setActiveView("my-work");
+    setCategoryFilter("All");
+    setLocalSearch("");
+  };
+
+  const showCompleted = () => {
+    setActiveView("completed");
+    setCategoryFilter("All");
+    setLocalSearch("");
+  };
+
+  const showOverdue = () => {
+    setActiveView("my-work");
+    setCategoryFilter("All");
+    setLocalSearch("");
+  };
+
   return (
     <ListDrawerLayout
       eyebrow="Organize / Complete"
@@ -310,6 +542,311 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       }
       list={
         <div style={stackStyle}>
+          <section style={commandCenterStyle}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                alignItems: isMobile ? "stretch" : "flex-start",
+                justifyContent: "space-between",
+                gap: 14,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 900,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    opacity: 0.78,
+                  }}
+                >
+                  Atlas Operations
+                </div>
+                <h2
+                  style={{
+                    margin: "5px 0 4px",
+                    fontSize: isMobile ? 23 : 28,
+                    lineHeight: 1.1,
+                  }}
+                >
+                  Work Orders Command Center
+                </h2>
+                <p
+                  style={{
+                    maxWidth: 760,
+                    margin: 0,
+                    color: "rgba(255, 255, 255, 0.78)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Current workload, urgent items, upcoming work, preventive
+                  maintenance, and recent completions for this property.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={addWorkOrder}
+                style={{
+                  ...goldButtonStyle,
+                  flex: "0 0 auto",
+                  alignSelf: isMobile ? "stretch" : "flex-start",
+                }}
+              >
+                Add Work
+              </button>
+            </div>
+
+            <div style={commandMetricGridStyle}>
+              {[
+                ["Open", commandCenter.open],
+                ["Due Today", commandCenter.dueToday],
+                ["Overdue", commandCenter.overdue],
+                ["High Priority", commandCenter.highPriority],
+                ["Completed This Week", commandCenter.completedThisWeek],
+                ["Recurring", commandCenter.recurring],
+              ].map(([label, value]) => (
+                <div key={String(label)} style={commandMetricStyle}>
+                  <strong style={{ fontSize: isMobile ? 23 : 27 }}>
+                    {value}
+                  </strong>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: "rgba(255, 255, 255, 0.72)",
+                    }}
+                  >
+                    {label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={summaryGridStyle}>
+            <div style={summaryCardStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 4,
+                }}
+              >
+                <div>
+                  <div style={eyebrowStyle}>Priority Queue</div>
+                  <strong>Needs Attention</strong>
+                </div>
+                <span style={badgeStyle(commandCenter.overdue ? "High" : "Monitor")}>
+                  {commandCenter.needsAttention.length}
+                </span>
+              </div>
+
+              {commandCenter.needsAttention.map((record: any) => {
+                const distance = daysFromToday(record.date);
+                return (
+                  <button
+                    key={record.id}
+                    type="button"
+                    onClick={() => openSummaryRecord(record)}
+                    style={summaryRecordButtonStyle}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <strong>{record.title || "Untitled Work"}</strong>
+                      <div style={mutedSmallStyle}>
+                        {record.priority === "High" ? "High priority" : "Open"}
+                        {" · "}
+                        {distance !== null && distance < 0
+                          ? `${Math.abs(distance)} day${Math.abs(distance) === 1 ? "" : "s"} overdue`
+                          : `Due ${formatDate(record.date)}`}
+                      </div>
+                    </div>
+                    <span aria-hidden="true">›</span>
+                  </button>
+                );
+              })}
+
+              {!commandCenter.needsAttention.length ? (
+                <p style={mutedSmallStyle}>
+                  No overdue or high-priority work needs attention.
+                </p>
+              ) : null}
+            </div>
+
+            <div style={summaryCardStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 4,
+                }}
+              >
+                <div>
+                  <div style={eyebrowStyle}>Next 7 Days</div>
+                  <strong>Due This Week</strong>
+                </div>
+                <span style={badgeStyle("Scheduled")}>
+                  {commandCenter.dueThisWeek.length}
+                </span>
+              </div>
+
+              {commandCenter.dueThisWeek.map((record: any) => (
+                <button
+                  key={record.id}
+                  type="button"
+                  onClick={() => openSummaryRecord(record)}
+                  style={summaryRecordButtonStyle}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <strong>{record.title || "Untitled Work"}</strong>
+                    <div style={mutedSmallStyle}>
+                      {formatDate(record.date)} · {assetName(record.assetId)}
+                    </div>
+                  </div>
+                  <span aria-hidden="true">›</span>
+                </button>
+              ))}
+
+              {!commandCenter.dueThisWeek.length ? (
+                <p style={mutedSmallStyle}>
+                  No dated work is due in the next seven days.
+                </p>
+              ) : null}
+            </div>
+
+            <div style={summaryCardStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 4,
+                }}
+              >
+                <div>
+                  <div style={eyebrowStyle}>Work History</div>
+                  <strong>Recently Completed</strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={showCompleted}
+                  style={{
+                    border: 0,
+                    background: "transparent",
+                    color: colors.blue || "#175CD3",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  View all
+                </button>
+              </div>
+
+              {commandCenter.recentlyCompleted.map(
+                ({ record, completedAt }: any) => (
+                  <button
+                    key={record.id}
+                    type="button"
+                    onClick={() => openSummaryRecord(record)}
+                    style={summaryRecordButtonStyle}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <strong>{record.title || "Untitled Work"}</strong>
+                      <div style={mutedSmallStyle}>
+                        Completed{" "}
+                        {completedAt
+                          ? formatDate(completedAt.toISOString().slice(0, 10))
+                          : "recently"}
+                        {" · "}
+                        {assetName(record.assetId)}
+                      </div>
+                    </div>
+                    <span aria-hidden="true">›</span>
+                  </button>
+                ),
+              )}
+
+              {!commandCenter.recentlyCompleted.length ? (
+                <p style={mutedSmallStyle}>
+                  Completed work will appear here.
+                </p>
+              ) : null}
+            </div>
+
+            <div style={summaryCardStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 4,
+                }}
+              >
+                <div>
+                  <div style={eyebrowStyle}>Backlog Health</div>
+                  <strong>Aging Work Orders</strong>
+                </div>
+                <span style={badgeStyle(commandCenter.aging.length ? "Open" : "Monitor")}>
+                  14+ days
+                </span>
+              </div>
+
+              {commandCenter.aging.map(({ record, age }: any) => (
+                <button
+                  key={record.id}
+                  type="button"
+                  onClick={() => openSummaryRecord(record)}
+                  style={summaryRecordButtonStyle}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <strong>{record.title || "Untitled Work"}</strong>
+                    <div style={mutedSmallStyle}>
+                      {age} days overdue · {categoryLabel(record)}
+                    </div>
+                  </div>
+                  <span aria-hidden="true">›</span>
+                </button>
+              ))}
+
+              {!commandCenter.aging.length ? (
+                <p style={mutedSmallStyle}>
+                  No work orders are more than 14 days overdue.
+                </p>
+              ) : null}
+
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  paddingTop: 12,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={showAllWork}
+                  style={secondaryButtonStyle}
+                >
+                  View Active Work
+                </button>
+                <button
+                  type="button"
+                  onClick={showOverdue}
+                  style={secondaryButtonStyle}
+                >
+                  Review Overdue
+                </button>
+              </div>
+            </div>
+          </section>
+
           <section style={filterPanelStyle}>
             <div style={tabRowStyle}>
               {TYPE_TABS.map((tab) => {
