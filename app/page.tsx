@@ -8369,6 +8369,219 @@ export default function AtlasPage() {
     resetCalendarEntryForm(dateToKeepOpen);
   }
 
+
+  async function toggleCalendarItemCompleted(event: CalendarItem) {
+    const linkedWorkOrderId =
+      event.linkedType === "Work Order" || event.source === "work-order"
+        ? String(event.linkedId || "")
+        : "";
+
+    if (linkedWorkOrderId) {
+      const workOrder = serviceRecords.find(
+        (record) => record.id === linkedWorkOrderId,
+      );
+
+      if (!workOrder) {
+        setDatabaseStatus("The linked work order could not be found.");
+        return false;
+      }
+
+      if (workOrder.status !== "Completed") {
+        await completeWorkOrder(workOrder);
+        return true;
+      }
+
+      const reopened = normalizeService({
+        ...workOrder,
+        status: "Open",
+      });
+
+      const saved = await postAtlasRecord("work_orders", reopened);
+      if (!saved) {
+        setDatabaseStatus("The linked work order could not be reopened.");
+        return false;
+      }
+
+      setServiceRecords((current) =>
+        byTitle(
+          current.map((record) =>
+            record.id === reopened.id ? reopened : record,
+          ),
+        ),
+      );
+      clearRecordDirty("work_order", reopened.id);
+      setDatabaseStatus(`Reopened ${reopened.title}.`);
+      return true;
+    }
+
+    if (
+      event.source === "us-holiday" ||
+      event.source === "jewish-holiday"
+    ) {
+      return false;
+    }
+
+    const recordId = String(event.originalId || event.id || "");
+    const existing = calendarItems.find((item) => item.id === recordId);
+    if (!existing) {
+      setDatabaseStatus("The calendar event could not be found.");
+      return false;
+    }
+
+    const updated = normalizeCalendar({
+      ...existing,
+      completed: !existing.completed,
+    });
+
+    const saved = await postAtlasRecord("calendar", {
+      ...updated,
+      propertyId: activePropertyId,
+      status: updated.completed ? "Completed" : "Scheduled",
+    });
+
+    if (!saved) {
+      setDatabaseStatus(
+        updated.completed
+          ? "Atlas could not complete this calendar event."
+          : "Atlas could not reopen this calendar event.",
+      );
+      return false;
+    }
+
+    setCalendarItems((current) => {
+      const next = byTitle(
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      saveStoredArray(storageKeys.calendar[0], next);
+      return next;
+    });
+
+    setCalendarDraft((current) =>
+      current.id === updated.id ? updated : current,
+    );
+    setDatabaseStatus(
+      updated.completed
+        ? `Completed ${updated.title}.`
+        : `Reopened ${updated.title}.`,
+    );
+    return true;
+  }
+
+  async function convertCalendarItemToWorkOrder(event: CalendarItem) {
+    if (
+      event.source !== "manual" ||
+      event.linkedType === "Work Order" ||
+      !event.id
+    ) {
+      return false;
+    }
+
+    const recordId = String(event.originalId || event.id);
+    const calendarRecord = calendarItems.find((item) => item.id === recordId);
+    if (!calendarRecord) {
+      setDatabaseStatus("The calendar event could not be found.");
+      return false;
+    }
+
+    const repeat = calendarRecord.repeat || "None";
+    const recurring = ["Daily", "Weekly", "Monthly", "Yearly"].includes(
+      repeat,
+    );
+    const recurrenceUnit: WorkOrderRecurrenceUnit =
+      repeat === "Daily"
+        ? "Days"
+        : repeat === "Monthly"
+          ? "Months"
+          : repeat === "Yearly"
+            ? "Years"
+            : "Weeks";
+
+    const workOrder = normalizeService({
+      id: uid("wo"),
+      title: calendarRecord.title || "Calendar Work Order",
+      date: event.date || calendarRecord.date || todayISO(),
+      status: calendarRecord.completed ? "Completed" : "Open",
+      priority: "Medium",
+      notes: [
+        calendarRecord.notes,
+        calendarRecord.time
+          ? `Calendar time: ${calendarRecord.time}`
+          : calendarRecord.allDay
+            ? "Calendar time: All day"
+            : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      assetId:
+        calendarRecord.linkedType === "Asset"
+          ? String(calendarRecord.linkedId || "")
+          : "",
+      vendorId:
+        calendarRecord.linkedType === "Vendor"
+          ? String(calendarRecord.linkedId || "")
+          : "",
+      locationId:
+        calendarRecord.linkedType === "Location"
+          ? String(calendarRecord.linkedId || "")
+          : "",
+      recurring,
+      recurrenceInterval: 1,
+      recurrenceUnit,
+      season: seasonForDate(calendarRecord.date || todayISO()),
+      workType: recurring ? "Preventive Maintenance" : "Work Order",
+      workCategory:
+        calendarRecord.categoryLabel ||
+        calendarRecord.area ||
+        "🔧 Maintenance",
+    });
+
+    const workOrderSaved = await postAtlasRecord("work_orders", workOrder);
+    if (!workOrderSaved) {
+      setDatabaseStatus(
+        "The work order was not created. The calendar event was left unchanged.",
+      );
+      return false;
+    }
+
+    const updatedCalendarRecord = normalizeCalendar({
+      ...calendarRecord,
+      linkedType: "Work Order",
+      linkedId: workOrder.id,
+      linkedName: workOrder.title,
+    });
+
+    const calendarSaved = await postAtlasRecord("calendar", {
+      ...updatedCalendarRecord,
+      propertyId: activePropertyId,
+      status: updatedCalendarRecord.completed ? "Completed" : "Scheduled",
+    });
+
+    if (!calendarSaved) {
+      await deleteAtlasRecord("work_orders", workOrder.id);
+      setDatabaseStatus(
+        "The calendar link did not save, so Atlas removed the unfinished work order.",
+      );
+      return false;
+    }
+
+    setServiceRecords((current) => byTitle([workOrder, ...current]));
+    setCalendarItems((current) => {
+      const next = byTitle(
+        current.map((item) =>
+          item.id === updatedCalendarRecord.id
+            ? updatedCalendarRecord
+            : item,
+        ),
+      );
+      saveStoredArray(storageKeys.calendar[0], next);
+      return next;
+    });
+    setCalendarDraft(updatedCalendarRecord);
+    setSelectedCalendarId(updatedCalendarRecord.id);
+    setDatabaseStatus(`Created work order: ${workOrder.title}.`);
+    return true;
+  }
+
   async function deleteCalendarItem(id: string) {
     if (!id) {
       setSelectedCalendarId("");
@@ -14106,6 +14319,8 @@ export default function AtlasPage() {
         mutedSmallStyle={mutedSmallStyle}
         openCalendarItem={openCalendarItem}
         onOpenLinkedRecord={openCalendarLinkedRecord}
+        onToggleCompleted={toggleCalendarItemCompleted}
+        onConvertToWorkOrder={convertCalendarItemToWorkOrder}
         reminderOptions={reminderOptions}
         repeatOptions={repeatOptions}
         saveCalendarItem={saveCalendarItem}
