@@ -679,6 +679,7 @@ export async function GET(request: NextRequest) {
     await ensureWorkOrderColumns(sql);
     await ensureCalendarColumns(sql);
     await ensureContactsTable(sql);
+    await ensureContactsTable(sql);
     await ensurePartsTable(sql);
     await ensurePropertyColumns(sql);
     if (request.nextUrl.searchParams.get("portfolio") === "1") {
@@ -1013,7 +1014,160 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-    if (table === "assets") {
+
+export async function POST(request: NextRequest) {
+  if (request.headers.get("x-atlas-user-role") === "viewer") {
+    return NextResponse.json(
+      { ok: false, error: "Viewer access is read-only." },
+      { status: 403 },
+    );
+  }
+  try {
+    const sql = getSql();
+    await ensurePartsTable(sql);
+    await ensurePropertyColumns(sql);
+    const body = (await request.json().catch(function () {
+      return {};
+    })) as JsonRecord;
+
+    const table = cleanTable(body.table);
+    const record =
+      body.record && typeof body.record === "object"
+        ? (body.record as JsonRecord)
+        : {};
+    const propertyId = asString(record.propertyId) || "2000";
+    if (!(await authorizeAtlasRequest(sql, request, propertyId, "edit"))) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "You do not have permission to edit this property.",
+        },
+        { status: 403 },
+      );
+    }
+
+    await recordChange(
+      sql,
+      request.headers.get("x-atlas-user-email") || "Atlas user",
+      "save",
+      table || asString(body.table),
+      asString(record.id),
+      record,
+    );
+
+    if (!table) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Unsupported table: " + asString(body.table),
+        },
+        { status: 400 },
+      );
+    }
+
+    if (table === "locations") {
+      const id = getId(record, "location");
+
+      await sql`
+        INSERT INTO atlas_locations (
+          id,
+          name,
+          type,
+          zone,
+          notes,
+          sort_order,
+          property_id
+        )
+        VALUES (
+          ${id},
+          ${asString(record.name) || "Untitled Location"},
+          ${asString(record.type) || "General"},
+          ${asString(record.zone)},
+          ${asString(record.notes)},
+          ${Number(record.sort_order || 0)},
+          ${propertyId}
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          type = EXCLUDED.type,
+          zone = EXCLUDED.zone,
+          notes = EXCLUDED.notes,
+          sort_order = EXCLUDED.sort_order,
+          property_id = EXCLUDED.property_id
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "contacts") {
+      await ensureContactsTable(sql);
+      const id = getId(record, "contact");
+      const name = asString(record.name) || "Unnamed Contact";
+      await sql`
+        INSERT INTO atlas_contacts (id, name, record, updated_at, property_id)
+        VALUES (${id}, ${name}, ${JSON.stringify({
+          ...record,
+          id,
+          name,
+        })}::jsonb, NOW(), ${propertyId})
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          record = EXCLUDED.record,
+          updated_at = NOW(),
+          property_id = EXCLUDED.property_id
+      `;
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (table === "vendors") {
+      const id = getId(record, "vendor");
+
+      await sql`
+        INSERT INTO atlas_vendors (
+          id,
+          name,
+          category,
+          phone,
+          email,
+          website,
+          notes,
+          logo_data_url,
+          documents,
+          updated_at,
+          property_id
+        )
+        VALUES (
+          ${id},
+          ${asString(record.name) || "Untitled Vendor"},
+          ${asString(record.category) || "General"},
+          ${nullableString(record.phone)},
+          ${nullableString(record.email)},
+          ${nullableString(record.website)},
+          ${asString(record.notes)},
+          ${nullableString(record.logoDataUrl)},
+          ${jsonArray(record.documents)}::jsonb,
+          NOW(),
+          ${propertyId}
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          category = EXCLUDED.category,
+          phone = EXCLUDED.phone,
+          email = EXCLUDED.email,
+          website = EXCLUDED.website,
+          notes = EXCLUDED.notes,
+          logo_data_url = EXCLUDED.logo_data_url,
+          documents = EXCLUDED.documents,
+          updated_at = NOW(),
+          property_id = EXCLUDED.property_id
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
+if (table === "assets") {
       await ensureAssetColumns(sql);
       const id = getId(record, "asset");
 
@@ -1570,10 +1724,15 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
 export async function DELETE(request: NextRequest) {
   try {
     const sql = getSql();
+
+    await ensureContactsTable(sql);
+    await ensurePartsTable(sql);
     await ensurePropertyColumns(sql);
+
     const body = (await request.json().catch(function () {
       return {};
     })) as JsonRecord;
@@ -1581,6 +1740,27 @@ export async function DELETE(request: NextRequest) {
     const table = cleanTable(body.table);
     const id = asString(body.id);
     const propertyId = asString(body.propertyId) || "2000";
+
+    if (!table) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Unsupported table: " + asString(body.table),
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!id) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Record id is required.",
+        },
+        { status: 400 },
+      );
+    }
+
     if (!(await authorizeAtlasRequest(sql, request, propertyId, "delete"))) {
       return NextResponse.json(
         {
@@ -1592,13 +1772,166 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    if (!table || !id) {
+    let deletedRows: JsonRecord[] = [];
+
+    if (table === "locations") {
+      await sql`
+        UPDATE atlas_assets
+        SET location_id = 'general'
+        WHERE location_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      await sql`
+        UPDATE atlas_work_orders
+        SET location_id = NULL
+        WHERE location_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      await sql`
+        UPDATE atlas_parts
+        SET location_id = NULL
+        WHERE location_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      deletedRows = (await sql`
+        DELETE FROM atlas_locations
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "vendors") {
+      await sql`
+        UPDATE atlas_assets
+        SET vendor_ids = array_remove(vendor_ids, ${id})
+        WHERE property_id = ${propertyId}
+          AND ${id} = ANY(COALESCE(vendor_ids, ARRAY[]::text[]))
+      `;
+
+      await sql`
+        UPDATE atlas_work_orders
+        SET vendor_id = NULL
+        WHERE vendor_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      await sql`
+        UPDATE atlas_parts
+        SET vendor_id = NULL
+        WHERE vendor_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      deletedRows = (await sql`
+        DELETE FROM atlas_vendors
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "contacts") {
+      deletedRows = (await sql`
+        DELETE FROM atlas_contacts
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "assets") {
+      await sql`
+        DELETE FROM atlas_asset_photos
+        WHERE asset_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      await sql`
+        UPDATE atlas_work_orders
+        SET asset_id = NULL
+        WHERE asset_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      await sql`
+        UPDATE atlas_parts
+        SET asset_id = NULL
+        WHERE asset_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      await sql`
+        UPDATE atlas_documents
+        SET linked_asset_id = NULL
+        WHERE linked_asset_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      deletedRows = (await sql`
+        DELETE FROM atlas_assets
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "procedures") {
+      await sql`
+        UPDATE atlas_work_orders
+        SET procedure_id = NULL
+        WHERE procedure_id = ${id}
+          AND property_id = ${propertyId}
+      `;
+
+      deletedRows = (await sql`
+        DELETE FROM atlas_procedures
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "work_orders") {
+      deletedRows = (await sql`
+        DELETE FROM atlas_work_orders
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "calendar") {
+      deletedRows = (await sql`
+        DELETE FROM atlas_calendar_items
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "parts") {
+      deletedRows = (await sql`
+        DELETE FROM atlas_parts
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "documents") {
+      deletedRows = (await sql`
+        DELETE FROM atlas_documents
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "asset_photos") {
+      deletedRows = (await sql`
+        DELETE FROM atlas_asset_photos
+        WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    }
+
+    if (!deletedRows.length) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Table and id are required.",
+          error:
+            "Record was not found in property " +
+            propertyId +
+            " or has already been deleted.",
         },
-        { status: 400 },
+        { status: 404 },
       );
     }
 
@@ -1608,108 +1941,22 @@ export async function DELETE(request: NextRequest) {
       "delete",
       table,
       id,
-      { id },
-    );
-
-    if (table === "vendors") {
-      await sql`
-        DELETE FROM atlas_vendors
-        WHERE id = ${id} AND property_id = ${propertyId}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "contacts") {
-      await ensureContactsTable(sql);
-      await sql`
-        DELETE FROM atlas_contacts
-        WHERE id = ${id} AND property_id = ${propertyId}
-      `;
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "assets") {
-      await sql`
-        DELETE FROM atlas_asset_photos
-        WHERE asset_id = ${id} AND property_id = ${propertyId}
-      `;
-
-      await sql`
-        DELETE FROM atlas_work_orders
-        WHERE asset_id = ${id} AND property_id = ${propertyId}
-      `;
-
-      await sql`
-        DELETE FROM atlas_assets
-        WHERE id = ${id} AND property_id = ${propertyId}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "procedures") {
-      await sql`
-        DELETE FROM atlas_procedures
-        WHERE id = ${id} AND property_id = ${propertyId}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "work_orders") {
-      await sql`
-        DELETE FROM atlas_work_orders
-        WHERE id = ${id} AND property_id = ${propertyId}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "calendar") {
-      await sql`
-        DELETE FROM atlas_calendar_items
-        WHERE id = ${id} AND property_id = ${propertyId}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "parts") {
-      await ensurePartsTable(sql);
-      await sql`
-        DELETE FROM atlas_parts
-        WHERE id = ${id} AND property_id = ${propertyId}
-      `;
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "documents") {
-      await sql`
-        DELETE FROM atlas_documents
-        WHERE id = ${id} AND property_id = ${propertyId}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "asset_photos") {
-      await sql`
-        DELETE FROM atlas_asset_photos
-        WHERE id = ${id} AND property_id = ${propertyId}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    return NextResponse.json(
       {
-        ok: false,
-        error: "Unsupported table: " + table,
+        id,
+        propertyId,
+        table,
       },
-      { status: 400 },
     );
+
+    return NextResponse.json({
+      ok: true,
+      id,
+      table,
+      propertyId,
+    });
   } catch (error) {
+    console.error("[Atlas DELETE error]", error);
+
     return NextResponse.json(
       {
         ok: false,
