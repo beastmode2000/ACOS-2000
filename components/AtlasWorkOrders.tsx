@@ -163,7 +163,15 @@ type AtlasWorkOrdersProps = {
   inputStyle: any;
   byName: any;
   assetRecords: any;
+  assetPhotoRecords?: any;
   vendorRecords: any;
+  locationRecords?: any;
+  contactRecords?: any;
+  procedureRecords?: any;
+  documentRecords?: any;
+  calendarItems?: any;
+  weatherDays?: any;
+  openResetKey?: any;
   detailSectionHeaderStyle: any;
   recurrenceToggleStyle: any;
   recurrenceGridStyle: any;
