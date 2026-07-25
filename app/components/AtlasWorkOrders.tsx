@@ -1970,26 +1970,28 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 >
                   {SYMBOL.back} Work Orders
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDetailOpen(false);
-                    setSelectedServiceId("");
-                  }}
-                  style={{
-                    border: 0,
-                    background: "transparent",
-                    color: colors.text,
-                    fontSize: 26,
-                    lineHeight: 1,
-                    padding: 6,
-                    cursor: "pointer",
-                  }}
-                  aria-label="Close work order details"
-                  title="Close"
-                >
-                  {SYMBOL.close}
-                </button>
+                {isMobile ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDetailOpen(false);
+                      setSelectedServiceId("");
+                    }}
+                    style={{
+                      border: 0,
+                      background: "transparent",
+                      color: colors.text,
+                      fontSize: 26,
+                      lineHeight: 1,
+                      padding: 6,
+                      cursor: "pointer",
+                    }}
+                    aria-label="Close work order details"
+                    title="Close"
+                  >
+                    {SYMBOL.close}
+                  </button>
+                ) : null}
                 </span>
               </div>
               <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
@@ -2054,20 +2056,49 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               </section>
 
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Assignment</div>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+              <details open style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>
+                  Assignment
+                </summary>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder(assetPhotoPatch(event.currentTarget.value))} style={inputStyle}><option value="">No linked asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => updateWorkOrder({ locationId: event.currentTarget.value })} style={inputStyle}><option value="">No linked location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Sub-Location</span><input value={selectedService.subLocation || ""} onChange={(event) => updateWorkOrder({ subLocation: event.currentTarget.value })} placeholder="Mechanical Room, Dock, Kitchen..." style={inputStyle} /></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => updateWorkOrder({ workCategory: event.currentTarget.value, emoji: categoryEmoji(event.currentTarget.value) })} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => updateWorkOrder({ assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => updateWorkOrder({ vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                </div>
+              </details>
+
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <div style={eyebrowStyle}>Procedure</div>
+                    <strong>{(selectedService.checklist || []).length ? `${(selectedService.checklist || []).filter((item: ChecklistItem) => item.completed).length} of ${(selectedService.checklist || []).length} complete` : "No steps added"}</strong>
+                  </div>
+                </div>
+
+                {(selectedService.checklist || []).length ? (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {(selectedService.checklist || []).map((item: ChecklistItem, index: number) => (
+                      <div key={item.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", alignItems: "center", gap: 9, padding: "8px 9px", border: `1px solid ${colors.line}`, borderRadius: 9, background: item.completed ? "#F8FAFC" : "#FFFFFF" }}>
+                        <input type="checkbox" checked={Boolean(item.completed)} onChange={() => toggleChecklistItem(item.id)} aria-label={`Complete step ${index + 1}`} />
+                        <span style={{ color: item.completed ? colors.muted : colors.text, textDecoration: item.completed ? "line-through" : "none", fontSize: 13 }}>{item.text}</span>
+                        <button type="button" onClick={() => deleteChecklistItem(item.id)} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", padding: 4 }} aria-label={`Remove step ${index + 1}`}>{SYMBOL.close}</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, marginTop: 10 }}>
+                  <input value={newChecklistText} onChange={(event) => setNewChecklistText(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addChecklistItem(); } }} placeholder="Add procedure step" style={inputStyle} />
+                  <button type="button" onClick={addChecklistItem} style={{ ...secondaryButtonStyle, width: "auto", padding: "7px 11px" }}>Add Step</button>
                 </div>
               </section>
 
               <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
                 <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Cost & Invoice</summary>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
                   <label style={{ display: "grid", gap: 5 }}>
                     <span style={fieldLabelStyle}>Estimated Cost</span>
                     <input type="number" min="0" step="0.01" value={selectedService.estimatedCost || ""} onChange={(event) => updateWorkOrder({ estimatedCost: Number(event.currentTarget.value || 0) })} style={inputStyle} />
@@ -2088,8 +2119,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={4} placeholder="Add internal notes here..." style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} />
               </details>
 
-              <div style={{ ...buttonRowStyle, justifyContent: "flex-start", padding: "2px 0 8px" }}>
-                <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto" }}>Save Changes</button>
+              <div style={{ ...buttonRowStyle, justifyContent: "flex-end", padding: "0 0 4px" }}>
+                <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto", minHeight: 36, padding: "7px 13px" }}>Save</button>
               </div>
 
               <section style={detailSectionStyle}>
