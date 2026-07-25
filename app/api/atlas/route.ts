@@ -154,6 +154,9 @@ async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_documents ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
   await sql`ALTER TABLE atlas_asset_photos ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
   await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_vendors ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_contacts ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
 }
 
 async function authorizeAtlasRequest(
@@ -163,20 +166,31 @@ async function authorizeAtlasRequest(
   permission: "view" | "edit" | "delete",
 ) {
   const email = (request.headers.get("x-atlas-user-email") || "").toLowerCase();
-  const headerRole = request.headers.get("x-atlas-user-role") || "administrator";
+  const headerRole =
+    request.headers.get("x-atlas-user-role") || "administrator";
   if (!email || headerRole === "master") return true;
-  const rows = await sql`SELECT role, active, property_ids, permissions FROM atlas_team_access WHERE lower(email)=${email} LIMIT 1`;
+  const rows =
+    await sql`SELECT role, active, property_ids, permissions FROM atlas_team_access WHERE lower(email)=${email} LIMIT 1`;
   const row = rows[0] as Record<string, unknown> | undefined;
-  if (!row || row.active === false) return false;
+  if (!row || (row as { active?: boolean }).active === false) return false;
   const role = String(row.role || headerRole);
-  const propertyIds = Array.isArray(row.property_ids) ? row.property_ids.map(String) : ["2000"];
+  const propertyIds = Array.isArray(row.property_ids)
+    ? row.property_ids.map(String)
+    : ["2000"];
   if (!propertyIds.includes(propertyId)) return false;
   if (permission === "view") return true;
-  const permissions = row.permissions && typeof row.permissions === "object" ? row.permissions as Record<string, unknown> : {};
-  const defaults = role === "administrator" || role === "manager" ? { edit:true, delete:role === "administrator" } : { edit:role === "employee", delete:false };
-  return permission === "edit" ? Boolean(permissions.edit ?? defaults.edit) : Boolean(permissions.delete ?? defaults.delete);
+  const permissions =
+    row.permissions && typeof row.permissions === "object"
+      ? (row.permissions as Record<string, unknown>)
+      : {};
+  const defaults =
+    role === "administrator" || role === "manager"
+      ? { edit: true, delete: role === "administrator" }
+      : { edit: role === "employee", delete: false };
+  return permission === "edit"
+    ? Boolean(permissions.edit ?? defaults.edit)
+    : Boolean(permissions.delete ?? defaults.delete);
 }
-
 
 async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
   await sql`
@@ -297,15 +311,21 @@ async function ensurePartsTable(sql: ReturnType<typeof neon>) {
 }
 
 async function recordChange(
-  sql: ReturnType<typeof neon>, actor: string, action: string,
-  table: string, recordId: string, record: JsonRecord,
+  sql: ReturnType<typeof neon>,
+  actor: string,
+  action: string,
+  table: string,
+  recordId: string,
+  record: JsonRecord,
 ) {
   await sql`CREATE TABLE IF NOT EXISTS atlas_change_history (
     id bigserial PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT NOW(), actor text,
     action text NOT NULL, table_name text NOT NULL, record_id text, record jsonb
   )`;
   await sql`INSERT INTO atlas_change_history (actor, action, table_name, record_id, record)
-    VALUES (${actor || "Atlas user"}, ${action}, ${table}, ${recordId}, ${JSON.stringify(record)}::jsonb)`;
+    VALUES (${
+      actor || "Atlas user"
+    }, ${action}, ${table}, ${recordId}, ${JSON.stringify(record)}::jsonb)`;
 }
 
 async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
@@ -314,9 +334,6 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
     ALTER COLUMN asset_id DROP NOT NULL
   `;
 
-  // Canonical nullable due-date storage. The legacy `date` column may still be
-  // constrained or managed by older database objects, so Atlas no longer relies on it
-  // to represent a cleared due date.
   await sql`
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS due_date_value date
@@ -424,14 +441,17 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS service_history jsonb NOT NULL DEFAULT '[]'::jsonb
   `;
+
   await sql`
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS estimated_cost numeric(12,2)
   `;
+
   await sql`
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS actual_cost numeric(12,2)
   `;
+
   await sql`
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS invoice_number text
@@ -548,7 +568,9 @@ function mapWorkOrder(row: JsonRecord) {
     vendorId: row.vendor_id ? String(row.vendor_id) : "",
     procedureId: row.procedure_id ? String(row.procedure_id) : "",
     locationId: row.location_id ? String(row.location_id) : "",
-    date: databaseDateKey(row.due_date_initialized ? row.due_date_value : row.date),
+    date: databaseDateKey(
+      row.due_date_initialized ? row.due_date_value : row.date,
+    ),
     title: String(row.title || ""),
     status: String(row.status || "Open"),
     priority: String(row.priority || "Medium"),
@@ -582,7 +604,6 @@ function mapWorkOrder(row: JsonRecord) {
     documents: asArray(row.documents),
   };
 }
-
 
 function databaseDateKey(value: unknown) {
   if (!value) return "";
@@ -634,9 +655,7 @@ function mapDocument(row: JsonRecord) {
     title: String(row.title || ""),
     area: String(row.area || ""),
     type: String(row.type || ""),
-    linkedAssetId: row.linked_asset_id
-      ? String(row.linked_asset_id)
-      : "",
+    linkedAssetId: row.linked_asset_id ? String(row.linked_asset_id) : "",
     notes: String(row.notes || ""),
   };
 }
@@ -692,6 +711,7 @@ export async function GET(request: NextRequest) {
         sql`
           SELECT property_id, COUNT(*)::int AS total
           FROM atlas_locations
+          WHERE property_id = ANY(${accessible}::text[])
           GROUP BY property_id
         `,
         sql`
@@ -702,6 +722,7 @@ export async function GET(request: NextRequest) {
               WHERE status IN ('Offline', 'Monitor')
             )::int AS risks
           FROM atlas_assets
+          WHERE property_id = ANY(${accessible}::text[])
           GROUP BY property_id
         `,
         sql`
@@ -723,6 +744,7 @@ export async function GET(request: NextRequest) {
               WHERE status IN ('Completed', 'Closed')
             )::int AS completed
           FROM atlas_work_orders
+          WHERE property_id = ANY(${accessible}::text[])
           GROUP BY property_id
         `,
         sql`
@@ -733,6 +755,7 @@ export async function GET(request: NextRequest) {
                  OR status IN ('Low', 'Out', 'Order')
             )::int AS low_stock
           FROM atlas_parts
+          WHERE property_id = ANY(${accessible}::text[])
           GROUP BY property_id
         `,
         sql`
@@ -744,18 +767,18 @@ export async function GET(request: NextRequest) {
                 AND completed = false
             )::int AS upcoming
           FROM atlas_calendar_items
+          WHERE property_id = ANY(${accessible}::text[])
           GROUP BY property_id
         `,
         sql`
           SELECT property_id, COUNT(*)::int AS total
           FROM atlas_documents
+          WHERE property_id = ANY(${accessible}::text[])
           GROUP BY property_id
         `,
       ]);
 
-      const rowMap = (
-        rows: readonly Record<string, unknown>[],
-      ) =>
+      const rowMap = (rows: readonly Record<string, unknown>[]) =>
         new Map(
           rows
             .filter((row) => accessibleSet.has(String(row.property_id)))
@@ -797,9 +820,13 @@ export async function GET(request: NextRequest) {
         }),
       });
     }
-    const propertyId = asString(request.nextUrl.searchParams.get("propertyId")) || "2000";
+    const propertyId =
+      asString(request.nextUrl.searchParams.get("propertyId")) || "2000";
     if (!(await authorizeAtlasRequest(sql, request, propertyId, "view"))) {
-      return NextResponse.json({ ok:false, error:"You do not have access to this property." }, { status:403 });
+      return NextResponse.json(
+        { ok: false, error: "You do not have access to this property." },
+        { status: 403 },
+      );
     }
 
     const locationRows = (await sql`
@@ -812,11 +839,14 @@ export async function GET(request: NextRequest) {
     const vendorRows = (await sql`
       SELECT id, name, category, phone, email, website, notes, logo_data_url, documents
       FROM atlas_vendors
+      WHERE property_id = ${propertyId}
       ORDER BY name ASC
     `) as unknown as JsonRecord[];
 
     const contactRows = (await sql`
-      SELECT record FROM atlas_contacts ORDER BY lower(name) ASC
+      SELECT record FROM atlas_contacts
+      WHERE property_id = ${propertyId}
+      ORDER BY lower(name) ASC
     `) as unknown as JsonRecord[];
 
     const assetRows = (await sql`
@@ -853,12 +883,14 @@ export async function GET(request: NextRequest) {
           created_at,
           updated_at
         FROM atlas_procedures
+        WHERE property_id = ${propertyId}
         ORDER BY title ASC
       `) as unknown as JsonRecord[];
     } catch {
       procedureRows = (await sql`
         SELECT id, title, area, priority, steps
         FROM atlas_procedures
+        WHERE property_id = ${propertyId}
         ORDER BY title ASC
       `) as unknown as JsonRecord[];
     }
@@ -984,7 +1016,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (request.headers.get("x-atlas-user-role") === "viewer") {
-    return NextResponse.json({ ok: false, error: "Viewer access is read-only." }, { status: 403 });
+    return NextResponse.json(
+      { ok: false, error: "Viewer access is read-only." },
+      { status: 403 },
+    );
   }
   try {
     const sql = getSql();
@@ -1001,7 +1036,13 @@ export async function POST(request: NextRequest) {
         : {};
     const propertyId = asString(record.propertyId) || "2000";
     if (!(await authorizeAtlasRequest(sql, request, propertyId, "edit"))) {
-      return NextResponse.json({ ok:false, error:"You do not have permission to edit this property." }, { status:403 });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "You do not have permission to edit this property.",
+        },
+        { status: 403 },
+      );
     }
 
     await recordChange(
@@ -1033,7 +1074,8 @@ export async function POST(request: NextRequest) {
           type,
           zone,
           notes,
-          sort_order
+          sort_order,
+          property_id
         )
         VALUES (
           ${id},
@@ -1041,7 +1083,8 @@ export async function POST(request: NextRequest) {
           ${asString(record.type) || "General"},
           ${asString(record.zone)},
           ${asString(record.notes)},
-          ${Number(record.sort_order || 0)}
+          ${Number(record.sort_order || 0)},
+          ${propertyId}
         )
         ON CONFLICT (id)
         DO UPDATE SET
@@ -1049,10 +1092,10 @@ export async function POST(request: NextRequest) {
           type = EXCLUDED.type,
           zone = EXCLUDED.zone,
           notes = EXCLUDED.notes,
-          sort_order = EXCLUDED.sort_order
+          sort_order = EXCLUDED.sort_order,
+          property_id = EXCLUDED.property_id
       `;
 
-      await sql`UPDATE atlas_locations SET property_id = ${propertyId} WHERE id = ${id}`;
       return NextResponse.json({ ok: true, id });
     }
 
@@ -1061,12 +1104,17 @@ export async function POST(request: NextRequest) {
       const id = getId(record, "contact");
       const name = asString(record.name) || "Unnamed Contact";
       await sql`
-        INSERT INTO atlas_contacts (id, name, record, updated_at)
-        VALUES (${id}, ${name}, ${JSON.stringify({ ...record, id, name })}::jsonb, NOW())
+        INSERT INTO atlas_contacts (id, name, record, updated_at, property_id)
+        VALUES (${id}, ${name}, ${JSON.stringify({
+          ...record,
+          id,
+          name,
+        })}::jsonb, NOW(), ${propertyId})
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           record = EXCLUDED.record,
-          updated_at = NOW()
+          updated_at = NOW(),
+          property_id = EXCLUDED.property_id
       `;
       return NextResponse.json({ ok: true, id });
     }
@@ -1085,7 +1133,8 @@ export async function POST(request: NextRequest) {
           notes,
           logo_data_url,
           documents,
-          updated_at
+          updated_at,
+          property_id
         )
         VALUES (
           ${id},
@@ -1097,7 +1146,8 @@ export async function POST(request: NextRequest) {
           ${asString(record.notes)},
           ${nullableString(record.logoDataUrl)},
           ${jsonArray(record.documents)}::jsonb,
-          NOW()
+          NOW(),
+          ${propertyId}
         )
         ON CONFLICT (id)
         DO UPDATE SET
@@ -1109,7 +1159,8 @@ export async function POST(request: NextRequest) {
           notes = EXCLUDED.notes,
           logo_data_url = EXCLUDED.logo_data_url,
           documents = EXCLUDED.documents,
-          updated_at = NOW()
+          updated_at = NOW(),
+          property_id = EXCLUDED.property_id
       `;
 
       return NextResponse.json({ ok: true, id });
@@ -1121,669 +1172,4 @@ export async function POST(request: NextRequest) {
 
       await sql`
         INSERT INTO atlas_assets (
-          id,
-          name,
-          location_id,
-          category,
-          status,
-          make,
-          model,
-          year,
-          manufacturer,
-          serial,
-          notes,
-          vendor_ids,
-          documents,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.name) || "Untitled Asset"},
-          ${asString(record.locationId) || "general"},
-          ${asString(record.category) || "General"},
-          ${asStatus(record.status, "Monitor")},
-          ${nullableString(record.make)},
-          ${nullableString(record.model)},
-          ${nullableString(record.year)},
-          ${nullableString(record.manufacturer)},
-          ${nullableString(record.serial)},
-          ${asString(record.notes)},
-          ARRAY(
-            SELECT jsonb_array_elements_text(
-              ${jsonArray(record.vendorIds)}::jsonb
-            )
-          ),
-          ${jsonArray(record.documents)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          name = EXCLUDED.name,
-          location_id = EXCLUDED.location_id,
-          category = EXCLUDED.category,
-          status = EXCLUDED.status,
-          make = EXCLUDED.make,
-          model = EXCLUDED.model,
-          year = EXCLUDED.year,
-          manufacturer = EXCLUDED.manufacturer,
-          serial = EXCLUDED.serial,
-          notes = EXCLUDED.notes,
-          vendor_ids = EXCLUDED.vendor_ids,
-          documents = EXCLUDED.documents,
-          updated_at = NOW()
-      `;
-
-      await sql`UPDATE atlas_assets SET property_id = ${propertyId} WHERE id = ${id}`;
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "procedures") {
-      await ensureProcedureColumns(sql);
-      const id = getId(record, "procedure");
-
-      await sql`
-        INSERT INTO atlas_procedures (
-          id,
-          title,
-          area,
-          category,
-          priority,
-          status,
-          purpose,
-          safety_notes,
-          tools_parts,
-          required_tools,
-          required_parts,
-          estimated_time,
-          steps,
-          checklist,
-          linked_asset_ids,
-          linked_location_ids,
-          linked_vendor_ids,
-          photos,
-          documents,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.title) || "Untitled Procedure"},
-          ${asString(record.area) || "General"},
-          ${nullableString(record.category)},
-          ${asStatus(record.priority, "Normal")},
-          ${asStatus(record.status, "Draft")},
-          ${nullableString(record.purpose)},
-          ${nullableString(record.safetyNotes)},
-          ${nullableString(record.toolsParts)},
-          ARRAY(
-            SELECT jsonb_array_elements_text(
-              ${jsonArray(record.requiredTools)}::jsonb
-            )
-          ),
-          ARRAY(
-            SELECT jsonb_array_elements_text(
-              ${jsonArray(record.requiredParts)}::jsonb
-            )
-          ),
-          ${nullableString(record.estimatedTime)},
-          ARRAY(
-            SELECT jsonb_array_elements_text(
-              ${jsonArray(record.steps)}::jsonb
-            )
-          ),
-          ${jsonArray(record.checklist)}::jsonb,
-          ARRAY(
-            SELECT jsonb_array_elements_text(
-              ${jsonArray(record.linkedAssetIds)}::jsonb
-            )
-          ),
-          ARRAY(
-            SELECT jsonb_array_elements_text(
-              ${jsonArray(record.linkedLocationIds)}::jsonb
-            )
-          ),
-          ARRAY(
-            SELECT jsonb_array_elements_text(
-              ${jsonArray(record.linkedVendorIds)}::jsonb
-            )
-          ),
-          ${jsonArray(record.photos)}::jsonb,
-          ${jsonArray(record.documents)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          title = EXCLUDED.title,
-          area = EXCLUDED.area,
-          category = EXCLUDED.category,
-          priority = EXCLUDED.priority,
-          status = EXCLUDED.status,
-          purpose = EXCLUDED.purpose,
-          safety_notes = EXCLUDED.safety_notes,
-          tools_parts = EXCLUDED.tools_parts,
-          required_tools = EXCLUDED.required_tools,
-          required_parts = EXCLUDED.required_parts,
-          estimated_time = EXCLUDED.estimated_time,
-          steps = EXCLUDED.steps,
-          checklist = EXCLUDED.checklist,
-          linked_asset_ids = EXCLUDED.linked_asset_ids,
-          linked_location_ids = EXCLUDED.linked_location_ids,
-          linked_vendor_ids = EXCLUDED.linked_vendor_ids,
-          photos = EXCLUDED.photos,
-          documents = EXCLUDED.documents,
-          updated_at = NOW()
-      `;
-
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "work_orders") {
-      await ensureWorkOrderColumns(sql);
-      const id = getId(record, "work-order");
-
-      const savedDate = asDate(record.date);
-      const savedFollowUpDate = asDate(record.followUpDate);
-      const savedRecurrenceEndDate = asDate(record.recurrenceEndDate);
-      const savedLastCompletedDate = asDate(record.lastCompletedDate);
-
-      const updatedRows = (await sql`
-        UPDATE atlas_work_orders
-        SET
-          asset_id = ${nullableString(record.assetId)},
-          vendor_id = ${nullableString(record.vendorId)},
-          procedure_id = ${nullableString(record.procedureId)},
-          location_id = ${nullableString(record.locationId)},
-          due_date_value = ${savedDate}::date,
-          due_date_initialized = true,
-          title = ${asString(record.title) || "Untitled Work Order"},
-          status = ${asStatus(record.status, "Open")},
-          priority = ${asStatus(record.priority, "Medium")},
-          notes = ${asString(record.notes)},
-          follow_up_date = ${savedFollowUpDate}::date,
-          recurring = ${asBoolean(record.recurring)},
-          recurrence_interval = ${asPositiveInteger(record.recurrenceInterval, 1)},
-          recurrence_unit = ${asStatus(record.recurrenceUnit, "Weeks")},
-          recurrence_end_date = ${savedRecurrenceEndDate}::date,
-          season = ${asStatus(record.season, "Year-Round")},
-          last_completed_date = ${savedLastCompletedDate}::date,
-          completion_history = ${jsonArray(record.completionHistory)}::jsonb,
-          work_type = ${asStatus(record.workType, "Work Order")},
-          work_category = ${asStatus(record.workCategory, "Maintenance")},
-          effort = ${nullableString(record.effort)},
-          responsibility_area = ${nullableString(record.responsibilityArea)},
-          emoji = ${nullableString(record.emoji)},
-          assigned_to = ${nullableString(record.assignedTo)},
-          checklist = ${jsonArray(record.checklist)}::jsonb,
-          notes_history = ${jsonArray(record.notesHistory)}::jsonb,
-          service_history = ${jsonArray(record.serviceHistory)}::jsonb,
-          estimated_cost = ${asMoney(record.estimatedCost)},
-          actual_cost = ${asMoney(record.actualCost)},
-          invoice_number = ${nullableString(record.invoiceNumber)},
-          photos = ${jsonArray(record.photos)}::jsonb,
-          documents = ${jsonArray(record.documents)}::jsonb,
-          updated_at = NOW()
-        WHERE id = ${id}
-        RETURNING id, due_date_value, due_date_initialized
-      `) as unknown as JsonRecord[];
-
-      if (!updatedRows.length) {
-        await sql`
-          INSERT INTO atlas_work_orders (
-            id,
-            asset_id,
-            vendor_id,
-            procedure_id,
-            location_id,
-            date,
-            due_date_value,
-            due_date_initialized,
-            title,
-            status,
-            priority,
-            notes,
-            follow_up_date,
-            recurring,
-            recurrence_interval,
-            recurrence_unit,
-            recurrence_end_date,
-            season,
-            last_completed_date,
-            completion_history,
-            work_type,
-            work_category,
-            effort,
-            responsibility_area,
-            emoji,
-            assigned_to,
-            checklist,
-            notes_history,
-            service_history,
-            estimated_cost,
-            actual_cost,
-            invoice_number,
-            photos,
-            documents,
-            updated_at
-          )
-          VALUES (
-            ${id},
-            ${nullableString(record.assetId)},
-            ${nullableString(record.vendorId)},
-            ${nullableString(record.procedureId)},
-            ${nullableString(record.locationId)},
-            COALESCE(${savedDate}::date, CURRENT_DATE),
-            ${savedDate}::date,
-            true,
-            ${asString(record.title) || "Untitled Work Order"},
-            ${asStatus(record.status, "Open")},
-            ${asStatus(record.priority, "Medium")},
-            ${asString(record.notes)},
-            ${savedFollowUpDate}::date,
-            ${asBoolean(record.recurring)},
-            ${asPositiveInteger(record.recurrenceInterval, 1)},
-            ${asStatus(record.recurrenceUnit, "Weeks")},
-            ${savedRecurrenceEndDate}::date,
-            ${asStatus(record.season, "Year-Round")},
-            ${savedLastCompletedDate}::date,
-            ${jsonArray(record.completionHistory)}::jsonb,
-            ${asStatus(record.workType, "Work Order")},
-            ${asStatus(record.workCategory, "Maintenance")},
-            ${nullableString(record.effort)},
-            ${nullableString(record.responsibilityArea)},
-            ${nullableString(record.emoji)},
-            ${nullableString(record.assignedTo)},
-            ${jsonArray(record.checklist)}::jsonb,
-            ${jsonArray(record.notesHistory)}::jsonb,
-            ${jsonArray(record.serviceHistory)}::jsonb,
-            ${asMoney(record.estimatedCost)},
-            ${asMoney(record.actualCost)},
-            ${nullableString(record.invoiceNumber)},
-            ${jsonArray(record.photos)}::jsonb,
-            ${jsonArray(record.documents)}::jsonb,
-            NOW()
-          )
-        `;
-      }
-
-      const verifiedRows = (await sql`
-        SELECT id, date, due_date_value, due_date_initialized
-        FROM atlas_work_orders
-        WHERE id = ${id}
-        LIMIT 1
-      `) as unknown as JsonRecord[];
-
-      const verified = verifiedRows[0];
-      const verifiedDate = databaseDateKey(
-        verified?.due_date_initialized ? verified?.due_date_value : verified?.date,
-      );
-
-      if (verifiedDate !== (savedDate || "")) {
-        throw new Error(
-          `Work order save verification failed. Expected date "${savedDate || ""}" but database returned "${verifiedDate}".`,
-        );
-      }
-
-      await sql`UPDATE atlas_work_orders SET property_id = ${propertyId} WHERE id = ${id}`;
-
-      return NextResponse.json({
-        ok: true,
-        id,
-        savedDate: verifiedDate,
-      });
-    }
-
-    if (table === "calendar") {
-      await ensureCalendarColumns(sql);
-      const id = getId(record, "calendar");
-
-      await sql`
-        INSERT INTO atlas_calendar_items (
-          id,
-          item_date,
-          date,
-          time,
-          title,
-          area,
-          category_label,
-          color_id,
-          color_name,
-          all_day,
-          repeat,
-          reminder,
-          notes,
-          linked_type,
-          linked_id,
-          linked_name,
-          completed,
-          source,
-          original_id,
-          instance_id,
-          status,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asDate(record.date)}::date,
-          ${asDate(record.date)}::date,
-          ${nullableString(record.time)},
-          ${asString(record.title) || "Untitled Calendar Item"},
-          ${asString(record.area) || "General"},
-          ${nullableString(record.categoryLabel)},
-          ${nullableString(record.colorId)},
-          ${nullableString(record.colorName)},
-          ${asBoolean(record.allDay)},
-          ${asStatus(record.repeat, "None")},
-          ${asStatus(record.reminder, "None")},
-          ${asString(record.notes)},
-          ${asStatus(record.linkedType, "None")},
-          ${nullableString(record.linkedId)},
-          ${nullableString(record.linkedName)},
-          ${asBoolean(record.completed)},
-          ${asStatus(record.source, "manual")},
-          ${nullableString(record.originalId)},
-          ${nullableString(record.instanceId)},
-          ${asStatus(
-            record.status,
-            asBoolean(record.completed) ? "Completed" : "Scheduled"
-          )},
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          item_date = EXCLUDED.item_date,
-          date = EXCLUDED.date,
-          time = EXCLUDED.time,
-          title = EXCLUDED.title,
-          area = EXCLUDED.area,
-          category_label = EXCLUDED.category_label,
-          color_id = EXCLUDED.color_id,
-          color_name = EXCLUDED.color_name,
-          all_day = EXCLUDED.all_day,
-          repeat = EXCLUDED.repeat,
-          reminder = EXCLUDED.reminder,
-          notes = EXCLUDED.notes,
-          linked_type = EXCLUDED.linked_type,
-          linked_id = EXCLUDED.linked_id,
-          linked_name = EXCLUDED.linked_name,
-          completed = EXCLUDED.completed,
-          source = EXCLUDED.source,
-          original_id = EXCLUDED.original_id,
-          instance_id = EXCLUDED.instance_id,
-          status = EXCLUDED.status,
-          updated_at = NOW()
-      `;
-
-      await sql`UPDATE atlas_calendar_items SET property_id = ${propertyId} WHERE id = ${id}`;
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "parts") {
-      await ensurePartsTable(sql);
-      const id = getId(record, "part");
-      const quantity = Math.max(0, Math.floor(Number(record.quantity) || 0));
-      const minQuantity = Math.max(0, Math.floor(Number(record.minQuantity) || 0));
-      const automaticStatus =
-        quantity <= 0 ? "Out" : quantity <= minQuantity ? "Low" : "In Stock";
-
-      await sql`
-        INSERT INTO atlas_parts (
-          id, name, category, location_id, asset_id, vendor_id,
-          quantity, min_quantity, status, notes, updated_at
-        ) VALUES (
-          ${id},
-          ${asString(record.name) || "Untitled Part"},
-          ${asString(record.category) || "General"},
-          ${nullableString(record.locationId)},
-          ${nullableString(record.assetId)},
-          ${nullableString(record.vendorId)},
-          ${quantity},
-          ${minQuantity},
-          ${asStatus(record.status, automaticStatus)},
-          ${asString(record.notes)},
-          NOW()
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          category = EXCLUDED.category,
-          location_id = EXCLUDED.location_id,
-          asset_id = EXCLUDED.asset_id,
-          vendor_id = EXCLUDED.vendor_id,
-          quantity = EXCLUDED.quantity,
-          min_quantity = EXCLUDED.min_quantity,
-          status = EXCLUDED.status,
-          notes = EXCLUDED.notes,
-          updated_at = NOW()
-      `;
-      await sql`UPDATE atlas_parts SET property_id = ${propertyId} WHERE id = ${id}`;
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "documents") {
-      const id = getId(record, "document");
-
-      await sql`
-        INSERT INTO atlas_documents (
-          id,
-          title,
-          area,
-          type,
-          linked_asset_id,
-          notes,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.title) || "Untitled Document"},
-          ${asString(record.area) || "General"},
-          ${asString(record.type) || "Document"},
-          ${nullableString(record.linkedAssetId)},
-          ${asString(record.notes)},
-          NOW()
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          title = EXCLUDED.title,
-          area = EXCLUDED.area,
-          type = EXCLUDED.type,
-          linked_asset_id = EXCLUDED.linked_asset_id,
-          notes = EXCLUDED.notes,
-          updated_at = NOW()
-      `;
-
-      await sql`UPDATE atlas_documents SET property_id = ${propertyId} WHERE id = ${id}`;
-      return NextResponse.json({ ok: true, id });
-    }
-
-    if (table === "asset_photos") {
-      const id = getId(record, "photo");
-
-      await sql`
-        INSERT INTO atlas_asset_photos (
-          id,
-          asset_id,
-          name,
-          data_url,
-          created_at
-        )
-        VALUES (
-          ${id},
-          ${asString(record.assetId) || "general"},
-          ${asString(record.name) || "Photo"},
-          ${asString(record.dataUrl)},
-          COALESCE(
-            ${nullableString(record.createdAt)}::timestamptz,
-            NOW()
-          )
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET
-          asset_id = EXCLUDED.asset_id,
-          name = EXCLUDED.name,
-          data_url = COALESCE(NULLIF(EXCLUDED.data_url, ''), atlas_asset_photos.data_url)
-      `;
-
-      await sql`UPDATE atlas_asset_photos SET property_id = ${propertyId} WHERE id = ${id}`;
-      return NextResponse.json({ ok: true, id });
-    }
-
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Unsupported table: " + table,
-      },
-      { status: 400 },
-    );
-  } catch (error) {
-    console.error("[Atlas POST error]", error);
-
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unknown Atlas database save error",
-      },
-      { status: 500 },
-    );
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const sql = getSql();
-    await ensurePropertyColumns(sql);
-    const body = (await request.json().catch(function () {
-      return {};
-    })) as JsonRecord;
-
-    const table = cleanTable(body.table);
-    const id = asString(body.id);
-    const propertyId = asString(body.propertyId) || "2000";
-    if (!(await authorizeAtlasRequest(sql, request, propertyId, "delete"))) {
-      return NextResponse.json({ ok:false, error:"You do not have permission to delete records for this property." }, { status:403 });
-    }
-
-    if (!table || !id) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Table and id are required.",
-        },
-        { status: 400 },
-      );
-    }
-
-    await recordChange(
-      sql,
-      request.headers.get("x-atlas-user-email") || "Atlas user",
-      "delete",
-      table,
-      id,
-      { id },
-    );
-
-    if (table === "vendors") {
-      await sql`
-        DELETE FROM atlas_vendors
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "contacts") {
-      await ensureContactsTable(sql);
-      await sql`DELETE FROM atlas_contacts WHERE id = ${id}`;
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "assets") {
-      await sql`
-        DELETE FROM atlas_asset_photos
-        WHERE asset_id = ${id}
-      `;
-
-      await sql`
-        DELETE FROM atlas_work_orders
-        WHERE asset_id = ${id}
-      `;
-
-      await sql`
-        DELETE FROM atlas_assets
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "procedures") {
-      await sql`
-        DELETE FROM atlas_procedures
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "work_orders") {
-      await sql`
-        DELETE FROM atlas_work_orders
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "calendar") {
-      await sql`
-        DELETE FROM atlas_calendar_items
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "parts") {
-      await ensurePartsTable(sql);
-      await sql`DELETE FROM atlas_parts WHERE id = ${id}`;
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "documents") {
-      await sql`
-        DELETE FROM atlas_documents
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    if (table === "asset_photos") {
-      await sql`
-        DELETE FROM atlas_asset_photos
-        WHERE id = ${id}
-      `;
-
-      return NextResponse.json({ ok: true });
-    }
-
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Unsupported table: " + table,
-      },
-      { status: 400 },
-    );
-  } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unknown Atlas database delete error",
-      },
-      { status: 500 },
-    );
-  }
-}
+          id
