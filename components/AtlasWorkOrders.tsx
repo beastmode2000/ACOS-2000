@@ -427,8 +427,9 @@ export function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   const searchControlStyle: React.CSSProperties = {
     ...controlStyle,
-    border: `1px solid ${colors.navy}`,
-    boxShadow: "0 0 0 1px rgba(15, 31, 48, 0.05)",
+    border: `2px solid ${colors.navy}`,
+    boxShadow: "0 0 0 3px rgba(15, 31, 48, 0.10)",
+    outline: "none",
   };
 
   const filterPanelStyle: React.CSSProperties = {
