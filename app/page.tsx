@@ -14319,7 +14319,6 @@ export default function AtlasPage() {
         mutedSmallStyle={mutedSmallStyle}
         openCalendarItem={openCalendarItem}
         onOpenLinkedRecord={openCalendarLinkedRecord}
-        onToggleCompleted={toggleCalendarItemCompleted}
         onConvertToWorkOrder={convertCalendarItemToWorkOrder}
         reminderOptions={reminderOptions}
         repeatOptions={repeatOptions}
