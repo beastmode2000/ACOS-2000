@@ -990,6 +990,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       source: "neon",
+      propertyId,
       locations: locationRows.map(mapLocation),
       vendorRecords: vendorRows.map(mapVendor),
       contactRecords: contactRows.map((row) => row.record || {}),
