@@ -217,6 +217,8 @@ export default function AtlasInsightsTimeline({
   const horizontalRef = useRef<HTMLDivElement | null>(null);
   const carouselFrameRef = useRef<number | null>(null);
   const carouselSettleTimerRef = useRef<number | null>(null);
+  const carouselScrollTargetRef = useRef(0);
+  const carouselScrollFrameRef = useRef<number | null>(null);
   const filtersRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -245,6 +247,9 @@ export default function AtlasInsightsTimeline({
       }
       if (carouselFrameRef.current !== null) {
         window.cancelAnimationFrame(carouselFrameRef.current);
+      }
+      if (carouselScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(carouselScrollFrameRef.current);
       }
     },
     [],
@@ -772,11 +777,11 @@ export default function AtlasInsightsTimeline({
       const target = container?.querySelector<HTMLElement>(
         `[data-timeline-group-index="${targetIndex}"]`,
       );
-      target?.scrollIntoView({
-        behavior: "auto",
-        block: "nearest",
-        inline: "center",
-      });
+      if (target && container) {
+        container.scrollLeft =
+          target.offsetLeft - container.clientWidth / 2 + target.offsetWidth / 2;
+        carouselScrollTargetRef.current = container.scrollLeft;
+      }
     });
 
     return () => window.cancelAnimationFrame(frame);
@@ -839,6 +844,39 @@ export default function AtlasInsightsTimeline({
     });
   };
 
+  const animateCarouselTo = (targetLeft: number) => {
+    const container = horizontalRef.current;
+    if (!container) return;
+
+    const maxLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    carouselScrollTargetRef.current = Math.max(0, Math.min(maxLeft, targetLeft));
+
+    if (carouselScrollFrameRef.current !== null) return;
+
+    const step = () => {
+      const activeContainer = horizontalRef.current;
+      if (!activeContainer) {
+        carouselScrollFrameRef.current = null;
+        return;
+      }
+
+      const target = carouselScrollTargetRef.current;
+      const current = activeContainer.scrollLeft;
+      const distance = target - current;
+
+      if (Math.abs(distance) < 0.65) {
+        activeContainer.scrollLeft = target;
+        carouselScrollFrameRef.current = null;
+        return;
+      }
+
+      activeContainer.scrollLeft = current + distance * 0.16;
+      carouselScrollFrameRef.current = window.requestAnimationFrame(step);
+    };
+
+    carouselScrollFrameRef.current = window.requestAnimationFrame(step);
+  };
+
   const scrollCarousel = (direction: -1 | 1) => {
     const container = horizontalRef.current;
     if (!container || !groupedTimeline.length) return;
@@ -851,11 +889,11 @@ export default function AtlasInsightsTimeline({
       `[data-timeline-group-index="${targetIndex}"]`,
     );
     setSettledGroupIndex(targetIndex);
-    target?.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "center",
-    });
+    if (target) {
+      const left =
+        target.offsetLeft - container.clientWidth / 2 + target.offsetWidth / 2;
+      animateCarouselTo(left);
+    }
   };
 
   const pageGrid: React.CSSProperties = {
@@ -1681,10 +1719,12 @@ export default function AtlasInsightsTimeline({
                 if (!dominantDelta) return;
                 event.preventDefault();
 
-                container.scrollBy({
-                  left: dominantDelta * 0.72,
-                  behavior: "smooth",
-                });
+                const baseTarget =
+                  carouselScrollFrameRef.current !== null
+                    ? carouselScrollTargetRef.current
+                    : container.scrollLeft;
+
+                animateCarouselTo(baseTarget + dominantDelta * 0.9);
               }}
               style={{
                 display: "flex",
@@ -1692,8 +1732,8 @@ export default function AtlasInsightsTimeline({
                 gap: 18,
                 overflowX: "auto",
                 overflowY: "hidden",
-                scrollSnapType: "x mandatory",
-                scrollBehavior: "smooth",
+                scrollSnapType: "x proximity",
+                scrollBehavior: "auto",
                 perspective: 1400,
                 padding: "24px max(42%, 260px) 26px",
                 height: 430,
@@ -1706,10 +1746,16 @@ export default function AtlasInsightsTimeline({
               {groupedTimeline.map(([label, entries], index) => {
                 const distance = Math.abs(index - carouselPosition);
                 const focus = Math.max(0, 1 - Math.min(distance, 3) / 3);
-                const scale = 0.56 + focus * 0.44;
-                const cardWidth = 92 + focus * 250;
+                const scale = 0.58 + focus * 0.42;
+                const cardWidth = 340;
                 const opacity = 0.34 + focus * 0.66;
-                const translateY = (1 - focus) * 42;
+                const translateY = (1 - focus) * 38;
+                const translateX =
+                  index < carouselPosition
+                    ? (1 - focus) * 34
+                    : index > carouselPosition
+                      ? -(1 - focus) * 34
+                      : 0;
                 const rotateY =
                   index < carouselPosition
                     ? 12 * (1 - focus)
@@ -1740,22 +1786,26 @@ export default function AtlasInsightsTimeline({
                       const target = horizontalRef.current?.querySelector<HTMLElement>(
                         `[data-timeline-group-index="${index}"]`,
                       );
-                      target?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "nearest",
-                        inline: "center",
-                      });
+                      if (target && horizontalRef.current) {
+                        const left =
+                          target.offsetLeft -
+                          horizontalRef.current.clientWidth / 2 +
+                          target.offsetWidth / 2;
+                        animateCarouselTo(left);
+                      }
                       if (featured) setSelectedEntryId(featured.id);
                     }}
                     style={{
                       flex: `0 0 ${cardWidth}px`,
                       width: cardWidth,
-                      height: 310 + focus * 76,
+                      height: 386,
                       scrollSnapAlign: "center",
-                      transform: `translateY(${translateY}px) rotateY(${rotateY}deg) scale(${scale})`,
-                      transformOrigin: "center bottom",
+                      transform: `translate3d(${translateX}px, ${translateY}px, 0) rotateY(${rotateY}deg) scale(${scale})`,
+                      transformOrigin: "center center",
+                      willChange: "transform, opacity, filter",
+                      backfaceVisibility: "hidden",
                       transition:
-                        "width 180ms ease, flex-basis 180ms ease, transform 180ms ease, opacity 180ms ease, filter 180ms ease",
+                        "transform 90ms linear, opacity 90ms linear, filter 90ms linear, border-color 120ms ease, box-shadow 120ms ease",
                       opacity,
                       filter:
                         focus > 0.72
@@ -1783,13 +1833,13 @@ export default function AtlasInsightsTimeline({
                   >
                     <div
                       style={{
-                        padding: focus > 0.72 ? "18px 18px 12px" : "14px 12px 9px",
+                        padding: "18px 18px 12px",
                       }}
                     >
                       <strong
                         style={{
                           display: "block",
-                          fontSize: focus > 0.72 ? 30 : 20,
+                          fontSize: 30,
                           lineHeight: 1,
                           whiteSpace: "normal",
                         }}
@@ -1814,7 +1864,7 @@ export default function AtlasInsightsTimeline({
                         alt=""
                         style={{
                           width: "100%",
-                          height: focus > 0.72 ? 154 : 126,
+                          height: 154,
                           objectFit: "cover",
                           display: "block",
                           borderTop:
@@ -1830,12 +1880,12 @@ export default function AtlasInsightsTimeline({
                     ) : (
                       <div
                         style={{
-                          height: focus > 0.72 ? 154 : 126,
+                          height: 154,
                           background:
                             "radial-gradient(circle at 30% 20%, rgba(201,154,61,0.28), transparent 45%), linear-gradient(135deg, #244B65, #0B2335)",
                           display: "grid",
                           placeItems: "center",
-                          fontSize: focus > 0.72 ? 38 : 24,
+                          fontSize: 38,
                           fontWeight: 900,
                           color: "rgba(255,255,255,0.72)",
                         }}
@@ -1846,7 +1896,7 @@ export default function AtlasInsightsTimeline({
 
                     <div
                       style={{
-                        padding: focus > 0.72 ? 14 : 11,
+                        padding: 14,
                         display: "grid",
                         gap: 6,
                       }}
@@ -1866,9 +1916,9 @@ export default function AtlasInsightsTimeline({
                       ) : null}
                       <strong
                         style={{
-                          fontSize: focus > 0.72 ? 16 : 13,
+                          fontSize: 16,
                           display: "-webkit-box",
-                          WebkitLineClamp: focus > 0.72 ? 2 : 1,
+                          WebkitLineClamp: 2,
                           WebkitBoxOrient: "vertical",
                           overflow: "hidden",
                         }}
@@ -1881,7 +1931,7 @@ export default function AtlasInsightsTimeline({
                           lineHeight: 1.4,
                           opacity: 0.7,
                           display: "-webkit-box",
-                          WebkitLineClamp: focus > 0.72 ? 3 : 1,
+                          WebkitLineClamp: 3,
                           WebkitBoxOrient: "vertical",
                           overflow: "hidden",
                         }}
