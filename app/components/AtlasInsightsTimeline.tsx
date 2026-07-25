@@ -201,7 +201,6 @@ export default function AtlasInsightsTimeline({
   const [selectedEntryId, setSelectedEntryId] = useState("");
   const [customEvents, setCustomEvents] = useState<CustomTimelineEvent[]>([]);
   const [showAddEvent, setShowAddEvent] = useState(false);
-  const [carouselPosition, setCarouselPosition] = useState(0);
   const [settledGroupIndex, setSettledGroupIndex] = useState(0);
   const [draft, setDraft] = useState({
     date: new Date().toISOString().slice(0, 10),
@@ -215,7 +214,6 @@ export default function AtlasInsightsTimeline({
     afterPhoto: "",
   });
   const horizontalRef = useRef<HTMLDivElement | null>(null);
-  const carouselFrameRef = useRef<number | null>(null);
   const carouselSettleTimerRef = useRef<number | null>(null);
   const filtersRef = useRef<HTMLDivElement | null>(null);
 
@@ -242,9 +240,6 @@ export default function AtlasInsightsTimeline({
     () => () => {
       if (carouselSettleTimerRef.current !== null) {
         window.clearTimeout(carouselSettleTimerRef.current);
-      }
-      if (carouselFrameRef.current !== null) {
-        window.cancelAnimationFrame(carouselFrameRef.current);
       }
     },
     [],
@@ -764,7 +759,6 @@ export default function AtlasInsightsTimeline({
     }
 
     const targetIndex = groupedTimeline.length - 1;
-    setCarouselPosition(targetIndex);
     setSettledGroupIndex(targetIndex);
 
     const frame = window.requestAnimationFrame(() => {
@@ -788,55 +782,38 @@ export default function AtlasInsightsTimeline({
     setSelectedEntryId(activeGroupEntries[activeGroupEntries.length - 1].id);
   }, [activeGroupEntries, selectedEntryId]);
 
-  const updateCarouselPosition = () => {
-    if (carouselFrameRef.current !== null) {
-      window.cancelAnimationFrame(carouselFrameRef.current);
+  const settleCarouselSelection = () => {
+    if (carouselSettleTimerRef.current !== null) {
+      window.clearTimeout(carouselSettleTimerRef.current);
     }
 
-    carouselFrameRef.current = window.requestAnimationFrame(() => {
+    carouselSettleTimerRef.current = window.setTimeout(() => {
       const container = horizontalRef.current;
       if (!container) return;
 
-      const center = container.getBoundingClientRect().left + container.clientWidth / 2;
+      const center =
+        container.getBoundingClientRect().left + container.clientWidth / 2;
       const cards = Array.from(
         container.querySelectorAll<HTMLElement>("[data-timeline-group-index]"),
       );
-
-      if (!cards.length) return;
 
       let nearestIndex = 0;
       let nearestDistance = Number.POSITIVE_INFINITY;
 
       cards.forEach((card, index) => {
         const rect = card.getBoundingClientRect();
-        const distance = Math.abs(rect.left + rect.width / 2 - center);
+        const cardCenter = rect.left + rect.width / 2;
+        const distance = Math.abs(cardCenter - center);
+
         if (distance < nearestDistance) {
           nearestDistance = distance;
           nearestIndex = index;
         }
       });
 
-      const current = cards[nearestIndex];
-      const previous = cards[Math.max(0, nearestIndex - 1)];
-      const next = cards[Math.min(cards.length - 1, nearestIndex + 1)];
-      const currentCenter = current.getBoundingClientRect().left + current.offsetWidth / 2;
-      const direction = currentCenter < center ? 1 : -1;
-      const neighbor = direction > 0 ? next : previous;
-      const neighborCenter =
-        neighbor.getBoundingClientRect().left + neighbor.offsetWidth / 2;
-      const span = Math.max(1, Math.abs(neighborCenter - currentCenter));
-      const fraction = Math.max(-0.49, Math.min(0.49, (center - currentCenter) / span));
-
-      setCarouselPosition(nearestIndex + fraction);
-
-      if (carouselSettleTimerRef.current !== null) {
-        window.clearTimeout(carouselSettleTimerRef.current);
-      }
-      carouselSettleTimerRef.current = window.setTimeout(() => {
-        setSettledGroupIndex(nearestIndex);
-        carouselSettleTimerRef.current = null;
-      }, 260);
-    });
+      setSettledGroupIndex(nearestIndex);
+      carouselSettleTimerRef.current = null;
+    }, 140);
   };
 
   const scrollCarousel = (direction: -1 | 1) => {
@@ -1668,33 +1645,29 @@ export default function AtlasInsightsTimeline({
           <>
             <div
               ref={horizontalRef}
-              onScroll={updateCarouselPosition}
+              onScroll={settleCarouselSelection}
               onWheel={(event) => {
                 const container = horizontalRef.current;
                 if (!container) return;
 
-                const dominantDelta =
+                const delta =
                   Math.abs(event.deltaX) > Math.abs(event.deltaY)
                     ? event.deltaX
                     : event.deltaY;
 
-                if (!dominantDelta) return;
+                if (!delta) return;
                 event.preventDefault();
-
-                container.scrollBy({
-                  left: dominantDelta * 0.72,
-                  behavior: "smooth",
-                });
+                container.scrollLeft += delta;
               }}
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 18,
+                gap: 10,
                 overflowX: "auto",
                 overflowY: "hidden",
                 scrollSnapType: "x mandatory",
                 scrollBehavior: "smooth",
-                perspective: 1400,
+                perspective: 1800,
                 padding: "24px max(42%, 260px) 26px",
                 height: 430,
                 minHeight: 430,
@@ -1704,17 +1677,18 @@ export default function AtlasInsightsTimeline({
               }}
             >
               {groupedTimeline.map(([label, entries], index) => {
-                const distance = Math.abs(index - carouselPosition);
-                const focus = Math.max(0, 1 - Math.min(distance, 3) / 3);
-                const scale = 0.56 + focus * 0.44;
-                const cardWidth = 92 + focus * 250;
-                const opacity = 0.34 + focus * 0.66;
-                const translateY = (1 - focus) * 42;
+                const distance = Math.abs(index - settledGroupIndex);
+                const isActive = distance === 0;
+                const isNeighbor = distance === 1;
+                const scale = isActive ? 1 : isNeighbor ? 0.88 : 0.76;
+                const cardWidth = 330;
+                const opacity = isActive ? 1 : isNeighbor ? 0.72 : 0.42;
+                const translateY = isActive ? 0 : isNeighbor ? 22 : 38;
                 const rotateY =
-                  index < carouselPosition
-                    ? 12 * (1 - focus)
-                    : index > carouselPosition
-                      ? -12 * (1 - focus)
+                  index < settledGroupIndex
+                    ? 6
+                    : index > settledGroupIndex
+                      ? -6
                       : 0;
                 const hero =
                   entries
@@ -1750,46 +1724,44 @@ export default function AtlasInsightsTimeline({
                     style={{
                       flex: `0 0 ${cardWidth}px`,
                       width: cardWidth,
-                      height: 310 + focus * 76,
+                      height: 386,
                       scrollSnapAlign: "center",
-                      transform: `translateY(${translateY}px) rotateY(${rotateY}deg) scale(${scale})`,
-                      transformOrigin: "center bottom",
+                      scrollSnapStop: "always",
+                      transform: `translate3d(0, ${translateY}px, 0) rotateY(${rotateY}deg) scale(${scale})`,
+                      transformOrigin: "center center",
                       transition:
-                        "width 180ms ease, flex-basis 180ms ease, transform 180ms ease, opacity 180ms ease, filter 180ms ease",
+                        "transform 220ms ease, opacity 220ms ease, filter 220ms ease, border-color 220ms ease, box-shadow 220ms ease",
                       opacity,
-                      filter:
-                        focus > 0.72
-                          ? "brightness(1)"
-                          : `brightness(${0.58 + focus * 0.42})`,
+                      filter: isActive ? "brightness(1)" : "brightness(0.72)",
                       border:
-                        focus > 0.72
+                        isActive
                           ? `2px solid ${colors.gold}`
                           : "1px solid rgba(255,255,255,0.22)",
                       borderRadius: 18,
                       background:
-                        focus > 0.72
+                        isActive
                           ? "#FFFFFF"
                           : "linear-gradient(180deg, #17364E 0%, #0A2133 100%)",
-                      color: focus > 0.72 ? colors.text : "#FFFFFF",
+                      color: isActive ? colors.text : "#FFFFFF",
                       overflow: "hidden",
                       padding: 0,
                       textAlign: "left",
                       cursor: "pointer",
                       boxShadow:
-                        focus > 0.72
+                        isActive
                           ? "0 24px 55px rgba(0,0,0,0.40)"
                           : "0 12px 24px rgba(0,0,0,0.20)",
                     }}
                   >
                     <div
                       style={{
-                        padding: focus > 0.72 ? "18px 18px 12px" : "14px 12px 9px",
+                        padding: isActive ? "18px 18px 12px" : "14px 12px 9px",
                       }}
                     >
                       <strong
                         style={{
                           display: "block",
-                          fontSize: focus > 0.72 ? 30 : 20,
+                          fontSize: isActive ? 30 : 20,
                           lineHeight: 1,
                           whiteSpace: "normal",
                         }}
@@ -1814,15 +1786,15 @@ export default function AtlasInsightsTimeline({
                         alt=""
                         style={{
                           width: "100%",
-                          height: focus > 0.72 ? 154 : 126,
+                          height: isActive ? 154 : 126,
                           objectFit: "cover",
                           display: "block",
                           borderTop:
-                            focus > 0.72
+                            isActive
                               ? `1px solid ${colors.line}`
                               : "1px solid rgba(255,255,255,0.12)",
                           borderBottom:
-                            focus > 0.72
+                            isActive
                               ? `1px solid ${colors.line}`
                               : "1px solid rgba(255,255,255,0.12)",
                         }}
@@ -1830,12 +1802,12 @@ export default function AtlasInsightsTimeline({
                     ) : (
                       <div
                         style={{
-                          height: focus > 0.72 ? 154 : 126,
+                          height: isActive ? 154 : 126,
                           background:
                             "radial-gradient(circle at 30% 20%, rgba(201,154,61,0.28), transparent 45%), linear-gradient(135deg, #244B65, #0B2335)",
                           display: "grid",
                           placeItems: "center",
-                          fontSize: focus > 0.72 ? 38 : 24,
+                          fontSize: isActive ? 38 : 24,
                           fontWeight: 900,
                           color: "rgba(255,255,255,0.72)",
                         }}
@@ -1846,7 +1818,7 @@ export default function AtlasInsightsTimeline({
 
                     <div
                       style={{
-                        padding: focus > 0.72 ? 14 : 11,
+                        padding: isActive ? 14 : 11,
                         display: "grid",
                         gap: 6,
                       }}
@@ -1866,9 +1838,9 @@ export default function AtlasInsightsTimeline({
                       ) : null}
                       <strong
                         style={{
-                          fontSize: focus > 0.72 ? 16 : 13,
+                          fontSize: isActive ? 16 : 13,
                           display: "-webkit-box",
-                          WebkitLineClamp: focus > 0.72 ? 2 : 1,
+                          WebkitLineClamp: isActive ? 2 : 1,
                           WebkitBoxOrient: "vertical",
                           overflow: "hidden",
                         }}
@@ -1881,7 +1853,7 @@ export default function AtlasInsightsTimeline({
                           lineHeight: 1.4,
                           opacity: 0.7,
                           display: "-webkit-box",
-                          WebkitLineClamp: focus > 0.72 ? 3 : 1,
+                          WebkitLineClamp: isActive ? 3 : 1,
                           WebkitBoxOrient: "vertical",
                           overflow: "hidden",
                         }}
