@@ -2050,6 +2050,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         <button type="button" onClick={() => { void saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto" }}>Save Details</button>
                       </div>
                     ) : null}
+                  </div>
                 </div>
               </section>
 
