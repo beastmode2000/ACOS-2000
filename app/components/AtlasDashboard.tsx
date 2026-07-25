@@ -14,20 +14,26 @@ function dateTime(value?: string) {
     : parsed.getTime();
 }
 
-function daysFromToday(today: string, value?: string) {
-  if (!value) return Number.POSITIVE_INFINITY;
-  const start = new Date(`${today}T12:00:00`).getTime();
-  const end = new Date(`${value}T12:00:00`).getTime();
-  return Math.round((end - start) / 86_400_000);
+function propertyIdFor(record: any) {
+  return String(
+    record?.propertyId ??
+      record?.property_id ??
+      record?.property?.id ??
+      record?.property ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
 }
 
-function workType(record: any) {
-  if (record.workType) return String(record.workType);
-  return record.recurring ? "Preventive Maintenance" : "Work Order";
-}
+function belongsToProperty(record: any, activePropertyId: string) {
+  const active = String(activePropertyId || "2000").trim().toLowerCase();
+  const recordPropertyId = propertyIdFor(record);
 
-function categoryLabel(record: any) {
-  return String(record.workCategory || record.category || "🔧 Maintenance");
+  // Legacy Atlas records without a property field were created for 2000.
+  // They must never appear when another property is selected.
+  if (!recordPropertyId) return active === "2000";
+  return recordPropertyId === active;
 }
 
 export default function AtlasDashboard(props: AtlasDashboardProps) {
@@ -36,13 +42,9 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     activePropertyName = "2000",
     activePropertyDetail = "",
     SectionHeader,
-    addCalendarItem,
     assetName,
-    badgeStyle,
     buttonRowStyle,
     calendarWeatherIconStyle,
-    categoryForEvent,
-    colorForEvent,
     colors,
     dashboardAdviceStyle,
     dashboardStackStyle,
@@ -51,7 +53,6 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     dashboardWeatherStripStyle,
     dashboardWeatherTempStyle,
     dashboardWeatherTopStyle,
-    eventColorPillStyle,
     formatDate,
     goldButtonStyle,
     irrigationAdvice,
@@ -60,7 +61,6 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     logoIndex,
     mutedSmallStyle,
     noticeStyle,
-    openCalendarItem,
     requestRecords = [],
     secondaryButtonStyle,
     sectionStyle,
@@ -70,54 +70,32 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
     setScreen,
     setSelectedRequestId,
     setSelectedServiceId,
-    todayEventStyle,
-    todayEvents = [],
-    todayISO,
-    upcomingDayLabel,
-    upcomingDayPillStyle,
-    upcomingEvents = [],
-    upcomingInfoStyle,
-    upcomingItemStyle,
-    upcomingListStyle,
-    upcomingTodayPillStyle,
-    upcomingDotStyle,
     weatherDays = [],
     weatherIcon,
     weatherStatus,
     eyebrowStyle,
   } = props;
 
-  const today = todayISO();
+  const propertyRequests = useMemo(
+    () =>
+      requestRecords.filter((record: any) =>
+        belongsToProperty(record, activePropertyId),
+      ),
+    [activePropertyId, requestRecords],
+  );
 
-  const daily = useMemo(() => {
-    const open = serviceRecords
-      .filter((record: any) => record.status !== "Completed")
-      .sort((a: any, b: any) => dateTime(a.date) - dateTime(b.date));
-
-    const overdue = open.filter(
-      (record: any) => record.date && daysFromToday(today, record.date) < 0,
-    );
-
-    const dueToday = open.filter(
-      (record: any) => record.date && daysFromToday(today, record.date) === 0,
-    );
-
-    const inProgress = open.filter(
-      (record: any) => record.status === "In Progress",
-    );
-
-    const maintenance = open.filter(
-      (record: any) =>
-        record.recurring || workType(record) === "Preventive Maintenance",
-    );
-
-    return { open, overdue, dueToday, inProgress, maintenance };
-  }, [serviceRecords, today]);
+  const propertyServices = useMemo(
+    () =>
+      serviceRecords.filter((record: any) =>
+        belongsToProperty(record, activePropertyId),
+      ),
+    [activePropertyId, serviceRecords],
+  );
 
   const recentActivity = useMemo(() => {
     const entries: any[] = [];
 
-    requestRecords.forEach((request: any) => {
+    propertyRequests.forEach((request: any) => {
       entries.push({
         id: `request-${request.id}`,
         date: request.updatedAt || request.submittedAt,
@@ -132,7 +110,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
       });
     });
 
-    serviceRecords.forEach((record: any) => {
+    propertyServices.forEach((record: any) => {
       const completedAt =
         record.lastCompletedDate ||
         (Array.isArray(record.completionHistory)
@@ -151,7 +129,10 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
         });
       }
 
-      const notes = Array.isArray(record.notesHistory) ? record.notesHistory : [];
+      const notes = Array.isArray(record.notesHistory)
+        ? record.notesHistory
+        : [];
+
       notes.slice(-2).forEach((note: any, index: number) => {
         if (!note?.createdAt) return;
         entries.push({
@@ -170,42 +151,7 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
       .filter((entry) => entry.date)
       .sort((a, b) => dateTime(b.date) - dateTime(a.date))
       .slice(0, 10);
-  }, [assetName, requestRecords, serviceRecords]);
-
-  const cardGrid: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: isMobile
-      ? "repeat(2, minmax(0, 1fr))"
-      : "repeat(4, minmax(0, 1fr))",
-    gap: 10,
-  };
-
-  const statCard: React.CSSProperties = {
-    border: `1px solid ${colors.line}`,
-    borderRadius: 13,
-    background: "#FFFFFF",
-    padding: 13,
-    display: "grid",
-    gap: 5,
-    textAlign: "left",
-    color: colors.text,
-    cursor: "pointer",
-  };
-
-  const workButton: React.CSSProperties = {
-    width: "100%",
-    border: `1px solid ${colors.line}`,
-    borderRadius: 12,
-    background: "#FFFFFF",
-    padding: "10px 11px",
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
-    alignItems: "center",
-    gap: 9,
-    color: colors.text,
-    textAlign: "left",
-    cursor: "pointer",
-  };
+  }, [assetName, propertyRequests, propertyServices]);
 
   return (
     <div style={dashboardStackStyle}>
@@ -255,27 +201,14 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                   }}
                 />
               ) : (
-                <span
-                  style={{
-                    color: colors.gold2,
-                    fontWeight: 900,
-                  }}
-                >
-                  A
-                </span>
+                <span style={{ color: colors.gold2, fontWeight: 900 }}>A</span>
               )}
             </div>
 
             <div>
-              <div
-                style={{
-                  ...eyebrowStyle,
-                  color: colors.gold2,
-                }}
-              >
+              <div style={{ ...eyebrowStyle, color: colors.gold2 }}>
                 Estate Command Center
               </div>
-
               <h2
                 style={{
                   ...sectionTitleStyle,
@@ -285,7 +218,6 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
               >
                 {activePropertyName} Operations
               </h2>
-
               <p
                 style={{
                   ...mutedSmallStyle,
@@ -307,7 +239,6 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
             >
               Plan My Day
             </button>
-
             <button
               type="button"
               onClick={() => setScreen("inbox")}
@@ -348,7 +279,6 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
                     setScreen("requests");
                     return;
                   }
-
                   setSelectedServiceId(entry.recordId);
                   setScreen("history");
                 }}
@@ -379,7 +309,9 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
             ))}
           </div>
         ) : (
-          <div style={noticeStyle}>Activity will appear as requests and work are updated.</div>
+          <div style={noticeStyle}>
+            No activity is recorded for {activePropertyName} yet.
+          </div>
         )}
       </section>
 
@@ -411,29 +343,22 @@ export default function AtlasDashboard(props: AtlasDashboardProps) {
               >
                 <div style={dashboardWeatherTopStyle}>
                   <strong>
-                    {new Date(
-                      `${day.date}T12:00:00`,
-                    ).toLocaleDateString(undefined, {
-                      weekday: "short",
-                    })}
+                    {new Date(`${day.date}T12:00:00`).toLocaleDateString(
+                      undefined,
+                      { weekday: "short" },
+                    )}
                   </strong>
-
                   <span style={calendarWeatherIconStyle}>
                     {weatherIcon(day.code)}
                   </span>
                 </div>
-
                 <div style={dashboardWeatherTempStyle}>
                   {day.high}° / {day.low}°
                 </div>
-
                 <div style={dashboardWeatherMiniStyle}>
                   Rain {day.precipChance}% · ET0 {day.et0}"
                 </div>
-
-                <p style={dashboardAdviceStyle}>
-                  {irrigationAdvice(day)}
-                </p>
+                <p style={dashboardAdviceStyle}>{irrigationAdvice(day)}</p>
               </button>
             ))
           ) : (
