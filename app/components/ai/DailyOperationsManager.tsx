@@ -1875,18 +1875,6 @@ export default function DailyOperationsManager({
           </StandardCard>
         </div>
 
-        <WeatherCommandCenter
-          weather={todayWeather}
-          timeline={weatherTimeline}
-          outdoorWindow={outdoorWindow}
-          severity={weatherSeverity}
-          recommendations={aiRecommendations}
-          impacts={propertyImpact}
-          colors={colors}
-          isMobile={isMobile}
-          onAskAtlas={onAskAtlas}
-        />
-
         <div
           style={{
             display: "grid",
@@ -2061,6 +2049,18 @@ export default function DailyOperationsManager({
             }
           />
         </div>
+
+        <WeatherCommandCenter
+          weather={todayWeather}
+          timeline={weatherTimeline}
+          outdoorWindow={outdoorWindow}
+          severity={weatherSeverity}
+          recommendations={aiRecommendations}
+          impacts={propertyImpact}
+          colors={colors}
+          isMobile={isMobile}
+          onAskAtlas={onAskAtlas}
+        />
       </div>
 
       <style jsx global>{`
