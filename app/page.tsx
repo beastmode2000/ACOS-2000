@@ -1,3 +1,6 @@
+APP/PAGE.TSX — PART 01 OF 08
+Paste into an empty app/page.tsx file.
+
 "use client";
 
 import React, {
@@ -3279,6 +3282,9 @@ function ListDrawerLayout(props: {
           overflow: "visible",
           alignItems: "start",
         };
+
+APP/PAGE.TSX — PART 02 OF 08
+Paste immediately after Part 01.
 
   const desktopListStyle: React.CSSProperties = props.isMobile
     ? listPanelStyle
@@ -6562,6 +6568,9 @@ export default function AtlasPage() {
     if (kind === "Work Order Issue") {
       setFastIntakeSaveMode("Create Work Order");
       setIntakeTargetKind("Asset");
+APP/PAGE.TSX — PART 03 OF 08
+Paste immediately after Part 02.
+
       return;
     }
 
@@ -9844,6 +9853,9 @@ export default function AtlasPage() {
             item.name.trim().toLowerCase() ===
             pendingAssistantAction.title.trim().toLowerCase(),
         );
+APP/PAGE.TSX — PART 04 OF 08
+Paste immediately after Part 03.
+
         if (duplicate) {
           throw new Error(
             `${duplicate.name} already exists. Ask Atlas to update its quantity instead.`,
@@ -13126,6 +13138,9 @@ export default function AtlasPage() {
                         aria-label="Edit all asset information"
                         title="Edit asset information"
                       >
+APP/PAGE.TSX — PART 05 OF 08
+Paste immediately after Part 04.
+
                         ✏
                       </button>
                     ) : (
@@ -14229,7 +14244,14 @@ export default function AtlasPage() {
 
   function renderWorkOrders() {
     return (
-      <AtlasWorkOrders
+      <div className="atlas-work-orders-page">
+        <style>{`
+          .atlas-work-orders-page input[placeholder="Search work, asset, vendor, category..."] {
+            border: 1px solid #8EA5B8 !important;
+            box-shadow: 0 0 0 1px rgba(15, 31, 48, 0.04) !important;
+          }
+        `}</style>
+        <AtlasWorkOrders
         ListDrawerLayout={ListDrawerLayout}
         Field={Field}
         SelectField={SelectField}
@@ -14284,6 +14306,7 @@ export default function AtlasPage() {
         renderLinkedDocuments={renderLinkedDocuments}
         openResetKey={workOrdersOpenKey}
       />
+      </div>
     );
   }
 
@@ -16400,6 +16423,9 @@ export default function AtlasPage() {
                               alignItems: "center",
                               gap: 10,
                               flexWrap: "wrap",
+APP/PAGE.TSX — PART 06 OF 08
+Paste immediately after Part 05.
+
                             }}
                           >
                             <strong style={{ overflowWrap: "anywhere" }}>
@@ -19682,6 +19708,9 @@ export default function AtlasPage() {
             >
               <div>
                 <div style={eyebrowStyle}>App Editor</div>
+APP/PAGE.TSX — PART 07 OF 08
+Paste immediately after Part 06.
+
                 <h3 style={detailTitleStyle}>
                   {workLinkDraft.id ? "Edit App" : "Add App"}
                 </h3>
@@ -21141,6 +21170,301 @@ export default function AtlasPage() {
       (part) => part.status === "Low" || part.status === "Out" || part.status === "Order",
     ).length;
 
+    if (screen === "history") {
+      const today = todayISO();
+      const weekAgo = addDays(today, -7);
+
+      const open = serviceRecords.filter(
+        (record) => record.status !== "Completed",
+      );
+      const dueToday = open.filter((record) => record.date === today).length;
+      const overdue = open.filter(
+        (record) => Boolean(record.date) && record.date < today,
+      ).length;
+      const highPriority = open.filter(
+        (record) => record.priority === "High",
+      ).length;
+      const recurring = serviceRecords.filter(
+        (record) => record.recurring,
+      ).length;
+      const completedThisWeek = serviceRecords.filter((record) => {
+        if (record.status !== "Completed") return false;
+        const completedDate =
+          String(record.lastCompletedDate || "") ||
+          String(record.completionHistory?.[record.completionHistory.length - 1] || "");
+        return Boolean(completedDate) && completedDate >= weekAgo;
+      }).length;
+
+      const metrics = [
+        { label: "Open Work", value: open.length, note: "active items" },
+        { label: "Due Today", value: dueToday, note: "scheduled today" },
+        { label: "Overdue", value: overdue, note: "need attention" },
+        { label: "High Priority", value: highPriority, note: "active priority" },
+        {
+          label: "Completed",
+          value: completedThisWeek,
+          note: "finished this week",
+        },
+      ];
+
+      const drivers = [
+        {
+          label: "Overdue work",
+          value: overdue ? `${overdue} overdue` : "No overdue work",
+          symbol: overdue ? "▼" : "▲",
+          color: overdue ? "#FCA5A5" : "#86E1B5",
+        },
+        {
+          label: "Today’s schedule",
+          value: dueToday ? `${dueToday} due today` : "Schedule is open",
+          symbol: dueToday ? "●" : "▲",
+          color: dueToday ? colors.gold : "#86E1B5",
+        },
+        {
+          label: "Priority workload",
+          value: highPriority
+            ? `${highPriority} high priority`
+            : "No high-priority backlog",
+          symbol: highPriority ? "▼" : "▲",
+          color: highPriority ? "#FCA5A5" : "#86E1B5",
+        },
+        {
+          label: "Preventive maintenance",
+          value: `${recurring} recurring`,
+          symbol: "▲",
+          color: "#86E1B5",
+        },
+        {
+          label: "Completion pace",
+          value: `${completedThisWeek} this week`,
+          symbol: completedThisWeek ? "▲" : "●",
+          color: completedThisWeek
+            ? "#86E1B5"
+            : "rgba(255,255,255,0.62)",
+        },
+      ];
+
+      return (
+        <section
+          style={{
+            marginBottom: 16,
+            borderRadius: 24,
+            overflow: "hidden",
+            border: "1px solid rgba(207, 221, 233, 0.9)",
+            background: colors.card,
+            boxShadow: "0 14px 38px rgba(15, 31, 48, 0.10)",
+          }}
+        >
+          <div
+            style={{
+              padding: isMobile ? 18 : 28,
+              background: `linear-gradient(135deg, ${colors.navy} 0%, #183B55 100%)`,
+              color: "#FFFFFF",
+            }}
+          >
+            <div
+              style={{
+                color: colors.gold,
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Work Management
+            </div>
+
+            <h2
+              style={{
+                margin: "7px 0 3px",
+                fontSize: isMobile ? 25 : 32,
+                lineHeight: 1.1,
+                letterSpacing: "-0.025em",
+              }}
+            >
+              Work Orders Command Center
+            </h2>
+
+            <div
+              style={{
+                fontSize: 14,
+                opacity: 0.72,
+                fontWeight: 650,
+              }}
+            >
+              Active workload and service history
+            </div>
+
+            <p
+              style={{
+                maxWidth: 900,
+                margin: "14px 0 0",
+                fontSize: isMobile ? 13 : 14,
+                lineHeight: 1.65,
+                opacity: 0.88,
+              }}
+            >
+              {overdue
+                ? `${overdue} overdue work order${overdue === 1 ? " needs" : "s need"} attention. `
+                : "There are no overdue work orders. "}
+              {dueToday
+                ? `${dueToday} item${dueToday === 1 ? " is" : "s are"} due today. `
+                : "Nothing is due today. "}
+              {highPriority
+                ? `${highPriority} high-priority item${highPriority === 1 ? " remains" : "s remain"} active. `
+                : "There is no high-priority backlog. "}
+              {recurring} recurring maintenance item
+              {recurring === 1 ? " is" : "s are"} currently tracked.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(5, minmax(0, 1fr))",
+                gap: 10,
+                marginTop: 20,
+              }}
+            >
+              {metrics.map((metric) => (
+                <div
+                  key={metric.label}
+                  style={{
+                    display: "grid",
+                    gap: 4,
+                    minWidth: 0,
+                    padding: "13px 14px",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      opacity: 0.64,
+                    }}
+                  >
+                    {metric.label}
+                  </span>
+                  <strong style={{ fontSize: 25, lineHeight: 1.05 }}>
+                    {metric.value}
+                  </strong>
+                  <span style={{ fontSize: 12, opacity: 0.72 }}>
+                    {metric.note}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                padding: 13,
+                borderRadius: 15,
+                background: "rgba(255,255,255,0.07)",
+                border: "1px solid rgba(255,255,255,0.10)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 9,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 900,
+                    letterSpacing: "0.09em",
+                    textTransform: "uppercase",
+                    color: colors.gold,
+                  }}
+                >
+                  Workload Drivers
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.68 }}>
+                  What needs attention
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(5, minmax(0, 1fr))",
+                  gap: 9,
+                }}
+              >
+                {drivers.map((driver) => (
+                  <div
+                    key={driver.label}
+                    style={{
+                      minWidth: 0,
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      background: "rgba(255,255,255,0.08)",
+                      border: "1px solid rgba(255,255,255,0.09)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 7,
+                        minWidth: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: driver.color,
+                          fontWeight: 900,
+                          fontSize: 11,
+                        }}
+                      >
+                        {driver.symbol}
+                      </span>
+                      <strong
+                        style={{
+                          minWidth: 0,
+                          fontSize: 12,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {driver.label}
+                      </strong>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        opacity: 0.68,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {driver.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
     const summaryByScreen: Partial<
       Record<Screen, { title: string; detail: string; cards: Array<{ label: string; value: string | number; note: string }> }>
     > = {
@@ -21160,15 +21484,6 @@ export default function AtlasPage() {
           { label: "Total Assets", value: assetRecords.length, note: "Tracked on this property" },
           { label: "Online", value: onlineAssets, note: "Operating normally" },
           { label: "Needs Attention", value: attentionAssets, note: "Offline or monitored" },
-        ],
-      },
-      history: {
-        title: "Work order pulse",
-        detail: "See the active workload, completed history, and recurring maintenance position immediately.",
-        cards: [
-          { label: "Open", value: openWorkOrders, note: "Current workload" },
-          { label: "Completed", value: completedWorkOrders, note: "Recorded history" },
-          { label: "Recurring", value: serviceRecords.filter((record) => record.recurring).length, note: "Preventive maintenance" },
         ],
       },
       vendors: {
@@ -22678,6 +22993,9 @@ const mobileMenuSelectStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.08)",
   color: "#FFFFFF",
   borderRadius: 14,
+APP/PAGE.TSX — PART 08 OF 08
+Paste immediately after Part 07.
+
   padding: "12px 13px",
   fontSize: 15,
   fontWeight: 900,
