@@ -754,7 +754,7 @@ export default function AtlasInsightsTimeline({
 
   useEffect(() => {
     if (!groupedTimeline.length) {
-      setCarouselPosition(0);
+      setSettledGroupIndex(0);
       return;
     }
 
