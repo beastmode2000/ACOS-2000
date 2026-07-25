@@ -189,7 +189,7 @@ type AtlasWorkOrdersProps = {
   seasonCardDescriptionStyle?: any;
 };
 
-export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
+export function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const {
     ListDrawerLayout,
     Field,
@@ -1463,3 +1463,4 @@ export default function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   );
 }
 
+export default AtlasWorkOrders;
