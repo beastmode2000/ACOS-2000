@@ -1917,27 +1917,121 @@ export async function DELETE(request: NextRequest) {
     let deletedRows: JsonRecord[] = [];
 
     if (table === "locations") {
-      await sql`
-        UPDATE atlas_assets
-        SET
-          location_ids = array_remove(COALESCE(location_ids, ARRAY[]::text[]), ${id}),
-          location_id = CASE
-            WHEN location_id = ${id} THEN COALESCE(NULLIF((array_remove(COALESCE(location_ids, ARRAY[]::text[]), ${id}))[1], ''), 'general')
-            ELSE location_id
-          END
+      const locationRows = (await sql`
+        SELECT id, name
+        FROM atlas_locations
+        WHERE id = ${id} AND property_id = ${propertyId}
+        LIMIT 1
+      `) as unknown as JsonRecord[];
+
+      if (!locationRows.length) {
+        return NextResponse.json(
+          { ok: false, error: "Location was not found." },
+          { status: 404 },
+        );
+      }
+
+      const locationName = asString(locationRows[0].name).trim();
+      if (locationName.toLowerCase() === "2000") {
+        return NextResponse.json(
+          { ok: false, error: "2000 is the top-level property and cannot be deleted." },
+          { status: 409 },
+        );
+      }
+
+      const dockRows = (await sql`
+        SELECT id
+        FROM atlas_locations
+        WHERE property_id = ${propertyId}
+          AND LOWER(TRIM(name)) = 'dock'
+        ORDER BY updated_at DESC NULLS LAST
+        LIMIT 1
+      `) as unknown as JsonRecord[];
+      const dockId = dockRows.length ? asString(dockRows[0].id) : "";
+
+      const matchingAssets = (await sql`
+        SELECT id
+        FROM atlas_assets
+        WHERE property_id = ${propertyId}
+          AND LOWER(REGEXP_REPLACE(TRIM(name), '\s+', ' ', 'g')) =
+              LOWER(REGEXP_REPLACE(TRIM(${locationName}), '\s+', ' ', 'g'))
+      `) as unknown as JsonRecord[];
+      const matchingAssetIds = matchingAssets.map((row) => asString(row.id)).filter(Boolean);
+
+      if (matchingAssetIds.length && !dockId) {
+        return NextResponse.json(
+          { ok: false, error: "Create or restore the Dock location before deleting this false asset location." },
+          { status: 409 },
+        );
+      }
+
+      if (matchingAssetIds.length && dockId) {
+        await sql`
+          UPDATE atlas_assets
+          SET location_id = ${dockId}, location_ids = ARRAY[${dockId}]::text[], updated_at = NOW()
+          WHERE property_id = ${propertyId}
+            AND id = ANY(${matchingAssetIds}::text[])
+        `;
+
+        await sql`
+          UPDATE atlas_work_orders
+          SET location_id = NULL,
+              asset_id = CASE
+                WHEN asset_id IS NULL AND ${matchingAssetIds.length} = 1 THEN ${matchingAssetIds[0] || null}
+                ELSE asset_id
+              END,
+              updated_at = NOW()
+          WHERE property_id = ${propertyId}
+            AND location_id = ${id}
+            AND (
+              asset_id IS NOT NULL
+              OR ${matchingAssetIds.length} = 1
+            )
+        `;
+      } else {
+        await sql`
+          UPDATE atlas_work_orders
+          SET location_id = NULL, updated_at = NOW()
+          WHERE property_id = ${propertyId}
+            AND location_id = ${id}
+            AND asset_id IS NOT NULL
+        `;
+      }
+
+      const remainingWorkOrders = (await sql`
+        SELECT COUNT(*)::int AS count
+        FROM atlas_work_orders
+        WHERE property_id = ${propertyId}
+          AND location_id = ${id}
+          AND asset_id IS NULL
+      `) as unknown as JsonRecord[];
+      const remainingAssets = (await sql`
+        SELECT COUNT(*)::int AS count
+        FROM atlas_assets
         WHERE property_id = ${propertyId}
           AND (
             location_id = ${id}
             OR ${id} = ANY(COALESCE(location_ids, ARRAY[]::text[]))
           )
-      `;
+      `) as unknown as JsonRecord[];
+      const childLocations = (await sql`
+        SELECT COUNT(*)::int AS count
+        FROM atlas_locations
+        WHERE property_id = ${propertyId} AND parent_id = ${id}
+      `) as unknown as JsonRecord[];
 
-      await sql`
-        UPDATE atlas_work_orders
-        SET location_id = NULL
-        WHERE location_id = ${id}
-          AND property_id = ${propertyId}
-      `;
+      const directWorkOrderCount = number(remainingWorkOrders[0]?.count);
+      const assetCount = number(remainingAssets[0]?.count);
+      const childCount = number(childLocations[0]?.count);
+      if (directWorkOrderCount || assetCount || childCount) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Location still has ${assetCount} asset(s), ${directWorkOrderCount} location-only work order(s), and ${childCount} sub-location(s). Reassign those before deleting.`,
+          },
+          { status: 409 },
+        );
+      }
 
       await sql`
         UPDATE atlas_parts
