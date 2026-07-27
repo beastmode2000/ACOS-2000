@@ -3895,6 +3895,9 @@ export default function AtlasPage() {
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [assetEditorOpen, setAssetEditorOpen] = useState(false);
   const [assetSortOrder, setAssetSortOrder] = useState<"az" | "za">("az");
+  const [assetListSearch, setAssetListSearch] = useState("");
+  const [excludedAssetStatuses, setExcludedAssetStatuses] = useState<string[]>([]);
+  const [excludedAssetCategories, setExcludedAssetCategories] = useState<string[]>([]);
   const [selectedVendorId, setSelectedVendorId] = useState("");
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [workOrdersOpenKey, setWorkOrdersOpenKey] = useState(0);
@@ -14503,12 +14506,33 @@ export default function AtlasPage() {
         })[0] ||
       selectedAssetPhotos[0];
     const selectedAssetCoverSource = photoSource(selectedAssetCoverPhoto);
-    const displayedAssets = [...filteredAssets].sort((a, b) => {
-      const comparison = a.name.localeCompare(b.name, undefined, {
-        sensitivity: "base",
+    const normalizedAssetSearch = assetListSearch.trim().toLowerCase();
+    const displayedAssets = [...filteredAssets]
+      .filter((asset) => !excludedAssetStatuses.includes(asset.status))
+      .filter((asset) => !excludedAssetCategories.includes(asset.category))
+      .filter((asset) => {
+        if (!normalizedAssetSearch) return true;
+        return [
+          asset.name,
+          asset.category,
+          asset.status,
+          asset.make,
+          asset.model,
+          asset.serial,
+          asset.notes,
+          locationName(asset.locationId),
+          asset.vendorIds.map(vendorName).join(" "),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedAssetSearch);
+      })
+      .sort((a, b) => {
+        const comparison = a.name.localeCompare(b.name, undefined, {
+          sensitivity: "base",
+        });
+        return assetSortOrder === "az" ? comparison : -comparison;
       });
-      return assetSortOrder === "az" ? comparison : -comparison;
-    });
     const alphabeticalLocations = [...locations].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
     );
@@ -14701,7 +14725,116 @@ export default function AtlasPage() {
           </div>
         }
         list={
-          <div style={assetAlphabeticalListStyle}>
+          <div style={{ display: "grid", gap: 10 }}>
+            <section
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 14,
+                background: "#FFFFFF",
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <input
+                value={assetListSearch}
+                onChange={(event) => setAssetListSearch(event.currentTarget.value)}
+                placeholder="Search assets, models, serials, locations, vendors..."
+                style={inputStyle}
+                aria-label="Search assets"
+              />
+
+              <div style={{ display: "grid", gap: 7 }}>
+                <span style={assetInfoLabelStyle}>Status</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {(["Online", "Monitor", "Offline", "Seasonal"] as Status[]).map((status) => {
+                    const enabled = !excludedAssetStatuses.includes(status);
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() =>
+                          setExcludedAssetStatuses((current) =>
+                            current.includes(status)
+                              ? current.filter((item) => item !== status)
+                              : [...current, status],
+                          )
+                        }
+                        style={{
+                          border: `1px solid ${enabled ? colors.gold : colors.line}`,
+                          borderRadius: 999,
+                          background: enabled ? "#FFF8E5" : "#FFFFFF",
+                          color: enabled ? colors.navy : colors.muted,
+                          padding: "6px 9px",
+                          fontSize: 11,
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {enabled ? "✓ " : ""}{status}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {assetCategories.length ? (
+                <div style={{ display: "grid", gap: 7 }}>
+                  <span style={assetInfoLabelStyle}>Categories</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {assetCategories.map((category) => {
+                      const enabled = !excludedAssetCategories.includes(category);
+                      return (
+                        <button
+                          key={category}
+                          type="button"
+                          onClick={() =>
+                            setExcludedAssetCategories((current) =>
+                              current.includes(category)
+                                ? current.filter((item) => item !== category)
+                                : [...current, category],
+                            )
+                          }
+                          style={{
+                            border: `1px solid ${enabled ? colors.gold : colors.line}`,
+                            borderRadius: 999,
+                            background: enabled ? "#FFF8E5" : "#FFFFFF",
+                            color: enabled ? colors.navy : colors.muted,
+                            padding: "6px 9px",
+                            fontSize: 11,
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {enabled ? "✓ " : ""}{category}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                <span style={mutedSmallStyle}>
+                  {displayedAssets.length} of {assetRecords.length} assets
+                </span>
+                {(assetListSearch || excludedAssetStatuses.length || excludedAssetCategories.length) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAssetListSearch("");
+                      setExcludedAssetStatuses([]);
+                      setExcludedAssetCategories([]);
+                    }}
+                    style={assetTinyButtonStyle}
+                  >
+                    Reset Filters
+                  </button>
+                ) : null}
+              </div>
+            </section>
+
+            <div style={assetAlphabeticalListStyle}>
             {displayedAssets.map((asset) => {
               const assetPhotos = photos.filter(
                 (photo) => photo.assetId === asset.id,
@@ -14723,39 +14856,131 @@ export default function AtlasPage() {
                   })[0] ||
                 assetPhotos[0];
               const coverPhotoSource = photoSource(coverPhoto);
+              const assetOpenWork = serviceRecords.filter(
+                (record) => record.assetId === asset.id && record.status !== "Completed",
+              );
+              const assetDocumentCount = intakeDocs.filter(
+                (document) =>
+                  document.linkedAssetId === asset.id ||
+                  (document.targetType === "Asset" && document.targetId === asset.id),
+              ).length;
+              const healthTone = asset.status === "Offline"
+                ? "Offline"
+                : assetOpenWork.some((record) => record.priority === "High")
+                  ? "Monitor"
+                  : asset.status;
+
               return (
-                <button
+                <div
                   key={asset.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedAssetId(asset.id);
-                    setAssetEditorOpen(false);
-                  }}
+                  className="atlas-gold-hover-card"
                   style={{
-                    ...assetListRowStyle,
-                    borderColor:
-                      asset.id === selectedAsset.id ? colors.gold : colors.line,
-                    background:
-                      asset.id === selectedAsset.id ? "#F4F8FD" : "#FFFFFF",
+                    position: "relative",
+                    border: `1px solid ${asset.id === selectedAsset.id ? colors.gold : colors.line}`,
+                    borderRadius: 12,
+                    background: asset.id === selectedAsset.id ? "#F4F8FD" : "#FFFFFF",
+                    overflow: "visible",
                   }}
                 >
-                  <div style={recordListIdentityStyle}>
-                    <div style={assetListThumbStyle}>
-                      {coverPhotoSource ? (
-                        <img
-                          src={coverPhotoSource}
-                          alt=""
-                          style={recordListThumbImageStyle}
-                        />
-                      ) : (
-                        <span>{asset.name.slice(0, 1).toUpperCase()}</span>
-                      )}
+                  <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedAssetId(asset.id);
+                      setAssetEditorOpen(false);
+                    }}
+                    style={{
+                      ...assetListRowStyle,
+                      width: "100%",
+                      border: 0,
+                      background: "transparent",
+                      borderRadius: 12,
+                      paddingRight: 88,
+                      textAlign: "left",
+                    }}
+                  >
+                    <div style={{ ...recordListIdentityStyle, alignItems: "flex-start" }}>
+                      <div style={assetListThumbStyle}>
+                        {coverPhotoSource ? (
+                          <img
+                            src={coverPhotoSource}
+                            alt=""
+                            style={recordListThumbImageStyle}
+                          />
+                        ) : (
+                          <span>{asset.name.slice(0, 1).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div style={{ minWidth: 0, display: "grid", gap: 4 }}>
+                        <strong style={assetListNameStyle}>{asset.name}</strong>
+                        <span style={{ ...mutedSmallStyle, display: "block" }}>
+                          {[asset.category, locationName(asset.locationId)].filter(Boolean).join(" · ") || "Unassigned asset"}
+                        </span>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 2 }}>
+                          <span style={badgeStyle(healthTone)}>{asset.status}</span>
+                          <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
+                            {assetOpenWork.length} open work
+                          </span>
+                          <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
+                            {assetDocumentCount} docs
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <strong style={assetListNameStyle}>{asset.name}</strong>
+                  </button>
+
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 8,
+                      top: 8,
+                      display: "grid",
+                      gap: 5,
+                      zIndex: 3,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      title="Edit asset"
+                      aria-label={`Edit ${asset.name}`}
+                      onClick={() => {
+                        setSelectedAssetId(asset.id);
+                        setAssetEditorOpen(true);
+                      }}
+                      style={assetTinyButtonStyle}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      title="Create work order"
+                      aria-label={`Create work order for ${asset.name}`}
+                      onClick={() =>
+                        addWorkOrder({ assetId: asset.id, locationId: asset.locationId || "" })
+                      }
+                      style={assetTinyButtonStyle}
+                    >
+                      + Work
+                    </button>
                   </div>
-                </button>
+
+                  <span className="atlas-gold-hover-popover" aria-hidden="true">
+                    <strong>{asset.name}</strong>
+                    <span>{asset.make || "Make not recorded"} {asset.model || ""}</span>
+                    <span>{assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}</span>
+                    <span>{assetDocumentCount} linked document{assetDocumentCount === 1 ? "" : "s"}</span>
+                    <span>{assetPhotos.length} photo{assetPhotos.length === 1 ? "" : "s"}</span>
+                  </span>
+                </div>
               );
             })}
+            {displayedAssets.length === 0 ? (
+              <div style={noticeStyle}>
+                <strong>No assets match these filters.</strong>
+                <p style={mutedSmallStyle}>Turn categories or statuses back on, or clear the search.</p>
+              </div>
+            ) : null}
+            </div>
           </div>
         }
         drawer={
