@@ -7862,16 +7862,29 @@ export default function AtlasPage() {
     const location = locations.find((item) => item.id === selectedLocationId);
     if (!location) return;
 
-    if (location.name.trim() === "2000") {
+    if (normalizeLocationName(location.name) === "2000") {
       window.alert("2000 is the top-level property and cannot be deleted.");
       return;
     }
 
+    const dockLocation = locations.find(
+      (item) => normalizeLocationName(item.name) === "dock",
+    );
+    const matchingAssets = assetRecords.filter(
+      (asset) => normalizeLocationName(asset.name) === normalizeLocationName(location.name),
+    );
     const linkedAssets = assetRecords.filter((asset) =>
       assetHasLocation(asset, location.id),
     );
+    const repairableAssetIds = new Set(matchingAssets.map((asset) => asset.id));
+    const unrepairableAssets = linkedAssets.filter(
+      (asset) => !repairableAssetIds.has(asset.id),
+    );
     const linkedWorkOrders = serviceRecords.filter(
       (record) => String(record.locationId || "") === location.id,
+    );
+    const directLocationWorkOrders = linkedWorkOrders.filter(
+      (record) => !record.assetId && matchingAssets.length !== 1,
     );
     const linkedDocuments = allDocuments.filter(
       (document) => String(document.targetId || "") === location.id,
@@ -7885,8 +7898,8 @@ export default function AtlasPage() {
       : [];
 
     const blockers = [
-      [linkedAssets.length, "asset"],
-      [linkedWorkOrders.length, "work order"],
+      [unrepairableAssets.length, "asset"],
+      [directLocationWorkOrders.length, "location-only work order"],
       [linkedDocuments.length, "document"],
       [linkedSubLocations.length, "sub-location"],
       [linkedPhotos.length, "photo"],
@@ -7899,24 +7912,61 @@ export default function AtlasPage() {
         .map(([count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`)
         .join(", ");
       window.alert(
-        `This location cannot be deleted yet because it has ${details}. Reassign or remove those connections first.`,
+        `This location cannot be deleted yet because it has ${details}. Reassign those direct location connections first. Asset work orders do not block deletion.`,
       );
       return;
     }
 
-    if (!window.confirm(`Delete “${location.name}”? This cannot be undone.`)) {
+    if (matchingAssets.length && !dockLocation) {
+      window.alert(
+        `Atlas found the matching asset “${matchingAssets[0].name}”, but it cannot repair this record until a Dock location exists.`,
+      );
+      return;
+    }
+
+    const repairMessage = matchingAssets.length
+      ? ` Atlas will keep the ${matchingAssets.length === 1 ? "asset" : "assets"}, move ${matchingAssets.length === 1 ? "it" : "them"} to Dock, and keep the work orders attached to the asset.`
+      : "";
+
+    if (!window.confirm(`Delete the false location “${location.name}”?${repairMessage}`)) {
       return;
     }
 
     const deleted = await deleteAtlasRecord("locations", location.id);
     if (!deleted) return;
 
+    const dockId = dockLocation?.id || "";
+    if (matchingAssets.length && dockId) {
+      const matchingIds = new Set(matchingAssets.map((asset) => asset.id));
+      setAssetRecords((current) =>
+        current.map((asset) =>
+          matchingIds.has(asset.id)
+            ? { ...asset, locationId: dockId, locationIds: [dockId] }
+            : asset,
+        ),
+      );
+      setServiceRecords((current) =>
+        current.map((record) => {
+          if (String(record.locationId || "") !== location.id) return record;
+          if (record.assetId) return { ...record, locationId: "" };
+          if (matchingAssets.length === 1) {
+            return { ...record, assetId: matchingAssets[0].id, locationId: "" };
+          }
+          return record;
+        }),
+      );
+    }
+
     const remaining = locations.filter((item) => item.id !== location.id);
     setLocations(remaining);
     setSelectedLocationId(remaining[0]?.id || "");
     setLocationEditorOpen(false);
     setLocationMobileDrawerOpen(false);
-    showSaveToast("Location deleted.");
+    showSaveToast(
+      matchingAssets.length
+        ? "False location deleted. Asset moved to Dock and work orders preserved."
+        : "Location deleted.",
+    );
   }
 
   function addLocation() {
