@@ -136,6 +136,20 @@ function eventType(event: any): {
   icon: string;
   label: string;
 } {
+  const explicitType = String(event.eventType || "").trim();
+  const explicit = new Map<string, { icon: string; label: string }>([
+    ["Calendar Event", { icon: "📅", label: "Calendar Event" }],
+    ["Work Order", { icon: "🔧", label: "Work Order" }],
+    ["Reminder", { icon: "⏰", label: "Reminder" }],
+    ["Vendor Visit", { icon: "🚚", label: "Vendor Visit" }],
+    ["Personal", { icon: "👤", label: "Personal" }],
+    ["Property Milestone", { icon: "📌", label: "Property Milestone" }],
+  ]);
+
+  if (explicit.has(explicitType)) {
+    return explicit.get(explicitType)!;
+  }
+
   const category = String(
     event.categoryLabel || event.area || "",
   ).toLowerCase();
@@ -211,6 +225,35 @@ function hoverText(event: any): string {
   }
 
   return parts.join("\n");
+}
+
+
+const calendarEventTypes = [
+  { value: "Calendar Event", icon: "📅", description: "Standard scheduled event" },
+  { value: "Work Order", icon: "🔧", description: "Work that can be converted into a work order" },
+  { value: "Reminder", icon: "⏰", description: "A simple follow-up reminder" },
+  { value: "Vendor Visit", icon: "🚚", description: "Vendor appointment or site visit" },
+  { value: "Personal", icon: "👤", description: "Private personal calendar item" },
+  { value: "Property Milestone", icon: "📌", description: "Important property-history milestone" },
+] as const;
+
+function eventTypeDefaults(value: string) {
+  if (value === "Work Order") {
+    return { source: "manual", categoryLabel: "Work Order", area: "Work Order" };
+  }
+  if (value === "Reminder") {
+    return { source: "manual", categoryLabel: "Reminder", area: "Reminder", reminder: "1 day before" };
+  }
+  if (value === "Vendor Visit") {
+    return { source: "manual", categoryLabel: "Vendor Visit", area: "Vendor Visit", linkedType: "Vendor" };
+  }
+  if (value === "Personal") {
+    return { source: "manual", categoryLabel: "Personal", area: "Personal" };
+  }
+  if (value === "Property Milestone") {
+    return { source: "manual", categoryLabel: "Property Milestone", area: "Property Milestone", allDay: true };
+  }
+  return { source: "manual", categoryLabel: "Calendar Event", area: "Calendar Event" };
 }
 
 function sortAgenda(events: any[]): any[] {
@@ -540,6 +583,15 @@ export default function AtlasCalendar(
         onClick={() => {
           if (dateKey) showDay(dateKey);
         }}
+        onDoubleClick={(mouseEvent) => {
+          if (!dateKey) return;
+          mouseEvent.preventDefault();
+          mouseEvent.stopPropagation();
+          setSelectedCalendarDate(dateKey);
+          addCalendarItem(dateKey);
+          setEditorOpen(true);
+          setDetailOpen(true);
+        }}
         style={{
           ...calendarCellStyle,
           width: "100%",
@@ -663,6 +715,7 @@ export default function AtlasCalendar(
                     }}
                   >
                     {event.title}
+                    {event.repeat && event.repeat !== "None" ? "  ↻" : ""}
                   </span>
                 </span>
               );
@@ -853,8 +906,21 @@ export default function AtlasCalendar(
                                 </span>
 
                                 {event.repeat && event.repeat !== "None" ? (
-                                  <span style={{ display: "block", marginTop: 3 }}>
-                                    Repeats {event.repeat}
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 5,
+                                      marginTop: 6,
+                                      padding: "3px 7px",
+                                      borderRadius: 999,
+                                      background: "rgba(7,27,47,0.07)",
+                                      color: colors.navy,
+                                      fontSize: 11,
+                                      fontWeight: 900,
+                                    }}
+                                  >
+                                    ↻ Repeats {event.repeat}
                                   </span>
                                 ) : null}
 
@@ -950,6 +1016,11 @@ export default function AtlasCalendar(
                 >
                   Add Event
                 </button>
+                {!isMobile ? (
+                  <div style={{ ...mutedSmallStyle, marginTop: 8, textAlign: "center" }}>
+                    Tip: double-click an empty day to add an event immediately.
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -984,6 +1055,39 @@ export default function AtlasCalendar(
               </div>
 
               <div style={formGridStyle}>
+                <label
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    minWidth: 0,
+                    gridColumn: "1 / -1",
+                  }}
+                >
+                  <span style={fieldLabelStyle}>Event Type</span>
+                  <select
+                    value={selectedCalendar.eventType || "Calendar Event"}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      updateCalendarItem({
+                        eventType: value,
+                        ...eventTypeDefaults(value),
+                        linkedId: value === "Vendor Visit" ? selectedCalendar.linkedId || "" : selectedCalendar.linkedId || "",
+                        linkedName: value === "Vendor Visit" ? selectedCalendar.linkedName || "" : selectedCalendar.linkedName || "",
+                      });
+                    }}
+                    style={{
+                      ...inputStyle,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {calendarEventTypes.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.icon} {type.value} — {type.description}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
                 <Field
                   label="Title"
                   value={selectedCalendar.title || ""}
