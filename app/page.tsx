@@ -3785,6 +3785,8 @@ export default function AtlasPage() {
   const [previewZoom, setPreviewZoom] = useState(100);
   const [documentSearch, setDocumentSearch] = useState("");
   const [documentCategoryFilter, setDocumentCategoryFilter] = useState("All");
+  const [documentLinkFilter, setDocumentLinkFilter] = useState("All");
+  const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const documentListScrollYRef = useRef(0);
   const documentOverlayScrollRef = useRef<HTMLDivElement>(null);
@@ -16620,40 +16622,69 @@ export default function AtlasPage() {
 
   function renderDocuments() {
     const normalizedDocumentSearch = documentSearch.trim().toLowerCase();
-    const sortedDocuments = [...allDocuments].sort(
-      (a, b) =>
-        a.title.localeCompare(b.title) ||
-        String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
-    );
     const documentCategories = Array.from(
       new Set(
-        sortedDocuments.map((doc) => doc.type?.trim() || "Uncategorized"),
+        allDocuments.map((doc) => doc.type?.trim() || "Uncategorized"),
       ),
     ).sort((a, b) => a.localeCompare(b));
-    const searchableDocuments = sortedDocuments.filter((doc) => {
-      const category = doc.type?.trim() || "Uncategorized";
-      if (
-        documentCategoryFilter !== "All" &&
-        category !== documentCategoryFilter
-      ) {
-        return false;
-      }
-      if (!normalizedDocumentSearch) return true;
-      const fileNames = (doc.files || []).map((file) => file.name).join(" ");
-      return [
-        doc.title,
-        doc.type,
-        doc.area,
-        doc.targetType,
-        doc.targetName,
-        doc.notes,
-        doc.pastedText,
-        fileNames,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedDocumentSearch);
-    });
+    const documentLinkTypes = Array.from(
+      new Set(
+        allDocuments.map((doc) => doc.targetType?.trim() || "General"),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+
+    const searchableDocuments = allDocuments
+      .filter((doc) => {
+        const category = doc.type?.trim() || "Uncategorized";
+        const linkType = doc.targetType?.trim() || "General";
+
+        if (
+          documentCategoryFilter !== "All" &&
+          category !== documentCategoryFilter
+        ) {
+          return false;
+        }
+        if (documentLinkFilter !== "All" && linkType !== documentLinkFilter) {
+          return false;
+        }
+        if (!normalizedDocumentSearch) return true;
+
+        const fileNames = (doc.files || []).map((file) => file.name).join(" ");
+        return [
+          doc.title,
+          doc.type,
+          doc.area,
+          doc.targetType,
+          doc.targetName,
+          doc.notes,
+          doc.pastedText,
+          fileNames,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedDocumentSearch);
+      })
+      .sort((a, b) => {
+        if (documentSort === "title") {
+          return a.title.localeCompare(b.title);
+        }
+        if (documentSort === "category") {
+          return (
+            (a.type?.trim() || "Uncategorized").localeCompare(
+              b.type?.trim() || "Uncategorized",
+            ) || a.title.localeCompare(b.title)
+          );
+        }
+        return (
+          String(b.createdAt || "").localeCompare(String(a.createdAt || "")) ||
+          a.title.localeCompare(b.title)
+        );
+      });
+
+    const activeDocumentFilterCount =
+      Number(documentCategoryFilter !== "All") +
+      Number(documentLinkFilter !== "All") +
+      Number(Boolean(normalizedDocumentSearch));
 
     const selectedDocument =
       allDocuments.find((doc) => doc.id === selectedDocumentId) || null;
@@ -17025,7 +17056,7 @@ export default function AtlasPage() {
         <ListDrawerLayout
           eyebrow="Document Vault"
           title="Documents"
-          detail="Search the list, then click once to open the document or photo in the viewer."
+          detail="Find documents by title, category, or linked property record. Select a preview card to view and edit it."
           isMobile={isMobile}
           drawerResetKey={selectedDocumentId || "document-new"}
           right={
@@ -17035,7 +17066,7 @@ export default function AtlasPage() {
                 onClick={() => setScreen("manuals")}
                 style={secondaryButtonStyle}
               >
-                Manual Library
+                Browse Manuals
               </button>
               <button
                 type="button"
@@ -17048,107 +17079,439 @@ export default function AtlasPage() {
           }
           list={
             <div style={{ display: "grid", gap: 12 }}>
-              <div style={{ ...cardStyle, padding: 12 }}>
-                <input
-                  value={documentSearch}
-                  onChange={(event) =>
-                    setDocumentSearch(event.currentTarget.value)
-                  }
-                  placeholder="Search documents and photos..."
-                  style={inputStyle}
-                  aria-label="Search documents and photos"
-                />
-                <select
-                  value={documentCategoryFilter}
-                  onChange={(event) =>
-                    setDocumentCategoryFilter(event.currentTarget.value)
-                  }
-                  style={{ ...inputStyle, marginTop: 8 }}
-                  aria-label="Filter documents by category"
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: 14,
+                  display: "grid",
+                  gap: 12,
+                  background:
+                    "linear-gradient(180deg, #FFFFFF 0%, #F7FAFC 100%)",
+                }}
+              >
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span style={fieldLabelStyle}>Find a document</span>
+                  <div style={{ position: "relative" }}>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        left: 13,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        color: colors.muted,
+                        fontSize: 16,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      ⌕
+                    </span>
+                    <input
+                      value={documentSearch}
+                      onChange={(event) =>
+                        setDocumentSearch(event.currentTarget.value)
+                      }
+                      placeholder="Search title, category, property area, vendor, or file name"
+                      style={{
+                        ...inputStyle,
+                        paddingLeft: 38,
+                        minHeight: 44,
+                      }}
+                      aria-label="Search documents and photos"
+                    />
+                  </div>
+                </label>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
                 >
-                  <option value="All">All categories</option>
-                  {documentCategories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Category</span>
+                    <select
+                      value={documentCategoryFilter}
+                      onChange={(event) =>
+                        setDocumentCategoryFilter(event.currentTarget.value)
+                      }
+                      style={inputStyle}
+                      aria-label="Filter documents by category"
+                    >
+                      <option value="All">All categories</option>
+                      {documentCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Linked to</span>
+                    <select
+                      value={documentLinkFilter}
+                      onChange={(event) =>
+                        setDocumentLinkFilter(event.currentTarget.value)
+                      }
+                      style={inputStyle}
+                      aria-label="Filter documents by linked section"
+                    >
+                      <option value="All">Everything</option>
+                      {documentLinkTypes.map((linkType) => (
+                        <option key={linkType} value={linkType}>
+                          {linkType}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: "space-between",
                     alignItems: "center",
-                    gap: 8,
-                    marginTop: 8,
+                    justifyContent: "space-between",
+                    gap: 10,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <span style={mutedSmallStyle}>
-                    {searchableDocuments.length} item
-                    {searchableDocuments.length === 1 ? "" : "s"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void refreshDocumentVault()}
-                    style={smallSubtleButtonStyle}
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      color: colors.muted,
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
                   >
-                    Refresh
-                  </button>
+                    Sort
+                    <select
+                      value={documentSort}
+                      onChange={(event) =>
+                        setDocumentSort(
+                          event.currentTarget.value as
+                            | "newest"
+                            | "title"
+                            | "category",
+                        )
+                      }
+                      style={{
+                        ...inputStyle,
+                        width: "auto",
+                        minWidth: 132,
+                        minHeight: 36,
+                        padding: "7px 30px 7px 10px",
+                      }}
+                    >
+                      <option value="newest">Newest first</option>
+                      <option value="title">A–Z</option>
+                      <option value="category">By category</option>
+                    </select>
+                  </label>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={mutedSmallStyle}>
+                      {searchableDocuments.length} of {allDocuments.length}
+                    </span>
+                    {activeDocumentFilterCount ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDocumentSearch("");
+                          setDocumentCategoryFilter("All");
+                          setDocumentLinkFilter("All");
+                        }}
+                        style={smallSubtleButtonStyle}
+                      >
+                        Clear filters
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => void refreshDocumentVault()}
+                      style={smallSubtleButtonStyle}
+                    >
+                      Refresh
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {!searchableDocuments.length ? (
-                <div style={noticeStyle}>
-                  <strong>No matching documents.</strong>
+                <div
+                  style={{
+                    ...noticeStyle,
+                    padding: 24,
+                    textAlign: "center",
+                  }}
+                >
+                  <strong>No documents match these filters.</strong>
+                  <p style={{ ...mutedSmallStyle, marginTop: 6 }}>
+                    Clear the filters or use a broader search.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocumentSearch("");
+                      setDocumentCategoryFilter("All");
+                      setDocumentLinkFilter("All");
+                    }}
+                    style={{ ...secondaryButtonStyle, marginTop: 10 }}
+                  >
+                    Show all documents
+                  </button>
                 </div>
               ) : (
                 <div
                   style={{
                     display: "grid",
-                    gap: 6,
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
+                    gap: 10,
                     alignContent: "start",
                   }}
                 >
-                  {searchableDocuments.map((document) => (
-                    <button
-                      key={document.id}
-                      type="button"
-                      onClick={() => {
-                        documentListScrollYRef.current = window.scrollY;
-                        setSelectedDocumentId(document.id);
-                      }}
-                      style={{
-                        ...rowButtonStyle,
-                        padding: "13px 14px",
-                        minHeight: 48,
-                        borderColor:
-                          selectedDocument?.id === document.id
-                            ? colors.gold
-                            : colors.line,
-                        background:
-                          selectedDocument?.id === document.id
-                            ? "#FFFAEB"
-                            : "#FFFFFF",
-                        boxShadow:
-                          selectedDocument?.id === document.id
-                            ? "0 10px 22px rgba(201,154,61,0.16)"
-                            : rowButtonStyle.boxShadow,
-                      }}
-                    >
-                      <strong
+                  {searchableDocuments.map((document) => {
+                    const previewFile = document.files?.[0] || null;
+                    const previewSource =
+                      previewFile?.dataUrl || previewFile?.url || "";
+                    const previewType = String(
+                      previewFile?.type || "",
+                    ).toLowerCase();
+                    const previewName = String(
+                      previewFile?.name || "",
+                    ).toLowerCase();
+                    const isPreviewImage =
+                      previewType.startsWith("image/") ||
+                      previewSource.startsWith("data:image/") ||
+                      /\.(png|jpe?g|gif|webp|avif|svg)$/.test(previewName);
+                    const category =
+                      document.type?.trim() || "Uncategorized";
+                    const linkedLabel =
+                      document.targetName?.trim() ||
+                      document.area?.trim() ||
+                      document.targetType?.trim() ||
+                      "General";
+                    const isSelected = selectedDocument?.id === document.id;
+
+                    return (
+                      <button
+                        key={document.id}
+                        type="button"
+                        onClick={() => {
+                          documentListScrollYRef.current = window.scrollY;
+                          setSelectedDocumentId(document.id);
+                        }}
+                        aria-pressed={isSelected}
                         style={{
-                          display: "block",
+                          position: "relative",
+                          display: "grid",
+                          gridTemplateRows: "112px auto",
+                          minWidth: 0,
                           overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          padding: 0,
+                          border: `1px solid ${
+                            isSelected ? colors.gold : colors.line
+                          }`,
+                          borderRadius: 16,
+                          background: "#FFFFFF",
+                          color: colors.ink,
+                          textAlign: "left",
+                          cursor: "pointer",
+                          boxShadow: isSelected
+                            ? "0 14px 30px rgba(201,154,61,0.18)"
+                            : "0 7px 20px rgba(15,45,68,0.07)",
+                          transform: isSelected
+                            ? "translateY(-1px)"
+                            : "none",
+                          transition:
+                            "transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
                         }}
                       >
-                        {document.title}
-                      </strong>
-                    </button>
-                  ))}
+                        <span
+                          style={{
+                            position: "relative",
+                            display: "grid",
+                            placeItems: "center",
+                            overflow: "hidden",
+                            background:
+                              "linear-gradient(145deg, #EEF4F8, #F8FBFD)",
+                            borderBottom: `1px solid ${colors.line}`,
+                          }}
+                        >
+                          {isPreviewImage && previewSource ? (
+                            <img
+                              src={previewSource}
+                              alt=""
+                              loading="lazy"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                                display: "block",
+                              }}
+                            />
+                          ) : (
+                            <span
+                              style={{
+                                display: "grid",
+                                placeItems: "center",
+                                width: 52,
+                                height: 64,
+                                borderRadius: 10,
+                                background: "#FFFFFF",
+                                border: `1px solid ${colors.line}`,
+                                boxShadow:
+                                  "0 10px 24px rgba(15,45,68,0.10)",
+                                color: colors.blue,
+                                fontSize: 11,
+                                fontWeight: 950,
+                                letterSpacing: "0.08em",
+                              }}
+                            >
+                              {previewName.endsWith(".pdf")
+                                ? "PDF"
+                                : previewFile
+                                  ? "FILE"
+                                  : "TEXT"}
+                            </span>
+                          )}
+
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: 9,
+                              left: 9,
+                              maxWidth: "calc(100% - 18px)",
+                              padding: "5px 8px",
+                              overflow: "hidden",
+                              borderRadius: 999,
+                              background: "rgba(7, 36, 58, 0.84)",
+                              color: "#FFFFFF",
+                              fontSize: 9,
+                              fontWeight: 900,
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              backdropFilter: "blur(10px)",
+                            }}
+                          >
+                            {category}
+                          </span>
+
+                          {isSelected ? (
+                            <span
+                              style={{
+                                position: "absolute",
+                                top: 9,
+                                right: 9,
+                                display: "grid",
+                                placeItems: "center",
+                                width: 24,
+                                height: 24,
+                                borderRadius: 999,
+                                background: colors.gold,
+                                color: "#102F49",
+                                fontSize: 13,
+                                fontWeight: 950,
+                              }}
+                            >
+                              ✓
+                            </span>
+                          ) : null}
+                        </span>
+
+                        <span
+                          style={{
+                            display: "grid",
+                            gap: 7,
+                            minWidth: 0,
+                            padding: 12,
+                          }}
+                        >
+                          <strong
+                            style={{
+                              display: "-webkit-box",
+                              minHeight: 36,
+                              overflow: "hidden",
+                              color: colors.ink,
+                              fontSize: 13,
+                              lineHeight: 1.35,
+                              WebkitBoxOrient: "vertical",
+                              WebkitLineClamp: 2,
+                            }}
+                          >
+                            {document.title || "Untitled document"}
+                          </strong>
+
+                          <span
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              minWidth: 0,
+                              color: colors.muted,
+                              fontSize: 10,
+                              fontWeight: 750,
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: 6,
+                                height: 6,
+                                flex: "0 0 auto",
+                                borderRadius: 999,
+                                background: colors.gold,
+                              }}
+                            />
+                            <span
+                              style={{
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {linkedLabel}
+                            </span>
+                          </span>
+
+                          <span
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 8,
+                              color: colors.muted,
+                              fontSize: 9,
+                              fontWeight: 700,
+                            }}
+                          >
+                            <span>
+                              {document.files?.length || 0} file
+                              {(document.files?.length || 0) === 1 ? "" : "s"}
+                            </span>
+                            <span>
+                              {document.createdAt
+                                ? new Date(
+                                    document.createdAt,
+                                  ).toLocaleDateString()
+                                : "Saved"}
+                            </span>
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
+          }
           }
           drawer={isMobile ? undefined : documentViewer}
         />
