@@ -3628,10 +3628,17 @@ export default function AtlasPage() {
     "hangar",
   ]);
   const [query, setQuery] = useState("");
+  const [dashboardWorkFilter, setDashboardWorkFilter] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (screen !== "history" && dashboardWorkFilter) {
+      setDashboardWorkFilter("");
+    }
+  }, [screen, dashboardWorkFilter]);
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
   );
@@ -12219,12 +12226,18 @@ export default function AtlasPage() {
 
     const priorityRank = (record: ServiceRecord) =>
       record.priority === "High" ? 0 : record.priority === "Medium" ? 1 : 2;
-    const mission = [...dueToday]
+    const todaysWork = [...dueToday]
       .sort((a, b) =>
         priorityRank(a) - priorityRank(b) ||
         String(a.title || "").localeCompare(String(b.title || "")),
       )
       .slice(0, 6);
+    const todaysRequests = activeRequests
+      .filter((request) =>
+        String(request.submittedAt || request.updatedAt || "").slice(0, 10) === today ||
+        String(request.preferredTiming || "").toLowerCase().includes("today"),
+      )
+      .slice(0, 4);
 
     const completionTime = (record: AtlasServiceRecord) => {
       const values = [
@@ -12467,50 +12480,75 @@ export default function AtlasPage() {
             <section style={commandCardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
                 <div>
-                  <div style={eyebrowStyle}>Today</div>
-                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today's Mission</h2>
+                  <div style={eyebrowStyle}>Daily Operations</div>
+                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today</h2>
+                  <p style={{ ...mutedSmallStyle, marginTop: 4 }}>Work, appointments, requests, and property conditions in one place.</p>
                 </div>
-                <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 10px" }}>
-                  All Work
+                <button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 10px" }}>
+                  Open Calendar
                 </button>
               </div>
-              <div style={{ display: "grid", gap: 8 }}>
-                {mission.map((record, index) => (
+              <div style={{ display: "grid", gap: 9 }}>
+                {todaysWork.map((record) => (
                   <button
-                    key={record.id}
+                    key={`today-work-${record.id}`}
                     type="button"
                     onClick={() => {
+                      setDashboardWorkFilter("");
                       setSelectedServiceId(record.id);
                       setScreen("history");
                     }}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "34px minmax(0, 1fr) auto",
-                      alignItems: "center",
-                      gap: 10,
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 12,
-                      background: record.date && record.date < today ? "#FFF7F5" : "#FFFFFF",
-                      padding: "10px 11px",
-                      color: colors.text,
-                      textAlign: "left",
-                      cursor: "pointer",
-                    }}
+                    style={{ display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) auto", alignItems: "center", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: "10px 11px", color: colors.text, textAlign: "left", cursor: "pointer" }}
                   >
-                    <span style={{ width: 28, height: 28, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#F1F5F9", fontWeight: 900, color: colors.navy }}>
-                      {index + 1}
-                    </span>
+                    <span style={{ width: 30, height: 30, borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#EEF4FF", fontSize: 16 }}>🔧</span>
                     <span style={{ minWidth: 0 }}>
                       <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong>
-                      <small style={mutedSmallStyle}>
-                        {record.date ? (record.date < today ? `Overdue · ${formatDate(record.date)}` : `Due ${formatDate(record.date)}`) : "No due date"}
-                        {(record as AtlasServiceRecord).effort ? ` · ${(record as AtlasServiceRecord).effort}` : ""}
-                      </small>
+                      <small style={mutedSmallStyle}>Work order · {record.date ? `Due ${formatDate(record.date)}` : "Today"}</small>
                     </span>
                     <span style={badgeStyle(record.priority || "Medium")}>{record.priority || "Medium"}</span>
                   </button>
                 ))}
-                {!mission.length ? <div style={noticeStyle}>Nothing is scheduled for today.</div> : null}
+                {todayEvents.slice(0, 6).map((item) => (
+                  <button
+                    key={`today-event-${String(item.instanceId || item.id)}`}
+                    type="button"
+                    onClick={() => { setScreen("calendar"); window.setTimeout(() => openCalendarItem(item), 0); }}
+                    style={{ display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) auto", alignItems: "center", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: "10px 11px", color: colors.text, textAlign: "left", cursor: "pointer" }}
+                  >
+                    <span style={{ width: 30, height: 30, borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#F3E8FF", fontSize: 16 }}>📅</span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</strong>
+                      <small style={mutedSmallStyle}>{item.categoryLabel || item.area || "Calendar"}</small>
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{item.time || "All day"}</span>
+                  </button>
+                ))}
+                {todaysRequests.map((request) => (
+                  <button
+                    key={`today-request-${request.id}`}
+                    type="button"
+                    onClick={() => { setSelectedRequestId(request.id); setScreen("requests"); }}
+                    style={{ display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) auto", alignItems: "center", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: "10px 11px", color: colors.text, textAlign: "left", cursor: "pointer" }}
+                  >
+                    <span style={{ width: 30, height: 30, borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#FFF4E5", fontSize: 16 }}>📨</span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{request.title || "Property request"}</strong>
+                      <small style={mutedSmallStyle}>Request · {request.requesterName || "Owner"}</small>
+                    </span>
+                    <span style={badgeStyle(String(request.priority || "Medium"))}>{request.priority || "Medium"}</span>
+                  </button>
+                ))}
+                {todaysWeather ? (
+                  <button type="button" onClick={() => setScreen("calendar")} style={{ display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) auto", alignItems: "center", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: "10px 11px", color: colors.text, textAlign: "left", cursor: "pointer" }}>
+                    <span style={{ width: 30, height: 30, borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#E0F2FE", fontSize: 16 }}>{weatherIcon(Number(todaysWeather.code || 0))}</span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={{ display: "block" }}>Property conditions</strong>
+                      <small style={mutedSmallStyle}>{irrigationAdvice(todaysWeather)}</small>
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{Math.round(Number(todaysWeather.high || 0))}°</span>
+                  </button>
+                ) : null}
+                {!todaysWork.length && !todayEvents.length && !todaysRequests.length && !todaysWeather ? <div style={noticeStyle}>Nothing is scheduled for today.</div> : null}
               </div>
             </section>
 
@@ -12534,7 +12572,9 @@ export default function AtlasPage() {
                       type="button"
                       className="atlas-dashboard-status-card"
                       onClick={() => {
-                        setQuery(item.query);
+                        setDashboardWorkFilter(item.query);
+                        setSelectedServiceId("");
+                        setWorkOrdersOpenKey((current) => current + 1);
                         setScreen("history");
                       }}
                       style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 12, textAlign: "left", cursor: "pointer", color: colors.text }}
@@ -16711,6 +16751,33 @@ export default function AtlasPage() {
   function renderWorkOrders() {
     return (
       <div className="atlas-work-orders-page">
+        {dashboardWorkFilter ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              marginBottom: 12,
+              padding: "10px 12px",
+              border: `1px solid ${colors.gold}`,
+              borderRadius: 12,
+              background: "#FFFBEB",
+              color: colors.navy,
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 900 }}>
+              Showing only {dashboardWorkFilter} work orders
+            </span>
+            <button
+              type="button"
+              onClick={() => setDashboardWorkFilter("")}
+              style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}
+            >
+              Show All
+            </button>
+          </div>
+        ) : null}
               <style>{`
           .atlas-work-orders-page input[placeholder*="Search work"] {
             border: 2px solid #8EA5B8 !important;
@@ -16728,7 +16795,14 @@ export default function AtlasPage() {
         eyebrowStyle={eyebrowStyle}
         serviceRecords={serviceRecords}
         colors={colors}
-        filteredServices={serviceRecords}
+        filteredServices={
+          dashboardWorkFilter
+            ? serviceRecords.filter((record) => {
+                const text = `${(record as AtlasServiceRecord).workCategory || ""} ${record.title || ""} ${record.notes || ""}`.toLowerCase();
+                return text.includes(dashboardWorkFilter.toLowerCase());
+              })
+            : serviceRecords
+        }
         listStyle={listStyle}
         setSelectedServiceId={setSelectedServiceId}
         rowButtonStyle={rowButtonStyle}
@@ -25794,14 +25868,14 @@ export default function AtlasPage() {
 
               <div
                 style={{
-                  width: isMobile ? "100%" : 430,
+                  width: isMobile ? "100%" : 320,
                   maxWidth: "100%",
                 }}
               >
                 <select
                   value={activePropertyId}
                   onChange={(event) => selectProperty(event.currentTarget.value)}
-                  style={{ ...inputStyle, marginBottom: 8, fontWeight: 900 }}
+                  style={{ ...inputStyle, marginBottom: 6, minHeight: 36, padding: "7px 10px", fontSize: 13, fontWeight: 900 }}
                   aria-label="Active property"
                 >
                   {atlasProperties.filter((property) => allowedPropertyIds.includes(property.id)).map((property) => (
