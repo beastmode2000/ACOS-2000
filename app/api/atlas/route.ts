@@ -2020,9 +2020,9 @@ export async function DELETE(request: NextRequest) {
         WHERE property_id = ${propertyId} AND parent_id = ${id}
       `) as unknown as JsonRecord[];
 
-      const directWorkOrderCount = number(remainingWorkOrders[0]?.count);
-      const assetCount = number(remainingAssets[0]?.count);
-      const childCount = number(childLocations[0]?.count);
+      const directWorkOrderCount = Number(remainingWorkOrders[0]?.count || 0);
+      const assetCount = Number(remainingAssets[0]?.count || 0);
+      const childCount = Number(childLocations[0]?.count || 0);
       if (directWorkOrderCount || assetCount || childCount) {
         return NextResponse.json(
           {
