@@ -14307,12 +14307,34 @@ export default function AtlasPage() {
                       label: "Asset Health",
                       value: `${assetHealthScore}%`,
                       detail: assetHealthLabel,
+                      hoverTitle: "Health factors",
+                      hoverLines: [
+                        `${openAssetWorkOrders.length} open work order${openAssetWorkOrders.length === 1 ? "" : "s"}`,
+                        `${assetWarnings.length} attention item${assetWarnings.length === 1 ? "" : "s"}`,
+                        nextAssetMaintenance?.date
+                          ? `Next maintenance ${formatDate(nextAssetMaintenance.date)}`
+                          : "No maintenance currently scheduled",
+                      ],
                       action: () => undefined,
                     },
                     {
                       label: "Open Work",
                       value: String(openAssetWorkOrders.length),
                       detail: openAssetWorkOrders[0]?.title || "No open work orders",
+                      hoverTitle: "Open-work summary",
+                      hoverLines: openAssetWorkOrders.length
+                        ? [
+                            `Next: ${openAssetWorkOrders[0]?.title || "Untitled work order"}`,
+                            openAssetWorkOrders[0]?.date
+                              ? `Due ${formatDate(openAssetWorkOrders[0].date)}`
+                              : "No due date recorded",
+                            `${assetEstimatedCost.toLocaleString(undefined, {
+                              style: "currency",
+                              currency: "USD",
+                              maximumFractionDigits: 0,
+                            })} estimated open-work cost`,
+                          ]
+                        : ["No active work orders", "Create a work order to begin tracking service"],
                       action: () => {
                         if (openAssetWorkOrders[0]) {
                           setSelectedServiceId(openAssetWorkOrders[0].id);
@@ -14326,6 +14348,19 @@ export default function AtlasPage() {
                         ? formatDate(nextAssetMaintenance.date)
                         : "None scheduled",
                       detail: nextAssetMaintenance?.title || "Add preventive maintenance",
+                      hoverTitle: "Maintenance details",
+                      hoverLines: nextAssetMaintenance
+                        ? [
+                            nextAssetMaintenance.title || "Preventive maintenance",
+                            nextAssetMaintenance.date
+                              ? `Scheduled ${formatDate(nextAssetMaintenance.date)}`
+                              : "No scheduled date",
+                            `Priority: ${nextAssetMaintenance.priority || "Not recorded"}`,
+                          ]
+                        : [
+                            "No preventive maintenance is scheduled",
+                            "Click to create a recurring maintenance work order",
+                          ],
                       action: () => {
                         if (nextAssetMaintenance) {
                           setSelectedServiceId(nextAssetMaintenance.id);
@@ -14346,6 +14381,16 @@ export default function AtlasPage() {
                         ? formatDate(lastCompletedAssetWork.date)
                         : "No history",
                       detail: lastCompletedAssetWork?.title || "Completed work will appear here",
+                      hoverTitle: "Most recent completed service",
+                      hoverLines: lastCompletedAssetWork
+                        ? [
+                            lastCompletedAssetWork.title || "Completed service",
+                            lastCompletedAssetWork.date
+                              ? `Completed ${formatDate(lastCompletedAssetWork.date)}`
+                              : "Completion date not recorded",
+                            "Click to open the full service record",
+                          ]
+                        : ["No completed service has been recorded for this asset"],
                       action: () => {
                         if (lastCompletedAssetWork) {
                           setSelectedServiceId(lastCompletedAssetWork.workOrderId);
@@ -14359,6 +14404,14 @@ export default function AtlasPage() {
                         ? locationName(selectedAsset.locationId)
                         : "Not assigned",
                       detail: `${assetLocationIds(selectedAsset).length} linked location${assetLocationIds(selectedAsset).length === 1 ? "" : "s"}`,
+                      hoverTitle: "Location assignment",
+                      hoverLines: selectedAsset.locationId
+                        ? [
+                            locationName(selectedAsset.locationId),
+                            `${assetLocationIds(selectedAsset).length} linked location${assetLocationIds(selectedAsset).length === 1 ? "" : "s"}`,
+                            "Click to open the location record",
+                          ]
+                        : ["This asset is not assigned to a primary location"],
                       action: () => {
                         if (selectedAsset.locationId) {
                           setSelectedLocationId(selectedAsset.locationId);
@@ -14382,12 +14435,27 @@ export default function AtlasPage() {
                             maximumFractionDigits: 0,
                           })} estimated open work`
                         : "No estimated open-work cost",
+                      hoverTitle: "Cost breakdown",
+                      hoverLines: [
+                        `${assetActualCost.toLocaleString(undefined, {
+                          style: "currency",
+                          currency: "USD",
+                          maximumFractionDigits: 0,
+                        })} completed-service cost`,
+                        `${assetEstimatedCost.toLocaleString(undefined, {
+                          style: "currency",
+                          currency: "USD",
+                          maximumFractionDigits: 0,
+                        })} estimated open-work cost`,
+                        "Click to review service history",
+                      ],
                       action: () => setScreen("history"),
                     },
                   ].map((item) => (
                     <button
                       key={item.label}
                       type="button"
+                      className="atlas-gold-hover-card"
                       onClick={item.action}
                       style={{
                         border: `1px solid ${colors.line}`,
@@ -14399,6 +14467,7 @@ export default function AtlasPage() {
                         cursor: "pointer",
                       }}
                     >
+                      <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
                       <span style={assetInfoLabelStyle}>{item.label}</span>
                       <strong
                         style={{
@@ -14422,6 +14491,12 @@ export default function AtlasPage() {
                         }}
                       >
                         {item.detail}
+                      </span>
+                      <span className="atlas-gold-hover-popover" aria-hidden="true">
+                        <strong>{item.hoverTitle}</strong>
+                        {item.hoverLines.map((line) => (
+                          <span key={line}>{line}</span>
+                        ))}
                       </span>
                     </button>
                   ))}
@@ -23356,6 +23431,81 @@ export default function AtlasPage() {
             page-break-inside: avoid;
           }
         }
+        .atlas-gold-hover-card {
+          position: relative;
+          isolation: isolate;
+          overflow: visible;
+          box-shadow: 0 1px 2px rgba(18, 35, 63, 0.04);
+          transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+        }
+        .atlas-gold-hover-card:hover,
+        .atlas-gold-hover-card:focus-visible {
+          z-index: 40;
+          border-color: rgba(201, 154, 61, 0.82) !important;
+          background: #FFFFFF !important;
+          box-shadow: 0 12px 28px rgba(18, 35, 63, 0.14), 0 0 0 3px rgba(201, 154, 61, 0.09);
+          outline: none;
+        }
+        .atlas-gold-hover-card-accent {
+          position: absolute;
+          top: 8px;
+          bottom: 8px;
+          left: -1px;
+          width: 3px;
+          border-radius: 0 999px 999px 0;
+          background: #C99A3D;
+          opacity: 0;
+          transition: opacity 160ms ease;
+        }
+        .atlas-gold-hover-card:hover .atlas-gold-hover-card-accent,
+        .atlas-gold-hover-card:focus-visible .atlas-gold-hover-card-accent {
+          opacity: 1;
+        }
+        .atlas-gold-hover-popover {
+          position: absolute;
+          left: 8px;
+          right: 8px;
+          top: calc(100% + 7px);
+          z-index: 50;
+          display: grid;
+          gap: 5px;
+          padding: 11px 12px;
+          border: 1px solid rgba(201, 154, 61, 0.58);
+          border-radius: 10px;
+          background: rgba(18, 35, 63, 0.98);
+          color: #FFFFFF;
+          box-shadow: 0 18px 38px rgba(18, 35, 63, 0.24);
+          opacity: 0;
+          pointer-events: none;
+          transform: scale(0.985);
+          transform-origin: top center;
+          transition: opacity 140ms ease, transform 160ms ease;
+        }
+        .atlas-gold-hover-card:hover .atlas-gold-hover-popover,
+        .atlas-gold-hover-card:focus-visible .atlas-gold-hover-popover {
+          opacity: 1;
+          transform: scale(1);
+        }
+        .atlas-gold-hover-popover > strong {
+          color: #F5D98B;
+          font-size: 10px;
+          letter-spacing: 0.02em;
+        }
+        .atlas-gold-hover-popover > span {
+          color: #E8EDF4;
+          font-size: 10px;
+          line-height: 1.35;
+        }
+        @media (hover: none), (pointer: coarse) {
+          .atlas-gold-hover-popover { display: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .atlas-gold-hover-card,
+          .atlas-gold-hover-card-accent,
+          .atlas-gold-hover-popover {
+            transition: none;
+          }
+        }
         @keyframes atlasTimelineEnter {
           from { opacity: 0; transform: translateY(9px) scale(0.992); }
           to { opacity: 1; transform: translateY(0) scale(1); }
@@ -23426,7 +23576,6 @@ export default function AtlasPage() {
         .atlas-asset-timeline-row:hover,
         .atlas-asset-timeline-row:focus-visible {
           z-index: 20;
-          transform: translateY(-3px) translateX(2px);
           border-color: rgba(201, 154, 61, 0.78);
           background: #FFFFFF;
           box-shadow: 0 14px 30px rgba(18, 35, 63, 0.14), 0 0 0 3px rgba(201, 154, 61, 0.10);
@@ -23434,9 +23583,7 @@ export default function AtlasPage() {
         }
         .atlas-asset-timeline-item:hover .atlas-asset-timeline-dot,
         .atlas-asset-timeline-item:focus-within .atlas-asset-timeline-dot {
-          transform: scale(1.25);
           background: #C99A3D;
-          animation: atlasTimelineDotPulse 1.35s ease-in-out infinite;
         }
         .atlas-asset-timeline-date {
           color: #667085;
@@ -23562,7 +23709,6 @@ export default function AtlasPage() {
         }
         .atlas-asset-timeline-more:hover,
         .atlas-asset-timeline-more:focus-visible {
-          transform: translateY(-2px);
           border-color: #C99A3D;
           box-shadow: 0 8px 18px rgba(18, 35, 63, 0.10);
           outline: none;
@@ -23599,7 +23745,7 @@ export default function AtlasPage() {
         }
         @media (hover: none), (pointer: coarse) {
           .atlas-asset-timeline-hover-panel { display: none; }
-          .atlas-asset-timeline-row:active { transform: scale(0.99); }
+          .atlas-asset-timeline-row:active { box-shadow: 0 8px 18px rgba(18, 35, 63, 0.12); }
         }
         @media (max-width: 819px) {
           .atlas-asset-timeline-row {
