@@ -170,6 +170,7 @@ type TodayLogEntry = {
 };
 
 const todayLogStorageKeys = ["atlas-today-log-v1"];
+const dashboardRoutineStorageKeys = ["atlas-dashboard-routine-completed-v1"];
 
 
 const atlasNavigationSections: {
@@ -3690,6 +3691,9 @@ export default function AtlasPage() {
         createdAt: entry.createdAt || new Date().toISOString(),
       }));
     setTodayLogEntries(stored);
+    setCompletedDashboardRoutineIds(
+      readStoredArray<string>(dashboardRoutineStorageKeys, []).filter(Boolean),
+    );
   }, []);
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
@@ -3752,6 +3756,7 @@ export default function AtlasPage() {
   const [todayLogEntries, setTodayLogEntries] = useState<TodayLogEntry[]>([]);
   const [todayLogText, setTodayLogText] = useState("");
   const [todayLogCategory, setTodayLogCategory] = useState<TodayLogEntry["category"]>("Task");
+  const [completedDashboardRoutineIds, setCompletedDashboardRoutineIds] = useState<string[]>([]);
   const [calendarColors, setCalendarColors] = useState<CalendarColor[]>(
     defaultCalendarColors,
   );
@@ -5108,6 +5113,11 @@ export default function AtlasPage() {
     if (!ready) return;
     saveStoredArray(todayLogStorageKeys[0], todayLogEntries);
   }, [ready, todayLogEntries]);
+
+  useEffect(() => {
+    if (!ready) return;
+    saveStoredArray(dashboardRoutineStorageKeys[0], completedDashboardRoutineIds);
+  }, [ready, completedDashboardRoutineIds]);
 
   useEffect(() => {
     if (!ready) return;
@@ -12403,6 +12413,16 @@ export default function AtlasPage() {
       gap: 10,
     };
 
+    const scheduledRoutineIds = scheduledRoutineEvents.map((item) =>
+      String(item.instanceId || item.id),
+    );
+    const completedRoutineCount = scheduledRoutineIds.filter((id) =>
+      completedDashboardRoutineIds.includes(id),
+    ).length;
+    const routineProgress = scheduledRoutineIds.length
+      ? Math.round((completedRoutineCount / scheduledRoutineIds.length) * 100)
+      : 0;
+
     const briefLines = [
       scheduledRoutineEvents.length
         ? `${scheduledRoutineEvents.length} recurring routine${scheduledRoutineEvents.length === 1 ? " is" : "s are"} scheduled today and available from the dashboard.`
@@ -12542,48 +12562,45 @@ export default function AtlasPage() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
                 <div>
                   <div style={eyebrowStyle}>Daily Operations</div>
-                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today</h2>
-                  <p style={{ ...mutedSmallStyle, marginTop: 4 }}>Work, appointments, requests, and property conditions in one place.</p>
+                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today & Upcoming</h2>
+                  <p style={{ ...mutedSmallStyle, marginTop: 4 }}>Today’s work first, followed by the next important items on the schedule.</p>
                 </div>
                 <button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 10px" }}>
                   Open Calendar
                 </button>
               </div>
-              <div id="atlas-today-routine" style={{ marginBottom: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>Today Routine</div>
-                    <div style={mutedSmallStyle}>Recurring calendar work scheduled for today.</div>
-                  </div>
-                  <button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}>
-                    Manage Routines
+              <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+                {[...todayEvents, ...upcomingEvents].slice(0, 7).map((item) => (
+                  <button
+                    key={`dashboard-schedule-${String(item.instanceId || item.id)}`}
+                    type="button"
+                    className="atlas-gold-hover-card"
+                    onClick={() => {
+                      setScreen("calendar");
+                      window.setTimeout(() => openCalendarItem(item), 0);
+                    }}
+                    style={{ display: "grid", gridTemplateColumns: "86px minmax(0, 1fr) auto", gap: 10, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 12, background: item.date === today ? "#FFFBEB" : "#FFFFFF", padding: "10px 11px", textAlign: "left", cursor: "pointer", color: colors.text, position: "relative" }}
+                  >
+                    <span style={{ fontWeight: 900, color: colors.navy }}>{item.date === today ? item.time || "All day" : shortDay(item.date)}</span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</strong>
+                      <small style={mutedSmallStyle}>{item.categoryLabel || item.area || "Calendar"}</small>
+                    </span>
+                    <span style={{ color: colors.gold, fontWeight: 950 }}>›</span>
+                    <span className="atlas-dashboard-info-popover" aria-hidden="true">
+                      <strong>{item.title}</strong>
+                      <span>{item.date === today ? `Today · ${item.time || "All day"}` : `${shortDay(item.date)} · ${item.time || "All day"}`}</span>
+                      <span>{item.categoryLabel || item.area || "Calendar item"}</span>
+                      <span>Click to open details.</span>
+                    </span>
                   </button>
-                </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {scheduledRoutineEvents.map((item) => (
-                    <button
-                      key={`today-routine-${String(item.instanceId || item.id)}`}
-                      type="button"
-                      onClick={() => { setScreen("calendar"); window.setTimeout(() => openCalendarItem(item), 0); }}
-                      style={{ display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) auto", alignItems: "center", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFBEB", padding: "10px 11px", color: colors.text, textAlign: "left", cursor: "pointer" }}
-                    >
-                      <span style={{ width: 30, height: 30, borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#FEF3C7", fontSize: 16 }}>↻</span>
-                      <span style={{ minWidth: 0 }}>
-                        <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</strong>
-                        <small style={mutedSmallStyle}>{item.categoryLabel || item.area || "Recurring routine"}</small>
-                      </span>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{item.time || "All day"}</span>
-                    </button>
-                  ))}
-                  {!scheduledRoutineEvents.length ? (
-                    <div style={{ ...noticeStyle, padding: 11 }}>No recurring routine is scheduled for today.</div>
-                  ) : null}
-                </div>
+                ))}
+                {![...todayEvents, ...upcomingEvents].length ? <div style={noticeStyle}>No calendar events are currently scheduled.</div> : null}
               </div>
 
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>Quick Log</div>
-                <div style={mutedSmallStyle}>Capture random work and anything else that came up today.</div>
+              <div style={{ marginBottom: 8, paddingTop: 2, borderTop: `1px solid ${colors.line}` }}>
+                <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy, marginTop: 13 }}>Quick Add</div>
+                <div style={mutedSmallStyle}>Add something that came up without creating a full work order.</div>
               </div>
               <div
                 id="atlas-today-log"
@@ -12774,40 +12791,73 @@ export default function AtlasPage() {
               </div>
             </section>
 
-            <section style={commandCardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <div>
-                  <div style={eyebrowStyle}>Schedule</div>
-                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today & Upcoming</h2>
-                </div>
-                <button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 10px" }}>
-                  Calendar
-                </button>
-              </div>
-              <div style={{ display: "grid", gap: 8 }}>
-                {[...todayEvents, ...upcomingEvents].slice(0, 7).map((item) => (
-                  <button
-                    key={String(item.instanceId || item.id)}
-                    type="button"
-                    onClick={() => {
-                      setScreen("calendar");
-                      window.setTimeout(() => openCalendarItem(item), 0);
-                    }}
-                    style={{ display: "grid", gridTemplateColumns: "90px minmax(0, 1fr)", gap: 10, alignItems: "center", border: 0, borderBottom: `1px solid ${colors.line}`, background: "transparent", padding: "8px 0", textAlign: "left", cursor: "pointer", color: colors.text }}
-                  >
-                    <span style={{ fontWeight: 900, color: colors.navy }}>{item.date === today ? item.time || "All day" : shortDay(item.date)}</span>
-                    <span>
-                      <strong style={{ display: "block" }}>{item.title}</strong>
-                      <small style={mutedSmallStyle}>{item.categoryLabel || item.area || "Calendar"}</small>
-                    </span>
-                  </button>
-                ))}
-                {![...todayEvents, ...upcomingEvents].length ? <div style={noticeStyle}>No calendar events are currently scheduled.</div> : null}
-              </div>
-            </section>
+
           </div>
 
           <aside style={{ display: "grid", gap: 14 }}>
+            <section id="atlas-today-routine" style={{ ...commandCardStyle, overflow: "visible" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+                <div>
+                  <div style={eyebrowStyle}>Daily Checklist</div>
+                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today Routine</h2>
+                  <p style={{ ...mutedSmallStyle, marginTop: 4 }}>Check off recurring work without leaving the dashboard.</p>
+                </div>
+                <button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}>
+                  Open
+                </button>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <strong style={{ color: colors.navy }}>{completedRoutineCount} of {scheduledRoutineIds.length} complete</strong>
+                <span style={{ ...mutedSmallStyle, fontWeight: 900 }}>{routineProgress}%</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 999, background: "#E8EDF3", overflow: "hidden", marginBottom: 12 }}>
+                <div style={{ width: `${routineProgress}%`, height: "100%", borderRadius: 999, background: colors.gold, transition: "width 180ms ease" }} />
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {scheduledRoutineEvents.slice(0, 6).map((item) => {
+                  const routineId = String(item.instanceId || item.id);
+                  const completed = completedDashboardRoutineIds.includes(routineId);
+                  return (
+                    <label
+                      key={`dashboard-routine-${routineId}`}
+                      className="atlas-gold-hover-card"
+                      style={{ display: "grid", gridTemplateColumns: "28px minmax(0, 1fr) auto", alignItems: "center", gap: 9, border: `1px solid ${completed ? "#B7E4CC" : colors.line}`, borderRadius: 12, background: completed ? "#F0FDF4" : "#FFFBEB", padding: "10px 11px", cursor: "pointer", position: "relative" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={completed}
+                        onChange={() => setCompletedDashboardRoutineIds((current) =>
+                          current.includes(routineId)
+                            ? current.filter((id) => id !== routineId)
+                            : [...current, routineId],
+                        )}
+                        aria-label={`Mark ${item.title} ${completed ? "incomplete" : "complete"}`}
+                        style={{ width: 18, height: 18, accentColor: colors.gold, cursor: "pointer" }}
+                      />
+                      <span style={{ minWidth: 0, opacity: completed ? 0.58 : 1 }}>
+                        <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: completed ? "line-through" : "none" }}>{item.title}</strong>
+                        <small style={mutedSmallStyle}>{item.categoryLabel || item.area || "Recurring routine"}</small>
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{item.time || "All day"}</span>
+                      <span className="atlas-dashboard-info-popover" aria-hidden="true">
+                        <strong>{item.title}</strong>
+                        <span>{item.categoryLabel || item.area || "Recurring routine"}</span>
+                        <span>{completed ? "Completed for today. Uncheck to reopen it." : "Check this item when today’s routine work is finished."}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+                {!scheduledRoutineEvents.length ? <div style={{ ...noticeStyle, padding: 11 }}>No recurring routine is scheduled for today.</div> : null}
+              </div>
+              {scheduledRoutineEvents.length > 6 ? (
+                <button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 10 }}>
+                  View all {scheduledRoutineEvents.length} routine items
+                </button>
+              ) : null}
+            </section>
+
             <section style={{ ...commandCardStyle, background: "#F8FAFC" }}>
               <div style={eyebrowStyle}>Atlas Brief</div>
               <h2 style={{ margin: "3px 0 10px", color: colors.navy }}>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}.</h2>
