@@ -1395,7 +1395,7 @@ function mergeLocationRecords(
   primary: AtlasLocationRecord[],
   required: AtlasLocationRecord[],
 ): AtlasLocationRecord[] {
-  const merged = new Map<string, LocationRecord>();
+  const merged = new Map<string, AtlasLocationRecord>();
 
   [...primary, ...required].forEach((location) => {
     const id = String(location.id || "").trim();
