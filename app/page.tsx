@@ -13949,12 +13949,7 @@ export default function AtlasPage() {
           .sort((a, b) => a.name.localeCompare(b.name))
       : [];
     const openAssetWorkOrders = relatedWorkOrders
-      .filter(
-        (record) =>
-          record.status !== "Completed" &&
-          record.status !== "Closed" &&
-          record.status !== "Cancelled",
-      )
+      .filter((record) => record.status !== "Completed")
       .sort((a, b) =>
         String(a.date || "9999-12-31").localeCompare(
           String(b.date || "9999-12-31"),
@@ -14948,9 +14943,20 @@ export default function AtlasPage() {
 
               <section style={assetCardStyle}>
                 <div style={assetCardHeaderStyle}>
-                  <strong>Service &amp; Work Order History</strong>
+                  <div>
+                    <strong>Asset Timeline</strong>
+                    <div style={assetCardHintStyle}>
+                      Service, maintenance, and completed work in chronological
+                      order
+                    </div>
+                  </div>
+
                   <div style={assetHistoryHeaderActionsStyle}>
-                    <span style={assetHistoryOrderStyle}>Newest first</span>
+                    <span style={assetHistoryOrderStyle}>
+                      {assetHistory.length} event
+                      {assetHistory.length === 1 ? "" : "s"}
+                    </span>
+
                     <button
                       type="button"
                       onClick={() => setScreen("history")}
@@ -14960,31 +14966,149 @@ export default function AtlasPage() {
                     </button>
                   </div>
                 </div>
+
                 {assetHistory.length ? (
-                  <div style={assetHistoryListStyle}>
-                    {assetHistory.slice(0, isMobile ? 5 : 4).map((entry) => (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 0,
+                      marginTop: 10,
+                    }}
+                  >
+                    {assetHistory
+                      .slice(0, isMobile ? 6 : 5)
+                      .map((entry, index) => (
+                        <div
+                          key={entry.id}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "18px minmax(0, 1fr)",
+                            gap: 9,
+                            minWidth: 0,
+                          }}
+                        >
+                          <div
+                            aria-hidden="true"
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              minHeight: 58,
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: 10,
+                                height: 10,
+                                flex: "0 0 auto",
+                                borderRadius: 999,
+                                border: `2px solid ${colors.gold}`,
+                                background: "#FFFFFF",
+                                marginTop: 12,
+                                zIndex: 1,
+                              }}
+                            />
+
+                            {index <
+                            Math.min(
+                              assetHistory.length,
+                              isMobile ? 6 : 5,
+                            ) -
+                              1 ? (
+                              <span
+                                style={{
+                                  width: 2,
+                                  flex: 1,
+                                  minHeight: 30,
+                                  background: colors.line,
+                                }}
+                              />
+                            ) : null}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedServiceId(entry.workOrderId);
+                              setScreen("history");
+                            }}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: isMobile
+                                ? "1fr auto"
+                                : "100px minmax(0, 1fr) auto",
+                              alignItems: "center",
+                              gap: 8,
+                              width: "100%",
+                              minWidth: 0,
+                              marginBottom: 7,
+                              padding: "9px 10px",
+                              border: `1px solid ${colors.line}`,
+                              borderRadius: 9,
+                              background: "#FFFFFF",
+                              color: colors.navy,
+                              textAlign: "left",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <span
+                              style={{
+                                color: colors.muted,
+                                fontSize: 10,
+                                fontWeight: 800,
+                                whiteSpace: "nowrap",
+                                gridColumn: isMobile
+                                  ? "1 / -1"
+                                  : undefined,
+                              }}
+                            >
+                              {entry.date
+                                ? formatDate(entry.date)
+                                : "Date not recorded"}
+                            </span>
+
+                            <strong
+                              style={{
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                fontSize: 12,
+                              }}
+                            >
+                              {entry.title || "Asset service event"}
+                            </strong>
+
+                            <span style={badgeStyle(entry.status)}>
+                              {entry.status}
+                            </span>
+                          </button>
+                        </div>
+                      ))}
+
+                    {assetHistory.length > (isMobile ? 6 : 5) ? (
                       <button
-                        key={entry.id}
                         type="button"
-                        onClick={() => {
-                          setSelectedServiceId(entry.workOrderId);
-                          setScreen("history");
+                        onClick={() => setScreen("history")}
+                        style={{
+                          ...assetTinyButtonStyle,
+                          justifySelf: "start",
+                          marginTop: 5,
+                          marginLeft: 27,
                         }}
-                        style={assetHistoryRowStyle}
                       >
-                        <span style={assetHistoryDateStyle}>
-                          {formatDate(entry.date)}
-                        </span>
-                        <strong style={assetHistoryTitleStyle}>{entry.title}</strong>
-                        <span style={badgeStyle(entry.status)}>
-                          {entry.status}
-                        </span>
+                        View{" "}
+                        {assetHistory.length - (isMobile ? 6 : 5)} more event
+                        {assetHistory.length - (isMobile ? 6 : 5) === 1
+                          ? ""
+                          : "s"}
                       </button>
-                    ))}
+                    ) : null}
                   </div>
                 ) : (
                   <div style={assetEmptyStateStyle}>
-                    Completed service and work orders will be saved here.
+                    No service or work-order activity has been recorded for this
+                    asset.
                   </div>
                 )}
               </section>
