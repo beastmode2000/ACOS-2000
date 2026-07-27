@@ -1701,15 +1701,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               }}
             >
               <input
+                type="search"
                 value={localSearch}
                 onChange={(event) => setLocalSearch(event.currentTarget.value)}
                 aria-label="Search work orders"
+                placeholder="Search work orders..."
                 style={{
                   ...controlStyle,
                   flex: "1 1 240px",
                   minWidth: isMobile ? "100%" : 220,
                   minHeight: 38,
                   padding: "7px 10px",
+                  border: "1px solid #0B2A44",
+                  backgroundColor: "#FFFFFF",
+                  boxShadow: "inset 0 0 0 1px rgba(11, 42, 68, 0.08)",
                 }}
               />
               <button
