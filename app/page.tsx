@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasRoutines from "./components/AtlasRoutines";
+import AtlasTeamWork from "./components/AtlasTeamWork";
 import { AtlasWorkOrders } from "./components/AtlasWorkOrders";
 import AtlasInsightsTimeline from "./components/AtlasInsightsTimeline";
 import ReportsAccessCenter from "./components/ReportsAccessCenter";
@@ -245,7 +246,7 @@ const atlasNavigationSections: {
   { label: "Overview", items: ["dashboard", "portfolio"] },
   {
     label: "Work",
-    items: ["history", "calendar", "planner", "routines"],
+    items: ["history", "calendar", "planner", "routines", "team"],
   },
   { label: "Intake", items: ["inbox", "requests", "qr"] },
   { label: "Analytics", items: ["timeline", "insights", "reports"] },
@@ -13012,6 +13013,10 @@ export default function AtlasPage() {
     return <AtlasRoutines mode="manager" isMobile={isMobile} />;
   }
 
+  function renderTeamWork() {
+    return <AtlasTeamWork activePropertyId={activePropertyId} />;
+  }
+
   function renderTimelineOrInsights(mode: "timeline" | "insights") {
     return (
       <AtlasInsightsTimeline
@@ -24857,6 +24862,7 @@ export default function AtlasPage() {
     else if (screen === "inbox") content = renderInbox();
     else if (screen === "procedures") content = renderProcedures();
     else if (screen === "routines") content = renderRoutines();
+    else if (screen === "team") content = renderTeamWork();
     else if (screen === "parts") content = renderParts();
     else if (screen === "links") content = renderWorkLinks();
     else if (screen === "qr") content = renderQRCodes();
