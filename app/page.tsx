@@ -11988,7 +11988,7 @@ export default function AtlasPage() {
         ? `${vendorEvents.length} vendor visit${vendorEvents.length === 1 ? " is" : "s are"} on the current schedule.`
         : "No vendor visits are currently on the visible schedule.",
       todaysWeather
-        ? `${weatherText(Number(todaysWeather.weatherCode || 0))}; ${irrigationAdvice(todaysWeather)}`
+        ? `${weatherText(Number(todaysWeather.code || 0))}; ${irrigationAdvice(todaysWeather)}`
         : "Weather intelligence is waiting for the next forecast refresh.",
     ];
 
@@ -12026,7 +12026,7 @@ export default function AtlasPage() {
                   day: "numeric",
                 })}
                 {todaysWeather
-                  ? ` · ${weatherIcon(Number(todaysWeather.weatherCode || 0))} ${Math.round(Number(todaysWeather.high || 0))}° high`
+                  ? ` · ${weatherIcon(Number(todaysWeather.code || 0))} ${Math.round(Number(todaysWeather.high || 0))}° high`
                   : ""}
               </div>
             </div>
@@ -12235,9 +12235,9 @@ export default function AtlasPage() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 5 }}>
                     <div>
                       <div style={{ fontSize: 31, fontWeight: 950, color: colors.navy }}>{Math.round(Number(todaysWeather.high || 0))}°</div>
-                      <div style={mutedSmallStyle}>{weatherText(Number(todaysWeather.weatherCode || 0))}</div>
+                      <div style={mutedSmallStyle}>{weatherText(Number(todaysWeather.code || 0))}</div>
                     </div>
-                    <div style={{ fontSize: 40 }}>{weatherIcon(Number(todaysWeather.weatherCode || 0))}</div>
+                    <div style={{ fontSize: 40 }}>{weatherIcon(Number(todaysWeather.code || 0))}</div>
                   </div>
                   <div style={{ marginTop: 12, padding: 11, borderRadius: 12, background: "#F8FAFC", fontSize: 13, lineHeight: 1.45 }}>
                     <strong>Recommendation</strong>
