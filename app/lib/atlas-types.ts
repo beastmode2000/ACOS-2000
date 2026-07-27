@@ -17,6 +17,7 @@ export type Screen =
   | "intake"
   | "procedures"
   | "routines"
+  | "team"
   | "parts"
   | "links"
   | "qr"
