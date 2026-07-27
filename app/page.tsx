@@ -12220,8 +12220,9 @@ export default function AtlasPage() {
     ];
 
     return (
-      <div style={{ display: "grid", gap: 14 }}>
+      <div className="atlas-command-dashboard" style={{ display: "grid", gap: 14 }}>
         <section
+          className="atlas-dashboard-hero"
           style={{
             ...commandCardStyle,
             padding: isMobile ? 16 : 22,
@@ -12261,13 +12262,17 @@ export default function AtlasPage() {
               <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.78 }}>Estate Health</div>
               <div style={{ fontSize: isMobile ? 34 : 44, fontWeight: 950, lineHeight: 1 }}>{estateHealth}%</div>
               <div style={{ marginTop: 7, width: isMobile ? 180 : 220, height: 8, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
-                <div style={{ width: `${estateHealth}%`, height: "100%", background: colors.gold2, borderRadius: 999 }} />
+                <div
+                  className="atlas-dashboard-health-fill"
+                  style={{ width: `${estateHealth}%`, height: "100%", background: colors.gold2, borderRadius: 999 }}
+                />
               </div>
             </div>
           </div>
 
           <button
             type="button"
+            className="atlas-dashboard-command"
             onClick={() => {
               setAssistantQuestion("What should I focus on today across this property?");
               setScreen("assistant");
@@ -12307,6 +12312,7 @@ export default function AtlasPage() {
             <button
               key={item.label}
               type="button"
+              className="atlas-dashboard-kpi"
               onClick={() => setScreen(item.screen)}
               style={{ ...commandCardStyle, textAlign: "left", cursor: "pointer", color: colors.text }}
             >
@@ -23431,6 +23437,185 @@ export default function AtlasPage() {
             page-break-inside: avoid;
           }
         }
+        .atlas-command-dashboard {
+          perspective: 1200px;
+        }
+        .atlas-command-dashboard > * {
+          animation: atlasDashboardEnter 480ms cubic-bezier(.2,.8,.2,1) both;
+        }
+        .atlas-command-dashboard > *:nth-child(2) { animation-delay: 55ms; }
+        .atlas-command-dashboard > *:nth-child(3) { animation-delay: 105ms; }
+        .atlas-command-dashboard > *:nth-child(4) { animation-delay: 150ms; }
+
+        .atlas-command-dashboard section,
+        .atlas-command-dashboard button {
+          transition:
+            transform 180ms cubic-bezier(.2,.8,.2,1),
+            border-color 180ms ease,
+            box-shadow 180ms ease,
+            background-color 180ms ease,
+            filter 180ms ease;
+        }
+
+        .atlas-command-dashboard section:not(.atlas-dashboard-hero):hover {
+          border-color: rgba(201, 154, 61, 0.72) !important;
+          box-shadow:
+            0 18px 42px rgba(18, 35, 63, 0.13),
+            0 0 0 3px rgba(201, 154, 61, 0.08) !important;
+          transform: translateY(-3px);
+        }
+
+        .atlas-command-dashboard button:hover {
+          border-color: rgba(201, 154, 61, 0.78) !important;
+          box-shadow:
+            0 13px 28px rgba(18, 35, 63, 0.14),
+            0 0 0 3px rgba(201, 154, 61, 0.08);
+          transform: translateY(-3px) scale(1.008);
+          filter: saturate(1.04);
+        }
+
+        .atlas-command-dashboard button:active {
+          transform: translateY(-1px) scale(0.995);
+        }
+
+        .atlas-dashboard-kpi {
+          position: relative;
+          overflow: hidden;
+          isolation: isolate;
+        }
+        .atlas-dashboard-kpi::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 4px;
+          border-radius: 18px 0 0 18px;
+          background: linear-gradient(180deg, #F5D98B, #C99A3D);
+          opacity: 0;
+          transition: opacity 180ms ease;
+        }
+        .atlas-dashboard-kpi::after {
+          content: "";
+          position: absolute;
+          top: -70%;
+          left: -45%;
+          width: 38%;
+          height: 240%;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(245, 217, 139, 0.22),
+            transparent
+          );
+          transform: rotate(18deg);
+          transition: left 420ms ease;
+          pointer-events: none;
+        }
+        .atlas-dashboard-kpi:hover::before,
+        .atlas-dashboard-kpi:focus-visible::before {
+          opacity: 1;
+        }
+        .atlas-dashboard-kpi:hover::after,
+        .atlas-dashboard-kpi:focus-visible::after {
+          left: 120%;
+        }
+
+        .atlas-dashboard-hero {
+          position: relative;
+          overflow: hidden;
+          box-shadow: 0 20px 55px rgba(18, 35, 63, 0.22) !important;
+        }
+        .atlas-dashboard-hero::after {
+          content: "";
+          position: absolute;
+          width: 340px;
+          height: 340px;
+          right: -130px;
+          top: -180px;
+          border-radius: 999px;
+          background: radial-gradient(
+            circle,
+            rgba(245, 217, 139, 0.22),
+            rgba(245, 217, 139, 0) 68%
+          );
+          pointer-events: none;
+          animation: atlasDashboardGlow 4.5s ease-in-out infinite;
+        }
+        .atlas-dashboard-command {
+          position: relative;
+          overflow: hidden;
+          backdrop-filter: blur(8px);
+        }
+        .atlas-dashboard-command::after {
+          content: "→";
+          position: absolute;
+          right: 16px;
+          top: 50%;
+          color: #F5D98B;
+          font-size: 20px;
+          font-weight: 900;
+          transform: translateY(-50%);
+          transition: transform 180ms ease;
+        }
+        .atlas-dashboard-command:hover::after {
+          transform: translate(4px, -50%);
+        }
+
+        .atlas-dashboard-health-fill {
+          position: relative;
+          overflow: hidden;
+          animation: atlasDashboardHealthGrow 760ms cubic-bezier(.2,.8,.2,1) both;
+          transform-origin: left center;
+        }
+        .atlas-dashboard-health-fill::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255,255,255,0.72),
+            transparent
+          );
+          transform: translateX(-120%);
+          animation: atlasDashboardHealthShine 2.8s ease-in-out infinite;
+        }
+
+        @keyframes atlasDashboardEnter {
+          from {
+            opacity: 0;
+            transform: translateY(14px) scale(0.992);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+        @keyframes atlasDashboardGlow {
+          0%, 100% { transform: scale(0.96); opacity: 0.65; }
+          50% { transform: scale(1.08); opacity: 1; }
+        }
+        @keyframes atlasDashboardHealthGrow {
+          from { transform: scaleX(0); }
+          to { transform: scaleX(1); }
+        }
+        @keyframes atlasDashboardHealthShine {
+          0%, 55% { transform: translateX(-120%); }
+          78%, 100% { transform: translateX(120%); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .atlas-command-dashboard > *,
+          .atlas-dashboard-hero::after,
+          .atlas-dashboard-health-fill,
+          .atlas-dashboard-health-fill::after {
+            animation: none !important;
+          }
+          .atlas-command-dashboard section,
+          .atlas-command-dashboard button {
+            transition: none !important;
+          }
+        }
+
         .atlas-gold-hover-card {
           position: relative;
           isolation: isolate;
