@@ -125,6 +125,14 @@ type PropertyProfile = {
   detail: string;
 };
 
+type AtlasLocationRecord = LocationRecord & {
+  parentId?: string;
+  paint?: string;
+  bulbs?: string;
+  finishes?: string;
+  vendorIds?: string[];
+};
+
 const atlasProperties: PropertyProfile[] = [
   { id: "2000", name: "2000", detail: "Primary estate" },
   { id: "6855", name: "6855", detail: "Sharon & Marty" },
@@ -1384,9 +1392,9 @@ function byName<T extends { name: string }>(records: T[]): T[] {
 }
 
 function mergeLocationRecords(
-  primary: LocationRecord[],
-  required: LocationRecord[],
-): LocationRecord[] {
+  primary: AtlasLocationRecord[],
+  required: AtlasLocationRecord[],
+): AtlasLocationRecord[] {
   const merged = new Map<string, LocationRecord>();
 
   [...primary, ...required].forEach((location) => {
@@ -1402,6 +1410,11 @@ function mergeLocationRecords(
         type: String(location.type || ""),
         zone: String(location.zone || ""),
         notes: String(location.notes || ""),
+        parentId: String(location.parentId || ""),
+        paint: String(location.paint || ""),
+        bulbs: String(location.bulbs || ""),
+        finishes: String(location.finishes || ""),
+        vendorIds: Array.isArray(location.vendorIds) ? location.vendorIds.map(String) : [],
       });
     }
   });
@@ -2027,7 +2040,7 @@ function getWeekCells(cursor: Date) {
   });
 }
 
-const fallbackLocations: LocationRecord[] = [
+const fallbackLocations: AtlasLocationRecord[] = [
   {
     id: "general",
     name: "General",
@@ -3513,7 +3526,7 @@ export default function AtlasPage() {
   >("operations");
 
   const [locations, setLocations] =
-    useState<LocationRecord[]>(fallbackLocations);
+    useState<AtlasLocationRecord[]>(fallbackLocations);
   const [locationEditorOpen, setLocationEditorOpen] = useState(false);
   const [locationMobileDrawerOpen, setLocationMobileDrawerOpen] = useState(false);
 
@@ -7793,7 +7806,7 @@ export default function AtlasPage() {
   }
 
   function addLocation() {
-    const record: LocationRecord = {
+    const record: AtlasLocationRecord = {
       id: uid("location"),
       name: "",
       type: "",
@@ -7807,7 +7820,30 @@ export default function AtlasPage() {
     setScreen("locations");
   }
 
-  function updateLocation(patch: Partial<LocationRecord>) {
+  function addSubLocation(parentId = selectedLocation.id) {
+    const parent = locations.find((location) => location.id === parentId);
+    if (!parent) return;
+    const record: AtlasLocationRecord = {
+      id: uid("location"),
+      name: "",
+      type: "Room / Area",
+      zone: parent.name,
+      notes: "",
+      parentId: parent.id,
+      paint: "",
+      bulbs: "",
+      finishes: "",
+      vendorIds: [],
+    };
+    setLocations((current) => byName([record, ...current]));
+    setSelectedLocationId(record.id);
+    setLocationEditorOpen(true);
+    markRecordDirty("location", record.id);
+    setScreen("locations");
+    if (isMobile) setLocationMobileDrawerOpen(true);
+  }
+
+  function updateLocation(patch: Partial<AtlasLocationRecord>) {
     if (!selectedLocation.id) return;
     markRecordDirty("location", selectedLocation.id);
     setLocations((current) =>
@@ -12667,15 +12703,41 @@ export default function AtlasPage() {
                     ) : null}
                   </div>
                   <div style={mapInfoIconRowStyle}>
-                    <label title="Add header photo" style={mapIconButtonStyle}>
+                    <button
+                      type="button"
+                      title="Edit this location"
+                      style={mapIconButtonStyle}
+                      onClick={() => {
+                        const location = selectedOperations.locations[0];
+                        if (location) {
+                          setSelectedLocationId(location.id);
+                          setLocationEditorOpen(true);
+                          setScreen("locations");
+                          if (isMobile) setLocationMobileDrawerOpen(true);
+                          return;
+                        }
+                        const record: AtlasLocationRecord = {
+                          id: uid("location"),
+                          name: selectedMapLabel.label,
+                          type: selectedMapLabel.category || "Property Area",
+                          zone: "2000",
+                          notes: selectedMapLabel.notes || "",
+                          parentId: "",
+                          paint: "",
+                          bulbs: "",
+                          finishes: "",
+                          vendorIds: selectedMapLabel.vendorIds || [],
+                        };
+                        setLocations((current) => byName([record, ...current]));
+                        setSelectedLocationId(record.id);
+                        setLocationEditorOpen(true);
+                        markRecordDirty("location", record.id);
+                        setScreen("locations");
+                        if (isMobile) setLocationMobileDrawerOpen(true);
+                      }}
+                    >
                       ✎
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleMapHeaderPhotoUpload}
-                        style={{ display: "none" }}
-                      />
-                    </label>
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -13016,6 +13078,16 @@ export default function AtlasPage() {
   }
 
   function renderLocations() {
+    const rootLocations = byName(locations.filter((location) => !location.parentId));
+    const childLocationsFor = (parentId: string) =>
+      byName(locations.filter((location) => location.parentId === parentId));
+    const locationRows = rootLocations.flatMap((root) => [
+      { location: root, depth: 0 },
+      ...childLocationsFor(root.id).flatMap((child) => [
+        { location: child, depth: 1 },
+        ...childLocationsFor(child.id).map((grandchild) => ({ location: grandchild, depth: 2 })),
+      ]),
+    ]);
     const locationPhotos = selectedLocation.id
       ? linkedImageFilesFor("Location", selectedLocation.id)
       : [];
@@ -13086,7 +13158,7 @@ export default function AtlasPage() {
         }
         list={
           <div style={listStyle}>
-            {filteredLocations.map((location) => (
+            {locationRows.filter(({ location }) => filteredLocations.some((item) => item.id === location.id)).map(({ location, depth }) => (
               <button
                 key={location.id}
                 type="button"
@@ -13107,8 +13179,8 @@ export default function AtlasPage() {
                       : colors.line,
                 }}
               >
-                <div>
-                  <strong>{location.name}</strong>
+                <div style={{ paddingLeft: depth * 18 }}>
+                  <strong>{depth > 0 ? "↳ " : ""}{location.name}</strong>
                   <p style={mutedSmallStyle}>
                     {location.type} · {location.zone}
                   </p>
@@ -13162,6 +13234,13 @@ export default function AtlasPage() {
                       gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : undefined,
                     }}
                   >
+                    <button
+                      type="button"
+                      onClick={() => addSubLocation(selectedLocation.id)}
+                      style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : undefined }}
+                    >
+                      + Sub-location
+                    </button>
                     {locationEditorOpen ? (
                       <button
                         type="button"
@@ -13215,10 +13294,43 @@ export default function AtlasPage() {
                       value={selectedLocation.type}
                       onChange={(value) => updateLocation({ type: value })}
                     />
+                    <label style={{ display: "grid", gap: 7 }}>
+                      <span style={fieldLabelStyle}>Parent Location</span>
+                      <select
+                        value={selectedLocation.parentId || ""}
+                        onChange={(event) => updateLocation({ parentId: event.currentTarget.value })}
+                        style={inputStyle}
+                      >
+                        <option value="">Top-level location</option>
+                        {locations
+                          .filter((location) => location.id !== selectedLocation.id && location.parentId !== selectedLocation.id)
+                          .map((location) => (
+                            <option key={location.id} value={location.id}>{location.name}</option>
+                          ))}
+                      </select>
+                    </label>
                     <Field
                       label="Zone"
                       value={selectedLocation.zone}
                       onChange={(value) => updateLocation({ zone: value })}
+                    />
+                    <Field
+                      label="Paint / Color"
+                      value={selectedLocation.paint || ""}
+                      onChange={(value) => updateLocation({ paint: value })}
+                      multiline
+                    />
+                    <Field
+                      label="Bulbs / Lighting"
+                      value={selectedLocation.bulbs || ""}
+                      onChange={(value) => updateLocation({ bulbs: value })}
+                      multiline
+                    />
+                    <Field
+                      label="Finishes / Materials"
+                      value={selectedLocation.finishes || ""}
+                      onChange={(value) => updateLocation({ finishes: value })}
+                      multiline
                     />
                     <Field
                       label="Notes"
@@ -13238,7 +13350,18 @@ export default function AtlasPage() {
                         <span style={fieldLabelStyle}>Zone</span>
                         <strong>{selectedLocation.zone || "—"}</strong>
                       </div>
+                      <div style={recordInfoItemStyle}>
+                        <span style={fieldLabelStyle}>Parent</span>
+                        <strong>{locations.find((location) => location.id === selectedLocation.parentId)?.name || "Top level"}</strong>
+                      </div>
                     </div>
+                    {(selectedLocation.paint || selectedLocation.bulbs || selectedLocation.finishes) ? (
+                      <div style={{ ...recordInfoGridStyle, marginTop: 10 }}>
+                        {selectedLocation.paint ? <div style={recordInfoItemStyle}><span style={fieldLabelStyle}>Paint</span><strong>{selectedLocation.paint}</strong></div> : null}
+                        {selectedLocation.bulbs ? <div style={recordInfoItemStyle}><span style={fieldLabelStyle}>Bulbs</span><strong>{selectedLocation.bulbs}</strong></div> : null}
+                        {selectedLocation.finishes ? <div style={recordInfoItemStyle}><span style={fieldLabelStyle}>Finishes</span><strong>{selectedLocation.finishes}</strong></div> : null}
+                      </div>
+                    ) : null}
                     {selectedLocation.notes ? (
                       <p style={recordNotesStyle}>{selectedLocation.notes}</p>
                     ) : null}
