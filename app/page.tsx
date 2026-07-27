@@ -1530,6 +1530,70 @@ function weatherIcon(code: number) {
   return "🌡️";
 }
 
+function weatherGlyph(code: number) {
+  const common = {
+    width: 28,
+    height: 28,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  if ([0].includes(code)) {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="3.5" />
+        <path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />
+      </svg>
+    );
+  }
+
+  if ([61, 63, 65, 66, 67, 80, 81, 82, 51, 53, 55, 56, 57].includes(code)) {
+    return (
+      <svg {...common}>
+        <path d="M7 16.5h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.3 10.4 3.2 3.2 0 0 0 7 16.5Z" />
+        <path d="m9 19-1 2M13 19l-1 2M17 19l-1 2" />
+      </svg>
+    );
+  }
+
+  if ([95, 96, 99].includes(code)) {
+    return (
+      <svg {...common}>
+        <path d="M7 15.5h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.3 9.4 3.2 3.2 0 0 0 7 15.5Z" />
+        <path d="m13 16.5-2 3h2l-1 2.5 4-4.5h-2l1-1Z" />
+      </svg>
+    );
+  }
+
+  if ([71, 73, 75, 77, 85, 86].includes(code)) {
+    return (
+      <svg {...common}>
+        <path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9M9 4.8l3 2 3-2M9 19.2l3-2 3 2M4.5 11l3 .2-1.5 2.6M19.5 11l-3 .2 1.5 2.6" />
+      </svg>
+    );
+  }
+
+  if ([45, 48].includes(code)) {
+    return (
+      <svg {...common}>
+        <path d="M5 8h14M3 12h14M7 16h14" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...common}>
+      <path d="M7 16.5h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.3 10.4 3.2 3.2 0 0 0 7 16.5Z" />
+      <path d="M8 6.5a4 4 0 0 1 7.5-1.8" />
+    </svg>
+  );
+}
+
 function irrigationAdvice(day: WeatherDay) {
   if (day.precipAmount >= 0.25 || day.precipChance >= 75)
     return "Rain likely — skip irrigation unless pots are dry.";
@@ -12509,9 +12573,12 @@ export default function AtlasPage() {
                             ? "Today"
                             : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}
                         </span>
-                        <span className="atlas-dashboard-weather-icon">{weatherIcon(Number(day.code || 0))}</span>
+                        <span className="atlas-dashboard-weather-icon">{weatherGlyph(Number(day.code || 0))}</span>
                         <strong>{Math.round(Number(day.high || 0))}°</strong>
                         <small>{Math.round(Number(day.low || 0))}° low</small>
+                        <span className="atlas-dashboard-weather-condition">
+                          {weatherText(Number(day.code || 0))}
+                        </span>
                         <span className="atlas-dashboard-info-popover" aria-hidden="true">
                           <strong>{weatherDayPlanning(day)}</strong>
                           <span>{irrigationAdvice(day)}</span>
@@ -23576,53 +23643,104 @@ export default function AtlasPage() {
 
         .atlas-dashboard-weather-strip {
           display: grid;
-          grid-template-columns: repeat(7, minmax(72px, 1fr));
-          gap: 7px;
-          margin-top: 12px;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 0;
+          margin: 14px -14px -14px;
+          overflow: visible;
+          border-radius: 0 0 14px 14px;
+          background:
+            radial-gradient(circle at 15% 0%, rgba(87, 157, 214, 0.34), transparent 32%),
+            linear-gradient(135deg, #173B5A 0%, #0F2F4B 54%, #0B253D 100%);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
         }
         .atlas-dashboard-weather-day {
           position: relative;
           display: grid;
           justify-items: center;
-          gap: 3px;
+          align-content: start;
+          gap: 4px;
           min-width: 0;
-          padding: 9px 5px;
-          border: 1px solid #D9E1E8;
-          border-radius: 11px;
-          background: #FFFFFF;
-          color: #17354D;
+          min-height: 148px;
+          padding: 15px 8px 13px;
+          border: 0;
+          border-right: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 0;
+          background: transparent;
+          color: #FFFFFF;
           cursor: pointer;
           font: inherit;
+        }
+        .atlas-dashboard-weather-day:first-child {
+          border-radius: 0 0 0 14px;
+          background: rgba(255, 255, 255, 0.08);
+        }
+        .atlas-dashboard-weather-day:last-child {
+          border-right: 0;
+          border-radius: 0 0 14px 0;
         }
         .atlas-dashboard-weather-day:hover,
         .atlas-dashboard-weather-day:focus-visible {
           z-index: 70;
-          border-color: rgba(201, 154, 61, 0.82);
-          box-shadow: 0 12px 28px rgba(18, 35, 63, 0.15), 0 0 0 3px rgba(201, 154, 61, 0.08);
-          transform: translateY(-3px);
+          border-color: rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.11);
+          box-shadow:
+            inset 0 3px 0 #D6AE55,
+            0 16px 32px rgba(7, 24, 39, 0.24);
+          transform: translateY(-4px);
           outline: none;
         }
         .atlas-dashboard-weather-name {
+          color: #D9E7F2;
           font-size: 10px;
           font-weight: 900;
           text-transform: uppercase;
-          letter-spacing: 0.04em;
+          letter-spacing: 0.095em;
         }
         .atlas-dashboard-weather-icon {
-          font-size: 20px;
-          line-height: 1;
+          display: grid;
+          place-items: center;
+          width: 38px;
+          height: 38px;
+          margin: 3px 0 1px;
+          color: #F5D98B;
         }
         .atlas-dashboard-weather-day strong {
-          font-size: 14px;
+          color: #FFFFFF;
+          font-size: 22px;
+          line-height: 1;
+          letter-spacing: -0.035em;
         }
         .atlas-dashboard-weather-day small {
-          color: #64748B;
+          color: #BFD0DE;
+          font-size: 10px;
+          font-weight: 700;
+        }
+        .atlas-dashboard-weather-condition {
+          width: 100%;
+          margin-top: 3px;
+          overflow: hidden;
+          color: #E7F0F7;
           font-size: 9px;
+          font-weight: 800;
+          line-height: 1.2;
+          text-align: center;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         @media (max-width: 760px) {
           .atlas-dashboard-weather-strip {
-            grid-template-columns: repeat(4, minmax(68px, 1fr));
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            margin-left: -11px;
+            margin-right: -11px;
+            overflow-x: auto;
+            border-radius: 0 0 12px 12px;
+          }
+          .atlas-dashboard-weather-day {
+            min-width: 82px;
+            min-height: 138px;
+            padding-left: 6px;
+            padding-right: 6px;
           }
         }
         @media (hover: none), (pointer: coarse) {
