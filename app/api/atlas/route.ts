@@ -529,6 +529,7 @@ function mapAsset(row: JsonRecord) {
     id: String(row.id || ""),
     name: String(row.name || ""),
     locationId: String(row.location_id || "general"),
+    locationIds: asStringArray(row.location_ids),
     category: String(row.category || ""),
     status: String(row.status || "Monitor"),
     make: row.make ? String(row.make) : "",
@@ -702,7 +703,6 @@ export async function GET(request: NextRequest) {
     await ensureWorkOrderColumns(sql);
     await ensureCalendarColumns(sql);
     await ensureContactsTable(sql);
-    await ensureContactsTable(sql);
     await ensurePartsTable(sql);
     await ensurePropertyColumns(sql);
     if (request.nextUrl.searchParams.get("portfolio") === "1") {
@@ -854,7 +854,7 @@ export async function GET(request: NextRequest) {
     }
 
     const locationRows = (await sql`
-      SELECT id, name, type, zone, notes, sort_order
+      SELECT id, name, type, zone, notes, parent_id, custom_details, vendor_ids, sort_order
       FROM atlas_locations
       WHERE property_id = ${propertyId}
       ORDER BY sort_order ASC, name ASC
@@ -874,7 +874,7 @@ export async function GET(request: NextRequest) {
     `) as unknown as JsonRecord[];
 
     const assetRows = (await sql`
-      SELECT id, name, location_id, category, status, make, model, year, manufacturer, serial, notes, vendor_ids, documents
+      SELECT id, name, location_id, location_ids, category, status, make, model, year, manufacturer, serial, notes, vendor_ids, documents
       FROM atlas_assets
       WHERE property_id = ${propertyId}
       ORDER BY name ASC
