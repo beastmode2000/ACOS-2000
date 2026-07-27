@@ -12278,6 +12278,9 @@ export default function AtlasPage() {
     const scheduledRoutineEvents = todayEvents.filter(
       (item) => Boolean((item as CalendarItem & { recurring?: boolean }).recurring),
     );
+    const nonRoutineTodayEvents = todayEvents.filter(
+      (item) => !Boolean((item as CalendarItem & { recurring?: boolean }).recurring),
+    );
 
     const addTodayLogEntry = () => {
       const text = todayLogText.trim();
@@ -12372,9 +12375,12 @@ export default function AtlasPage() {
     };
 
     const briefLines = [
-      `${dueToday.length + todayEvents.length} scheduled work item${dueToday.length + todayEvents.length === 1 ? " is" : "s are"} on today’s plan, including ${scheduledRoutineEvents.length} recurring routine${scheduledRoutineEvents.length === 1 ? "" : "s"}.`,
+      scheduledRoutineEvents.length
+        ? `${scheduledRoutineEvents.length} recurring routine${scheduledRoutineEvents.length === 1 ? " is" : "s are"} scheduled today and available from the dashboard.`
+        : "No recurring routines are scheduled for today.",
+      `${dueToday.length + nonRoutineTodayEvents.length + todaysRequests.length} other scheduled work item${dueToday.length + nonRoutineTodayEvents.length + todaysRequests.length === 1 ? " is" : "s are"} on today’s plan.`,
       todaysLogEntries.length
-        ? `${todaysLogEntries.length} unplanned item${todaysLogEntries.length === 1 ? " has" : "s have"} been added to today’s log.`
+        ? `${todaysLogEntries.length} unplanned item${todaysLogEntries.length === 1 ? " has" : "s have"} been added to today’s quick log.`
         : "No unplanned work has been logged yet today.",
       overdueWork.length
         ? `${overdueWork.length} item${overdueWork.length === 1 ? " is" : "s are"} overdue and should be reviewed first.`
@@ -12547,6 +12553,42 @@ export default function AtlasPage() {
                   Open Calendar
                 </button>
               </div>
+              <div id="atlas-today-routine" style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>Today Routine</div>
+                    <div style={mutedSmallStyle}>Recurring calendar work scheduled for today.</div>
+                  </div>
+                  <button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}>
+                    Manage Routines
+                  </button>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {scheduledRoutineEvents.map((item) => (
+                    <button
+                      key={`today-routine-${String(item.instanceId || item.id)}`}
+                      type="button"
+                      onClick={() => { setScreen("calendar"); window.setTimeout(() => openCalendarItem(item), 0); }}
+                      style={{ display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) auto", alignItems: "center", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFBEB", padding: "10px 11px", color: colors.text, textAlign: "left", cursor: "pointer" }}
+                    >
+                      <span style={{ width: 30, height: 30, borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#FEF3C7", fontSize: 16 }}>↻</span>
+                      <span style={{ minWidth: 0 }}>
+                        <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</strong>
+                        <small style={mutedSmallStyle}>{item.categoryLabel || item.area || "Recurring routine"}</small>
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{item.time || "All day"}</span>
+                    </button>
+                  ))}
+                  {!scheduledRoutineEvents.length ? (
+                    <div style={{ ...noticeStyle, padding: 11 }}>No recurring routine is scheduled for today.</div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>Quick Log</div>
+                <div style={mutedSmallStyle}>Capture random work and anything else that came up today.</div>
+              </div>
               <div
                 id="atlas-today-log"
                 style={{
@@ -12620,6 +12662,12 @@ export default function AtlasPage() {
                     </button>
                   </div>
                 ))}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 10, marginTop: todaysLogEntries.length ? 6 : 0, paddingTop: 4 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>Today’s Work</div>
+                    <div style={mutedSmallStyle}>Work orders, appointments, requests, and property conditions.</div>
+                  </div>
+                </div>
                 {todaysWork.map((record) => (
                   <button
                     key={`today-work-${record.id}`}
@@ -12639,7 +12687,7 @@ export default function AtlasPage() {
                     <span style={badgeStyle(record.priority || "Medium")}>{record.priority || "Medium"}</span>
                   </button>
                 ))}
-                {todayEvents.slice(0, 6).map((item) => (
+                {nonRoutineTodayEvents.slice(0, 6).map((item) => (
                   <button
                     key={`today-event-${String(item.instanceId || item.id)}`}
                     type="button"
@@ -12679,7 +12727,7 @@ export default function AtlasPage() {
                     <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{Math.round(Number(todaysWeather.high || 0))}°</span>
                   </button>
                 ) : null}
-                {!todaysLogEntries.length && !todaysWork.length && !todayEvents.length && !todaysRequests.length && !todaysWeather ? <div style={noticeStyle}>Nothing is scheduled or logged for today.</div> : null}
+                {!todaysLogEntries.length && !todaysWork.length && !nonRoutineTodayEvents.length && !todaysRequests.length && !todaysWeather ? <div style={noticeStyle}>No additional work is scheduled or logged for today.</div> : null}
               </div>
             </section>
 
