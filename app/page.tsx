@@ -3786,6 +3786,8 @@ export default function AtlasPage() {
   const [documentSearch, setDocumentSearch] = useState("");
   const [documentCategoryFilter, setDocumentCategoryFilter] = useState("All");
   const [documentLinkFilter, setDocumentLinkFilter] = useState("All");
+  const [hiddenDocumentCategories, setHiddenDocumentCategories] = useState<string[]>([]);
+  const [hiddenDocumentLinkTypes, setHiddenDocumentLinkTypes] = useState<string[]>([]);
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const documentListScrollYRef = useRef(0);
@@ -7340,17 +7342,23 @@ export default function AtlasPage() {
       const payload = (await response.json()) as {
         documents?: DocumentRecord[];
       };
+      const deletedDocumentIds = new Set(
+        readStoredArray<string>([`atlas-document-deletions:${activePropertyId}`], []),
+      );
       const apiDocs = Array.isArray(payload.documents)
-        ? payload.documents.map(normalizeDocument)
+        ? payload.documents
+            .map(normalizeDocument)
+            .filter((document) => !deletedDocumentIds.has(document.id))
         : [];
-      const localDocs = activePropertyId === "2000"
+      const localDocs = (activePropertyId === "2000"
         ? mergeDocuments(
             intakeDocs,
             readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(
               normalizeDocument,
             ),
           )
-        : intakeDocs.filter((document) => document.propertyId === activePropertyId);
+        : intakeDocs.filter((document) => document.propertyId === activePropertyId))
+        .filter((document) => !deletedDocumentIds.has(document.id));
       const apiIds = new Set(apiDocs.map((doc) => doc.id));
       const localOnlyDocs = localDocs.filter((doc) => !apiIds.has(doc.id));
 
@@ -7442,6 +7450,13 @@ export default function AtlasPage() {
 
   async function saveSelectedDocument(record: DocumentRecord) {
     const normalized = normalizeDocument(record);
+    if (typeof window !== "undefined") {
+      const deletionKey = `atlas-document-deletions:${activePropertyId}`;
+      const deletedIds = readStoredArray<string>([deletionKey], []).filter(
+        (id) => id !== normalized.id,
+      );
+      saveStoredArray(deletionKey, deletedIds);
+    }
     replaceDocumentInVault(normalized);
     try {
       await postDocumentToAtlasVault(normalized);
@@ -7462,6 +7477,13 @@ export default function AtlasPage() {
       `Delete ${record.title}? This removes it from the Atlas document vault.`,
     );
     if (!confirmed) return;
+
+    if (typeof window !== "undefined") {
+      const deletionKey = `atlas-document-deletions:${activePropertyId}`;
+      const deletedIds = new Set(readStoredArray<string>([deletionKey], []));
+      deletedIds.add(record.id);
+      saveStoredArray(deletionKey, Array.from(deletedIds));
+    }
 
     setIntakeDocs((current) => {
       const next = current.filter((doc) => doc.id !== record.id);
@@ -16638,15 +16660,8 @@ export default function AtlasPage() {
         const category = doc.type?.trim() || "Uncategorized";
         const linkType = doc.targetType?.trim() || "General";
 
-        if (
-          documentCategoryFilter !== "All" &&
-          category !== documentCategoryFilter
-        ) {
-          return false;
-        }
-        if (documentLinkFilter !== "All" && linkType !== documentLinkFilter) {
-          return false;
-        }
+        if (hiddenDocumentCategories.includes(category)) return false;
+        if (hiddenDocumentLinkTypes.includes(linkType)) return false;
         if (!normalizedDocumentSearch) return true;
 
         const fileNames = (doc.files || []).map((file) => file.name).join(" ");
@@ -16682,8 +16697,8 @@ export default function AtlasPage() {
       });
 
     const activeDocumentFilterCount =
-      Number(documentCategoryFilter !== "All") +
-      Number(documentLinkFilter !== "All") +
+      hiddenDocumentCategories.length +
+      hiddenDocumentLinkTypes.length +
       Number(Boolean(normalizedDocumentSearch));
 
     const selectedDocument =
@@ -17122,52 +17137,75 @@ export default function AtlasPage() {
                   </div>
                 </label>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(2, minmax(0, 1fr))",
-                    gap: 8,
-                  }}
-                >
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={fieldLabelStyle}>Category</span>
-                    <select
-                      value={documentCategoryFilter}
-                      onChange={(event) =>
-                        setDocumentCategoryFilter(event.currentTarget.value)
-                      }
-                      style={inputStyle}
-                      aria-label="Filter documents by category"
-                    >
-                      <option value="All">All categories</option>
-                      {documentCategories.map((category) => (
-                        <option key={category} value={category}>
-                          {category}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div>
+                    <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>
+                      Categories — all are included until you turn one off
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                      {documentCategories.map((category) => {
+                        const enabled = !hiddenDocumentCategories.includes(category);
+                        return (
+                          <button
+                            key={category}
+                            type="button"
+                            aria-pressed={enabled}
+                            onClick={() =>
+                              setHiddenDocumentCategories((current) =>
+                                current.includes(category)
+                                  ? current.filter((item) => item !== category)
+                                  : [...current, category],
+                              )
+                            }
+                            style={{
+                              ...smallSubtleButtonStyle,
+                              borderColor: enabled ? colors.gold : colors.line,
+                              background: enabled ? "#FFF9EA" : "#F8FAFC",
+                              color: enabled ? colors.text : colors.muted,
+                              boxShadow: enabled
+                                ? "0 5px 14px rgba(201,154,61,0.15)"
+                                : "none",
+                            }}
+                          >
+                            {enabled ? "✓ " : ""}{category}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={fieldLabelStyle}>Linked to</span>
-                    <select
-                      value={documentLinkFilter}
-                      onChange={(event) =>
-                        setDocumentLinkFilter(event.currentTarget.value)
-                      }
-                      style={inputStyle}
-                      aria-label="Filter documents by linked section"
-                    >
-                      <option value="All">Everything</option>
-                      {documentLinkTypes.map((linkType) => (
-                        <option key={linkType} value={linkType}>
-                          {linkType}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div>
+                    <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>
+                      Linked sections
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                      {documentLinkTypes.map((linkType) => {
+                        const enabled = !hiddenDocumentLinkTypes.includes(linkType);
+                        return (
+                          <button
+                            key={linkType}
+                            type="button"
+                            aria-pressed={enabled}
+                            onClick={() =>
+                              setHiddenDocumentLinkTypes((current) =>
+                                current.includes(linkType)
+                                  ? current.filter((item) => item !== linkType)
+                                  : [...current, linkType],
+                              )
+                            }
+                            style={{
+                              ...smallSubtleButtonStyle,
+                              borderColor: enabled ? colors.gold : colors.line,
+                              background: enabled ? "#FFF9EA" : "#F8FAFC",
+                              color: enabled ? colors.text : colors.muted,
+                            }}
+                          >
+                            {enabled ? "✓ " : ""}{linkType}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
                 <div
@@ -17223,8 +17261,8 @@ export default function AtlasPage() {
                         type="button"
                         onClick={() => {
                           setDocumentSearch("");
-                          setDocumentCategoryFilter("All");
-                          setDocumentLinkFilter("All");
+                          setHiddenDocumentCategories([]);
+                          setHiddenDocumentLinkTypes([]);
                         }}
                         style={smallSubtleButtonStyle}
                       >
@@ -17258,8 +17296,8 @@ export default function AtlasPage() {
                     type="button"
                     onClick={() => {
                       setDocumentSearch("");
-                      setDocumentCategoryFilter("All");
-                      setDocumentLinkFilter("All");
+                      setHiddenDocumentCategories([]);
+                      setHiddenDocumentLinkTypes([]);
                     }}
                     style={{ ...secondaryButtonStyle, marginTop: 10 }}
                   >
@@ -17270,9 +17308,7 @@ export default function AtlasPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(2, minmax(0, 1fr))",
+                    gridTemplateColumns: "1fr",
                     gap: 10,
                     alignContent: "start",
                   }}
@@ -17309,10 +17345,25 @@ export default function AtlasPage() {
                           setSelectedDocumentId(document.id);
                         }}
                         aria-pressed={isSelected}
+                        onMouseEnter={(event) => {
+                          if (isSelected) return;
+                          event.currentTarget.style.transform = "translateY(-3px) scale(1.01)";
+                          event.currentTarget.style.borderColor = colors.gold;
+                          event.currentTarget.style.boxShadow =
+                            "0 16px 34px rgba(15,45,68,0.14), 0 0 0 1px rgba(201,154,61,0.10)";
+                        }}
+                        onMouseLeave={(event) => {
+                          if (isSelected) return;
+                          event.currentTarget.style.transform = "none";
+                          event.currentTarget.style.borderColor = colors.line;
+                          event.currentTarget.style.boxShadow =
+                            "0 7px 20px rgba(15,45,68,0.07)";
+                        }}
                         style={{
                           position: "relative",
                           display: "grid",
-                          gridTemplateRows: "112px auto",
+                          gridTemplateColumns: "82px minmax(0, 1fr)",
+                          minHeight: 92,
                           minWidth: 0,
                           overflow: "hidden",
                           padding: 0,
@@ -17342,7 +17393,8 @@ export default function AtlasPage() {
                             overflow: "hidden",
                             background:
                               "linear-gradient(145deg, #EEF4F8, #F8FBFD)",
-                            borderBottom: `1px solid ${colors.line}`,
+                            borderRight: `1px solid ${colors.line}`,
+                            minHeight: 92,
                           }}
                         >
                           {isPreviewImage && previewSource ? (
