@@ -35,7 +35,6 @@ import ActionApprovalCard from "./components/ai/ActionApprovalCard";
 import AskAtlasWeeklyMaintenancePlanner, {
   type WeeklyMaintenancePlanItem,
 } from "./components/ai/AskAtlasWeeklyMaintenancePlanner";
-import DailyOperationsManager from "./components/ai/DailyOperationsManager";
 import AtlasIntelligenceRecommendations from "./components/ai/AtlasIntelligenceRecommendations";
 import DocumentIntelligencePanel from "./components/ai/DocumentIntelligencePanel";
 import PhotoIntelligencePanel from "./components/ai/PhotoIntelligencePanel";
@@ -11840,41 +11839,451 @@ export default function AtlasPage() {
   }
 
   function renderDashboard() {
+    const today = todayISO();
+    const activeProperty =
+      atlasProperties.find((property) => property.id === activePropertyId) ||
+      atlasProperties[0];
+    const openWork = serviceRecords.filter(
+      (record) => String(record.status || "Open") !== "Completed",
+    );
+    const completedWork = serviceRecords.filter(
+      (record) => String(record.status || "") === "Completed",
+    );
+    const dueToday = openWork.filter((record) => record.date === today);
+    const overdueWork = openWork.filter(
+      (record) => Boolean(record.date) && String(record.date) < today,
+    );
+    const highPriority = openWork.filter(
+      (record) => String(record.priority || "") === "High",
+    );
+    const completedToday = completedWork.filter((record) => {
+      const values = [
+        record.lastCompletedDate,
+        ...(Array.isArray(record.completionHistory)
+          ? record.completionHistory
+          : []),
+        ...(Array.isArray((record as AtlasServiceRecord).serviceHistory)
+          ? ((record as AtlasServiceRecord).serviceHistory || []).map(
+              (entry) => entry.completedAt,
+            )
+          : []),
+      ];
+      return values.some((value) => String(value || "").slice(0, 10) === today);
+    });
+    const activeRequests = requestRecords.filter(
+      (request) =>
+        ![
+          "Converted to Work Order",
+          "Closed",
+          "Declined",
+        ].includes(String(request.status || "")),
+    );
+    const todaysWeather =
+      weatherDays.find((day) => day.date === today) || weatherDays[0];
+    const vendorEvents = [...todayEvents, ...upcomingEvents]
+      .filter((item) => {
+        const text = `${item.linkedType || ""} ${item.categoryLabel || ""} ${item.area || ""} ${item.title || ""}`.toLowerCase();
+        return text.includes("vendor") || Boolean(item.linkedType === "Vendor");
+      })
+      .slice(0, 6);
+
+    const priorityRank = (record: ServiceRecord) =>
+      record.priority === "High" ? 0 : record.priority === "Medium" ? 1 : 2;
+    const mission = [...openWork]
+      .sort((a, b) => {
+        const aOverdue = a.date && a.date < today ? 0 : 1;
+        const bOverdue = b.date && b.date < today ? 0 : 1;
+        return (
+          aOverdue - bOverdue ||
+          priorityRank(a) - priorityRank(b) ||
+          String(a.date || "9999-12-31").localeCompare(
+            String(b.date || "9999-12-31"),
+          )
+        );
+      })
+      .slice(0, 6);
+
+    const completionTime = (record: AtlasServiceRecord) => {
+      const values = [
+        record.lastCompletedDate,
+        ...(record.completionHistory || []),
+        ...(record.serviceHistory || []).map((entry) => entry.completedAt),
+      ]
+        .map((value) => new Date(String(value || "")).getTime())
+        .filter((value) => Number.isFinite(value));
+      return values.length ? Math.max(...values) : 0;
+    };
+    const recentActivity = [...completedWork]
+      .map((record) => record as AtlasServiceRecord)
+      .sort((a, b) => completionTime(b) - completionTime(a))
+      .slice(0, 5);
+
+    const healthPenalty =
+      overdueWork.length * 3 + highPriority.length * 2 + activeRequests.length;
+    const estateHealth = Math.max(55, Math.min(99, 98 - healthPenalty));
+
+    const statusDefinitions = [
+      { label: "Maintenance", terms: ["maintenance", "house", "electrical", "plumbing", "hvac"], icon: "🔧" },
+      { label: "Landscaping", terms: ["landscap", "grounds", "cleaning"], icon: "🌿" },
+      { label: "Pool & Spa", terms: ["pool", "spa", "hot tub"], icon: "💧" },
+      { label: "Irrigation", terms: ["irrigation", "hydrawise"], icon: "🚿" },
+      { label: "Dock & Marine", terms: ["dock", "marine", "boat", "seadoo", "cobalt"], icon: "🚤" },
+      { label: "Vehicles", terms: ["vehicle", "garage", "car"], icon: "🚗" },
+    ];
+    const liveStatuses = statusDefinitions.map((definition) => {
+      const matching = openWork.filter((record) => {
+        const text = `${(record as AtlasServiceRecord).workCategory || ""} ${record.title || ""} ${record.notes || ""}`.toLowerCase();
+        return definition.terms.some((term) => text.includes(term));
+      });
+      const critical = matching.some(
+        (record) =>
+          record.priority === "High" &&
+          Boolean(record.date) &&
+          String(record.date) <= today,
+      );
+      return {
+        ...definition,
+        count: matching.length,
+        status: critical ? "Critical" : matching.length ? "Attention" : "Healthy",
+      };
+    });
+
+    const commandCardStyle: React.CSSProperties = {
+      border: `1px solid ${colors.line}`,
+      borderRadius: 18,
+      background: "#FFFFFF",
+      padding: isMobile ? 14 : 18,
+      boxShadow: "0 10px 28px rgba(15, 23, 42, 0.05)",
+      minWidth: 0,
+    };
+    const statValueStyle: React.CSSProperties = {
+      margin: "4px 0 0",
+      color: colors.navy,
+      fontSize: isMobile ? 24 : 30,
+      fontWeight: 900,
+      lineHeight: 1,
+    };
+    const dashboardGridStyle: React.CSSProperties = {
+      display: "grid",
+      gridTemplateColumns: isMobile
+        ? "1fr"
+        : "minmax(0, 1.45fr) minmax(300px, 0.75fr)",
+      gap: 14,
+      alignItems: "start",
+    };
+    const smallGridStyle: React.CSSProperties = {
+      display: "grid",
+      gridTemplateColumns: isMobile
+        ? "repeat(2, minmax(0, 1fr))"
+        : "repeat(4, minmax(0, 1fr))",
+      gap: 10,
+    };
+
+    const briefLines = [
+      `${dueToday.length} work item${dueToday.length === 1 ? " is" : "s are"} due today.`,
+      overdueWork.length
+        ? `${overdueWork.length} item${overdueWork.length === 1 ? " is" : "s are"} overdue and should be reviewed first.`
+        : "No work orders are overdue.",
+      vendorEvents.length
+        ? `${vendorEvents.length} vendor visit${vendorEvents.length === 1 ? " is" : "s are"} on the current schedule.`
+        : "No vendor visits are currently on the visible schedule.",
+      todaysWeather
+        ? `${weatherText(Number(todaysWeather.weatherCode || 0))}; ${irrigationAdvice(todaysWeather)}`
+        : "Weather intelligence is waiting for the next forecast refresh.",
+    ];
+
     return (
-      <DailyOperationsManager
-        assets={assetRecords}
-        todayEvents={todayEvents}
-        upcomingEvents={upcomingEvents}
-        procedures={procedureRecords}
-        serviceRecords={serviceRecords}
-        weatherDays={weatherDays}
-        today={todayISO()}
-        isMobile={isMobile}
-        colors={colors}
-        onOpenCalendar={(item) => {
-          setScreen("calendar");
-          window.setTimeout(() => openCalendarItem(item), 0);
-        }}
-        onOpenCalendarPage={() => {
-          setScreen("calendar");
-        }}
-        onOpenWorkOrder={(id) => {
-          setSelectedServiceId(id);
-          setScreen("history");
-        }}
-        onOpenWorkOrdersPage={() => {
-          setSelectedServiceId("");
-          setScreen("history");
-        }}
-        onOpenRoutinesPage={() => {
-          setScreen("routines");
-        }}
-        onAskAtlas={(prompt) => {
-          setAssistantQuestion(prompt);
-          setScreen("assistant");
-          window.setTimeout(() => void askAtlas(prompt), 0);
-        }}
-      />
+      <div style={{ display: "grid", gap: 14 }}>
+        <section
+          style={{
+            ...commandCardStyle,
+            padding: isMobile ? 16 : 22,
+            background: `linear-gradient(135deg, ${colors.navy} 0%, #173B59 72%, #244E6E 100%)`,
+            color: "#FFFFFF",
+            border: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: colors.gold2 }}>
+                Atlas Command Center
+              </div>
+              <h1 style={{ margin: "7px 0 5px", fontSize: isMobile ? 27 : 36, lineHeight: 1.05 }}>
+                {activeProperty?.name || "Atlas"} Operations
+              </h1>
+              <div style={{ opacity: 0.82, fontSize: 14 }}>
+                {new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+                {todaysWeather
+                  ? ` · ${weatherIcon(Number(todaysWeather.weatherCode || 0))} ${Math.round(Number(todaysWeather.high || 0))}° high`
+                  : ""}
+              </div>
+            </div>
+            <div style={{ textAlign: isMobile ? "left" : "right" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.78 }}>Estate Health</div>
+              <div style={{ fontSize: isMobile ? 34 : 44, fontWeight: 950, lineHeight: 1 }}>{estateHealth}%</div>
+              <div style={{ marginTop: 7, width: isMobile ? 180 : 220, height: 8, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
+                <div style={{ width: `${estateHealth}%`, height: "100%", background: colors.gold2, borderRadius: 999 }} />
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setAssistantQuestion("What should I focus on today across this property?");
+              setScreen("assistant");
+              window.setTimeout(
+                () => void askAtlas("What should I focus on today across this property?"),
+                0,
+              );
+            }}
+            style={{
+              marginTop: 18,
+              width: "100%",
+              minHeight: 48,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.28)",
+              background: "rgba(255,255,255,0.10)",
+              color: "#FFFFFF",
+              padding: "11px 14px",
+              textAlign: "left",
+              font: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            <strong>Ask Atlas or run a command…</strong>
+            <span style={{ display: "block", marginTop: 2, opacity: 0.72, fontSize: 12 }}>
+              Search records, plan today, create work, or open any part of the property.
+            </span>
+          </button>
+        </section>
+
+        <section style={smallGridStyle}>
+          {[
+            { label: "Open Work", value: openWork.length, detail: `${highPriority.length} high priority`, screen: "history" as Screen },
+            { label: "Due Today", value: dueToday.length, detail: `${overdueWork.length} overdue`, screen: "history" as Screen },
+            { label: "Open Requests", value: activeRequests.length, detail: "Owner and staff intake", screen: "requests" as Screen },
+            { label: "Completed Today", value: completedToday.length, detail: `${completedWork.length} total completed`, screen: "history" as Screen },
+          ].map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => setScreen(item.screen)}
+              style={{ ...commandCardStyle, textAlign: "left", cursor: "pointer", color: colors.text }}
+            >
+              <div style={{ ...mutedSmallStyle, fontWeight: 800 }}>{item.label}</div>
+              <div style={statValueStyle}>{item.value}</div>
+              <div style={{ ...mutedSmallStyle, marginTop: 7 }}>{item.detail}</div>
+            </button>
+          ))}
+        </section>
+
+        <div style={dashboardGridStyle}>
+          <div style={{ display: "grid", gap: 14 }}>
+            <section style={commandCardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <div>
+                  <div style={eyebrowStyle}>Today</div>
+                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today's Mission</h2>
+                </div>
+                <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 10px" }}>
+                  All Work
+                </button>
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {mission.map((record, index) => (
+                  <button
+                    key={record.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedServiceId(record.id);
+                      setScreen("history");
+                    }}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "34px minmax(0, 1fr) auto",
+                      alignItems: "center",
+                      gap: 10,
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 12,
+                      background: record.date && record.date < today ? "#FFF7F5" : "#FFFFFF",
+                      padding: "10px 11px",
+                      color: colors.text,
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ width: 28, height: 28, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#F1F5F9", fontWeight: 900, color: colors.navy }}>
+                      {index + 1}
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong>
+                      <small style={mutedSmallStyle}>
+                        {record.date ? (record.date < today ? `Overdue · ${formatDate(record.date)}` : `Due ${formatDate(record.date)}`) : "No due date"}
+                        {(record as AtlasServiceRecord).effort ? ` · ${(record as AtlasServiceRecord).effort}` : ""}
+                      </small>
+                    </span>
+                    <span style={badgeStyle(record.priority || "Medium")}>{record.priority || "Medium"}</span>
+                  </button>
+                ))}
+                {!mission.length ? <div style={noticeStyle}>No open work is currently assigned to this property.</div> : null}
+              </div>
+            </section>
+
+            <section style={commandCardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <div>
+                  <div style={eyebrowStyle}>Live Operations</div>
+                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Property Status</h2>
+                </div>
+                <button type="button" onClick={() => setScreen("map")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 10px" }}>
+                  Open Map
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))", gap: 9 }}>
+                {liveStatuses.map((item) => {
+                  const statusColor = item.status === "Critical" ? colors.red : item.status === "Attention" ? "#B54708" : colors.green;
+                  const statusBackground = item.status === "Critical" ? "#FEECEC" : item.status === "Attention" ? "#FFF4E5" : "#EAF7F1";
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => setScreen("history")}
+                      style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 12, textAlign: "left", cursor: "pointer", color: colors.text }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontSize: 21 }}>{item.icon}</span>
+                        <span style={{ width: 9, height: 9, borderRadius: 999, background: statusColor, marginTop: 4 }} />
+                      </div>
+                      <strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong>
+                      <span style={{ display: "inline-flex", marginTop: 7, borderRadius: 999, background: statusBackground, color: statusColor, padding: "3px 7px", fontSize: 11, fontWeight: 900 }}>
+                        {item.status}
+                      </span>
+                      <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{item.count} open item{item.count === 1 ? "" : "s"}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section style={commandCardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <div>
+                  <div style={eyebrowStyle}>Schedule</div>
+                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today & Upcoming</h2>
+                </div>
+                <button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 10px" }}>
+                  Calendar
+                </button>
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {[...todayEvents, ...upcomingEvents].slice(0, 7).map((item) => (
+                  <button
+                    key={String(item.instanceId || item.id)}
+                    type="button"
+                    onClick={() => {
+                      setScreen("calendar");
+                      window.setTimeout(() => openCalendarItem(item), 0);
+                    }}
+                    style={{ display: "grid", gridTemplateColumns: "90px minmax(0, 1fr)", gap: 10, alignItems: "center", border: 0, borderBottom: `1px solid ${colors.line}`, background: "transparent", padding: "8px 0", textAlign: "left", cursor: "pointer", color: colors.text }}
+                  >
+                    <span style={{ fontWeight: 900, color: colors.navy }}>{item.date === today ? item.time || "All day" : shortDay(item.date)}</span>
+                    <span>
+                      <strong style={{ display: "block" }}>{item.title}</strong>
+                      <small style={mutedSmallStyle}>{item.categoryLabel || item.area || "Calendar"}</small>
+                    </span>
+                  </button>
+                ))}
+                {![...todayEvents, ...upcomingEvents].length ? <div style={noticeStyle}>No calendar events are currently scheduled.</div> : null}
+              </div>
+            </section>
+          </div>
+
+          <aside style={{ display: "grid", gap: 14 }}>
+            <section style={{ ...commandCardStyle, background: "#F8FAFC" }}>
+              <div style={eyebrowStyle}>Atlas Brief</div>
+              <h2 style={{ margin: "3px 0 10px", color: colors.navy }}>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}.</h2>
+              <div style={{ display: "grid", gap: 9 }}>
+                {briefLines.map((line, index) => (
+                  <div key={index} style={{ display: "grid", gridTemplateColumns: "8px minmax(0, 1fr)", gap: 9, alignItems: "start", color: colors.text, fontSize: 13, lineHeight: 1.45 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 999, background: index === 1 && overdueWork.length ? colors.red : colors.gold, marginTop: 6 }} />
+                    <span>{line}</span>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setScreen("assistant")} style={{ ...goldButtonStyle, width: "100%", marginTop: 14 }}>
+                Open Ask Atlas
+              </button>
+            </section>
+
+            <section style={commandCardStyle}>
+              <div style={eyebrowStyle}>Weather Intelligence</div>
+              {todaysWeather ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 5 }}>
+                    <div>
+                      <div style={{ fontSize: 31, fontWeight: 950, color: colors.navy }}>{Math.round(Number(todaysWeather.high || 0))}°</div>
+                      <div style={mutedSmallStyle}>{weatherText(Number(todaysWeather.weatherCode || 0))}</div>
+                    </div>
+                    <div style={{ fontSize: 40 }}>{weatherIcon(Number(todaysWeather.weatherCode || 0))}</div>
+                  </div>
+                  <div style={{ marginTop: 12, padding: 11, borderRadius: 12, background: "#F8FAFC", fontSize: 13, lineHeight: 1.45 }}>
+                    <strong>Recommendation</strong>
+                    <div style={{ marginTop: 3, color: colors.muted }}>{weatherDayPlanning(todaysWeather)}</div>
+                    <div style={{ marginTop: 7, color: colors.muted }}>{irrigationAdvice(todaysWeather)}</div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ ...noticeStyle, marginTop: 10 }}>Forecast data is not available yet.</div>
+              )}
+            </section>
+
+            <section style={commandCardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <div>
+                  <div style={eyebrowStyle}>Vendors</div>
+                  <h3 style={{ margin: "3px 0 0", color: colors.navy }}>Timeline</h3>
+                </div>
+                <button type="button" onClick={() => setScreen("vendors")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}>Vendors</button>
+              </div>
+              <div style={{ display: "grid", gap: 8, marginTop: 11 }}>
+                {vendorEvents.map((item) => (
+                  <button key={String(item.instanceId || item.id)} type="button" onClick={() => { setScreen("calendar"); window.setTimeout(() => openCalendarItem(item), 0); }} style={{ border: 0, background: "transparent", padding: "4px 0", textAlign: "left", color: colors.text, cursor: "pointer" }}>
+                    <strong style={{ display: "block" }}>{item.title}</strong>
+                    <small style={mutedSmallStyle}>{item.date === today ? "Today" : shortDay(item.date)}{item.time ? ` · ${item.time}` : ""}</small>
+                  </button>
+                ))}
+                {!vendorEvents.length ? <div style={mutedSmallStyle}>No vendor visits on the visible schedule.</div> : null}
+              </div>
+            </section>
+
+            <section style={commandCardStyle}>
+              <div style={eyebrowStyle}>Recent Activity</div>
+              <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+                {recentActivity.map((record) => (
+                  <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "22px minmax(0, 1fr)", gap: 8, border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.text, cursor: "pointer" }}>
+                    <span style={{ color: colors.green, fontWeight: 950 }}>✓</span>
+                    <span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{completionTime(record) ? new Date(completionTime(record)).toLocaleDateString() : "Completed"}</small></span>
+                  </button>
+                ))}
+                {!recentActivity.length ? <div style={mutedSmallStyle}>Completed work will appear here.</div> : null}
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
     );
   }
 
