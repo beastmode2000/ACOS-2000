@@ -1543,40 +1543,67 @@ function weatherIcon(code: number) {
 
 function weatherGlyph(code: number) {
   const common = {
-    width: 28,
-    height: 28,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    "aria-hidden": true,
+    width: 48,
+    height: 48,
+    viewBox: "0 0 64 64",
+    role: "img" as const,
+    "aria-label": weatherText(code),
   };
 
+  const sun = (
+    <>
+      <g stroke="#F2B84B" strokeWidth="3.2" strokeLinecap="round">
+        <path d="M22 6v6M22 32v6M6 22h6M32 22h6M10.7 10.7l4.2 4.2M29.1 29.1l4.2 4.2M10.7 33.3l4.2-4.2M29.1 14.9l4.2-4.2" />
+      </g>
+      <circle cx="22" cy="22" r="8.5" fill="#FFD76A" stroke="#E6A83E" strokeWidth="2" />
+    </>
+  );
+
+  const cloud = (
+    <path
+      d="M20 46h27.5c6.9 0 12.5-5.1 12.5-11.4 0-5.9-4.9-10.8-11.2-11.4C46.4 16.6 40.2 12 33 12c-9.1 0-16.6 7.2-17.2 16.2C9.2 29 4 34 4 40.1 4 43.4 10.9 46 20 46Z"
+      fill="#EEF4F8"
+      stroke="#8EA8BA"
+      strokeWidth="2.2"
+      strokeLinejoin="round"
+    />
+  );
+
   if ([0].includes(code)) {
+    return <svg {...common} viewBox="0 0 44 44">{sun}</svg>;
+  }
+
+  if ([1, 2].includes(code)) {
     return (
       <svg {...common}>
-        <circle cx="12" cy="12" r="3.5" />
-        <path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />
+        <g transform="translate(2 1)">{sun}</g>
+        <g transform="translate(0 4)">{cloud}</g>
       </svg>
     );
   }
 
-  if ([61, 63, 65, 66, 67, 80, 81, 82, 51, 53, 55, 56, 57].includes(code)) {
+  if ([3].includes(code)) {
+    return <svg {...common}>{cloud}</svg>;
+  }
+
+  if ([45, 48].includes(code)) {
     return (
       <svg {...common}>
-        <path d="M7 16.5h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.3 10.4 3.2 3.2 0 0 0 7 16.5Z" />
-        <path d="m9 19-1 2M13 19l-1 2M17 19l-1 2" />
+        <g transform="translate(0 -5)">{cloud}</g>
+        <g stroke="#9CB3C2" strokeWidth="3" strokeLinecap="round">
+          <path d="M9 48h34M18 55h37M6 61h31" />
+        </g>
       </svg>
     );
   }
 
-  if ([95, 96, 99].includes(code)) {
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
     return (
       <svg {...common}>
-        <path d="M7 15.5h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.3 9.4 3.2 3.2 0 0 0 7 15.5Z" />
-        <path d="m13 16.5-2 3h2l-1 2.5 4-4.5h-2l1-1Z" />
+        <g transform="translate(0 -5)">{cloud}</g>
+        <g stroke="#4AA3DF" strokeWidth="3.2" strokeLinecap="round">
+          <path d="m17 49-3 6M31 49l-3 6M45 49l-3 6" />
+        </g>
       </svg>
     );
   }
@@ -1584,25 +1611,27 @@ function weatherGlyph(code: number) {
   if ([71, 73, 75, 77, 85, 86].includes(code)) {
     return (
       <svg {...common}>
-        <path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9M9 4.8l3 2 3-2M9 19.2l3-2 3 2M4.5 11l3 .2-1.5 2.6M19.5 11l-3 .2 1.5 2.6" />
+        <g transform="translate(0 -6)">{cloud}</g>
+        <g fill="#8CC8E8" stroke="#5EA8D0" strokeWidth="1.4" strokeLinecap="round">
+          <path d="M18 49v10M13.7 51.5l8.6 5M22.3 51.5l-8.6 5" />
+          <path d="M34 49v10M29.7 51.5l8.6 5M38.3 51.5l-8.6 5" />
+          <path d="M50 49v10M45.7 51.5l8.6 5M54.3 51.5l-8.6 5" />
+        </g>
       </svg>
     );
   }
 
-  if ([45, 48].includes(code)) {
+  if ([95, 96, 99].includes(code)) {
     return (
       <svg {...common}>
-        <path d="M5 8h14M3 12h14M7 16h14" />
+        <g transform="translate(0 -7)">{cloud}</g>
+        <path d="M33 43h10l-7 9h6L29 64l4-10h-6Z" fill="#F2B84B" stroke="#C88920" strokeWidth="1.5" strokeLinejoin="round" />
+        <g stroke="#4AA3DF" strokeWidth="3" strokeLinecap="round"><path d="m16 48-3 6M52 48l-3 6" /></g>
       </svg>
     );
   }
 
-  return (
-    <svg {...common}>
-      <path d="M7 16.5h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.3 10.4 3.2 3.2 0 0 0 7 16.5Z" />
-      <path d="M8 6.5a4 4 0 0 1 7.5-1.8" />
-    </svg>
-  );
+  return <svg {...common}>{cloud}</svg>;
 }
 
 function irrigationAdvice(day: WeatherDay) {
@@ -12505,40 +12534,7 @@ export default function AtlasPage() {
           ))}
         </section>
 
-            <section className="atlas-weather-experience">
-              <div className="atlas-weather-ambient" aria-hidden="true" />
-              <div className="atlas-weather-overview">
-                <div className="atlas-weather-current">
-                  <div className="atlas-weather-kicker">7-day property forecast</div>
-                  <div className="atlas-weather-current-row">
-                    <span className="atlas-weather-current-glyph">{todaysWeather ? weatherGlyph(Number(todaysWeather.code || 0)) : null}</span>
-                    <div>
-                      <div className="atlas-weather-current-temp">{todaysWeather ? Math.round(Number(todaysWeather.high || 0)) : "—"}°</div>
-                      <div className="atlas-weather-current-label">{todaysWeather ? weatherText(Number(todaysWeather.code || 0)) : "Loading forecast"}</div>
-                    </div>
-                  </div>
-                  <div className="atlas-weather-current-detail">{todaysWeather ? `Low ${Math.round(Number(todaysWeather.low || 0))}° · ${weatherDayPlanning(todaysWeather)}` : "Property weather intelligence is loading."}</div>
-                </div>
-                <div className="atlas-weather-operations">
-                  <div className="atlas-weather-operation-card"><span className="atlas-weather-operation-icon">◌</span><div><strong>Irrigation</strong><span>{todaysWeather ? irrigationAdvice(todaysWeather) : "Irrigation guidance loading."}</span></div></div>
-                  <div className="atlas-weather-operation-card"><span className="atlas-weather-operation-icon">◇</span><div><strong>Property plan</strong><span>{todaysWeather ? weatherDayPlanning(todaysWeather) : "Daily property recommendations loading."}</span></div></div>
-                </div>
-              </div>
-              <div className="atlas-weather-days">
-                {weatherDays.slice(0, 7).map((day, index) => (
-                  <button key={String(day.date || index)} type="button" className="atlas-weather-day atlas-gold-hover-card" onClick={() => setScreen("calendar")}>
-                    <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
-                    <span className="atlas-weather-day-heading"><strong>{index === 0 ? "Today" : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined,{weekday:"short"})}</strong><small>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</small></span>
-                    <span className="atlas-weather-day-glyph">{weatherGlyph(Number(day.code || 0))}</span>
-                    <span className="atlas-weather-day-temperature"><strong>{Math.round(Number(day.high || 0))}°</strong><small>{Math.round(Number(day.low || 0))}°</small></span>
-                    <span className="atlas-weather-day-condition">{weatherText(Number(day.code || 0))}</span>
-                    <span className="atlas-weather-day-plan">{weatherDayPlanning(day)}</span>
-                    <span className="atlas-weather-day-irrigation">{irrigationAdvice(day)}</span>
-                    <span className="atlas-gold-hover-popover" aria-hidden="true"><strong>{index === 0 ? "Today’s operations" : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined,{weekday:"long"})}</strong><span>{weatherDayPlanning(day)}</span><span>{irrigationAdvice(day)}</span><span>Click to open the property calendar.</span></span>
-                  </button>
-                ))}
-              </div>
-            </section>
+
 
         <div style={dashboardGridStyle}>
           <div style={{ display: "grid", gap: 14 }}>
@@ -12842,6 +12838,41 @@ export default function AtlasPage() {
             </section>
           </aside>
         </div>
+
+            <section id="atlas-dashboard-weather" className="atlas-weather-experience" aria-label="Property weather forecast">
+              <div className="atlas-weather-ambient" aria-hidden="true" />
+              <div className="atlas-weather-overview">
+                <div className="atlas-weather-current">
+                  <div className="atlas-weather-kicker">Property weather · 7-day outlook</div>
+                  <div className="atlas-weather-current-row">
+                    <span className="atlas-weather-current-glyph">{todaysWeather ? weatherGlyph(Number(todaysWeather.code || 0)) : null}</span>
+                    <div>
+                      <div className="atlas-weather-current-temp">{todaysWeather ? Math.round(Number(todaysWeather.high || 0)) : "—"}°</div>
+                      <div className="atlas-weather-current-label">{todaysWeather ? weatherText(Number(todaysWeather.code || 0)) : "Loading forecast"}</div>
+                    </div>
+                  </div>
+                  <div className="atlas-weather-current-detail">{todaysWeather ? `Low ${Math.round(Number(todaysWeather.low || 0))}° · ${weatherDayPlanning(todaysWeather)}` : "Property weather intelligence is loading."}</div>
+                </div>
+                <div className="atlas-weather-operations">
+                  <div className="atlas-weather-operation-card"><span className="atlas-weather-operation-icon" aria-hidden="true">💧</span><div><strong>Irrigation</strong><span>{todaysWeather ? irrigationAdvice(todaysWeather) : "Irrigation guidance loading."}</span></div></div>
+                  <div className="atlas-weather-operation-card"><span className="atlas-weather-operation-icon" aria-hidden="true">⌂</span><div><strong>Property plan</strong><span>{todaysWeather ? weatherDayPlanning(todaysWeather) : "Daily property recommendations loading."}</span></div></div>
+                </div>
+              </div>
+              <div className="atlas-weather-days">
+                {weatherDays.slice(0, 7).map((day, index) => (
+                  <button key={String(day.date || index)} type="button" className="atlas-weather-day atlas-gold-hover-card" onClick={() => setScreen("calendar")}>
+                    <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
+                    <span className="atlas-weather-day-heading"><strong>{index === 0 ? "Today" : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined,{weekday:"short"})}</strong><small>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</small></span>
+                    <span className="atlas-weather-day-glyph">{weatherGlyph(Number(day.code || 0))}</span>
+                    <span className="atlas-weather-day-temperature"><strong>{Math.round(Number(day.high || 0))}°</strong><small>{Math.round(Number(day.low || 0))}°</small></span>
+                    <span className="atlas-weather-day-condition">{weatherText(Number(day.code || 0))}</span>
+                    <span className="atlas-weather-day-plan">{weatherDayPlanning(day)}</span>
+                    <span className="atlas-weather-day-irrigation">{irrigationAdvice(day)}</span>
+                    <span className="atlas-gold-hover-popover" aria-hidden="true"><strong>{index === 0 ? "Today’s operations" : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined,{weekday:"long"})}</strong><span>{weatherDayPlanning(day)}</span><span>{irrigationAdvice(day)}</span><span>Click to open the property calendar.</span></span>
+                  </button>
+                ))}
+              </div>
+            </section>
       </div>
     );
   }
@@ -25780,12 +25811,12 @@ export default function AtlasPage() {
           }
         }
 
-        .atlas-weather-experience{position:relative;isolation:isolate;width:100%;overflow:visible;border:1px solid rgba(22,67,99,.18);border-radius:24px;background:linear-gradient(145deg,rgba(255,255,255,.97),rgba(238,246,251,.94));box-shadow:0 24px 65px rgba(10,35,56,.13),inset 0 1px 0 rgba(255,255,255,.9)}
-        .atlas-weather-ambient{position:absolute;inset:0;z-index:-1;overflow:hidden;border-radius:inherit;background:radial-gradient(circle at 8% 5%,rgba(89,164,218,.2),transparent 28%),radial-gradient(circle at 92% 8%,rgba(242,213,138,.18),transparent 24%),linear-gradient(180deg,rgba(255,255,255,.42),transparent 44%);pointer-events:none}
+        .atlas-weather-experience{position:relative;isolation:isolate;width:100%;margin-top:16px;overflow:visible;border:1px solid rgba(22,67,99,.18);border-radius:26px;background:linear-gradient(150deg,#F9FCFF 0%,#EAF5FC 44%,#FFF8E8 100%);box-shadow:0 24px 65px rgba(10,35,56,.13),inset 0 1px 0 rgba(255,255,255,.92)}
+        .atlas-weather-ambient{position:absolute;inset:0;z-index:-1;overflow:hidden;border-radius:inherit;background:radial-gradient(circle at 11% 4%,rgba(84,169,224,.28),transparent 30%),radial-gradient(circle at 90% 0%,rgba(255,209,96,.28),transparent 25%),radial-gradient(circle at 75% 90%,rgba(123,190,224,.12),transparent 28%),linear-gradient(180deg,rgba(255,255,255,.55),transparent 48%);pointer-events:none}
         .atlas-weather-overview{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(420px,1.25fr);gap:22px;align-items:stretch;padding:24px 26px 20px}
-        .atlas-weather-current{display:grid;align-content:center;min-width:0}.atlas-weather-kicker{color:#6B7E8F;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.atlas-weather-current-row{display:flex;align-items:center;gap:16px;margin-top:10px}.atlas-weather-current-glyph{display:grid;place-items:center;width:72px;height:72px;border:1px solid rgba(201,154,61,.24);border-radius:22px;background:rgba(255,255,255,.72);color:#D0A348;box-shadow:0 16px 34px rgba(25,73,108,.1);backdrop-filter:blur(16px)}.atlas-weather-current-glyph svg{width:46px;height:46px;stroke-width:1.45}.atlas-weather-current-temp{color:#102F49;font-size:clamp(48px,6vw,76px);font-weight:650;line-height:.92;letter-spacing:-.075em}.atlas-weather-current-label{margin-top:7px;color:#496579;font-size:16px;font-weight:750}.atlas-weather-current-detail{max-width:560px;margin-top:16px;color:#5C7182;font-size:13px;font-weight:650;line-height:1.5}
-        .atlas-weather-operations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.atlas-weather-operation-card{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;align-items:start;min-width:0;padding:17px;border:1px solid rgba(21,67,99,.12);border-radius:18px;background:rgba(255,255,255,.67);box-shadow:0 10px 28px rgba(10,35,56,.07);backdrop-filter:blur(18px)}.atlas-weather-operation-icon{display:grid;place-items:center;width:40px;height:40px;border-radius:13px;background:#102F49;color:#F2D58A;font-size:22px}.atlas-weather-operation-card strong{display:block;color:#17354D;font-size:13px}.atlas-weather-operation-card span:not(.atlas-weather-operation-icon){display:block;margin-top:5px;color:#617587;font-size:11px;font-weight:650;line-height:1.45}
-        .atlas-weather-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;width:100%;padding:0 16px 16px}.atlas-weather-day{position:relative;display:grid;grid-template-rows:auto 48px auto auto minmax(46px,1fr) auto;justify-items:center;gap:8px;min-width:0;min-height:226px;padding:15px 11px 13px;overflow:visible!important;border:1px solid rgba(21,67,99,.13);border-radius:18px;background:rgba(255,255,255,.74);color:#17354D;font:inherit;text-align:center;cursor:pointer;box-shadow:0 8px 22px rgba(10,35,56,.055);backdrop-filter:blur(18px);transition:transform .17s cubic-bezier(.2,.8,.2,1),border-color .17s,box-shadow .17s,background .17s}.atlas-weather-day:hover,.atlas-weather-day:focus-visible{z-index:90;border-color:rgba(201,154,61,.82)!important;background:rgba(255,255,255,.96)!important;box-shadow:0 18px 38px rgba(10,35,56,.14),0 0 0 3px rgba(201,154,61,.09)!important;transform:translateY(-4px)!important;outline:none}.atlas-weather-day-heading{display:grid;gap:2px}.atlas-weather-day-heading strong{color:#17354D;font-size:12px;letter-spacing:.025em}.atlas-weather-day-heading small{color:#81909D;font-size:9px;font-weight:750}.atlas-weather-day-glyph{display:grid;place-items:center;color:#C99A3D}.atlas-weather-day-glyph svg{width:36px;height:36px;stroke-width:1.55}.atlas-weather-day-temperature{display:flex;align-items:baseline;gap:5px}.atlas-weather-day-temperature strong{color:#102F49;font-size:24px;letter-spacing:-.045em}.atlas-weather-day-temperature small{color:#8493A0;font-size:11px;font-weight:800}.atlas-weather-day-condition{max-width:100%;overflow:hidden;color:#526B7D;font-size:10px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}.atlas-weather-day-plan{color:#425E72;font-size:9.5px;font-weight:700;line-height:1.35}.atlas-weather-day-irrigation{width:100%;padding-top:8px;border-top:1px solid rgba(21,67,99,.1);color:#A67820;font-size:9px;font-weight:900;line-height:1.3}
+        .atlas-weather-current{display:grid;align-content:center;min-width:0}.atlas-weather-kicker{color:#6B7E8F;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.atlas-weather-current-row{display:flex;align-items:center;gap:16px;margin-top:10px}.atlas-weather-current-glyph{display:grid;place-items:center;width:72px;height:72px;border:1px solid rgba(201,154,61,.24);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.95),rgba(224,241,252,.84));color:#D0A348;box-shadow:0 16px 34px rgba(25,73,108,.1);backdrop-filter:blur(16px)}.atlas-weather-current-glyph svg{width:58px;height:58px;filter:drop-shadow(0 8px 10px rgba(35,84,116,.18))}.atlas-weather-current-temp{color:#102F49;font-size:clamp(48px,6vw,76px);font-weight:650;line-height:.92;letter-spacing:-.075em}.atlas-weather-current-label{margin-top:7px;color:#496579;font-size:16px;font-weight:750}.atlas-weather-current-detail{max-width:560px;margin-top:16px;color:#5C7182;font-size:13px;font-weight:650;line-height:1.5}
+        .atlas-weather-operations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.atlas-weather-operation-card{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;align-items:start;min-width:0;padding:17px;border:1px solid rgba(21,67,99,.12);border-radius:18px;background:rgba(255,255,255,.67);box-shadow:0 10px 28px rgba(10,35,56,.07);backdrop-filter:blur(18px)}.atlas-weather-operation-icon{display:grid;place-items:center;width:40px;height:40px;border-radius:13px;background:linear-gradient(145deg,#123B59,#0B2940);color:#F2D58A;font-size:19px;box-shadow:0 8px 18px rgba(10,35,56,.18)}.atlas-weather-operation-card strong{display:block;color:#17354D;font-size:13px}.atlas-weather-operation-card span:not(.atlas-weather-operation-icon){display:block;margin-top:5px;color:#617587;font-size:11px;font-weight:650;line-height:1.45}
+        .atlas-weather-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;width:100%;padding:0 16px 16px}.atlas-weather-day{position:relative;display:grid;grid-template-rows:auto 48px auto auto minmax(46px,1fr) auto;justify-items:center;gap:8px;min-width:0;min-height:226px;padding:15px 11px 13px;overflow:visible!important;border:1px solid rgba(21,67,99,.13);border-radius:18px;background:rgba(255,255,255,.74);color:#17354D;font:inherit;text-align:center;cursor:pointer;box-shadow:0 8px 22px rgba(10,35,56,.055);backdrop-filter:blur(18px);transition:transform .17s cubic-bezier(.2,.8,.2,1),border-color .17s,box-shadow .17s,background .17s}.atlas-weather-day:hover,.atlas-weather-day:focus-visible{z-index:90;border-color:rgba(201,154,61,.82)!important;background:rgba(255,255,255,.96)!important;box-shadow:0 18px 38px rgba(10,35,56,.14),0 0 0 3px rgba(201,154,61,.09)!important;transform:translateY(-4px)!important;outline:none}.atlas-weather-day-heading{display:grid;gap:2px}.atlas-weather-day-heading strong{color:#17354D;font-size:12px;letter-spacing:.025em}.atlas-weather-day-heading small{color:#81909D;font-size:9px;font-weight:750}.atlas-weather-day-glyph{display:grid;place-items:center;color:#C99A3D}.atlas-weather-day-glyph svg{width:44px;height:44px;filter:drop-shadow(0 5px 7px rgba(35,84,116,.14))}.atlas-weather-day-temperature{display:flex;align-items:baseline;gap:5px}.atlas-weather-day-temperature strong{color:#102F49;font-size:24px;letter-spacing:-.045em}.atlas-weather-day-temperature small{color:#8493A0;font-size:11px;font-weight:800}.atlas-weather-day-condition{max-width:100%;overflow:hidden;color:#526B7D;font-size:10px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}.atlas-weather-day-plan{color:#425E72;font-size:9.5px;font-weight:700;line-height:1.35}.atlas-weather-day-irrigation{width:100%;padding-top:8px;border-top:1px solid rgba(21,67,99,.1);color:#A67820;font-size:9px;font-weight:900;line-height:1.3}
         .atlas-dashboard-kpi,.atlas-dashboard-status-card{position:relative;overflow:visible!important;transition:transform .17s cubic-bezier(.2,.8,.2,1),border-color .17s,box-shadow .17s,background .17s!important}.atlas-dashboard-kpi:hover,.atlas-dashboard-kpi:focus-visible,.atlas-dashboard-status-card:hover,.atlas-dashboard-status-card:focus-visible{z-index:85;border-color:rgba(201,154,61,.82)!important;background:#fff!important;box-shadow:0 16px 34px rgba(10,35,56,.14),0 0 0 3px rgba(201,154,61,.09)!important;transform:translateY(-3px)!important;outline:none}.atlas-dashboard-kpi::after{content:none!important;display:none!important;animation:none!important}
         .atlas-dashboard-info-popover,.atlas-gold-hover-popover{width:min(310px,calc(100vw - 34px))!important;min-width:230px;padding:14px 15px!important;border:1px solid rgba(242,213,138,.82)!important;border-radius:14px!important;background:#0B2A43!important;color:#fff!important;box-shadow:0 24px 58px rgba(6,24,39,.36)!important;text-align:left!important}.atlas-dashboard-info-popover strong,.atlas-gold-hover-popover>strong{color:#F2D58A!important;font-size:13px!important;line-height:1.35!important}.atlas-dashboard-info-popover span,.atlas-gold-hover-popover>span{color:#EEF4F8!important;font-size:12px!important;line-height:1.48!important}.atlas-weather-day .atlas-gold-hover-popover{left:50%!important;right:auto!important;top:calc(100% + 10px)!important;transform:translate(-50%,5px) scale(.985)!important}.atlas-weather-day:hover .atlas-gold-hover-popover,.atlas-weather-day:focus-visible .atlas-gold-hover-popover{opacity:1;transform:translate(-50%,0) scale(1)!important}
         @media(max-width:1120px){.atlas-weather-overview{grid-template-columns:1fr}.atlas-weather-days{grid-template-columns:repeat(7,minmax(145px,1fr));overflow-x:auto;padding-bottom:20px}}@media(max-width:720px){.atlas-weather-overview{padding:20px 16px 16px}.atlas-weather-operations{grid-template-columns:1fr}.atlas-weather-days{grid-template-columns:repeat(7,150px);padding-left:12px;padding-right:12px}}@media(hover:none),(pointer:coarse){.atlas-weather-day .atlas-gold-hover-popover{display:none}}
