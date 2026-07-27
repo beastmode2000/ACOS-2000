@@ -160,6 +160,17 @@ type WorkNoteEntry = {
   createdAt: string;
 };
 
+type TodayLogEntry = {
+  id: string;
+  propertyId: string;
+  date: string;
+  category: "Task" | "Repair" | "Inspection" | "Vendor" | "Delivery" | "Note";
+  text: string;
+  createdAt: string;
+};
+
+const todayLogStorageKeys = ["atlas-today-log-v1"];
+
 
 const atlasNavigationSections: {
   label: string;
@@ -3639,6 +3650,18 @@ export default function AtlasPage() {
       setDashboardWorkFilter("");
     }
   }, [screen, dashboardWorkFilter]);
+
+  useEffect(() => {
+    const stored = readStoredArray<TodayLogEntry>(todayLogStorageKeys, [])
+      .filter((entry) => Boolean(entry?.id && entry?.text && entry?.date))
+      .map((entry) => ({
+        ...entry,
+        propertyId: entry.propertyId || "2000",
+        category: entry.category || "Task",
+        createdAt: entry.createdAt || new Date().toISOString(),
+      }));
+    setTodayLogEntries(stored);
+  }, []);
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
   );
@@ -3697,6 +3720,9 @@ export default function AtlasPage() {
   const [requestPortalToken, setRequestPortalToken] = useState("");
   const [requestMessage, setRequestMessage] = useState("Loading requests...");
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
+  const [todayLogEntries, setTodayLogEntries] = useState<TodayLogEntry[]>([]);
+  const [todayLogText, setTodayLogText] = useState("");
+  const [todayLogCategory, setTodayLogCategory] = useState<TodayLogEntry["category"]>("Task");
   const [calendarColors, setCalendarColors] = useState<CalendarColor[]>(
     defaultCalendarColors,
   );
@@ -5048,6 +5074,11 @@ export default function AtlasPage() {
     if (!ready) return;
     saveStoredArray(storageKeys.calendar[0], calendarItems);
   }, [ready, calendarItems]);
+
+  useEffect(() => {
+    if (!ready) return;
+    saveStoredArray(todayLogStorageKeys[0], todayLogEntries);
+  }, [ready, todayLogEntries]);
 
   useEffect(() => {
     if (!ready) return;
@@ -12238,6 +12269,31 @@ export default function AtlasPage() {
         String(request.preferredTiming || "").toLowerCase().includes("today"),
       )
       .slice(0, 4);
+    const todaysLogEntries = todayLogEntries
+      .filter(
+        (entry) =>
+          entry.date === today && entry.propertyId === activePropertyId,
+      )
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    const scheduledRoutineEvents = todayEvents.filter(
+      (item) => Boolean((item as CalendarItem & { recurring?: boolean }).recurring),
+    );
+
+    const addTodayLogEntry = () => {
+      const text = todayLogText.trim();
+      if (!text) return;
+      const entry: TodayLogEntry = {
+        id: uid("today-log"),
+        propertyId: activePropertyId,
+        date: today,
+        category: todayLogCategory,
+        text,
+        createdAt: new Date().toISOString(),
+      };
+      setTodayLogEntries((current) => [entry, ...current]);
+      setTodayLogText("");
+      showSaveToast("Added to today’s log.");
+    };
 
     const completionTime = (record: AtlasServiceRecord) => {
       const values = [
@@ -12316,7 +12372,10 @@ export default function AtlasPage() {
     };
 
     const briefLines = [
-      `${dueToday.length} work item${dueToday.length === 1 ? " is" : "s are"} due today.`,
+      `${dueToday.length + todayEvents.length} scheduled work item${dueToday.length + todayEvents.length === 1 ? " is" : "s are"} on today’s plan, including ${scheduledRoutineEvents.length} recurring routine${scheduledRoutineEvents.length === 1 ? "" : "s"}.`,
+      todaysLogEntries.length
+        ? `${todaysLogEntries.length} unplanned item${todaysLogEntries.length === 1 ? " has" : "s have"} been added to today’s log.`
+        : "No unplanned work has been logged yet today.",
       overdueWork.length
         ? `${overdueWork.length} item${overdueWork.length === 1 ? " is" : "s are"} overdue and should be reviewed first.`
         : "No work orders are overdue.",
@@ -12488,7 +12547,79 @@ export default function AtlasPage() {
                   Open Calendar
                 </button>
               </div>
+              <div
+                id="atlas-today-log"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "150px minmax(0, 1fr) auto",
+                  gap: 8,
+                  alignItems: "center",
+                  padding: 10,
+                  marginBottom: 11,
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 13,
+                  background: "#F8FAFC",
+                }}
+              >
+                <select
+                  aria-label="Today log category"
+                  value={todayLogCategory}
+                  onChange={(event) =>
+                    setTodayLogCategory(event.target.value as TodayLogEntry["category"])
+                  }
+                  style={{ ...inputStyle, minHeight: 40, background: "#FFFFFF" }}
+                >
+                  {(["Task", "Repair", "Inspection", "Vendor", "Delivery", "Note"] as TodayLogEntry["category"][]).map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+                <input
+                  value={todayLogText}
+                  onChange={(event) => setTodayLogText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") addTodayLogEntry();
+                  }}
+                  placeholder="Add something that came up or that you completed…"
+                  aria-label="Add something to today’s log"
+                  style={{ ...inputStyle, minHeight: 40, background: "#FFFFFF" }}
+                />
+                <button
+                  type="button"
+                  onClick={addTodayLogEntry}
+                  disabled={!todayLogText.trim()}
+                  style={{
+                    ...goldButtonStyle,
+                    width: isMobile ? "100%" : "auto",
+                    minHeight: 40,
+                    opacity: todayLogText.trim() ? 1 : 0.55,
+                  }}
+                >
+                  Add to Today
+                </button>
+              </div>
               <div style={{ display: "grid", gap: 9 }}>
+                {todaysLogEntries.map((entry) => (
+                  <div
+                    key={`today-log-${entry.id}`}
+                    style={{ display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) auto", alignItems: "center", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F0FDF4", padding: "10px 11px", color: colors.text }}
+                  >
+                    <span style={{ width: 30, height: 30, borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#DCFCE7", fontSize: 16 }}>✓</span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.text}</strong>
+                      <small style={mutedSmallStyle}>Quick log · {entry.category} · {new Date(entry.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Delete ${entry.text} from today’s log`}
+                      onClick={() => setTodayLogEntries((current) => current.filter((item) => item.id !== entry.id))}
+                      style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 18, padding: 4 }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
                 {todaysWork.map((record) => (
                   <button
                     key={`today-work-${record.id}`}
@@ -12518,7 +12649,7 @@ export default function AtlasPage() {
                     <span style={{ width: 30, height: 30, borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#F3E8FF", fontSize: 16 }}>📅</span>
                     <span style={{ minWidth: 0 }}>
                       <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</strong>
-                      <small style={mutedSmallStyle}>{item.categoryLabel || item.area || "Calendar"}</small>
+                      <small style={mutedSmallStyle}>{(item as CalendarItem & { recurring?: boolean }).recurring ? "Recurring task" : item.categoryLabel || item.area || "Calendar"}</small>
                     </span>
                     <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{item.time || "All day"}</span>
                   </button>
@@ -12548,7 +12679,7 @@ export default function AtlasPage() {
                     <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{Math.round(Number(todaysWeather.high || 0))}°</span>
                   </button>
                 ) : null}
-                {!todaysWork.length && !todayEvents.length && !todaysRequests.length && !todaysWeather ? <div style={noticeStyle}>Nothing is scheduled for today.</div> : null}
+                {!todaysLogEntries.length && !todaysWork.length && !todayEvents.length && !todaysRequests.length && !todaysWeather ? <div style={noticeStyle}>Nothing is scheduled or logged for today.</div> : null}
               </div>
             </section>
 
