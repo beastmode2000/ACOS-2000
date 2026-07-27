@@ -11889,18 +11889,11 @@ export default function AtlasPage() {
 
     const priorityRank = (record: ServiceRecord) =>
       record.priority === "High" ? 0 : record.priority === "Medium" ? 1 : 2;
-    const mission = [...openWork]
-      .sort((a, b) => {
-        const aOverdue = a.date && a.date < today ? 0 : 1;
-        const bOverdue = b.date && b.date < today ? 0 : 1;
-        return (
-          aOverdue - bOverdue ||
-          priorityRank(a) - priorityRank(b) ||
-          String(a.date || "9999-12-31").localeCompare(
-            String(b.date || "9999-12-31"),
-          )
-        );
-      })
+    const mission = [...dueToday]
+      .sort((a, b) =>
+        priorityRank(a) - priorityRank(b) ||
+        String(a.title || "").localeCompare(String(b.title || "")),
+      )
       .slice(0, 6);
 
     const completionTime = (record: AtlasServiceRecord) => {
@@ -12138,7 +12131,7 @@ export default function AtlasPage() {
                     <span style={badgeStyle(record.priority || "Medium")}>{record.priority || "Medium"}</span>
                   </button>
                 ))}
-                {!mission.length ? <div style={noticeStyle}>No open work is currently assigned to this property.</div> : null}
+                {!mission.length ? <div style={noticeStyle}>Nothing is scheduled for today.</div> : null}
               </div>
             </section>
 
