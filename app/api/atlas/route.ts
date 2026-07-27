@@ -153,7 +153,9 @@ async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS bulbs text NOT NULL DEFAULT ''`;
   await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS finishes text NOT NULL DEFAULT ''`;
   await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS vendor_ids text[] NOT NULL DEFAULT '{}'`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS custom_details jsonb NOT NULL DEFAULT '[]'::jsonb`;
   await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS location_ids text[] NOT NULL DEFAULT '{}'`;
   await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
   await sql`ALTER TABLE atlas_calendar_items ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
   await sql`ALTER TABLE atlas_documents ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
@@ -495,9 +497,14 @@ function mapLocation(row: JsonRecord) {
     zone: String(row.zone || ""),
     notes: String(row.notes || ""),
     parentId: String(row.parent_id || ""),
-    paint: String(row.paint || ""),
-    bulbs: String(row.bulbs || ""),
-    finishes: String(row.finishes || ""),
+    customDetails: asArray(row.custom_details).map((detail, index) => {
+      const item = detail && typeof detail === "object" ? (detail as JsonRecord) : {};
+      return {
+        id: asString(item.id) || `detail-${index + 1}`,
+        label: asString(item.label),
+        value: asString(item.value),
+      };
+    }),
     vendorIds: asArray(row.vendor_ids).map(String),
     sort_order: Number(row.sort_order || 0),
   };
@@ -1155,6 +1162,7 @@ export async function POST(request: NextRequest) {
           paint,
           bulbs,
           finishes,
+          custom_details,
           vendor_ids,
           sort_order,
           property_id
@@ -1169,6 +1177,7 @@ export async function POST(request: NextRequest) {
           ${asString(record.paint)},
           ${asString(record.bulbs)},
           ${asString(record.finishes)},
+          ${jsonArray(record.customDetails)}::jsonb,
           ${asStringArray(record.vendorIds)},
           ${Number(record.sort_order || 0)},
           ${propertyId}
@@ -1183,6 +1192,7 @@ export async function POST(request: NextRequest) {
           paint = EXCLUDED.paint,
           bulbs = EXCLUDED.bulbs,
           finishes = EXCLUDED.finishes,
+          custom_details = EXCLUDED.custom_details,
           vendor_ids = EXCLUDED.vendor_ids,
           sort_order = EXCLUDED.sort_order,
           property_id = EXCLUDED.property_id
@@ -1267,6 +1277,7 @@ if (table === "assets") {
           id,
           name,
           location_id,
+          location_ids,
           category,
           status,
           make,
@@ -1283,7 +1294,8 @@ if (table === "assets") {
         VALUES (
           ${id},
           ${asString(record.name) || "Untitled Asset"},
-          ${asString(record.locationId) || "general"},
+          ${asString(record.locationId) || asStringArray(record.locationIds)[0] || "general"},
+          ${asStringArray(record.locationIds).length ? asStringArray(record.locationIds) : [asString(record.locationId) || "general"]},
           ${asString(record.category) || "General"},
           ${asStatus(record.status, "Monitor")},
           ${nullableString(record.make)},
@@ -1305,6 +1317,7 @@ if (table === "assets") {
         DO UPDATE SET
           name = EXCLUDED.name,
           location_id = EXCLUDED.location_id,
+          location_ids = EXCLUDED.location_ids,
           category = EXCLUDED.category,
           status = EXCLUDED.status,
           make = EXCLUDED.make,
@@ -1906,9 +1919,17 @@ export async function DELETE(request: NextRequest) {
     if (table === "locations") {
       await sql`
         UPDATE atlas_assets
-        SET location_id = 'general'
-        WHERE location_id = ${id}
-          AND property_id = ${propertyId}
+        SET
+          location_ids = array_remove(COALESCE(location_ids, ARRAY[]::text[]), ${id}),
+          location_id = CASE
+            WHEN location_id = ${id} THEN COALESCE(NULLIF((array_remove(COALESCE(location_ids, ARRAY[]::text[]), ${id}))[1], ''), 'general')
+            ELSE location_id
+          END
+        WHERE property_id = ${propertyId}
+          AND (
+            location_id = ${id}
+            OR ${id} = ANY(COALESCE(location_ids, ARRAY[]::text[]))
+          )
       `;
 
       await sql`
