@@ -1422,11 +1422,19 @@ function mergeLocationRecords(
   required: AtlasLocationRecord[],
 ): AtlasLocationRecord[] {
   const merged = new Map<string, AtlasLocationRecord>();
+  const seenNames = new Set<string>();
 
-  [...primary, ...required].forEach((location) => {
+  // Database locations are authoritative. Seed/fallback locations are added only
+  // when no database location with the same normalized name already exists.
+  [...primary, ...required].forEach((location, index) => {
     const id = String(location.id || "").trim();
     const name = String(location.name || "").trim();
     if (!id || !name) return;
+
+    const normalizedName = normalizeLocationName(name);
+    if (!normalizedName) return;
+
+    if (index >= primary.length && seenNames.has(normalizedName)) return;
 
     const key = id.toLowerCase();
     if (!merged.has(key)) {
@@ -1442,6 +1450,7 @@ function mergeLocationRecords(
         finishes: String(location.finishes || ""),
         vendorIds: Array.isArray(location.vendorIds) ? location.vendorIds.map(String) : [],
       });
+      seenNames.add(normalizedName);
     }
   });
 
@@ -7832,56 +7841,60 @@ export default function AtlasPage() {
     }
   }
 
-  async function mergeDuplicateLocations() {
-    const groups = new Map<string, AtlasLocationRecord[]>();
-    locations.forEach((location) => {
-      const key = normalizeLocationName(location.name);
-      if (!key) return;
-      groups.set(key, [...(groups.get(key) || []), location]);
-    });
-    const duplicateGroups = [...groups.values()].filter((group) => group.length > 1);
-    if (!duplicateGroups.length) {
-      showSaveToast("No exact duplicate location names found.");
+  async function deleteSelectedLocation() {
+    const location = locations.find((item) => item.id === selectedLocationId);
+    if (!location) return;
+
+    const linkedAssets = assetRecords.filter((asset) =>
+      assetHasLocation(asset, location.id),
+    );
+    const linkedWorkOrders = serviceRecords.filter(
+      (record) => String(record.locationId || "") === location.id,
+    );
+    const linkedDocuments = allDocuments.filter(
+      (document) => String(document.targetId || "") === location.id,
+    );
+    const linkedSubLocations = locations.filter(
+      (item) => String(item.parentId || "") === location.id,
+    );
+    const linkedPhotos = linkedImageFilesFor("Location", location.id);
+    const linkedVendors = Array.isArray(location.vendorIds)
+      ? location.vendorIds.filter(Boolean)
+      : [];
+
+    const blockers = [
+      [linkedAssets.length, "asset"],
+      [linkedWorkOrders.length, "work order"],
+      [linkedDocuments.length, "document"],
+      [linkedSubLocations.length, "sub-location"],
+      [linkedPhotos.length, "photo"],
+      [linkedVendors.length, "vendor"],
+    ] as const;
+
+    const activeBlockers = blockers.filter(([count]) => count > 0);
+    if (activeBlockers.length) {
+      const details = activeBlockers
+        .map(([count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`)
+        .join(", ");
+      window.alert(
+        `This location cannot be deleted yet because it has ${details}. Reassign or remove those connections first.`,
+      );
       return;
     }
-    const duplicateCount = duplicateGroups.reduce((sum, group) => sum + group.length - 1, 0);
-    if (!window.confirm(`Merge ${duplicateCount} duplicate location record${duplicateCount === 1 ? "" : "s"}? Linked assets, work orders, and sub-locations will be reassigned first.`)) return;
 
-    const remap = new Map<string, string>();
-    duplicateGroups.forEach((group) => group.slice(1).forEach((duplicate) => remap.set(duplicate.id, group[0].id)));
+    if (!window.confirm(`Delete “${location.name}”? This cannot be undone.`)) {
+      return;
+    }
 
-    const nextAssets = assetRecords.map((asset) => {
-      const mappedIds = assetLocationIds(asset).map((id) => remap.get(id) || id);
-      const locationIds = Array.from(new Set(mappedIds));
-      return normalizeAsset({
-        ...asset,
-        locationId: remap.get(asset.locationId) || asset.locationId || locationIds[0] || "general",
-        locationIds,
-      });
-    });
-    const changedAssets = nextAssets.filter((asset, index) => JSON.stringify(assetLocationIds(asset)) !== JSON.stringify(assetLocationIds(assetRecords[index])) || asset.locationId !== assetRecords[index].locationId);
-    setAssetRecords(nextAssets);
+    const deleted = await deleteAtlasRecord("locations", location.id);
+    if (!deleted) return;
 
-    const nextServices = serviceRecords.map((record) => ({
-      ...record,
-      locationId: remap.get(String(record.locationId || "")) || record.locationId,
-    }));
-    const changedServices = nextServices.filter((record, index) => record.locationId !== serviceRecords[index].locationId);
-    setServiceRecords(nextServices);
-
-    const nextLocations = locations
-      .filter((location) => !remap.has(location.id))
-      .map((location) => ({ ...location, parentId: remap.get(location.parentId || "") || location.parentId }));
-    setLocations(nextLocations);
-
-    await Promise.all([
-      ...changedAssets.map((asset) => postAtlasRecord("assets", asset)),
-      ...changedServices.map((record) => postAtlasRecord("work_orders", record)),
-      ...nextLocations.filter((location) => location.parentId && [...remap.values()].includes(location.parentId)).map((location) => postAtlasRecord("locations", location)),
-    ]);
-    for (const duplicateId of remap.keys()) await deleteAtlasRecord("locations", duplicateId);
-    if (remap.has(selectedLocationId)) setSelectedLocationId(remap.get(selectedLocationId) || "");
-    showSaveToast(`Merged ${duplicateCount} duplicate location record${duplicateCount === 1 ? "" : "s"}.`);
+    const remaining = locations.filter((item) => item.id !== location.id);
+    setLocations(remaining);
+    setSelectedLocationId(remaining[0]?.id || "");
+    setLocationEditorOpen(false);
+    setLocationMobileDrawerOpen(false);
+    showSaveToast("Location deleted.");
   }
 
   function addLocation() {
@@ -13261,13 +13274,6 @@ export default function AtlasPage() {
           <>
             <button
               type="button"
-              onClick={() => void mergeDuplicateLocations()}
-              style={secondaryButtonStyle}
-            >
-              Merge Duplicates
-            </button>
-            <button
-              type="button"
               onClick={() => {
                 addLocation();
                 if (isMobile) setLocationMobileDrawerOpen(true);
@@ -13377,6 +13383,15 @@ export default function AtlasPage() {
                         Edit
                       </button>
                     )}
+                    {locationEditorOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => void deleteSelectedLocation()}
+                        style={{ ...dangerButtonStyle, width: isMobile ? "100%" : undefined }}
+                      >
+                        Delete Location
+                      </button>
+                    ) : null}
                     {locationEditorOpen ||
                     isRecordDirty("location", selectedLocation.id) ? (
                       <button
@@ -13410,7 +13425,7 @@ export default function AtlasPage() {
                     />
                     {locations.some((location) => location.id !== selectedLocation.id && normalizeLocationName(location.name) === normalizeLocationName(selectedLocation.name)) ? (
                       <div style={{ ...noticeStyle, borderColor: "#F3C98B", background: "#FFF8E8", color: "#7A4B00" }}>
-                        A location with this name already exists. Rename it or use Merge Duplicates.
+                        A location with this name already exists. Keep the correct record and delete the empty duplicate.
                       </div>
                     ) : null}
                     <Field
