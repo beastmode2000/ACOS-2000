@@ -17512,7 +17512,6 @@ export default function AtlasPage() {
               )}
             </div>
           }
-          }
           drawer={isMobile ? undefined : documentViewer}
         />
 
