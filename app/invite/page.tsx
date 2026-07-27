@@ -3,7 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function AtlasInvitePage() {
+export default function InviteForm() {
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token") || "", [searchParams]);
   const [password, setPassword] = useState("");
@@ -172,9 +172,7 @@ export default function AtlasInvitePage() {
                 type="password"
                 autoComplete="new-password"
                 value={password}
-                onChange={(event) =>
-                  setPassword(event.currentTarget.value)
-                }
+                onChange={(event) => setPassword(event.currentTarget.value)}
                 style={{
                   width: "100%",
                   boxSizing: "border-box",
@@ -246,4 +244,3 @@ export default function AtlasInvitePage() {
     </main>
   );
 }
-
