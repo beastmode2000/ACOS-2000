@@ -13424,6 +13424,23 @@ export default function AtlasPage() {
     };
     const locationPhotoCount = (locationId: string) =>
       linkedImageFilesFor("Location", locationId).length;
+    const locationDocumentCount = (locationId: string) =>
+      intakeDocs.filter(
+        (document) =>
+          document.targetType === "Location" &&
+          document.targetId === locationId,
+      ).length;
+    const locationIcon = (location: AtlasLocationRecord) => {
+      const value = `${location.type} ${location.name}`.toLowerCase();
+      if (value.includes("pool") || value.includes("hot tub")) return "🏊";
+      if (value.includes("dock") || value.includes("water") || value.includes("boat")) return "⚓";
+      if (value.includes("garage") || value.includes("vehicle")) return "🚗";
+      if (value.includes("garden") || value.includes("lawn") || value.includes("courtyard") || value.includes("landscape")) return "🌿";
+      if (value.includes("kitchen") || value.includes("pantry")) return "🍽️";
+      if (value.includes("mechanical") || value.includes("utility") || value.includes("pump")) return "⚙️";
+      if (value.includes("room") || value.includes("house") || value.includes("bedroom")) return "🏠";
+      return "📍";
+    };
     const childLocationsFor = (parentId: string) =>
       byName(locations.filter((location) => location.parentId === parentId));
     const normalizedLocationSearch = locationSearch.trim().toLowerCase();
@@ -13535,6 +13552,42 @@ export default function AtlasPage() {
         ];
       })
       .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    const locationDocuments = selectedLocation.id
+      ? intakeDocs
+          .filter(
+            (document) =>
+              document.targetType === "Location" &&
+              document.targetId === selectedLocation.id,
+          )
+          .sort((a, b) =>
+            String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+          )
+      : [];
+    const openLocationWork = locationWorkOrders.filter(
+      (record) => record.status !== "Completed",
+    );
+    const overdueLocationWork = openLocationWork.filter(
+      (record) => Boolean(record.date) && record.date < todayISO(),
+    );
+    const latestLocationActivity = [
+      ...locationHistory.map((entry) => String(entry.date || "")),
+      ...locationDocuments.map((document) => String(document.createdAt || "").slice(0, 10)),
+      ...locationPhotos.map((photo) => String(photo.createdAt || "").slice(0, 10)),
+    ]
+      .filter(Boolean)
+      .sort((a, b) => b.localeCompare(a))[0];
+    const locationCondition = overdueLocationWork.length
+      ? "Attention"
+      : openLocationWork.length > 2
+        ? "Monitor"
+        : "Good";
+    const locationInsight = overdueLocationWork.length
+      ? `${overdueLocationWork.length} overdue work item${overdueLocationWork.length === 1 ? " needs" : "s need"} attention.`
+      : openLocationWork.length
+        ? `${openLocationWork.length} open work item${openLocationWork.length === 1 ? " is" : "s are"} linked to this location.`
+        : locationAssets.length && !locationDocuments.length
+          ? "Assets are assigned here, but no location documents are linked yet."
+          : "No immediate location issues are recorded.";
 
     return (
       <ListDrawerLayout
@@ -13654,6 +13707,7 @@ export default function AtlasPage() {
                 const assetCount = locationAssetCount(location.id);
                 const workCount = locationWorkCount(location.id);
                 const photoCount = locationPhotoCount(location.id);
+                const documentCount = locationDocumentCount(location.id);
                 const collapsed = collapsedLocationIds.has(location.id);
 
                 return (
@@ -13694,7 +13748,7 @@ export default function AtlasPage() {
                         background: "transparent",
                         color: colors.navy,
                         display: "grid",
-                        gridTemplateColumns: "auto minmax(0, 1fr)",
+                        gridTemplateColumns: "auto auto minmax(0, 1fr)",
                         gap: 8,
                         alignItems: "center",
                         minWidth: 0,
@@ -13731,6 +13785,22 @@ export default function AtlasPage() {
                         aria-label={collapsed ? "Expand location" : "Collapse location"}
                       >
                         {collapsed ? "+" : "−"}
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: 9,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: selected || hovered ? "#FFF1C7" : colors.panel,
+                          border: `1px solid ${selected || hovered ? colors.gold : colors.line}`,
+                          fontSize: 16,
+                        }}
+                      >
+                        {locationIcon(location)}
                       </span>
                       <span style={{ minWidth: 0 }}>
                         <strong
@@ -13770,6 +13840,9 @@ export default function AtlasPage() {
                           ) : null}
                           {photoCount ? (
                             <small style={badgeStyle("Completed")}>{photoCount} photos</small>
+                          ) : null}
+                          {documentCount ? (
+                            <small style={badgeStyle("Scheduled")}>{documentCount} docs</small>
                           ) : null}
                         </span>
                       </span>
@@ -13934,6 +14007,55 @@ export default function AtlasPage() {
                     ) : null}
                   </div>
                 </div>
+
+                {!locationEditorOpen ? (
+                  <section
+                    style={{
+                      marginTop: 12,
+                      padding: 14,
+                      borderRadius: 14,
+                      border: `1px solid ${colors.gold}`,
+                      background: "linear-gradient(135deg, #FFF9EC 0%, #FFFFFF 72%)",
+                      boxShadow: "0 8px 24px rgba(15, 42, 67, 0.08)",
+                    }}
+                  >
+                    <div style={{ ...detailSectionHeaderStyle, alignItems: "flex-start" }}>
+                      <div>
+                        <div style={eyebrowStyle}>Property Intelligence</div>
+                        <strong style={{ fontSize: 16 }}>Location at a glance</strong>
+                      </div>
+                      <span style={badgeStyle(locationCondition === "Good" ? "Completed" : locationCondition === "Monitor" ? "Monitor" : "High")}>
+                        {locationCondition}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "repeat(2, minmax(0, 1fr))"
+                          : "repeat(5, minmax(0, 1fr))",
+                        gap: 8,
+                        marginTop: 12,
+                      }}
+                    >
+                      {[
+                        ["Assets", locationAssets.length],
+                        ["Documents", locationDocuments.length],
+                        ["Open Work", openLocationWork.length],
+                        ["Photos", locationPhotos.length],
+                        ["Last Activity", latestLocationActivity ? formatDate(latestLocationActivity) : "None"],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} style={{ ...recordInfoItemStyle, minWidth: 0 }}>
+                          <span style={fieldLabelStyle}>{label}</span>
+                          <strong style={{ overflowWrap: "anywhere" }}>{value}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ ...recordNotesStyle, margin: "12px 0 0" }}>
+                      <strong>Atlas note:</strong> {locationInsight}
+                    </p>
+                  </section>
+                ) : null}
 
                 {locationEditorOpen ? (
                   <div style={{ ...formGridStyle, marginTop: 12 }}>
@@ -14100,30 +14222,91 @@ export default function AtlasPage() {
                 </div>
 
                 {locationPhotos.length ? (
-                  <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
-                    <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({locationPhotos.length})</summary>
-                    <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
-                    {locationPhotos.map((file) => (
-                      <div key={file.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile
+                        ? "repeat(2, minmax(0, 1fr))"
+                        : "repeat(4, minmax(0, 1fr))",
+                      gap: 8,
+                    }}
+                  >
+                    {locationPhotos.slice(0, 8).map((file) => (
+                      <div
+                        key={file.id}
+                        style={{
+                          position: "relative",
+                          aspectRatio: "4 / 3",
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          border: `1px solid ${colors.line}`,
+                          background: colors.panel,
+                        }}
+                      >
                         <button
                           type="button"
                           onClick={() => openUploadedFile(file)}
-                          style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}
+                          title={file.name}
+                          style={{ border: 0, padding: 0, width: "100%", height: "100%", background: "transparent", cursor: "pointer" }}
                         >
-                          {file.name}
+                          <img
+                            src={file.dataUrl || file.url}
+                            alt={file.name || "Location photo"}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          />
                         </button>
                         <button
                           type="button"
                           onClick={() => void deleteLinkedImage(file)}
-                          style={photoDeleteButtonStyle}
+                          aria-label={`Delete ${file.name}`}
+                          title="Delete photo"
+                          style={{
+                            position: "absolute",
+                            top: 6,
+                            right: 6,
+                            width: 26,
+                            height: 26,
+                            borderRadius: 999,
+                            border: "1px solid rgba(255,255,255,.8)",
+                            background: "rgba(15,42,67,.82)",
+                            color: "white",
+                            cursor: "pointer",
+                            fontWeight: 900,
+                          }}
                         >
-                          Delete
+                          {closeSymbol}
                         </button>
                       </div>
                     ))}
+                    {locationPhotos.length > 8 ? (
+                      <button
+                        type="button"
+                        onClick={() => openUploadedFile(locationPhotos[8])}
+                        style={{ ...secondaryButtonStyle, minHeight: 72 }}
+                      >
+                        +{locationPhotos.length - 8} more
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      placeItems: "center",
+                      minHeight: 112,
+                      padding: 18,
+                      border: `1px dashed ${colors.gold}`,
+                      borderRadius: 12,
+                      background: "#FFFDF7",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div>
+                      <strong>Add the first location photo</strong>
+                      <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Paste an image, use Add Photo, or drop an image into this panel.</p>
                     </div>
-                  </details>
-                ) : null}
+                  </div>
+                )}
               </section>
 
               <section style={detailSectionStyle}>
