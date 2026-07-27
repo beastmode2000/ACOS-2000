@@ -169,6 +169,71 @@ type TodayLogEntry = {
   createdAt: string;
 };
 
+type DashboardRoutineItem = {
+  id: string;
+  title: string;
+  detail: string;
+  time: string;
+};
+
+function loadDashboardRoutineItems(): DashboardRoutineItem[] {
+  if (typeof window === "undefined") return [];
+
+  const results: DashboardRoutineItem[] = [];
+  const seen = new Set<string>();
+  const textKeys = ["text", "title", "name", "label", "task", "description"];
+  const childKeys = ["items", "tasks", "checklist", "steps", "entries", "routineItems"];
+
+  const addItem = (value: Record<string, unknown>, path: string, storageKey: string) => {
+    const title = textKeys
+      .map((key) => value[key])
+      .find((candidate) => typeof candidate === "string" && candidate.trim()) as string | undefined;
+    if (!title) return;
+
+    const normalized = title.trim();
+    const signature = normalized.toLowerCase();
+    if (seen.has(signature)) return;
+    seen.add(signature);
+
+    results.push({
+      id: String(value.id || value.taskId || value.itemId || `${storageKey}-${path}-${signature}`),
+      title: normalized,
+      detail: String(value.category || value.area || value.group || value.section || value.frequency || "Routine checklist"),
+      time: String(value.time || value.dueTime || ""),
+    });
+  };
+
+  const walk = (value: unknown, path: string, storageKey: string) => {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => walk(item, `${path}-${index}`, storageKey));
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+
+    const record = value as Record<string, unknown>;
+    const children = childKeys.flatMap((key) => Array.isArray(record[key]) ? [record[key] as unknown[]] : []);
+    if (children.length) {
+      children.forEach((child, index) => walk(child, `${path}-children-${index}`, storageKey));
+    } else {
+      addItem(record, path, storageKey);
+    }
+  };
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key || !key.toLowerCase().includes("routine") || key === dashboardRoutineStorageKeys[0]) continue;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      walk(JSON.parse(raw), "root", key);
+    } catch {
+      // Ignore unrelated or malformed browser storage entries.
+    }
+  }
+
+  return results.slice(0, 40);
+}
+
 const todayLogStorageKeys = ["atlas-today-log-v1"];
 const dashboardRoutineStorageKeys = ["atlas-dashboard-routine-completed-v1"];
 
@@ -3694,6 +3759,15 @@ export default function AtlasPage() {
     setCompletedDashboardRoutineIds(
       readStoredArray<string>(dashboardRoutineStorageKeys, []).filter(Boolean),
     );
+    setDashboardRoutineItems(loadDashboardRoutineItems());
+
+    const refreshRoutineItems = () => setDashboardRoutineItems(loadDashboardRoutineItems());
+    window.addEventListener("focus", refreshRoutineItems);
+    window.addEventListener("storage", refreshRoutineItems);
+    return () => {
+      window.removeEventListener("focus", refreshRoutineItems);
+      window.removeEventListener("storage", refreshRoutineItems);
+    };
   }, []);
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
@@ -3757,6 +3831,7 @@ export default function AtlasPage() {
   const [todayLogText, setTodayLogText] = useState("");
   const [todayLogCategory, setTodayLogCategory] = useState<TodayLogEntry["category"]>("Task");
   const [completedDashboardRoutineIds, setCompletedDashboardRoutineIds] = useState<string[]>([]);
+  const [dashboardRoutineItems, setDashboardRoutineItems] = useState<DashboardRoutineItem[]>([]);
   const [calendarColors, setCalendarColors] = useState<CalendarColor[]>(
     defaultCalendarColors,
   );
@@ -12386,7 +12461,7 @@ export default function AtlasPage() {
       border: `1px solid ${colors.line}`,
       borderRadius: 18,
       background: "#FFFFFF",
-      padding: isMobile ? 14 : 18,
+      padding: isMobile ? 14 : 16,
       boxShadow: "0 10px 28px rgba(15, 23, 42, 0.05)",
       minWidth: 0,
     };
@@ -12413,9 +12488,15 @@ export default function AtlasPage() {
       gap: 10,
     };
 
-    const scheduledRoutineIds = scheduledRoutineEvents.map((item) =>
-      String(item.instanceId || item.id),
-    );
+    const visibleRoutineItems: DashboardRoutineItem[] = dashboardRoutineItems.length
+      ? dashboardRoutineItems
+      : scheduledRoutineEvents.map((item) => ({
+          id: String(item.instanceId || item.id),
+          title: item.title,
+          detail: item.categoryLabel || item.area || "Recurring routine",
+          time: item.time || "",
+        }));
+    const scheduledRoutineIds = visibleRoutineItems.map((item) => item.id);
     const completedRoutineCount = scheduledRoutineIds.filter((id) =>
       completedDashboardRoutineIds.includes(id),
     ).length;
@@ -12424,9 +12505,9 @@ export default function AtlasPage() {
       : 0;
 
     const briefLines = [
-      scheduledRoutineEvents.length
-        ? `${scheduledRoutineEvents.length} recurring routine${scheduledRoutineEvents.length === 1 ? " is" : "s are"} scheduled today and available from the dashboard.`
-        : "No recurring routines are scheduled for today.",
+      visibleRoutineItems.length
+        ? `${visibleRoutineItems.length} routine checklist item${visibleRoutineItems.length === 1 ? " is" : "s are"} available from the dashboard.`
+        : "No routine checklist items are available yet.",
       `${dueToday.length + nonRoutineTodayEvents.length + todaysRequests.length} other scheduled work item${dueToday.length + nonRoutineTodayEvents.length + todaysRequests.length === 1 ? " is" : "s are"} on today’s plan.`,
       todaysLogEntries.length
         ? `${todaysLogEntries.length} unplanned item${todaysLogEntries.length === 1 ? " has" : "s have"} been added to today’s quick log.`
@@ -12816,8 +12897,8 @@ export default function AtlasPage() {
               </div>
 
               <div style={{ display: "grid", gap: 8 }}>
-                {scheduledRoutineEvents.slice(0, 6).map((item) => {
-                  const routineId = String(item.instanceId || item.id);
+                {visibleRoutineItems.slice(0, 8).map((item) => {
+                  const routineId = item.id;
                   const completed = completedDashboardRoutineIds.includes(routineId);
                   return (
                     <label
@@ -12838,22 +12919,22 @@ export default function AtlasPage() {
                       />
                       <span style={{ minWidth: 0, opacity: completed ? 0.58 : 1 }}>
                         <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: completed ? "line-through" : "none" }}>{item.title}</strong>
-                        <small style={mutedSmallStyle}>{item.categoryLabel || item.area || "Recurring routine"}</small>
+                        <small style={mutedSmallStyle}>{item.detail}</small>
                       </span>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{item.time || "All day"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{item.time || ""}</span>
                       <span className="atlas-dashboard-info-popover" aria-hidden="true">
                         <strong>{item.title}</strong>
-                        <span>{item.categoryLabel || item.area || "Recurring routine"}</span>
+                        <span>{item.detail}</span>
                         <span>{completed ? "Completed for today. Uncheck to reopen it." : "Check this item when today’s routine work is finished."}</span>
                       </span>
                     </label>
                   );
                 })}
-                {!scheduledRoutineEvents.length ? <div style={{ ...noticeStyle, padding: 11 }}>No recurring routine is scheduled for today.</div> : null}
+                {!visibleRoutineItems.length ? <div style={{ ...noticeStyle, padding: 11 }}>No saved routine checklist was found. Open Routines once, then return to the dashboard.</div> : null}
               </div>
-              {scheduledRoutineEvents.length > 6 ? (
+              {visibleRoutineItems.length > 8 ? (
                 <button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 10 }}>
-                  View all {scheduledRoutineEvents.length} routine items
+                  View all {visibleRoutineItems.length} routine items
                 </button>
               ) : null}
             </section>
@@ -25039,26 +25120,28 @@ export default function AtlasPage() {
         }
 
         .atlas-sidebar-toggle {
-          display: flex;
+          align-self: flex-end;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
-          width: calc(100% - 24px);
-          min-height: 36px;
-          margin: 4px 12px 10px;
-          border: 1px solid rgba(255,255,255,0.18);
-          border-radius: 10px;
-          background: rgba(255,255,255,0.07);
-          color: #FFFFFF;
+          gap: 5px;
+          width: auto;
+          min-height: 26px;
+          margin: 0 5px 6px;
+          padding: 3px 7px;
+          border: 0;
+          border-radius: 999px;
+          background: transparent;
+          color: rgba(255,255,255,0.58);
           font: inherit;
-          font-size: 12px;
-          font-weight: 800;
+          font-size: 10px;
+          font-weight: 750;
           cursor: pointer;
-          transition: background 160ms ease, border-color 160ms ease;
+          transition: color 160ms ease, background 160ms ease;
         }
         .atlas-sidebar-toggle:hover {
-          border-color: rgba(242,213,138,0.72);
-          background: rgba(255,255,255,0.12);
+          color: #FFFFFF;
+          background: rgba(255,255,255,0.07);
         }
         .atlas-sidebar-is-collapsed .atlas-brand-copy,
         .atlas-sidebar-is-collapsed .atlas-sidebar-nav-header,
@@ -25877,7 +25960,7 @@ export default function AtlasPage() {
           display: "grid",
           gridTemplateColumns: isMobile
             ? "minmax(0, 1fr)"
-            : `${sidebarCollapsed ? 78 : 250}px minmax(0, 1fr)`,
+            : `${sidebarCollapsed ? 70 : 238}px minmax(0, 1fr)`,
           transition: "grid-template-columns 240ms cubic-bezier(.2,.8,.2,1)",
           minHeight: "100vh",
           width: "100%",
@@ -25896,11 +25979,11 @@ export default function AtlasPage() {
                   top: 0,
                   left: 0,
                   bottom: 0,
-                  width: sidebarCollapsed ? 78 : 250,
+                  width: sidebarCollapsed ? 70 : 238,
                   height: "100vh",
                   transition: "width 240ms cubic-bezier(.2,.8,.2,1)",
                   maxHeight: "100vh",
-                  overflowY: "hidden",
+                  overflowY: "auto",
                   overflowX: "hidden",
                   zIndex: 30,
                   boxShadow: "10px 0 35px rgba(7,27,47,0.16)",
@@ -27116,7 +27199,7 @@ const desktopAppStyle: React.CSSProperties = {
 };
 
 const desktopContentStyle: React.CSSProperties = {
-  padding: 24,
+  padding: 18,
   minWidth: 0,
   width: "100%",
   overflow: "visible",
@@ -27129,7 +27212,7 @@ const sidebarStyle: React.CSSProperties = {
   top: 0,
   display: "flex",
   flexDirection: "column",
-  overflowY: "hidden",
+  overflowY: "auto",
   overflowX: "hidden",
 };
 
