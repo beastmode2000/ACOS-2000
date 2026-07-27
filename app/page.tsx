@@ -125,6 +125,10 @@ type PropertyProfile = {
   detail: string;
 };
 
+type AtlasAssetRecord = AssetRecord & {
+  locationIds?: string[];
+};
+
 type AtlasLocationRecord = LocationRecord & {
   parentId?: string;
   paint?: string;
@@ -970,12 +974,20 @@ function mergeUploadedFiles(
   return Array.from(map.values());
 }
 
-function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
+function normalizeAsset(record: Partial<AtlasAssetRecord>): AtlasAssetRecord {
   const name = String(record.name ?? "Unnamed Asset");
   return {
     id: String(record.id || slugify(name)),
     name,
-    locationId: String(record.locationId ?? "general"),
+    locationId: String(record.locationId ?? record.locationIds?.[0] ?? "general"),
+    locationIds: Array.from(
+      new Set(
+        (Array.isArray(record.locationIds) && record.locationIds.length
+          ? record.locationIds
+          : [String(record.locationId ?? "general")]
+        ).map(String).filter(Boolean),
+      ),
+    ),
     category: String(record.category ?? "General"),
     status: isStatus(record.status) ? record.status : "Monitor",
     make: record.make || "",
@@ -988,6 +1000,20 @@ function normalizeAsset(record: Partial<AssetRecord>): AssetRecord {
       ? record.vendorIds.map(String)
       : [],
   };
+}
+
+function assetLocationIds(asset: Partial<AtlasAssetRecord>) {
+  const ids = Array.isArray(asset.locationIds) ? asset.locationIds.map(String).filter(Boolean) : [];
+  const primary = String(asset.locationId || "").trim();
+  return Array.from(new Set([primary, ...ids].filter(Boolean)));
+}
+
+function assetHasLocation(asset: Partial<AtlasAssetRecord>, locationId: string) {
+  return assetLocationIds(asset).includes(locationId);
+}
+
+function normalizeLocationName(value: string) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function normalizeVendor(record: Partial<VendorRecord>): VendorRecord {
@@ -3531,7 +3557,7 @@ export default function AtlasPage() {
   const [locationMobileDrawerOpen, setLocationMobileDrawerOpen] = useState(false);
 
   const [assetRecords, setAssetRecords] =
-    useState<AssetRecord[]>(fallbackAssets);
+    useState<AtlasAssetRecord[]>(fallbackAssets.map(normalizeAsset));
   const [vendorRecords, setVendorRecords] =
     useState<VendorRecord[]>(fallbackVendors);
   const [contactRecords, setContactRecords] = useState<ContactRecord[]>([]);
@@ -3755,6 +3781,7 @@ export default function AtlasPage() {
   }, []);
 
   const [selectedLocationId, setSelectedLocationId] = useState("");
+  const [mapMoveLabelId, setMapMoveLabelId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [assetEditorOpen, setAssetEditorOpen] = useState(false);
   const [assetSortOrder, setAssetSortOrder] = useState<"az" | "za">("az");
@@ -7805,6 +7832,58 @@ export default function AtlasPage() {
     }
   }
 
+  async function mergeDuplicateLocations() {
+    const groups = new Map<string, AtlasLocationRecord[]>();
+    locations.forEach((location) => {
+      const key = normalizeLocationName(location.name);
+      if (!key) return;
+      groups.set(key, [...(groups.get(key) || []), location]);
+    });
+    const duplicateGroups = [...groups.values()].filter((group) => group.length > 1);
+    if (!duplicateGroups.length) {
+      showSaveToast("No exact duplicate location names found.");
+      return;
+    }
+    const duplicateCount = duplicateGroups.reduce((sum, group) => sum + group.length - 1, 0);
+    if (!window.confirm(`Merge ${duplicateCount} duplicate location record${duplicateCount === 1 ? "" : "s"}? Linked assets, work orders, and sub-locations will be reassigned first.`)) return;
+
+    const remap = new Map<string, string>();
+    duplicateGroups.forEach((group) => group.slice(1).forEach((duplicate) => remap.set(duplicate.id, group[0].id)));
+
+    const nextAssets = assetRecords.map((asset) => {
+      const mappedIds = assetLocationIds(asset).map((id) => remap.get(id) || id);
+      const locationIds = Array.from(new Set(mappedIds));
+      return normalizeAsset({
+        ...asset,
+        locationId: remap.get(asset.locationId) || asset.locationId || locationIds[0] || "general",
+        locationIds,
+      });
+    });
+    const changedAssets = nextAssets.filter((asset, index) => JSON.stringify(assetLocationIds(asset)) !== JSON.stringify(assetLocationIds(assetRecords[index])) || asset.locationId !== assetRecords[index].locationId);
+    setAssetRecords(nextAssets);
+
+    const nextServices = serviceRecords.map((record) => ({
+      ...record,
+      locationId: remap.get(String(record.locationId || "")) || record.locationId,
+    }));
+    const changedServices = nextServices.filter((record, index) => record.locationId !== serviceRecords[index].locationId);
+    setServiceRecords(nextServices);
+
+    const nextLocations = locations
+      .filter((location) => !remap.has(location.id))
+      .map((location) => ({ ...location, parentId: remap.get(location.parentId || "") || location.parentId }));
+    setLocations(nextLocations);
+
+    await Promise.all([
+      ...changedAssets.map((asset) => postAtlasRecord("assets", asset)),
+      ...changedServices.map((record) => postAtlasRecord("work_orders", record)),
+      ...nextLocations.filter((location) => location.parentId && [...remap.values()].includes(location.parentId)).map((location) => postAtlasRecord("locations", location)),
+    ]);
+    for (const duplicateId of remap.keys()) await deleteAtlasRecord("locations", duplicateId);
+    if (remap.has(selectedLocationId)) setSelectedLocationId(remap.get(selectedLocationId) || "");
+    showSaveToast(`Merged ${duplicateCount} duplicate location record${duplicateCount === 1 ? "" : "s"}.`);
+  }
+
   function addLocation() {
     const record: AtlasLocationRecord = {
       id: uid("location"),
@@ -7860,9 +7939,11 @@ export default function AtlasPage() {
     const asset = assetRecords.find((item) => item.id === assetId);
     if (!asset) return;
 
+    const nextLocationIds = Array.from(new Set([...assetLocationIds(asset), selectedLocation.id]));
     const updated = normalizeAsset({
       ...asset,
-      locationId: selectedLocation.id,
+      locationId: asset.locationId || selectedLocation.id,
+      locationIds: nextLocationIds,
     });
     setAssetRecords((current) =>
       byName(current.map((item) => (item.id === assetId ? updated : item))),
@@ -7880,7 +7961,15 @@ export default function AtlasPage() {
     const asset = assetRecords.find((item) => item.id === assetId);
     if (!asset) return;
 
-    const updated = normalizeAsset({ ...asset, locationId: "general" });
+    const remainingLocationIds = assetLocationIds(asset).filter((id) => id !== selectedLocation.id);
+    const nextPrimary = asset.locationId === selectedLocation.id
+      ? remainingLocationIds[0] || "general"
+      : asset.locationId || remainingLocationIds[0] || "general";
+    const updated = normalizeAsset({
+      ...asset,
+      locationId: nextPrimary,
+      locationIds: remainingLocationIds.length ? remainingLocationIds : [nextPrimary],
+    });
     setAssetRecords((current) =>
       byName(current.map((item) => (item.id === assetId ? updated : item))),
     );
@@ -9471,12 +9560,11 @@ export default function AtlasPage() {
     event: React.PointerEvent<HTMLButtonElement>,
     labelId: string,
   ) {
-    if (isMobile) return;
+    if (isMobile || mapMoveLabelId !== labelId) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     draggingLabelRef.current = labelId;
     setSelectedMapLabelId(labelId);
-    setActiveMapPanelTab("info");
   }
 
   function handleMapPointerMove(event: React.PointerEvent<HTMLDivElement>) {
@@ -12388,7 +12476,7 @@ export default function AtlasPage() {
       const matchingAssets = assetRecords.filter((asset) => {
         const assetName = normalizedMapName(asset.name);
         return (
-          locationIds.has(asset.locationId) ||
+          assetLocationIds(asset).some((id) => locationIds.has(id)) ||
           assetName === labelName ||
           assetName.includes(labelName) ||
           labelName.includes(assetName) ||
@@ -12536,7 +12624,7 @@ export default function AtlasPage() {
         <ListDrawerLayout
           eyebrow="Live Operations Map"
           title="Property Operations"
-          detail="Each map label reflects live work-order status. Select an area to see its assets, work, documents, and vendors. Click and hold a label to move it."
+          detail="Each map label reflects live work-order status. Labels are locked by default. Use Edit → Move Label before dragging."
           isMobile={isMobile}
           drawerResetKey={selectedMapLabelId || "map-empty"}
           mobileDrawerOpen={mapMobileDrawerOpen}
@@ -12547,6 +12635,29 @@ export default function AtlasPage() {
           drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
           right={
             <>
+              {selectedMapLabel.id ? (
+                mapMoveLabelId === selectedMapLabel.id ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopMapDrag();
+                      setMapMoveLabelId("");
+                      showSaveToast("Label position saved and locked.");
+                    }}
+                    style={goldButtonStyle}
+                  >
+                    Save Position
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setMapMoveLabelId(selectedMapLabel.id)}
+                    style={secondaryButtonStyle}
+                  >
+                    Edit → Move Label
+                  </button>
+                )
+              ) : null}
               {selectedMapLabel.id ? (
                 <button
                   type="button"
@@ -12609,7 +12720,7 @@ export default function AtlasPage() {
                     <button
                       key={label.id}
                       type="button"
-                      title={`${operations.status} · ${operations.openWork.length} open work item${operations.openWork.length === 1 ? "" : "s"}`}
+                      title={mapMoveLabelId === label.id ? "Drag to move this label" : `${operations.status} · ${operations.openWork.length} open work item${operations.openWork.length === 1 ? "" : "s"}`}
                       onPointerDown={(event) =>
                         handleMapLabelPointerDown(event, label.id)
                       }
@@ -12620,6 +12731,8 @@ export default function AtlasPage() {
                       }}
                       style={{
                         ...mapPinStyle,
+                        cursor: mapMoveLabelId === label.id ? "grab" : "pointer",
+                        outline: mapMoveLabelId === label.id ? `3px solid ${colors.gold}` : undefined,
                         left: `${label.x}%`,
                         top: `${label.y}%`,
                         background: selected ? colors.gold : palette.background,
@@ -13094,7 +13207,7 @@ export default function AtlasPage() {
     const locationAssets = selectedLocation.id
       ? byName(
           assetRecords.filter(
-            (asset) => asset.locationId === selectedLocation.id,
+            (asset) => assetHasLocation(asset, selectedLocation.id),
           ),
         )
       : [];
@@ -13145,16 +13258,25 @@ export default function AtlasPage() {
         listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
         drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
         right={
-          <button
-            type="button"
-            onClick={() => {
-              addLocation();
-              if (isMobile) setLocationMobileDrawerOpen(true);
-            }}
-            style={goldButtonStyle}
-          >
-            Add Location
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => void mergeDuplicateLocations()}
+              style={secondaryButtonStyle}
+            >
+              Merge Duplicates
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                addLocation();
+                if (isMobile) setLocationMobileDrawerOpen(true);
+              }}
+              style={goldButtonStyle}
+            >
+              Add Location
+            </button>
+          </>
         }
         list={
           <div style={listStyle}>
@@ -13181,14 +13303,11 @@ export default function AtlasPage() {
               >
                 <div style={{ paddingLeft: depth * 18 }}>
                   <strong>{depth > 0 ? "↳ " : ""}{location.name}</strong>
-                  <p style={mutedSmallStyle}>
-                    {location.type} · {location.zone}
-                  </p>
                 </div>
                 <span style={badgeStyle("Monitor")}>
                   {
                     assetRecords.filter(
-                      (asset) => asset.locationId === location.id,
+                      (asset) => assetHasLocation(asset, location.id),
                     ).length
                   }{" "}
                   assets
@@ -13289,6 +13408,11 @@ export default function AtlasPage() {
                       value={selectedLocation.name}
                       onChange={(value) => updateLocation({ name: value })}
                     />
+                    {locations.some((location) => location.id !== selectedLocation.id && normalizeLocationName(location.name) === normalizeLocationName(selectedLocation.name)) ? (
+                      <div style={{ ...noticeStyle, borderColor: "#F3C98B", background: "#FFF8E8", color: "#7A4B00" }}>
+                        A location with this name already exists. Rename it or use Merge Duplicates.
+                      </div>
+                    ) : null}
                     <Field
                       label="Type"
                       value={selectedLocation.type}
@@ -13456,7 +13580,7 @@ export default function AtlasPage() {
                     <option value="">+ Add Asset</option>
                     {byName(
                       assetRecords.filter(
-                        (asset) => asset.locationId !== selectedLocation.id,
+                        (asset) => !assetHasLocation(asset, selectedLocation.id),
                       ),
                     ).map((asset) => (
                       <option key={asset.id} value={asset.id}>
@@ -14020,24 +14144,56 @@ export default function AtlasPage() {
                       () => updateAsset({ model: "" }),
                     )}
                     {infoValue(
-                      "Location",
-                      locationName(selectedAsset.locationId),
-                      <select
-                      value={selectedAsset.locationId}
-                      onChange={(event) =>
-                        updateAsset({
-                          locationId: event.currentTarget.value,
-                        })
-                      }
-                        style={assetCompactInputStyle}
-                    >
-                      <option value="">No location</option>
-                        {alphabeticalLocations.map((location) => (
-                        <option key={location.id} value={location.id}>
-                          {location.name}
-                        </option>
-                      ))}
-                      </select>,
+                      "Locations",
+                      assetLocationIds(selectedAsset)
+                        .map((id) => locationName(id))
+                        .filter(Boolean)
+                        .join(", ") || "No location",
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <label style={{ display: "grid", gap: 5 }}>
+                          <small style={mutedSmallStyle}>Primary location</small>
+                          <select
+                            value={selectedAsset.locationId || ""}
+                            onChange={(event) => {
+                              const locationId = event.currentTarget.value;
+                              updateAsset({
+                                locationId,
+                                locationIds: Array.from(new Set([locationId, ...assetLocationIds(selectedAsset)].filter(Boolean))),
+                              } as Partial<AtlasAssetRecord>);
+                            }}
+                            style={assetCompactInputStyle}
+                          >
+                            <option value="">No primary location</option>
+                            {alphabeticalLocations.map((location) => (
+                              <option key={location.id} value={location.id}>{location.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <div style={{ maxHeight: 190, overflowY: "auto", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, display: "grid", gap: 6 }}>
+                          {alphabeticalLocations.map((location) => {
+                            const checked = assetHasLocation(selectedAsset, location.id);
+                            return (
+                              <label key={location.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) => {
+                                    const currentIds = assetLocationIds(selectedAsset);
+                                    const locationIds = event.currentTarget.checked
+                                      ? Array.from(new Set([...currentIds, location.id]))
+                                      : currentIds.filter((id) => id !== location.id);
+                                    const locationId = locationIds.includes(selectedAsset.locationId)
+                                      ? selectedAsset.locationId
+                                      : locationIds[0] || "general";
+                                    updateAsset({ locationId, locationIds } as Partial<AtlasAssetRecord>);
+                                  }}
+                                />
+                                <span>{location.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>,
                     )}
                     {infoValue(
                       "Year",
