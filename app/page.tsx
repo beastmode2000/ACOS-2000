@@ -3603,6 +3603,23 @@ export default function AtlasPage() {
   >("loading");
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(window.localStorage.getItem("atlas-sidebar-collapsed") === "true");
+    } catch {
+      // Keep the sidebar open when browser storage is unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("atlas-sidebar-collapsed", String(sidebarCollapsed));
+    } catch {
+      // The UI still works when browser storage is unavailable.
+    }
+  }, [sidebarCollapsed]);
   const [activePropertyId, setActivePropertyId] = useState("2000");
   const [allowedPropertyIds, setAllowedPropertyIds] = useState<string[]>([
     "2000",
@@ -12397,6 +12414,61 @@ export default function AtlasPage() {
           ))}
         </section>
 
+            <section className="atlas-dashboard-weather-panel">
+              <div className="atlas-dashboard-weather-heading">
+                <div>
+                  <div className="atlas-dashboard-weather-eyebrow">7-Day Property Forecast</div>
+                  <h2>Weather & Operations Plan</h2>
+                </div>
+                <div className="atlas-dashboard-weather-summary">
+                  {todaysWeather
+                    ? `${weatherText(Number(todaysWeather.code || 0))} · ${Math.round(Number(todaysWeather.high || 0))}° high`
+                    : "Forecast loading"}
+                </div>
+              </div>
+
+              <div className="atlas-dashboard-weather-grid">
+                {weatherDays.slice(0, 7).map((day, index) => (
+                  <button
+                    key={String(day.date || index)}
+                    type="button"
+                    className="atlas-dashboard-weather-card"
+                    onClick={() => setScreen("calendar")}
+                  >
+                    <span className="atlas-dashboard-weather-name">
+                      {index === 0
+                        ? "Today"
+                        : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, {
+                            weekday: "short",
+                          })}
+                    </span>
+                    <span className="atlas-dashboard-weather-date">
+                      {new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                    <span className="atlas-dashboard-weather-icon">
+                      {weatherGlyph(Number(day.code || 0))}
+                    </span>
+                    <span className="atlas-dashboard-weather-temps">
+                      <strong>{Math.round(Number(day.high || 0))}°</strong>
+                      <small>{Math.round(Number(day.low || 0))}°</small>
+                    </span>
+                    <span className="atlas-dashboard-weather-condition">
+                      {weatherText(Number(day.code || 0))}
+                    </span>
+                    <span className="atlas-dashboard-weather-recommendation">
+                      {weatherDayPlanning(day)}
+                    </span>
+                    <span className="atlas-dashboard-weather-irrigation">
+                      {irrigationAdvice(day)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
         <div style={dashboardGridStyle}>
           <div style={{ display: "grid", gap: 14 }}>
             <section style={commandCardStyle}>
@@ -12542,74 +12614,6 @@ export default function AtlasPage() {
               <button type="button" onClick={() => setScreen("assistant")} style={{ ...goldButtonStyle, width: "100%", marginTop: 14 }}>
                 Open Ask Atlas
               </button>
-            </section>
-
-            <section style={commandCardStyle}>
-              <div style={eyebrowStyle}>Weather Intelligence</div>
-              {todaysWeather ? (
-                <>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 5 }}>
-                    <div>
-                      <div style={{ fontSize: 31, fontWeight: 950, color: colors.navy }}>{Math.round(Number(todaysWeather.high || 0))}°</div>
-                      <div style={mutedSmallStyle}>{weatherText(Number(todaysWeather.code || 0))}</div>
-                    </div>
-                    <div style={{ fontSize: 40 }}>{weatherIcon(Number(todaysWeather.code || 0))}</div>
-                  </div>
-                  <div style={{ marginTop: 12, padding: 11, borderRadius: 12, background: "#F8FAFC", fontSize: 13, lineHeight: 1.45 }}>
-                    <strong>Recommendation</strong>
-                    <div style={{ marginTop: 3, color: colors.muted }}>{weatherDayPlanning(todaysWeather)}</div>
-                    <div style={{ marginTop: 7, color: colors.muted }}>{irrigationAdvice(todaysWeather)}</div>
-                  </div>
-                  <div className="atlas-dashboard-weather-strip">
-                    {weatherDays.slice(0, 7).map((day, index) => (
-                      <button
-                        key={String(day.date || index)}
-                        type="button"
-                        className="atlas-dashboard-weather-day"
-                        onClick={() => setScreen("calendar")}
-                      >
-                        <span className="atlas-dashboard-weather-name">
-                          {index === 0
-                            ? "Today"
-                            : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}
-                        </span>
-                        <span className="atlas-dashboard-weather-icon">{weatherGlyph(Number(day.code || 0))}</span>
-                        <strong>{Math.round(Number(day.high || 0))}°</strong>
-                        <small>{Math.round(Number(day.low || 0))}° low</small>
-                        <span className="atlas-dashboard-weather-condition">
-                          {weatherText(Number(day.code || 0))}
-                        </span>
-                        <span className="atlas-dashboard-info-popover" aria-hidden="true">
-                          <strong>{weatherDayPlanning(day)}</strong>
-                          <span>{irrigationAdvice(day)}</span>
-                          <span>{weatherText(Number(day.code || 0))}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div style={{ ...noticeStyle, marginTop: 10 }}>Forecast data is not available yet.</div>
-              )}
-            </section>
-
-            <section style={commandCardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <div>
-                  <div style={eyebrowStyle}>Vendors</div>
-                  <h3 style={{ margin: "3px 0 0", color: colors.navy }}>Timeline</h3>
-                </div>
-                <button type="button" onClick={() => setScreen("vendors")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}>Vendors</button>
-              </div>
-              <div style={{ display: "grid", gap: 8, marginTop: 11 }}>
-                {vendorEvents.map((item) => (
-                  <button key={String(item.instanceId || item.id)} type="button" onClick={() => { setScreen("calendar"); window.setTimeout(() => openCalendarItem(item), 0); }} style={{ border: 0, background: "transparent", padding: "4px 0", textAlign: "left", color: colors.text, cursor: "pointer" }}>
-                    <strong style={{ display: "block" }}>{item.title}</strong>
-                    <small style={mutedSmallStyle}>{item.date === today ? "Today" : shortDay(item.date)}{item.time ? ` · ${item.time}` : ""}</small>
-                  </button>
-                ))}
-                {!vendorEvents.length ? <div style={mutedSmallStyle}>No vendor visits on the visible schedule.</div> : null}
-              </div>
             </section>
 
             <section style={commandCardStyle}>
@@ -23588,6 +23592,297 @@ export default function AtlasPage() {
           transform: translateY(-1px) scale(0.995);
         }
 
+        :root {
+          --atlas-navy: #102F49;
+          --atlas-navy-deep: #0A2338;
+          --atlas-blue: #1A496C;
+          --atlas-gold: #C99A3D;
+          --atlas-gold-light: #F2D58A;
+          --atlas-paper: #F5F7F9;
+          --atlas-line: #D8E0E7;
+          --atlas-text: #17354D;
+          --atlas-muted: #66788A;
+          --atlas-shadow: 0 12px 34px rgba(10, 35, 56, 0.10);
+        }
+
+        .atlas-app-shell {
+          background: var(--atlas-paper);
+        }
+
+        .atlas-page-header {
+          position: sticky !important;
+          top: 0;
+          z-index: 24;
+          border-bottom: 1px solid rgba(255,255,255,0.12) !important;
+          background:
+            linear-gradient(135deg, var(--atlas-navy-deep), var(--atlas-blue)) !important;
+          color: #FFFFFF !important;
+          box-shadow: 0 10px 28px rgba(8, 29, 48, 0.16);
+        }
+        .atlas-page-header h1,
+        .atlas-page-header h2,
+        .atlas-page-header strong {
+          color: #FFFFFF !important;
+        }
+
+        .atlas-logo-clean {
+          width: 48px !important;
+          height: 48px !important;
+          padding: 0 !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+        .atlas-logo-clean img {
+          width: 46px !important;
+          height: 46px !important;
+          object-fit: contain;
+        }
+
+        .atlas-sidebar-toggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: calc(100% - 24px);
+          min-height: 36px;
+          margin: 4px 12px 10px;
+          border: 1px solid rgba(255,255,255,0.18);
+          border-radius: 10px;
+          background: rgba(255,255,255,0.07);
+          color: #FFFFFF;
+          font: inherit;
+          font-size: 12px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: background 160ms ease, border-color 160ms ease;
+        }
+        .atlas-sidebar-toggle:hover {
+          border-color: rgba(242,213,138,0.72);
+          background: rgba(255,255,255,0.12);
+        }
+        .atlas-sidebar-is-collapsed .atlas-brand-copy,
+        .atlas-sidebar-is-collapsed .atlas-sidebar-nav-header,
+        .atlas-sidebar-is-collapsed .atlas-sidebar-nav-label {
+          display: none;
+        }
+        .atlas-sidebar-is-collapsed .atlas-brand-shell {
+          justify-content: center;
+        }
+        .atlas-sidebar-is-collapsed .atlas-sidebar-nav-button {
+          min-height: 42px;
+          padding-left: 8px !important;
+          padding-right: 8px !important;
+          text-align: center !important;
+        }
+
+        .atlas-command-dashboard {
+          width: 100%;
+        }
+
+        .atlas-dashboard-weather-panel {
+          overflow: hidden;
+          border: 1px solid rgba(21, 67, 99, 0.32);
+          border-radius: 18px;
+          background:
+            radial-gradient(circle at 12% -15%, rgba(92, 161, 214, 0.32), transparent 34%),
+            linear-gradient(135deg, #123A59 0%, #0E304B 52%, #0A263C 100%);
+          color: #FFFFFF;
+          box-shadow: 0 18px 42px rgba(8, 32, 51, 0.18);
+        }
+        .atlas-dashboard-weather-heading {
+          display: flex;
+          align-items: end;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 18px 20px 15px;
+          border-bottom: 1px solid rgba(255,255,255,0.13);
+        }
+        .atlas-dashboard-weather-eyebrow {
+          color: var(--atlas-gold-light);
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+        }
+        .atlas-dashboard-weather-heading h2 {
+          margin: 4px 0 0;
+          color: #FFFFFF;
+          font-size: 22px;
+          letter-spacing: -0.02em;
+        }
+        .atlas-dashboard-weather-summary {
+          color: #D9E7F2;
+          font-size: 12px;
+          font-weight: 800;
+        }
+        .atlas-dashboard-weather-grid {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          width: 100%;
+        }
+        .atlas-dashboard-weather-card {
+          position: relative;
+          display: grid;
+          grid-template-rows: auto auto 42px auto auto 1fr auto;
+          justify-items: center;
+          gap: 5px;
+          min-width: 0;
+          min-height: 238px;
+          padding: 14px 10px 13px;
+          border: 0;
+          border-right: 1px solid rgba(255,255,255,0.12);
+          border-radius: 0;
+          background: transparent;
+          color: #FFFFFF;
+          font: inherit;
+          text-align: center;
+          cursor: pointer;
+          transition: background 160ms ease, box-shadow 160ms ease;
+        }
+        .atlas-dashboard-weather-card:last-child {
+          border-right: 0;
+        }
+        .atlas-dashboard-weather-card:hover,
+        .atlas-dashboard-weather-card:focus-visible {
+          z-index: 3;
+          background: rgba(255,255,255,0.09);
+          box-shadow: inset 0 3px 0 var(--atlas-gold-light);
+          outline: none;
+        }
+        .atlas-dashboard-weather-name {
+          color: #FFFFFF;
+          font-size: 12px;
+          font-weight: 900;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+        .atlas-dashboard-weather-date {
+          color: #BFD1DE;
+          font-size: 10px;
+          font-weight: 700;
+        }
+        .atlas-dashboard-weather-icon {
+          display: grid;
+          place-items: center;
+          color: var(--atlas-gold-light);
+        }
+        .atlas-dashboard-weather-icon svg {
+          width: 31px;
+          height: 31px;
+        }
+        .atlas-dashboard-weather-temps {
+          display: flex;
+          align-items: baseline;
+          gap: 5px;
+        }
+        .atlas-dashboard-weather-temps strong {
+          color: #FFFFFF;
+          font-size: 24px;
+          letter-spacing: -0.04em;
+        }
+        .atlas-dashboard-weather-temps small {
+          color: #BFD1DE;
+          font-size: 11px;
+          font-weight: 800;
+        }
+        .atlas-dashboard-weather-condition {
+          max-width: 100%;
+          overflow: hidden;
+          color: #EAF2F7;
+          font-size: 10px;
+          font-weight: 800;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .atlas-dashboard-weather-recommendation {
+          align-self: stretch;
+          color: #FFFFFF;
+          font-size: 10px;
+          font-weight: 700;
+          line-height: 1.35;
+        }
+        .atlas-dashboard-weather-irrigation {
+          align-self: end;
+          width: 100%;
+          padding-top: 8px;
+          border-top: 1px solid rgba(255,255,255,0.12);
+          color: var(--atlas-gold-light);
+          font-size: 9px;
+          font-weight: 900;
+          line-height: 1.3;
+        }
+
+        .atlas-dashboard-info-popover {
+          left: 50% !important;
+          right: auto !important;
+          width: min(290px, calc(100vw - 34px));
+          top: calc(100% + 10px) !important;
+          padding: 14px 15px !important;
+          border: 1px solid rgba(242,213,138,0.82) !important;
+          background: #0B2A43 !important;
+          color: #FFFFFF !important;
+          box-shadow: 0 22px 55px rgba(6, 24, 39, 0.34) !important;
+          transform: translate(-50%, 5px) scale(0.985) !important;
+          text-align: left !important;
+        }
+        .atlas-dashboard-info-popover strong {
+          color: var(--atlas-gold-light) !important;
+          font-size: 13px !important;
+        }
+        .atlas-dashboard-info-popover span {
+          color: #EEF4F8 !important;
+          font-size: 12px !important;
+          line-height: 1.45 !important;
+        }
+        .atlas-dashboard-kpi:hover .atlas-dashboard-info-popover,
+        .atlas-dashboard-kpi:focus-visible .atlas-dashboard-info-popover,
+        .atlas-dashboard-status-card:hover .atlas-dashboard-info-popover,
+        .atlas-dashboard-status-card:focus-visible .atlas-dashboard-info-popover {
+          transform: translate(-50%, 0) scale(1) !important;
+        }
+
+        .atlas-command-dashboard section:not(.atlas-dashboard-hero):hover {
+          transform: none !important;
+        }
+        .atlas-command-dashboard button:hover {
+          transform: none !important;
+        }
+        .atlas-dashboard-kpi::after {
+          display: none !important;
+        }
+
+        /* Cohesive premium treatment for list/detail screens. */
+        .atlas-app-shell main section,
+        .atlas-app-shell [role="dialog"] {
+          border-color: var(--atlas-line);
+        }
+        .atlas-app-shell input,
+        .atlas-app-shell select,
+        .atlas-app-shell textarea {
+          border-radius: 10px !important;
+        }
+        .atlas-app-shell button {
+          font-weight: 800;
+        }
+
+        @media (max-width: 1040px) {
+          .atlas-dashboard-weather-grid {
+            overflow-x: auto;
+            grid-template-columns: repeat(7, minmax(145px, 1fr));
+          }
+        }
+        @media (max-width: 760px) {
+          .atlas-dashboard-weather-heading {
+            align-items: start;
+            flex-direction: column;
+          }
+          .atlas-dashboard-weather-grid {
+            grid-template-columns: repeat(7, 150px);
+          }
+        }
+
         .atlas-dashboard-greeting {
           margin-top: 8px;
           color: #F5D98B;
@@ -23641,93 +23936,6 @@ export default function AtlasPage() {
           transform: translateY(0) scale(1);
         }
 
-        .atlas-dashboard-weather-strip {
-          display: grid;
-          grid-template-columns: repeat(7, minmax(0, 1fr));
-          gap: 0;
-          margin: 14px -14px -14px;
-          overflow: visible;
-          border-radius: 0 0 14px 14px;
-          background:
-            radial-gradient(circle at 15% 0%, rgba(87, 157, 214, 0.34), transparent 32%),
-            linear-gradient(135deg, #173B5A 0%, #0F2F4B 54%, #0B253D 100%);
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-        }
-        .atlas-dashboard-weather-day {
-          position: relative;
-          display: grid;
-          justify-items: center;
-          align-content: start;
-          gap: 4px;
-          min-width: 0;
-          min-height: 148px;
-          padding: 15px 8px 13px;
-          border: 0;
-          border-right: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 0;
-          background: transparent;
-          color: #FFFFFF;
-          cursor: pointer;
-          font: inherit;
-        }
-        .atlas-dashboard-weather-day:first-child {
-          border-radius: 0 0 0 14px;
-          background: rgba(255, 255, 255, 0.08);
-        }
-        .atlas-dashboard-weather-day:last-child {
-          border-right: 0;
-          border-radius: 0 0 14px 0;
-        }
-        .atlas-dashboard-weather-day:hover,
-        .atlas-dashboard-weather-day:focus-visible {
-          z-index: 70;
-          border-color: rgba(255, 255, 255, 0.15);
-          background: rgba(255, 255, 255, 0.11);
-          box-shadow:
-            inset 0 3px 0 #D6AE55,
-            0 16px 32px rgba(7, 24, 39, 0.24);
-          transform: translateY(-4px);
-          outline: none;
-        }
-        .atlas-dashboard-weather-name {
-          color: #D9E7F2;
-          font-size: 10px;
-          font-weight: 900;
-          text-transform: uppercase;
-          letter-spacing: 0.095em;
-        }
-        .atlas-dashboard-weather-icon {
-          display: grid;
-          place-items: center;
-          width: 38px;
-          height: 38px;
-          margin: 3px 0 1px;
-          color: #F5D98B;
-        }
-        .atlas-dashboard-weather-day strong {
-          color: #FFFFFF;
-          font-size: 22px;
-          line-height: 1;
-          letter-spacing: -0.035em;
-        }
-        .atlas-dashboard-weather-day small {
-          color: #BFD0DE;
-          font-size: 10px;
-          font-weight: 700;
-        }
-        .atlas-dashboard-weather-condition {
-          width: 100%;
-          margin-top: 3px;
-          overflow: hidden;
-          color: #E7F0F7;
-          font-size: 9px;
-          font-weight: 800;
-          line-height: 1.2;
-          text-align: center;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
         @media (max-width: 760px) {
           .atlas-dashboard-weather-strip {
             grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -23764,30 +23972,9 @@ export default function AtlasPage() {
           opacity: 0;
           transition: opacity 180ms ease;
         }
-        .atlas-dashboard-kpi::after {
-          content: "";
-          position: absolute;
-          top: -70%;
-          left: -45%;
-          width: 38%;
-          height: 240%;
-          background: linear-gradient(
-            90deg,
-            transparent,
-            rgba(245, 217, 139, 0.22),
-            transparent
-          );
-          transform: rotate(18deg);
-          transition: left 420ms ease;
-          pointer-events: none;
-        }
         .atlas-dashboard-kpi:hover::before,
         .atlas-dashboard-kpi:focus-visible::before {
           opacity: 1;
-        }
-        .atlas-dashboard-kpi:hover::after,
-        .atlas-dashboard-kpi:focus-visible::after {
-          left: 120%;
         }
 
         .atlas-dashboard-hero {
@@ -24277,11 +24464,13 @@ export default function AtlasPage() {
         }
       `}</style>
       <div
+        className={`atlas-app-shell ${sidebarCollapsed ? "atlas-sidebar-is-collapsed" : ""}`}
         style={{
           display: "grid",
           gridTemplateColumns: isMobile
             ? "minmax(0, 1fr)"
-            : "250px minmax(0, 1fr)",
+            : `${sidebarCollapsed ? 78 : 250}px minmax(0, 1fr)`,
+          transition: "grid-template-columns 240ms cubic-bezier(.2,.8,.2,1)",
           minHeight: "100vh",
           width: "100%",
           maxWidth: isMobile ? "100vw" : "none",
@@ -24299,8 +24488,9 @@ export default function AtlasPage() {
                   top: 0,
                   left: 0,
                   bottom: 0,
-                  width: 250,
+                  width: sidebarCollapsed ? 78 : 250,
                   height: "100vh",
+                  transition: "width 240ms cubic-bezier(.2,.8,.2,1)",
                   maxHeight: "100vh",
                   overflowY: "hidden",
                   overflowX: "hidden",
@@ -24309,8 +24499,8 @@ export default function AtlasPage() {
                 }
           }
         >
-          <div style={isMobile ? mobileBrandStyle : brandStyle}>
-            <div style={isMobile ? mobileLogoBoxStyle : logoBoxStyle}>
+          <div className="atlas-brand-shell" style={isMobile ? mobileBrandStyle : brandStyle}>
+            <div className="atlas-logo-clean" style={isMobile ? mobileLogoBoxStyle : logoBoxStyle}>
               {logoIndex < logoCandidates.length ? (
                 <img
                   src={logoCandidates[logoIndex]}
@@ -24322,7 +24512,7 @@ export default function AtlasPage() {
                 <span style={logoFallbackStyle}>A</span>
               )}
             </div>
-            <div style={{ minWidth: 0 }}>
+            <div className="atlas-brand-copy" style={{ minWidth: 0 }}>
               <div style={isMobile ? mobileBrandTitleStyle : brandTitleStyle}>
                 ATLAS
               </div>
@@ -24359,10 +24549,21 @@ export default function AtlasPage() {
               </select>
             </div>
           ) : (
+            <>
+              <button
+                type="button"
+                className="atlas-sidebar-toggle"
+                onClick={() => setSidebarCollapsed((current) => !current)}
+                aria-label={sidebarCollapsed ? "Expand Atlas navigation" : "Collapse Atlas navigation"}
+                title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+              >
+                <span aria-hidden="true">{sidebarCollapsed ? "›" : "‹"}</span>
+                {!sidebarCollapsed ? <span>Collapse</span> : null}
+              </button>
               <nav style={sidebarNavStyle} aria-label="Atlas sections">
                 {atlasNavigationSections.map((section) => (
                   <div key={section.label} style={sidebarNavSectionStyle}>
-                    <div style={sidebarNavHeaderStyle}>{section.label}</div>
+                    <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>{section.label}</div>
                     <div style={sidebarNavItemsStyle}>
                       {section.items.map((screenId) => {
                         const item = screens.find(
@@ -24374,6 +24575,8 @@ export default function AtlasPage() {
                           <button
                             key={item.id}
                             type="button"
+                            className="atlas-sidebar-nav-button"
+                            title={sidebarCollapsed ? item.label : undefined}
                             onClick={() => {
                               if (item.id === "history") {
                                 setSelectedServiceId("");
@@ -24395,7 +24598,7 @@ export default function AtlasPage() {
                                 screen === item.id ? colors.navy : "#FFFFFF",
                             }}
                           >
-                            {item.label}
+                            <span className="atlas-sidebar-nav-label">{item.label}</span>
                           </button>
                         );
                       })}
@@ -24403,6 +24606,7 @@ export default function AtlasPage() {
                   </div>
                 ))}
               </nav>
+            </>
           )}
         </aside>
 
@@ -24416,7 +24620,7 @@ export default function AtlasPage() {
             paddingBottom: isMobile ? 84 : 0,
           }}
         >
-          <header style={isMobile ? mobileTopbarStyle : topbarStyle}>
+          <header className="atlas-page-header" style={isMobile ? mobileTopbarStyle : topbarStyle}>
             <div
               style={{
                 display: "flex",
