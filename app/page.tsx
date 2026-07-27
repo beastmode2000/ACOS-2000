@@ -14941,174 +14941,127 @@ export default function AtlasPage() {
                 </section>
               </div>
 
-              <section style={assetCardStyle}>
+              <section className="atlas-asset-timeline-card" style={assetCardStyle}>
                 <div style={assetCardHeaderStyle}>
                   <div>
                     <strong>Asset Timeline</strong>
                     <div style={assetCardHintStyle}>
-                      Service, maintenance, and completed work in chronological
-                      order
+                      Hover an event for service details, cost, vendor, and notes
                     </div>
                   </div>
-
                   <div style={assetHistoryHeaderActionsStyle}>
                     <span style={assetHistoryOrderStyle}>
-                      {assetHistory.length} event
-                      {assetHistory.length === 1 ? "" : "s"}
+                      {assetHistory.length} event{assetHistory.length === 1 ? "" : "s"} · Newest first
                     </span>
-
-                    <button
-                      type="button"
-                      onClick={() => setScreen("history")}
-                      style={assetTinyButtonStyle}
-                    >
+                    <button type="button" onClick={() => setScreen("history")} style={assetTinyButtonStyle}>
                       View All History
                     </button>
                   </div>
                 </div>
 
                 {assetHistory.length ? (
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 0,
-                      marginTop: 10,
-                    }}
-                  >
-                    {assetHistory
-                      .slice(0, isMobile ? 6 : 5)
-                      .map((entry, index) => (
+                  <div className="atlas-asset-timeline">
+                    {assetHistory.slice(0, isMobile ? 6 : 5).map((entry, index) => {
+                      const workOrder = relatedWorkOrders.find(
+                        (record) => record.id === entry.workOrderId,
+                      );
+                      const vendor = workOrder?.vendorId
+                        ? vendorRecords.find((record) => record.id === workOrder.vendorId)
+                        : undefined;
+                      const cost =
+                        Number(workOrder?.actualCost || 0) ||
+                        Number(workOrder?.estimatedCost || 0);
+                      const notes = String(workOrder?.notes || "").trim();
+
+                      return (
                         <div
                           key={entry.id}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "18px minmax(0, 1fr)",
-                            gap: 9,
-                            minWidth: 0,
-                          }}
+                          className="atlas-asset-timeline-item"
+                          style={{ animationDelay: `${index * 55}ms` }}
                         >
-                          <div
-                            aria-hidden="true"
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              minHeight: 58,
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: 10,
-                                height: 10,
-                                flex: "0 0 auto",
-                                borderRadius: 999,
-                                border: `2px solid ${colors.gold}`,
-                                background: "#FFFFFF",
-                                marginTop: 12,
-                                zIndex: 1,
-                              }}
-                            />
-
-                            {index <
-                            Math.min(
-                              assetHistory.length,
-                              isMobile ? 6 : 5,
-                            ) -
-                              1 ? (
-                              <span
-                                style={{
-                                  width: 2,
-                                  flex: 1,
-                                  minHeight: 30,
-                                  background: colors.line,
-                                }}
-                              />
+                          <div className="atlas-asset-timeline-rail" aria-hidden="true">
+                            <span className="atlas-asset-timeline-dot" />
+                            {index < Math.min(assetHistory.length, isMobile ? 6 : 5) - 1 ? (
+                              <span className="atlas-asset-timeline-line" />
                             ) : null}
                           </div>
 
                           <button
                             type="button"
+                            className="atlas-asset-timeline-row"
                             onClick={() => {
                               setSelectedServiceId(entry.workOrderId);
                               setScreen("history");
                             }}
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: isMobile
-                                ? "1fr auto"
-                                : "100px minmax(0, 1fr) auto",
-                              alignItems: "center",
-                              gap: 8,
-                              width: "100%",
-                              minWidth: 0,
-                              marginBottom: 7,
-                              padding: "9px 10px",
-                              border: `1px solid ${colors.line}`,
-                              borderRadius: 9,
-                              background: "#FFFFFF",
-                              color: colors.navy,
-                              textAlign: "left",
-                              cursor: "pointer",
-                            }}
+                            aria-label={`Open ${entry.title} from ${formatDate(entry.date)}`}
                           >
-                            <span
-                              style={{
-                                color: colors.muted,
-                                fontSize: 10,
-                                fontWeight: 800,
-                                whiteSpace: "nowrap",
-                                gridColumn: isMobile
-                                  ? "1 / -1"
-                                  : undefined,
-                              }}
-                            >
-                              {entry.date
-                                ? formatDate(entry.date)
-                                : "Date not recorded"}
+                            <span className="atlas-asset-timeline-date">
+                              {formatDate(entry.date)}
                             </span>
 
-                            <strong
-                              style={{
-                                minWidth: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                fontSize: 12,
-                              }}
-                            >
-                              {entry.title || "Asset service event"}
-                            </strong>
+                            <span className="atlas-asset-timeline-main">
+                              <strong className="atlas-asset-timeline-title">
+                                {entry.title || "Asset service event"}
+                              </strong>
+                              <span className="atlas-asset-timeline-summary">
+                                {workOrder?.workType || "Service"}
+                                {vendor?.name ? ` · ${vendor.name}` : ""}
+                                {cost > 0 ? ` · $${cost.toLocaleString()}` : ""}
+                              </span>
+                            </span>
 
-                            <span style={badgeStyle(entry.status)}>
-                              {entry.status}
+                            <span className="atlas-asset-timeline-status">
+                              <span style={badgeStyle(entry.status)}>{entry.status}</span>
+                              <span className="atlas-asset-timeline-arrow" aria-hidden="true">→</span>
+                            </span>
+
+                            <span className="atlas-asset-timeline-hover-panel" aria-hidden="true">
+                              <span className="atlas-asset-timeline-hover-grid">
+                                <span>
+                                  <small>Work type</small>
+                                  <strong>{workOrder?.workType || "Service"}</strong>
+                                </span>
+                                <span>
+                                  <small>Vendor</small>
+                                  <strong>{vendor?.name || "Not assigned"}</strong>
+                                </span>
+                                <span>
+                                  <small>Cost</small>
+                                  <strong>{cost > 0 ? `$${cost.toLocaleString()}` : "Not recorded"}</strong>
+                                </span>
+                                <span>
+                                  <small>Priority</small>
+                                  <strong>{workOrder?.priority || "Not recorded"}</strong>
+                                </span>
+                              </span>
+                              <span className="atlas-asset-timeline-hover-notes">
+                                {notes || "No notes were recorded for this event."}
+                              </span>
+                              <span className="atlas-asset-timeline-hover-action">
+                                Open full work-order history →
+                              </span>
                             </span>
                           </button>
                         </div>
-                      ))}
+                      );
+                    })}
 
                     {assetHistory.length > (isMobile ? 6 : 5) ? (
                       <button
                         type="button"
+                        className="atlas-asset-timeline-more"
                         onClick={() => setScreen("history")}
-                        style={{
-                          ...assetTinyButtonStyle,
-                          justifySelf: "start",
-                          marginTop: 5,
-                          marginLeft: 27,
-                        }}
                       >
-                        View{" "}
-                        {assetHistory.length - (isMobile ? 6 : 5)} more event
-                        {assetHistory.length - (isMobile ? 6 : 5) === 1
-                          ? ""
-                          : "s"}
+                        View {assetHistory.length - (isMobile ? 6 : 5)} more event
+                        {assetHistory.length - (isMobile ? 6 : 5) === 1 ? "" : "s"} →
                       </button>
                     ) : null}
                   </div>
                 ) : (
-                  <div style={assetEmptyStateStyle}>
-                    No service or work-order activity has been recorded for this
-                    asset.
+                  <div className="atlas-asset-timeline-empty">
+                    <span className="atlas-asset-timeline-empty-icon">↻</span>
+                    <strong>No timeline events yet</strong>
+                    <span>Completed service and work orders will appear here.</span>
                   </div>
                 )}
               </section>
@@ -23401,6 +23354,276 @@ export default function AtlasPage() {
           .atlas-qr-print-card {
             break-inside: avoid;
             page-break-inside: avoid;
+          }
+        }
+        @keyframes atlasTimelineEnter {
+          from { opacity: 0; transform: translateY(9px) scale(0.992); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes atlasTimelineDotPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(201, 154, 61, 0.24); }
+          50% { box-shadow: 0 0 0 7px rgba(201, 154, 61, 0); }
+        }
+        .atlas-asset-timeline-card {
+          position: relative;
+          overflow: visible !important;
+        }
+        .atlas-asset-timeline {
+          display: grid;
+          gap: 0;
+          margin-top: 10px;
+        }
+        .atlas-asset-timeline-item {
+          display: grid;
+          grid-template-columns: 20px minmax(0, 1fr);
+          gap: 9px;
+          min-width: 0;
+          opacity: 0;
+          animation: atlasTimelineEnter 360ms cubic-bezier(.2,.8,.2,1) forwards;
+        }
+        .atlas-asset-timeline-rail {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          min-height: 69px;
+        }
+        .atlas-asset-timeline-dot {
+          width: 11px;
+          height: 11px;
+          flex: 0 0 auto;
+          margin-top: 15px;
+          border: 2px solid #C99A3D;
+          border-radius: 999px;
+          background: #FFFFFF;
+          z-index: 2;
+          transition: transform 180ms ease, background 180ms ease;
+        }
+        .atlas-asset-timeline-line {
+          width: 2px;
+          flex: 1;
+          min-height: 35px;
+          background: linear-gradient(#C99A3D 0%, #DCE3EB 42%, #DCE3EB 100%);
+        }
+        .atlas-asset-timeline-row {
+          position: relative;
+          display: grid;
+          grid-template-columns: 105px minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          min-width: 0;
+          margin-bottom: 8px;
+          padding: 11px 12px;
+          border: 1px solid #DCE3EB;
+          border-radius: 11px;
+          background: linear-gradient(135deg, #FFFFFF 0%, #FBFCFE 100%);
+          color: #12233F;
+          text-align: left;
+          cursor: pointer;
+          box-shadow: 0 1px 2px rgba(18, 35, 63, 0.04);
+          transition: transform 180ms cubic-bezier(.2,.8,.2,1), border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+        }
+        .atlas-asset-timeline-row:hover,
+        .atlas-asset-timeline-row:focus-visible {
+          z-index: 20;
+          transform: translateY(-3px) translateX(2px);
+          border-color: rgba(201, 154, 61, 0.78);
+          background: #FFFFFF;
+          box-shadow: 0 14px 30px rgba(18, 35, 63, 0.14), 0 0 0 3px rgba(201, 154, 61, 0.10);
+          outline: none;
+        }
+        .atlas-asset-timeline-item:hover .atlas-asset-timeline-dot,
+        .atlas-asset-timeline-item:focus-within .atlas-asset-timeline-dot {
+          transform: scale(1.25);
+          background: #C99A3D;
+          animation: atlasTimelineDotPulse 1.35s ease-in-out infinite;
+        }
+        .atlas-asset-timeline-date {
+          color: #667085;
+          font-size: 10px;
+          font-weight: 900;
+          white-space: nowrap;
+          letter-spacing: 0.02em;
+        }
+        .atlas-asset-timeline-main {
+          display: grid;
+          gap: 3px;
+          min-width: 0;
+        }
+        .atlas-asset-timeline-title {
+          min-width: 0;
+          overflow: hidden;
+          color: #12233F;
+          font-size: 12px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .atlas-asset-timeline-summary {
+          min-width: 0;
+          overflow: hidden;
+          color: #667085;
+          font-size: 10px;
+          font-weight: 700;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .atlas-asset-timeline-status {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+        }
+        .atlas-asset-timeline-arrow {
+          color: #C99A3D;
+          font-size: 16px;
+          font-weight: 900;
+          opacity: 0;
+          transform: translateX(-6px);
+          transition: opacity 180ms ease, transform 180ms ease;
+        }
+        .atlas-asset-timeline-row:hover .atlas-asset-timeline-arrow,
+        .atlas-asset-timeline-row:focus-visible .atlas-asset-timeline-arrow {
+          opacity: 1;
+          transform: translateX(0);
+        }
+        .atlas-asset-timeline-hover-panel {
+          position: absolute;
+          right: 10px;
+          top: calc(100% - 2px);
+          z-index: 30;
+          display: grid;
+          gap: 9px;
+          width: min(390px, calc(100vw - 64px));
+          padding: 12px;
+          border: 1px solid rgba(201, 154, 61, 0.58);
+          border-radius: 12px;
+          background: rgba(18, 35, 63, 0.97);
+          color: #FFFFFF;
+          box-shadow: 0 18px 38px rgba(18, 35, 63, 0.25);
+          opacity: 0;
+          pointer-events: none;
+          transform: translateY(-7px) scale(0.985);
+          transform-origin: top right;
+          transition: opacity 150ms ease, transform 180ms cubic-bezier(.2,.8,.2,1);
+        }
+        .atlas-asset-timeline-row:hover .atlas-asset-timeline-hover-panel,
+        .atlas-asset-timeline-row:focus-visible .atlas-asset-timeline-hover-panel {
+          opacity: 1;
+          transform: translateY(4px) scale(1);
+        }
+        .atlas-asset-timeline-hover-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .atlas-asset-timeline-hover-grid > span {
+          display: grid;
+          gap: 2px;
+          min-width: 0;
+          padding: 7px 8px;
+          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 8px;
+          background: rgba(255,255,255,0.06);
+        }
+        .atlas-asset-timeline-hover-grid small {
+          color: #C7D0DD;
+          font-size: 9px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .atlas-asset-timeline-hover-grid strong {
+          overflow: hidden;
+          font-size: 11px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .atlas-asset-timeline-hover-notes {
+          color: #E8EDF4;
+          font-size: 10px;
+          line-height: 1.45;
+        }
+        .atlas-asset-timeline-hover-action {
+          color: #F5D98B;
+          font-size: 10px;
+          font-weight: 900;
+        }
+        .atlas-asset-timeline-more {
+          justify-self: start;
+          margin: 3px 0 0 29px;
+          padding: 7px 10px;
+          border: 1px solid #DCE3EB;
+          border-radius: 8px;
+          background: #FFFFFF;
+          color: #12233F;
+          font-size: 10px;
+          font-weight: 900;
+          cursor: pointer;
+          transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+        }
+        .atlas-asset-timeline-more:hover,
+        .atlas-asset-timeline-more:focus-visible {
+          transform: translateY(-2px);
+          border-color: #C99A3D;
+          box-shadow: 0 8px 18px rgba(18, 35, 63, 0.10);
+          outline: none;
+        }
+        .atlas-asset-timeline-empty {
+          display: grid;
+          justify-items: center;
+          gap: 4px;
+          margin-top: 10px;
+          padding: 22px 14px;
+          border: 1px dashed #C9D3DF;
+          border-radius: 11px;
+          background: linear-gradient(135deg, #FBFCFE, #F5F8FC);
+          color: #667085;
+          text-align: center;
+        }
+        .atlas-asset-timeline-empty-icon {
+          display: grid;
+          place-items: center;
+          width: 34px;
+          height: 34px;
+          margin-bottom: 3px;
+          border-radius: 999px;
+          background: #FFF6D8;
+          color: #9A6B00;
+          font-size: 20px;
+        }
+        .atlas-asset-timeline-empty strong {
+          color: #12233F;
+          font-size: 12px;
+        }
+        .atlas-asset-timeline-empty span:last-child {
+          font-size: 10px;
+        }
+        @media (hover: none), (pointer: coarse) {
+          .atlas-asset-timeline-hover-panel { display: none; }
+          .atlas-asset-timeline-row:active { transform: scale(0.99); }
+        }
+        @media (max-width: 819px) {
+          .atlas-asset-timeline-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+          }
+          .atlas-asset-timeline-date {
+            grid-column: 1 / -1;
+          }
+          .atlas-asset-timeline-summary {
+            white-space: normal;
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .atlas-asset-timeline-item {
+            opacity: 1;
+            animation: none;
+          }
+          .atlas-asset-timeline-row,
+          .atlas-asset-timeline-dot,
+          .atlas-asset-timeline-arrow,
+          .atlas-asset-timeline-hover-panel,
+          .atlas-asset-timeline-more {
+            transition: none;
+            animation: none;
           }
         }
         @media (min-width: 820px) {
