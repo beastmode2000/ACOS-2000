@@ -17321,7 +17321,7 @@ export default function AtlasPage() {
                           }`,
                           borderRadius: 16,
                           background: "#FFFFFF",
-                          color: colors.ink,
+                          color: colors.text,
                           textAlign: "left",
                           cursor: "pointer",
                           boxShadow: isSelected
@@ -17439,7 +17439,7 @@ export default function AtlasPage() {
                               display: "-webkit-box",
                               minHeight: 36,
                               overflow: "hidden",
-                              color: colors.ink,
+                              color: colors.text,
                               fontSize: 13,
                               lineHeight: 1.35,
                               WebkitBoxOrient: "vertical",
@@ -17511,6 +17511,7 @@ export default function AtlasPage() {
                 </div>
               )}
             </div>
+          }
           }
           drawer={isMobile ? undefined : documentViewer}
         />
