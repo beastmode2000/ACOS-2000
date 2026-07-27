@@ -129,11 +129,15 @@ type AtlasAssetRecord = AssetRecord & {
   locationIds?: string[];
 };
 
+type LocationCustomDetail = {
+  id: string;
+  label: string;
+  value: string;
+};
+
 type AtlasLocationRecord = LocationRecord & {
   parentId?: string;
-  paint?: string;
-  bulbs?: string;
-  finishes?: string;
+  customDetails?: LocationCustomDetail[];
   vendorIds?: string[];
 };
 
@@ -1445,9 +1449,15 @@ function mergeLocationRecords(
         zone: String(location.zone || ""),
         notes: String(location.notes || ""),
         parentId: String(location.parentId || ""),
-        paint: String(location.paint || ""),
-        bulbs: String(location.bulbs || ""),
-        finishes: String(location.finishes || ""),
+        customDetails: Array.isArray(location.customDetails)
+          ? location.customDetails
+              .map((detail) => ({
+                id: String(detail?.id || uid("detail")),
+                label: String(detail?.label || ""),
+                value: String(detail?.value || ""),
+              }))
+              .filter((detail) => detail.label || detail.value)
+          : [],
         vendorIds: Array.isArray(location.vendorIds) ? location.vendorIds.map(String) : [],
       });
       seenNames.add(normalizedName);
@@ -7922,9 +7932,7 @@ export default function AtlasPage() {
       zone: parent.name,
       notes: "",
       parentId: parent.id,
-      paint: "",
-      bulbs: "",
-      finishes: "",
+      customDetails: [],
       vendorIds: [],
     };
     setLocations((current) => byName([record, ...current]));
@@ -7945,6 +7953,33 @@ export default function AtlasPage() {
         ),
       ),
     );
+  }
+
+  function addLocationCustomDetail() {
+    const next = [
+      ...(selectedLocation.customDetails || []),
+      { id: uid("detail"), label: "", value: "" },
+    ];
+    updateLocation({ customDetails: next });
+  }
+
+  function updateLocationCustomDetail(
+    detailId: string,
+    patch: Partial<LocationCustomDetail>,
+  ) {
+    updateLocation({
+      customDetails: (selectedLocation.customDetails || []).map((detail) =>
+        detail.id === detailId ? { ...detail, ...patch } : detail,
+      ),
+    });
+  }
+
+  function removeLocationCustomDetail(detailId: string) {
+    updateLocation({
+      customDetails: (selectedLocation.customDetails || []).filter(
+        (detail) => detail.id !== detailId,
+      ),
+    });
   }
 
   async function assignAssetToLocation(assetId: string) {
@@ -12849,9 +12884,7 @@ export default function AtlasPage() {
                           zone: "2000",
                           notes: selectedMapLabel.notes || "",
                           parentId: "",
-                          paint: "",
-                          bulbs: "",
-                          finishes: "",
+                          customDetails: [],
                           vendorIds: selectedMapLabel.vendorIds || [],
                         };
                         setLocations((current) => byName([record, ...current]));
@@ -13400,7 +13433,9 @@ export default function AtlasPage() {
                           void (async () => {
                             await saveDirtyRecord(
                               "locations",
-                              selectedLocation,
+                              selectedLocation.name.trim() === "2000"
+                                ? { ...selectedLocation, parentId: "" }
+                                : selectedLocation,
                               "location",
                               selectedLocation.id,
                             );
@@ -13436,9 +13471,10 @@ export default function AtlasPage() {
                     <label style={{ display: "grid", gap: 7 }}>
                       <span style={fieldLabelStyle}>Parent Location</span>
                       <select
-                        value={selectedLocation.parentId || ""}
+                        value={selectedLocation.name.trim() === "2000" ? "" : selectedLocation.parentId || ""}
+                        disabled={selectedLocation.name.trim() === "2000"}
                         onChange={(event) => updateLocation({ parentId: event.currentTarget.value })}
-                        style={inputStyle}
+                        style={{ ...inputStyle, opacity: selectedLocation.name.trim() === "2000" ? 0.65 : 1 }}
                       >
                         <option value="">Top-level location</option>
                         {locations
@@ -13449,26 +13485,9 @@ export default function AtlasPage() {
                       </select>
                     </label>
                     <Field
-                      label="Zone"
+                      label="Description"
                       value={selectedLocation.zone}
                       onChange={(value) => updateLocation({ zone: value })}
-                    />
-                    <Field
-                      label="Paint / Color"
-                      value={selectedLocation.paint || ""}
-                      onChange={(value) => updateLocation({ paint: value })}
-                      multiline
-                    />
-                    <Field
-                      label="Bulbs / Lighting"
-                      value={selectedLocation.bulbs || ""}
-                      onChange={(value) => updateLocation({ bulbs: value })}
-                      multiline
-                    />
-                    <Field
-                      label="Finishes / Materials"
-                      value={selectedLocation.finishes || ""}
-                      onChange={(value) => updateLocation({ finishes: value })}
                       multiline
                     />
                     <Field
@@ -13477,6 +13496,54 @@ export default function AtlasPage() {
                       onChange={(value) => updateLocation({ notes: value })}
                       multiline
                     />
+                    <div style={{ gridColumn: "1 / -1", display: "grid", gap: 10 }}>
+                      <div style={{ ...detailSectionHeaderStyle, alignItems: "center" }}>
+                        <div>
+                          <div style={eyebrowStyle}>Custom Details</div>
+                          <strong>Add only the information this location needs</strong>
+                        </div>
+                        <button type="button" onClick={addLocationCustomDetail} style={secondaryButtonStyle}>
+                          + Add Detail
+                        </button>
+                      </div>
+                      {(selectedLocation.customDetails || []).length ? (
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {(selectedLocation.customDetails || []).map((detail) => (
+                            <div
+                              key={detail.id}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: isMobile ? "1fr" : "minmax(160px, .65fr) minmax(240px, 1.35fr) auto",
+                                gap: 8,
+                                alignItems: "start",
+                              }}
+                            >
+                              <input
+                                value={detail.label}
+                                onChange={(event) => updateLocationCustomDetail(detail.id, { label: event.currentTarget.value })}
+                                placeholder="Label, such as Paint or Flooring"
+                                style={inputStyle}
+                              />
+                              <textarea
+                                value={detail.value}
+                                onChange={(event) => updateLocationCustomDetail(detail.id, { value: event.currentTarget.value })}
+                                placeholder="Value or notes"
+                                style={{ ...inputStyle, minHeight: 44, resize: "vertical" }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeLocationCustomDetail(detail.id)}
+                                style={{ ...dangerButtonStyle, width: isMobile ? "100%" : undefined }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={noticeStyle}>No custom details. Add one only when this location needs it.</div>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -13486,24 +13553,22 @@ export default function AtlasPage() {
                         <strong>{selectedLocation.type || "—"}</strong>
                       </div>
                       <div style={recordInfoItemStyle}>
-                        <span style={fieldLabelStyle}>Zone</span>
-                        <strong>{selectedLocation.zone || "—"}</strong>
-                      </div>
-                      <div style={recordInfoItemStyle}>
                         <span style={fieldLabelStyle}>Parent</span>
                         <strong>{locations.find((location) => location.id === selectedLocation.parentId)?.name || "Top level"}</strong>
                       </div>
                     </div>
-                    {(selectedLocation.paint || selectedLocation.bulbs || selectedLocation.finishes) ? (
+                    {selectedLocation.zone ? <p style={recordNotesStyle}>{selectedLocation.zone}</p> : null}
+                    {(selectedLocation.customDetails || []).length ? (
                       <div style={{ ...recordInfoGridStyle, marginTop: 10 }}>
-                        {selectedLocation.paint ? <div style={recordInfoItemStyle}><span style={fieldLabelStyle}>Paint</span><strong>{selectedLocation.paint}</strong></div> : null}
-                        {selectedLocation.bulbs ? <div style={recordInfoItemStyle}><span style={fieldLabelStyle}>Bulbs</span><strong>{selectedLocation.bulbs}</strong></div> : null}
-                        {selectedLocation.finishes ? <div style={recordInfoItemStyle}><span style={fieldLabelStyle}>Finishes</span><strong>{selectedLocation.finishes}</strong></div> : null}
+                        {(selectedLocation.customDetails || []).map((detail) => (
+                          <div key={detail.id} style={recordInfoItemStyle}>
+                            <span style={fieldLabelStyle}>{detail.label || "Detail"}</span>
+                            <strong style={{ whiteSpace: "pre-wrap" }}>{detail.value || "—"}</strong>
+                          </div>
+                        ))}
                       </div>
                     ) : null}
-                    {selectedLocation.notes ? (
-                      <p style={recordNotesStyle}>{selectedLocation.notes}</p>
-                    ) : null}
+                    {selectedLocation.notes ? <p style={recordNotesStyle}>{selectedLocation.notes}</p> : null}
                   </>
                 )}
               </div>
