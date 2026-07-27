@@ -4393,10 +4393,14 @@ export default function AtlasPage() {
           .map(normalizePhotoRecord)
           .filter((photo) => photo.id && photo.assetId);
 
-        const nextLocations =
-          activePropertyId === "2000"
-            ? mergeLocationRecords(apiLocations, fallbackLocations)
-            : apiLocations;
+        // The database is authoritative once it contains location records.
+        // Do not merge fallback locations into every reload because deleted or
+        // renamed seed records would otherwise reappear.
+        const nextLocations = apiLocations.length
+          ? mergeLocationRecords(apiLocations, [])
+          : activePropertyId === "2000"
+            ? mergeLocationRecords(fallbackLocations, [])
+            : [];
         const nextAssets = byName(apiAssets.map(normalizeAsset));
         const nextVendors = byName(apiVendors.map(normalizeVendor));
         const nextContacts = byName(apiContacts.map(normalizeContact));
@@ -5496,13 +5500,16 @@ export default function AtlasPage() {
     recordType: string,
     id?: string,
   ) {
-    await postAtlasRecord(table, record);
+    const saved = await postAtlasRecord(table, record);
+    if (!saved) return false;
+
     clearRecordDirty(recordType, id);
 
     if (recordType === "vendor") setSelectedVendorId("");
     if (recordType === "work_order") setSelectedServiceId("");
     if (recordType === "procedure") setSelectedProcedureId("");
     if (recordType === "part") setSelectedPartId("");
+    return true;
   }
 
   const showCalendarSave = calendarDirty;
@@ -7854,6 +7861,11 @@ export default function AtlasPage() {
   async function deleteSelectedLocation() {
     const location = locations.find((item) => item.id === selectedLocationId);
     if (!location) return;
+
+    if (location.name.trim() === "2000") {
+      window.alert("2000 is the top-level property and cannot be deleted.");
+      return;
+    }
 
     const linkedAssets = assetRecords.filter((asset) =>
       assetHasLocation(asset, location.id),
@@ -13431,7 +13443,7 @@ export default function AtlasPage() {
                         type="button"
                         onClick={() =>
                           void (async () => {
-                            await saveDirtyRecord(
+                            const saved = await saveDirtyRecord(
                               "locations",
                               selectedLocation.name.trim() === "2000"
                                 ? { ...selectedLocation, parentId: "" }
@@ -13439,8 +13451,14 @@ export default function AtlasPage() {
                               "location",
                               selectedLocation.id,
                             );
+                            if (!saved) {
+                              window.alert(
+                                "This location did not save. The editor has been left open so your changes are not lost.",
+                              );
+                              return;
+                            }
                             setLocationEditorOpen(false);
-                            showSaveToast("Location saved.");
+                            showSaveToast("Location saved to Atlas.");
                           })()
                         }
                         style={{ ...goldButtonStyle, width: isMobile ? "100%" : undefined, whiteSpace: "nowrap" }}
