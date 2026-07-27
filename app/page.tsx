@@ -17369,7 +17369,7 @@ export default function AtlasPage() {
                                 border: `1px solid ${colors.line}`,
                                 boxShadow:
                                   "0 10px 24px rgba(15,45,68,0.10)",
-                                color: colors.blue,
+                                color: "#175CD3",
                                 fontSize: 11,
                                 fontWeight: 950,
                                 letterSpacing: "0.08em",
