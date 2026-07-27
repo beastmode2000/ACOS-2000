@@ -5838,7 +5838,7 @@ export default function AtlasPage() {
 
   const allDocuments = useMemo(
     () => [...documents, ...intakeDocs],
-    [intakeDocs],
+    [documents, intakeDocs],
   );
 
   const allManualRecords = useMemo(() => {
@@ -12382,7 +12382,7 @@ export default function AtlasPage() {
       const active = openWork.filter(
         (record) => String(record.status || "") === "In Progress",
       );
-      const matchingDocuments = documentRecords.filter((document) => {
+      const matchingDocuments = allDocuments.filter((document) => {
         const text = normalizedMapName(
           `${document.title || ""} ${document.area || ""} ${document.targetName || ""} ${document.notes || ""}`,
         );
