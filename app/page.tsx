@@ -3655,6 +3655,14 @@ export default function AtlasPage() {
     useState<AtlasLocationRecord[]>(fallbackLocations);
   const [locationEditorOpen, setLocationEditorOpen] = useState(false);
   const [locationMobileDrawerOpen, setLocationMobileDrawerOpen] = useState(false);
+  const [locationSearch, setLocationSearch] = useState("");
+  const [locationHoveredId, setLocationHoveredId] = useState("");
+  const [collapsedLocationIds, setCollapsedLocationIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [locationVisibilityFilters, setLocationVisibilityFilters] = useState<
+    Set<"assets" | "work" | "photos" | "empty">
+  >(() => new Set(["assets", "work", "photos", "empty"]));
 
   const [assetRecords, setAssetRecords] =
     useState<AtlasAssetRecord[]>(fallbackAssets.map(normalizeAsset));
@@ -3786,8 +3794,6 @@ export default function AtlasPage() {
   const [documentSearch, setDocumentSearch] = useState("");
   const [documentCategoryFilter, setDocumentCategoryFilter] = useState("All");
   const [documentLinkFilter, setDocumentLinkFilter] = useState("All");
-  const [hiddenDocumentCategories, setHiddenDocumentCategories] = useState<string[]>([]);
-  const [hiddenDocumentLinkTypes, setHiddenDocumentLinkTypes] = useState<string[]>([]);
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const documentListScrollYRef = useRef(0);
@@ -7342,23 +7348,17 @@ export default function AtlasPage() {
       const payload = (await response.json()) as {
         documents?: DocumentRecord[];
       };
-      const deletedDocumentIds = new Set(
-        readStoredArray<string>([`atlas-document-deletions:${activePropertyId}`], []),
-      );
       const apiDocs = Array.isArray(payload.documents)
-        ? payload.documents
-            .map(normalizeDocument)
-            .filter((document) => !deletedDocumentIds.has(document.id))
+        ? payload.documents.map(normalizeDocument)
         : [];
-      const localDocs = (activePropertyId === "2000"
+      const localDocs = activePropertyId === "2000"
         ? mergeDocuments(
             intakeDocs,
             readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(
               normalizeDocument,
             ),
           )
-        : intakeDocs.filter((document) => document.propertyId === activePropertyId))
-        .filter((document) => !deletedDocumentIds.has(document.id));
+        : intakeDocs.filter((document) => document.propertyId === activePropertyId);
       const apiIds = new Set(apiDocs.map((doc) => doc.id));
       const localOnlyDocs = localDocs.filter((doc) => !apiIds.has(doc.id));
 
@@ -7450,13 +7450,6 @@ export default function AtlasPage() {
 
   async function saveSelectedDocument(record: DocumentRecord) {
     const normalized = normalizeDocument(record);
-    if (typeof window !== "undefined") {
-      const deletionKey = `atlas-document-deletions:${activePropertyId}`;
-      const deletedIds = readStoredArray<string>([deletionKey], []).filter(
-        (id) => id !== normalized.id,
-      );
-      saveStoredArray(deletionKey, deletedIds);
-    }
     replaceDocumentInVault(normalized);
     try {
       await postDocumentToAtlasVault(normalized);
@@ -7477,13 +7470,6 @@ export default function AtlasPage() {
       `Delete ${record.title}? This removes it from the Atlas document vault.`,
     );
     if (!confirmed) return;
-
-    if (typeof window !== "undefined") {
-      const deletionKey = `atlas-document-deletions:${activePropertyId}`;
-      const deletedIds = new Set(readStoredArray<string>([deletionKey], []));
-      deletedIds.add(record.id);
-      saveStoredArray(deletionKey, Array.from(deletedIds));
-    }
 
     setIntakeDocs((current) => {
       const next = current.filter((doc) => doc.id !== record.id);
@@ -13423,16 +13409,92 @@ export default function AtlasPage() {
   }
 
   function renderLocations() {
-    const rootLocations = byName(locations.filter((location) => !location.parentId));
+    const locationAssetCount = (locationId: string) =>
+      assetRecords.filter((asset) => assetHasLocation(asset, locationId)).length;
+    const locationWorkCount = (locationId: string) => {
+      const assetIds = new Set(
+        assetRecords
+          .filter((asset) => assetHasLocation(asset, locationId))
+          .map((asset) => asset.id),
+      );
+      return serviceRecords.filter(
+        (record) =>
+          record.locationId === locationId || assetIds.has(record.assetId),
+      ).length;
+    };
+    const locationPhotoCount = (locationId: string) =>
+      linkedImageFilesFor("Location", locationId).length;
     const childLocationsFor = (parentId: string) =>
       byName(locations.filter((location) => location.parentId === parentId));
-    const locationRows = rootLocations.flatMap((root) => [
-      { location: root, depth: 0 },
-      ...childLocationsFor(root.id).flatMap((child) => [
-        { location: child, depth: 1 },
-        ...childLocationsFor(child.id).map((grandchild) => ({ location: grandchild, depth: 2 })),
-      ]),
-    ]);
+    const normalizedLocationSearch = locationSearch.trim().toLowerCase();
+    const locationMatchesSearch = (location: AtlasLocationRecord) =>
+      !normalizedLocationSearch ||
+      [location.name, location.type, location.zone, location.notes]
+        .join(" " )
+        .toLowerCase()
+        .includes(normalizedLocationSearch);
+    const locationMatchesFilters = (location: AtlasLocationRecord) => {
+      const assets = locationAssetCount(location.id);
+      const work = locationWorkCount(location.id);
+      const photos = locationPhotoCount(location.id);
+      const empty = assets === 0 && work === 0 && photos === 0;
+      return (
+        (assets > 0 && locationVisibilityFilters.has("assets")) ||
+        (work > 0 && locationVisibilityFilters.has("work")) ||
+        (photos > 0 && locationVisibilityFilters.has("photos")) ||
+        (empty && locationVisibilityFilters.has("empty"))
+      );
+    };
+    const matchingLocationIds = new Set(
+      locations
+        .filter(
+          (location) =>
+            locationMatchesSearch(location) && locationMatchesFilters(location),
+        )
+        .map((location) => location.id),
+    );
+    locations.forEach((location) => {
+      if (!matchingLocationIds.has(location.id)) return;
+      let parentId = location.parentId || "";
+      while (parentId) {
+        matchingLocationIds.add(parentId);
+        parentId = locations.find((item) => item.id === parentId)?.parentId || "";
+      }
+    });
+    const flattenLocationTree = (parentId = "", depth = 0): {
+      location: AtlasLocationRecord;
+      depth: number;
+      hasChildren: boolean;
+    }[] =>
+      byName(
+        locations.filter((location) =>
+          parentId
+            ? location.parentId === parentId
+            : !location.parentId,
+        ),
+      ).flatMap((location) => {
+        const children = childLocationsFor(location.id);
+        const row = {
+          location,
+          depth,
+          hasChildren: children.length > 0,
+        };
+        if (!matchingLocationIds.has(location.id)) return [];
+        if (collapsedLocationIds.has(location.id) && !normalizedLocationSearch) {
+          return [row];
+        }
+        return [row, ...flattenLocationTree(location.id, depth + 1)];
+      });
+    const locationRows = flattenLocationTree();
+    const toggleLocationFilter = (
+      filter: "assets" | "work" | "photos" | "empty",
+    ) =>
+      setLocationVisibilityFilters((current) => {
+        const next = new Set(current);
+        if (next.has(filter)) next.delete(filter);
+        else next.add(filter);
+        return next;
+      });
     const locationPhotos = selectedLocation.id
       ? linkedImageFilesFor("Location", selectedLocation.id)
       : [];
@@ -13504,41 +13566,271 @@ export default function AtlasPage() {
           </>
         }
         list={
-          <div style={listStyle}>
-            {locationRows.filter(({ location }) => filteredLocations.some((item) => item.id === location.id)).map(({ location, depth }) => (
-              <button
-                key={location.id}
-                type="button"
-                onClick={() => {
-                  setSelectedLocationId(location.id);
-                  setLocationEditorOpen(false);
-                  if (isMobile) setLocationMobileDrawerOpen(true);
-                }}
+          <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+            <div
+              style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 3,
+                display: "grid",
+                gap: 9,
+                padding: "2px 2px 10px",
+                background: colors.panel,
+              }}
+            >
+              <input
+                type="search"
+                value={locationSearch}
+                onChange={(event) => setLocationSearch(event.currentTarget.value)}
+                placeholder="Search locations, types, zones, or notes..."
+                aria-label="Search locations"
+                style={{ ...inputStyle, width: "100%", minWidth: 0 }}
+              />
+              <div
                 style={{
-                  ...rowButtonStyle,
-                  width: "100%",
-                  minWidth: 0,
-                  gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : undefined,
-                  overflow: "hidden",
-                  borderColor:
-                    location.id === selectedLocation.id
-                      ? colors.gold
-                      : colors.line,
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
                 }}
               >
-                <div style={{ paddingLeft: depth * 18 }}>
-                  <strong>{depth > 0 ? "↳ " : ""}{location.name}</strong>
+                {([
+                  ["assets", "Assets"],
+                  ["work", "Open work"],
+                  ["photos", "Photos"],
+                  ["empty", "Empty"],
+                ] as const).map(([filter, label]) => {
+                  const active = locationVisibilityFilters.has(filter);
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => toggleLocationFilter(filter)}
+                      aria-pressed={active}
+                      style={{
+                        ...secondaryButtonStyle,
+                        minHeight: 30,
+                        padding: "5px 9px",
+                        borderColor: active ? colors.gold : colors.line,
+                        background: active ? "#FFF8E8" : colors.card,
+                        color: colors.navy,
+                        boxShadow: active
+                          ? "0 0 0 1px rgba(201, 154, 61, 0.12)"
+                          : "none",
+                      }}
+                    >
+                      {active ? "✓ " : ""}
+                      {label}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocationSearch("");
+                    setLocationVisibilityFilters(
+                      new Set(["assets", "work", "photos", "empty"]),
+                    );
+                    setCollapsedLocationIds(new Set());
+                  }}
+                  style={{
+                    ...secondaryButtonStyle,
+                    minHeight: 30,
+                    padding: "5px 9px",
+                    marginLeft: "auto",
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+              <div style={{ ...mutedSmallStyle, paddingInline: 2 }}>
+                {locationRows.length} of {locations.length} locations shown
+              </div>
+            </div>
+
+            <div style={{ ...listStyle, gap: 7 }}>
+              {locationRows.map(({ location, depth, hasChildren }) => {
+                const selected = location.id === selectedLocation.id;
+                const hovered = locationHoveredId === location.id;
+                const assetCount = locationAssetCount(location.id);
+                const workCount = locationWorkCount(location.id);
+                const photoCount = locationPhotoCount(location.id);
+                const collapsed = collapsedLocationIds.has(location.id);
+
+                return (
+                  <div
+                    key={location.id}
+                    onMouseEnter={() => setLocationHoveredId(location.id)}
+                    onMouseLeave={() => setLocationHoveredId("")}
+                    style={{
+                      position: "relative",
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
+                      alignItems: "stretch",
+                      border: `1px solid ${
+                        selected || hovered ? colors.gold : colors.line
+                      }`,
+                      borderRadius: 12,
+                      background: selected ? "#FFF9EC" : colors.card,
+                      boxShadow: hovered
+                        ? "0 10px 24px rgba(15, 42, 67, 0.12), 0 0 0 1px rgba(201, 154, 61, 0.10)"
+                        : selected
+                          ? "0 5px 14px rgba(15, 42, 67, 0.08)"
+                          : "none",
+                      transform: hovered ? "translateY(-2px)" : "translateY(0)",
+                      transition:
+                        "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedLocationId(location.id);
+                        setLocationEditorOpen(false);
+                        if (isMobile) setLocationMobileDrawerOpen(true);
+                      }}
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        color: colors.navy,
+                        display: "grid",
+                        gridTemplateColumns: "auto minmax(0, 1fr)",
+                        gap: 8,
+                        alignItems: "center",
+                        minWidth: 0,
+                        padding: "10px 10px",
+                        paddingLeft: 10 + Math.min(depth, 5) * 16,
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span
+                        onClick={(event) => {
+                          if (!hasChildren) return;
+                          event.stopPropagation();
+                          setCollapsedLocationIds((current) => {
+                            const next = new Set(current);
+                            if (next.has(location.id)) next.delete(location.id);
+                            else next.add(location.id);
+                            return next;
+                          });
+                        }}
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 7,
+                          border: `1px solid ${colors.line}`,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: colors.panel,
+                          fontSize: 12,
+                          flex: "0 0 auto",
+                          visibility: hasChildren ? "visible" : "hidden",
+                        }}
+                        aria-label={collapsed ? "Expand location" : "Collapse location"}
+                      >
+                        {collapsed ? "+" : "−"}
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <strong
+                          style={{
+                            display: "block",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {location.name || "New Location"}
+                        </strong>
+                        <small
+                          style={{
+                            ...mutedSmallStyle,
+                            display: "block",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {[location.type || "General", location.zone]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </small>
+                        <span
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 5,
+                            marginTop: 5,
+                          }}
+                        >
+                          <small style={badgeStyle("Monitor")}>{assetCount} assets</small>
+                          {workCount ? (
+                            <small style={badgeStyle("Open")}>{workCount} work</small>
+                          ) : null}
+                          {photoCount ? (
+                            <small style={badgeStyle("Completed")}>{photoCount} photos</small>
+                          ) : null}
+                        </span>
+                      </span>
+                    </button>
+
+                    <div
+                      style={{
+                        display: hovered || selected ? "grid" : "none",
+                        alignContent: "center",
+                        gap: 4,
+                        padding: "6px 7px 6px 0",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        title="Add sub-location"
+                        onClick={() => {
+                          setSelectedLocationId(location.id);
+                          addSubLocation(location.id);
+                          if (isMobile) setLocationMobileDrawerOpen(true);
+                        }}
+                        style={{
+                          ...secondaryButtonStyle,
+                          minWidth: 32,
+                          minHeight: 28,
+                          padding: "3px 7px",
+                        }}
+                      >
+                        + Sub
+                      </button>
+                      <button
+                        type="button"
+                        title="Edit location"
+                        onClick={() => {
+                          setSelectedLocationId(location.id);
+                          setLocationEditorOpen(true);
+                          if (isMobile) setLocationMobileDrawerOpen(true);
+                        }}
+                        style={{
+                          ...secondaryButtonStyle,
+                          minWidth: 32,
+                          minHeight: 28,
+                          padding: "3px 7px",
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {!locationRows.length ? (
+                <div style={noticeStyle}>
+                  <strong>No locations match these filters.</strong>
+                  <p style={mutedSmallStyle}>
+                    Turn a filter back on or clear the search field.
+                  </p>
                 </div>
-                <span style={badgeStyle("Monitor")}>
-                  {
-                    assetRecords.filter(
-                      (asset) => assetHasLocation(asset, location.id),
-                    ).length
-                  }{" "}
-                  assets
-                </span>
-              </button>
-            ))}
+              ) : null}
+            </div>
           </div>
         }
         drawer={
@@ -16660,8 +16952,15 @@ export default function AtlasPage() {
         const category = doc.type?.trim() || "Uncategorized";
         const linkType = doc.targetType?.trim() || "General";
 
-        if (hiddenDocumentCategories.includes(category)) return false;
-        if (hiddenDocumentLinkTypes.includes(linkType)) return false;
+        if (
+          documentCategoryFilter !== "All" &&
+          category !== documentCategoryFilter
+        ) {
+          return false;
+        }
+        if (documentLinkFilter !== "All" && linkType !== documentLinkFilter) {
+          return false;
+        }
         if (!normalizedDocumentSearch) return true;
 
         const fileNames = (doc.files || []).map((file) => file.name).join(" ");
@@ -16697,8 +16996,8 @@ export default function AtlasPage() {
       });
 
     const activeDocumentFilterCount =
-      hiddenDocumentCategories.length +
-      hiddenDocumentLinkTypes.length +
+      Number(documentCategoryFilter !== "All") +
+      Number(documentLinkFilter !== "All") +
       Number(Boolean(normalizedDocumentSearch));
 
     const selectedDocument =
@@ -17137,75 +17436,52 @@ export default function AtlasPage() {
                   </div>
                 </label>
 
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div>
-                    <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>
-                      Categories — all are included until you turn one off
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                      {documentCategories.map((category) => {
-                        const enabled = !hiddenDocumentCategories.includes(category);
-                        return (
-                          <button
-                            key={category}
-                            type="button"
-                            aria-pressed={enabled}
-                            onClick={() =>
-                              setHiddenDocumentCategories((current) =>
-                                current.includes(category)
-                                  ? current.filter((item) => item !== category)
-                                  : [...current, category],
-                              )
-                            }
-                            style={{
-                              ...smallSubtleButtonStyle,
-                              borderColor: enabled ? colors.gold : colors.line,
-                              background: enabled ? "#FFF9EA" : "#F8FAFC",
-                              color: enabled ? colors.text : colors.muted,
-                              boxShadow: enabled
-                                ? "0 5px 14px rgba(201,154,61,0.15)"
-                                : "none",
-                            }}
-                          >
-                            {enabled ? "✓ " : ""}{category}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Category</span>
+                    <select
+                      value={documentCategoryFilter}
+                      onChange={(event) =>
+                        setDocumentCategoryFilter(event.currentTarget.value)
+                      }
+                      style={inputStyle}
+                      aria-label="Filter documents by category"
+                    >
+                      <option value="All">All categories</option>
+                      {documentCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-                  <div>
-                    <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>
-                      Linked sections
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                      {documentLinkTypes.map((linkType) => {
-                        const enabled = !hiddenDocumentLinkTypes.includes(linkType);
-                        return (
-                          <button
-                            key={linkType}
-                            type="button"
-                            aria-pressed={enabled}
-                            onClick={() =>
-                              setHiddenDocumentLinkTypes((current) =>
-                                current.includes(linkType)
-                                  ? current.filter((item) => item !== linkType)
-                                  : [...current, linkType],
-                              )
-                            }
-                            style={{
-                              ...smallSubtleButtonStyle,
-                              borderColor: enabled ? colors.gold : colors.line,
-                              background: enabled ? "#FFF9EA" : "#F8FAFC",
-                              color: enabled ? colors.text : colors.muted,
-                            }}
-                          >
-                            {enabled ? "✓ " : ""}{linkType}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Linked to</span>
+                    <select
+                      value={documentLinkFilter}
+                      onChange={(event) =>
+                        setDocumentLinkFilter(event.currentTarget.value)
+                      }
+                      style={inputStyle}
+                      aria-label="Filter documents by linked section"
+                    >
+                      <option value="All">Everything</option>
+                      {documentLinkTypes.map((linkType) => (
+                        <option key={linkType} value={linkType}>
+                          {linkType}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
 
                 <div
@@ -17261,8 +17537,8 @@ export default function AtlasPage() {
                         type="button"
                         onClick={() => {
                           setDocumentSearch("");
-                          setHiddenDocumentCategories([]);
-                          setHiddenDocumentLinkTypes([]);
+                          setDocumentCategoryFilter("All");
+                          setDocumentLinkFilter("All");
                         }}
                         style={smallSubtleButtonStyle}
                       >
@@ -17296,8 +17572,8 @@ export default function AtlasPage() {
                     type="button"
                     onClick={() => {
                       setDocumentSearch("");
-                      setHiddenDocumentCategories([]);
-                      setHiddenDocumentLinkTypes([]);
+                      setDocumentCategoryFilter("All");
+                      setDocumentLinkFilter("All");
                     }}
                     style={{ ...secondaryButtonStyle, marginTop: 10 }}
                   >
@@ -17308,7 +17584,9 @@ export default function AtlasPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
                     gap: 10,
                     alignContent: "start",
                   }}
@@ -17345,25 +17623,10 @@ export default function AtlasPage() {
                           setSelectedDocumentId(document.id);
                         }}
                         aria-pressed={isSelected}
-                        onMouseEnter={(event) => {
-                          if (isSelected) return;
-                          event.currentTarget.style.transform = "translateY(-3px) scale(1.01)";
-                          event.currentTarget.style.borderColor = colors.gold;
-                          event.currentTarget.style.boxShadow =
-                            "0 16px 34px rgba(15,45,68,0.14), 0 0 0 1px rgba(201,154,61,0.10)";
-                        }}
-                        onMouseLeave={(event) => {
-                          if (isSelected) return;
-                          event.currentTarget.style.transform = "none";
-                          event.currentTarget.style.borderColor = colors.line;
-                          event.currentTarget.style.boxShadow =
-                            "0 7px 20px rgba(15,45,68,0.07)";
-                        }}
                         style={{
                           position: "relative",
                           display: "grid",
-                          gridTemplateColumns: "82px minmax(0, 1fr)",
-                          minHeight: 92,
+                          gridTemplateRows: "112px auto",
                           minWidth: 0,
                           overflow: "hidden",
                           padding: 0,
@@ -17393,8 +17656,7 @@ export default function AtlasPage() {
                             overflow: "hidden",
                             background:
                               "linear-gradient(145deg, #EEF4F8, #F8FBFD)",
-                            borderRight: `1px solid ${colors.line}`,
-                            minHeight: 92,
+                            borderBottom: `1px solid ${colors.line}`,
                           }}
                         >
                           {isPreviewImage && previewSource ? (
@@ -17421,7 +17683,7 @@ export default function AtlasPage() {
                                 border: `1px solid ${colors.line}`,
                                 boxShadow:
                                   "0 10px 24px rgba(15,45,68,0.10)",
-                                color: "#175CD3",
+                                color: colors.blue,
                                 fontSize: 11,
                                 fontWeight: 950,
                                 letterSpacing: "0.08em",
