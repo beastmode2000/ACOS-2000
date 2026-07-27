@@ -265,6 +265,24 @@ function sortCompletedRecords(records: any[]) {
   });
 }
 
+function wasCompletedToday(record: any) {
+  if (String(record.status || "") !== "Completed") return false;
+
+  const today = todayKey();
+  const candidates = [
+    record.completedAt,
+    record.lastCompletedDate,
+    ...(Array.isArray(record.completionHistory)
+      ? record.completionHistory
+      : []),
+    ...(Array.isArray(record.serviceHistory)
+      ? record.serviceHistory.map((entry: any) => entry?.completedAt)
+      : []),
+  ];
+
+  return candidates.some((value) => dateKey(value) === today);
+}
+
 function safeReadSections(): WorkSection[] {
   if (typeof window === "undefined") return DEFAULT_SECTIONS;
   try {
@@ -835,6 +853,25 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     assignedFilter,
   ].filter((value) => value !== "All").length + (localSearch.trim() ? 1 : 0);
 
+
+  const workSummary = useMemo(() => {
+    const openRecords = filteredServices.filter(
+      (record: any) => String(record.status || "") !== "Completed",
+    );
+
+    return {
+      open: openRecords.length,
+      dueToday: openRecords.filter(
+        (record: any) => dayDistance(String(record.date || "")) === 0,
+      ).length,
+      overdue: openRecords.filter(
+        (record: any) =>
+          Boolean(record.date) && dayDistance(String(record.date)) < 0,
+      ).length,
+      completedToday: filteredServices.filter(wasCompletedToday).length,
+    };
+  }, [filteredServices]);
+
   function setQuickDateFilter(value: string) {
     setDueDateFilter((current) => (current === value ? "All" : value));
   }
@@ -1357,7 +1394,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       { id: "projects", label: "📋 Projects", records: myWorkGroups.projects },
     ];
     return (
-      <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "grid", gap: 10 }}>
         {groupDefinitions
           .filter((group) => group.records.length > 0)
           .map((group) => (
@@ -1691,13 +1728,69 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               </section>
             ) : null}
+
+            <section
+              aria-label="Work order summary"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(4, minmax(0, 1fr))",
+                gap: isMobile ? 7 : 8,
+              }}
+            >
+              {[
+                { label: "Open", value: workSummary.open },
+                { label: "Due Today", value: workSummary.dueToday },
+                { label: "Overdue", value: workSummary.overdue },
+                {
+                  label: "Completed Today",
+                  value: workSummary.completedToday,
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  style={{
+                    minWidth: 0,
+                    padding: isMobile ? "9px 10px" : "10px 12px",
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 12,
+                    background: "#FFFFFF",
+                  }}
+                >
+                  <div
+                    style={{
+                      color: colors.muted,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 3,
+                      color: colors.text,
+                      fontSize: isMobile ? 21 : 24,
+                      fontWeight: 900,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </section>
+
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
+                gap: 7,
                 flexWrap: "wrap",
-                padding: "2px 0",
+                padding: 0,
               }}
             >
               <input
@@ -1757,8 +1850,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <section
                 style={{
                   display: "grid",
-                  gap: 10,
-                  padding: 12,
+                  gap: 8,
+                  padding: 10,
                   border: `1px solid ${colors.line}`,
                   borderRadius: 12,
                   background: "#FFFFFF",
