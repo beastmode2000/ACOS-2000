@@ -5819,6 +5819,8 @@ export default function AtlasPage() {
         item.followUpDate,
         item.notes,
         item.season,
+        (item as AtlasServiceRecord).workCategory,
+        locationName((item as AtlasServiceRecord).locationId),
         recurrenceLabel(item),
         assetName(item.assetId),
         vendorName(item.vendorId),
@@ -12150,12 +12152,12 @@ export default function AtlasPage() {
     const estateHealth = Math.max(55, Math.min(99, 98 - healthPenalty));
 
     const statusDefinitions = [
-      { label: "Maintenance", terms: ["maintenance", "house", "electrical", "plumbing", "hvac"], icon: "🔧" },
-      { label: "Landscaping", terms: ["landscap", "grounds", "cleaning"], icon: "🌿" },
-      { label: "Pool & Spa", terms: ["pool", "spa", "hot tub"], icon: "💧" },
-      { label: "Irrigation", terms: ["irrigation", "hydrawise"], icon: "🚿" },
-      { label: "Dock & Marine", terms: ["dock", "marine", "boat", "seadoo", "cobalt"], icon: "🚤" },
-      { label: "Vehicles", terms: ["vehicle", "garage", "car"], icon: "🚗" },
+      { label: "Maintenance", query: "maintenance", terms: ["maintenance", "house", "electrical", "plumbing", "hvac"], icon: "🔧" },
+      { label: "Landscaping", query: "landscap", terms: ["landscap", "grounds", "cleaning"], icon: "🌿" },
+      { label: "Pool & Spa", query: "pool", terms: ["pool", "spa", "hot tub"], icon: "💧" },
+      { label: "Irrigation", query: "irrigation", terms: ["irrigation", "hydrawise"], icon: "🚿" },
+      { label: "Dock & Marine", query: "dock", terms: ["dock", "marine", "boat", "seadoo", "cobalt"], icon: "🚤" },
+      { label: "Vehicles", query: "vehicle", terms: ["vehicle", "garage", "car"], icon: "🚗" },
     ];
     const liveStatuses = statusDefinitions.map((definition) => {
       const matching = openWork.filter((record) => {
@@ -12244,7 +12246,10 @@ export default function AtlasPage() {
               <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: colors.gold2 }}>
                 Atlas Command Center
               </div>
-              <h1 style={{ margin: "7px 0 5px", fontSize: isMobile ? 27 : 36, lineHeight: 1.05 }}>
+              <div className="atlas-dashboard-greeting">
+                Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}, Nick.
+              </div>
+              <h1 style={{ margin: "5px 0 5px", fontSize: isMobile ? 27 : 36, lineHeight: 1.05 }}>
                 {activeProperty?.name || "Atlas"} Operations
               </h1>
               <div style={{ opacity: 0.82, fontSize: 14 }}>
@@ -12319,6 +12324,11 @@ export default function AtlasPage() {
               <div style={{ ...mutedSmallStyle, fontWeight: 800 }}>{item.label}</div>
               <div style={statValueStyle}>{item.value}</div>
               <div style={{ ...mutedSmallStyle, marginTop: 7 }}>{item.detail}</div>
+              <span className="atlas-dashboard-info-popover" aria-hidden="true">
+                <strong>{item.label}</strong>
+                <span>{item.detail}</span>
+                <span>Click to open the relevant records.</span>
+              </span>
             </button>
           ))}
         </section>
@@ -12393,7 +12403,11 @@ export default function AtlasPage() {
                     <button
                       key={item.label}
                       type="button"
-                      onClick={() => setScreen("history")}
+                      className="atlas-dashboard-status-card"
+                      onClick={() => {
+                        setQuery(item.query);
+                        setScreen("history");
+                      }}
                       style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 12, textAlign: "left", cursor: "pointer", color: colors.text }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -12405,6 +12419,11 @@ export default function AtlasPage() {
                         {item.status}
                       </span>
                       <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{item.count} open item{item.count === 1 ? "" : "s"}</small>
+                      <span className="atlas-dashboard-info-popover" aria-hidden="true">
+                        <strong>{item.label} work</strong>
+                        <span>{item.count} matching open item{item.count === 1 ? "" : "s"}.</span>
+                        <span>Click to open only {item.label.toLowerCase()} work orders.</span>
+                      </span>
                     </button>
                   );
                 })}
@@ -12476,6 +12495,30 @@ export default function AtlasPage() {
                     <strong>Recommendation</strong>
                     <div style={{ marginTop: 3, color: colors.muted }}>{weatherDayPlanning(todaysWeather)}</div>
                     <div style={{ marginTop: 7, color: colors.muted }}>{irrigationAdvice(todaysWeather)}</div>
+                  </div>
+                  <div className="atlas-dashboard-weather-strip">
+                    {weatherDays.slice(0, 7).map((day, index) => (
+                      <button
+                        key={String(day.date || index)}
+                        type="button"
+                        className="atlas-dashboard-weather-day"
+                        onClick={() => setScreen("calendar")}
+                      >
+                        <span className="atlas-dashboard-weather-name">
+                          {index === 0
+                            ? "Today"
+                            : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}
+                        </span>
+                        <span className="atlas-dashboard-weather-icon">{weatherIcon(Number(day.code || 0))}</span>
+                        <strong>{Math.round(Number(day.high || 0))}°</strong>
+                        <small>{Math.round(Number(day.low || 0))}° low</small>
+                        <span className="atlas-dashboard-info-popover" aria-hidden="true">
+                          <strong>{weatherDayPlanning(day)}</strong>
+                          <span>{irrigationAdvice(day)}</span>
+                          <span>{weatherText(Number(day.code || 0))}</span>
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </>
               ) : (
@@ -23476,6 +23519,116 @@ export default function AtlasPage() {
 
         .atlas-command-dashboard button:active {
           transform: translateY(-1px) scale(0.995);
+        }
+
+        .atlas-dashboard-greeting {
+          margin-top: 8px;
+          color: #F5D98B;
+          font-size: clamp(19px, 2vw, 27px);
+          font-weight: 900;
+          letter-spacing: -0.02em;
+        }
+
+        .atlas-dashboard-kpi,
+        .atlas-dashboard-status-card,
+        .atlas-dashboard-weather-day {
+          overflow: visible !important;
+        }
+
+        .atlas-dashboard-info-popover {
+          position: absolute;
+          left: 10px;
+          right: 10px;
+          top: calc(100% + 8px);
+          z-index: 80;
+          display: grid;
+          gap: 5px;
+          padding: 11px 12px;
+          border: 1px solid rgba(201, 154, 61, 0.66);
+          border-radius: 12px;
+          background: rgba(15, 35, 55, 0.98);
+          color: #FFFFFF;
+          box-shadow: 0 18px 40px rgba(15, 35, 55, 0.25);
+          opacity: 0;
+          pointer-events: none;
+          transform: translateY(4px) scale(0.985);
+          transform-origin: top center;
+          transition: opacity 150ms ease, transform 170ms ease;
+        }
+        .atlas-dashboard-info-popover strong {
+          color: #F5D98B;
+          font-size: 12px;
+        }
+        .atlas-dashboard-info-popover span {
+          font-size: 11px;
+          line-height: 1.35;
+          color: #EDF3F7;
+        }
+        .atlas-dashboard-kpi:hover .atlas-dashboard-info-popover,
+        .atlas-dashboard-kpi:focus-visible .atlas-dashboard-info-popover,
+        .atlas-dashboard-status-card:hover .atlas-dashboard-info-popover,
+        .atlas-dashboard-status-card:focus-visible .atlas-dashboard-info-popover,
+        .atlas-dashboard-weather-day:hover .atlas-dashboard-info-popover,
+        .atlas-dashboard-weather-day:focus-visible .atlas-dashboard-info-popover {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+
+        .atlas-dashboard-weather-strip {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(72px, 1fr));
+          gap: 7px;
+          margin-top: 12px;
+        }
+        .atlas-dashboard-weather-day {
+          position: relative;
+          display: grid;
+          justify-items: center;
+          gap: 3px;
+          min-width: 0;
+          padding: 9px 5px;
+          border: 1px solid #D9E1E8;
+          border-radius: 11px;
+          background: #FFFFFF;
+          color: #17354D;
+          cursor: pointer;
+          font: inherit;
+        }
+        .atlas-dashboard-weather-day:hover,
+        .atlas-dashboard-weather-day:focus-visible {
+          z-index: 70;
+          border-color: rgba(201, 154, 61, 0.82);
+          box-shadow: 0 12px 28px rgba(18, 35, 63, 0.15), 0 0 0 3px rgba(201, 154, 61, 0.08);
+          transform: translateY(-3px);
+          outline: none;
+        }
+        .atlas-dashboard-weather-name {
+          font-size: 10px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .atlas-dashboard-weather-icon {
+          font-size: 20px;
+          line-height: 1;
+        }
+        .atlas-dashboard-weather-day strong {
+          font-size: 14px;
+        }
+        .atlas-dashboard-weather-day small {
+          color: #64748B;
+          font-size: 9px;
+        }
+
+        @media (max-width: 760px) {
+          .atlas-dashboard-weather-strip {
+            grid-template-columns: repeat(4, minmax(68px, 1fr));
+          }
+        }
+        @media (hover: none), (pointer: coarse) {
+          .atlas-dashboard-info-popover {
+            display: none;
+          }
         }
 
         .atlas-dashboard-kpi {
