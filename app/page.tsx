@@ -13948,13 +13948,8 @@ export default function AtlasPage() {
           .filter((part) => part.assetId === selectedAsset.id)
           .sort((a, b) => a.name.localeCompare(b.name))
       : [];
-    const openAssetWorkOrders = relatedWorkOrders
-      .filter(
-        (record) =>
-          record.status !== "Completed" &&
-          record.status !== "Closed" &&
-          record.status !== "Cancelled",
-      )
+  const openAssetWorkOrders = relatedWorkOrders
+  .filter((record) => record.status !== "Completed")
       .sort((a, b) =>
         String(a.date || "9999-12-31").localeCompare(
           String(b.date || "9999-12-31"),
