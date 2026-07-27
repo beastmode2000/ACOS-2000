@@ -13924,6 +13924,64 @@ export default function AtlasPage() {
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
 
+    const linkedAssetDocuments = selectedAsset.id
+      ? intakeDocs
+          .filter(
+            (document) =>
+              document.linkedAssetId === selectedAsset.id ||
+              (document.targetType === "Asset" &&
+                document.targetId === selectedAsset.id),
+          )
+          .sort((a, b) =>
+            String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+          )
+      : [];
+    const linkedAssetProcedures = selectedAsset.id
+      ? procedureRecords
+          .filter((procedure) =>
+            (procedure.linkedAssetIds || []).includes(selectedAsset.id),
+          )
+          .sort((a, b) => a.title.localeCompare(b.title))
+      : [];
+    const linkedAssetParts = selectedAsset.id
+      ? partRecords
+          .filter((part) => part.assetId === selectedAsset.id)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : [];
+    const openAssetWorkOrders = relatedWorkOrders
+      .filter(
+        (record) =>
+          record.status !== "Completed" &&
+          record.status !== "Closed" &&
+          record.status !== "Cancelled",
+      )
+      .sort((a, b) =>
+        String(a.date || "9999-12-31").localeCompare(
+          String(b.date || "9999-12-31"),
+        ),
+      );
+    const nextAssetMaintenance = openAssetWorkOrders
+      .filter((record) => record.recurring || record.workType === "Preventive Maintenance")
+      .find((record) => Boolean(record.date));
+    const lastCompletedAssetWork = assetHistory.find(
+      (entry) => entry.status === "Completed" && Boolean(entry.date),
+    );
+    const assetWarnings = [
+      !selectedAsset.locationId ? "No primary location" : "",
+      !selectedAsset.serial ? "Serial / VIN / HIN is missing" : "",
+      !selectedAsset.vendorIds.length ? "No preferred vendor" : "",
+      !attachedManuals.length ? "No manual attached" : "",
+      !linkedAssetProcedures.length ? "No procedure attached" : "",
+      openAssetWorkOrders.some(
+        (record) =>
+          Boolean(record.date) &&
+          record.date < todayISO() &&
+          record.status !== "Completed",
+      )
+        ? "Overdue work requires attention"
+        : "",
+    ].filter(Boolean);
+
     const removeVendor = (vendorId: string) =>
       updateAsset({
         vendorIds: selectedAsset.vendorIds.filter((id) => id !== vendorId),
@@ -14183,6 +14241,266 @@ export default function AtlasPage() {
                   </button>
                 </div>
               </div>
+
+              <section
+                style={{
+                  ...assetCardStyle,
+                  marginBottom: 12,
+                  background: "#F8FAFD",
+                }}
+              >
+                <div style={assetCardHeaderStyle}>
+                  <div>
+                    <strong>Asset Intelligence</strong>
+                    <div style={assetCardHintStyle}>
+                      Current work, maintenance, records, and attention items
+                    </div>
+                  </div>
+                  <span style={badgeStyle(assetWarnings.length ? "Monitor" : "Online")}>
+                    {assetWarnings.length
+                      ? `${assetWarnings.length} attention item${assetWarnings.length === 1 ? "" : "s"}`
+                      : "Records complete"}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "repeat(2, minmax(0, 1fr))"
+                      : "repeat(4, minmax(0, 1fr))",
+                    gap: 8,
+                    marginTop: 10,
+                  }}
+                >
+                  {[
+                    {
+                      label: "Open Work",
+                      value: String(openAssetWorkOrders.length),
+                      detail: openAssetWorkOrders[0]?.title || "No open work orders",
+                      action: () => {
+                        if (openAssetWorkOrders[0]) {
+                          setSelectedServiceId(openAssetWorkOrders[0].id);
+                          setScreen("history");
+                        }
+                      },
+                    },
+                    {
+                      label: "Next Maintenance",
+                      value: nextAssetMaintenance?.date
+                        ? formatDate(nextAssetMaintenance.date)
+                        : "None scheduled",
+                      detail: nextAssetMaintenance?.title || "Add preventive maintenance",
+                      action: () => {
+                        if (nextAssetMaintenance) {
+                          setSelectedServiceId(nextAssetMaintenance.id);
+                          setScreen("history");
+                        } else {
+                          addWorkOrder({
+                            assetId: selectedAsset.id,
+                            locationId: selectedAsset.locationId || "",
+                            workType: "Preventive Maintenance",
+                            recurring: true,
+                          });
+                        }
+                      },
+                    },
+                    {
+                      label: "Last Service",
+                      value: lastCompletedAssetWork?.date
+                        ? formatDate(lastCompletedAssetWork.date)
+                        : "No history",
+                      detail: lastCompletedAssetWork?.title || "Completed work will appear here",
+                      action: () => {
+                        if (lastCompletedAssetWork) {
+                          setSelectedServiceId(lastCompletedAssetWork.workOrderId);
+                          setScreen("history");
+                        }
+                      },
+                    },
+                    {
+                      label: "Location",
+                      value: selectedAsset.locationId
+                        ? locationName(selectedAsset.locationId)
+                        : "Not assigned",
+                      detail: `${assetLocationIds(selectedAsset).length} linked location${assetLocationIds(selectedAsset).length === 1 ? "" : "s"}`,
+                      action: () => {
+                        if (selectedAsset.locationId) {
+                          setSelectedLocationId(selectedAsset.locationId);
+                          setScreen("locations");
+                        }
+                      },
+                    },
+                  ].map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={item.action}
+                      style={{
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 10,
+                        background: "#FFFFFF",
+                        padding: 10,
+                        minWidth: 0,
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span style={assetInfoLabelStyle}>{item.label}</span>
+                      <strong
+                        style={{
+                          display: "block",
+                          marginTop: 4,
+                          color: colors.navy,
+                          fontSize: 14,
+                          lineHeight: 1.25,
+                        }}
+                      >
+                        {item.value}
+                      </strong>
+                      <span
+                        style={{
+                          ...assetCardHintStyle,
+                          display: "block",
+                          marginTop: 3,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.detail}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr",
+                    gap: 10,
+                    marginTop: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 10,
+                      background: "#FFFFFF",
+                      padding: 10,
+                    }}
+                  >
+                    <span style={assetInfoLabelStyle}>Linked Records</span>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 6,
+                        marginTop: 8,
+                      }}
+                    >
+                      {[
+                        ["Vendors", selectedVendors.length],
+                        ["Procedures", linkedAssetProcedures.length],
+                        ["Manuals", attachedManuals.length],
+                        ["Documents", linkedAssetDocuments.length],
+                        ["Photos", selectedAssetPhotos.length],
+                        ["Parts", linkedAssetParts.length],
+                      ].map(([label, count]) => (
+                        <span
+                          key={String(label)}
+                          style={{
+                            border: `1px solid ${colors.line}`,
+                            borderRadius: 999,
+                            background: colors.panel,
+                            color: colors.navy,
+                            padding: "5px 8px",
+                            fontSize: 10,
+                            fontWeight: 900,
+                          }}
+                        >
+                          {label}: {count}
+                        </span>
+                      ))}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 6,
+                        marginTop: 9,
+                      }}
+                    >
+                      {linkedAssetProcedures[0] ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedProcedureId(linkedAssetProcedures[0].id);
+                            setScreen("procedures");
+                          }}
+                          style={assetTinyButtonStyle}
+                        >
+                          Open Procedures
+                        </button>
+                      ) : null}
+                      {attachedManuals[0] ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedManualId(attachedManuals[0].id);
+                            setScreen("manuals");
+                          }}
+                          style={assetTinyButtonStyle}
+                        >
+                          Open Manuals
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDocumentSearch(selectedAsset.name);
+                          setScreen("documents");
+                        }}
+                        style={assetTinyButtonStyle}
+                      >
+                        Open Documents
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      border: `1px solid ${assetWarnings.length ? "#D8B45C" : colors.line}`,
+                      borderRadius: 10,
+                      background: assetWarnings.length ? "#FFF9E8" : "#FFFFFF",
+                      padding: 10,
+                    }}
+                  >
+                    <span style={assetInfoLabelStyle}>Attention</span>
+                    {assetWarnings.length ? (
+                      <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
+                        {assetWarnings.map((warning) => (
+                          <div
+                            key={warning}
+                            style={{
+                              color: colors.navy,
+                              fontSize: 11,
+                              lineHeight: 1.35,
+                              fontWeight: 800,
+                            }}
+                          >
+                            • {warning}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ ...assetCardHintStyle, marginTop: 7 }}>
+                        No missing core records or overdue work detected.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
 
               <div
                 style={{
