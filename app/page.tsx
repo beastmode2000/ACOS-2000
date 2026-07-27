@@ -3509,8 +3509,8 @@ export default function AtlasPage() {
   const [selectedMapLabelId, setSelectedMapLabelId] = useState("");
   const [mapMobileDrawerOpen, setMapMobileDrawerOpen] = useState(false);
   const [activeMapPanelTab, setActiveMapPanelTab] = useState<
-    "info" | "vendors" | "photos" | "tabs"
-  >("info");
+    "operations" | "info" | "vendors" | "photos" | "tabs"
+  >("operations");
 
   const [locations, setLocations] =
     useState<LocationRecord[]>(fallbackLocations);
@@ -12328,6 +12328,102 @@ export default function AtlasPage() {
         </section>
       );
     }
+
+    const today = todayISO();
+    const normalizedMapName = (value: string) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+
+    const operationsForLabel = (label: MapLabelRecord) => {
+      const labelName = normalizedMapName(label.label);
+      const labelWords = labelName.split(" ").filter((word) => word.length > 2);
+      const matchingLocations = locations.filter((location) => {
+        const locationName = normalizedMapName(location.name);
+        return (
+          locationName === labelName ||
+          locationName.includes(labelName) ||
+          labelName.includes(locationName) ||
+          labelWords.some((word) => locationName.includes(word))
+        );
+      });
+      const locationIds = new Set(matchingLocations.map((location) => location.id));
+      const matchingAssets = assetRecords.filter((asset) => {
+        const assetName = normalizedMapName(asset.name);
+        return (
+          locationIds.has(asset.locationId) ||
+          assetName === labelName ||
+          assetName.includes(labelName) ||
+          labelName.includes(assetName) ||
+          labelWords.some((word) => assetName.includes(word))
+        );
+      });
+      const assetIds = new Set(matchingAssets.map((asset) => asset.id));
+      const matchingWork = serviceRecords.filter((record) => {
+        const text = normalizedMapName(
+          `${record.title || ""} ${record.notes || ""} ${(record as AtlasServiceRecord).workCategory || ""}`,
+        );
+        return (
+          locationIds.has(String((record as AtlasServiceRecord).locationId || "")) ||
+          assetIds.has(String(record.assetId || "")) ||
+          (labelWords.length > 0 && labelWords.some((word) => text.includes(word)))
+        );
+      });
+      const openWork = matchingWork.filter(
+        (record) => String(record.status || "Open") !== "Completed",
+      );
+      const overdue = openWork.filter(
+        (record) => Boolean(record.date) && String(record.date) < today,
+      );
+      const critical = openWork.filter(
+        (record) => String(record.priority || "") === "High",
+      );
+      const active = openWork.filter(
+        (record) => String(record.status || "") === "In Progress",
+      );
+      const matchingDocuments = documentRecords.filter((document) => {
+        const text = normalizedMapName(
+          `${document.title || ""} ${document.area || ""} ${document.targetName || ""} ${document.notes || ""}`,
+        );
+        return (
+          locationIds.has(String(document.targetId || "")) ||
+          assetIds.has(String(document.linkedAssetId || "")) ||
+          (labelWords.length > 0 && labelWords.some((word) => text.includes(word)))
+        );
+      });
+      const matchingVendors = vendorRecords.filter((vendor) =>
+        (label.vendorIds || []).includes(vendor.id),
+      );
+
+      const status =
+        critical.length || overdue.length
+          ? "Critical"
+          : active.length
+            ? "Active"
+            : openWork.length
+              ? "Attention"
+              : "Healthy";
+
+      return {
+        locations: matchingLocations,
+        assets: matchingAssets,
+        work: matchingWork,
+        openWork,
+        overdue,
+        critical,
+        active,
+        documents: matchingDocuments,
+        vendors: matchingVendors,
+        status,
+      };
+    };
+
+    const mapOperations = mapLabels.map((label) => ({
+      label,
+      operations: operationsForLabel(label),
+    }));
+    const selectedOperations = operationsForLabel(selectedMapLabel);
     const selectedMapVendors = vendorRecords.filter((vendor) =>
       (selectedMapLabel.vendorIds || []).includes(vendor.id),
     );
@@ -12338,380 +12434,584 @@ export default function AtlasPage() {
     const mapTabs =
       selectedMapLabel.detailBoxes || normalizeMapDetailBoxes(selectedMapLabel);
 
+    const statusPalette = (status: string) => {
+      if (status === "Critical") {
+        return { background: colors.red, text: "#FFFFFF", soft: "#FEECEC" };
+      }
+      if (status === "Active") {
+        return { background: "#7C3AED", text: "#FFFFFF", soft: "#F3EEFF" };
+      }
+      if (status === "Attention") {
+        return { background: "#B54708", text: "#FFFFFF", soft: "#FFF4E5" };
+      }
+      return { background: colors.green, text: "#FFFFFF", soft: "#EAF7F1" };
+    };
+
+    const totalOpen = mapOperations.reduce(
+      (total, item) => total + item.operations.openWork.length,
+      0,
+    );
+    const criticalAreas = mapOperations.filter(
+      (item) => item.operations.status === "Critical",
+    ).length;
+    const activeAreas = mapOperations.filter(
+      (item) => item.operations.status === "Active",
+    ).length;
+    const healthyAreas = mapOperations.filter(
+      (item) => item.operations.status === "Healthy",
+    ).length;
+
     return (
-      <ListDrawerLayout
-        eyebrow="Map"
-        title="Property Map"
-        detail="Click a label for details. Click and hold a label to move it."
-        isMobile={isMobile}
-        drawerResetKey={selectedMapLabelId || "map-empty"}
-        mobileDrawerOpen={mapMobileDrawerOpen}
-        onMobileDrawerClose={() => setMapMobileDrawerOpen(false)}
-        mobileDrawerTitle={selectedMapLabel.label || "Map Details"}
-        gridStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
-        listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
-        drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
-        right={
-          <>
-            {selectedMapLabel.id ? (
+      <div style={{ display: "grid", gap: 12 }}>
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "repeat(2, minmax(0, 1fr))"
+              : "repeat(4, minmax(0, 1fr))",
+            gap: 9,
+          }}
+        >
+          {[
+            { label: "Open Work", value: totalOpen, note: "Across mapped areas" },
+            { label: "Critical Areas", value: criticalAreas, note: "Overdue or high priority" },
+            { label: "Active Areas", value: activeAreas, note: "Work in progress" },
+            { label: "Healthy Areas", value: healthyAreas, note: "No open work" },
+          ].map((item) => (
+            <div
+              key={item.label}
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 14,
+                background: colors.card,
+                padding: isMobile ? 11 : 14,
+                minWidth: 0,
+              }}
+            >
+              <div style={{ ...eyebrowStyle, fontSize: 10 }}>{item.label}</div>
+              <div style={{ marginTop: 4, color: colors.navy, fontSize: 25, fontWeight: 950 }}>
+                {item.value}
+              </div>
+              <small style={mutedSmallStyle}>{item.note}</small>
+            </div>
+          ))}
+        </section>
+
+        <ListDrawerLayout
+          eyebrow="Live Operations Map"
+          title="Property Operations"
+          detail="Each map label reflects live work-order status. Select an area to see its assets, work, documents, and vendors. Click and hold a label to move it."
+          isMobile={isMobile}
+          drawerResetKey={selectedMapLabelId || "map-empty"}
+          mobileDrawerOpen={mapMobileDrawerOpen}
+          onMobileDrawerClose={() => setMapMobileDrawerOpen(false)}
+          mobileDrawerTitle={selectedMapLabel.label || "Map Details"}
+          gridStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+          listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
+          drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+          right={
+            <>
+              {selectedMapLabel.id ? (
+                <button
+                  type="button"
+                  onClick={() => deleteMapLabelRecord(selectedMapLabel)}
+                  style={dangerButtonStyle}
+                >
+                  Delete Label
+                </button>
+              ) : null}
               <button
                 type="button"
-                onClick={() => deleteMapLabelRecord(selectedMapLabel)}
-                style={dangerButtonStyle}
+                onClick={() => {
+                  addMapLabel();
+                  setActiveMapPanelTab("operations");
+                  if (isMobile) setMapMobileDrawerOpen(true);
+                }}
+                style={goldButtonStyle}
               >
-                Delete Label
+                Add Label
               </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => {
-                addMapLabel();
-                if (isMobile) setMapMobileDrawerOpen(true);
-              }}
-              style={goldButtonStyle}
-            >
-              Add Label
-            </button>
-          </>
-        }
-        list={
-          <div>
-            {!mapImageOk ? (
+            </>
+          }
+          list={
+            <div>
+              {!mapImageOk ? (
+                <div
+                  style={{
+                    ...noticeStyle,
+                    borderColor: "#FACACA",
+                    background: "#FEECEC",
+                    color: colors.red,
+                  }}
+                >
+                  Map image did not load. Confirm this file exists:{" "}
+                  <strong>public/atlas-property-map.png</strong>
+                </div>
+              ) : null}
+
+              <div
+                ref={mapRef}
+                onPointerMove={handleMapPointerMove}
+                onPointerUp={stopMapDrag}
+                onPointerLeave={stopMapDrag}
+                onPointerCancel={stopMapDrag}
+                style={mapShellStyle}
+              >
+                <img
+                  src="/atlas-property-map.png"
+                  alt="Atlas property map"
+                  draggable={false}
+                  onError={() => setMapImageOk(false)}
+                  onLoad={() => setMapImageOk(true)}
+                  style={mapImageStyle}
+                />
+
+                {mapOperations.map(({ label, operations }) => {
+                  const selected = label.id === selectedMapLabel.id;
+                  const palette = statusPalette(operations.status);
+                  return (
+                    <button
+                      key={label.id}
+                      type="button"
+                      title={`${operations.status} · ${operations.openWork.length} open work item${operations.openWork.length === 1 ? "" : "s"}`}
+                      onPointerDown={(event) =>
+                        handleMapLabelPointerDown(event, label.id)
+                      }
+                      onClick={() => {
+                        setSelectedMapLabelId(label.id);
+                        setActiveMapPanelTab("operations");
+                        if (isMobile) setMapMobileDrawerOpen(true);
+                      }}
+                      style={{
+                        ...mapPinStyle,
+                        left: `${label.x}%`,
+                        top: `${label.y}%`,
+                        background: selected ? colors.gold : palette.background,
+                        color: selected ? colors.navy : palette.text,
+                        borderColor: selected ? colors.navy : "#FFFFFF",
+                        boxShadow: selected
+                          ? "0 0 0 3px rgba(201,154,61,0.35), 0 8px 18px rgba(15,23,42,0.25)"
+                          : "0 5px 14px rgba(15,23,42,0.22)",
+                        zIndex: selected ? 5 : 4,
+                      }}
+                    >
+                      {label.label}
+                      {operations.openWork.length ? (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            minWidth: 18,
+                            height: 18,
+                            padding: "0 5px",
+                            borderRadius: 999,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: selected ? colors.navy : "rgba(255,255,255,0.92)",
+                            color: selected ? "#FFFFFF" : palette.background,
+                            fontSize: 10,
+                            fontWeight: 950,
+                          }}
+                        >
+                          {operations.openWork.length}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div
                 style={{
-                  ...noticeStyle,
-                  borderColor: "#FACACA",
-                  background: "#FEECEC",
-                  color: colors.red,
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  padding: "10px 4px 0",
                 }}
               >
-                Map image did not load. Confirm this file exists:{" "}
-                <strong>public/atlas-property-map.png</strong>
+                {[
+                  ["Healthy", colors.green],
+                  ["Attention", "#B54708"],
+                  ["Active Work", "#7C3AED"],
+                  ["Critical", colors.red],
+                ].map(([label, color]) => (
+                  <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, color: colors.muted }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 999, background: color }} />
+                    {label}
+                  </span>
+                ))}
               </div>
-            ) : null}
-
-            <div
-              ref={mapRef}
-              onPointerMove={handleMapPointerMove}
-              onPointerUp={stopMapDrag}
-              onPointerLeave={stopMapDrag}
-              onPointerCancel={stopMapDrag}
-              style={mapShellStyle}
-            >
-              <img
-                src="/atlas-property-map.png"
-                alt="Atlas property map"
-                draggable={false}
-                onError={() => setMapImageOk(false)}
-                onLoad={() => setMapImageOk(true)}
-                style={mapImageStyle}
-              />
-
-              {mapLabels.map((label) => {
-                const selected = label.id === selectedMapLabel.id;
-                return (
-                  <button
-                    key={label.id}
-                    type="button"
-                    onPointerDown={(event) =>
-                      handleMapLabelPointerDown(event, label.id)
-                    }
-                    onClick={() => {
-                      setSelectedMapLabelId(label.id);
-                      if (isMobile) setMapMobileDrawerOpen(true);
-                    }}
-                    style={{
-                      ...mapPinStyle,
-                      left: `${label.x}%`,
-                      top: `${label.y}%`,
-                      background: selected ? colors.gold : colors.navy,
-                      color: selected ? colors.navy : "#FFFFFF",
-                      borderColor: selected ? colors.navy : colors.gold2,
-                      zIndex: selected ? 5 : 4,
-                    }}
-                  >
-                    {label.label}
-                  </button>
-                );
-              })}
             </div>
-          </div>
-        }
-        drawer={
-          <div style={mapInfoPanelStyle}>
-            <div style={mapInfoHeaderStyle}>
-              <div style={mapInfoTitleRowStyle}>
-                <h3 style={mapInfoTitleStyle}>{selectedMapLabel.label}</h3>
-                <div style={mapInfoIconRowStyle}>
-                  <label title="Add header photo" style={mapIconButtonStyle}>
-                    ✎
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleMapHeaderPhotoUpload}
-                      style={{ display: "none" }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isMobile) setMapMobileDrawerOpen(false);
-                      else setActiveMapPanelTab("info");
-                    }}
-                    style={mapIconButtonStyle}
-                    aria-label={isMobile ? "Close map details" : "Show map information"}
-                  >
-                    {closeSymbol}
-                  </button>
-                </div>
-              </div>
-              {selectedCoverPhoto?.dataUrl || selectedCoverPhoto?.url ? (
-                <div style={mapHeaderPhotoShellStyle}>
-                  <img
-                    src={selectedCoverPhoto.dataUrl || selectedCoverPhoto.url}
-                    alt={selectedMapLabel.label}
-                    style={mapHeaderPhotoStyle}
-                  />
-                  <label style={mapHeaderPhotoChangeStyle}>
-                    Change Photo
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleMapHeaderPhotoUpload}
-                      style={{ display: "none" }}
-                    />
-                  </label>
-                </div>
-              ) : (
-                <label style={mapHeaderPhotoEmptyStyle}>
-                  Add header photo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleMapHeaderPhotoUpload}
-                    style={{ display: "none" }}
-                  />
-                </label>
-              )}
-            </div>
-
-            <div style={mapPanelTabsStyle}>
-              {[
-                ["info", "Info"],
-                ["vendors", "Vendors"],
-                ["photos", "Photos"],
-                ["tabs", "Tabs"],
-              ].map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() =>
-                    setActiveMapPanelTab(
-                      id as "info" | "vendors" | "photos" | "tabs",
-                    )
-                  }
-                  style={
-                    activeMapPanelTab === id
-                      ? mapPanelTabActiveStyle
-                      : mapPanelTabStyle
-                  }
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div style={mapPanelBodyStyle}>
-              {activeMapPanelTab === "info" ? (
-                <div style={mapPanelFormStackStyle}>
-                  <Field
-                    label="Name"
-                    value={selectedMapLabel.label}
-                    onChange={(value) =>
-                      updateSelectedMapLabel({ label: value })
-                    }
-                  />
-                  <Field
-                    label="Type"
-                    value={selectedMapLabel.category}
-                    onChange={(value) =>
-                      updateSelectedMapLabel({ category: value })
-                    }
-                  />
-                  <label style={{ display: "grid", gap: 7 }}>
-                    <span style={fieldLabelStyle}>Description</span>
-                    <textarea
-                      value={selectedMapLabel.notes || ""}
-                      onChange={(event) =>
-                        updateSelectedMapLabel({
-                          notes: event.currentTarget.value,
-                        })
-                      }
-                      placeholder="Add a short note"
-                      style={{
-                        ...inputStyle,
-                        minHeight: 88,
-                        resize: "vertical",
+          }
+          drawer={
+            <div style={mapInfoPanelStyle}>
+              <div style={mapInfoHeaderStyle}>
+                <div style={mapInfoTitleRowStyle}>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={mapInfoTitleStyle}>{selectedMapLabel.label || "Select a map area"}</h3>
+                    {selectedMapLabel.id ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          marginTop: 6,
+                          borderRadius: 999,
+                          padding: "4px 8px",
+                          background: statusPalette(selectedOperations.status).soft,
+                          color: statusPalette(selectedOperations.status).background,
+                          fontSize: 11,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {selectedOperations.status} · {selectedOperations.openWork.length} open
+                      </span>
+                    ) : null}
+                  </div>
+                  <div style={mapInfoIconRowStyle}>
+                    <label title="Add header photo" style={mapIconButtonStyle}>
+                      ✎
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleMapHeaderPhotoUpload}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isMobile) setMapMobileDrawerOpen(false);
+                        else setActiveMapPanelTab("operations");
                       }}
-                    />
-                  </label>
-                </div>
-              ) : null}
-
-              {activeMapPanelTab === "vendors" ? (
-                <div style={mapPanelFormStackStyle}>
-                  <label style={{ display: "grid", gap: 7 }}>
-                    <span style={fieldLabelStyle}>Add Vendor</span>
-                    <select
-                      value=""
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        if (value) toggleMapLabelVendor(value);
-                      }}
-                      style={inputStyle}
+                      style={mapIconButtonStyle}
+                      aria-label={isMobile ? "Close map details" : "Show map operations"}
                     >
-                      <option value="">Choose vendor</option>
-                      {vendorRecords
-                        .filter(
-                          (vendor) =>
-                            !(selectedMapLabel.vendorIds || []).includes(
-                              vendor.id,
-                            ),
-                        )
-                        .map((vendor) => (
-                          <option key={vendor.id} value={vendor.id}>
-                            {vendor.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-
-                  {selectedMapVendors.length ? (
-                    <div style={mapVendorChipListStyle}>
-                      {selectedMapVendors.map((vendor) => (
-                        <button
-                          key={vendor.id}
-                          type="button"
-                          onClick={() => toggleMapLabelVendor(vendor.id)}
-                          style={mapVendorChipStyle}
-                        >
-                          {vendor.name} {closeSymbol}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p style={mapEmptyNoteStyle}>No vendors linked.</p>
-                  )}
+                      {closeSymbol}
+                    </button>
+                  </div>
                 </div>
-              ) : null}
-
-              {activeMapPanelTab === "photos" ? (
-                <div style={mapPanelFormStackStyle}>
-                  <label
-                    style={{
-                      ...secondaryButtonStyle,
-                      display: "inline-flex",
-                      cursor: "pointer",
-                      width: "fit-content",
-                    }}
-                  >
-                    Add Photos
+                {selectedCoverPhoto?.dataUrl || selectedCoverPhoto?.url ? (
+                  <div style={mapHeaderPhotoShellStyle}>
+                    <img
+                      src={selectedCoverPhoto.dataUrl || selectedCoverPhoto.url}
+                      alt={selectedMapLabel.label}
+                      style={mapHeaderPhotoStyle}
+                    />
+                    <label style={mapHeaderPhotoChangeStyle}>
+                      Change Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleMapHeaderPhotoUpload}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <label style={mapHeaderPhotoEmptyStyle}>
+                    Add header photo
                     <input
                       type="file"
                       accept="image/*"
-                      multiple
-                      onChange={handleMapLabelPhotoUpload}
+                      onChange={handleMapHeaderPhotoUpload}
                       style={{ display: "none" }}
                     />
                   </label>
+                )}
+              </div>
 
-                  {selectedMapLabel.photos?.length ? (
-                    <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
-                      <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({selectedMapLabel.photos.length})</summary>
-                      <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", overflowX: "hidden", padding: "0 8px 8px" }}>
-                      {selectedMapLabel.photos.map((photo) => (
-                        <div key={photo.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "minmax(0, 1fr) auto auto", alignItems: "center", gap: 6, minWidth: 0, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
-                            <button type="button" onClick={() => openUploadedFile(photo)} style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}>{photo.name || "Map photo"}</button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateSelectedMapLabel({
-                                  coverPhotoId: photo.id,
+              <div style={mapPanelTabsStyle}>
+                {[
+                  ["operations", "Operations"],
+                  ["info", "Info"],
+                  ["vendors", "Vendors"],
+                  ["photos", "Photos"],
+                  ["tabs", "Tabs"],
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() =>
+                      setActiveMapPanelTab(
+                        id as "operations" | "info" | "vendors" | "photos" | "tabs",
+                      )
+                    }
+                    style={
+                      activeMapPanelTab === id
+                        ? mapPanelTabActiveStyle
+                        : mapPanelTabStyle
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={mapPanelBodyStyle}>
+                {activeMapPanelTab === "operations" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    {!selectedMapLabel.id ? (
+                      <p style={mapEmptyNoteStyle}>Select a map label to view live operations.</p>
+                    ) : (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                          {[
+                            ["Open Work", selectedOperations.openWork.length],
+                            ["Overdue", selectedOperations.overdue.length],
+                            ["Assets", selectedOperations.assets.length],
+                            ["Documents", selectedOperations.documents.length],
+                          ].map(([label, value]) => (
+                            <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10 }}>
+                              <small style={mutedSmallStyle}>{label}</small>
+                              <div style={{ marginTop: 3, color: colors.navy, fontSize: 21, fontWeight: 950 }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div>
+                          <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>Open Work Orders</div>
+                          <div style={{ display: "grid", gap: 7 }}>
+                            {selectedOperations.openWork.slice(0, 8).map((record) => (
+                              <button
+                                key={record.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedServiceId(record.id);
+                                  setScreen("history");
+                                }}
+                                style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: colors.card, padding: "9px 10px", textAlign: "left", cursor: "pointer", color: colors.text }}
+                              >
+                                <strong style={{ display: "block" }}>{record.title}</strong>
+                                <small style={mutedSmallStyle}>
+                                  {record.date ? `${record.date < today ? "Overdue" : "Due"} ${formatDate(record.date)}` : "No due date"} · {record.status || "Open"}
+                                </small>
+                              </button>
+                            ))}
+                            {!selectedOperations.openWork.length ? (
+                              <p style={mapEmptyNoteStyle}>No open work orders for this area.</p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const firstLocation = selectedOperations.locations[0];
+                              if (firstLocation) setSelectedLocationId(firstLocation.id);
+                              setScreen("locations");
+                            }}
+                            style={secondaryButtonStyle}
+                          >
+                            View Location
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const firstAsset = selectedOperations.assets[0];
+                              if (firstAsset) setSelectedAssetId(firstAsset.id);
+                              setScreen("assets");
+                            }}
+                            style={secondaryButtonStyle}
+                          >
+                            View Assets
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : null}
+
+                {activeMapPanelTab === "info" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    <Field
+                      label="Name"
+                      value={selectedMapLabel.label}
+                      onChange={(value) =>
+                        updateSelectedMapLabel({ label: value })
+                      }
+                    />
+                    <Field
+                      label="Type"
+                      value={selectedMapLabel.category}
+                      onChange={(value) =>
+                        updateSelectedMapLabel({ category: value })
+                      }
+                    />
+                    <label style={{ display: "grid", gap: 7 }}>
+                      <span style={fieldLabelStyle}>Description</span>
+                      <textarea
+                        value={selectedMapLabel.notes || ""}
+                        onChange={(event) =>
+                          updateSelectedMapLabel({
+                            notes: event.currentTarget.value,
+                          })
+                        }
+                        placeholder="Add a short note"
+                        style={{
+                          ...inputStyle,
+                          minHeight: 88,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+
+                {activeMapPanelTab === "vendors" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    <label style={{ display: "grid", gap: 7 }}>
+                      <span style={fieldLabelStyle}>Add Vendor</span>
+                      <select
+                        value=""
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          if (value) toggleMapLabelVendor(value);
+                        }}
+                        style={inputStyle}
+                      >
+                        <option value="">Choose vendor</option>
+                        {vendorRecords
+                          .filter(
+                            (vendor) =>
+                              !(selectedMapLabel.vendorIds || []).includes(
+                                vendor.id,
+                              ),
+                          )
+                          .map((vendor) => (
+                            <option key={vendor.id} value={vendor.id}>
+                              {vendor.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    {selectedMapVendors.length ? (
+                      <div style={mapVendorChipListStyle}>
+                        {selectedMapVendors.map((vendor) => (
+                          <button
+                            key={vendor.id}
+                            type="button"
+                            onClick={() => toggleMapLabelVendor(vendor.id)}
+                            style={mapVendorChipStyle}
+                          >
+                            {vendor.name} {closeSymbol}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={mapEmptyNoteStyle}>No vendors linked.</p>
+                    )}
+                  </div>
+                ) : null}
+
+                {activeMapPanelTab === "photos" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    <label
+                      style={{
+                        ...secondaryButtonStyle,
+                        display: "inline-flex",
+                        cursor: "pointer",
+                        width: "fit-content",
+                      }}
+                    >
+                      Add Photos
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleMapLabelPhotoUpload}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+
+                    {selectedMapLabel.photos?.length ? (
+                      <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
+                        <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({selectedMapLabel.photos.length})</summary>
+                        <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", overflowX: "hidden", padding: "0 8px 8px" }}>
+                        {selectedMapLabel.photos.map((photo) => (
+                          <div key={photo.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "minmax(0, 1fr) auto auto", alignItems: "center", gap: 6, minWidth: 0, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
+                              <button type="button" onClick={() => openUploadedFile(photo)} style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}>{photo.name || "Map photo"}</button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateSelectedMapLabel({
+                                    coverPhotoId: photo.id,
+                                  })
+                                }
+                                style={smallSubtleButtonStyle}
+                              >
+                                Use Header
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeMapLabelPhoto(photo.id)}
+                                style={dangerMiniButtonStyle}
+                              >
+                                Remove
+                              </button>
+                          </div>
+                        ))}
+                        </div>
+                      </details>
+                    ) : (
+                      <p style={mapEmptyNoteStyle}>No photos added.</p>
+                    )}
+                  </div>
+                ) : null}
+
+                {activeMapPanelTab === "tabs" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    <div style={mapTabListStyle}>
+                      {mapTabs.map((box) => (
+                        <div key={box.id} style={mapTabEditorStyle}>
+                          <div style={mapBoxHeaderStyle}>
+                            <input
+                              aria-label="Tab title"
+                              value={box.title}
+                              onChange={(event) =>
+                                updateMapDetailBox(box.id, {
+                                  title: event.currentTarget.value,
                                 })
                               }
-                              style={smallSubtleButtonStyle}
-                            >
-                              Use Header
-                            </button>
+                              placeholder="Tab name"
+                              style={mapBoxTitleInputStyle}
+                            />
                             <button
                               type="button"
-                              onClick={() => removeMapLabelPhoto(photo.id)}
-                              style={dangerMiniButtonStyle}
+                              onClick={() => removeMapDetailBox(box.id)}
+                              style={mapBoxRemoveButtonStyle}
                             >
                               Remove
                             </button>
-                        </div>
-                      ))}
-                      </div>
-                    </details>
-                  ) : (
-                    <p style={mapEmptyNoteStyle}>No photos added.</p>
-                  )}
-                </div>
-              ) : null}
-
-              {activeMapPanelTab === "tabs" ? (
-                <div style={mapPanelFormStackStyle}>
-                  <div style={mapTabListStyle}>
-                    {mapTabs.map((box) => (
-                      <div key={box.id} style={mapTabEditorStyle}>
-                        <div style={mapBoxHeaderStyle}>
-                          <input
-                            aria-label="Tab title"
-                            value={box.title}
+                          </div>
+                          <textarea
+                            aria-label={`${box.title || "Tab"} details`}
+                            value={box.body}
                             onChange={(event) =>
                               updateMapDetailBox(box.id, {
-                                title: event.currentTarget.value,
+                                body: event.currentTarget.value,
                               })
                             }
-                            placeholder="Tab name"
-                            style={mapBoxTitleInputStyle}
+                            placeholder="Add details"
+                            style={mapBoxTextareaStyle}
                           />
-                          <button
-                            type="button"
-                            onClick={() => removeMapDetailBox(box.id)}
-                            style={mapBoxRemoveButtonStyle}
-                          >
-                            Remove
-                          </button>
                         </div>
-                        <textarea
-                          aria-label={`${box.title || "Tab"} details`}
-                          value={box.body}
-                          onChange={(event) =>
-                            updateMapDetailBox(box.id, {
-                              body: event.currentTarget.value,
-                            })
-                          }
-                          placeholder="Add details"
-                          style={mapBoxTextareaStyle}
-                        />
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addMapDetailBox}
+                      style={mapAddTabButtonStyle}
+                    >
+                      + Add Tab
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={addMapDetailBox}
-                    style={mapAddTabButtonStyle}
-                  >
-                    + Add Tab
-                  </button>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
-          </div>
-        }
-      />
+          }
+        />
+      </div>
     );
   }
 
