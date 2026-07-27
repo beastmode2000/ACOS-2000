@@ -13966,19 +13966,53 @@ export default function AtlasPage() {
     const lastCompletedAssetWork = assetHistory.find(
       (entry) => entry.status === "Completed" && Boolean(entry.date),
     );
+    const overdueAssetWorkOrders = openAssetWorkOrders.filter(
+      (record) => Boolean(record.date) && record.date < todayISO(),
+    );
+    const highPriorityAssetWorkOrders = openAssetWorkOrders.filter(
+      (record) => record.priority === "High",
+    );
+    const assetActualCost = relatedWorkOrders.reduce(
+      (total, record) => total + Math.max(0, Number(record.actualCost || 0)),
+      0,
+    );
+    const assetEstimatedCost = openAssetWorkOrders.reduce(
+      (total, record) => total + Math.max(0, Number(record.estimatedCost || 0)),
+      0,
+    );
+    const assetHealthScore = Math.max(
+      0,
+      Math.min(
+        100,
+        100 -
+          overdueAssetWorkOrders.length * 18 -
+          highPriorityAssetWorkOrders.length * 10 -
+          (selectedAsset.status === "Offline" ? 35 : 0) -
+          (selectedAsset.status === "Monitor" ? 10 : 0) -
+          (!selectedAsset.locationId ? 8 : 0) -
+          (!selectedAsset.serial ? 4 : 0) -
+          (!selectedAsset.vendorIds.length ? 5 : 0) -
+          (!attachedManuals.length ? 5 : 0) -
+          (!linkedAssetProcedures.length ? 5 : 0),
+      ),
+    );
+    const assetHealthLabel =
+      assetHealthScore >= 85
+        ? "Healthy"
+        : assetHealthScore >= 65
+          ? "Monitor"
+          : "Attention";
     const assetWarnings = [
       !selectedAsset.locationId ? "No primary location" : "",
       !selectedAsset.serial ? "Serial / VIN / HIN is missing" : "",
       !selectedAsset.vendorIds.length ? "No preferred vendor" : "",
       !attachedManuals.length ? "No manual attached" : "",
       !linkedAssetProcedures.length ? "No procedure attached" : "",
-      openAssetWorkOrders.some(
-        (record) =>
-          Boolean(record.date) &&
-          record.date < todayISO() &&
-          record.status !== "Completed",
-      )
-        ? "Overdue work requires attention"
+      overdueAssetWorkOrders.length
+        ? `${overdueAssetWorkOrders.length} overdue work order${overdueAssetWorkOrders.length === 1 ? "" : "s"}`
+        : "",
+      highPriorityAssetWorkOrders.length
+        ? `${highPriorityAssetWorkOrders.length} high-priority open item${highPriorityAssetWorkOrders.length === 1 ? "" : "s"}`
         : "",
     ].filter(Boolean);
 
@@ -14268,12 +14302,18 @@ export default function AtlasPage() {
                     display: "grid",
                     gridTemplateColumns: isMobile
                       ? "repeat(2, minmax(0, 1fr))"
-                      : "repeat(4, minmax(0, 1fr))",
+                      : "repeat(3, minmax(0, 1fr))",
                     gap: 8,
                     marginTop: 10,
                   }}
                 >
                   {[
+                    {
+                      label: "Asset Health",
+                      value: `${assetHealthScore}%`,
+                      detail: assetHealthLabel,
+                      action: () => undefined,
+                    },
                     {
                       label: "Open Work",
                       value: String(openAssetWorkOrders.length),
@@ -14330,6 +14370,24 @@ export default function AtlasPage() {
                           setScreen("locations");
                         }
                       },
+                    },
+                    {
+                      label: "Service Cost",
+                      value: assetActualCost
+                        ? assetActualCost.toLocaleString(undefined, {
+                            style: "currency",
+                            currency: "USD",
+                            maximumFractionDigits: 0,
+                          })
+                        : "$0",
+                      detail: assetEstimatedCost
+                        ? `${assetEstimatedCost.toLocaleString(undefined, {
+                            style: "currency",
+                            currency: "USD",
+                            maximumFractionDigits: 0,
+                          })} estimated open work`
+                        : "No estimated open-work cost",
+                      action: () => setScreen("history"),
                     },
                   ].map((item) => (
                     <button
