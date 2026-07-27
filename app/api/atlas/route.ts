@@ -148,6 +148,11 @@ async function ensureAssetColumns(sql: ReturnType<typeof neon>) {
 
 async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS parent_id text`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS paint text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS bulbs text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS finishes text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS vendor_ids text[] NOT NULL DEFAULT '{}'`;
   await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
   await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
   await sql`ALTER TABLE atlas_calendar_items ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
@@ -489,6 +494,11 @@ function mapLocation(row: JsonRecord) {
     type: String(row.type || ""),
     zone: String(row.zone || ""),
     notes: String(row.notes || ""),
+    parentId: String(row.parent_id || ""),
+    paint: String(row.paint || ""),
+    bulbs: String(row.bulbs || ""),
+    finishes: String(row.finishes || ""),
+    vendorIds: asArray(row.vendor_ids).map(String),
     sort_order: Number(row.sort_order || 0),
   };
 }
@@ -1141,6 +1151,11 @@ export async function POST(request: NextRequest) {
           type,
           zone,
           notes,
+          parent_id,
+          paint,
+          bulbs,
+          finishes,
+          vendor_ids,
           sort_order,
           property_id
         )
@@ -1150,6 +1165,11 @@ export async function POST(request: NextRequest) {
           ${asString(record.type) || "General"},
           ${asString(record.zone)},
           ${asString(record.notes)},
+          ${asString(record.parentId)},
+          ${asString(record.paint)},
+          ${asString(record.bulbs)},
+          ${asString(record.finishes)},
+          ${asStringArray(record.vendorIds)},
           ${Number(record.sort_order || 0)},
           ${propertyId}
         )
@@ -1159,6 +1179,11 @@ export async function POST(request: NextRequest) {
           type = EXCLUDED.type,
           zone = EXCLUDED.zone,
           notes = EXCLUDED.notes,
+          parent_id = EXCLUDED.parent_id,
+          paint = EXCLUDED.paint,
+          bulbs = EXCLUDED.bulbs,
+          finishes = EXCLUDED.finishes,
+          vendor_ids = EXCLUDED.vendor_ids,
           sort_order = EXCLUDED.sort_order,
           property_id = EXCLUDED.property_id
       `;
