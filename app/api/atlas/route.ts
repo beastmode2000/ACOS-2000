@@ -279,6 +279,11 @@ async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
     ALTER TABLE atlas_calendar_items
     ADD COLUMN IF NOT EXISTS instance_id text
   `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS event_type text NOT NULL DEFAULT 'Calendar Event'
+  `;
 }
 
 async function ensureContactsTable(sql: ReturnType<typeof neon>) {
@@ -645,6 +650,7 @@ function mapCalendarItem(row: JsonRecord) {
     source: String(row.source || "manual"),
     originalId: row.original_id ? String(row.original_id) : "",
     instanceId: row.instance_id ? String(row.instance_id) : "",
+    eventType: String(row.event_type || "Calendar Event"),
     status: String(row.status || "Scheduled"),
   };
 }
@@ -959,6 +965,7 @@ export async function GET(request: NextRequest) {
         source,
         original_id,
         instance_id,
+        event_type,
         status
       FROM atlas_calendar_items
       WHERE property_id = ${propertyId}
@@ -1560,37 +1567,50 @@ if (table === "assets") {
     if (table === "calendar") {
       await ensureCalendarColumns(sql);
       const id = getId(record, "calendar");
+      const savedDate = asDate(record.date);
 
-      await sql`
+      if (!savedDate) {
+        return NextResponse.json(
+          { ok: false, error: "Calendar date is required." },
+          { status: 400 },
+        );
+      }
+
+      const existingRows = (await sql`
+        SELECT property_id
+        FROM atlas_calendar_items
+        WHERE id = ${id}
+        LIMIT 1
+      `) as unknown as JsonRecord[];
+
+      const existingPropertyId = existingRows[0]
+        ? String(existingRows[0].property_id || "")
+        : "";
+
+      if (existingPropertyId && existingPropertyId !== propertyId) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Calendar record belongs to property " +
+              existingPropertyId +
+              " and cannot be moved to property " +
+              propertyId +
+              ".",
+          },
+          { status: 409 },
+        );
+      }
+
+      const savedRows = (await sql`
         INSERT INTO atlas_calendar_items (
-          id,
-          item_date,
-          date,
-          time,
-          title,
-          area,
-          category_label,
-          color_id,
-          color_name,
-          all_day,
-          repeat,
-          reminder,
-          notes,
-          linked_type,
-          linked_id,
-          linked_name,
-          completed,
-          source,
-          original_id,
-          instance_id,
-          status,
-          updated_at,
-          property_id
+          id, item_date, date, time, title, area, category_label, color_id,
+          color_name, all_day, repeat, reminder, notes, linked_type, linked_id,
+          linked_name, completed, source, original_id, instance_id, event_type,
+          status, updated_at, property_id
         )
         VALUES (
-          ${id},
-          ${asDate(record.date)}::date,
-          ${asDate(record.date)}::date,
+          ${id}, ${savedDate}::date, ${savedDate}::date,
           ${nullableString(record.time)},
           ${asString(record.title) || "Untitled Calendar Item"},
           ${asString(record.area) || "General"},
@@ -1608,6 +1628,7 @@ if (table === "assets") {
           ${asStatus(record.source, "manual")},
           ${nullableString(record.originalId)},
           ${nullableString(record.instanceId)},
+          ${asStatus(record.eventType, "Calendar Event")},
           ${asStatus(
             record.status,
             asBoolean(record.completed) ? "Completed" : "Scheduled",
@@ -1615,8 +1636,7 @@ if (table === "assets") {
           NOW(),
           ${propertyId}
         )
-        ON CONFLICT (id)
-        DO UPDATE SET
+        ON CONFLICT (id) DO UPDATE SET
           item_date = EXCLUDED.item_date,
           date = EXCLUDED.date,
           time = EXCLUDED.time,
@@ -1636,12 +1656,37 @@ if (table === "assets") {
           source = EXCLUDED.source,
           original_id = EXCLUDED.original_id,
           instance_id = EXCLUDED.instance_id,
+          event_type = EXCLUDED.event_type,
           status = EXCLUDED.status,
-          updated_at = NOW(),
-          property_id = EXCLUDED.property_id
-      `;
+          updated_at = NOW()
+        WHERE atlas_calendar_items.property_id = EXCLUDED.property_id
+        RETURNING id, property_id, item_date, event_type
+      `) as unknown as JsonRecord[];
 
-      return NextResponse.json({ ok: true, id });
+      if (!savedRows.length) {
+        return NextResponse.json(
+          { ok: false, error: "Calendar save was blocked by property isolation." },
+          { status: 409 },
+        );
+      }
+
+      const verified = savedRows[0];
+      const verifiedDate = databaseDateKey(verified.item_date);
+      const verifiedPropertyId = String(verified.property_id || "");
+
+      if (verifiedPropertyId !== propertyId || verifiedDate !== savedDate) {
+        throw new Error(
+          "Calendar save verification failed for " + id + ".",
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        id,
+        propertyId: verifiedPropertyId,
+        savedDate: verifiedDate,
+        eventType: String(verified.event_type || "Calendar Event"),
+      });
     }
 
     if (table === "parts") {
