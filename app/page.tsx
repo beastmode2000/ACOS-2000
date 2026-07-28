@@ -25593,6 +25593,195 @@ export default function AtlasPage() {
       (part) => part.status === "Low" || part.status === "Out" || part.status === "Order",
     ).length;
 
+    if (screen === "vendors") {
+      const vendorsWithPhone = vendorRecords.filter((vendor) =>
+        Boolean(String(vendor.phone || "").trim()),
+      ).length;
+      const vendorsWithEmail = vendorRecords.filter((vendor) =>
+        Boolean(String(vendor.email || "").trim()),
+      ).length;
+      const vendorsWithWebsite = vendorRecords.filter((vendor) =>
+        Boolean(String(vendor.website || "").trim()),
+      ).length;
+      const linkedVendorCount = vendorRecords.filter((vendor) =>
+        assetRecords.some((asset) => asset.vendorIds.includes(vendor.id)) ||
+        serviceRecords.some((record) => record.vendorId === vendor.id),
+      ).length;
+      const activeVendorWork = serviceRecords.filter(
+        (record) => Boolean(record.vendorId) && record.status !== "Completed",
+      ).length;
+      const vendorCategories = new Set(
+        vendorRecords
+          .map((vendor) => String(vendor.category || "").trim())
+          .filter(Boolean),
+      ).size;
+
+      const vendorMetrics = [
+        { label: "Vendors", value: vendorRecords.length, note: "saved companies" },
+        { label: "Linked", value: linkedVendorCount, note: "assets or work" },
+        { label: "Active Work", value: activeVendorWork, note: "open assignments" },
+        { label: "Categories", value: vendorCategories, note: "service groups" },
+      ];
+
+      return (
+        <section
+          style={{
+            marginBottom: 16,
+            borderRadius: 24,
+            overflow: "hidden",
+            border: "1px solid rgba(207, 221, 233, 0.9)",
+            background: colors.card,
+            boxShadow: "0 14px 38px rgba(15, 31, 48, 0.10)",
+          }}
+        >
+          <div
+            style={{
+              padding: isMobile ? 18 : 28,
+              background: `linear-gradient(135deg, ${colors.navy} 0%, #183B55 100%)`,
+              color: "#FFFFFF",
+            }}
+          >
+            <div
+              style={{
+                color: colors.gold,
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Service Network
+            </div>
+
+            <h2
+              style={{
+                margin: "7px 0 3px",
+                fontSize: isMobile ? 25 : 32,
+                lineHeight: 1.1,
+                letterSpacing: "-0.025em",
+              }}
+            >
+              Vendors Command Center
+            </h2>
+
+            <div style={{ fontSize: 14, opacity: 0.72, fontWeight: 650 }}>
+              Contacts, service relationships, and active vendor work
+            </div>
+
+            <p
+              style={{
+                maxWidth: 900,
+                margin: "14px 0 0",
+                fontSize: isMobile ? 13 : 14,
+                lineHeight: 1.65,
+                opacity: 0.88,
+              }}
+            >
+              Atlas currently tracks {vendorRecords.length} vendor
+              {vendorRecords.length === 1 ? "" : "s"}. {linkedVendorCount} are
+              connected to assets or work orders, and {activeVendorWork} active
+              work item{activeVendorWork === 1 ? " is" : "s are"} assigned to a
+              vendor.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(4, minmax(0, 1fr))",
+                gap: 10,
+                marginTop: 20,
+              }}
+            >
+              {vendorMetrics.map((metric) => (
+                <div
+                  key={metric.label}
+                  style={{
+                    display: "grid",
+                    gap: 4,
+                    minWidth: 0,
+                    padding: "13px 14px",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      opacity: 0.64,
+                    }}
+                  >
+                    {metric.label}
+                  </span>
+                  <strong style={{ fontSize: 25, lineHeight: 1.05 }}>
+                    {metric.value}
+                  </strong>
+                  <span style={{ fontSize: 12, opacity: 0.72 }}>
+                    {metric.note}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(3, minmax(0, 1fr))",
+              gap: 12,
+              padding: isMobile ? 14 : 18,
+              background: "#F8FBFD",
+            }}
+          >
+            {[
+              {
+                label: "Phone coverage",
+                value: `${vendorsWithPhone} of ${vendorRecords.length}`,
+                detail: "vendors have a phone number",
+              },
+              {
+                label: "Email coverage",
+                value: `${vendorsWithEmail} of ${vendorRecords.length}`,
+                detail: "vendors have an email address",
+              },
+              {
+                label: "Website coverage",
+                value: `${vendorsWithWebsite} of ${vendorRecords.length}`,
+                detail: "vendors have a website",
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  padding: "14px 16px",
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 14,
+                  background: colors.card,
+                }}
+              >
+                <div style={{ ...eyebrowStyle, marginBottom: 5 }}>
+                  {item.label}
+                </div>
+                <strong style={{ fontSize: 20, color: colors.navy }}>
+                  {item.value}
+                </strong>
+                <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
+                  {item.detail}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
     if (screen === "history") {
       const today = todayISO();
       const weekAgo = addDays(today, -7);
