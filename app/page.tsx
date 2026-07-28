@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { upload } from "@vercel/blob/client";
 import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasRoutines from "./components/AtlasRoutines";
 import AtlasTeamWork from "./components/AtlasTeamWork";
@@ -6922,8 +6923,33 @@ export default function AtlasPage() {
     if (!files.length) return;
 
     try {
-      setIntakeMessage("Adding file(s) to intake...");
-      const uploaded = await Promise.all(files.map(fileToUploadedRecord));
+      setIntakeMessage("Uploading file(s) securely to Atlas storage...");
+
+      const uploaded: UploadedFileRecord[] = [];
+
+      for (const file of files) {
+        const safeName = (file.name || "document")
+          .replace(/[^a-zA-Z0-9._-]+/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "");
+        const pathname = `atlas-documents/${activePropertyId}/${Date.now()}-${safeName || "document"}`;
+
+        const blob = await upload(pathname, file, {
+          access: "public",
+          handleUploadUrl: "/api/atlas-document-upload",
+          multipart: file.size > 20 * 1024 * 1024,
+          contentType: file.type || undefined,
+        });
+
+        uploaded.push({
+          id: uid("upload"),
+          name: file.name || "Uploaded file",
+          type: file.type || blob.contentType || "application/octet-stream",
+          url: blob.url,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
       setIntakeFiles((current) => [...current, ...uploaded]);
       setIntakeTitle((current) => {
         if (current) return current;
@@ -6931,10 +6957,12 @@ export default function AtlasPage() {
         if ((first?.type || "").startsWith("image/")) return "";
         return first?.name?.replace(/\.[^.]+$/, "") || "New Document";
       });
-      setIntakeMessage(`${uploaded.length} file(s) ready to save into Atlas.`);
-    } catch {
+      setIntakeMessage(`${uploaded.length} file(s) uploaded and ready to save into Atlas.`);
+    } catch (error) {
       setIntakeMessage(
-        "Atlas could not read that file. Try a photo, screenshot, PDF, or smaller file.",
+        error instanceof Error
+          ? `Atlas upload failed: ${error.message}`
+          : "Atlas could not upload that file.",
       );
     }
   }
