@@ -14570,7 +14570,7 @@ export default function AtlasPage() {
                                 color:
                                   location.id === selectedLocation.id
                                     ? colors.navy
-                                    : colors.blue,
+                                    : "#175CD3",
                                 font: "inherit",
                                 fontWeight:
                                   location.id === selectedLocation.id ? 800 : 700,
