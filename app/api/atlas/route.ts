@@ -166,6 +166,39 @@ async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
 }
 
+
+type AtlasAccessContext = {
+  email: string;
+  role: string;
+  accessProfiles: string[];
+  restricted: boolean;
+};
+
+async function getAtlasAccessContext(sql: ReturnType<typeof neon>, request: NextRequest): Promise<AtlasAccessContext> {
+  const email = (request.headers.get("x-atlas-user-email") || "").toLowerCase();
+  const headerRole = String(request.headers.get("x-atlas-user-role") || "administrator").toLowerCase();
+  if (!email || headerRole === "master" || headerRole === "administrator") {
+    return { email, role: headerRole, accessProfiles: [], restricted: false };
+  }
+  const rows = await sql`SELECT role, active, access_profiles FROM atlas_team_access WHERE lower(email)=${email} LIMIT 1`;
+  const row = rows[0] as Record<string, unknown> | undefined;
+  const role = String(row?.role || headerRole).toLowerCase();
+  const accessProfiles = Array.isArray(row?.access_profiles) ? (row!.access_profiles as unknown[]).map(String) : [];
+  return { email, role, accessProfiles, restricted: Boolean(row && row.active !== false && accessProfiles.length && role !== "master" && role !== "administrator") };
+}
+
+function marineText(...values: unknown[]) {
+  const text = values.map((value) => Array.isArray(value) ? value.join(" ") : String(value ?? "")).join(" ").toLowerCase();
+  return ["dock & marine", "marine", "boat", "cobalt", "sea-doo", "seadoo", "watercraft", "pwc", "jet ski", "jetski", "dock lift", "boat lift", "sunstream", "trailer"].some((term) => text.includes(term));
+}
+
+function profileAllowsRecord(profiles: string[], record: JsonRecord) {
+  if (!profiles.length) return true;
+  if (profiles.includes("marine") && marineText(record.category, record.work_category, record.responsibility_area, record.name, record.title, record.notes, record.area, record.type)) return true;
+  const text = Object.values(record).map(String).join(" ").toLowerCase();
+  return profiles.some((profile) => text.includes(profile.replace("-", " ")));
+}
+
 async function authorizeAtlasRequest(
   sql: ReturnType<typeof neon>,
   request: NextRequest,
@@ -1011,20 +1044,61 @@ export async function GET(request: NextRequest) {
       ORDER BY lower(name) ASC
     `) as unknown as JsonRecord[];
 
+    const access = await getAtlasAccessContext(sql, request);
+    const mappedAssets = assetRows.map(mapAsset);
+    const allowedAssets = access.restricted
+      ? mappedAssets.filter((asset) => profileAllowsRecord(access.accessProfiles, asset as unknown as JsonRecord))
+      : mappedAssets;
+    const allowedAssetIds = new Set(allowedAssets.map((asset) => asset.id));
+
+    const mappedWorkOrders = workOrderRows.map(mapWorkOrder);
+    const allowedWorkOrders = access.restricted
+      ? mappedWorkOrders.filter((work) =>
+          allowedAssetIds.has(work.assetId) ||
+          profileAllowsRecord(access.accessProfiles, work as unknown as JsonRecord) ||
+          Boolean(access.email && String(work.assignedTo || "").toLowerCase() === access.email)
+        )
+      : mappedWorkOrders;
+
+    const allowedVendorIds = new Set<string>();
+    for (const asset of allowedAssets) for (const id of asset.vendorIds) allowedVendorIds.add(id);
+    for (const work of allowedWorkOrders) if (work.vendorId) allowedVendorIds.add(work.vendorId);
+    const mappedVendors = vendorRows.map(mapVendor);
+    const allowedVendors = access.restricted
+      ? mappedVendors.filter((vendor) => allowedVendorIds.has(vendor.id) || profileAllowsRecord(access.accessProfiles, vendor as unknown as JsonRecord))
+      : mappedVendors;
+
+    const allowedProcedureRows = access.restricted
+      ? procedureRows.filter((row) => profileAllowsRecord(access.accessProfiles, row) || asStringArray(row.linked_asset_ids).some((id) => allowedAssetIds.has(id)))
+      : procedureRows;
+    const allowedDocumentRows = access.restricted
+      ? documentRows.filter((row) => allowedAssetIds.has(String(row.linked_asset_id || "")) || profileAllowsRecord(access.accessProfiles, row))
+      : documentRows;
+    const allowedPhotoRows = access.restricted
+      ? photoRows.filter((row) => allowedAssetIds.has(String(row.asset_id || "")))
+      : photoRows;
+    const allowedPartRows = access.restricted
+      ? partRows.filter((row) => allowedAssetIds.has(String(row.asset_id || "")) || allowedVendorIds.has(String(row.vendor_id || "")) || profileAllowsRecord(access.accessProfiles, row))
+      : partRows;
+    const allowedCalendarRows = access.restricted
+      ? calendarRows.filter((row) => allowedAssetIds.has(String(row.linked_id || "")) || profileAllowsRecord(access.accessProfiles, row))
+      : calendarRows;
+
     return NextResponse.json({
       ok: true,
       source: "neon",
       propertyId,
+      accessProfiles: access.accessProfiles,
       locations: locationRows.map(mapLocation),
-      vendorRecords: vendorRows.map(mapVendor),
-      contactRecords: contactRows.map((row) => row.record || {}),
-      assetRecords: assetRows.map(mapAsset),
-      procedureRecords: procedureRows.map(mapProcedure),
-      serviceRecords: workOrderRows.map(mapWorkOrder),
-      calendarItems: calendarRows.map(mapCalendarItem),
-      documents: documentRows.map(mapDocument),
-      photos: photoRows.map(mapPhoto),
-      partRecords: partRows.map(mapPart),
+      vendorRecords: allowedVendors,
+      contactRecords: access.restricted ? [] : contactRows.map((row) => row.record || {}),
+      assetRecords: allowedAssets,
+      procedureRecords: allowedProcedureRows.map(mapProcedure),
+      serviceRecords: allowedWorkOrders,
+      calendarItems: allowedCalendarRows.map(mapCalendarItem),
+      documents: allowedDocumentRows.map(mapDocument),
+      photos: allowedPhotoRows.map(mapPhoto),
+      partRecords: allowedPartRows.map(mapPart),
     });
   } catch (error) {
     return NextResponse.json(
@@ -1127,6 +1201,19 @@ export async function POST(request: NextRequest) {
         },
         { status: 403 },
       );
+    }
+
+    const access = await getAtlasAccessContext(sql, request);
+    if (access.restricted && ["assets", "vendors", "procedures", "work_orders", "parts", "documents", "asset_photos"].includes(table)) {
+      let allowed = profileAllowsRecord(access.accessProfiles, record);
+      if (!allowed && asString(record.assetId)) {
+        const assetRows = await sql`SELECT id, name, category, notes FROM atlas_assets WHERE id=${asString(record.assetId)} AND property_id=${propertyId} LIMIT 1`;
+        allowed = Boolean(assetRows[0] && profileAllowsRecord(access.accessProfiles, assetRows[0] as JsonRecord));
+      }
+      if (!allowed && table === "work_orders" && access.email) {
+        allowed = asString(record.assignedTo).toLowerCase() === access.email;
+      }
+      if (!allowed) return NextResponse.json({ ok:false, error:"This record is outside your assigned access profile." }, { status:403 });
     }
 
     await recordChange(
