@@ -12900,68 +12900,13 @@ export default function AtlasPage() {
           </div>
 
           <aside style={{ display: "grid", gap: 14 }}>
-            <section id="atlas-today-routine" style={{ ...commandCardStyle, overflow: "visible" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
-                <div>
-                  <div style={eyebrowStyle}>Daily Checklist</div>
-                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today Routine</h2>
-                  <p style={{ ...mutedSmallStyle, marginTop: 4 }}>Check off recurring work without leaving the dashboard.</p>
-                </div>
-                <button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}>
-                  Open
-                </button>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                <strong style={{ color: colors.navy }}>{completedRoutineCount} of {scheduledRoutineIds.length} complete</strong>
-                <span style={{ ...mutedSmallStyle, fontWeight: 900 }}>{routineProgress}%</span>
-              </div>
-              <div style={{ height: 8, borderRadius: 999, background: "#E8EDF3", overflow: "hidden", marginBottom: 12 }}>
-                <div style={{ width: `${routineProgress}%`, height: "100%", borderRadius: 999, background: colors.gold, transition: "width 180ms ease" }} />
-              </div>
-
-              <div style={{ display: "grid", gap: 8 }}>
-                {visibleRoutineItems.slice(0, 8).map((item) => {
-                  const routineId = item.id;
-                  const completed = completedDashboardRoutineIds.includes(routineId);
-                  return (
-                    <label
-                      key={`dashboard-routine-${routineId}`}
-                      className="atlas-gold-hover-card"
-                      style={{ display: "grid", gridTemplateColumns: "28px minmax(0, 1fr) auto", alignItems: "center", gap: 9, border: `1px solid ${completed ? "#B7E4CC" : colors.line}`, borderRadius: 12, background: completed ? "#F0FDF4" : "#FFFBEB", padding: "10px 11px", cursor: "pointer", position: "relative" }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={completed}
-                        onChange={() => setCompletedDashboardRoutineIds((current) =>
-                          current.includes(routineId)
-                            ? current.filter((id) => id !== routineId)
-                            : [...current, routineId],
-                        )}
-                        aria-label={`Mark ${item.title} ${completed ? "incomplete" : "complete"}`}
-                        style={{ width: 18, height: 18, accentColor: colors.gold, cursor: "pointer" }}
-                      />
-                      <span style={{ minWidth: 0, opacity: completed ? 0.58 : 1 }}>
-                        <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: completed ? "line-through" : "none" }}>{item.title}</strong>
-                        <small style={mutedSmallStyle}>{item.detail}</small>
-                      </span>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{item.time || ""}</span>
-                      <span className="atlas-dashboard-info-popover" aria-hidden="true">
-                        <strong>{item.title}</strong>
-                        <span>{item.detail}</span>
-                        <span>{completed ? "Completed for today. Uncheck to reopen it." : "Check this item when today’s routine work is finished."}</span>
-                      </span>
-                    </label>
-                  );
-                })}
-                {!visibleRoutineItems.length ? <div style={{ ...noticeStyle, padding: 11 }}>No saved routine checklist was found. Open Routines once, then return to the dashboard.</div> : null}
-              </div>
-              {visibleRoutineItems.length > 8 ? (
-                <button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 10 }}>
-                  View all {visibleRoutineItems.length} routine items
-                </button>
-              ) : null}
-            </section>
+            <div id="atlas-today-routine">
+              <AtlasRoutines
+                mode="dashboard"
+                isMobile={isMobile}
+                onOpenManager={() => setScreen("routines")}
+              />
+            </div>
 
             <section style={{ ...commandCardStyle, background: "#F8FAFC" }}>
               <div style={eyebrowStyle}>Atlas Brief</div>
