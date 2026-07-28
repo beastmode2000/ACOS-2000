@@ -18258,16 +18258,37 @@ export default function AtlasPage() {
               }}
             />
           ) : documentHref && primaryIsPdf ? (
-            <iframe
-              src={documentHref}
-              title={selectedDocument.title}
+            <div
               style={{
                 width: "100%",
-                height: isMobile ? "68vh" : 560,
-                border: 0,
+                minHeight: isMobile ? 300 : 470,
+                padding: 28,
+                display: "grid",
+                placeItems: "center",
+                textAlign: "center",
                 background: "#FFFFFF",
               }}
-            />
+            >
+              <div style={{ maxWidth: 560 }}>
+                <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 16 }}>
+                  PDF
+                </div>
+                <strong style={{ fontSize: 18 }}>
+                  Open this PDF in a separate browser tab.
+                </strong>
+                <p style={{ ...mutedSmallStyle, margin: "10px 0 18px" }}>
+                  Atlas avoids loading large plan sets inside the Documents page so the page stays responsive.
+                </p>
+                <a
+                  href={documentHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ ...goldButtonStyle, display: "inline-flex", textDecoration: "none" }}
+                >
+                  Open PDF
+                </a>
+              </div>
+            </div>
           ) : documentHref ? (
             <div style={{ padding: 24, textAlign: "center" }}>
               <div style={{ ...fileTileStyle, margin: "0 auto 12px" }}>
@@ -19264,7 +19285,7 @@ export default function AtlasPage() {
               )}
             </div>
           }
-          drawer={isMobile ? undefined : documentViewer}
+          drawer={isMobile || !selectedDocument ? undefined : documentViewer}
         />
 
         {isMobile && selectedDocument ? (
