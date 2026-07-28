@@ -436,7 +436,39 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
             <select value={newRole} onChange={(e)=>setNewRole(e.currentTarget.value as Role)} style={control}><option>Administrator</option><option>Manager</option><option>Employee</option><option>Vendor</option><option>Viewer</option></select>
             <button type="button" onClick={()=>void createInvite()} style={button}>Create Invite</button>
           </div>
-          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}><strong style={{color:colors.navy,fontSize:12}}>Property access:</strong>{properties.map(([id,label])=><label key={id} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={newPropertyIds.includes(id)} onChange={(event)=>setNewPropertyIds((current)=>event.currentTarget.checked?[...current,id]:current.filter((value)=>value!==id))}/>{label}</label>)}</div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <strong style={{ color: colors.navy, fontSize: 12 }}>
+              Property access:
+            </strong>
+
+            {properties.map(([id, label]) => (
+              <label
+                key={id}
+                style={{
+                  display: "flex",
+                  gap: 5,
+                  alignItems: "center",
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={newPropertyIds.includes(id)}
+                  onChange={(event) => {
+                    const checked = event.currentTarget.checked;
+
+                    setNewPropertyIds((current) =>
+                      checked
+                        ? Array.from(new Set([...current, id]))
+                        : current.filter((value) => value !== id),
+                    );
+                  }}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
           {inviteLink ? <div style={{display:"grid",gap:6}}><span style={{fontSize:12,color:colors.muted}}>Invitation expires in 7 days. Copy and send this link:</span><input readOnly value={inviteLink} onFocus={(e)=>e.currentTarget.select()} style={control}/></div> : null}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
