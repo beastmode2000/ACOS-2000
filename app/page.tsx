@@ -12532,12 +12532,12 @@ export default function AtlasPage() {
     ];
 
     return (
-      <div className="atlas-command-dashboard" style={{ display: "grid", gap: 14 }}>
+      <div className="atlas-command-dashboard" style={{ display: "grid", gap: isMobile ? 10 : 11 }}>
         <section
           className="atlas-dashboard-hero"
           style={{
             ...commandCardStyle,
-            padding: isMobile ? 16 : 22,
+            padding: isMobile ? "13px 14px" : "15px 20px",
             background: `linear-gradient(135deg, ${colors.navy} 0%, #173B59 72%, #244E6E 100%)`,
             color: "#FFFFFF",
             border: 0,
@@ -12548,21 +12548,21 @@ export default function AtlasPage() {
               display: "flex",
               alignItems: "flex-start",
               justifyContent: "space-between",
-              gap: 16,
+              gap: isMobile ? 10 : 14,
               flexWrap: "wrap",
             }}
           >
             <div>
-              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: colors.gold2 }}>
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.11em", textTransform: "uppercase", color: colors.gold2 }}>
                 Atlas Command Center
               </div>
               <div className="atlas-dashboard-greeting">
                 Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}, Nick.
               </div>
-              <h1 style={{ margin: "5px 0 5px", fontSize: isMobile ? 27 : 36, lineHeight: 1.05 }}>
+              <h1 style={{ margin: "2px 0 2px", fontSize: isMobile ? 25 : 31, lineHeight: 1.02 }}>
                 {activeProperty?.name || "Atlas"} Operations
               </h1>
-              <div style={{ opacity: 0.82, fontSize: 14 }}>
+              <div style={{ opacity: 0.82, fontSize: isMobile ? 12 : 13 }}>
                 {new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
                   weekday: "long",
                   month: "long",
@@ -12574,9 +12574,9 @@ export default function AtlasPage() {
               </div>
             </div>
             <div style={{ textAlign: isMobile ? "left" : "right" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.78 }}>Estate Health</div>
-              <div style={{ fontSize: isMobile ? 34 : 44, fontWeight: 950, lineHeight: 1 }}>{estateHealth}%</div>
-              <div style={{ marginTop: 7, width: isMobile ? 180 : 220, height: 8, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
+              <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.78 }}>Estate Health</div>
+              <div style={{ fontSize: isMobile ? 29 : 36, fontWeight: 950, lineHeight: 1 }}>{estateHealth}%</div>
+              <div style={{ marginTop: 5, width: isMobile ? 150 : 190, height: 6, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
                 <div
                   className="atlas-dashboard-health-fill"
                   style={{ width: `${estateHealth}%`, height: "100%", background: colors.gold2, borderRadius: 999 }}
@@ -12597,21 +12597,21 @@ export default function AtlasPage() {
               );
             }}
             style={{
-              marginTop: 18,
+              marginTop: 11,
               width: "100%",
-              minHeight: 48,
-              borderRadius: 14,
+              minHeight: isMobile ? 42 : 43,
+              borderRadius: 12,
               border: "1px solid rgba(255,255,255,0.28)",
               background: "rgba(255,255,255,0.10)",
               color: "#FFFFFF",
-              padding: "11px 14px",
+              padding: "8px 12px",
               textAlign: "left",
               font: "inherit",
               cursor: "pointer",
             }}
           >
-            <strong>Ask Atlas or run a command…</strong>
-            <span style={{ display: "block", marginTop: 2, opacity: 0.72, fontSize: 12 }}>
+            <strong style={{ fontSize: isMobile ? 13 : 14 }}>Ask Atlas or run a command…</strong>
+            <span style={{ display: "block", marginTop: 1, opacity: 0.72, fontSize: 11 }}>
               Search records, plan today, create work, or open any part of the property.
             </span>
           </button>
@@ -12629,11 +12629,27 @@ export default function AtlasPage() {
               type="button"
               className="atlas-dashboard-kpi"
               onClick={() => setScreen(item.screen)}
-              style={{ ...commandCardStyle, textAlign: "left", cursor: "pointer", color: colors.text }}
+              style={{
+                ...commandCardStyle,
+                minHeight: 0,
+                padding: isMobile ? "10px 11px" : "11px 14px",
+                borderRadius: 14,
+                textAlign: "left",
+                cursor: "pointer",
+                color: colors.text,
+              }}
             >
               <div style={{ ...mutedSmallStyle, fontWeight: 800 }}>{item.label}</div>
-              <div style={statValueStyle}>{item.value}</div>
-              <div style={{ ...mutedSmallStyle, marginTop: 7 }}>{item.detail}</div>
+              <div
+                style={{
+                  ...statValueStyle,
+                  marginTop: 3,
+                  fontSize: isMobile ? 22 : 27,
+                }}
+              >
+                {item.value}
+              </div>
+              <div style={{ ...mutedSmallStyle, marginTop: 4 }}>{item.detail}</div>
               <span className="atlas-dashboard-info-popover" aria-hidden="true">
                 <strong>{item.label}</strong>
                 <span>{item.detail}</span>
@@ -17274,6 +17290,17 @@ export default function AtlasPage() {
         @keyframes atlasPropertyLoading {
           from { transform: translateX(-18%); opacity: 0.65; }
           to { transform: translateX(72%); opacity: 1; }
+        }
+        .atlas-dashboard-greeting {
+          margin-top: 7px !important;
+          font-size: 27px !important;
+          line-height: 1 !important;
+        }
+        @media (max-width: 760px) {
+          .atlas-dashboard-greeting {
+            margin-top: 6px !important;
+            font-size: 22px !important;
+          }
         }
           .atlas-work-orders-page input[placeholder*="Search work"] {
             border: 2px solid #8EA5B8 !important;
