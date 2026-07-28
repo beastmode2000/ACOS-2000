@@ -15750,6 +15750,77 @@ export default function AtlasPage() {
 
               <section
                 style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 14,
+                  background: "linear-gradient(135deg, #FFFFFF 0%, #F6F9FD 100%)",
+                  padding: isMobile ? 12 : 14,
+                  marginBottom: 12,
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "repeat(2, minmax(0, 1fr))"
+                    : "repeat(4, minmax(0, 1fr))",
+                  gap: 8,
+                  boxShadow: "0 8px 22px rgba(24, 43, 77, 0.06)",
+                }}
+                aria-label="Asset overview"
+              >
+                {[
+                  {
+                    label: "Make / Model",
+                    value:
+                      [selectedAsset.make, selectedAsset.model]
+                        .filter(Boolean)
+                        .join(" ") || "Not recorded",
+                  },
+                  {
+                    label: "Primary Location",
+                    value:
+                      selectedAsset.locationId &&
+                      selectedAsset.locationId !== "general"
+                        ? locationName(selectedAsset.locationId)
+                        : "Not assigned",
+                  },
+                  {
+                    label: "Serial / ID",
+                    value: selectedAsset.serial || "Not recorded",
+                  },
+                  {
+                    label: "Preferred Vendors",
+                    value: `${selectedVendors.length} linked`,
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 10,
+                      background: "#FFFFFF",
+                      padding: "9px 10px",
+                      minWidth: 0,
+                    }}
+                  >
+                    <span style={assetInfoLabelStyle}>{item.label}</span>
+                    <strong
+                      style={{
+                        display: "block",
+                        marginTop: 4,
+                        color: colors.navy,
+                        fontSize: 13,
+                        lineHeight: 1.3,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={item.value}
+                    >
+                      {item.value}
+                    </strong>
+                  </div>
+                ))}
+              </section>
+
+              <section
+                style={{
                   ...assetCardStyle,
                   marginBottom: 12,
                   background: "#F8FAFD",
@@ -16130,7 +16201,7 @@ export default function AtlasPage() {
                   ...assetTopGridStyle,
                   gridTemplateColumns: isMobile
                     ? "1fr"
-                    : "minmax(150px, 22%) minmax(0, 1fr)",
+                    : "minmax(190px, 30%) minmax(0, 1fr)",
                 }}
               >
                 <button
