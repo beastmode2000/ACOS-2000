@@ -7,6 +7,7 @@
   "dependencies": {
     "@neondatabase/serverless": "latest",
     "@types/web-push": "^3.6.4",
+    "@vercel/blob": "^2.6.1",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
