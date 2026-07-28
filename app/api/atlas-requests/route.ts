@@ -78,6 +78,32 @@ function adminBlockResponse(request: NextRequest) {
   return null;
 }
 
+
+type RequestAccess = { email:string; role:string; profiles:string[]; restricted:boolean };
+
+async function getRequestAccess(request: NextRequest): Promise<RequestAccess> {
+  const email = (request.headers.get("x-atlas-user-email") || "").toLowerCase();
+  const role = String(request.headers.get("x-atlas-user-role") || "").toLowerCase();
+  if (!email || role === "master" || role === "administrator") return { email, role, profiles:[], restricted:false };
+  const sql = getSql();
+  const rows = await sql`SELECT role, active, access_profiles FROM atlas_team_access WHERE lower(email)=${email} LIMIT 1`;
+  const row = rows[0] as Record<string, unknown> | undefined;
+  const profiles = Array.isArray(row?.access_profiles) ? (row!.access_profiles as unknown[]).map(String) : [];
+  return { email, role:String(row?.role || role), profiles, restricted:Boolean(row && row.active !== false && profiles.length) };
+}
+
+function isMarineRequest(row: any) {
+  const text = [row.category, row.asset_name, row.assetName, row.location_name, row.locationName, row.title, row.description].map((value)=>String(value ?? "")).join(" ").toLowerCase();
+  return ["dock & marine", "marine", "boat", "cobalt", "sea-doo", "seadoo", "watercraft", "pwc", "jet ski", "dock lift", "boat lift", "sunstream"].some((term)=>text.includes(term));
+}
+
+function requestAllowed(access: RequestAccess, row: any) {
+  if (!access.restricted) return true;
+  if (access.profiles.includes("marine") && isMarineRequest(row)) return true;
+  const text = Object.values(row || {}).map(String).join(" ").toLowerCase();
+  return access.profiles.some((profile)=>text.includes(profile.replace("-", " ")));
+}
+
 function cleanText(value: unknown, maxLength = 5000) {
   return String(value ?? "").trim().slice(0, maxLength);
 }
@@ -235,8 +261,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const blocked = adminBlockResponse(request);
-    if (blocked) return blocked;
+    const access = await getRequestAccess(request);
+    if (!request.headers.get("x-atlas-user-email")) {
+      const blocked = adminBlockResponse(request);
+      if (blocked) return blocked;
+    }
 
     const sql = getSql();
     const rows = await sql`
@@ -257,7 +286,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       portalToken: await getPortalToken(),
-      requests: rows.map(normalizeRequest),
+      requests: rows.filter((row) => requestAllowed(access, row)).map(normalizeRequest),
     });
   } catch (error) {
     return NextResponse.json(
@@ -390,6 +419,9 @@ export async function PATCH(request: NextRequest) {
         { status: 404 },
       );
     }
+    if (!requestAllowed(access, existing)) {
+      return NextResponse.json({ ok:false, error:"This request is outside your assigned access profile." }, { status:403 });
+    }
 
     const requesterName =
       body.requesterName === undefined
@@ -482,8 +514,11 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     await ensureSchema();
-    const blocked = adminBlockResponse(request);
-    if (blocked) return blocked;
+    const access = await getRequestAccess(request);
+    if (!request.headers.get("x-atlas-user-email")) {
+      const blocked = adminBlockResponse(request);
+      if (blocked) return blocked;
+    }
 
     const id = cleanText(new URL(request.url).searchParams.get("id"), 100);
     if (!id) {
@@ -491,6 +526,10 @@ export async function DELETE(request: NextRequest) {
     }
 
     const sql = getSql();
+    const existingRows = await sql`SELECT * FROM atlas_requests WHERE id=${id}::uuid LIMIT 1`;
+    if (!existingRows[0] || !requestAllowed(access, existingRows[0])) {
+      return NextResponse.json({ ok:false, error:"Request not found or outside your assigned access profile." }, { status:404 });
+    }
     const rows = await sql`DELETE FROM atlas_requests WHERE id = ${id}::uuid RETURNING id`;
     if (!rows.length) {
       return NextResponse.json({ ok: false, error: "Request not found." }, { status: 404 });
