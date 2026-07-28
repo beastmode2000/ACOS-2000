@@ -18316,6 +18316,26 @@ export default function AtlasPage() {
       Number(documentLinkFilter !== "All") +
       Number(Boolean(normalizedDocumentSearch));
 
+    const documentFileCount = allDocuments.reduce(
+      (total, document) => total + (document.files?.length || 0),
+      0,
+    );
+    const linkedDocumentCount = allDocuments.filter(
+      (document) =>
+        Boolean(document.targetId) ||
+        Boolean(document.targetName) ||
+        (document.targetType && document.targetType !== "General"),
+    ).length;
+    const pdfDocumentCount = allDocuments.filter((document) =>
+      (document.files || []).some((file) => {
+        const type = String(file.type || "").toLowerCase();
+        const name = String(file.name || "").toLowerCase();
+        const source = String(file.url || file.dataUrl || "").toLowerCase();
+        return type.includes("pdf") || name.endsWith(".pdf") || source.includes("application/pdf");
+      }) || String(document.href || "").toLowerCase().includes(".pdf"),
+    ).length;
+    const documentCategoryCount = documentCategories.length;
+
     const selectedDocument =
       allDocuments.find((doc) => doc.id === selectedDocumentId) || null;
     const selectedTargetKind = (selectedDocument?.targetType ||
@@ -18950,6 +18970,109 @@ export default function AtlasPage() {
           }
           list={
             <div style={{ display: "grid", gap: 12 }}>
+              <section
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "repeat(2, minmax(0, 1fr))"
+                    : "repeat(4, minmax(0, 1fr))",
+                  gap: 10,
+                }}
+              >
+                {[
+                  {
+                    label: "Documents",
+                    value: allDocuments.length,
+                    detail: `${searchableDocuments.length} currently visible`,
+                    icon: "▤",
+                  },
+                  {
+                    label: "Saved files",
+                    value: documentFileCount,
+                    detail: `${pdfDocumentCount} PDF ${pdfDocumentCount === 1 ? "record" : "records"}`,
+                    icon: "□",
+                  },
+                  {
+                    label: "Linked records",
+                    value: linkedDocumentCount,
+                    detail: "Connected to Atlas records",
+                    icon: "↗",
+                  },
+                  {
+                    label: "Categories",
+                    value: documentCategoryCount,
+                    detail: "Organized document groups",
+                    icon: "⌗",
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    style={{
+                      minWidth: 0,
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 16,
+                      padding: isMobile ? 11 : 13,
+                      background: "linear-gradient(180deg, #FFFFFF 0%, #F7FAFC 100%)",
+                      boxShadow: "0 8px 20px rgba(11, 41, 64, 0.06)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "grid",
+                          placeItems: "center",
+                          width: 30,
+                          height: 30,
+                          borderRadius: 10,
+                          background: "#EDF3FF",
+                          color: "#175CD3",
+                          fontSize: 14,
+                          fontWeight: 950,
+                        }}
+                      >
+                        {item.icon}
+                      </span>
+                      <strong
+                        style={{
+                          color: colors.navy,
+                          fontSize: isMobile ? 20 : 24,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {item.value}
+                      </strong>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 9,
+                        color: colors.navy,
+                        fontSize: 11,
+                        fontWeight: 900,
+                      }}
+                    >
+                      {item.label}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 3,
+                        color: colors.muted,
+                        fontSize: 9,
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {item.detail}
+                    </div>
+                  </div>
+                ))}
+              </section>
+
               {activePropertyId === "2000" ? (
                 <section
                   style={{
