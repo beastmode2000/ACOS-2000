@@ -395,8 +395,12 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     await ensureSchema();
-    const blocked = adminBlockResponse(request);
-    if (blocked) return blocked;
+
+    const access = await getRequestAccess(request);
+    if (!request.headers.get("x-atlas-user-email")) {
+      const blocked = adminBlockResponse(request);
+      if (blocked) return blocked;
+    }
 
     const body = await request.json().catch(() => ({}));
     const id = cleanText(body.id, 100);
