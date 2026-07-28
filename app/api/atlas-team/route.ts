@@ -28,6 +28,7 @@ type Member = {
   active: boolean;
   propertyIds?: string[];
   permissions?: Permissions;
+  accessProfiles?: string[];
 };
 
 const rolePermissions: Record<Role, Permissions> = {
@@ -169,6 +170,12 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
   `;
 
   await sql`
+    ALTER TABLE atlas_team_access
+    ADD COLUMN IF NOT EXISTS access_profiles text[]
+    NOT NULL DEFAULT '{}'::text[]
+  `;
+
+  await sql`
     UPDATE atlas_team_access
     SET role = 'employee'
     WHERE role = 'operations'
@@ -242,6 +249,7 @@ export async function GET(request: NextRequest) {
         a.active,
         a.property_ids,
         a.permissions,
+        a.access_profiles,
         CASE
           WHEN a.password_hash IS NOT NULL THEN 'Accepted'
           WHEN i.expires_at > NOW() AND i.used_at IS NULL THEN 'Invited'
@@ -289,6 +297,9 @@ export async function GET(request: NextRequest) {
             ? row.permissions
             : {}),
         },
+        accessProfiles: Array.isArray(row.access_profiles)
+          ? row.access_profiles.map(String)
+          : [],
         inviteStatus: row.invite_status,
       };
     });
@@ -329,6 +340,7 @@ export async function GET(request: NextRequest) {
           ? rolePermissions.master
           : current?.permissions ||
             rolePermissions[currentRole],
+        accessProfiles: isMaster ? [] : current?.accessProfiles || [],
       },
     });
   } catch (error) {
@@ -410,6 +422,7 @@ export async function POST(request: NextRequest) {
           active,
           property_ids,
           permissions,
+          access_profiles,
           updated_at
         )
         VALUES (
@@ -420,6 +433,7 @@ export async function POST(request: NextRequest) {
           true,
           ${propertyIds},
           ${JSON.stringify(permissions)}::jsonb,
+          ${Array.isArray(member.accessProfiles) ? member.accessProfiles : []},
           NOW()
         )
         ON CONFLICT (email)
@@ -429,6 +443,7 @@ export async function POST(request: NextRequest) {
           active = true,
           property_ids = EXCLUDED.property_ids,
           permissions = EXCLUDED.permissions,
+          access_profiles = EXCLUDED.access_profiles,
           updated_at = NOW()
       `;
 
@@ -499,6 +514,7 @@ export async function POST(request: NextRequest) {
           active,
           property_ids,
           permissions,
+          access_profiles,
           updated_at
         )
         VALUES (
@@ -509,6 +525,7 @@ export async function POST(request: NextRequest) {
           ${isNick ? true : member.active},
           ${propertyIds},
           ${JSON.stringify(permissions)}::jsonb,
+          ${Array.isArray(member.accessProfiles) ? member.accessProfiles : []},
           NOW()
         )
         ON CONFLICT (id)
@@ -519,6 +536,7 @@ export async function POST(request: NextRequest) {
           active = EXCLUDED.active,
           property_ids = EXCLUDED.property_ids,
           permissions = EXCLUDED.permissions,
+          access_profiles = EXCLUDED.access_profiles,
           updated_at = NOW()
       `;
     }
