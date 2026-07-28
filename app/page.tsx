@@ -3708,6 +3708,7 @@ export default function AtlasPage() {
   const [syncState, setSyncState] = useState<
     "loading" | "synced" | "offline"
   >("loading");
+  const [showPropertyLoading, setShowPropertyLoading] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -4208,6 +4209,7 @@ export default function AtlasPage() {
   function selectProperty(propertyId: string) {
     if (propertyId === activePropertyId) return;
 
+    setShowPropertyLoading(true);
     setActivePropertyId(propertyId);
 
     setSelectedLocationId("");
@@ -4864,6 +4866,7 @@ export default function AtlasPage() {
           `Atlas loaded: ${nextAssets.length} assets, ${nextVendors.length} vendors, ${nextServices.length} work orders.`,
         );
         setSyncState("synced");
+        setShowPropertyLoading(false);
         setLastSyncedAt(
           new Intl.DateTimeFormat(undefined, {
             hour: "numeric",
@@ -4873,6 +4876,7 @@ export default function AtlasPage() {
       } catch {
         if (!cancelled) {
           setSyncState("offline");
+          setShowPropertyLoading(false);
           setDatabaseStatus(
             "Using saved browser records / fallback records. /api/atlas did not load.",
           );
@@ -4950,6 +4954,7 @@ export default function AtlasPage() {
           saveStoredArray(storageKeys.calendar[0], next);
         }
         setSyncState("synced");
+        setShowPropertyLoading(false);
         setLastSyncedAt(
           new Intl.DateTimeFormat(undefined, {
             hour: "numeric",
@@ -4958,7 +4963,10 @@ export default function AtlasPage() {
         );
       } catch {
         // Keep the current calendar visible if the shared API is unavailable.
-        if (!cancelled) setSyncState("offline");
+        if (!cancelled) {
+          setSyncState("offline");
+          setShowPropertyLoading(false);
+        }
       } finally {
         running = false;
       }
@@ -25120,7 +25128,7 @@ export default function AtlasPage() {
 
   return (
     <main style={isMobile ? appStyle : desktopAppStyle}>
-      {syncState === "loading" ? (
+      {showPropertyLoading && syncState === "loading" ? (
         <div
           role="status"
           aria-live="polite"
