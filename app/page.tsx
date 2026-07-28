@@ -3941,6 +3941,7 @@ export default function AtlasPage() {
   const [documentLinkFilter, setDocumentLinkFilter] = useState("All");
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [blueprintPage, setBlueprintPage] = useState(1);
   const documentListScrollYRef = useRef(0);
   const documentOverlayScrollRef = useRef<HTMLDivElement>(null);
   const intakePhotoNameRef = useRef<HTMLInputElement>(null);
@@ -17976,7 +17977,96 @@ export default function AtlasPage() {
       primarySource.startsWith("data:application/pdf") ||
       primaryName.endsWith(".pdf") ||
       selectedDocument?.href?.toLowerCase().includes(".pdf");
-    const documentHref = primarySource || selectedDocument?.href || "";
+    const rawDocumentHref = primarySource || selectedDocument?.href || "";
+    const documentHref =
+      rawDocumentHref && primaryIsPdf
+        ? `${rawDocumentHref.split("#")[0]}#page=${Math.max(1, blueprintPage)}`
+        : rawDocumentHref;
+
+    const blueprintDocument = allDocuments.find((document) => {
+      const haystack = [
+        document.title,
+        document.type,
+        document.area,
+        document.notes,
+        ...(document.files || []).map((file) => file.name),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return (
+        haystack.includes("as-built") ||
+        haystack.includes("as built") ||
+        haystack.includes("2000 as buids") ||
+        haystack.includes("2000 record set") ||
+        (haystack.includes("2000 faben") && haystack.includes("construction"))
+      );
+    });
+
+    const blueprintSections = [
+      {
+        id: "project",
+        label: "Project Information",
+        icon: "▦",
+        page: 1,
+        detail: "Title sheet, site/demo plan, project information and area summary.",
+      },
+      {
+        id: "survey",
+        label: "Survey",
+        icon: "⌖",
+        page: 3,
+        detail: "Topographic and boundary survey, legal description and site references.",
+      },
+      {
+        id: "civil",
+        label: "Civil & Drainage",
+        icon: "≈",
+        page: 4,
+        detail: "Civil plans, grading, drainage, utilities and site engineering.",
+      },
+      {
+        id: "landscape",
+        label: "Landscape",
+        icon: "⌁",
+        page: 12,
+        detail: "Site plan, grading, planting, lighting and landscape details.",
+      },
+      {
+        id: "irrigation",
+        label: "Irrigation",
+        icon: "◉",
+        page: 16,
+        detail: "Irrigation zone plan and related landscape-system information.",
+      },
+      {
+        id: "architecture",
+        label: "Architecture",
+        icon: "⌂",
+        page: 18,
+        detail: "Basement plan, top-of-wall plan, floor plans, elevations and details.",
+      },
+    ];
+
+    function openBlueprintPage(page: number) {
+      if (!blueprintDocument) {
+        setIntakeTitle("2000 As-Built Plans");
+        setIntakeType("Property Plans");
+        setIntakeTargetKind("General");
+        setIntakeNotes(
+          "Master 90-page construction record set for property 2000. Category: Property Records / As-Built Drawings.",
+        );
+        setScreen("intake");
+        return;
+      }
+
+      documentListScrollYRef.current = window.scrollY;
+      setBlueprintPage(page);
+      setSelectedDocumentId(blueprintDocument.id);
+      window.requestAnimationFrame(() => {
+        documentOverlayScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+      });
+    }
 
     function retargetSelectedDocument(kind: IntakeTargetKind) {
       if (!selectedDocument) return;
@@ -18351,6 +18441,207 @@ export default function AtlasPage() {
           }
           list={
             <div style={{ display: "grid", gap: 12 }}>
+              {activePropertyId === "2000" ? (
+                <section
+                  style={{
+                    position: "relative",
+                    overflow: "hidden",
+                    border: `1px solid ${blueprintDocument ? colors.gold : colors.line}`,
+                    borderRadius: 20,
+                    padding: isMobile ? 16 : 20,
+                    background:
+                      "linear-gradient(135deg, #0B2940 0%, #123E5D 58%, #185173 100%)",
+                    color: "#FFFFFF",
+                    boxShadow: "0 18px 38px rgba(7, 36, 58, 0.20)",
+                  }}
+                >
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      width: 230,
+                      height: 230,
+                      right: -85,
+                      top: -110,
+                      borderRadius: 999,
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      boxShadow:
+                        "0 0 0 34px rgba(255,255,255,0.025), 0 0 0 70px rgba(255,255,255,0.018)",
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      position: "relative",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 14,
+                      flexWrap: "wrap",
+                      marginBottom: 16,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          marginBottom: 6,
+                          color: "#E4BE67",
+                          fontSize: 10,
+                          fontWeight: 950,
+                          letterSpacing: "0.15em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Property Blueprint Center
+                      </div>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: isMobile ? 20 : 24,
+                          lineHeight: 1.15,
+                        }}
+                      >
+                        2000 Estate Record Set
+                      </h3>
+                      <p
+                        style={{
+                          maxWidth: 650,
+                          margin: "7px 0 0",
+                          color: "rgba(255,255,255,0.76)",
+                          fontSize: 12,
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        One master 90-page construction set, organized into fast links so you can jump directly to the part of the property record you need.
+                      </p>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        justifyItems: "end",
+                        gap: 8,
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 7,
+                          border: "1px solid rgba(255,255,255,0.18)",
+                          borderRadius: 999,
+                          padding: "6px 10px",
+                          background: blueprintDocument
+                            ? "rgba(8,116,67,0.28)"
+                            : "rgba(181,71,8,0.24)",
+                          color: "#FFFFFF",
+                          fontSize: 10,
+                          fontWeight: 900,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: 999,
+                            background: blueprintDocument ? "#57D39B" : "#F5B56A",
+                          }}
+                        />
+                        {blueprintDocument ? "Master set connected" : "Master set needs upload"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => openBlueprintPage(1)}
+                        style={{
+                          ...goldButtonStyle,
+                          minHeight: 38,
+                          padding: "9px 13px",
+                        }}
+                      >
+                        {blueprintDocument ? "Open Master Set" : "Add Master Set"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      position: "relative",
+                      display: "grid",
+                      gridTemplateColumns: isMobile
+                        ? "repeat(2, minmax(0, 1fr))"
+                        : "repeat(3, minmax(0, 1fr))",
+                      gap: 9,
+                    }}
+                  >
+                    {blueprintSections.map((section) => (
+                      <button
+                        key={section.id}
+                        type="button"
+                        onClick={() => openBlueprintPage(section.page)}
+                        title={`${section.label} · PDF page ${section.page}`}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "32px minmax(0, 1fr)",
+                          alignItems: "center",
+                          gap: 9,
+                          minWidth: 0,
+                          padding: isMobile ? 10 : 12,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          borderRadius: 13,
+                          background: "rgba(255,255,255,0.075)",
+                          color: "#FFFFFF",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          backdropFilter: "blur(8px)",
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            display: "grid",
+                            placeItems: "center",
+                            width: 32,
+                            height: 32,
+                            borderRadius: 10,
+                            background: "rgba(228,190,103,0.16)",
+                            color: "#F0CD7E",
+                            fontSize: 17,
+                            fontWeight: 900,
+                          }}
+                        >
+                          {section.icon}
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                          <strong
+                            style={{
+                              display: "block",
+                              overflow: "hidden",
+                              fontSize: 11,
+                              lineHeight: 1.25,
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {section.label}
+                          </strong>
+                          <small
+                            style={{
+                              display: "block",
+                              marginTop: 3,
+                              color: "rgba(255,255,255,0.62)",
+                              fontSize: 9,
+                              fontWeight: 750,
+                            }}
+                          >
+                            Start at page {section.page}
+                          </small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               <div
                 style={{
                   ...cardStyle,
@@ -18578,6 +18869,7 @@ export default function AtlasPage() {
                         type="button"
                         onClick={() => {
                           documentListScrollYRef.current = window.scrollY;
+                          setBlueprintPage(1);
                           setSelectedDocumentId(document.id);
                         }}
                         aria-pressed={isSelected}
