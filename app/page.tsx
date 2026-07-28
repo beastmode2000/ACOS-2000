@@ -3826,6 +3826,7 @@ export default function AtlasPage() {
   );
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [requestPortalToken, setRequestPortalToken] = useState("");
+  const [marineRequestPortalToken, setMarineRequestPortalToken] = useState("");
   const [requestMessage, setRequestMessage] = useState("Loading requests...");
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
   const [todayLogEntries, setTodayLogEntries] = useState<TodayLogEntry[]>([]);
@@ -5086,6 +5087,12 @@ export default function AtlasPage() {
         });
         setRequestRecords(next);
         setRequestPortalToken(String(payload.portalToken || ""));
+        setMarineRequestPortalToken(
+          String(
+            payload.marinePortalToken ||
+              (payload.portalToken ? `marine-${payload.portalToken}` : ""),
+          ),
+        );
         setSelectedRequestId((current) =>
           next.some((item: OwnerRequestRecord) => item.id === current)
             ? current
@@ -23558,6 +23565,90 @@ export default function AtlasPage() {
               <small style={qrUrlStyle}>
                 {`${window.location.origin}/request?token=${encodeURIComponent(
                   requestPortalToken,
+                )}`}
+              </small>
+            </div>
+          </article>
+        ) : null}
+
+        {marineRequestPortalToken && typeof window !== "undefined" ? (
+          <article
+            className="atlas-qr-print-card"
+            style={{
+              ...qrCardStyle,
+              marginBottom: 18,
+              borderColor: "#9CC7E8",
+              background:
+                "linear-gradient(135deg, #F7FBFF 0%, #EEF7FF 100%)",
+            }}
+          >
+            <div style={qrImageShellStyle}>
+              <img
+                src={qrImageUrl(
+                  `${window.location.origin}/request?token=${encodeURIComponent(
+                    marineRequestPortalToken,
+                  )}`,
+                  320,
+                )}
+                alt="Sean Marine Request QR code"
+                style={qrImageStyle}
+              />
+            </div>
+
+            <div style={qrCardBodyStyle}>
+              <div>
+                <div style={eyebrowStyle}>Sean Marine Request</div>
+                <h3 style={qrCardTitleStyle}>Request Boat Service</h3>
+                <p style={mutedSmallStyle}>
+                  Secure public form for boat detailing, Sea-Doo, dock, lift,
+                  and other marine-service requests. Requests are automatically
+                  assigned to Sean and tagged Dock &amp; Marine.
+                </p>
+              </div>
+
+              <div className="atlas-no-print" style={buttonRowStyle}>
+                <a
+                  href={`${window.location.origin}/request?token=${encodeURIComponent(
+                    marineRequestPortalToken,
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={secondaryButtonStyle}
+                >
+                  Open
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(
+                      `${window.location.origin}/request?token=${encodeURIComponent(
+                        marineRequestPortalToken,
+                      )}`,
+                    );
+                    setRequestMessage("Sean Marine request link copied.");
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  Copy Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void copyOwnerRequestQrImage(
+                      `${window.location.origin}/request?token=${encodeURIComponent(
+                        marineRequestPortalToken,
+                      )}`,
+                    )
+                  }
+                  style={secondaryButtonStyle}
+                >
+                  Copy QR Image
+                </button>
+              </div>
+
+              <small style={qrUrlStyle}>
+                {`${window.location.origin}/request?token=${encodeURIComponent(
+                  marineRequestPortalToken,
                 )}`}
               </small>
             </div>
