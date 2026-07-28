@@ -13,6 +13,9 @@ type TeamTask = {
   notes: string;
   status: TeamTaskStatus;
   requirePhoto: boolean;
+  completionPhotoUrl?: string;
+  completedAt?: string;
+  completedBy?: string;
 };
 
 type TeamList = {
@@ -28,6 +31,12 @@ type TeamList = {
 
 type Props = {
   activePropertyId: string;
+};
+
+type AtlasCurrentUser = {
+  email: string;
+  role: string;
+  permissions: Record<string, boolean>;
 };
 
 const PEOPLE = ["Addison", "Pat's Crew", "Sean", "Nick", "Unassigned"];
@@ -153,30 +162,170 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
   const [lists, setLists] = useState<TeamList[]>([]);
   const [selectedListId, setSelectedListId] = useState("");
   const [search, setSearch] = useState("");
+  const [currentUser, setCurrentUser] = useState<AtlasCurrentUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [loadedFromServer, setLoadedFromServer] = useState(false);
+
+  function authHeaders(user = currentUser): HeadersInit {
+    if (!user) return {};
+
+    return {
+      "Content-Type": "application/json",
+      "x-atlas-user-email": user.email || "",
+      "x-atlas-user-role": user.role || "viewer",
+      "x-atlas-permissions": JSON.stringify(user.permissions || {}),
+    };
+  }
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      const parsed = raw ? (JSON.parse(raw) as TeamList[]) : null;
-      const next =
-        Array.isArray(parsed) && parsed.length ? parsed : starterLists();
-      setLists(next);
-      setSelectedListId(next[0]?.id || "");
-    } catch {
-      const next = starterLists();
-      setLists(next);
-      setSelectedListId(next[0]?.id || "");
+    let cancelled = false;
+
+    async function loadTeamWork() {
+      setLoading(true);
+      setSaveMessage("");
+
+      try {
+        const teamResponse = await fetch("/api/atlas-team", {
+          cache: "no-store",
+        });
+        const teamPayload = await teamResponse.json();
+
+        if (!teamResponse.ok || !teamPayload?.ok) {
+          throw new Error(
+            teamPayload?.error || "Could not identify the current Atlas user.",
+          );
+        }
+
+        const user: AtlasCurrentUser = {
+          email: String(teamPayload.currentUser?.email || ""),
+          role: String(teamPayload.currentUser?.role || "viewer"),
+          permissions:
+            teamPayload.currentUser?.permissions &&
+            typeof teamPayload.currentUser.permissions === "object"
+              ? teamPayload.currentUser.permissions
+              : {},
+        };
+
+        if (cancelled) return;
+        setCurrentUser(user);
+
+        const response = await fetch("/api/atlas-team-work", {
+          cache: "no-store",
+          headers: authHeaders(user),
+        });
+        const payload = await response.json();
+
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || "Could not load Team Work.");
+        }
+
+        let next: TeamList[] =
+          Array.isArray(payload.lists) && payload.lists.length
+            ? payload.lists
+            : [];
+
+        if (!next.length) {
+          try {
+            const raw = window.localStorage.getItem(STORAGE_KEY);
+            const parsed = raw ? (JSON.parse(raw) as TeamList[]) : null;
+            next =
+              Array.isArray(parsed) && parsed.length
+                ? parsed
+                : starterLists();
+          } catch {
+            next = starterLists();
+          }
+        }
+
+        if (cancelled) return;
+
+        setLists(next);
+        setSelectedListId(next[0]?.id || "");
+        setLoadedFromServer(true);
+        setSaveMessage(
+          Array.isArray(payload.lists) && payload.lists.length
+            ? "Shared Team Work loaded."
+            : "Starter Team Work loaded. Save once to publish it for the team.",
+        );
+      } catch (error) {
+        if (cancelled) return;
+
+        let fallback = starterLists();
+
+        try {
+          const raw = window.localStorage.getItem(STORAGE_KEY);
+          const parsed = raw ? (JSON.parse(raw) as TeamList[]) : null;
+          if (Array.isArray(parsed) && parsed.length) fallback = parsed;
+        } catch {
+          // Use starter lists.
+        }
+
+        setLists(fallback);
+        setSelectedListId(fallback[0]?.id || "");
+        setLoadedFromServer(false);
+        setSaveMessage(
+          error instanceof Error
+            ? `${error.message} Showing the browser copy.`
+            : "Could not load shared Team Work. Showing the browser copy.",
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
+    void loadTeamWork();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!lists.length) return;
+
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(lists));
     } catch {
       // Keep the page usable if browser storage is unavailable.
     }
   }, [lists]);
+
+  async function saveSharedTeamWork() {
+    if (!currentUser) {
+      setSaveMessage("Atlas could not identify the current user.");
+      return;
+    }
+
+    setSaving(true);
+    setSaveMessage("");
+
+    try {
+      const response = await fetch("/api/atlas-team-work", {
+        method: "PUT",
+        headers: authHeaders(currentUser),
+        body: JSON.stringify({ lists }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not save Team Work.");
+      }
+
+      setLists(Array.isArray(payload.lists) ? payload.lists : lists);
+      setLoadedFromServer(true);
+      setSaveMessage("Shared Team Work saved.");
+    } catch (error) {
+      setSaveMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not save shared Team Work.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const visibleLists = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -344,10 +493,36 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
           </p>
         </div>
 
-        <button type="button" style={goldButtonStyle} onClick={createList}>
-          + New List
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            style={lightHeroButtonStyle}
+            onClick={() => void saveSharedTeamWork()}
+            disabled={saving || loading}
+          >
+            {saving ? "Saving..." : "Save Shared"}
+          </button>
+          <button
+            type="button"
+            style={goldButtonStyle}
+            onClick={createList}
+            disabled={loading}
+          >
+            + New List
+          </button>
+        </div>
       </div>
+
+      {saveMessage && (
+        <div
+          style={{
+            ...noticeStyle,
+            borderColor: loadedFromServer ? colors.line : colors.gold,
+          }}
+        >
+          {saveMessage}
+        </div>
+      )}
 
       <div style={summaryGridStyle}>
         <Stat label="Active Lists" value={visibleLists.filter((item) => item.active).length} />
@@ -364,6 +539,8 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
 
       <div style={workspaceStyle}>
         <aside style={panelStyle}>
+          {loading && <div style={emptyStyle}>Loading shared Team Work...</div>}
+
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -554,6 +731,12 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                             status: event.target.checked
                               ? "Completed"
                               : "Open",
+                            completedAt: event.target.checked
+                              ? new Date().toISOString()
+                              : undefined,
+                            completedBy: event.target.checked
+                              ? currentUser?.email || item.assignee
+                              : undefined,
                           })
                         }
                         style={{ width: 20, height: 20 }}
@@ -588,6 +771,14 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                         onChange={(event) =>
                           updateTask(selected.id, item.id, {
                             status: event.target.value as TeamTaskStatus,
+                            completedAt:
+                              event.target.value === "Completed"
+                                ? new Date().toISOString()
+                                : undefined,
+                            completedBy:
+                              event.target.value === "Completed"
+                                ? currentUser?.email || item.assignee
+                                : undefined,
                           })
                         }
                         style={fieldStyle}
@@ -905,6 +1096,25 @@ const iconButtonStyle: React.CSSProperties = {
   background: colors.card,
   color: colors.text,
   fontWeight: 900,
+};
+
+const lightHeroButtonStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,.35)",
+  borderRadius: 10,
+  padding: "10px 14px",
+  background: "rgba(255,255,255,.10)",
+  color: "#FFFFFF",
+  fontWeight: 900,
+};
+
+const noticeStyle: React.CSSProperties = {
+  padding: "11px 14px",
+  border: "1px solid",
+  borderRadius: 12,
+  background: colors.card,
+  color: colors.text,
+  fontSize: 13,
+  fontWeight: 700,
 };
 
 const emptyStyle: React.CSSProperties = {
