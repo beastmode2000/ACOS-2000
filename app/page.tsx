@@ -14123,6 +14123,35 @@ export default function AtlasPage() {
         : locationAssets.length && !locationDocuments.length
           ? "Assets are assigned here, but no location documents are linked yet."
           : "No immediate location issues are recorded.";
+    const topLevelLocationCount = locations.filter(
+      (location) => !location.parentId,
+    ).length;
+    const linkedLocationCount = locations.filter(
+      (location) =>
+        locationAssetCount(location.id) > 0 ||
+        locationWorkCount(location.id) > 0 ||
+        locationPhotoCount(location.id) > 0 ||
+        locationDocumentCount(location.id) > 0,
+    ).length;
+    const locationsWithOpenWork = locations.filter(
+      (location) => locationWorkCount(location.id) > 0,
+    ).length;
+    const selectedLocationPath = (() => {
+      if (!selectedLocation.id) return [] as AtlasLocationRecord[];
+      const path: AtlasLocationRecord[] = [];
+      const visited = new Set<string>();
+      let current: AtlasLocationRecord | undefined = selectedLocation;
+
+      while (current?.id && !visited.has(current.id)) {
+        path.unshift(current);
+        visited.add(current.id);
+        current = current.parentId
+          ? locations.find((location) => location.id === current?.parentId)
+          : undefined;
+      }
+
+      return path;
+    })();
 
     return (
       <ListDrawerLayout
@@ -14155,6 +14184,49 @@ export default function AtlasPage() {
         }
         list={
           <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 7,
+              }}
+            >
+              {[
+                ["Top level", topLevelLocationCount, "Main property areas"],
+                ["Connected", linkedLocationCount, "With linked records"],
+                ["Active work", locationsWithOpenWork, "Locations with work"],
+              ].map(([label, value, note]) => (
+                <div
+                  key={String(label)}
+                  style={{
+                    minWidth: 0,
+                    padding: "10px 9px",
+                    borderRadius: 11,
+                    border: `1px solid ${colors.line}`,
+                    background: colors.card,
+                    boxShadow: "0 4px 12px rgba(15, 42, 67, 0.05)",
+                  }}
+                >
+                  <span style={{ ...fieldLabelStyle, display: "block" }}>
+                    {label}
+                  </span>
+                  <strong style={{ display: "block", fontSize: 19, marginTop: 2 }}>
+                    {value}
+                  </strong>
+                  <small
+                    style={{
+                      ...mutedSmallStyle,
+                      display: "block",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {note}
+                  </small>
+                </div>
+              ))}
+            </div>
             <div
               style={{
                 position: "sticky",
@@ -14467,9 +14539,54 @@ export default function AtlasPage() {
                     minWidth: 0,
                   }}
                 >
-                  <h3 style={{ ...editorHeaderStyle, marginBottom: 0, minWidth: 0, overflowWrap: "anywhere" }}>
-                    {selectedLocation.name || "New Location"}
-                  </h3>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={{ ...editorHeaderStyle, marginBottom: 0, minWidth: 0, overflowWrap: "anywhere" }}>
+                      {selectedLocation.name || "New Location"}
+                    </h3>
+                    {selectedLocationPath.length > 1 ? (
+                      <div
+                        style={{
+                          ...mutedSmallStyle,
+                          display: "flex",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          gap: 5,
+                          marginTop: 5,
+                        }}
+                      >
+                        {selectedLocationPath.map((location, index) => (
+                          <React.Fragment key={location.id}>
+                            {index > 0 ? <span aria-hidden="true">›</span> : null}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedLocationId(location.id);
+                                setLocationEditorOpen(false);
+                              }}
+                              style={{
+                                border: 0,
+                                padding: 0,
+                                background: "transparent",
+                                color:
+                                  location.id === selectedLocation.id
+                                    ? colors.navy
+                                    : colors.blue,
+                                font: "inherit",
+                                fontWeight:
+                                  location.id === selectedLocation.id ? 800 : 700,
+                                cursor:
+                                  location.id === selectedLocation.id
+                                    ? "default"
+                                    : "pointer",
+                              }}
+                            >
+                              {location.name}
+                            </button>
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <div
                     style={{
                       ...buttonRowStyle,
