@@ -3941,6 +3941,7 @@ export default function AtlasPage() {
   const [documentSearch, setDocumentSearch] = useState("");
   const [documentCategoryFilter, setDocumentCategoryFilter] = useState("All");
   const [documentLinkFilter, setDocumentLinkFilter] = useState("All");
+  const [hideDocumentLogos, setHideDocumentLogos] = useState(false);
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [blueprintPage, setBlueprintPage] = useState(1);
@@ -18438,9 +18439,23 @@ export default function AtlasPage() {
         if (documentLinkFilter !== "All" && linkType !== documentLinkFilter) {
           return false;
         }
-        if (!normalizedDocumentSearch) return true;
 
         const fileNames = (doc.files || []).map((file) => file.name).join(" ");
+        const logoHaystack = [
+          doc.title,
+          doc.type,
+          doc.area,
+          doc.targetName,
+          doc.notes,
+          fileNames,
+        ]
+          .join(" ")
+          .toLowerCase();
+        const isLogoDocument = /(^|\s|[-_/])logos?(\s|$|[-_/])/i.test(logoHaystack);
+        if (hideDocumentLogos && isLogoDocument) return false;
+
+        if (!normalizedDocumentSearch) return true;
+
         return [
           doc.title,
           doc.type,
@@ -18475,6 +18490,7 @@ export default function AtlasPage() {
     const activeDocumentFilterCount =
       Number(documentCategoryFilter !== "All") +
       Number(documentLinkFilter !== "All") +
+      Number(hideDocumentLogos) +
       Number(Boolean(normalizedDocumentSearch));
 
     const documentFileCount = allDocuments.reduce(
@@ -19633,6 +19649,34 @@ export default function AtlasPage() {
                   </label>
                 </div>
 
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    width: "fit-content",
+                    minHeight: 38,
+                    padding: "8px 11px",
+                    border: `1px solid ${hideDocumentLogos ? colors.gold : colors.line}`,
+                    borderRadius: 10,
+                    background: hideDocumentLogos ? "#FFF8E8" : "#FFFFFF",
+                    color: colors.text,
+                    fontSize: 12,
+                    fontWeight: 850,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={hideDocumentLogos}
+                    onChange={(event) =>
+                      setHideDocumentLogos(event.currentTarget.checked)
+                    }
+                    style={{ width: 16, height: 16, accentColor: colors.gold }}
+                  />
+                  Hide all logos
+                </label>
+
                 <div
                   style={{
                     display: "flex",
@@ -19688,6 +19732,7 @@ export default function AtlasPage() {
                           setDocumentSearch("");
                           setDocumentCategoryFilter("All");
                           setDocumentLinkFilter("All");
+                          setHideDocumentLogos(false);
                         }}
                         style={smallSubtleButtonStyle}
                       >
@@ -19723,6 +19768,7 @@ export default function AtlasPage() {
                       setDocumentSearch("");
                       setDocumentCategoryFilter("All");
                       setDocumentLinkFilter("All");
+                      setHideDocumentLogos(false);
                     }}
                     style={{ ...secondaryButtonStyle, marginTop: 10 }}
                   >
@@ -19733,35 +19779,30 @@ export default function AtlasPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(2, minmax(0, 1fr))",
-                    gap: 10,
+                    gap: 6,
                     alignContent: "start",
                   }}
                 >
                   {searchableDocuments.map((document) => {
                     const previewFile = document.files?.[0] || null;
-                    const previewSource =
-                      previewFile?.dataUrl || previewFile?.url || "";
-                    const previewType = String(
-                      previewFile?.type || "",
-                    ).toLowerCase();
-                    const previewName = String(
-                      previewFile?.name || "",
-                    ).toLowerCase();
-                    const isPreviewImage =
-                      previewType.startsWith("image/") ||
-                      previewSource.startsWith("data:image/") ||
-                      /\.(png|jpe?g|gif|webp|avif|svg)$/.test(previewName);
-                    const category =
-                      document.type?.trim() || "Uncategorized";
+                    const previewType = String(previewFile?.type || "").toLowerCase();
+                    const previewName = String(previewFile?.name || "").toLowerCase();
+                    const category = document.type?.trim() || "Uncategorized";
                     const linkedLabel =
                       document.targetName?.trim() ||
                       document.area?.trim() ||
                       document.targetType?.trim() ||
                       "General";
                     const isSelected = selectedDocument?.id === document.id;
+                    const fileKind =
+                      previewType.includes("pdf") || previewName.endsWith(".pdf")
+                        ? "PDF"
+                        : previewType.startsWith("image/") ||
+                            /\.(png|jpe?g|gif|webp|avif|svg)$/.test(previewName)
+                          ? "Image"
+                          : previewFile
+                            ? "File"
+                            : "Text";
 
                     return (
                       <button
@@ -19774,199 +19815,91 @@ export default function AtlasPage() {
                         }}
                         aria-pressed={isSelected}
                         style={{
-                          position: "relative",
                           display: "grid",
-                          gridTemplateRows: "112px auto",
+                          gridTemplateColumns: "40px minmax(0, 1fr) auto",
+                          alignItems: "center",
+                          gap: 10,
+                          width: "100%",
                           minWidth: 0,
-                          overflow: "hidden",
-                          padding: 0,
-                          border: `1px solid ${
-                            isSelected ? colors.gold : colors.line
-                          }`,
-                          borderRadius: 16,
-                          background: "#FFFFFF",
+                          padding: "10px 11px",
+                          border: `1px solid ${isSelected ? colors.gold : colors.line}`,
+                          borderRadius: 11,
+                          background: isSelected ? "#FFF9EA" : "#FFFFFF",
                           color: colors.text,
                           textAlign: "left",
                           cursor: "pointer",
                           boxShadow: isSelected
-                            ? "0 14px 30px rgba(201,154,61,0.18)"
-                            : "0 7px 20px rgba(15,45,68,0.07)",
-                          transform: isSelected
-                            ? "translateY(-1px)"
-                            : "none",
-                          transition:
-                            "transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
+                            ? "0 7px 18px rgba(201,154,61,0.14)"
+                            : "0 2px 8px rgba(15,45,68,0.04)",
                         }}
                       >
                         <span
+                          aria-hidden="true"
                           style={{
-                            position: "relative",
                             display: "grid",
                             placeItems: "center",
-                            overflow: "hidden",
-                            background:
-                              "linear-gradient(145deg, #EEF4F8, #F8FBFD)",
-                            borderBottom: `1px solid ${colors.line}`,
+                            width: 40,
+                            height: 40,
+                            borderRadius: 9,
+                            background: isSelected ? colors.gold : "#EDF4F8",
+                            color: isSelected ? colors.navy3 : "#175CD3",
+                            fontSize: fileKind === "Image" ? 17 : 9,
+                            fontWeight: 950,
+                            letterSpacing: fileKind === "Image" ? 0 : "0.05em",
                           }}
                         >
-                          {isPreviewImage && previewSource ? (
-                            <img
-                              src={previewSource}
-                              alt=""
-                              loading="lazy"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                                display: "block",
-                              }}
-                            />
-                          ) : (
-                            <span
-                              style={{
-                                display: "grid",
-                                placeItems: "center",
-                                width: 52,
-                                height: 64,
-                                borderRadius: 10,
-                                background: "#FFFFFF",
-                                border: `1px solid ${colors.line}`,
-                                boxShadow:
-                                  "0 10px 24px rgba(15,45,68,0.10)",
-                                color: "#175CD3",
-                                fontSize: 11,
-                                fontWeight: 950,
-                                letterSpacing: "0.08em",
-                              }}
-                            >
-                              {previewName.endsWith(".pdf")
-                                ? "PDF"
-                                : previewFile
-                                  ? "FILE"
-                                  : "TEXT"}
-                            </span>
-                          )}
+                          {fileKind === "Image" ? "▧" : fileKind.toUpperCase()}
+                        </span>
 
-                          <span
+                        <span style={{ minWidth: 0 }}>
+                          <strong
                             style={{
-                              position: "absolute",
-                              top: 9,
-                              left: 9,
-                              maxWidth: "calc(100% - 18px)",
-                              padding: "5px 8px",
+                              display: "block",
                               overflow: "hidden",
-                              borderRadius: 999,
-                              background: "rgba(7, 36, 58, 0.84)",
-                              color: "#FFFFFF",
-                              fontSize: 9,
-                              fontWeight: 900,
+                              color: colors.text,
+                              fontSize: 12,
+                              lineHeight: 1.3,
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap",
-                              backdropFilter: "blur(10px)",
                             }}
                           >
-                            {category}
+                            {document.title || "Untitled document"}
+                          </strong>
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: 3,
+                              overflow: "hidden",
+                              color: colors.muted,
+                              fontSize: 9,
+                              fontWeight: 750,
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {category} · {linkedLabel}
                           </span>
-
-                          {isSelected ? (
-                            <span
-                              style={{
-                                position: "absolute",
-                                top: 9,
-                                right: 9,
-                                display: "grid",
-                                placeItems: "center",
-                                width: 24,
-                                height: 24,
-                                borderRadius: 999,
-                                background: colors.gold,
-                                color: "#102F49",
-                                fontSize: 13,
-                                fontWeight: 950,
-                              }}
-                            >
-                              ✓
-                            </span>
-                          ) : null}
                         </span>
 
                         <span
                           style={{
                             display: "grid",
-                            gap: 7,
-                            minWidth: 0,
-                            padding: 12,
+                            justifyItems: "end",
+                            gap: 3,
+                            color: colors.muted,
+                            fontSize: 8,
+                            fontWeight: 750,
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          <strong
-                            style={{
-                              display: "-webkit-box",
-                              minHeight: 36,
-                              overflow: "hidden",
-                              color: colors.text,
-                              fontSize: 13,
-                              lineHeight: 1.35,
-                              WebkitBoxOrient: "vertical",
-                              WebkitLineClamp: 2,
-                            }}
-                          >
-                            {document.title || "Untitled document"}
-                          </strong>
-
-                          <span
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              minWidth: 0,
-                              color: colors.muted,
-                              fontSize: 10,
-                              fontWeight: 750,
-                            }}
-                          >
-                            <span
-                              aria-hidden="true"
-                              style={{
-                                width: 6,
-                                height: 6,
-                                flex: "0 0 auto",
-                                borderRadius: 999,
-                                background: colors.gold,
-                              }}
-                            />
-                            <span
-                              style={{
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {linkedLabel}
-                            </span>
+                          <span>
+                            {document.files?.length || 0} file
+                            {(document.files?.length || 0) === 1 ? "" : "s"}
                           </span>
-
-                          <span
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 8,
-                              color: colors.muted,
-                              fontSize: 9,
-                              fontWeight: 700,
-                            }}
-                          >
-                            <span>
-                              {document.files?.length || 0} file
-                              {(document.files?.length || 0) === 1 ? "" : "s"}
-                            </span>
-                            <span>
-                              {document.createdAt
-                                ? new Date(
-                                    document.createdAt,
-                                  ).toLocaleDateString()
-                                : "Saved"}
-                            </span>
+                          <span>
+                            {document.createdAt
+                              ? new Date(document.createdAt).toLocaleDateString()
+                              : "Saved"}
                           </span>
                         </span>
                       </button>
