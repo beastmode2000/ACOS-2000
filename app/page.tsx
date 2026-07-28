@@ -18545,6 +18545,9 @@ export default function AtlasPage() {
           detail="Find documents by title, category, or linked property record. Select a preview card to view and edit it."
           isMobile={isMobile}
           drawerResetKey={selectedDocumentId || "document-new"}
+          gridStyleOverride={!isMobile && !selectedDocument ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}
+          listPanelStyleOverride={!isMobile && !selectedDocument ? { width: "100%", maxWidth: "none" } : undefined}
+          drawerStyleOverride={!isMobile && !selectedDocument ? { display: "none" } : undefined}
           right={
             <>
               <button
