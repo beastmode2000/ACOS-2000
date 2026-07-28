@@ -1449,6 +1449,7 @@ function normalizeDocument(record: Partial<DocumentRecord>): DocumentRecord {
   const targetType = (record.targetType || "General") as IntakeTargetKind;
 
   return {
+    propertyId: String(record.propertyId || "2000"),
     id: String(record.id || uid("doc")),
     title,
     area: String(record.area || record.targetName || "General"),
@@ -6170,7 +6171,7 @@ export default function AtlasPage() {
   }, [q, workLinks]);
 
   const allDocuments = useMemo(
-    () => [...documents, ...intakeDocs],
+    () => mergeDocuments(documents, intakeDocs),
     [documents, intakeDocs],
   );
 
@@ -7979,6 +7980,7 @@ export default function AtlasPage() {
       }
 
       const record: DocumentRecord = {
+        propertyId: activePropertyId,
         id: uid("doc"),
         title,
         area: finalTargetName,
@@ -7995,38 +7997,55 @@ export default function AtlasPage() {
         createdAt: new Date().toISOString(),
       };
 
-      const nextDocs = mergeDocuments([record], intakeDocs);
-      setIntakeDocs(nextDocs);
-      setSelectedDocumentId("");
-      saveStoredArray(storageKeys.intakeDocs[0], nextDocs);
+      const normalizedRecord = normalizeDocument({
+        ...record,
+        propertyId: activePropertyId,
+      });
+
+      replaceDocumentInVault(normalizedRecord);
+      setSelectedDocumentId(normalizedRecord.id);
 
       let syncedToVault = false;
       try {
-        await postDocumentToAtlasVault(record);
+        const payload = await postDocumentToAtlasVault(normalizedRecord);
+        const savedRecord = payload?.document || payload?.record;
+        if (savedRecord) {
+          replaceDocumentInVault(
+            normalizeDocument({
+              ...savedRecord,
+              propertyId: activePropertyId,
+            }),
+          );
+        }
         syncedToVault = true;
         setDocumentSyncStatus(
           "Fast Intake synced to the Atlas Document Vault.",
         );
-      } catch {
+      } catch (error) {
         setDocumentSyncStatus(
-          "Fast Intake saved on this browser, but document-vault sync failed.",
+          error instanceof Error
+            ? `Fast Intake saved locally, but vault sync failed: ${error.message}`
+            : "Fast Intake saved locally, but document-vault sync failed.",
         );
       }
 
-      if (record.targetType === "Asset" && record.targetId) {
-        const imageFiles = (record.files || []).filter(
-          (file) => (file.type || "").startsWith("image/") && file.dataUrl,
+      if (normalizedRecord.targetType === "Asset" && normalizedRecord.targetId) {
+        const imageFiles = (normalizedRecord.files || []).filter(
+          (file) =>
+            (file.type || "").startsWith("image/") &&
+            Boolean(file.url || file.dataUrl),
         );
         const imagePhotos: PhotoRecord[] = imageFiles.map((file, index) => ({
-            id: uid("photo"),
-            assetId: record.targetId || "",
-            name:
-              imageFiles.length > 1
-                ? `${record.title} ${index + 1}`
-                : record.title,
-            dataUrl: file.dataUrl,
-            createdAt: file.createdAt || new Date().toISOString(),
-          }));
+          id: uid("photo"),
+          assetId: normalizedRecord.targetId || "",
+          name:
+            imageFiles.length > 1
+              ? `${normalizedRecord.title} ${index + 1}`
+              : normalizedRecord.title,
+          dataUrl: file.dataUrl || undefined,
+          url: file.url || undefined,
+          createdAt: file.createdAt || new Date().toISOString(),
+        }));
 
         if (imagePhotos.length) {
           await cachePhotoRecords(imagePhotos);
@@ -8047,6 +8066,8 @@ export default function AtlasPage() {
       resetIntakeDraft();
       setIntakeMessage(success);
       setDocumentSearch("");
+      setSelectedDocumentId(normalizedRecord.id);
+      setScreen("documents");
       if (finalTargetKind === "Asset" && finalTargetId) {
         showSaveToast(`${title} was saved to ${finalTargetName}.`);
         openSavedAsset(finalTargetId);
