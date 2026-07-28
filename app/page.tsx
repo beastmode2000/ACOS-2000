@@ -26050,6 +26050,147 @@ export default function AtlasPage() {
         .atlas-dashboard-kpi,.atlas-dashboard-status-card{position:relative;overflow:visible!important;transition:transform .17s cubic-bezier(.2,.8,.2,1),border-color .17s,box-shadow .17s,background .17s!important}.atlas-dashboard-kpi:hover,.atlas-dashboard-kpi:focus-visible,.atlas-dashboard-status-card:hover,.atlas-dashboard-status-card:focus-visible{z-index:85;border-color:rgba(201,154,61,.82)!important;background:#fff!important;box-shadow:0 16px 34px rgba(10,35,56,.14),0 0 0 3px rgba(201,154,61,.09)!important;transform:translateY(-3px)!important;outline:none}.atlas-dashboard-kpi::after{content:none!important;display:none!important;animation:none!important}
         .atlas-dashboard-info-popover,.atlas-gold-hover-popover{width:min(310px,calc(100vw - 34px))!important;min-width:230px;padding:14px 15px!important;border:1px solid rgba(242,213,138,.82)!important;border-radius:14px!important;background:#0B2A43!important;color:#fff!important;box-shadow:0 24px 58px rgba(6,24,39,.36)!important;text-align:left!important}.atlas-dashboard-info-popover strong,.atlas-gold-hover-popover>strong{color:#F2D58A!important;font-size:13px!important;line-height:1.35!important}.atlas-dashboard-info-popover span,.atlas-gold-hover-popover>span{color:#EEF4F8!important;font-size:12px!important;line-height:1.48!important}.atlas-weather-day .atlas-gold-hover-popover{left:50%!important;right:auto!important;top:calc(100% + 10px)!important;transform:translate(-50%,5px) scale(.985)!important}.atlas-weather-day:hover .atlas-gold-hover-popover,.atlas-weather-day:focus-visible .atlas-gold-hover-popover{opacity:1;transform:translate(-50%,0) scale(1)!important}
         @media(max-width:1120px){.atlas-weather-overview{grid-template-columns:1fr}.atlas-weather-days{grid-template-columns:repeat(7,minmax(145px,1fr));overflow-x:auto;padding-bottom:20px}}@media(max-width:720px){.atlas-weather-overview{padding:20px 16px 16px}.atlas-weather-operations{grid-template-columns:1fr}.atlas-weather-days{grid-template-columns:repeat(7,150px);padding-left:12px;padding-right:12px}}@media(hover:none),(pointer:coarse){.atlas-weather-day .atlas-gold-hover-popover{display:none}}
+
+        /* Mobile layout containment: prevent desktop-sized children from widening the phone page. */
+        @media (max-width: 819px) {
+          html, body, #__next {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+          }
+          .atlas-app-shell,
+          .atlas-mobile-page,
+          .atlas-mobile-content,
+          .atlas-mobile-content > *,
+          .atlas-mobile-content section,
+          .atlas-mobile-content article,
+          .atlas-mobile-content aside,
+          .atlas-mobile-content header,
+          .atlas-mobile-content footer,
+          .atlas-mobile-content form,
+          .atlas-mobile-content div {
+            min-width: 0 !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          .atlas-mobile-page {
+            grid-column: 1 / -1 !important;
+            overflow: hidden !important;
+          }
+          .atlas-mobile-content {
+            width: 100% !important;
+            overflow-x: hidden !important;
+          }
+          .atlas-mobile-content > div {
+            width: 100% !important;
+            padding: 8px !important;
+            border-radius: 20px !important;
+          }
+          .atlas-mobile-content img,
+          .atlas-mobile-content video,
+          .atlas-mobile-content iframe,
+          .atlas-mobile-content canvas,
+          .atlas-mobile-content svg {
+            max-width: 100% !important;
+          }
+          .atlas-mobile-content input,
+          .atlas-mobile-content select,
+          .atlas-mobile-content textarea,
+          .atlas-mobile-content button {
+            min-width: 0 !important;
+            max-width: 100% !important;
+          }
+          .atlas-mobile-content button,
+          .atlas-mobile-content h1,
+          .atlas-mobile-content h2,
+          .atlas-mobile-content h3,
+          .atlas-mobile-content h4,
+          .atlas-mobile-content p,
+          .atlas-mobile-content strong,
+          .atlas-mobile-content span,
+          .atlas-mobile-content small,
+          .atlas-mobile-content label {
+            overflow-wrap: anywhere;
+            word-break: normal;
+          }
+          .atlas-mobile-content button {
+            white-space: normal !important;
+          }
+          .atlas-command-dashboard {
+            width: 100% !important;
+            gap: 10px !important;
+          }
+          .atlas-command-dashboard > section,
+          .atlas-command-dashboard > div,
+          .atlas-dashboard-hero {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+            border-radius: 16px !important;
+          }
+          .atlas-dashboard-hero {
+            padding: 15px !important;
+          }
+          .atlas-dashboard-hero h1 {
+            font-size: clamp(25px, 8vw, 32px) !important;
+            overflow-wrap: anywhere;
+          }
+          .atlas-dashboard-command {
+            width: 100% !important;
+            padding: 13px 42px 13px 13px !important;
+          }
+          .atlas-dashboard-command strong {
+            font-size: clamp(18px, 5.6vw, 24px) !important;
+            line-height: 1.15 !important;
+          }
+          .atlas-dashboard-command span {
+            font-size: clamp(13px, 4.1vw, 17px) !important;
+            line-height: 1.3 !important;
+          }
+          .atlas-dashboard-kpi,
+          .atlas-dashboard-status-card {
+            overflow: hidden !important;
+          }
+          .atlas-weather-experience {
+            border-radius: 17px !important;
+            overflow: hidden !important;
+          }
+          .atlas-weather-overview {
+            padding: 16px 13px 13px !important;
+          }
+          .atlas-weather-current-row {
+            gap: 11px !important;
+          }
+          .atlas-weather-current-glyph {
+            width: 58px !important;
+            height: 58px !important;
+            flex: 0 0 58px !important;
+          }
+          .atlas-weather-current-temp {
+            font-size: 48px !important;
+          }
+          .atlas-weather-days,
+          .atlas-dashboard-weather-grid,
+          .atlas-dashboard-weather-strip {
+            width: 100% !important;
+            max-width: 100% !important;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
+          }
+          .atlas-mobile-header {
+            position: relative !important;
+            top: auto !important;
+          }
+          .atlas-page-header {
+            width: 100% !important;
+            padding-left: 12px !important;
+            padding-right: 12px !important;
+          }
+          .atlas-page-header h1 {
+            font-size: clamp(20px, 6.4vw, 27px) !important;
+            line-height: 1.1 !important;
+          }
+        }
       `}</style>
       <div
         className={`atlas-app-shell ${sidebarCollapsed ? "atlas-sidebar-is-collapsed" : ""}`}
@@ -26067,6 +26208,7 @@ export default function AtlasPage() {
         }}
       >
         <aside
+          className={isMobile ? "atlas-mobile-header" : "atlas-desktop-sidebar"}
           style={
             isMobile
               ? mobileHeaderShellStyle
@@ -26199,13 +26341,14 @@ export default function AtlasPage() {
         </aside>
 
         <section
+          className={isMobile ? "atlas-mobile-page" : "atlas-desktop-page"}
           style={{
             gridColumn: isMobile ? "1 / 2" : "2 / 3",
             minWidth: 0,
             width: "100%",
             maxWidth: isMobile ? "100vw" : "none",
             overflowX: isMobile ? "hidden" : "visible",
-            paddingBottom: isMobile ? 84 : 0,
+            paddingBottom: isMobile ? 112 : 0,
           }}
         >
           <header className="atlas-page-header" style={isMobile ? mobileTopbarStyle : topbarStyle}>
@@ -26518,7 +26661,7 @@ export default function AtlasPage() {
             </div>
           </header>
 
-          <div style={isMobile ? mobileContentStyle : desktopContentStyle}>
+          <div className={isMobile ? "atlas-mobile-content" : "atlas-desktop-content"} style={isMobile ? mobileContentStyle : desktopContentStyle}>
             {renderScreen()}
           </div>
         </section>
@@ -26534,7 +26677,7 @@ export default function AtlasPage() {
             style={{
               position: "fixed",
               right: isMobile ? 16 : 24,
-              bottom: isMobile ? 16 : 24,
+              bottom: isMobile ? 96 : 24,
               zIndex: 120,
               width: isMobile ? 54 : 58,
               height: isMobile ? 54 : 58,
@@ -27242,7 +27385,7 @@ const mobilePageTitleStyle: React.CSSProperties = {
 };
 
 const mobileContentStyle: React.CSSProperties = {
-  padding: "12px 10px 94px",
+  padding: "10px 8px calc(118px + env(safe-area-inset-bottom))",
   width: "100%",
   maxWidth: "100vw",
   overflowX: "hidden",
@@ -27253,7 +27396,7 @@ const mobileBottomNavStyle: React.CSSProperties = {
   position: "fixed",
   left: 8,
   right: 8,
-  bottom: 10,
+  bottom: "calc(8px + env(safe-area-inset-bottom))",
   maxWidth: "calc(100vw - 16px)",
   boxSizing: "border-box",
   zIndex: 60,
