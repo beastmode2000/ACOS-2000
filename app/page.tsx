@@ -7,7 +7,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { upload } from "@vercel/blob/client";
 import AtlasCalendar from "./components/AtlasCalendar";
 import AtlasRoutines from "./components/AtlasRoutines";
 import AtlasTeamWork from "./components/AtlasTeamWork";
@@ -1449,7 +1448,6 @@ function normalizeDocument(record: Partial<DocumentRecord>): DocumentRecord {
   const targetType = (record.targetType || "General") as IntakeTargetKind;
 
   return {
-    propertyId: String(record.propertyId || "2000"),
     id: String(record.id || uid("doc")),
     title,
     area: String(record.area || record.targetName || "General"),
@@ -3710,7 +3708,6 @@ export default function AtlasPage() {
   const [syncState, setSyncState] = useState<
     "loading" | "synced" | "offline"
   >("loading");
-  const [showPropertyLoading, setShowPropertyLoading] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -3829,7 +3826,6 @@ export default function AtlasPage() {
   );
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [requestPortalToken, setRequestPortalToken] = useState("");
-  const [marineRequestPortalToken, setMarineRequestPortalToken] = useState("");
   const [requestMessage, setRequestMessage] = useState("Loading requests...");
   const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
   const [todayLogEntries, setTodayLogEntries] = useState<TodayLogEntry[]>([]);
@@ -3943,8 +3939,6 @@ export default function AtlasPage() {
   const [documentLinkFilter, setDocumentLinkFilter] = useState("All");
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
-  const [blueprintPage, setBlueprintPage] = useState(1);
-  const [openBlueprintSection, setOpenBlueprintSection] = useState<string | null>(null);
   const documentListScrollYRef = useRef(0);
   const documentOverlayScrollRef = useRef<HTMLDivElement>(null);
   const intakePhotoNameRef = useRef<HTMLInputElement>(null);
@@ -4213,7 +4207,6 @@ export default function AtlasPage() {
   function selectProperty(propertyId: string) {
     if (propertyId === activePropertyId) return;
 
-    setShowPropertyLoading(true);
     setActivePropertyId(propertyId);
 
     setSelectedLocationId("");
@@ -4870,7 +4863,6 @@ export default function AtlasPage() {
           `Atlas loaded: ${nextAssets.length} assets, ${nextVendors.length} vendors, ${nextServices.length} work orders.`,
         );
         setSyncState("synced");
-        setShowPropertyLoading(false);
         setLastSyncedAt(
           new Intl.DateTimeFormat(undefined, {
             hour: "numeric",
@@ -4880,7 +4872,6 @@ export default function AtlasPage() {
       } catch {
         if (!cancelled) {
           setSyncState("offline");
-          setShowPropertyLoading(false);
           setDatabaseStatus(
             "Using saved browser records / fallback records. /api/atlas did not load.",
           );
@@ -4958,7 +4949,6 @@ export default function AtlasPage() {
           saveStoredArray(storageKeys.calendar[0], next);
         }
         setSyncState("synced");
-        setShowPropertyLoading(false);
         setLastSyncedAt(
           new Intl.DateTimeFormat(undefined, {
             hour: "numeric",
@@ -4967,10 +4957,7 @@ export default function AtlasPage() {
         );
       } catch {
         // Keep the current calendar visible if the shared API is unavailable.
-        if (!cancelled) {
-          setSyncState("offline");
-          setShowPropertyLoading(false);
-        }
+        if (!cancelled) setSyncState("offline");
       } finally {
         running = false;
       }
@@ -5099,12 +5086,6 @@ export default function AtlasPage() {
         });
         setRequestRecords(next);
         setRequestPortalToken(String(payload.portalToken || ""));
-        setMarineRequestPortalToken(
-          String(
-            payload.marinePortalToken ||
-              (payload.portalToken ? `marine-${payload.portalToken}` : ""),
-          ),
-        );
         setSelectedRequestId((current) =>
           next.some((item: OwnerRequestRecord) => item.id === current)
             ? current
@@ -6171,7 +6152,7 @@ export default function AtlasPage() {
   }, [q, workLinks]);
 
   const allDocuments = useMemo(
-    () => mergeDocuments(documents, intakeDocs),
+    () => [...documents, ...intakeDocs],
     [documents, intakeDocs],
   );
 
@@ -6924,33 +6905,8 @@ export default function AtlasPage() {
     if (!files.length) return;
 
     try {
-      setIntakeMessage("Uploading file(s) securely to Atlas storage...");
-
-      const uploaded: UploadedFileRecord[] = [];
-
-      for (const file of files) {
-        const safeName = (file.name || "document")
-          .replace(/[^a-zA-Z0-9._-]+/g, "-")
-          .replace(/-+/g, "-")
-          .replace(/^-|-$/g, "");
-        const pathname = `atlas-documents/${activePropertyId}/${Date.now()}-${safeName || "document"}`;
-
-        const blob = await upload(pathname, file, {
-          access: "public",
-          handleUploadUrl: "/api/atlas-document-upload",
-          multipart: file.size > 20 * 1024 * 1024,
-          contentType: file.type || undefined,
-        });
-
-        uploaded.push({
-          id: uid("upload"),
-          name: file.name || "Uploaded file",
-          type: file.type || blob.contentType || "application/octet-stream",
-          url: blob.url,
-          createdAt: new Date().toISOString(),
-        });
-      }
-
+      setIntakeMessage("Adding file(s) to intake...");
+      const uploaded = await Promise.all(files.map(fileToUploadedRecord));
       setIntakeFiles((current) => [...current, ...uploaded]);
       setIntakeTitle((current) => {
         if (current) return current;
@@ -6958,72 +6914,16 @@ export default function AtlasPage() {
         if ((first?.type || "").startsWith("image/")) return "";
         return first?.name?.replace(/\.[^.]+$/, "") || "New Document";
       });
-      setIntakeMessage(`${uploaded.length} file(s) uploaded and ready to save into Atlas.`);
-    } catch (error) {
+      setIntakeMessage(`${uploaded.length} file(s) ready to save into Atlas.`);
+    } catch {
       setIntakeMessage(
-        error instanceof Error
-          ? `Atlas upload failed: ${error.message}`
-          : "Atlas could not upload that file.",
+        "Atlas could not read that file. Try a photo, screenshot, PDF, or smaller file.",
       );
     }
   }
 
   function removeIntakeFile(id: string) {
     setIntakeFiles((current) => current.filter((file) => file.id !== id));
-  }
-
-  function persistentFileSource(file?: UploadedFileRecord | null, fallback = "") {
-    return String(file?.url || file?.dataUrl || fallback || "").trim();
-  }
-
-  function openFileInBrowser(file?: UploadedFileRecord | null, fallback = "") {
-    const source = persistentFileSource(file, fallback);
-
-    if (!source || source === "blocked" || source.includes("about:blank#blocked")) {
-      setIntakeMessage("Atlas found the document record, but no usable file URL is saved.");
-      return;
-    }
-
-    try {
-      let openUrl = source;
-      let temporaryObjectUrl = "";
-
-      if (source.startsWith("data:")) {
-        const commaIndex = source.indexOf(",");
-        if (commaIndex < 0) throw new Error("Invalid file data");
-
-        const metadata = source.slice(5, commaIndex);
-        const encoded = source.slice(commaIndex + 1);
-        const mimeType = metadata.split(";")[0] || file?.type || "application/octet-stream";
-        const isBase64 = metadata.toLowerCase().includes(";base64");
-        const binary = isBase64 ? atob(encoded) : decodeURIComponent(encoded);
-        const bytes = new Uint8Array(binary.length);
-
-        for (let index = 0; index < binary.length; index += 1) {
-          bytes[index] = binary.charCodeAt(index);
-        }
-
-        temporaryObjectUrl = URL.createObjectURL(
-          new Blob([bytes], { type: mimeType }),
-        );
-        openUrl = temporaryObjectUrl;
-      }
-
-      const opened = window.open(openUrl, "_blank");
-      if (!opened) {
-        if (temporaryObjectUrl) URL.revokeObjectURL(temporaryObjectUrl);
-        setIntakeMessage("Your browser blocked the PDF tab. Allow pop-ups for Atlas and try again.");
-        return;
-      }
-
-      opened.opener = null;
-      if (temporaryObjectUrl) {
-        window.setTimeout(() => URL.revokeObjectURL(temporaryObjectUrl), 60_000);
-      }
-    } catch (error) {
-      console.warn("Atlas could not open the saved file.", error);
-      setIntakeMessage("Atlas could not open that saved PDF. The file record may need to be re-saved.");
-    }
   }
 
   function openUploadedFile(file: UploadedFileRecord) {
@@ -7980,7 +7880,6 @@ export default function AtlasPage() {
       }
 
       const record: DocumentRecord = {
-        propertyId: activePropertyId,
         id: uid("doc"),
         title,
         area: finalTargetName,
@@ -7997,55 +7896,38 @@ export default function AtlasPage() {
         createdAt: new Date().toISOString(),
       };
 
-      const normalizedRecord = normalizeDocument({
-        ...record,
-        propertyId: activePropertyId,
-      });
-
-      replaceDocumentInVault(normalizedRecord);
-      setSelectedDocumentId(normalizedRecord.id);
+      const nextDocs = mergeDocuments([record], intakeDocs);
+      setIntakeDocs(nextDocs);
+      setSelectedDocumentId("");
+      saveStoredArray(storageKeys.intakeDocs[0], nextDocs);
 
       let syncedToVault = false;
       try {
-        const payload = await postDocumentToAtlasVault(normalizedRecord);
-        const savedRecord = payload?.document || payload?.record;
-        if (savedRecord) {
-          replaceDocumentInVault(
-            normalizeDocument({
-              ...savedRecord,
-              propertyId: activePropertyId,
-            }),
-          );
-        }
+        await postDocumentToAtlasVault(record);
         syncedToVault = true;
         setDocumentSyncStatus(
           "Fast Intake synced to the Atlas Document Vault.",
         );
-      } catch (error) {
+      } catch {
         setDocumentSyncStatus(
-          error instanceof Error
-            ? `Fast Intake saved locally, but vault sync failed: ${error.message}`
-            : "Fast Intake saved locally, but document-vault sync failed.",
+          "Fast Intake saved on this browser, but document-vault sync failed.",
         );
       }
 
-      if (normalizedRecord.targetType === "Asset" && normalizedRecord.targetId) {
-        const imageFiles = (normalizedRecord.files || []).filter(
-          (file) =>
-            (file.type || "").startsWith("image/") &&
-            Boolean(file.url || file.dataUrl),
+      if (record.targetType === "Asset" && record.targetId) {
+        const imageFiles = (record.files || []).filter(
+          (file) => (file.type || "").startsWith("image/") && file.dataUrl,
         );
         const imagePhotos: PhotoRecord[] = imageFiles.map((file, index) => ({
-          id: uid("photo"),
-          assetId: normalizedRecord.targetId || "",
-          name:
-            imageFiles.length > 1
-              ? `${normalizedRecord.title} ${index + 1}`
-              : normalizedRecord.title,
-          dataUrl: file.dataUrl || undefined,
-          url: file.url || undefined,
-          createdAt: file.createdAt || new Date().toISOString(),
-        }));
+            id: uid("photo"),
+            assetId: record.targetId || "",
+            name:
+              imageFiles.length > 1
+                ? `${record.title} ${index + 1}`
+                : record.title,
+            dataUrl: file.dataUrl,
+            createdAt: file.createdAt || new Date().toISOString(),
+          }));
 
         if (imagePhotos.length) {
           await cachePhotoRecords(imagePhotos);
@@ -8066,8 +7948,6 @@ export default function AtlasPage() {
       resetIntakeDraft();
       setIntakeMessage(success);
       setDocumentSearch("");
-      setSelectedDocumentId(normalizedRecord.id);
-      setScreen("documents");
       if (finalTargetKind === "Asset" && finalTargetId) {
         showSaveToast(`${title} was saved to ${finalTargetName}.`);
         openSavedAsset(finalTargetId);
@@ -12645,12 +12525,12 @@ export default function AtlasPage() {
     ];
 
     return (
-      <div className="atlas-command-dashboard" style={{ display: "grid", gap: isMobile ? 10 : 11 }}>
+      <div className="atlas-command-dashboard" style={{ display: "grid", gap: 14 }}>
         <section
           className="atlas-dashboard-hero"
           style={{
             ...commandCardStyle,
-            padding: isMobile ? "13px 14px" : "15px 20px",
+            padding: isMobile ? 16 : 22,
             background: `linear-gradient(135deg, ${colors.navy} 0%, #173B59 72%, #244E6E 100%)`,
             color: "#FFFFFF",
             border: 0,
@@ -12661,21 +12541,21 @@ export default function AtlasPage() {
               display: "flex",
               alignItems: "flex-start",
               justifyContent: "space-between",
-              gap: isMobile ? 10 : 14,
+              gap: 16,
               flexWrap: "wrap",
             }}
           >
             <div>
-              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.11em", textTransform: "uppercase", color: colors.gold2 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: colors.gold2 }}>
                 Atlas Command Center
               </div>
               <div className="atlas-dashboard-greeting">
                 Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}, Nick.
               </div>
-              <h1 style={{ margin: "2px 0 2px", fontSize: isMobile ? 25 : 31, lineHeight: 1.02 }}>
+              <h1 style={{ margin: "5px 0 5px", fontSize: isMobile ? 27 : 36, lineHeight: 1.05 }}>
                 {activeProperty?.name || "Atlas"} Operations
               </h1>
-              <div style={{ opacity: 0.82, fontSize: isMobile ? 12 : 13 }}>
+              <div style={{ opacity: 0.82, fontSize: 14 }}>
                 {new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
                   weekday: "long",
                   month: "long",
@@ -12687,9 +12567,9 @@ export default function AtlasPage() {
               </div>
             </div>
             <div style={{ textAlign: isMobile ? "left" : "right" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.78 }}>Estate Health</div>
-              <div style={{ fontSize: isMobile ? 29 : 36, fontWeight: 950, lineHeight: 1 }}>{estateHealth}%</div>
-              <div style={{ marginTop: 5, width: isMobile ? 150 : 190, height: 6, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.78 }}>Estate Health</div>
+              <div style={{ fontSize: isMobile ? 34 : 44, fontWeight: 950, lineHeight: 1 }}>{estateHealth}%</div>
+              <div style={{ marginTop: 7, width: isMobile ? 180 : 220, height: 8, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
                 <div
                   className="atlas-dashboard-health-fill"
                   style={{ width: `${estateHealth}%`, height: "100%", background: colors.gold2, borderRadius: 999 }}
@@ -12710,21 +12590,21 @@ export default function AtlasPage() {
               );
             }}
             style={{
-              marginTop: 11,
+              marginTop: 18,
               width: "100%",
-              minHeight: isMobile ? 42 : 43,
-              borderRadius: 12,
+              minHeight: 48,
+              borderRadius: 14,
               border: "1px solid rgba(255,255,255,0.28)",
               background: "rgba(255,255,255,0.10)",
               color: "#FFFFFF",
-              padding: "8px 12px",
+              padding: "11px 14px",
               textAlign: "left",
               font: "inherit",
               cursor: "pointer",
             }}
           >
-            <strong style={{ fontSize: isMobile ? 13 : 14 }}>Ask Atlas or run a command…</strong>
-            <span style={{ display: "block", marginTop: 1, opacity: 0.72, fontSize: 11 }}>
+            <strong>Ask Atlas or run a command…</strong>
+            <span style={{ display: "block", marginTop: 2, opacity: 0.72, fontSize: 12 }}>
               Search records, plan today, create work, or open any part of the property.
             </span>
           </button>
@@ -12742,27 +12622,11 @@ export default function AtlasPage() {
               type="button"
               className="atlas-dashboard-kpi"
               onClick={() => setScreen(item.screen)}
-              style={{
-                ...commandCardStyle,
-                minHeight: 0,
-                padding: isMobile ? "10px 11px" : "11px 14px",
-                borderRadius: 14,
-                textAlign: "left",
-                cursor: "pointer",
-                color: colors.text,
-              }}
+              style={{ ...commandCardStyle, textAlign: "left", cursor: "pointer", color: colors.text }}
             >
               <div style={{ ...mutedSmallStyle, fontWeight: 800 }}>{item.label}</div>
-              <div
-                style={{
-                  ...statValueStyle,
-                  marginTop: 3,
-                  fontSize: isMobile ? 22 : 27,
-                }}
-              >
-                {item.value}
-              </div>
-              <div style={{ ...mutedSmallStyle, marginTop: 4 }}>{item.detail}</div>
+              <div style={statValueStyle}>{item.value}</div>
+              <div style={{ ...mutedSmallStyle, marginTop: 7 }}>{item.detail}</div>
               <span className="atlas-dashboard-info-popover" aria-hidden="true">
                 <strong>{item.label}</strong>
                 <span>{item.detail}</span>
@@ -13013,13 +12877,68 @@ export default function AtlasPage() {
           </div>
 
           <aside style={{ display: "grid", gap: 14 }}>
-            <div id="atlas-today-routine">
-              <AtlasRoutines
-                mode="dashboard"
-                isMobile={isMobile}
-                onOpenManager={() => setScreen("routines")}
-              />
-            </div>
+            <section id="atlas-today-routine" style={{ ...commandCardStyle, overflow: "visible" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+                <div>
+                  <div style={eyebrowStyle}>Daily Checklist</div>
+                  <h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today Routine</h2>
+                  <p style={{ ...mutedSmallStyle, marginTop: 4 }}>Check off recurring work without leaving the dashboard.</p>
+                </div>
+                <button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}>
+                  Open
+                </button>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <strong style={{ color: colors.navy }}>{completedRoutineCount} of {scheduledRoutineIds.length} complete</strong>
+                <span style={{ ...mutedSmallStyle, fontWeight: 900 }}>{routineProgress}%</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 999, background: "#E8EDF3", overflow: "hidden", marginBottom: 12 }}>
+                <div style={{ width: `${routineProgress}%`, height: "100%", borderRadius: 999, background: colors.gold, transition: "width 180ms ease" }} />
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {visibleRoutineItems.slice(0, 8).map((item) => {
+                  const routineId = item.id;
+                  const completed = completedDashboardRoutineIds.includes(routineId);
+                  return (
+                    <label
+                      key={`dashboard-routine-${routineId}`}
+                      className="atlas-gold-hover-card"
+                      style={{ display: "grid", gridTemplateColumns: "28px minmax(0, 1fr) auto", alignItems: "center", gap: 9, border: `1px solid ${completed ? "#B7E4CC" : colors.line}`, borderRadius: 12, background: completed ? "#F0FDF4" : "#FFFBEB", padding: "10px 11px", cursor: "pointer", position: "relative" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={completed}
+                        onChange={() => setCompletedDashboardRoutineIds((current) =>
+                          current.includes(routineId)
+                            ? current.filter((id) => id !== routineId)
+                            : [...current, routineId],
+                        )}
+                        aria-label={`Mark ${item.title} ${completed ? "incomplete" : "complete"}`}
+                        style={{ width: 18, height: 18, accentColor: colors.gold, cursor: "pointer" }}
+                      />
+                      <span style={{ minWidth: 0, opacity: completed ? 0.58 : 1 }}>
+                        <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: completed ? "line-through" : "none" }}>{item.title}</strong>
+                        <small style={mutedSmallStyle}>{item.detail}</small>
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 900, color: colors.navy }}>{item.time || ""}</span>
+                      <span className="atlas-dashboard-info-popover" aria-hidden="true">
+                        <strong>{item.title}</strong>
+                        <span>{item.detail}</span>
+                        <span>{completed ? "Completed for today. Uncheck to reopen it." : "Check this item when today’s routine work is finished."}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+                {!visibleRoutineItems.length ? <div style={{ ...noticeStyle, padding: 11 }}>No saved routine checklist was found. Open Routines once, then return to the dashboard.</div> : null}
+              </div>
+              {visibleRoutineItems.length > 8 ? (
+                <button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 10 }}>
+                  View all {visibleRoutineItems.length} routine items
+                </button>
+              ) : null}
+            </section>
 
             <section style={{ ...commandCardStyle, background: "#F8FAFC" }}>
               <div style={eyebrowStyle}>Atlas Brief</div>
@@ -15065,38 +14984,34 @@ export default function AtlasPage() {
       (total, record) => total + Math.max(0, Number(record.estimatedCost || 0)),
       0,
     );
-    const assetConditionLabel =
-      selectedAsset.status === "Online"
-        ? "Operational"
-        : selectedAsset.status === "Offline"
-          ? "Out of Service"
-          : selectedAsset.status === "Seasonal"
-            ? "Seasonal"
-            : "Not Assessed";
-
-    const assetConditionBadge =
-      selectedAsset.status === "Online"
-        ? "Online"
-        : selectedAsset.status === "Offline"
-          ? "Offline"
-          : selectedAsset.status === "Seasonal"
-            ? "Seasonal"
-            : "Monitor";
-
-    const assetSetupItems = [
-      !selectedAsset.locationId || selectedAsset.locationId === "general"
-        ? "Assign a primary location"
-        : "",
-      !selectedAsset.serial ? "Add serial / VIN / HIN" : "",
-      !selectedAsset.vendorIds.length ? "Select a preferred vendor" : "",
-      !attachedManuals.length ? "Attach a manual" : "",
-      !linkedAssetProcedures.length ? "Link a procedure" : "",
-    ].filter(Boolean);
-
-    const assetSetupCompleted = 5 - assetSetupItems.length;
-
-    const assetServiceIssues = [
-      selectedAsset.status === "Offline" ? "Asset is marked out of service" : "",
+    const assetHealthScore = Math.max(
+      0,
+      Math.min(
+        100,
+        100 -
+          overdueAssetWorkOrders.length * 18 -
+          highPriorityAssetWorkOrders.length * 10 -
+          (selectedAsset.status === "Offline" ? 35 : 0) -
+          (selectedAsset.status === "Monitor" ? 10 : 0) -
+          (!selectedAsset.locationId ? 8 : 0) -
+          (!selectedAsset.serial ? 4 : 0) -
+          (!selectedAsset.vendorIds.length ? 5 : 0) -
+          (!attachedManuals.length ? 5 : 0) -
+          (!linkedAssetProcedures.length ? 5 : 0),
+      ),
+    );
+    const assetHealthLabel =
+      assetHealthScore >= 85
+        ? "Healthy"
+        : assetHealthScore >= 65
+          ? "Monitor"
+          : "Attention";
+    const assetWarnings = [
+      !selectedAsset.locationId ? "No primary location" : "",
+      !selectedAsset.serial ? "Serial / VIN / HIN is missing" : "",
+      !selectedAsset.vendorIds.length ? "No preferred vendor" : "",
+      !attachedManuals.length ? "No manual attached" : "",
+      !linkedAssetProcedures.length ? "No procedure attached" : "",
       overdueAssetWorkOrders.length
         ? `${overdueAssetWorkOrders.length} overdue work order${overdueAssetWorkOrders.length === 1 ? "" : "s"}`
         : "",
@@ -15242,14 +15157,7 @@ export default function AtlasPage() {
                           cursor: "pointer",
                         }}
                       >
-                        {enabled ? "✓ " : ""}
-                        {status === "Online"
-                          ? "Operational"
-                          : status === "Offline"
-                            ? "Out of Service"
-                            : status === "Monitor"
-                              ? "Not Assessed"
-                              : status}
+                        {enabled ? "✓ " : ""}{status}
                       </button>
                     );
                   })}
@@ -15342,60 +15250,11 @@ export default function AtlasPage() {
                   document.linkedAssetId === asset.id ||
                   (document.targetType === "Asset" && document.targetId === asset.id),
               ).length;
-              const assetConditionLabel =
-                asset.status === "Online"
-                  ? "Operational"
-                  : asset.status === "Offline"
-                    ? "Out of Service"
-                    : asset.status === "Seasonal"
-                      ? "Seasonal"
-                      : "Not Assessed";
-              const assetConditionTone =
-                asset.status === "Online"
-                  ? "Online"
-                  : asset.status === "Offline"
-                    ? "Offline"
-                    : asset.status === "Seasonal"
-                      ? "Seasonal"
-                      : "Monitor";
-              const assetCompletedWork = serviceRecords
-                .filter(
-                  (record) =>
-                    record.assetId === asset.id &&
-                    record.status === "Completed" &&
-                    Boolean(record.date),
-                )
-                .sort((a, b) =>
-                  String(b.date || "").localeCompare(String(a.date || "")),
-                );
-              const assetNextMaintenance = assetOpenWork
-                .filter(
-                  (record) =>
-                    Boolean(record.date) &&
-                    (record.recurring ||
-                      record.workType === "Preventive Maintenance"),
-                )
-                .sort((a, b) =>
-                  String(a.date || "9999-12-31").localeCompare(
-                    String(b.date || "9999-12-31"),
-                  ),
-                )[0];
-              const assetNeedsService =
-                asset.status === "Offline" ||
-                assetOpenWork.some(
-                  (record) =>
-                    record.priority === "High" ||
-                    (Boolean(record.date) && record.date < todayISO()),
-                );
-              const assetSetupIncomplete =
-                !asset.locationId ||
-                asset.locationId === "general" ||
-                !asset.serial ||
-                !asset.vendorIds.length ||
-                manualsForAsset(asset).length === 0 ||
-                !procedureRecords.some((procedure) =>
-                  (procedure.linkedAssetIds || []).includes(asset.id),
-                );
+              const healthTone = asset.status === "Offline"
+                ? "Offline"
+                : assetOpenWork.some((record) => record.priority === "High")
+                  ? "Monitor"
+                  : asset.status;
 
               return (
                 <div
@@ -15444,56 +15303,7 @@ export default function AtlasPage() {
                           {[asset.category, locationName(asset.locationId)].filter(Boolean).join(" · ") || "Unassigned asset"}
                         </span>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 2 }}>
-                          <span style={badgeStyle(assetConditionTone)}>
-                            {assetConditionLabel}
-                          </span>
-                          {assetNeedsService ? (
-                            <span style={badgeStyle("Offline")}>Needs Service</span>
-                          ) : null}
-                          {assetSetupIncomplete ? (
-                            <span style={badgeStyle("Monitor")}>Setup</span>
-                          ) : null}
-                        </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                            gap: 5,
-                            marginTop: 2,
-                          }}
-                        >
-                          <span
-                            style={{
-                              ...mutedSmallStyle,
-                              border: `1px solid ${colors.line}`,
-                              borderRadius: 8,
-                              padding: "5px 7px",
-                              background: colors.panel,
-                              minWidth: 0,
-                            }}
-                          >
-                            <strong style={{ color: colors.navy }}>Last:</strong>{" "}
-                            {assetCompletedWork[0]?.date
-                              ? formatDate(assetCompletedWork[0].date)
-                              : "No service recorded"}
-                          </span>
-                          <span
-                            style={{
-                              ...mutedSmallStyle,
-                              border: `1px solid ${colors.line}`,
-                              borderRadius: 8,
-                              padding: "5px 7px",
-                              background: colors.panel,
-                              minWidth: 0,
-                            }}
-                          >
-                            <strong style={{ color: colors.navy }}>Next:</strong>{" "}
-                            {assetNextMaintenance?.date
-                              ? formatDate(assetNextMaintenance.date)
-                              : "Not scheduled"}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          <span style={badgeStyle(healthTone)}>{asset.status}</span>
                           <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
                             {assetOpenWork.length} open work
                           </span>
@@ -15543,21 +15353,9 @@ export default function AtlasPage() {
                   <span className="atlas-gold-hover-popover" aria-hidden="true">
                     <strong>{asset.name}</strong>
                     <span>{asset.make || "Make not recorded"} {asset.model || ""}</span>
-                    <span>Condition: {assetConditionLabel}</span>
-                    <span>
-                      Last service:{" "}
-                      {assetCompletedWork[0]?.date
-                        ? formatDate(assetCompletedWork[0].date)
-                        : "Not recorded"}
-                    </span>
-                    <span>
-                      Next service:{" "}
-                      {assetNextMaintenance?.date
-                        ? formatDate(assetNextMaintenance.date)
-                        : "Not scheduled"}
-                    </span>
                     <span>{assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}</span>
                     <span>{assetDocumentCount} linked document{assetDocumentCount === 1 ? "" : "s"}</span>
+                    <span>{assetPhotos.length} photo{assetPhotos.length === 1 ? "" : "s"}</span>
                   </span>
                 </div>
               );
@@ -15614,8 +15412,8 @@ export default function AtlasPage() {
                   <h3 style={assetPanelTitleStyle}>
                     {selectedAsset.name.trim() || "Asset"}
                   </h3>
-                  <span style={badgeStyle(assetConditionBadge)}>
-                    {assetConditionLabel}
+                  <span style={badgeStyle(selectedAsset.status)}>
+                    {selectedAsset.status}
                   </span>
                 </div>
                 <div style={assetActionRowStyle}>
@@ -15694,11 +15492,13 @@ export default function AtlasPage() {
                   <div>
                     <strong>Asset Intelligence</strong>
                     <div style={assetCardHintStyle}>
-                      Equipment condition, active work, maintenance, and record setup
+                      Current work, maintenance, records, and attention items
                     </div>
                   </div>
-                  <span style={badgeStyle(assetConditionBadge)}>
-                    {assetConditionLabel}
+                  <span style={badgeStyle(assetWarnings.length ? "Monitor" : "Online")}>
+                    {assetWarnings.length
+                      ? `${assetWarnings.length} attention item${assetWarnings.length === 1 ? "" : "s"}`
+                      : "Records complete"}
                   </span>
                 </div>
 
@@ -15714,23 +15514,17 @@ export default function AtlasPage() {
                 >
                   {[
                     {
-                      label: "Condition",
-                      value: assetConditionLabel,
-                      detail:
-                        assetServiceIssues.length > 0
-                          ? `${assetServiceIssues.length} service issue${assetServiceIssues.length === 1 ? "" : "s"}`
-                          : selectedAsset.status === "Monitor"
-                            ? "Condition has not been assessed"
-                            : "No active condition warning",
-                      hoverTitle: "Asset condition",
-                      hoverLines: assetServiceIssues.length
-                        ? assetServiceIssues
-                        : [
-                            `Status: ${assetConditionLabel}`,
-                            selectedAsset.status === "Monitor"
-                              ? "Missing records do not mean the asset is not working"
-                              : "No overdue or high-priority service issue detected",
-                          ],
+                      label: "Asset Health",
+                      value: `${assetHealthScore}%`,
+                      detail: assetHealthLabel,
+                      hoverTitle: "Health factors",
+                      hoverLines: [
+                        `${openAssetWorkOrders.length} open work order${openAssetWorkOrders.length === 1 ? "" : "s"}`,
+                        `${assetWarnings.length} attention item${assetWarnings.length === 1 ? "" : "s"}`,
+                        nextAssetMaintenance?.date
+                          ? `Next maintenance ${formatDate(nextAssetMaintenance.date)}`
+                          : "No maintenance currently scheduled",
+                      ],
                       action: () => undefined,
                     },
                     {
@@ -16014,32 +15808,18 @@ export default function AtlasPage() {
 
                   <div
                     style={{
-                      border: `1px solid ${assetSetupItems.length ? "#D8B45C" : colors.line}`,
+                      border: `1px solid ${assetWarnings.length ? "#D8B45C" : colors.line}`,
                       borderRadius: 10,
-                      background: assetSetupItems.length ? "#FFF9E8" : "#FFFFFF",
+                      background: assetWarnings.length ? "#FFF9E8" : "#FFFFFF",
                       padding: 10,
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 10,
-                      }}
-                    >
-                      <span style={assetInfoLabelStyle}>Record Setup</span>
-                      <span style={badgeStyle(assetSetupItems.length ? "Monitor" : "Online")}>
-                        {assetSetupItems.length
-                          ? `${assetSetupCompleted} / 5 complete`
-                          : "Complete"}
-                      </span>
-                    </div>
-                    {assetSetupItems.length ? (
+                    <span style={assetInfoLabelStyle}>Attention</span>
+                    {assetWarnings.length ? (
                       <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
-                        {assetSetupItems.map((item) => (
+                        {assetWarnings.map((warning) => (
                           <div
-                            key={item}
+                            key={warning}
                             style={{
                               color: colors.navy,
                               fontSize: 11,
@@ -16047,13 +15827,13 @@ export default function AtlasPage() {
                               fontWeight: 800,
                             }}
                           >
-                            ○ {item}
+                            • {warning}
                           </div>
                         ))}
                       </div>
                     ) : (
                       <div style={{ ...assetCardHintStyle, marginTop: 7 }}>
-                        Core asset records are complete.
+                        No missing core records or overdue work detected.
                       </div>
                     )}
                   </div>
@@ -17345,21 +17125,6 @@ export default function AtlasPage() {
           </div>
         ) : null}
               <style>{`
-        @keyframes atlasPropertyLoading {
-          from { transform: translateX(-18%); opacity: 0.65; }
-          to { transform: translateX(72%); opacity: 1; }
-        }
-        .atlas-dashboard-greeting {
-          margin-top: 7px !important;
-          font-size: 27px !important;
-          line-height: 1 !important;
-        }
-        @media (max-width: 760px) {
-          .atlas-dashboard-greeting {
-            margin-top: 6px !important;
-            font-size: 22px !important;
-          }
-        }
           .atlas-work-orders-page input[placeholder*="Search work"] {
             border: 2px solid #8EA5B8 !important;
             box-shadow: none !important;
@@ -18081,206 +17846,7 @@ export default function AtlasPage() {
       primarySource.startsWith("data:application/pdf") ||
       primaryName.endsWith(".pdf") ||
       selectedDocument?.href?.toLowerCase().includes(".pdf");
-    const rawDocumentHref = primarySource || selectedDocument?.href || "";
-    const documentHref =
-      rawDocumentHref && primaryIsPdf
-        ? `${rawDocumentHref.split("#")[0]}#page=${Math.max(1, blueprintPage)}`
-        : rawDocumentHref;
-
-    const blueprintCandidate = allDocuments.find((document) => {
-      const haystack = [
-        document.title,
-        document.type,
-        document.area,
-        document.notes,
-        ...(document.files || []).map((file) => file.name),
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return (
-        haystack.includes("as-built") ||
-        haystack.includes("as built") ||
-        haystack.includes("as-build") ||
-        haystack.includes("as build") ||
-        haystack.includes("as-builts") ||
-        haystack.includes("as builts") ||
-        haystack.includes("asbuild") ||
-        haystack.includes("asbuilds") ||
-        haystack.includes("2000 as buids") ||
-        haystack.includes("2000 record set") ||
-        (haystack.includes("2000") && haystack.includes("construction set")) ||
-        (haystack.includes("2000 faben") && haystack.includes("construction"))
-      );
-    });
-
-    // A matching title alone is not enough. The Blueprint Center is connected
-    // only when the saved Documents record contains an actual file or URL.
-    const blueprintDocument = blueprintCandidate && (
-      Boolean(blueprintCandidate.href) ||
-      (blueprintCandidate.files || []).some((file) =>
-        Boolean(file.dataUrl || file.url),
-      )
-    )
-      ? blueprintCandidate
-      : null;
-
-    const blueprintRecordNeedsFile = Boolean(blueprintCandidate && !blueprintDocument);
-
-    function showBlueprintInDocuments() {
-      if (!blueprintCandidate) return;
-      setDocumentSearch("");
-      setDocumentCategoryFilter("All");
-      setDocumentLinkFilter("All");
-      setSelectedDocumentId(blueprintCandidate.id);
-      window.requestAnimationFrame(() => {
-        documentOverlayScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
-      });
-    }
-
-    const blueprintSections = [
-      {
-        id: "project",
-        label: "Project Information",
-        icon: "▦",
-        detail: "Cover sheet, project data, code information and drawing index.",
-        sheets: [
-          { label: "Title Sheet / Drawing Index", sheet: "T1.0", page: 1 },
-          { label: "Project Information", sheet: "T1.1", page: 2 },
-        ],
-      },
-      {
-        id: "survey",
-        label: "Survey",
-        icon: "⌖",
-        detail: "Topographic, boundary and legal site-reference drawings.",
-        sheets: [
-          { label: "Topographic & Boundary Survey", sheet: "Survey", page: 3 },
-        ],
-      },
-      {
-        id: "civil",
-        label: "Civil & Site Utilities",
-        icon: "≈",
-        detail: "Site planning, grading, drainage, utilities and civil details.",
-        sheets: [
-          { label: "Civil / Site Plan", sheet: "C1", page: 4 },
-          { label: "Grading & Drainage", sheet: "C2", page: 5 },
-          { label: "Utility & Civil Details", sheet: "C3", page: 6 },
-        ],
-      },
-      {
-        id: "landscape",
-        label: "Landscape",
-        icon: "⌁",
-        detail: "Landscape plans, planting schedules, lighting and site details.",
-        sheets: [
-          { label: "Landscape Site Plan", sheet: "L1", page: 12 },
-          { label: "Grading / Layout", sheet: "L2", page: 13 },
-          { label: "Planting Plan & Schedule", sheet: "L3", page: 14 },
-          { label: "Landscape Lighting", sheet: "L4", page: 15 },
-        ],
-      },
-      {
-        id: "irrigation",
-        label: "Irrigation",
-        icon: "◉",
-        detail: "Irrigation zones, system layout and related landscape utilities.",
-        sheets: [
-          { label: "Irrigation Zone Plan", sheet: "I1", page: 16 },
-          { label: "Irrigation Details", sheet: "I2", page: 17 },
-        ],
-      },
-      {
-        id: "architecture",
-        label: "Architecture",
-        icon: "⌂",
-        detail: "Floor plans, roof plans, elevations, sections and architectural details.",
-        sheets: [
-          { label: "Basement Floor Plan", sheet: "A1.0", page: 18 },
-          { label: "Main Floor Plan", sheet: "A1.1", page: 19 },
-          { label: "Upper Floor Plan", sheet: "A1.2", page: 20 },
-          { label: "Garage Plans", sheet: "A1.3", page: 21 },
-          { label: "Garage Roof Plan", sheet: "A1.3b", page: 25 },
-          { label: "Roof Plan", sheet: "A1.4", page: 25 },
-          { label: "Lighting / Reflected Ceiling", sheet: "A2 / E", page: 27 },
-          { label: "Exterior Elevations", sheet: "A3", page: 33 },
-          { label: "Building Sections", sheet: "A4", page: 36 },
-          { label: "Architectural Details", sheet: "A5", page: 43 },
-          { label: "Interior Elevations", sheet: "A6", page: 52 },
-        ],
-      },
-      {
-        id: "structural",
-        label: "Structural",
-        icon: "▤",
-        detail: "Structural notes, foundation, framing, shear-wall and connection details.",
-        sheets: [
-          { label: "General Structural Notes", sheet: "S1.0", page: 61 },
-          { label: "Structural Notes / Schedules", sheet: "S1.1", page: 62 },
-          { label: "Foundation Plan", sheet: "S2.0", page: 64 },
-          { label: "Floor Framing Plans", sheet: "S2", page: 65 },
-          { label: "Roof Framing Plans", sheet: "S3", page: 67 },
-          { label: "Shear-Wall Plans", sheet: "S4", page: 68 },
-          { label: "Structural Details", sheet: "S5", page: 78 },
-        ],
-      },
-      {
-        id: "mechanical",
-        label: "Mechanical / HVAC",
-        icon: "◌",
-        detail: "Mechanical systems, HVAC layouts and equipment coordination drawings.",
-        sheets: [
-          { label: "Mechanical Plans", sheet: "M", page: 69 },
-          { label: "Mechanical Details", sheet: "M Details", page: 78 },
-        ],
-      },
-      {
-        id: "electrical",
-        label: "Electrical & Lighting",
-        icon: "ϟ",
-        detail: "Power, lighting, controls and electrical coordination drawings.",
-        sheets: [
-          { label: "Lighting Plan", sheet: "E / Lighting", page: 27 },
-          { label: "Electrical Plans", sheet: "E", page: 28 },
-          { label: "Electrical Details", sheet: "E Details", page: 30 },
-        ],
-      },
-      {
-        id: "plumbing",
-        label: "Plumbing",
-        icon: "◒",
-        detail: "Plumbing layouts, fixture coordination and related utility information.",
-        sheets: [
-          { label: "Plumbing Coordination", sheet: "P", page: 23 },
-          { label: "Plumbing / Utility Details", sheet: "P Details", page: 79 },
-        ],
-      },
-    ];
-
-    function openBlueprintPage(page: number) {
-      if (!blueprintDocument) {
-        if (blueprintCandidate) {
-          showBlueprintInDocuments();
-          return;
-        }
-        setIntakeTitle("2000 As-Built Plans");
-        setIntakeType("Property Plans");
-        setIntakeTargetKind("General");
-        setIntakeNotes(
-          "Master 90-page construction record set for property 2000. Category: Property Records / As-Built Drawings.",
-        );
-        setScreen("intake");
-        return;
-      }
-
-      documentListScrollYRef.current = window.scrollY;
-      setBlueprintPage(page);
-      setSelectedDocumentId(blueprintDocument.id);
-      window.requestAnimationFrame(() => {
-        documentOverlayScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
-      });
-    }
+    const documentHref = primarySource || selectedDocument?.href || "";
 
     function retargetSelectedDocument(kind: IntakeTargetKind) {
       if (!selectedDocument) return;
@@ -18369,36 +17935,16 @@ export default function AtlasPage() {
               }}
             />
           ) : documentHref && primaryIsPdf ? (
-            <div
+            <iframe
+              src={documentHref}
+              title={selectedDocument.title}
               style={{
                 width: "100%",
-                minHeight: isMobile ? 300 : 470,
-                padding: 28,
-                display: "grid",
-                placeItems: "center",
-                textAlign: "center",
+                height: isMobile ? "68vh" : 560,
+                border: 0,
                 background: "#FFFFFF",
               }}
-            >
-              <div style={{ maxWidth: 560 }}>
-                <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 16 }}>
-                  PDF
-                </div>
-                <strong style={{ fontSize: 18 }}>
-                  Open this PDF in a separate browser tab.
-                </strong>
-                <p style={{ ...mutedSmallStyle, margin: "10px 0 18px" }}>
-                  Atlas avoids loading large plan sets inside the Documents page so the page stays responsive.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => openFileInBrowser(primaryFile, rawDocumentHref)}
-                  style={{ ...goldButtonStyle, display: "inline-flex" }}
-                >
-                  Open PDF
-                </button>
-              </div>
-            </div>
+            />
           ) : documentHref ? (
             <div style={{ padding: 24, textAlign: "center" }}>
               <div style={{ ...fileTileStyle, margin: "0 auto 12px" }}>
@@ -18409,7 +17955,7 @@ export default function AtlasPage() {
                 onClick={() =>
                   primaryFile
                     ? openUploadedFile(primaryFile)
-                    : openFileInBrowser(null, rawDocumentHref)
+                    : window.open(documentHref, "_blank", "noopener,noreferrer")
                 }
                 style={goldButtonStyle}
               >
@@ -18655,9 +18201,6 @@ export default function AtlasPage() {
           detail="Find documents by title, category, or linked property record. Select a preview card to view and edit it."
           isMobile={isMobile}
           drawerResetKey={selectedDocumentId || "document-new"}
-          gridStyleOverride={!isMobile && !selectedDocument ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}
-          listPanelStyleOverride={!isMobile && !selectedDocument ? { width: "100%", maxWidth: "none" } : undefined}
-          drawerStyleOverride={!isMobile && !selectedDocument ? { display: "none" } : undefined}
           right={
             <>
               <button
@@ -18678,314 +18221,6 @@ export default function AtlasPage() {
           }
           list={
             <div style={{ display: "grid", gap: 12 }}>
-              {activePropertyId === "2000" ? (
-                <section
-                  style={{
-                    position: "relative",
-                    overflow: "hidden",
-                    border: `1px solid ${blueprintDocument ? colors.gold : colors.line}`,
-                    borderRadius: 18,
-                    padding: isMobile ? 12 : 14,
-                    background:
-                      "linear-gradient(135deg, #0B2940 0%, #123E5D 60%, #185173 100%)",
-                    color: "#FFFFFF",
-                    boxShadow: "0 14px 28px rgba(7, 36, 58, 0.16)",
-                  }}
-                >
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      width: 180,
-                      height: 180,
-                      right: -70,
-                      top: -95,
-                      borderRadius: 999,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      boxShadow:
-                        "0 0 0 28px rgba(255,255,255,0.022), 0 0 0 58px rgba(255,255,255,0.014)",
-                    }}
-                  />
-
-                  <div
-                    style={{
-                      position: "relative",
-                      display: "grid",
-                      gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) auto",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          marginBottom: 4,
-                          color: "#E4BE67",
-                          fontSize: 9,
-                          fontWeight: 950,
-                          letterSpacing: "0.14em",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Property Blueprint Center
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "baseline",
-                          gap: 10,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <h3 style={{ margin: 0, fontSize: isMobile ? 18 : 20, lineHeight: 1.1 }}>
-                          2000 Estate Record Set
-                        </h3>
-                        <span style={{ color: "rgba(255,255,255,0.64)", fontSize: 10, fontWeight: 800 }}>
-                          {blueprintSections.reduce((total, section) => total + section.sheets.length, 0)} indexed sheets
-                        </span>
-                      </div>
-                      <p
-                        style={{
-                          margin: "4px 0 0",
-                          color: "rgba(255,255,255,0.72)",
-                          fontSize: 11,
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        Open the master construction set or expand one discipline below.
-                      </p>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: isMobile ? "flex-start" : "flex-end",
-                        gap: 8,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          border: "1px solid rgba(255,255,255,0.18)",
-                          borderRadius: 999,
-                          padding: "5px 9px",
-                          background: blueprintDocument
-                            ? "rgba(8,116,67,0.28)"
-                            : "rgba(181,71,8,0.24)",
-                          color: "#FFFFFF",
-                          fontSize: 9,
-                          fontWeight: 900,
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 999,
-                            background: blueprintDocument ? "#57D39B" : "#F5B56A",
-                          }}
-                        />
-                        {blueprintDocument
-                          ? "Master set connected"
-                          : blueprintRecordNeedsFile
-                            ? "Record found — PDF missing"
-                            : "Master set needs upload"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => openBlueprintPage(1)}
-                        style={{ ...goldButtonStyle, minHeight: 34, padding: "7px 11px" }}
-                      >
-                        {blueprintDocument
-                          ? "Open Master Set"
-                          : blueprintRecordNeedsFile
-                            ? "Finish Upload"
-                            : "Add Master Set"}
-                      </button>
-                      {blueprintCandidate ? (
-                        <button
-                          type="button"
-                          onClick={showBlueprintInDocuments}
-                          style={{
-                            minHeight: 34,
-                            padding: "7px 10px",
-                            border: "1px solid rgba(255,255,255,0.20)",
-                            borderRadius: 10,
-                            background: "rgba(255,255,255,0.08)",
-                            color: "#FFFFFF",
-                            fontSize: 9,
-                            fontWeight: 900,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Show Record
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      position: "relative",
-                      display: "grid",
-                      gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                      gap: 7,
-                      marginTop: 11,
-                    }}
-                  >
-                    {blueprintSections.map((section) => {
-                      const isOpen = openBlueprintSection === section.id;
-                      return (
-                        <div
-                          key={section.id}
-                          style={{
-                            minWidth: 0,
-                            border: "1px solid rgba(255,255,255,0.13)",
-                            borderRadius: 11,
-                            background: isOpen
-                              ? "rgba(255,255,255,0.11)"
-                              : "rgba(255,255,255,0.065)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <button
-                            type="button"
-                            aria-expanded={isOpen}
-                            onClick={() =>
-                              setOpenBlueprintSection((current) =>
-                                current === section.id ? null : section.id,
-                              )
-                            }
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "26px minmax(0, 1fr) auto",
-                              alignItems: "center",
-                              gap: 8,
-                              width: "100%",
-                              minHeight: 42,
-                              padding: "7px 9px",
-                              border: 0,
-                              background: "transparent",
-                              color: "#FFFFFF",
-                              textAlign: "left",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <span
-                              aria-hidden="true"
-                              style={{
-                                display: "grid",
-                                placeItems: "center",
-                                width: 26,
-                                height: 26,
-                                borderRadius: 8,
-                                background: "rgba(228,190,103,0.16)",
-                                color: "#F0CD7E",
-                                fontSize: 13,
-                                fontWeight: 900,
-                              }}
-                            >
-                              {section.icon}
-                            </span>
-                            <span style={{ minWidth: 0 }}>
-                              <strong style={{ display: "block", fontSize: 11, lineHeight: 1.2 }}>
-                                {section.label}
-                              </strong>
-                              <small style={{ display: "block", marginTop: 2, opacity: 0.66, fontSize: 9 }}>
-                                {section.sheets.length} {section.sheets.length === 1 ? "sheet" : "sheets"}
-                              </small>
-                            </span>
-                            <span
-                              aria-hidden="true"
-                              style={{
-                                color: "#F0CD7E",
-                                fontSize: 14,
-                                fontWeight: 900,
-                                transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-                                transition: "transform 160ms ease",
-                              }}
-                            >
-                              ▾
-                            </span>
-                          </button>
-
-                          {isOpen ? (
-                            <div
-                              style={{
-                                display: "grid",
-                                gap: 5,
-                                padding: "0 8px 8px",
-                                borderTop: "1px solid rgba(255,255,255,0.09)",
-                              }}
-                            >
-                              {section.sheets.map((sheet) => (
-                                <button
-                                  key={`${section.id}-${sheet.sheet}-${sheet.page}`}
-                                  type="button"
-                                  onClick={() => openBlueprintPage(sheet.page)}
-                                  title={`${sheet.label} · PDF page ${sheet.page}`}
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "minmax(0, 1fr) auto",
-                                    gap: 8,
-                                    alignItems: "center",
-                                    width: "100%",
-                                    minWidth: 0,
-                                    marginTop: 5,
-                                    padding: "6px 7px",
-                                    border: "1px solid rgba(255,255,255,0.08)",
-                                    borderRadius: 8,
-                                    background: "rgba(255,255,255,0.055)",
-                                    color: "#FFFFFF",
-                                    textAlign: "left",
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  <span style={{ minWidth: 0 }}>
-                                    <strong
-                                      style={{
-                                        display: "block",
-                                        overflow: "hidden",
-                                        fontSize: 10,
-                                        lineHeight: 1.2,
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      {sheet.label}
-                                    </strong>
-                                    <small style={{ display: "block", marginTop: 2, opacity: 0.6, fontSize: 8 }}>
-                                      {sheet.sheet}
-                                    </small>
-                                  </span>
-                                  <span
-                                    style={{
-                                      borderRadius: 999,
-                                      background: "rgba(228,190,103,0.16)",
-                                      color: "#F0CD7E",
-                                      padding: "3px 6px",
-                                      fontSize: 8,
-                                      fontWeight: 900,
-                                      whiteSpace: "nowrap",
-                                    }}
-                                  >
-                                    p. {sheet.page}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              ) : null}
-
               <div
                 style={{
                   ...cardStyle,
@@ -19213,7 +18448,6 @@ export default function AtlasPage() {
                         type="button"
                         onClick={() => {
                           documentListScrollYRef.current = window.scrollY;
-                          setBlueprintPage(1);
                           setSelectedDocumentId(document.id);
                         }}
                         aria-pressed={isSelected}
@@ -19420,7 +18654,7 @@ export default function AtlasPage() {
               )}
             </div>
           }
-          drawer={isMobile || !selectedDocument ? undefined : documentViewer}
+          drawer={isMobile ? undefined : documentViewer}
         />
 
         {isMobile && selectedDocument ? (
@@ -24330,90 +23564,6 @@ export default function AtlasPage() {
           </article>
         ) : null}
 
-        {marineRequestPortalToken && typeof window !== "undefined" ? (
-          <article
-            className="atlas-qr-print-card"
-            style={{
-              ...qrCardStyle,
-              marginBottom: 18,
-              borderColor: "#9CC7E8",
-              background:
-                "linear-gradient(135deg, #F7FBFF 0%, #EEF7FF 100%)",
-            }}
-          >
-            <div style={qrImageShellStyle}>
-              <img
-                src={qrImageUrl(
-                  `${window.location.origin}/request?token=${encodeURIComponent(
-                    marineRequestPortalToken,
-                  )}`,
-                  320,
-                )}
-                alt="Sean Marine Request QR code"
-                style={qrImageStyle}
-              />
-            </div>
-
-            <div style={qrCardBodyStyle}>
-              <div>
-                <div style={eyebrowStyle}>Sean Marine Request</div>
-                <h3 style={qrCardTitleStyle}>Request Boat Service</h3>
-                <p style={mutedSmallStyle}>
-                  Secure public form for boat detailing, Sea-Doo, dock, lift,
-                  and other marine-service requests. Requests are automatically
-                  assigned to Sean and tagged Dock &amp; Marine.
-                </p>
-              </div>
-
-              <div className="atlas-no-print" style={buttonRowStyle}>
-                <a
-                  href={`${window.location.origin}/request?token=${encodeURIComponent(
-                    marineRequestPortalToken,
-                  )}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={secondaryButtonStyle}
-                >
-                  Open
-                </a>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(
-                      `${window.location.origin}/request?token=${encodeURIComponent(
-                        marineRequestPortalToken,
-                      )}`,
-                    );
-                    setRequestMessage("Sean Marine request link copied.");
-                  }}
-                  style={secondaryButtonStyle}
-                >
-                  Copy Link
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void copyOwnerRequestQrImage(
-                      `${window.location.origin}/request?token=${encodeURIComponent(
-                        marineRequestPortalToken,
-                      )}`,
-                    )
-                  }
-                  style={secondaryButtonStyle}
-                >
-                  Copy QR Image
-                </button>
-              </div>
-
-              <small style={qrUrlStyle}>
-                {`${window.location.origin}/request?token=${encodeURIComponent(
-                  marineRequestPortalToken,
-                )}`}
-              </small>
-            </div>
-          </article>
-        ) : null}
-
         <div className="atlas-no-print" style={qrControlPanelStyle}>
           <div style={qrTypeGridStyle}>
             {(["asset", "location", "vendor", "map"] as QrKind[]).map(
@@ -24632,8 +23782,7 @@ export default function AtlasPage() {
       (previewFile.type || "").startsWith("image/");
     const isPdf =
       source.startsWith("data:application/pdf") ||
-      (previewFile.type || "").toLowerCase().includes("pdf") ||
-      previewFile.name.toLowerCase().endsWith(".pdf");
+      (previewFile.type || "").includes("pdf");
     const zoomedFrameStyle: React.CSSProperties = {
       ...previewFrameStyle,
       transform: `scale(${previewZoom / 100})`,
@@ -24650,57 +23799,50 @@ export default function AtlasPage() {
         >
           <div style={previewHeaderStyle}>
             <div style={{ minWidth: 0 }}>
-              <div style={eyebrowStyle}>
-                {isPdf ? "PDF Document" : "Document Preview"}
-              </div>
+              <div style={eyebrowStyle}>Document Preview</div>
               <h3 style={detailTitleStyle}>{previewFile.name}</h3>
-              {!isPdf && isImage ? (
-                <p style={mutedSmallStyle}>Zoom: {previewZoom}%</p>
-              ) : null}
+              <p style={mutedSmallStyle}>Zoom: {previewZoom}%</p>
             </div>
             <div style={buttonRowStyle}>
-              {!isPdf && isImage ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPreviewZoom((value) => Math.max(50, value - 25))
-                    }
-                    style={secondaryButtonStyle}
-                  >
-                    −
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewZoom(100)}
-                    style={secondaryButtonStyle}
-                  >
-                    100%
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPreviewZoom((value) => Math.min(300, value + 25))
-                    }
-                    style={secondaryButtonStyle}
-                  >
-                    +
-                  </button>
-                </>
-              ) : null}
+              <button
+                type="button"
+                onClick={() =>
+                  setPreviewZoom((value) => Math.max(50, value - 25))
+                }
+                style={secondaryButtonStyle}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewZoom(100)}
+                style={secondaryButtonStyle}
+              >
+                100%
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPreviewZoom((value) => Math.min(300, value + 25))
+                }
+                style={secondaryButtonStyle}
+              >
+                +
+              </button>
               {source ? (
-                <button
-                  type="button"
-                  onClick={() => openFileInBrowser(previewFile, source)}
-                  style={isPdf ? goldButtonStyle : secondaryButtonStyle}
+                <a
+                  href={source}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={secondaryButtonStyle}
                 >
-                  {isPdf ? "Open PDF" : "Open New Tab"}
-                </button>
+                  Open New Tab
+                </a>
               ) : null}
               <button
                 type="button"
                 onClick={() => setPreviewFile(null)}
-                style={isPdf ? secondaryButtonStyle : goldButtonStyle}
+                style={goldButtonStyle}
               >
                 Close
               </button>
@@ -24709,9 +23851,9 @@ export default function AtlasPage() {
 
           <div
             style={previewBodyStyle}
-            onTouchStart={isPdf ? undefined : handlePreviewTouchStart}
-            onTouchMove={isPdf ? undefined : handlePreviewTouchMove}
-            onTouchEnd={isPdf ? undefined : handlePreviewTouchEnd}
+            onTouchStart={handlePreviewTouchStart}
+            onTouchMove={handlePreviewTouchMove}
+            onTouchEnd={handlePreviewTouchEnd}
           >
             {isImage && source ? (
               <img
@@ -24726,41 +23868,13 @@ export default function AtlasPage() {
                   margin: "0 auto",
                 }}
               />
-            ) : isPdf ? (
-              <div
-                style={{
-                  ...noticeStyle,
-                  minHeight: isMobile ? 260 : 360,
-                  display: "grid",
-                  placeItems: "center",
-                  textAlign: "center",
-                  padding: 28,
-                }}
-              >
-                <div style={{ maxWidth: 560 }}>
-                  <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 16 }}>
-                    PDF
-                  </div>
-                  <strong style={{ fontSize: 18 }}>
-                    Large PDFs open in a separate browser tab.
-                  </strong>
-                  <p style={{ ...mutedSmallStyle, margin: "10px 0 18px" }}>
-                    Atlas does not load the full PDF inside this page, which prevents large plan sets from freezing the Documents screen.
-                  </p>
-                  {source ? (
-                    <button
-                      type="button"
-                      onClick={() => openFileInBrowser(previewFile, source)}
-                      style={{ ...goldButtonStyle, display: "inline-flex" }}
-                    >
-                      Open PDF
-                    </button>
-                  ) : (
-                    <p style={mutedSmallStyle}>
-                      No PDF file URL is saved for this document.
-                    </p>
-                  )}
-                </div>
+            ) : isPdf && source ? (
+              <div style={previewPdfZoomShellStyle}>
+                <iframe
+                  src={source}
+                  title={previewFile.name}
+                  style={zoomedFrameStyle}
+                />
               </div>
             ) : source ? (
               <div style={noticeStyle}>
@@ -25280,37 +24394,12 @@ export default function AtlasPage() {
     const completedWorkOrders = serviceRecords.filter(
       (record) => record.status === "Completed",
     ).length;
-    const operationalAssets = assetRecords.filter(
+    const onlineAssets = assetRecords.filter(
       (asset) => asset.status === "Online",
     ).length;
-    const needsServiceAssets = assetRecords.filter((asset) => {
-      if (asset.status === "Offline") return true;
-
-      return serviceRecords.some(
-        (record) =>
-          record.assetId === asset.id &&
-          record.status !== "Completed" &&
-          (
-            record.priority === "High" ||
-            (Boolean(record.date) && record.date < todayISO())
-          ),
-      );
-    }).length;
-    const setupIncompleteAssets = assetRecords.filter((asset) => {
-      const hasManual = manualsForAsset(asset).length > 0;
-      const hasProcedure = procedureRecords.some((procedure) =>
-        (procedure.linkedAssetIds || []).includes(asset.id),
-      );
-
-      return (
-        !asset.locationId ||
-        asset.locationId === "general" ||
-        !asset.serial ||
-        !asset.vendorIds.length ||
-        !hasManual ||
-        !hasProcedure
-      );
-    }).length;
+    const attentionAssets = assetRecords.filter(
+      (asset) => asset.status === "Offline" || asset.status === "Monitor",
+    ).length;
     const linkedDocuments = intakeDocs.filter(
       (document) => document.targetType && document.targetType !== "General",
     ).length;
@@ -25629,13 +24718,12 @@ export default function AtlasPage() {
         ],
       },
       assets: {
-        title: "Asset summary",
-        detail: "Equipment condition and record readiness without treating missing information as a mechanical problem.",
+        title: "Asset health",
+        detail: "Quick context before opening the detailed asset list and service history.",
         cards: [
           { label: "Total Assets", value: assetRecords.length, note: "Tracked on this property" },
-          { label: "Operational", value: operationalAssets, note: "Marked as operating normally" },
-          { label: "Needs Service", value: needsServiceAssets, note: "Out of service, overdue, or high priority" },
-          { label: "Setup", value: setupIncompleteAssets, note: "Records still being completed" },
+          { label: "Online", value: onlineAssets, note: "Operating normally" },
+          { label: "Needs Attention", value: attentionAssets, note: "Offline or monitored" },
         ],
       },
       vendors: {
@@ -25713,10 +24801,8 @@ export default function AtlasPage() {
           style={{
             display: "grid",
             gridTemplateColumns: isMobile
-              ? summary.cards.length === 4
-                ? "repeat(2, minmax(0, 1fr))"
-                : "1fr"
-              : `repeat(${summary.cards.length}, minmax(0, 1fr))`,
+              ? "1fr"
+              : "repeat(3, minmax(0, 1fr))",
             gap: 12,
           }}
         >
@@ -25800,74 +24886,6 @@ export default function AtlasPage() {
 
   return (
     <main style={isMobile ? appStyle : desktopAppStyle}>
-      {showPropertyLoading && syncState === "loading" ? (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 10000,
-            display: "grid",
-            placeItems: "center",
-            padding: 24,
-            background: "rgba(8, 29, 55, 0.38)",
-            backdropFilter: "blur(3px)",
-          }}
-        >
-          <div
-            style={{
-              width: "min(420px, 92vw)",
-              borderRadius: 20,
-              border: `1px solid ${colors.line}`,
-              background: "#FFFFFF",
-              boxShadow: "0 24px 70px rgba(8, 29, 55, 0.28)",
-              padding: 22,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <AtlasMiniMark size={38} />
-              <div>
-                <strong
-                  style={{
-                    display: "block",
-                    color: colors.navy,
-                    fontSize: 18,
-                    lineHeight: 1.2,
-                  }}
-                >
-                  Loading{" "}
-                  {atlasProperties.find(
-                    (property) => property.id === activePropertyId,
-                  )?.name || activePropertyId}
-                </strong>
-                <span style={mutedSmallStyle}>
-                  Updating this property’s dashboard, assets, calendar, and records.
-                </span>
-              </div>
-            </div>
-            <div
-              style={{
-                height: 6,
-                marginTop: 16,
-                overflow: "hidden",
-                borderRadius: 999,
-                background: "#E8EDF4",
-              }}
-            >
-              <div
-                style={{
-                  width: "62%",
-                  height: "100%",
-                  borderRadius: 999,
-                  background: colors.gold,
-                  animation: "atlasPropertyLoading 1.1s ease-in-out infinite alternate",
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
       <style>{`
         html, body {
           max-width: 100%;
@@ -26941,147 +25959,6 @@ export default function AtlasPage() {
         .atlas-dashboard-kpi,.atlas-dashboard-status-card{position:relative;overflow:visible!important;transition:transform .17s cubic-bezier(.2,.8,.2,1),border-color .17s,box-shadow .17s,background .17s!important}.atlas-dashboard-kpi:hover,.atlas-dashboard-kpi:focus-visible,.atlas-dashboard-status-card:hover,.atlas-dashboard-status-card:focus-visible{z-index:85;border-color:rgba(201,154,61,.82)!important;background:#fff!important;box-shadow:0 16px 34px rgba(10,35,56,.14),0 0 0 3px rgba(201,154,61,.09)!important;transform:translateY(-3px)!important;outline:none}.atlas-dashboard-kpi::after{content:none!important;display:none!important;animation:none!important}
         .atlas-dashboard-info-popover,.atlas-gold-hover-popover{width:min(310px,calc(100vw - 34px))!important;min-width:230px;padding:14px 15px!important;border:1px solid rgba(242,213,138,.82)!important;border-radius:14px!important;background:#0B2A43!important;color:#fff!important;box-shadow:0 24px 58px rgba(6,24,39,.36)!important;text-align:left!important}.atlas-dashboard-info-popover strong,.atlas-gold-hover-popover>strong{color:#F2D58A!important;font-size:13px!important;line-height:1.35!important}.atlas-dashboard-info-popover span,.atlas-gold-hover-popover>span{color:#EEF4F8!important;font-size:12px!important;line-height:1.48!important}.atlas-weather-day .atlas-gold-hover-popover{left:50%!important;right:auto!important;top:calc(100% + 10px)!important;transform:translate(-50%,5px) scale(.985)!important}.atlas-weather-day:hover .atlas-gold-hover-popover,.atlas-weather-day:focus-visible .atlas-gold-hover-popover{opacity:1;transform:translate(-50%,0) scale(1)!important}
         @media(max-width:1120px){.atlas-weather-overview{grid-template-columns:1fr}.atlas-weather-days{grid-template-columns:repeat(7,minmax(145px,1fr));overflow-x:auto;padding-bottom:20px}}@media(max-width:720px){.atlas-weather-overview{padding:20px 16px 16px}.atlas-weather-operations{grid-template-columns:1fr}.atlas-weather-days{grid-template-columns:repeat(7,150px);padding-left:12px;padding-right:12px}}@media(hover:none),(pointer:coarse){.atlas-weather-day .atlas-gold-hover-popover{display:none}}
-
-        /* Mobile layout containment: prevent desktop-sized children from widening the phone page. */
-        @media (max-width: 819px) {
-          html, body, #__next {
-            width: 100% !important;
-            max-width: 100% !important;
-            overflow-x: hidden !important;
-          }
-          .atlas-app-shell,
-          .atlas-mobile-page,
-          .atlas-mobile-content,
-          .atlas-mobile-content > *,
-          .atlas-mobile-content section,
-          .atlas-mobile-content article,
-          .atlas-mobile-content aside,
-          .atlas-mobile-content header,
-          .atlas-mobile-content footer,
-          .atlas-mobile-content form,
-          .atlas-mobile-content div {
-            min-width: 0 !important;
-            max-width: 100% !important;
-            box-sizing: border-box !important;
-          }
-          .atlas-mobile-page {
-            grid-column: 1 / -1 !important;
-            overflow: hidden !important;
-          }
-          .atlas-mobile-content {
-            width: 100% !important;
-            overflow-x: hidden !important;
-          }
-          .atlas-mobile-content > div {
-            width: 100% !important;
-            padding: 8px !important;
-            border-radius: 20px !important;
-          }
-          .atlas-mobile-content img,
-          .atlas-mobile-content video,
-          .atlas-mobile-content iframe,
-          .atlas-mobile-content canvas,
-          .atlas-mobile-content svg {
-            max-width: 100% !important;
-          }
-          .atlas-mobile-content input,
-          .atlas-mobile-content select,
-          .atlas-mobile-content textarea,
-          .atlas-mobile-content button {
-            min-width: 0 !important;
-            max-width: 100% !important;
-          }
-          .atlas-mobile-content button,
-          .atlas-mobile-content h1,
-          .atlas-mobile-content h2,
-          .atlas-mobile-content h3,
-          .atlas-mobile-content h4,
-          .atlas-mobile-content p,
-          .atlas-mobile-content strong,
-          .atlas-mobile-content span,
-          .atlas-mobile-content small,
-          .atlas-mobile-content label {
-            overflow-wrap: anywhere;
-            word-break: normal;
-          }
-          .atlas-mobile-content button {
-            white-space: normal !important;
-          }
-          .atlas-command-dashboard {
-            width: 100% !important;
-            gap: 10px !important;
-          }
-          .atlas-command-dashboard > section,
-          .atlas-command-dashboard > div,
-          .atlas-dashboard-hero {
-            width: 100% !important;
-            max-width: 100% !important;
-            overflow: hidden !important;
-            border-radius: 16px !important;
-          }
-          .atlas-dashboard-hero {
-            padding: 15px !important;
-          }
-          .atlas-dashboard-hero h1 {
-            font-size: clamp(25px, 8vw, 32px) !important;
-            overflow-wrap: anywhere;
-          }
-          .atlas-dashboard-command {
-            width: 100% !important;
-            padding: 13px 42px 13px 13px !important;
-          }
-          .atlas-dashboard-command strong {
-            font-size: clamp(18px, 5.6vw, 24px) !important;
-            line-height: 1.15 !important;
-          }
-          .atlas-dashboard-command span {
-            font-size: clamp(13px, 4.1vw, 17px) !important;
-            line-height: 1.3 !important;
-          }
-          .atlas-dashboard-kpi,
-          .atlas-dashboard-status-card {
-            overflow: hidden !important;
-          }
-          .atlas-weather-experience {
-            border-radius: 17px !important;
-            overflow: hidden !important;
-          }
-          .atlas-weather-overview {
-            padding: 16px 13px 13px !important;
-          }
-          .atlas-weather-current-row {
-            gap: 11px !important;
-          }
-          .atlas-weather-current-glyph {
-            width: 58px !important;
-            height: 58px !important;
-            flex: 0 0 58px !important;
-          }
-          .atlas-weather-current-temp {
-            font-size: 48px !important;
-          }
-          .atlas-weather-days,
-          .atlas-dashboard-weather-grid,
-          .atlas-dashboard-weather-strip {
-            width: 100% !important;
-            max-width: 100% !important;
-            overscroll-behavior-x: contain;
-            -webkit-overflow-scrolling: touch;
-          }
-          .atlas-mobile-header {
-            position: relative !important;
-            top: auto !important;
-          }
-          .atlas-page-header {
-            width: 100% !important;
-            padding-left: 12px !important;
-            padding-right: 12px !important;
-          }
-          .atlas-page-header h1 {
-            font-size: clamp(20px, 6.4vw, 27px) !important;
-            line-height: 1.1 !important;
-          }
-        }
       `}</style>
       <div
         className={`atlas-app-shell ${sidebarCollapsed ? "atlas-sidebar-is-collapsed" : ""}`}
@@ -27099,7 +25976,6 @@ export default function AtlasPage() {
         }}
       >
         <aside
-          className={isMobile ? "atlas-mobile-header" : "atlas-desktop-sidebar"}
           style={
             isMobile
               ? mobileHeaderShellStyle
@@ -27232,14 +26108,13 @@ export default function AtlasPage() {
         </aside>
 
         <section
-          className={isMobile ? "atlas-mobile-page" : "atlas-desktop-page"}
           style={{
             gridColumn: isMobile ? "1 / 2" : "2 / 3",
             minWidth: 0,
             width: "100%",
             maxWidth: isMobile ? "100vw" : "none",
             overflowX: isMobile ? "hidden" : "visible",
-            paddingBottom: isMobile ? 112 : 0,
+            paddingBottom: isMobile ? 84 : 0,
           }}
         >
           <header className="atlas-page-header" style={isMobile ? mobileTopbarStyle : topbarStyle}>
@@ -27552,7 +26427,7 @@ export default function AtlasPage() {
             </div>
           </header>
 
-          <div className={isMobile ? "atlas-mobile-content" : "atlas-desktop-content"} style={isMobile ? mobileContentStyle : desktopContentStyle}>
+          <div style={isMobile ? mobileContentStyle : desktopContentStyle}>
             {renderScreen()}
           </div>
         </section>
@@ -27568,7 +26443,7 @@ export default function AtlasPage() {
             style={{
               position: "fixed",
               right: isMobile ? 16 : 24,
-              bottom: isMobile ? 96 : 24,
+              bottom: isMobile ? 16 : 24,
               zIndex: 120,
               width: isMobile ? 54 : 58,
               height: isMobile ? 54 : 58,
@@ -28276,7 +27151,7 @@ const mobilePageTitleStyle: React.CSSProperties = {
 };
 
 const mobileContentStyle: React.CSSProperties = {
-  padding: "10px 8px calc(118px + env(safe-area-inset-bottom))",
+  padding: "12px 10px 94px",
   width: "100%",
   maxWidth: "100vw",
   overflowX: "hidden",
@@ -28287,7 +27162,7 @@ const mobileBottomNavStyle: React.CSSProperties = {
   position: "fixed",
   left: 8,
   right: 8,
-  bottom: "calc(8px + env(safe-area-inset-bottom))",
+  bottom: 10,
   maxWidth: "calc(100vw - 16px)",
   boxSizing: "border-box",
   zIndex: 60,
