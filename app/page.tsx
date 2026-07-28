@@ -6943,6 +6943,60 @@ export default function AtlasPage() {
     setIntakeFiles((current) => current.filter((file) => file.id !== id));
   }
 
+  function persistentFileSource(file?: UploadedFileRecord | null, fallback = "") {
+    return String(file?.url || file?.dataUrl || fallback || "").trim();
+  }
+
+  function openFileInBrowser(file?: UploadedFileRecord | null, fallback = "") {
+    const source = persistentFileSource(file, fallback);
+
+    if (!source || source === "blocked" || source.includes("about:blank#blocked")) {
+      setIntakeMessage("Atlas found the document record, but no usable file URL is saved.");
+      return;
+    }
+
+    try {
+      let openUrl = source;
+      let temporaryObjectUrl = "";
+
+      if (source.startsWith("data:")) {
+        const commaIndex = source.indexOf(",");
+        if (commaIndex < 0) throw new Error("Invalid file data");
+
+        const metadata = source.slice(5, commaIndex);
+        const encoded = source.slice(commaIndex + 1);
+        const mimeType = metadata.split(";")[0] || file?.type || "application/octet-stream";
+        const isBase64 = metadata.toLowerCase().includes(";base64");
+        const binary = isBase64 ? atob(encoded) : decodeURIComponent(encoded);
+        const bytes = new Uint8Array(binary.length);
+
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+
+        temporaryObjectUrl = URL.createObjectURL(
+          new Blob([bytes], { type: mimeType }),
+        );
+        openUrl = temporaryObjectUrl;
+      }
+
+      const opened = window.open(openUrl, "_blank");
+      if (!opened) {
+        if (temporaryObjectUrl) URL.revokeObjectURL(temporaryObjectUrl);
+        setIntakeMessage("Your browser blocked the PDF tab. Allow pop-ups for Atlas and try again.");
+        return;
+      }
+
+      opened.opener = null;
+      if (temporaryObjectUrl) {
+        window.setTimeout(() => URL.revokeObjectURL(temporaryObjectUrl), 60_000);
+      }
+    } catch (error) {
+      console.warn("Atlas could not open the saved file.", error);
+      setIntakeMessage("Atlas could not open that saved PDF. The file record may need to be re-saved.");
+    }
+  }
+
   function openUploadedFile(file: UploadedFileRecord) {
     if (!file.dataUrl && !file.url) {
       setIntakeMessage(
@@ -18287,14 +18341,13 @@ export default function AtlasPage() {
                 <p style={{ ...mutedSmallStyle, margin: "10px 0 18px" }}>
                   Atlas avoids loading large plan sets inside the Documents page so the page stays responsive.
                 </p>
-                <a
-                  href={documentHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ ...goldButtonStyle, display: "inline-flex", textDecoration: "none" }}
+                <button
+                  type="button"
+                  onClick={() => openFileInBrowser(primaryFile, rawDocumentHref)}
+                  style={{ ...goldButtonStyle, display: "inline-flex" }}
                 >
                   Open PDF
-                </a>
+                </button>
               </div>
             </div>
           ) : documentHref ? (
@@ -18307,7 +18360,7 @@ export default function AtlasPage() {
                 onClick={() =>
                   primaryFile
                     ? openUploadedFile(primaryFile)
-                    : window.open(documentHref, "_blank", "noopener,noreferrer")
+                    : openFileInBrowser(null, rawDocumentHref)
                 }
                 style={goldButtonStyle}
               >
@@ -24587,14 +24640,13 @@ export default function AtlasPage() {
                 </>
               ) : null}
               {source ? (
-                <a
-                  href={source}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => openFileInBrowser(previewFile, source)}
                   style={isPdf ? goldButtonStyle : secondaryButtonStyle}
                 >
                   {isPdf ? "Open PDF" : "Open New Tab"}
-                </a>
+                </button>
               ) : null}
               <button
                 type="button"
@@ -24647,14 +24699,13 @@ export default function AtlasPage() {
                     Atlas does not load the full PDF inside this page, which prevents large plan sets from freezing the Documents screen.
                   </p>
                   {source ? (
-                    <a
-                      href={source}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => openFileInBrowser(previewFile, source)}
                       style={{ ...goldButtonStyle, display: "inline-flex" }}
                     >
                       Open PDF
-                    </a>
+                    </button>
                   ) : (
                     <p style={mutedSmallStyle}>
                       No PDF file URL is saved for this document.
