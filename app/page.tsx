@@ -3942,6 +3942,7 @@ export default function AtlasPage() {
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [blueprintPage, setBlueprintPage] = useState(1);
+  const [openBlueprintSection, setOpenBlueprintSection] = useState<string | null>(null);
   const documentListScrollYRef = useRef(0);
   const documentOverlayScrollRef = useRef<HTMLDivElement>(null);
   const intakePhotoNameRef = useRef<HTMLInputElement>(null);
@@ -18581,102 +18582,107 @@ export default function AtlasPage() {
                     position: "relative",
                     overflow: "hidden",
                     border: `1px solid ${blueprintDocument ? colors.gold : colors.line}`,
-                    borderRadius: 20,
-                    padding: isMobile ? 14 : 16,
+                    borderRadius: 18,
+                    padding: isMobile ? 12 : 14,
                     background:
-                      "linear-gradient(135deg, #0B2940 0%, #123E5D 58%, #185173 100%)",
+                      "linear-gradient(135deg, #0B2940 0%, #123E5D 60%, #185173 100%)",
                     color: "#FFFFFF",
-                    boxShadow: "0 18px 38px rgba(7, 36, 58, 0.20)",
+                    boxShadow: "0 14px 28px rgba(7, 36, 58, 0.16)",
                   }}
                 >
                   <div
                     aria-hidden="true"
                     style={{
                       position: "absolute",
-                      width: 230,
-                      height: 230,
-                      right: -85,
-                      top: -110,
+                      width: 180,
+                      height: 180,
+                      right: -70,
+                      top: -95,
                       borderRadius: 999,
-                      border: "1px solid rgba(255,255,255,0.12)",
+                      border: "1px solid rgba(255,255,255,0.10)",
                       boxShadow:
-                        "0 0 0 34px rgba(255,255,255,0.025), 0 0 0 70px rgba(255,255,255,0.018)",
+                        "0 0 0 28px rgba(255,255,255,0.022), 0 0 0 58px rgba(255,255,255,0.014)",
                     }}
                   />
 
                   <div
                     style={{
                       position: "relative",
-                      display: "flex",
-                      alignItems: "flex-start",
-                      justifyContent: "space-between",
-                      gap: 14,
-                      flexWrap: "wrap",
-                      marginBottom: 12,
+                      display: "grid",
+                      gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) auto",
+                      alignItems: "center",
+                      gap: 12,
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
                       <div
                         style={{
-                          marginBottom: 6,
+                          marginBottom: 4,
                           color: "#E4BE67",
-                          fontSize: 10,
+                          fontSize: 9,
                           fontWeight: 950,
-                          letterSpacing: "0.15em",
+                          letterSpacing: "0.14em",
                           textTransform: "uppercase",
                         }}
                       >
                         Property Blueprint Center
                       </div>
-                      <h3
+                      <div
                         style={{
-                          margin: 0,
-                          fontSize: isMobile ? 19 : 22,
-                          lineHeight: 1.15,
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 10,
+                          flexWrap: "wrap",
                         }}
                       >
-                        2000 Estate Record Set
-                      </h3>
+                        <h3 style={{ margin: 0, fontSize: isMobile ? 18 : 20, lineHeight: 1.1 }}>
+                          2000 Estate Record Set
+                        </h3>
+                        <span style={{ color: "rgba(255,255,255,0.64)", fontSize: 10, fontWeight: 800 }}>
+                          {blueprintSections.reduce((total, section) => total + section.sheets.length, 0)} indexed sheets
+                        </span>
+                      </div>
                       <p
                         style={{
-                          maxWidth: 760,
-                          margin: "5px 0 0",
-                          color: "rgba(255,255,255,0.76)",
-                          fontSize: 12,
-                          lineHeight: 1.4,
+                          margin: "4px 0 0",
+                          color: "rgba(255,255,255,0.72)",
+                          fontSize: 11,
+                          lineHeight: 1.35,
                         }}
                       >
-                        One master 90-page construction set, organized into fast links so you can jump directly to the part of the property record you need.
+                        Open the master construction set or expand one discipline below.
                       </p>
                     </div>
 
                     <div
                       style={{
-                        display: "grid",
-                        justifyItems: "end",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: isMobile ? "flex-start" : "flex-end",
                         gap: 8,
+                        flexWrap: "wrap",
                       }}
                     >
                       <span
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
-                          gap: 7,
+                          gap: 6,
                           border: "1px solid rgba(255,255,255,0.18)",
                           borderRadius: 999,
-                          padding: "6px 10px",
+                          padding: "5px 9px",
                           background: blueprintDocument
                             ? "rgba(8,116,67,0.28)"
                             : "rgba(181,71,8,0.24)",
                           color: "#FFFFFF",
-                          fontSize: 10,
+                          fontSize: 9,
                           fontWeight: 900,
                         }}
                       >
                         <span
                           style={{
-                            width: 7,
-                            height: 7,
+                            width: 6,
+                            height: 6,
                             borderRadius: 999,
                             background: blueprintDocument ? "#57D39B" : "#F5B56A",
                           }}
@@ -18684,22 +18690,18 @@ export default function AtlasPage() {
                         {blueprintDocument
                           ? "Master set connected"
                           : blueprintRecordNeedsFile
-                            ? "Record found — PDF file missing"
+                            ? "Record found — PDF missing"
                             : "Master set needs upload"}
                       </span>
                       <button
                         type="button"
                         onClick={() => openBlueprintPage(1)}
-                        style={{
-                          ...goldButtonStyle,
-                          minHeight: 38,
-                          padding: "9px 13px",
-                        }}
+                        style={{ ...goldButtonStyle, minHeight: 34, padding: "7px 11px" }}
                       >
                         {blueprintDocument
                           ? "Open Master Set"
                           : blueprintRecordNeedsFile
-                            ? "Finish PDF Upload"
+                            ? "Finish Upload"
                             : "Add Master Set"}
                       </button>
                       {blueprintCandidate ? (
@@ -18708,17 +18710,17 @@ export default function AtlasPage() {
                           onClick={showBlueprintInDocuments}
                           style={{
                             minHeight: 34,
-                            padding: "7px 11px",
-                            border: "1px solid rgba(255,255,255,0.22)",
+                            padding: "7px 10px",
+                            border: "1px solid rgba(255,255,255,0.20)",
                             borderRadius: 10,
                             background: "rgba(255,255,255,0.08)",
                             color: "#FFFFFF",
-                            fontSize: 10,
+                            fontSize: 9,
                             fontWeight: 900,
                             cursor: "pointer",
                           }}
                         >
-                          Show Document Record
+                          Show Record
                         </button>
                       ) : null}
                     </div>
@@ -18727,138 +18729,157 @@ export default function AtlasPage() {
                   <div
                     style={{
                       position: "relative",
-                      columnCount: isMobile ? 2 : 5,
-                      columnGap: 8,
+                      display: "grid",
+                      gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                      gap: 7,
+                      marginTop: 11,
                     }}
                   >
-                    {blueprintSections.map((section) => (
-                      <div
-                        key={section.id}
-                        style={{
-                          minWidth: 0,
-                          width: "100%",
-                          display: "inline-block",
-                          breakInside: "avoid",
-                          marginBottom: 8,
-                          padding: isMobile ? 9 : 10,
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          borderRadius: 12,
-                          background: "rgba(255,255,255,0.075)",
-                          color: "#FFFFFF",
-                          verticalAlign: "top",
-                          backdropFilter: "blur(8px)",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => openBlueprintPage(section.sheets[0].page)}
-                          title={`Open ${section.label}`}
+                    {blueprintSections.map((section) => {
+                      const isOpen = openBlueprintSection === section.id;
+                      return (
+                        <div
+                          key={section.id}
                           style={{
-                            display: "grid",
-                            gridTemplateColumns: "28px minmax(0, 1fr)",
-                            alignItems: "center",
-                            gap: 9,
-                            width: "100%",
-                            padding: 0,
-                            border: 0,
-                            background: "transparent",
-                            color: "inherit",
-                            textAlign: "left",
-                            cursor: "pointer",
+                            minWidth: 0,
+                            border: "1px solid rgba(255,255,255,0.13)",
+                            borderRadius: 11,
+                            background: isOpen
+                              ? "rgba(255,255,255,0.11)"
+                              : "rgba(255,255,255,0.065)",
+                            overflow: "hidden",
                           }}
                         >
-                          <span
-                            aria-hidden="true"
+                          <button
+                            type="button"
+                            aria-expanded={isOpen}
+                            onClick={() =>
+                              setOpenBlueprintSection((current) =>
+                                current === section.id ? null : section.id,
+                              )
+                            }
                             style={{
                               display: "grid",
-                              placeItems: "center",
-                              width: 28,
-                              height: 28,
-                              borderRadius: 10,
-                              background: "rgba(228,190,103,0.16)",
-                              color: "#F0CD7E",
-                              fontSize: 15,
-                              fontWeight: 900,
+                              gridTemplateColumns: "26px minmax(0, 1fr) auto",
+                              alignItems: "center",
+                              gap: 8,
+                              width: "100%",
+                              minHeight: 42,
+                              padding: "7px 9px",
+                              border: 0,
+                              background: "transparent",
+                              color: "#FFFFFF",
+                              textAlign: "left",
+                              cursor: "pointer",
                             }}
                           >
-                            {section.icon}
-                          </span>
-                          <span style={{ minWidth: 0 }}>
-                            <strong style={{ display: "block", fontSize: 12, lineHeight: 1.25 }}>
-                              {section.label}
-                            </strong>
-                            <small style={{ display: "block", marginTop: 3, opacity: 0.7, lineHeight: 1.3 }}>
-                              {section.sheets.length} indexed {section.sheets.length === 1 ? "sheet" : "sheets"}
-                            </small>
-                          </span>
-                        </button>
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 5,
-                            marginTop: 7,
-                            paddingTop: 7,
-                            borderTop: "1px solid rgba(255,255,255,0.1)",
-                          }}
-                        >
-                          {section.sheets.map((sheet) => (
-                            <button
-                              key={`${section.id}-${sheet.sheet}-${sheet.page}`}
-                              type="button"
-                              onClick={() => openBlueprintPage(sheet.page)}
-                              title={`${sheet.label} · PDF page ${sheet.page}`}
+                            <span
+                              aria-hidden="true"
                               style={{
                                 display: "grid",
-                                gridTemplateColumns: "minmax(0, 1fr) auto",
-                                gap: 8,
-                                alignItems: "center",
-                                width: "100%",
-                                minWidth: 0,
-                                padding: "6px 7px",
-                                border: "1px solid rgba(255,255,255,0.08)",
-                                borderRadius: 9,
-                                background: "rgba(255,255,255,0.055)",
-                                color: "#FFFFFF",
-                                textAlign: "left",
-                                cursor: "pointer",
+                                placeItems: "center",
+                                width: 26,
+                                height: 26,
+                                borderRadius: 8,
+                                background: "rgba(228,190,103,0.16)",
+                                color: "#F0CD7E",
+                                fontSize: 13,
+                                fontWeight: 900,
                               }}
                             >
-                              <span style={{ minWidth: 0 }}>
-                                <strong
+                              {section.icon}
+                            </span>
+                            <span style={{ minWidth: 0 }}>
+                              <strong style={{ display: "block", fontSize: 11, lineHeight: 1.2 }}>
+                                {section.label}
+                              </strong>
+                              <small style={{ display: "block", marginTop: 2, opacity: 0.66, fontSize: 9 }}>
+                                {section.sheets.length} {section.sheets.length === 1 ? "sheet" : "sheets"}
+                              </small>
+                            </span>
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                color: "#F0CD7E",
+                                fontSize: 14,
+                                fontWeight: 900,
+                                transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                                transition: "transform 160ms ease",
+                              }}
+                            >
+                              ▾
+                            </span>
+                          </button>
+
+                          {isOpen ? (
+                            <div
+                              style={{
+                                display: "grid",
+                                gap: 5,
+                                padding: "0 8px 8px",
+                                borderTop: "1px solid rgba(255,255,255,0.09)",
+                              }}
+                            >
+                              {section.sheets.map((sheet) => (
+                                <button
+                                  key={`${section.id}-${sheet.sheet}-${sheet.page}`}
+                                  type="button"
+                                  onClick={() => openBlueprintPage(sheet.page)}
+                                  title={`${sheet.label} · PDF page ${sheet.page}`}
                                   style={{
-                                    display: "block",
-                                    overflow: "hidden",
-                                    fontSize: 10,
-                                    lineHeight: 1.25,
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
+                                    display: "grid",
+                                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                                    gap: 8,
+                                    alignItems: "center",
+                                    width: "100%",
+                                    minWidth: 0,
+                                    marginTop: 5,
+                                    padding: "6px 7px",
+                                    border: "1px solid rgba(255,255,255,0.08)",
+                                    borderRadius: 8,
+                                    background: "rgba(255,255,255,0.055)",
+                                    color: "#FFFFFF",
+                                    textAlign: "left",
+                                    cursor: "pointer",
                                   }}
                                 >
-                                  {sheet.label}
-                                </strong>
-                                <small style={{ display: "block", marginTop: 2, opacity: 0.62, fontSize: 9 }}>
-                                  {sheet.sheet}
-                                </small>
-                              </span>
-                              <span
-                                style={{
-                                  borderRadius: 999,
-                                  background: "rgba(228,190,103,0.16)",
-                                  color: "#F0CD7E",
-                                  padding: "3px 6px",
-                                  fontSize: 9,
-                                  fontWeight: 900,
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                p. {sheet.page}
-                              </span>
-                            </button>
-                          ))}
+                                  <span style={{ minWidth: 0 }}>
+                                    <strong
+                                      style={{
+                                        display: "block",
+                                        overflow: "hidden",
+                                        fontSize: 10,
+                                        lineHeight: 1.2,
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {sheet.label}
+                                    </strong>
+                                    <small style={{ display: "block", marginTop: 2, opacity: 0.6, fontSize: 8 }}>
+                                      {sheet.sheet}
+                                    </small>
+                                  </span>
+                                  <span
+                                    style={{
+                                      borderRadius: 999,
+                                      background: "rgba(228,190,103,0.16)",
+                                      color: "#F0CD7E",
+                                      padding: "3px 6px",
+                                      fontSize: 8,
+                                      fontWeight: 900,
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    p. {sheet.page}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               ) : null}
