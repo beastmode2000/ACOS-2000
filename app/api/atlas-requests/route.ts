@@ -168,6 +168,14 @@ function normalizeRequest(row: any) {
     completedAt: row.completed_at ?? "",
     submittedAt: row.submitted_at ?? "",
     updatedAt: row.updated_at ?? "",
+    propertyId: row.property_id ?? "",
+    portalType: row.portal_type ?? "owner",
+    assignedTo: row.assigned_to ?? "",
+    accessProfile: row.access_profile ?? "",
+    visibilityUserIds: Array.isArray(row.visibility_user_ids)
+      ? row.visibility_user_ids
+      : [],
+    source: row.source ?? "",
   };
 }
 
@@ -209,12 +217,24 @@ async function ensureSchema() {
       converted_work_order_id TEXT NOT NULL DEFAULT '',
       completed_at TIMESTAMPTZ,
       submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      property_id TEXT NOT NULL DEFAULT '',
+      portal_type TEXT NOT NULL DEFAULT 'owner',
+      assigned_to TEXT NOT NULL DEFAULT '',
+      access_profile TEXT NOT NULL DEFAULT '',
+      visibility_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+      source TEXT NOT NULL DEFAULT ''
     )
   `;
 
   await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'Maintenance'`;
   await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS property_id TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS portal_type TEXT NOT NULL DEFAULT 'owner'`;
+  await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS assigned_to TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS access_profile TEXT NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS visibility_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb`;
+  await sql`ALTER TABLE atlas_requests ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''`;
 
   await sql`
     CREATE INDEX IF NOT EXISTS atlas_requests_status_date_idx
@@ -234,10 +254,27 @@ async function getPortalToken() {
   return String(rows[0]?.share_token || "");
 }
 
-async function tokenIsValid(token: string) {
-  if (!token) return false;
+type PortalContext = {
+  valid: boolean;
+  type: "owner" | "marine";
+  baseToken: string;
+};
+
+async function resolvePortalToken(token: string): Promise<PortalContext> {
+  if (!token) return { valid: false, type: "owner", baseToken: "" };
+
   const portalToken = await getPortalToken();
-  return Boolean(portalToken && token === portalToken);
+  if (!portalToken) return { valid: false, type: "owner", baseToken: "" };
+
+  if (token === portalToken) {
+    return { valid: true, type: "owner", baseToken: portalToken };
+  }
+
+  if (token === `marine-${portalToken}`) {
+    return { valid: true, type: "marine", baseToken: portalToken };
+  }
+
+  return { valid: false, type: "owner", baseToken: portalToken };
 }
 
 export async function GET(request: NextRequest) {
@@ -247,9 +284,11 @@ export async function GET(request: NextRequest) {
     const token = url.searchParams.get("token") || "";
 
     if (token) {
-      if (!(await tokenIsValid(token))) {
+      const portal = await resolvePortalToken(token);
+
+      if (!portal.valid) {
         return NextResponse.json(
-          { ok: false, error: "Owner request link not found." },
+          { ok: false, error: "Request link not found." },
           { status: 404 },
         );
       }
@@ -257,7 +296,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         publicPortal: true,
-        title: "Request Maintenance",
+        portalType: portal.type,
+        title:
+          portal.type === "marine"
+            ? "Request Boat or Marine Service"
+            : "Request Maintenance",
+        category: portal.type === "marine" ? "Dock & Marine" : "Maintenance",
+        assignedTo: portal.type === "marine" ? "Sean" : "",
+        properties:
+          portal.type === "marine" ? ["2000", "3661", "6855"] : [],
       });
     }
 
@@ -286,6 +333,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       portalToken: await getPortalToken(),
+      marinePortalToken: `marine-${await getPortalToken()}`,
       requests: rows.filter((row) => requestAllowed(access, row)).map(normalizeRequest),
     });
   } catch (error) {
@@ -306,9 +354,11 @@ export async function POST(request: NextRequest) {
     const url = new URL(request.url);
     const token = url.searchParams.get("token") || "";
 
-    if (!(await tokenIsValid(token))) {
+    const portal = await resolvePortalToken(token);
+
+    if (!portal.valid) {
       return NextResponse.json(
-        { ok: false, error: "Owner request link not found." },
+        { ok: false, error: "Request link not found." },
         { status: 404 },
       );
     }
@@ -322,8 +372,18 @@ export async function POST(request: NextRequest) {
     const assetName = cleanText(body.assetName, 300);
     const priority = safePriority(body.priority);
     const preferredTiming = cleanText(body.preferredTiming, 500);
-    const category = cleanText(body.category, 200) || "Maintenance";
+    const requestedCategory = cleanText(body.category, 200) || "Maintenance";
     const photos = safePhotos(body.photos);
+    const propertyId = cleanText(body.propertyId, 100);
+    const portalType = portal.type;
+    const category =
+      portalType === "marine" ? "Dock & Marine" : requestedCategory;
+    const assignedTo = portalType === "marine" ? "Sean" : "";
+    const accessProfile = portalType === "marine" ? "marine" : "";
+    const visibilityUserIds =
+      portalType === "marine" ? ["sean", "nick", "steve"] : [];
+    const source =
+      portalType === "marine" ? "Sean Marine QR" : "Owner Request QR";
 
     if (!requesterName || !description) {
       return NextResponse.json(
@@ -348,7 +408,13 @@ export async function POST(request: NextRequest) {
         preferred_timing,
         category,
         status,
-        photos
+        photos,
+        property_id,
+        portal_type,
+        assigned_to,
+        access_profile,
+        visibility_user_ids,
+        source
       )
       VALUES (
         ${requesterName},
@@ -361,15 +427,24 @@ export async function POST(request: NextRequest) {
         ${preferredTiming},
         ${category},
         'New',
-        ${JSON.stringify(photos)}::jsonb
+        ${JSON.stringify(photos)}::jsonb,
+        ${propertyId},
+        ${portalType},
+        ${assignedTo},
+        ${accessProfile},
+        ${JSON.stringify(visibilityUserIds)}::jsonb,
+        ${source}
       )
       RETURNING *
     `;
 
     const savedRequest = normalizeRequest(rows[0]);
     await sendAtlasPush({
-      title: "New Atlas Owner Request",
-      body: `${savedRequest.title || "Maintenance Request"}${savedRequest.requesterName ? ` · ${savedRequest.requesterName}` : ""}`,
+      title:
+        savedRequest.portalType === "marine"
+          ? "New Sean Marine Request"
+          : "New Atlas Owner Request",
+      body: `${savedRequest.title || (savedRequest.portalType === "marine" ? "Marine Request" : "Maintenance Request")}${savedRequest.requesterName ? ` · ${savedRequest.requesterName}` : ""}`,
       url: "/#requests",
       tag: `atlas-request-${savedRequest.id}`,
       category: "requests",
@@ -378,7 +453,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       request: savedRequest,
-      message: "Your request was submitted.",
+      message:
+        savedRequest.portalType === "marine"
+          ? "Your marine request was sent to Sean."
+          : "Your request was submitted.",
     });
   } catch (error) {
     return NextResponse.json(
@@ -473,6 +551,14 @@ export async function PATCH(request: NextRequest) {
       body.convertedWorkOrderId === undefined
         ? existing.converted_work_order_id
         : cleanText(body.convertedWorkOrderId, 300);
+    const propertyId =
+      body.propertyId === undefined
+        ? existing.property_id || ""
+        : cleanText(body.propertyId, 100);
+    const assignedTo =
+      body.assignedTo === undefined
+        ? existing.assigned_to || ""
+        : cleanText(body.assignedTo, 200);
     const wasCompleted = Boolean(existing.completed_at);
     const isCompleted = status === "Closed" || status === "Declined";
     const completedAt = isCompleted
@@ -494,6 +580,8 @@ export async function PATCH(request: NextRequest) {
         status = ${status},
         admin_notes = ${adminNotes},
         converted_work_order_id = ${convertedWorkOrderId},
+        property_id = ${propertyId},
+        assigned_to = ${assignedTo},
         completed_at = ${completedAt},
         updated_at = now()
       WHERE id = ${id}::uuid
