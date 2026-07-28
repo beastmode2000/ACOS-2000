@@ -3864,6 +3864,11 @@ export default function AtlasPage() {
   const [calculatorValue, setCalculatorValue] = useState("");
   const [calculatorResult, setCalculatorResult] = useState("0");
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
+  const [photoTimelineSearch, setPhotoTimelineSearch] = useState("");
+  const [photoTimelineAssetId, setPhotoTimelineAssetId] = useState("all");
+  const [photoTimelineYear, setPhotoTimelineYear] = useState("all");
+  const [photoTimelinePaintingOnly, setPhotoTimelinePaintingOnly] = useState(false);
+  const [photoTimelineHideLogos, setPhotoTimelineHideLogos] = useState(true);
   const [intakeDocs, setIntakeDocs] = useState<DocumentRecord[]>([]);
   const [inboxItems, setInboxItems] = useState<InboxItemRecord[]>([]);
   const [selectedInboxId, setSelectedInboxId] = useState("");
@@ -13165,8 +13170,160 @@ export default function AtlasPage() {
   }
 
   function renderTimelineOrInsights(mode: "timeline" | "insights") {
+    const photoTimelineItems = [
+      ...photos.map((photo) => ({
+        id: `asset-photo-${photo.id}`,
+        name: photo.name || "Asset photo",
+        source: photoSource(photo),
+        createdAt: photo.createdAt || "",
+        assetId: photo.assetId || "",
+        assetName: assetName(photo.assetId || "") || "General property",
+        area: assetName(photo.assetId || "") || "General property",
+        origin: "Asset photo",
+      })),
+      ...allDocuments.flatMap((document) =>
+        (document.files || [])
+          .filter((file) =>
+            String(file.type || "").startsWith("image/") ||
+            String(file.dataUrl || "").startsWith("data:image/") ||
+            /\.(png|jpe?g|webp|gif|avif)$/i.test(String(file.name || "")),
+          )
+          .map((file) => ({
+            id: `document-photo-${document.id}-${file.id}`,
+            name: document.title || file.name || "Document photo",
+            source: file.url || file.dataUrl || "",
+            createdAt: file.createdAt || document.createdAt || "",
+            assetId: document.linkedAssetId || "",
+            assetName: document.linkedAssetId
+              ? assetName(document.linkedAssetId) || document.targetName || "Linked asset"
+              : document.targetName || document.area || "General property",
+            area: document.area || document.targetName || "General property",
+            origin: "Document image",
+          })),
+      ),
+    ]
+      .filter((item) => Boolean(item.source))
+      .filter((item) => {
+        const haystack = `${item.name} ${item.assetName} ${item.area} ${item.origin}`.toLowerCase();
+        const searchMatches =
+          !photoTimelineSearch.trim() ||
+          haystack.includes(photoTimelineSearch.trim().toLowerCase());
+        const assetMatches =
+          photoTimelineAssetId === "all" || item.assetId === photoTimelineAssetId;
+        const year = item.createdAt ? String(new Date(item.createdAt).getFullYear()) : "Unknown";
+        const yearMatches = photoTimelineYear === "all" || year === photoTimelineYear;
+        const paintingMatches =
+          !photoTimelinePaintingOnly ||
+          /(paint|painting|stain|elliott|exterior|siding|trim|eave|coat)/i.test(haystack);
+        const logoMatches =
+          !photoTimelineHideLogos || !/(logo|brand mark|wordmark)/i.test(haystack);
+        return searchMatches && assetMatches && yearMatches && paintingMatches && logoMatches;
+      })
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+    const photoTimelineYears = Array.from(
+      new Set(
+        [...photos.map((photo) => photo.createdAt || ""), ...allDocuments.map((document) => document.createdAt || "")]
+          .filter(Boolean)
+          .map((date) => String(new Date(date).getFullYear())),
+      ),
+    ).sort((a, b) => b.localeCompare(a));
+
+    const photoTimelineGroups = photoTimelineItems.reduce<Record<string, typeof photoTimelineItems>>(
+      (groups, item) => {
+        const date = item.createdAt ? new Date(item.createdAt) : null;
+        const key = date && !Number.isNaN(date.getTime())
+          ? date.toLocaleDateString(undefined, { month: "long", year: "numeric" })
+          : "Date not recorded";
+        (groups[key] ||= []).push(item);
+        return groups;
+      },
+      {},
+    );
+
     return (
-      <AtlasInsightsTimeline
+      <>
+        {mode === "timeline" ? (
+          <section style={{ ...sectionStyle, marginBottom: 18 }}>
+            <SectionHeader
+              eyebrow="Visual Property History"
+              title="Photo Timeline"
+              detail="Browse painting progress, repairs, inspections, and estate photos in chronological order."
+            />
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+              {[
+                ["Visible photos", photoTimelineItems.length],
+                ["All photos", photos.length + allDocuments.reduce((count, document) => count + (document.files || []).filter((file) => String(file.type || "").startsWith("image/") || String(file.dataUrl || "").startsWith("data:image/") || /\.(png|jpe?g|webp|gif|avif)$/i.test(String(file.name || ""))).length, 0)],
+                ["Painting photos", photoTimelineItems.filter((item) => /(paint|painting|stain|elliott|exterior|siding|trim|eave|coat)/i.test(`${item.name} ${item.area}`)).length],
+                ["Years covered", photoTimelineYears.length],
+              ].map(([label, value]) => (
+                <div key={String(label)} style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: "12px 14px", background: "#FFFFFF" }}>
+                  <div style={{ fontSize: 12, color: colors.muted, fontWeight: 800 }}>{label}</div>
+                  <div style={{ fontSize: 24, color: colors.navy3, fontWeight: 950, marginTop: 3 }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1.6fr) minmax(150px, .8fr) minmax(130px, .7fr) auto auto", gap: 10, alignItems: "center", marginBottom: 16 }}>
+              <input
+                value={photoTimelineSearch}
+                onChange={(event) => setPhotoTimelineSearch(event.target.value)}
+                placeholder="Search photos, assets, areas, painting..."
+                style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }}
+              />
+              <select value={photoTimelineAssetId} onChange={(event) => setPhotoTimelineAssetId(event.target.value)} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", background: "white", fontWeight: 700 }}>
+                <option value="all">All assets</option>
+                {assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+              </select>
+              <select value={photoTimelineYear} onChange={(event) => setPhotoTimelineYear(event.target.value)} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", background: "white", fontWeight: 700 }}>
+                <option value="all">All years</option>
+                {photoTimelineYears.map((year) => <option key={year} value={year}>{year}</option>)}
+              </select>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", fontWeight: 800, color: colors.navy3 }}>
+                <input type="checkbox" checked={photoTimelinePaintingOnly} onChange={(event) => setPhotoTimelinePaintingOnly(event.target.checked)} /> Painting only
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", fontWeight: 800, color: colors.navy3 }}>
+                <input type="checkbox" checked={photoTimelineHideLogos} onChange={(event) => setPhotoTimelineHideLogos(event.target.checked)} /> Hide logos
+              </label>
+            </div>
+
+            {photoTimelineItems.length ? (
+              <div style={{ display: "grid", gap: 22 }}>
+                {Object.entries(photoTimelineGroups).map(([month, items]) => (
+                  <div key={month}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                      <strong style={{ color: colors.navy3, fontSize: 17 }}>{month}</strong>
+                      <span style={{ color: colors.muted, fontSize: 12, fontWeight: 800 }}>{items.length} photo{items.length === 1 ? "" : "s"}</span>
+                      <span style={{ height: 1, background: "#DDE5ED", flex: 1 }} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(190px, 1fr))", gap: 12 }}>
+                      {items.map((item) => (
+                        <button key={item.id} type="button" onClick={() => window.open(item.source, "_blank", "noopener,noreferrer")} style={{ border: "1px solid #D7E0EA", borderRadius: 14, overflow: "hidden", background: "white", padding: 0, textAlign: "left", cursor: "pointer" }}>
+                          <div style={{ aspectRatio: "4 / 3", background: "#EEF3F7", overflow: "hidden" }}>
+                            <img src={item.source} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          </div>
+                          <div style={{ padding: 11 }}>
+                            <div style={{ fontWeight: 900, color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                            <div style={{ fontSize: 12, color: colors.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.assetName}</div>
+                            <div style={{ fontSize: 11, color: colors.muted, marginTop: 6, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                              <span>{item.origin}</span>
+                              <span>{item.createdAt ? formatDate(String(item.createdAt).slice(0, 10)) : "No date"}</span>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={emptyStateStyle}>No photos match the current timeline filters.</div>
+            )}
+          </section>
+        ) : null}
+
+        <AtlasInsightsTimeline
         mode={mode}
         serviceRecords={serviceRecords}
         requestRecords={requestRecords}
@@ -13189,6 +13346,7 @@ export default function AtlasPage() {
         setSelectedRequestId={setSelectedRequestId}
         openCalendarItem={openCalendarItem}
       />
+      </>
     );
   }
 
