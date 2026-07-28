@@ -17997,8 +17997,15 @@ export default function AtlasPage() {
       return (
         haystack.includes("as-built") ||
         haystack.includes("as built") ||
+        haystack.includes("as-build") ||
+        haystack.includes("as build") ||
+        haystack.includes("as-builts") ||
+        haystack.includes("as builts") ||
+        haystack.includes("asbuild") ||
+        haystack.includes("asbuilds") ||
         haystack.includes("2000 as buids") ||
         haystack.includes("2000 record set") ||
+        (haystack.includes("2000") && haystack.includes("construction set")) ||
         (haystack.includes("2000 faben") && haystack.includes("construction"))
       );
     });
@@ -18575,7 +18582,7 @@ export default function AtlasPage() {
                     overflow: "hidden",
                     border: `1px solid ${blueprintDocument ? colors.gold : colors.line}`,
                     borderRadius: 20,
-                    padding: isMobile ? 16 : 20,
+                    padding: isMobile ? 14 : 16,
                     background:
                       "linear-gradient(135deg, #0B2940 0%, #123E5D 58%, #185173 100%)",
                     color: "#FFFFFF",
@@ -18605,7 +18612,7 @@ export default function AtlasPage() {
                       justifyContent: "space-between",
                       gap: 14,
                       flexWrap: "wrap",
-                      marginBottom: 16,
+                      marginBottom: 12,
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
@@ -18624,7 +18631,7 @@ export default function AtlasPage() {
                       <h3
                         style={{
                           margin: 0,
-                          fontSize: isMobile ? 20 : 24,
+                          fontSize: isMobile ? 19 : 22,
                           lineHeight: 1.15,
                         }}
                       >
@@ -18632,11 +18639,11 @@ export default function AtlasPage() {
                       </h3>
                       <p
                         style={{
-                          maxWidth: 650,
-                          margin: "7px 0 0",
+                          maxWidth: 760,
+                          margin: "5px 0 0",
                           color: "rgba(255,255,255,0.76)",
                           fontSize: 12,
-                          lineHeight: 1.55,
+                          lineHeight: 1.4,
                         }}
                       >
                         One master 90-page construction set, organized into fast links so you can jump directly to the part of the property record you need.
@@ -18720,11 +18727,8 @@ export default function AtlasPage() {
                   <div
                     style={{
                       position: "relative",
-                      display: "grid",
-                      gridTemplateColumns: isMobile
-                        ? "repeat(2, minmax(0, 1fr))"
-                        : "repeat(3, minmax(0, 1fr))",
-                      gap: 9,
+                      columnCount: isMobile ? 2 : 5,
+                      columnGap: 8,
                     }}
                   >
                     {blueprintSections.map((section) => (
@@ -18732,11 +18736,16 @@ export default function AtlasPage() {
                         key={section.id}
                         style={{
                           minWidth: 0,
-                          padding: isMobile ? 10 : 12,
+                          width: "100%",
+                          display: "inline-block",
+                          breakInside: "avoid",
+                          marginBottom: 8,
+                          padding: isMobile ? 9 : 10,
                           border: "1px solid rgba(255,255,255,0.14)",
-                          borderRadius: 13,
+                          borderRadius: 12,
                           background: "rgba(255,255,255,0.075)",
                           color: "#FFFFFF",
+                          verticalAlign: "top",
                           backdropFilter: "blur(8px)",
                         }}
                       >
@@ -18746,7 +18755,7 @@ export default function AtlasPage() {
                           title={`Open ${section.label}`}
                           style={{
                             display: "grid",
-                            gridTemplateColumns: "32px minmax(0, 1fr)",
+                            gridTemplateColumns: "28px minmax(0, 1fr)",
                             alignItems: "center",
                             gap: 9,
                             width: "100%",
@@ -18763,12 +18772,12 @@ export default function AtlasPage() {
                             style={{
                               display: "grid",
                               placeItems: "center",
-                              width: 32,
-                              height: 32,
+                              width: 28,
+                              height: 28,
                               borderRadius: 10,
                               background: "rgba(228,190,103,0.16)",
                               color: "#F0CD7E",
-                              fontSize: 17,
+                              fontSize: 15,
                               fontWeight: 900,
                             }}
                           >
@@ -18788,8 +18797,8 @@ export default function AtlasPage() {
                           style={{
                             display: "grid",
                             gap: 5,
-                            marginTop: 10,
-                            paddingTop: 9,
+                            marginTop: 7,
+                            paddingTop: 7,
                             borderTop: "1px solid rgba(255,255,255,0.1)",
                           }}
                         >
@@ -18806,7 +18815,7 @@ export default function AtlasPage() {
                                 alignItems: "center",
                                 width: "100%",
                                 minWidth: 0,
-                                padding: "7px 8px",
+                                padding: "6px 7px",
                                 border: "1px solid rgba(255,255,255,0.08)",
                                 borderRadius: 9,
                                 background: "rgba(255,255,255,0.055)",
