@@ -14991,34 +14991,38 @@ export default function AtlasPage() {
       (total, record) => total + Math.max(0, Number(record.estimatedCost || 0)),
       0,
     );
-    const assetHealthScore = Math.max(
-      0,
-      Math.min(
-        100,
-        100 -
-          overdueAssetWorkOrders.length * 18 -
-          highPriorityAssetWorkOrders.length * 10 -
-          (selectedAsset.status === "Offline" ? 35 : 0) -
-          (selectedAsset.status === "Monitor" ? 10 : 0) -
-          (!selectedAsset.locationId ? 8 : 0) -
-          (!selectedAsset.serial ? 4 : 0) -
-          (!selectedAsset.vendorIds.length ? 5 : 0) -
-          (!attachedManuals.length ? 5 : 0) -
-          (!linkedAssetProcedures.length ? 5 : 0),
-      ),
-    );
-    const assetHealthLabel =
-      assetHealthScore >= 85
-        ? "Healthy"
-        : assetHealthScore >= 65
-          ? "Monitor"
-          : "Attention";
-    const assetWarnings = [
-      !selectedAsset.locationId ? "No primary location" : "",
-      !selectedAsset.serial ? "Serial / VIN / HIN is missing" : "",
-      !selectedAsset.vendorIds.length ? "No preferred vendor" : "",
-      !attachedManuals.length ? "No manual attached" : "",
-      !linkedAssetProcedures.length ? "No procedure attached" : "",
+    const assetConditionLabel =
+      selectedAsset.status === "Online"
+        ? "Operational"
+        : selectedAsset.status === "Offline"
+          ? "Out of Service"
+          : selectedAsset.status === "Seasonal"
+            ? "Seasonal"
+            : "Not Assessed";
+
+    const assetConditionBadge =
+      selectedAsset.status === "Online"
+        ? "Online"
+        : selectedAsset.status === "Offline"
+          ? "Offline"
+          : selectedAsset.status === "Seasonal"
+            ? "Seasonal"
+            : "Monitor";
+
+    const assetSetupItems = [
+      !selectedAsset.locationId || selectedAsset.locationId === "general"
+        ? "Assign a primary location"
+        : "",
+      !selectedAsset.serial ? "Add serial / VIN / HIN" : "",
+      !selectedAsset.vendorIds.length ? "Select a preferred vendor" : "",
+      !attachedManuals.length ? "Attach a manual" : "",
+      !linkedAssetProcedures.length ? "Link a procedure" : "",
+    ].filter(Boolean);
+
+    const assetSetupCompleted = 5 - assetSetupItems.length;
+
+    const assetServiceIssues = [
+      selectedAsset.status === "Offline" ? "Asset is marked out of service" : "",
       overdueAssetWorkOrders.length
         ? `${overdueAssetWorkOrders.length} overdue work order${overdueAssetWorkOrders.length === 1 ? "" : "s"}`
         : "",
@@ -15499,13 +15503,11 @@ export default function AtlasPage() {
                   <div>
                     <strong>Asset Intelligence</strong>
                     <div style={assetCardHintStyle}>
-                      Current work, maintenance, records, and attention items
+                      Equipment condition, active work, maintenance, and record setup
                     </div>
                   </div>
-                  <span style={badgeStyle(assetWarnings.length ? "Monitor" : "Online")}>
-                    {assetWarnings.length
-                      ? `${assetWarnings.length} attention item${assetWarnings.length === 1 ? "" : "s"}`
-                      : "Records complete"}
+                  <span style={badgeStyle(assetConditionBadge)}>
+                    {assetConditionLabel}
                   </span>
                 </div>
 
@@ -15521,17 +15523,23 @@ export default function AtlasPage() {
                 >
                   {[
                     {
-                      label: "Asset Health",
-                      value: `${assetHealthScore}%`,
-                      detail: assetHealthLabel,
-                      hoverTitle: "Health factors",
-                      hoverLines: [
-                        `${openAssetWorkOrders.length} open work order${openAssetWorkOrders.length === 1 ? "" : "s"}`,
-                        `${assetWarnings.length} attention item${assetWarnings.length === 1 ? "" : "s"}`,
-                        nextAssetMaintenance?.date
-                          ? `Next maintenance ${formatDate(nextAssetMaintenance.date)}`
-                          : "No maintenance currently scheduled",
-                      ],
+                      label: "Condition",
+                      value: assetConditionLabel,
+                      detail:
+                        assetServiceIssues.length > 0
+                          ? `${assetServiceIssues.length} service issue${assetServiceIssues.length === 1 ? "" : "s"}`
+                          : selectedAsset.status === "Monitor"
+                            ? "Condition has not been assessed"
+                            : "No active condition warning",
+                      hoverTitle: "Asset condition",
+                      hoverLines: assetServiceIssues.length
+                        ? assetServiceIssues
+                        : [
+                            `Status: ${assetConditionLabel}`,
+                            selectedAsset.status === "Monitor"
+                              ? "Missing records do not mean the asset is not working"
+                              : "No overdue or high-priority service issue detected",
+                          ],
                       action: () => undefined,
                     },
                     {
@@ -15815,18 +15823,32 @@ export default function AtlasPage() {
 
                   <div
                     style={{
-                      border: `1px solid ${assetWarnings.length ? "#D8B45C" : colors.line}`,
+                      border: `1px solid ${assetSetupItems.length ? "#D8B45C" : colors.line}`,
                       borderRadius: 10,
-                      background: assetWarnings.length ? "#FFF9E8" : "#FFFFFF",
+                      background: assetSetupItems.length ? "#FFF9E8" : "#FFFFFF",
                       padding: 10,
                     }}
                   >
-                    <span style={assetInfoLabelStyle}>Attention</span>
-                    {assetWarnings.length ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                      }}
+                    >
+                      <span style={assetInfoLabelStyle}>Record Setup</span>
+                      <span style={badgeStyle(assetSetupItems.length ? "Monitor" : "Online")}>
+                        {assetSetupItems.length
+                          ? `${assetSetupCompleted} / 5 complete`
+                          : "Complete"}
+                      </span>
+                    </div>
+                    {assetSetupItems.length ? (
                       <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
-                        {assetWarnings.map((warning) => (
+                        {assetSetupItems.map((item) => (
                           <div
-                            key={warning}
+                            key={item}
                             style={{
                               color: colors.navy,
                               fontSize: 11,
@@ -15834,13 +15856,13 @@ export default function AtlasPage() {
                               fontWeight: 800,
                             }}
                           >
-                            • {warning}
+                            ○ {item}
                           </div>
                         ))}
                       </div>
                     ) : (
                       <div style={{ ...assetCardHintStyle, marginTop: 7 }}>
-                        No missing core records or overdue work detected.
+                        Core asset records are complete.
                       </div>
                     )}
                   </div>
@@ -24485,12 +24507,37 @@ export default function AtlasPage() {
     const completedWorkOrders = serviceRecords.filter(
       (record) => record.status === "Completed",
     ).length;
-    const onlineAssets = assetRecords.filter(
+    const operationalAssets = assetRecords.filter(
       (asset) => asset.status === "Online",
     ).length;
-    const attentionAssets = assetRecords.filter(
-      (asset) => asset.status === "Offline" || asset.status === "Monitor",
-    ).length;
+    const needsServiceAssets = assetRecords.filter((asset) => {
+      if (asset.status === "Offline") return true;
+
+      return serviceRecords.some(
+        (record) =>
+          record.assetId === asset.id &&
+          record.status !== "Completed" &&
+          (
+            record.priority === "High" ||
+            (Boolean(record.date) && record.date < todayISO())
+          ),
+      );
+    }).length;
+    const setupIncompleteAssets = assetRecords.filter((asset) => {
+      const hasManual = manualsForAsset(asset).length > 0;
+      const hasProcedure = procedureRecords.some((procedure) =>
+        (procedure.linkedAssetIds || []).includes(asset.id),
+      );
+
+      return (
+        !asset.locationId ||
+        asset.locationId === "general" ||
+        !asset.serial ||
+        !asset.vendorIds.length ||
+        !hasManual ||
+        !hasProcedure
+      );
+    }).length;
     const linkedDocuments = intakeDocs.filter(
       (document) => document.targetType && document.targetType !== "General",
     ).length;
@@ -24809,12 +24856,13 @@ export default function AtlasPage() {
         ],
       },
       assets: {
-        title: "Asset health",
-        detail: "Quick context before opening the detailed asset list and service history.",
+        title: "Asset summary",
+        detail: "Equipment condition and record readiness without treating missing information as a mechanical problem.",
         cards: [
           { label: "Total Assets", value: assetRecords.length, note: "Tracked on this property" },
-          { label: "Online", value: onlineAssets, note: "Operating normally" },
-          { label: "Needs Attention", value: attentionAssets, note: "Offline or monitored" },
+          { label: "Operational", value: operationalAssets, note: "Marked as operating normally" },
+          { label: "Needs Service", value: needsServiceAssets, note: "Out of service, overdue, or high priority" },
+          { label: "Setup", value: setupIncompleteAssets, note: "Records still being completed" },
         ],
       },
       vendors: {
@@ -24892,8 +24940,10 @@ export default function AtlasPage() {
           style={{
             display: "grid",
             gridTemplateColumns: isMobile
-              ? "1fr"
-              : "repeat(3, minmax(0, 1fr))",
+              ? summary.cards.length === 4
+                ? "repeat(2, minmax(0, 1fr))"
+                : "1fr"
+              : `repeat(${summary.cards.length}, minmax(0, 1fr))`,
             gap: 12,
           }}
         >
