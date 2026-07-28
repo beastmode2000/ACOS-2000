@@ -15168,7 +15168,14 @@ export default function AtlasPage() {
                           cursor: "pointer",
                         }}
                       >
-                        {enabled ? "✓ " : ""}{status}
+                        {enabled ? "✓ " : ""}
+                        {status === "Online"
+                          ? "Operational"
+                          : status === "Offline"
+                            ? "Out of Service"
+                            : status === "Monitor"
+                              ? "Not Assessed"
+                              : status}
                       </button>
                     );
                   })}
@@ -15261,11 +15268,60 @@ export default function AtlasPage() {
                   document.linkedAssetId === asset.id ||
                   (document.targetType === "Asset" && document.targetId === asset.id),
               ).length;
-              const healthTone = asset.status === "Offline"
-                ? "Offline"
-                : assetOpenWork.some((record) => record.priority === "High")
-                  ? "Monitor"
-                  : asset.status;
+              const assetConditionLabel =
+                asset.status === "Online"
+                  ? "Operational"
+                  : asset.status === "Offline"
+                    ? "Out of Service"
+                    : asset.status === "Seasonal"
+                      ? "Seasonal"
+                      : "Not Assessed";
+              const assetConditionTone =
+                asset.status === "Online"
+                  ? "Online"
+                  : asset.status === "Offline"
+                    ? "Offline"
+                    : asset.status === "Seasonal"
+                      ? "Seasonal"
+                      : "Monitor";
+              const assetCompletedWork = serviceRecords
+                .filter(
+                  (record) =>
+                    record.assetId === asset.id &&
+                    record.status === "Completed" &&
+                    Boolean(record.date),
+                )
+                .sort((a, b) =>
+                  String(b.date || "").localeCompare(String(a.date || "")),
+                );
+              const assetNextMaintenance = assetOpenWork
+                .filter(
+                  (record) =>
+                    Boolean(record.date) &&
+                    (record.recurring ||
+                      record.workType === "Preventive Maintenance"),
+                )
+                .sort((a, b) =>
+                  String(a.date || "9999-12-31").localeCompare(
+                    String(b.date || "9999-12-31"),
+                  ),
+                )[0];
+              const assetNeedsService =
+                asset.status === "Offline" ||
+                assetOpenWork.some(
+                  (record) =>
+                    record.priority === "High" ||
+                    (Boolean(record.date) && record.date < todayISO()),
+                );
+              const assetSetupIncomplete =
+                !asset.locationId ||
+                asset.locationId === "general" ||
+                !asset.serial ||
+                !asset.vendorIds.length ||
+                manualsForAsset(asset).length === 0 ||
+                !procedureRecords.some((procedure) =>
+                  (procedure.linkedAssetIds || []).includes(asset.id),
+                );
 
               return (
                 <div
@@ -15314,7 +15370,56 @@ export default function AtlasPage() {
                           {[asset.category, locationName(asset.locationId)].filter(Boolean).join(" · ") || "Unassigned asset"}
                         </span>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 2 }}>
-                          <span style={badgeStyle(healthTone)}>{asset.status}</span>
+                          <span style={badgeStyle(assetConditionTone)}>
+                            {assetConditionLabel}
+                          </span>
+                          {assetNeedsService ? (
+                            <span style={badgeStyle("Offline")}>Needs Service</span>
+                          ) : null}
+                          {assetSetupIncomplete ? (
+                            <span style={badgeStyle("Monitor")}>Setup</span>
+                          ) : null}
+                        </div>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                            gap: 5,
+                            marginTop: 2,
+                          }}
+                        >
+                          <span
+                            style={{
+                              ...mutedSmallStyle,
+                              border: `1px solid ${colors.line}`,
+                              borderRadius: 8,
+                              padding: "5px 7px",
+                              background: colors.panel,
+                              minWidth: 0,
+                            }}
+                          >
+                            <strong style={{ color: colors.navy }}>Last:</strong>{" "}
+                            {assetCompletedWork[0]?.date
+                              ? formatDate(assetCompletedWork[0].date)
+                              : "No service recorded"}
+                          </span>
+                          <span
+                            style={{
+                              ...mutedSmallStyle,
+                              border: `1px solid ${colors.line}`,
+                              borderRadius: 8,
+                              padding: "5px 7px",
+                              background: colors.panel,
+                              minWidth: 0,
+                            }}
+                          >
+                            <strong style={{ color: colors.navy }}>Next:</strong>{" "}
+                            {assetNextMaintenance?.date
+                              ? formatDate(assetNextMaintenance.date)
+                              : "Not scheduled"}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                           <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
                             {assetOpenWork.length} open work
                           </span>
@@ -15364,9 +15469,21 @@ export default function AtlasPage() {
                   <span className="atlas-gold-hover-popover" aria-hidden="true">
                     <strong>{asset.name}</strong>
                     <span>{asset.make || "Make not recorded"} {asset.model || ""}</span>
+                    <span>Condition: {assetConditionLabel}</span>
+                    <span>
+                      Last service:{" "}
+                      {assetCompletedWork[0]?.date
+                        ? formatDate(assetCompletedWork[0].date)
+                        : "Not recorded"}
+                    </span>
+                    <span>
+                      Next service:{" "}
+                      {assetNextMaintenance?.date
+                        ? formatDate(assetNextMaintenance.date)
+                        : "Not scheduled"}
+                    </span>
                     <span>{assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}</span>
                     <span>{assetDocumentCount} linked document{assetDocumentCount === 1 ? "" : "s"}</span>
-                    <span>{assetPhotos.length} photo{assetPhotos.length === 1 ? "" : "s"}</span>
                   </span>
                 </div>
               );
@@ -15423,8 +15540,8 @@ export default function AtlasPage() {
                   <h3 style={assetPanelTitleStyle}>
                     {selectedAsset.name.trim() || "Asset"}
                   </h3>
-                  <span style={badgeStyle(selectedAsset.status)}>
-                    {selectedAsset.status}
+                  <span style={badgeStyle(assetConditionBadge)}>
+                    {assetConditionLabel}
                   </span>
                 </div>
                 <div style={assetActionRowStyle}>
@@ -17154,6 +17271,10 @@ export default function AtlasPage() {
           </div>
         ) : null}
               <style>{`
+        @keyframes atlasPropertyLoading {
+          from { transform: translateX(-18%); opacity: 0.65; }
+          to { transform: translateX(72%); opacity: 1; }
+        }
           .atlas-work-orders-page input[placeholder*="Search work"] {
             border: 2px solid #8EA5B8 !important;
             box-shadow: none !important;
@@ -25027,6 +25148,74 @@ export default function AtlasPage() {
 
   return (
     <main style={isMobile ? appStyle : desktopAppStyle}>
+      {syncState === "loading" ? (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10000,
+            display: "grid",
+            placeItems: "center",
+            padding: 24,
+            background: "rgba(8, 29, 55, 0.38)",
+            backdropFilter: "blur(3px)",
+          }}
+        >
+          <div
+            style={{
+              width: "min(420px, 92vw)",
+              borderRadius: 20,
+              border: `1px solid ${colors.line}`,
+              background: "#FFFFFF",
+              boxShadow: "0 24px 70px rgba(8, 29, 55, 0.28)",
+              padding: 22,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <AtlasMiniMark size={38} />
+              <div>
+                <strong
+                  style={{
+                    display: "block",
+                    color: colors.navy,
+                    fontSize: 18,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  Loading{" "}
+                  {atlasProperties.find(
+                    (property) => property.id === activePropertyId,
+                  )?.name || activePropertyId}
+                </strong>
+                <span style={mutedSmallStyle}>
+                  Updating this property’s dashboard, assets, calendar, and records.
+                </span>
+              </div>
+            </div>
+            <div
+              style={{
+                height: 6,
+                marginTop: 16,
+                overflow: "hidden",
+                borderRadius: 999,
+                background: "#E8EDF4",
+              }}
+            >
+              <div
+                style={{
+                  width: "62%",
+                  height: "100%",
+                  borderRadius: 999,
+                  background: colors.gold,
+                  animation: "atlasPropertyLoading 1.1s ease-in-out infinite alternate",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
       <style>{`
         html, body {
           max-width: 100%;
