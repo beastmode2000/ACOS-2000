@@ -12732,10 +12732,10 @@ export default function AtlasPage() {
 
         <section style={smallGridStyle}>
           {[
-            { label: "Open Work", value: openWork.length, detail: `${highPriority.length} high priority`, screen: "history" as Screen },
-            { label: "Due Today", value: dueToday.length, detail: `${overdueWork.length} overdue`, screen: "history" as Screen },
-            { label: "Open Requests", value: activeRequests.length, detail: "Owner and staff intake", screen: "requests" as Screen },
-            { label: "Completed Today", value: completedToday.length, detail: `${completedWork.length} total completed`, screen: "history" as Screen },
+            { label: "Open Work", value: openWork.length, detail: `${highPriority.length} high priority`, screen: "history" as Screen, icon: "🔧", accent: colors.navy3 },
+            { label: "Due Today", value: dueToday.length, detail: `${overdueWork.length} overdue`, screen: "history" as Screen, icon: "◷", accent: overdueWork.length ? colors.red : colors.gold },
+            { label: "Open Requests", value: activeRequests.length, detail: "Owner and staff intake", screen: "requests" as Screen, icon: "✉", accent: "#7C3AED" },
+            { label: "Completed Today", value: completedToday.length, detail: `${completedWork.length} total completed`, screen: "history" as Screen, icon: "✓", accent: colors.green },
           ].map((item) => (
             <button
               key={item.label}
@@ -12752,17 +12752,48 @@ export default function AtlasPage() {
                 color: colors.text,
               }}
             >
-              <div style={{ ...mutedSmallStyle, fontWeight: 800 }}>{item.label}</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ ...mutedSmallStyle, fontWeight: 850 }}>{item.label}</div>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 9,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: `${item.accent}14`,
+                    color: item.accent,
+                    fontSize: 15,
+                    fontWeight: 950,
+                  }}
+                >
+                  {item.icon}
+                </span>
+              </div>
               <div
                 style={{
                   ...statValueStyle,
-                  marginTop: 3,
+                  marginTop: 2,
                   fontSize: isMobile ? 22 : 27,
                 }}
               >
                 {item.value}
               </div>
               <div style={{ ...mutedSmallStyle, marginTop: 4 }}>{item.detail}</div>
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "block",
+                  width: 34,
+                  height: 3,
+                  marginTop: 9,
+                  borderRadius: 999,
+                  background: item.accent,
+                  opacity: 0.9,
+                }}
+              />
               <span className="atlas-dashboard-info-popover" aria-hidden="true">
                 <strong>{item.label}</strong>
                 <span>{item.detail}</span>
@@ -13038,15 +13069,49 @@ export default function AtlasPage() {
             </section>
 
             <section style={commandCardStyle}>
-              <div style={eyebrowStyle}>Recent Activity</div>
-              <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div>
+                  <div style={eyebrowStyle}>Recent Activity</div>
+                  <h3 style={{ margin: "3px 0 0", color: colors.navy, fontSize: 17 }}>Recently completed</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setScreen("history")}
+                  style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}
+                >
+                  View all
+                </button>
+              </div>
+              <div style={{ display: "grid", gap: 7, marginTop: 11 }}>
                 {recentActivity.map((record) => (
-                  <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "22px minmax(0, 1fr)", gap: 8, border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.text, cursor: "pointer" }}>
-                    <span style={{ color: colors.green, fontWeight: 950 }}>✓</span>
-                    <span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{completionTime(record) ? new Date(completionTime(record)).toLocaleDateString() : "Completed"}</small></span>
+                  <button
+                    key={record.id}
+                    type="button"
+                    className="atlas-dashboard-recent-row"
+                    onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "32px minmax(0, 1fr) auto",
+                      alignItems: "center",
+                      gap: 9,
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 11,
+                      background: "#FFFFFF",
+                      padding: "9px 10px",
+                      textAlign: "left",
+                      color: colors.text,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ width: 28, height: 28, borderRadius: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#EAF7F1", color: colors.green, fontWeight: 950 }}>✓</span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong>
+                      <small style={mutedSmallStyle}>{record.workCategory || "Completed work"}</small>
+                    </span>
+                    <small style={{ ...mutedSmallStyle, whiteSpace: "nowrap", fontWeight: 800 }}>{completionTime(record) ? new Date(completionTime(record)).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Done"}</small>
                   </button>
                 ))}
-                {!recentActivity.length ? <div style={mutedSmallStyle}>Completed work will appear here.</div> : null}
+                {!recentActivity.length ? <div style={{ ...noticeStyle, marginTop: 0 }}>Completed work will appear here.</div> : null}
               </div>
             </section>
           </aside>
