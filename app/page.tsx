@@ -17983,7 +17983,7 @@ export default function AtlasPage() {
         ? `${rawDocumentHref.split("#")[0]}#page=${Math.max(1, blueprintPage)}`
         : rawDocumentHref;
 
-    const blueprintDocument = allDocuments.find((document) => {
+    const blueprintCandidate = allDocuments.find((document) => {
       const haystack = [
         document.title,
         document.type,
@@ -18003,53 +18003,156 @@ export default function AtlasPage() {
       );
     });
 
+    // A matching title alone is not enough. The Blueprint Center is connected
+    // only when the saved Documents record contains an actual file or URL.
+    const blueprintDocument = blueprintCandidate && (
+      Boolean(blueprintCandidate.href) ||
+      (blueprintCandidate.files || []).some((file) =>
+        Boolean(file.dataUrl || file.url),
+      )
+    )
+      ? blueprintCandidate
+      : null;
+
+    const blueprintRecordNeedsFile = Boolean(blueprintCandidate && !blueprintDocument);
+
+    function showBlueprintInDocuments() {
+      if (!blueprintCandidate) return;
+      setDocumentSearch("");
+      setDocumentCategoryFilter("All");
+      setDocumentLinkFilter("All");
+      setSelectedDocumentId(blueprintCandidate.id);
+      window.requestAnimationFrame(() => {
+        documentOverlayScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+      });
+    }
+
     const blueprintSections = [
       {
         id: "project",
         label: "Project Information",
         icon: "▦",
-        page: 1,
-        detail: "Title sheet, site/demo plan, project information and area summary.",
+        detail: "Cover sheet, project data, code information and drawing index.",
+        sheets: [
+          { label: "Title Sheet / Drawing Index", sheet: "T1.0", page: 1 },
+          { label: "Project Information", sheet: "T1.1", page: 2 },
+        ],
       },
       {
         id: "survey",
         label: "Survey",
         icon: "⌖",
-        page: 3,
-        detail: "Topographic and boundary survey, legal description and site references.",
+        detail: "Topographic, boundary and legal site-reference drawings.",
+        sheets: [
+          { label: "Topographic & Boundary Survey", sheet: "Survey", page: 3 },
+        ],
       },
       {
         id: "civil",
-        label: "Civil & Drainage",
+        label: "Civil & Site Utilities",
         icon: "≈",
-        page: 4,
-        detail: "Civil plans, grading, drainage, utilities and site engineering.",
+        detail: "Site planning, grading, drainage, utilities and civil details.",
+        sheets: [
+          { label: "Civil / Site Plan", sheet: "C1", page: 4 },
+          { label: "Grading & Drainage", sheet: "C2", page: 5 },
+          { label: "Utility & Civil Details", sheet: "C3", page: 6 },
+        ],
       },
       {
         id: "landscape",
         label: "Landscape",
         icon: "⌁",
-        page: 12,
-        detail: "Site plan, grading, planting, lighting and landscape details.",
+        detail: "Landscape plans, planting schedules, lighting and site details.",
+        sheets: [
+          { label: "Landscape Site Plan", sheet: "L1", page: 12 },
+          { label: "Grading / Layout", sheet: "L2", page: 13 },
+          { label: "Planting Plan & Schedule", sheet: "L3", page: 14 },
+          { label: "Landscape Lighting", sheet: "L4", page: 15 },
+        ],
       },
       {
         id: "irrigation",
         label: "Irrigation",
         icon: "◉",
-        page: 16,
-        detail: "Irrigation zone plan and related landscape-system information.",
+        detail: "Irrigation zones, system layout and related landscape utilities.",
+        sheets: [
+          { label: "Irrigation Zone Plan", sheet: "I1", page: 16 },
+          { label: "Irrigation Details", sheet: "I2", page: 17 },
+        ],
       },
       {
         id: "architecture",
         label: "Architecture",
         icon: "⌂",
-        page: 18,
-        detail: "Basement plan, top-of-wall plan, floor plans, elevations and details.",
+        detail: "Floor plans, roof plans, elevations, sections and architectural details.",
+        sheets: [
+          { label: "Basement Floor Plan", sheet: "A1.0", page: 18 },
+          { label: "Main Floor Plan", sheet: "A1.1", page: 19 },
+          { label: "Upper Floor Plan", sheet: "A1.2", page: 20 },
+          { label: "Garage Plans", sheet: "A1.3", page: 21 },
+          { label: "Garage Roof Plan", sheet: "A1.3b", page: 25 },
+          { label: "Roof Plan", sheet: "A1.4", page: 25 },
+          { label: "Lighting / Reflected Ceiling", sheet: "A2 / E", page: 27 },
+          { label: "Exterior Elevations", sheet: "A3", page: 33 },
+          { label: "Building Sections", sheet: "A4", page: 36 },
+          { label: "Architectural Details", sheet: "A5", page: 43 },
+          { label: "Interior Elevations", sheet: "A6", page: 52 },
+        ],
+      },
+      {
+        id: "structural",
+        label: "Structural",
+        icon: "▤",
+        detail: "Structural notes, foundation, framing, shear-wall and connection details.",
+        sheets: [
+          { label: "General Structural Notes", sheet: "S1.0", page: 61 },
+          { label: "Structural Notes / Schedules", sheet: "S1.1", page: 62 },
+          { label: "Foundation Plan", sheet: "S2.0", page: 64 },
+          { label: "Floor Framing Plans", sheet: "S2", page: 65 },
+          { label: "Roof Framing Plans", sheet: "S3", page: 67 },
+          { label: "Shear-Wall Plans", sheet: "S4", page: 68 },
+          { label: "Structural Details", sheet: "S5", page: 78 },
+        ],
+      },
+      {
+        id: "mechanical",
+        label: "Mechanical / HVAC",
+        icon: "◌",
+        detail: "Mechanical systems, HVAC layouts and equipment coordination drawings.",
+        sheets: [
+          { label: "Mechanical Plans", sheet: "M", page: 69 },
+          { label: "Mechanical Details", sheet: "M Details", page: 78 },
+        ],
+      },
+      {
+        id: "electrical",
+        label: "Electrical & Lighting",
+        icon: "ϟ",
+        detail: "Power, lighting, controls and electrical coordination drawings.",
+        sheets: [
+          { label: "Lighting Plan", sheet: "E / Lighting", page: 27 },
+          { label: "Electrical Plans", sheet: "E", page: 28 },
+          { label: "Electrical Details", sheet: "E Details", page: 30 },
+        ],
+      },
+      {
+        id: "plumbing",
+        label: "Plumbing",
+        icon: "◒",
+        detail: "Plumbing layouts, fixture coordination and related utility information.",
+        sheets: [
+          { label: "Plumbing Coordination", sheet: "P", page: 23 },
+          { label: "Plumbing / Utility Details", sheet: "P Details", page: 79 },
+        ],
       },
     ];
 
     function openBlueprintPage(page: number) {
       if (!blueprintDocument) {
+        if (blueprintCandidate) {
+          showBlueprintInDocuments();
+          return;
+        }
         setIntakeTitle("2000 As-Built Plans");
         setIntakeType("Property Plans");
         setIntakeTargetKind("General");
@@ -18547,7 +18650,11 @@ export default function AtlasPage() {
                             background: blueprintDocument ? "#57D39B" : "#F5B56A",
                           }}
                         />
-                        {blueprintDocument ? "Master set connected" : "Master set needs upload"}
+                        {blueprintDocument
+                          ? "Master set connected"
+                          : blueprintRecordNeedsFile
+                            ? "Record found — PDF file missing"
+                            : "Master set needs upload"}
                       </span>
                       <button
                         type="button"
@@ -18558,8 +18665,31 @@ export default function AtlasPage() {
                           padding: "9px 13px",
                         }}
                       >
-                        {blueprintDocument ? "Open Master Set" : "Add Master Set"}
+                        {blueprintDocument
+                          ? "Open Master Set"
+                          : blueprintRecordNeedsFile
+                            ? "Finish PDF Upload"
+                            : "Add Master Set"}
                       </button>
+                      {blueprintCandidate ? (
+                        <button
+                          type="button"
+                          onClick={showBlueprintInDocuments}
+                          style={{
+                            minHeight: 34,
+                            padding: "7px 11px",
+                            border: "1px solid rgba(255,255,255,0.22)",
+                            borderRadius: 10,
+                            background: "rgba(255,255,255,0.08)",
+                            color: "#FFFFFF",
+                            fontSize: 10,
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Show Document Record
+                        </button>
+                      ) : null}
                     </div>
                   </div>
 
@@ -18574,69 +18704,127 @@ export default function AtlasPage() {
                     }}
                   >
                     {blueprintSections.map((section) => (
-                      <button
+                      <div
                         key={section.id}
-                        type="button"
-                        onClick={() => openBlueprintPage(section.page)}
-                        title={`${section.label} · PDF page ${section.page}`}
                         style={{
-                          display: "grid",
-                          gridTemplateColumns: "32px minmax(0, 1fr)",
-                          alignItems: "center",
-                          gap: 9,
                           minWidth: 0,
                           padding: isMobile ? 10 : 12,
                           border: "1px solid rgba(255,255,255,0.14)",
                           borderRadius: 13,
                           background: "rgba(255,255,255,0.075)",
                           color: "#FFFFFF",
-                          textAlign: "left",
-                          cursor: "pointer",
                           backdropFilter: "blur(8px)",
                         }}
                       >
-                        <span
-                          aria-hidden="true"
+                        <button
+                          type="button"
+                          onClick={() => openBlueprintPage(section.sheets[0].page)}
+                          title={`Open ${section.label}`}
                           style={{
                             display: "grid",
-                            placeItems: "center",
-                            width: 32,
-                            height: 32,
-                            borderRadius: 10,
-                            background: "rgba(228,190,103,0.16)",
-                            color: "#F0CD7E",
-                            fontSize: 17,
-                            fontWeight: 900,
+                            gridTemplateColumns: "32px minmax(0, 1fr)",
+                            alignItems: "center",
+                            gap: 9,
+                            width: "100%",
+                            padding: 0,
+                            border: 0,
+                            background: "transparent",
+                            color: "inherit",
+                            textAlign: "left",
+                            cursor: "pointer",
                           }}
                         >
-                          {section.icon}
-                        </span>
-                        <span style={{ minWidth: 0 }}>
-                          <strong
+                          <span
+                            aria-hidden="true"
                             style={{
-                              display: "block",
-                              overflow: "hidden",
-                              fontSize: 11,
-                              lineHeight: 1.25,
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
+                              display: "grid",
+                              placeItems: "center",
+                              width: 32,
+                              height: 32,
+                              borderRadius: 10,
+                              background: "rgba(228,190,103,0.16)",
+                              color: "#F0CD7E",
+                              fontSize: 17,
+                              fontWeight: 900,
                             }}
                           >
-                            {section.label}
-                          </strong>
-                          <small
-                            style={{
-                              display: "block",
-                              marginTop: 3,
-                              color: "rgba(255,255,255,0.62)",
-                              fontSize: 9,
-                              fontWeight: 750,
-                            }}
-                          >
-                            Start at page {section.page}
-                          </small>
-                        </span>
-                      </button>
+                            {section.icon}
+                          </span>
+                          <span style={{ minWidth: 0 }}>
+                            <strong style={{ display: "block", fontSize: 12, lineHeight: 1.25 }}>
+                              {section.label}
+                            </strong>
+                            <small style={{ display: "block", marginTop: 3, opacity: 0.7, lineHeight: 1.3 }}>
+                              {section.sheets.length} indexed {section.sheets.length === 1 ? "sheet" : "sheets"}
+                            </small>
+                          </span>
+                        </button>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 5,
+                            marginTop: 10,
+                            paddingTop: 9,
+                            borderTop: "1px solid rgba(255,255,255,0.1)",
+                          }}
+                        >
+                          {section.sheets.map((sheet) => (
+                            <button
+                              key={`${section.id}-${sheet.sheet}-${sheet.page}`}
+                              type="button"
+                              onClick={() => openBlueprintPage(sheet.page)}
+                              title={`${sheet.label} · PDF page ${sheet.page}`}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "minmax(0, 1fr) auto",
+                                gap: 8,
+                                alignItems: "center",
+                                width: "100%",
+                                minWidth: 0,
+                                padding: "7px 8px",
+                                border: "1px solid rgba(255,255,255,0.08)",
+                                borderRadius: 9,
+                                background: "rgba(255,255,255,0.055)",
+                                color: "#FFFFFF",
+                                textAlign: "left",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <span style={{ minWidth: 0 }}>
+                                <strong
+                                  style={{
+                                    display: "block",
+                                    overflow: "hidden",
+                                    fontSize: 10,
+                                    lineHeight: 1.25,
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {sheet.label}
+                                </strong>
+                                <small style={{ display: "block", marginTop: 2, opacity: 0.62, fontSize: 9 }}>
+                                  {sheet.sheet}
+                                </small>
+                              </span>
+                              <span
+                                style={{
+                                  borderRadius: 999,
+                                  background: "rgba(228,190,103,0.16)",
+                                  color: "#F0CD7E",
+                                  padding: "3px 6px",
+                                  fontSize: 9,
+                                  fontWeight: 900,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                p. {sheet.page}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </section>
@@ -24288,7 +24476,8 @@ export default function AtlasPage() {
       (previewFile.type || "").startsWith("image/");
     const isPdf =
       source.startsWith("data:application/pdf") ||
-      (previewFile.type || "").includes("pdf");
+      (previewFile.type || "").toLowerCase().includes("pdf") ||
+      previewFile.name.toLowerCase().endsWith(".pdf");
     const zoomedFrameStyle: React.CSSProperties = {
       ...previewFrameStyle,
       transform: `scale(${previewZoom / 100})`,
@@ -24305,50 +24494,58 @@ export default function AtlasPage() {
         >
           <div style={previewHeaderStyle}>
             <div style={{ minWidth: 0 }}>
-              <div style={eyebrowStyle}>Document Preview</div>
+              <div style={eyebrowStyle}>
+                {isPdf ? "PDF Document" : "Document Preview"}
+              </div>
               <h3 style={detailTitleStyle}>{previewFile.name}</h3>
-              <p style={mutedSmallStyle}>Zoom: {previewZoom}%</p>
+              {!isPdf && isImage ? (
+                <p style={mutedSmallStyle}>Zoom: {previewZoom}%</p>
+              ) : null}
             </div>
             <div style={buttonRowStyle}>
-              <button
-                type="button"
-                onClick={() =>
-                  setPreviewZoom((value) => Math.max(50, value - 25))
-                }
-                style={secondaryButtonStyle}
-              >
-                −
-              </button>
-              <button
-                type="button"
-                onClick={() => setPreviewZoom(100)}
-                style={secondaryButtonStyle}
-              >
-                100%
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setPreviewZoom((value) => Math.min(300, value + 25))
-                }
-                style={secondaryButtonStyle}
-              >
-                +
-              </button>
+              {!isPdf && isImage ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPreviewZoom((value) => Math.max(50, value - 25))
+                    }
+                    style={secondaryButtonStyle}
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewZoom(100)}
+                    style={secondaryButtonStyle}
+                  >
+                    100%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPreviewZoom((value) => Math.min(300, value + 25))
+                    }
+                    style={secondaryButtonStyle}
+                  >
+                    +
+                  </button>
+                </>
+              ) : null}
               {source ? (
                 <a
                   href={source}
                   target="_blank"
                   rel="noreferrer"
-                  style={secondaryButtonStyle}
+                  style={isPdf ? goldButtonStyle : secondaryButtonStyle}
                 >
-                  Open New Tab
+                  {isPdf ? "Open PDF" : "Open New Tab"}
                 </a>
               ) : null}
               <button
                 type="button"
                 onClick={() => setPreviewFile(null)}
-                style={goldButtonStyle}
+                style={isPdf ? secondaryButtonStyle : goldButtonStyle}
               >
                 Close
               </button>
@@ -24357,9 +24554,9 @@ export default function AtlasPage() {
 
           <div
             style={previewBodyStyle}
-            onTouchStart={handlePreviewTouchStart}
-            onTouchMove={handlePreviewTouchMove}
-            onTouchEnd={handlePreviewTouchEnd}
+            onTouchStart={isPdf ? undefined : handlePreviewTouchStart}
+            onTouchMove={isPdf ? undefined : handlePreviewTouchMove}
+            onTouchEnd={isPdf ? undefined : handlePreviewTouchEnd}
           >
             {isImage && source ? (
               <img
@@ -24374,13 +24571,42 @@ export default function AtlasPage() {
                   margin: "0 auto",
                 }}
               />
-            ) : isPdf && source ? (
-              <div style={previewPdfZoomShellStyle}>
-                <iframe
-                  src={source}
-                  title={previewFile.name}
-                  style={zoomedFrameStyle}
-                />
+            ) : isPdf ? (
+              <div
+                style={{
+                  ...noticeStyle,
+                  minHeight: isMobile ? 260 : 360,
+                  display: "grid",
+                  placeItems: "center",
+                  textAlign: "center",
+                  padding: 28,
+                }}
+              >
+                <div style={{ maxWidth: 560 }}>
+                  <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 16 }}>
+                    PDF
+                  </div>
+                  <strong style={{ fontSize: 18 }}>
+                    Large PDFs open in a separate browser tab.
+                  </strong>
+                  <p style={{ ...mutedSmallStyle, margin: "10px 0 18px" }}>
+                    Atlas does not load the full PDF inside this page, which prevents large plan sets from freezing the Documents screen.
+                  </p>
+                  {source ? (
+                    <a
+                      href={source}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ ...goldButtonStyle, display: "inline-flex" }}
+                    >
+                      Open PDF
+                    </a>
+                  ) : (
+                    <p style={mutedSmallStyle}>
+                      No PDF file URL is saved for this document.
+                    </p>
+                  )}
+                </div>
               </div>
             ) : source ? (
               <div style={noticeStyle}>
