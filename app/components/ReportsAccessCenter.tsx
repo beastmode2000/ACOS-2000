@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type Row = Record<string, unknown>;
 type Role = "Master" | "Administrator" | "Manager" | "Employee" | "Vendor" | "Viewer";
 type Permissions = { view:boolean; edit:boolean; approve:boolean; delete:boolean; manageUsers:boolean };
-type Member = { id: string; name: string; email: string; role: Role; active: boolean; propertyIds:string[]; permissions:Permissions; inviteStatus?:string };
+type Member = { id: string; name: string; email: string; role: Role; active: boolean; propertyIds:string[]; permissions:Permissions; accessProfiles:string[]; inviteStatus?:string };
 type ReportKey = "workOrders" | "assets" | "vendors" | "contacts" | "procedures" | "calendar" | "documents";
 
 type Props = {
@@ -15,9 +15,9 @@ type Props = {
 };
 
 const defaultTeam: Member[] = [
-  { id: "nick", name: "Nick Thornton", email: "nthornton87@yahoo.com", role: "Master", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
-  { id: "steve", name: "Steve", email: "stevem@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
-  { id: "kenji", name: "Kenji", email: "kenjij@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
+  { id: "nick", name: "Nick Thornton", email: "nthornton87@yahoo.com", role: "Master", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, accessProfiles:[] },
+  { id: "steve", name: "Steve", email: "stevem@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, accessProfiles:[] },
+  { id: "kenji", name: "Kenji", email: "kenjij@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, accessProfiles:[] },
 ];
 const reports: Array<[ReportKey, string]> = [
   ["workOrders", "Work Orders"], ["assets", "Assets"], ["vendors", "Vendors"],
@@ -34,6 +34,19 @@ const descriptions: Record<Role, string> = {
 };
 const properties = [["2000","2000"],["6855","6855"],["3661","3661"],["hangar","Hangar"]] as const;
 const permissionLabels: Array<[keyof Permissions,string]> = [["view","View"],["edit","Edit"],["approve","Approve"],["delete","Delete"],["manageUsers","Manage Users"]];
+
+const accessProfileOptions = [
+  ["marine", "🌊 Marine"],
+  ["landscaping", "🌳 Landscaping"],
+  ["house", "🏠 House"],
+  ["maintenance", "🔧 Maintenance"],
+  ["pool-spa", "🏊 Pool & Spa"],
+  ["vehicles", "🚗 Vehicles"],
+  ["electrical", "⚡ Electrical"],
+  ["plumbing", "🚰 Plumbing"],
+  ["inventory", "📦 Inventory"],
+] as const;
+
 const roleDefaults: Record<Role, Permissions> = {
   Master:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, Administrator:{view:true,edit:true,approve:true,delete:true,manageUsers:true},
   Manager:{view:true,edit:true,approve:true,delete:false,manageUsers:false}, Employee:{view:true,edit:true,approve:false,delete:false,manageUsers:false},
@@ -228,6 +241,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<Role>("Employee");
   const [newPropertyIds, setNewPropertyIds] = useState<string[]>(["2000"]);
+  const [newAccessProfiles, setNewAccessProfiles] = useState<string[]>([]);
   const [inviteLink, setInviteLink] = useState("");
   const [backups, setBackups] = useState<Array<Record<string, unknown>>>([]);
   const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
@@ -249,6 +263,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
           role: member.role === "master" ? "Master" : member.role === "administrator" ? "Administrator" : member.role === "manager" ? "Manager" : member.role === "employee" || member.role === "operations" ? "Employee" : member.role === "vendor" ? "Vendor" : "Viewer",
           propertyIds: Array.isArray((member as any).propertyIds) ? (member as any).propertyIds : ["2000"],
           permissions: { ...roleDefaults.Viewer, ...((member as any).permissions || {}) },
+          accessProfiles: Array.isArray((member as any).accessProfiles) ? (member as any).accessProfiles.map(String) : [],
         })));
       })
       .catch(() => setMessage("Atlas could not load shared access settings."));
@@ -281,7 +296,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
 
   async function createInvite() {
     if (!newName.trim() || !newEmail.includes("@")) { setMessage("Enter the employee name and email."); return; }
-    const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member:{ id:`team-${Date.now()}`, name:newName.trim(), email:newEmail.trim(), role:newRole.toLowerCase(), active:true, propertyIds:newPropertyIds, permissions:roleDefaults[newRole] } }) });
+    const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member:{ id:`team-${Date.now()}`, name:newName.trim(), email:newEmail.trim(), role:newRole.toLowerCase(), active:true, propertyIds:newPropertyIds, permissions:roleDefaults[newRole], accessProfiles:newAccessProfiles } }) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) { setMessage(String(payload.error || "Invitation could not be created.")); return; }
     const link = `${window.location.origin}${payload.invitePath}`;
@@ -419,6 +434,13 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
               <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",gap:12,flexWrap:"wrap"}}>
                 <strong style={{color:colors.navy,fontSize:12}}>Properties:</strong>
                 {properties.map(([id,label])=><label key={id} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" disabled={member.role==="Master"} checked={member.propertyIds.includes(id)} onChange={(event)=>updateMember(member.id,{propertyIds:event.currentTarget.checked?[...member.propertyIds,id]:member.propertyIds.filter((value)=>value!==id)})}/>{label}</label>)}
+              </div>
+              <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",gap:12,flexWrap:"wrap"}}>
+                <strong style={{color:colors.navy,fontSize:12}}>Access profiles:</strong>
+                {member.role === "Master" || member.role === "Administrator" ? (
+                  <span style={{fontSize:12,color:colors.muted,fontWeight:800}}>All Atlas records</span>
+                ) : accessProfileOptions.map(([id,label])=><label key={id} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={member.accessProfiles.includes(id)} onChange={(event)=>updateMember(member.id,{accessProfiles:event.currentTarget.checked?[...member.accessProfiles,id]:member.accessProfiles.filter((value)=>value!==id)})}/>{label}</label>)}
+                {member.role !== "Master" && member.role !== "Administrator" && !member.accessProfiles.length ? <span style={{fontSize:12,color:colors.muted}}>No profile selected = legacy unrestricted access</span> : null}
               </div>
               <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",gap:12,flexWrap:"wrap"}}>
                 <strong style={{color:colors.navy,fontSize:12}}>Permissions:</strong>
