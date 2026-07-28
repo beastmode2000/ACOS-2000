@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 
 type RequestPriority = "Low" | "Medium" | "High";
+type RequestPortalType = "owner" | "marine";
 
 type UploadedPhoto = {
   id: string;
@@ -57,6 +58,7 @@ async function imageToDataUrl(file: File) {
 export default function OwnerRequestPage() {
   const [token, setToken] = useState("");
   const [portalReady, setPortalReady] = useState(false);
+  const [portalType, setPortalType] = useState<RequestPortalType>("owner");
   const [requesterName, setRequesterName] = useState("");
   const [requesterContact, setRequesterContact] = useState("");
   const [title, setTitle] = useState("");
@@ -74,6 +76,11 @@ export default function OwnerRequestPage() {
     const nextToken = tokenFromUrl();
     setToken(nextToken);
 
+    const tokenLooksMarine = nextToken.toLowerCase().startsWith("marine-");
+    if (tokenLooksMarine) {
+      setPortalType("marine");
+    }
+
     async function validate() {
       if (!nextToken) {
         setMessage("This request link is missing its secure token.");
@@ -89,8 +96,25 @@ export default function OwnerRequestPage() {
         if (!response.ok || payload?.ok === false) {
           throw new Error(payload?.error || "Request link not found.");
         }
+        const returnedPortalType = String(
+          payload?.portalType || payload?.portal_type || "",
+        ).toLowerCase();
+        const returnedCategory = String(payload?.category || "").toLowerCase();
+        const returnedTitle = String(payload?.title || "").toLowerCase();
+
+        const isMarinePortal =
+          tokenLooksMarine ||
+          returnedPortalType === "marine" ||
+          returnedCategory.includes("marine") ||
+          returnedTitle.includes("marine");
+
+        setPortalType(isMarinePortal ? "marine" : "owner");
         setPortalReady(true);
-        setMessage("Describe what needs attention. Atlas will send it for review.");
+        setMessage(
+          isMarinePortal
+            ? "Describe the marine work needed. Atlas will send it for review and tracking."
+            : "Describe what needs attention. Atlas will send it for review.",
+        );
       } catch (error) {
         setMessage(
           error instanceof Error ? error.message : "Request link not found.",
@@ -161,7 +185,11 @@ export default function OwnerRequestPage() {
       }
 
       setSubmitted(true);
-      setMessage("Request submitted. Thank you.");
+      setMessage(
+        portalType === "marine"
+          ? "Your Marine Work Request was submitted successfully."
+          : "Request submitted. Thank you.",
+      );
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Request submission failed.",
@@ -170,6 +198,20 @@ export default function OwnerRequestPage() {
       setSubmitting(false);
     }
   }
+
+  const isMarine = portalType === "marine";
+
+  const pageTitle = isMarine
+    ? "Marine Work Request"
+    : "Request Maintenance";
+
+  const pageDescription = isMarine
+    ? "Let us know about anything that needs attention with a boat, Sea-Doo, dock, lift, or other marine equipment."
+    : "Submit an issue or request for review. This page does not provide access to the rest of Atlas.";
+
+  const successMessage = isMarine
+    ? "Your Marine Work Request was submitted successfully."
+    : "Your request was submitted and is waiting for review.";
 
   return (
     <main className="request-page">
@@ -208,13 +250,13 @@ export default function OwnerRequestPage() {
       <div className="request-shell">
         <section className="request-hero">
           <div className="request-eyebrow">Atlas / 2000</div>
-          <h1>Request Maintenance</h1>
-          <p>Submit an issue or request for review. This page does not provide access to the rest of Atlas.</p>
+          <h1>{pageTitle}</h1>
+          <p>{pageDescription}</p>
         </section>
 
         <section className="request-card">
           {submitted ? (
-            <div className="success">Your request was submitted and is waiting for review.</div>
+            <div className="success">{successMessage}</div>
           ) : (
             <>
               <div className="message" role="status">{message}</div>
@@ -229,15 +271,40 @@ export default function OwnerRequestPage() {
                 </label>
                 <label className="wide">
                   Short title (optional)
-                  <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Example: Guest room thermostat" disabled={!portalReady} />
+                  <input
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder={
+                      isMarine
+                        ? "Example: Cobalt lift is making noise"
+                        : "Example: Guest room thermostat"
+                    }
+                    disabled={!portalReady}
+                  />
                 </label>
                 <label>
-                  Location
-                  <input value={locationName} onChange={(event) => setLocationName(event.target.value)} placeholder="Example: Kitchen" disabled={!portalReady} />
+                  {isMarine ? "Dock / marina area" : "Location"}
+                  <input
+                    value={locationName}
+                    onChange={(event) => setLocationName(event.target.value)}
+                    placeholder={isMarine ? "Example: Main dock" : "Example: Kitchen"}
+                    disabled={!portalReady}
+                  />
                 </label>
                 <label>
-                  Asset or equipment (optional)
-                  <input value={assetName} onChange={(event) => setAssetName(event.target.value)} placeholder="Example: Left refrigerator" disabled={!portalReady} />
+                  {isMarine
+                    ? "Boat, lift, dock, or equipment (optional)"
+                    : "Asset or equipment (optional)"}
+                  <input
+                    value={assetName}
+                    onChange={(event) => setAssetName(event.target.value)}
+                    placeholder={
+                      isMarine
+                        ? "Example: Cobalt R7 or Sea-Doo lift"
+                        : "Example: Left refrigerator"
+                    }
+                    disabled={!portalReady}
+                  />
                 </label>
                 <label>
                   Priority
@@ -252,8 +319,19 @@ export default function OwnerRequestPage() {
                   <input value={preferredTiming} onChange={(event) => setPreferredTiming(event.target.value)} placeholder="Example: Before Friday" disabled={!portalReady} />
                 </label>
                 <label className="wide">
-                  What needs attention?
-                  <textarea value={description} onChange={(event) => setDescription(event.target.value)} disabled={!portalReady} />
+                  {isMarine
+                    ? "Describe the marine work needed"
+                    : "What needs attention?"}
+                  <textarea
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder={
+                      isMarine
+                        ? "Describe what is not working correctly or what needs to be checked."
+                        : undefined
+                    }
+                    disabled={!portalReady}
+                  />
                 </label>
                 <label className="wide">
                   Add photos (up to 3)
@@ -273,7 +351,11 @@ export default function OwnerRequestPage() {
               ) : null}
 
               <button className="submit" type="button" onClick={submitRequest} disabled={!portalReady || submitting}>
-                {submitting ? "Submitting..." : "Submit Request"}
+                {submitting
+                  ? "Submitting..."
+                  : isMarine
+                    ? "Submit Marine Work Request"
+                    : "Submit Request"}
               </button>
             </>
           )}
@@ -282,4 +364,3 @@ export default function OwnerRequestPage() {
     </main>
   );
 }
-
