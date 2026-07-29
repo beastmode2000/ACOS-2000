@@ -130,6 +130,11 @@ type PhotoTimelineMeta = {
   procedureId?: string;
   weather?: string;
   timelineNote?: boolean;
+  dateTaken?: string;
+  locationId?: string;
+  milestoneTitle?: string;
+  milestoneDate?: string;
+  milestoneType?: "Started" | "Inspection" | "Vendor Visit" | "Delivery" | "Progress" | "Completed" | "Custom";
 };
 
 type PhotoTimelineProject = {
@@ -146,6 +151,8 @@ type PhotoTimelineProject = {
   progress?: number;
   phase?: string;
   completedAt?: string;
+  startDate?: string;
+  archived?: boolean;
 };
 
 type WorkItemType =
@@ -3922,6 +3929,7 @@ export default function AtlasPage() {
   const [photoLightboxPan, setPhotoLightboxPan] = useState({ x: 0, y: 0 });
   const [photoLightboxDragging, setPhotoLightboxDragging] = useState(false);
   const [photoLightboxDragOrigin, setPhotoLightboxDragOrigin] = useState({ x: 0, y: 0 });
+  const [photoLightboxTouchStartX, setPhotoLightboxTouchStartX] = useState<number | null>(null);
   const [photoCompareOpen, setPhotoCompareOpen] = useState(false);
   const [photoCompareBeforeId, setPhotoCompareBeforeId] = useState("");
   const [photoCompareAfterId, setPhotoCompareAfterId] = useState("");
@@ -13413,6 +13421,39 @@ export default function AtlasPage() {
       ));
     };
 
+    const createWorkOrderFromPhoto = () => {
+      if (!selectedPhotoTimelineItem) return;
+      const project = photoTimelineProjects.find((record) => record.id === selectedPhotoMeta?.projectId);
+      const id = uid("work-order");
+      const record = normalizeService({
+        id,
+        title: project?.title ? `${project.title} - Photo Follow-Up` : `${selectedPhotoTimelineItem.assetName} - Photo Follow-Up`,
+        assetId: selectedPhotoTimelineItem.assetId || project?.assetId || "",
+        locationId: selectedPhotoMeta?.locationId || project?.locationId || selectedPhotoAsset?.locationId || "",
+        vendorId: selectedPhotoMeta?.vendorId || project?.vendorId || "",
+        date: todayISO(),
+        status: "Open",
+        priority: "Medium",
+        workType: "Work Order",
+        notes: `Created from Photo Timeline 4.1: ${selectedPhotoTimelineItem.name}${selectedPhotoMeta?.notes ? `\n\nPhoto note: ${selectedPhotoMeta.notes}` : ""}`,
+      });
+      setServiceRecords((current) => byTitle([record, ...current]));
+      updateSelectedPhotoMeta({ workOrderId: id });
+      setSelectedPhotoTimelineId("");
+      setSelectedServiceId(id);
+      setScreen("history");
+    };
+
+    const addTimelineMilestone = () => {
+      if (!selectedPhotoTimelineItem) return;
+      updateSelectedPhotoMeta({
+        timelineNote: true,
+        milestoneTitle: selectedPhotoMeta?.milestoneTitle || selectedPhotoMeta?.notes || "Project milestone",
+        milestoneDate: selectedPhotoMeta?.milestoneDate || selectedPhotoMeta?.dateTaken || String(selectedPhotoTimelineItem.createdAt || todayISO()).slice(0, 10),
+        milestoneType: selectedPhotoMeta?.milestoneType || "Progress",
+      });
+    };
+
     const createPhotoProject = () => {
       const id = uid("photo-project");
       const project: PhotoTimelineProject = {
@@ -13428,6 +13469,8 @@ export default function AtlasPage() {
         createdAt: new Date().toISOString(),
         progress: 0,
         phase: "Started",
+        startDate: todayISO(),
+        archived: false,
       };
       setPhotoTimelineProjects((current) => [project, ...current]);
       if (selectedPhotoTimelineItem) updateSelectedPhotoMeta({ projectId: id });
@@ -13475,6 +13518,7 @@ export default function AtlasPage() {
         if (project.vendorId) vendorIds.add(project.vendorId);
         return { ...project, items, notesCount, workOrderCount: workOrderIds.size, vendorCount: vendorIds.size };
       })
+      .filter((project) => !project.archived)
       .filter((project) => photoTimelineProjectCategory === "All" || project.category === photoTimelineProjectCategory)
       .filter((project) => !photoTimelineSearch.trim() || `${project.title} ${project.category} ${project.notes}`.toLowerCase().includes(photoTimelineSearch.trim().toLowerCase()));
 
@@ -13495,8 +13539,8 @@ export default function AtlasPage() {
           <section style={{ ...sectionStyle, marginBottom: 18 }}>
             <SectionHeader
               eyebrow="Visual Property History"
-              title="Photo Timeline 4.0"
-              detail="A professional visual record for projects, renovations, repairs, landscaping, and property improvements."
+              title="Photo Timeline 4.1"
+              detail="Project workflow integration with editable metadata, milestones, linked Atlas records, mobile navigation, and persistent project controls."
             />
 
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
@@ -13588,7 +13632,7 @@ export default function AtlasPage() {
                           <button key={item.id} type="button" onClick={() => setSelectedPhotoTimelineId(item.id)} style={{ position: "relative", display: "grid", gridTemplateColumns: isMobile ? "96px minmax(0,1fr)" : "140px minmax(0,1fr) auto", gap: 14, alignItems: "center", border: "1px solid #D7E0EA", borderRadius: 14, padding: 10, background: "white", textAlign: "left", cursor: "pointer" }}>
                             <span style={{ position: "absolute", left: -31, width: 15, height: 15, borderRadius: 999, background: meta.tag === "After" ? "#087443" : meta.tag === "Before" ? "#B54708" : "#175CD3", border: "3px solid white", boxShadow: "0 0 0 1px #CBD5E1" }} />
                             <img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 10 }} />
-                            <span><strong style={{ display: "block", color: colors.navy3 }}>{meta.notes?.trim() || item.name}</strong><small style={{ display: "block", color: colors.muted, marginTop: 4 }}>{item.createdAt ? formatDate(String(item.createdAt).slice(0, 10)) : "No date"} · {item.assetName}</small></span>
+                            <span><strong style={{ display: "block", color: colors.navy3 }}>{meta.milestoneTitle?.trim() || meta.notes?.trim() || item.name}</strong><small style={{ display: "block", color: colors.muted, marginTop: 4 }}>{meta.milestoneDate || meta.dateTaken ? formatDate(String(meta.milestoneDate || meta.dateTaken)) : item.createdAt ? formatDate(String(item.createdAt).slice(0, 10)) : "No date"} · {meta.milestoneType || item.assetName}</small></span>
                             <span style={badgeStyle(meta.tag)}>{meta.tag}</span>
                           </button>
                         ); })}
@@ -13613,9 +13657,14 @@ export default function AtlasPage() {
                       <Field label="Project title" value={selectedPhotoProject.title} onChange={(value) => updateSelectedPhotoProject({ title: value })} />
                       <SelectField label="Category" value={selectedPhotoProject.category} options={projectCategories} onChange={(value) => updateSelectedPhotoProject({ category: value as PhotoTimelineProjectCategory })} />
                       <Field label="Current phase" value={selectedPhotoProject.phase || "Started"} onChange={(value) => updateSelectedPhotoProject({ phase: value })} />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Start date" type="date" value={selectedPhotoProject.startDate || ""} onChange={(value) => updateSelectedPhotoProject({ startDate: value })} /><Field label="Completed date" type="date" value={selectedPhotoProject.completedAt || ""} onChange={(value) => updateSelectedPhotoProject({ completedAt: value })} /></div>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked asset<select value={selectedPhotoProject.assetId || ""} onChange={(event) => updateSelectedPhotoProject({ assetId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked location<select value={selectedPhotoProject.locationId || ""} onChange={(event) => updateSelectedPhotoProject({ locationId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Primary vendor<select value={selectedPhotoProject.vendorId || ""} onChange={(event) => updateSelectedPhotoProject({ vendorId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Primary work order<select value={selectedPhotoProject.workOrderId || ""} onChange={(event) => updateSelectedPhotoProject({ workOrderId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{serviceRecords.map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
                       <label style={{ fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Project progress: {Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))}%<input type="range" min="0" max="100" value={Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))} onChange={(event) => updateSelectedPhotoProject({ progress: Number(event.target.value) })} style={{ width: "100%", accentColor: "#175CD3", marginTop: 8 }} /></label>
                       <textarea value={selectedPhotoProject.notes} onChange={(event) => updateSelectedPhotoProject({ notes: event.target.value })} placeholder="Project summary, scope, milestones, materials, or key decisions..." style={{ width: "100%", minHeight: 100, border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, font: "inherit" }} />
-                      <button type="button" onClick={() => { setPhotoTimelineProjects((current) => current.filter((project) => project.id !== selectedPhotoProject.id)); setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === selectedPhotoProject.id ? { ...meta, projectId: undefined } : meta]))); setSelectedPhotoProjectId(""); }} style={{ ...secondaryButtonStyle, color: "#B42318", borderColor: "#FDA29B" }}>Delete project story</button>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button type="button" onClick={() => { updateSelectedPhotoProject({ archived: true }); setSelectedPhotoProjectId(""); }} style={secondaryButtonStyle}>Archive project</button><button type="button" onClick={() => { setPhotoTimelineProjects((current) => current.filter((project) => project.id !== selectedPhotoProject.id)); setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === selectedPhotoProject.id ? { ...meta, projectId: undefined } : meta]))); setSelectedPhotoProjectId(""); }} style={{ ...secondaryButtonStyle, color: "#B42318", borderColor: "#FDA29B" }}>Delete project</button></div>
                     </aside>
                   </div>
                 </div>
@@ -13632,6 +13681,8 @@ export default function AtlasPage() {
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>{(["Unlabeled", "Before", "During", "After"] as PhotoTimelineTag[]).map((tag) => <button key={tag} type="button" onClick={() => updateSelectedPhotoMeta({ tag })} style={{ border: `1px solid ${selectedPhotoMeta.tag === tag ? "#175CD3" : "#CBD5E1"}`, borderRadius: 9, background: selectedPhotoMeta.tag === tag ? "#EDF3FF" : "white", color: selectedPhotoMeta.tag === tag ? "#175CD3" : colors.text, minHeight: 36, fontWeight: 900, cursor: "pointer", fontSize: 12 }}>{tag}</button>)}</div>
                       <select value={selectedPhotoMeta.projectId || ""} onChange={(event) => updateSelectedPhotoMeta({ projectId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">No project story</option>{photoTimelineProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Photographer" value={selectedPhotoMeta.photographer || ""} onChange={(value) => updateSelectedPhotoMeta({ photographer: value })} /><Field label="Weather" value={selectedPhotoMeta.weather || ""} onChange={(value) => updateSelectedPhotoMeta({ weather: value })} /></div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Date taken" type="date" value={selectedPhotoMeta.dateTaken || String(selectedPhotoTimelineItem.createdAt || "").slice(0, 10)} onChange={(value) => updateSelectedPhotoMeta({ dateTaken: value })} /><label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Location<select value={selectedPhotoMeta.locationId || selectedPhotoAsset?.locationId || ""} onChange={(event) => updateSelectedPhotoMeta({ locationId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">General property</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label></div>
+                      <div style={{ border: "1px solid #DDE5ED", borderRadius: 12, padding: 12, background: "#F8FAFC", display: "grid", gap: 9 }}><strong style={{ color: colors.navy3 }}>Timeline milestone</strong><Field label="Milestone title" value={selectedPhotoMeta.milestoneTitle || ""} onChange={(value) => updateSelectedPhotoMeta({ milestoneTitle: value, timelineNote: Boolean(value.trim()) })} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Type<select value={selectedPhotoMeta.milestoneType || "Progress"} onChange={(event) => updateSelectedPhotoMeta({ milestoneType: event.target.value as PhotoTimelineMeta["milestoneType"] })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}>{["Started","Inspection","Vendor Visit","Delivery","Progress","Completed","Custom"].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><Field label="Milestone date" type="date" value={selectedPhotoMeta.milestoneDate || selectedPhotoMeta.dateTaken || String(selectedPhotoTimelineItem.createdAt || "").slice(0, 10)} onChange={(value) => updateSelectedPhotoMeta({ milestoneDate: value })} /></div></div>
                       <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked vendor<select value={selectedPhotoMeta.vendorId || ""} onChange={(event) => updateSelectedPhotoMeta({ vendorId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">None</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Related work order<select value={selectedPhotoMeta.workOrderId || ""} onChange={(event) => updateSelectedPhotoMeta({ workOrderId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">None</option>{serviceRecords.map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Related document<select value={selectedPhotoMeta.documentId || selectedPhotoTimelineItem.documentId || ""} onChange={(event) => updateSelectedPhotoMeta({ documentId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">None</option>{allDocuments.map((document) => <option key={document.id} value={document.id}>{document.title}</option>)}</select></label>
@@ -13639,8 +13690,8 @@ export default function AtlasPage() {
                       <div style={{ border: "1px solid #DDE5ED", borderRadius: 12, padding: 12, background: "#F8FAFC", display: "grid", gap: 8 }}>{[["Date taken", selectedPhotoTimelineItem.createdAt ? formatDate(String(selectedPhotoTimelineItem.createdAt).slice(0, 10)) : "No date recorded"], ["Asset", selectedPhotoTimelineItem.assetName], ["Location", selectedPhotoLocation || selectedPhotoTimelineItem.area], ["Source", selectedPhotoTimelineItem.origin]].map(([label, value]) => <div key={label} style={{ display: "grid", gridTemplateColumns: "88px 1fr", gap: 8, fontSize: 13 }}><span style={{ color: colors.muted, fontWeight: 800 }}>{label}</span><strong style={{ color: colors.navy3 }}>{value}</strong></div>)}</div>
                       <textarea value={selectedPhotoMeta.notes} onChange={(event) => updateSelectedPhotoMeta({ notes: event.target.value, timelineNote: Boolean(event.target.value.trim()) })} placeholder="Add a timeline note, milestone, materials, repair details, or what changed..." style={{ width: "100%", minHeight: 105, border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, font: "inherit" }} />
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-                        <button type="button" onClick={() => { setSelectedPhotoTimelineId(""); setScreen("history"); }} style={secondaryButtonStyle}>Add Work Order</button>
-                        <button type="button" onClick={() => updateSelectedPhotoMeta({ timelineNote: true })} style={secondaryButtonStyle}>Add Timeline Note</button>
+                        <button type="button" onClick={createWorkOrderFromPhoto} style={secondaryButtonStyle}>Add Work Order</button>
+                        <button type="button" onClick={addTimelineMilestone} style={secondaryButtonStyle}>Add Timeline Note</button>
                         <button type="button" onClick={() => { const projectId = selectedPhotoMeta.projectId; if (projectId) setPhotoTimelineProjects((current) => current.map((project) => project.id === projectId ? { ...project, coverPhotoId: selectedPhotoTimelineItem.id } : project)); }} style={secondaryButtonStyle}>Make Cover Photo</button>
                         <button type="button" onClick={() => openComparison(selectedPhotoMeta.projectId)} style={secondaryButtonStyle}>Compare</button>
                         <button type="button" onClick={() => { const link = document.createElement("a"); link.href = selectedPhotoTimelineItem.source; link.download = selectedPhotoTimelineItem.name || "atlas-photo"; link.click(); }} style={secondaryButtonStyle}>Download</button>
@@ -13671,7 +13722,7 @@ export default function AtlasPage() {
             {lightboxItem ? (
               <div style={{ position: "fixed", inset: 0, zIndex: 1450, background: "rgba(3,7,18,.97)", display: "grid", gridTemplateRows: "auto minmax(0,1fr) auto" }} onClick={() => setPhotoLightboxIndex(-1)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: 12, color: "white" }} onClick={(event) => event.stopPropagation()}><div><strong>{lightboxItem.name}</strong><small style={{ display: "block", opacity: .72 }}>{photoLightboxIndex + 1} of {photoLightboxIds.length} · Scroll to zoom · Drag to pan</small></div><button type="button" onClick={() => setPhotoLightboxIndex(-1)} style={{ ...secondaryButtonStyle, width: 40, padding: 8 }}>{closeSymbol}</button></div>
-                <div onClick={(event) => event.stopPropagation()} onWheel={(event) => { event.preventDefault(); setPhotoLightboxZoom((current) => Math.max(1, Math.min(5, Number((current + (event.deltaY < 0 ? .2 : -.2)).toFixed(2))))); }} onMouseDown={(event) => { setPhotoLightboxDragging(true); setPhotoLightboxDragOrigin({ x: event.clientX - photoLightboxPan.x, y: event.clientY - photoLightboxPan.y }); }} onMouseMove={(event) => { if (photoLightboxDragging) setPhotoLightboxPan({ x: event.clientX - photoLightboxDragOrigin.x, y: event.clientY - photoLightboxDragOrigin.y }); }} onMouseUp={() => setPhotoLightboxDragging(false)} onMouseLeave={() => setPhotoLightboxDragging(false)} style={{ position: "relative", overflow: "hidden", display: "grid", placeItems: "center", cursor: photoLightboxZoom > 1 ? (photoLightboxDragging ? "grabbing" : "grab") : "default" }}>
+                <div onClick={(event) => event.stopPropagation()} onTouchStart={(event) => setPhotoLightboxTouchStartX(event.touches[0]?.clientX ?? null)} onTouchEnd={(event) => { const endX = event.changedTouches[0]?.clientX; if (photoLightboxTouchStartX == null || endX == null) return; const delta = endX - photoLightboxTouchStartX; if (Math.abs(delta) > 55) { setPhotoLightboxIndex((current) => delta < 0 ? Math.min(photoLightboxIds.length - 1, current + 1) : Math.max(0, current - 1)); setPhotoLightboxZoom(1); setPhotoLightboxPan({ x: 0, y: 0 }); } setPhotoLightboxTouchStartX(null); }} onWheel={(event) => { event.preventDefault(); setPhotoLightboxZoom((current) => Math.max(1, Math.min(5, Number((current + (event.deltaY < 0 ? .2 : -.2)).toFixed(2))))); }} onMouseDown={(event) => { setPhotoLightboxDragging(true); setPhotoLightboxDragOrigin({ x: event.clientX - photoLightboxPan.x, y: event.clientY - photoLightboxPan.y }); }} onMouseMove={(event) => { if (photoLightboxDragging) setPhotoLightboxPan({ x: event.clientX - photoLightboxDragOrigin.x, y: event.clientY - photoLightboxDragOrigin.y }); }} onMouseUp={() => setPhotoLightboxDragging(false)} onMouseLeave={() => setPhotoLightboxDragging(false)} style={{ position: "relative", overflow: "hidden", display: "grid", placeItems: "center", cursor: photoLightboxZoom > 1 ? (photoLightboxDragging ? "grabbing" : "grab") : "default" }}>
                   <img src={lightboxItem.source} alt={lightboxItem.name} draggable={false} style={{ maxWidth: "94%", maxHeight: "100%", objectFit: "contain", transform: `translate(${photoLightboxPan.x}px, ${photoLightboxPan.y}px) scale(${photoLightboxZoom})`, transformOrigin: "center", transition: photoLightboxDragging ? "none" : "transform .12s ease", userSelect: "none" }} />
                   <button type="button" disabled={photoLightboxIndex <= 0} onClick={() => { setPhotoLightboxIndex((current) => Math.max(0, current - 1)); setPhotoLightboxZoom(1); setPhotoLightboxPan({ x: 0, y: 0 }); }} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", ...secondaryButtonStyle, width: 44, height: 44, fontSize: 24, opacity: photoLightboxIndex <= 0 ? .35 : 1 }}>‹</button>
                   <button type="button" disabled={photoLightboxIndex >= photoLightboxIds.length - 1} onClick={() => { setPhotoLightboxIndex((current) => Math.min(photoLightboxIds.length - 1, current + 1)); setPhotoLightboxZoom(1); setPhotoLightboxPan({ x: 0, y: 0 }); }} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", ...secondaryButtonStyle, width: 44, height: 44, fontSize: 24, opacity: photoLightboxIndex >= photoLightboxIds.length - 1 ? .35 : 1 }}>›</button>
