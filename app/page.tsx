@@ -109,6 +109,13 @@ type AssistantTurn = {
   createdAt: string;
 };
 
+type PhotoTimelineTag = "Unlabeled" | "Before" | "During" | "After";
+
+type PhotoTimelineMeta = {
+  tag: PhotoTimelineTag;
+  notes: string;
+};
+
 type WorkItemType =
   "Quick Task" | "Work Order" | "Preventive Maintenance" | "Project";
 
@@ -3869,6 +3876,17 @@ export default function AtlasPage() {
   const [photoTimelineYear, setPhotoTimelineYear] = useState("all");
   const [photoTimelinePaintingOnly, setPhotoTimelinePaintingOnly] = useState(false);
   const [photoTimelineHideLogos, setPhotoTimelineHideLogos] = useState(true);
+  const [selectedPhotoTimelineId, setSelectedPhotoTimelineId] = useState("");
+  const [photoTimelineMeta, setPhotoTimelineMeta] = useState<Record<string, PhotoTimelineMeta>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const stored = window.localStorage.getItem("atlas-photo-timeline-meta-v1");
+      const parsed = stored ? JSON.parse(stored) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
   const [intakeDocs, setIntakeDocs] = useState<DocumentRecord[]>([]);
   const [inboxItems, setInboxItems] = useState<InboxItemRecord[]>([]);
   const [selectedInboxId, setSelectedInboxId] = useState("");
@@ -3967,6 +3985,18 @@ export default function AtlasPage() {
         normalizedIntakePhotoName,
       ) ||
       /^\d{8,}$/.test(normalizedIntakePhotoName.replace(/[-_ ]/g, "")));
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        "atlas-photo-timeline-meta-v1",
+        JSON.stringify(photoTimelineMeta),
+      );
+    } catch (error) {
+      console.warn("Atlas could not save photo timeline labels.", error);
+    }
+  }, [photoTimelineMeta]);
 
   useEffect(() => {
     const allPropertyIds = ["2000", "6855", "3661", "hangar"];
@@ -13180,6 +13210,8 @@ export default function AtlasPage() {
         assetName: assetName(photo.assetId || "") || "General property",
         area: assetName(photo.assetId || "") || "General property",
         origin: "Asset photo",
+        documentId: "",
+        sourceNotes: "",
       })),
       ...allDocuments.flatMap((document) =>
         (document.files || [])
@@ -13199,12 +13231,15 @@ export default function AtlasPage() {
               : document.targetName || document.area || "General property",
             area: document.area || document.targetName || "General property",
             origin: "Document image",
+            documentId: document.id,
+            sourceNotes: document.notes || document.pastedText || "",
           })),
       ),
     ]
       .filter((item) => Boolean(item.source))
       .filter((item) => {
-        const haystack = `${item.name} ${item.assetName} ${item.area} ${item.origin}`.toLowerCase();
+        const meta = photoTimelineMeta[item.id];
+        const haystack = `${item.name} ${item.assetName} ${item.area} ${item.origin} ${meta?.tag || ""} ${meta?.notes || ""}`.toLowerCase();
         const searchMatches =
           !photoTimelineSearch.trim() ||
           haystack.includes(photoTimelineSearch.trim().toLowerCase());
@@ -13241,6 +13276,37 @@ export default function AtlasPage() {
       {},
     );
 
+    const selectedPhotoTimelineItem = photoTimelineItems.find(
+      (item) => item.id === selectedPhotoTimelineId,
+    );
+    const selectedPhotoMeta = selectedPhotoTimelineItem
+      ? photoTimelineMeta[selectedPhotoTimelineItem.id] || { tag: "Unlabeled" as PhotoTimelineTag, notes: "" }
+      : null;
+    const selectedPhotoAsset = selectedPhotoTimelineItem?.assetId
+      ? assetRecords.find((asset) => asset.id === selectedPhotoTimelineItem.assetId)
+      : undefined;
+    const selectedPhotoLocation = selectedPhotoAsset
+      ? locationName(selectedPhotoAsset.locationId || selectedPhotoAsset.locationIds?.[0] || "")
+      : selectedPhotoTimelineItem?.area || "General property";
+    const selectedPhotoWorkOrders = selectedPhotoTimelineItem?.assetId
+      ? serviceRecords
+          .filter((record) => record.assetId === selectedPhotoTimelineItem.assetId)
+          .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
+          .slice(0, 3)
+      : [];
+
+    const updateSelectedPhotoMeta = (patch: Partial<PhotoTimelineMeta>) => {
+      if (!selectedPhotoTimelineItem) return;
+      setPhotoTimelineMeta((current) => ({
+        ...current,
+        [selectedPhotoTimelineItem.id]: {
+          tag: current[selectedPhotoTimelineItem.id]?.tag || "Unlabeled",
+          notes: current[selectedPhotoTimelineItem.id]?.notes || "",
+          ...patch,
+        },
+      }));
+    };
+
     return (
       <>
         {mode === "timeline" ? (
@@ -13255,7 +13321,7 @@ export default function AtlasPage() {
               {[
                 ["Visible photos", photoTimelineItems.length],
                 ["All photos", photos.length + allDocuments.reduce((count, document) => count + (document.files || []).filter((file) => String(file.type || "").startsWith("image/") || String(file.dataUrl || "").startsWith("data:image/") || /\.(png|jpe?g|webp|gif|avif)$/i.test(String(file.name || ""))).length, 0)],
-                ["Painting photos", photoTimelineItems.filter((item) => /(paint|painting|stain|elliott|exterior|siding|trim|eave|coat)/i.test(`${item.name} ${item.area}`)).length],
+                ["Before / After", photoTimelineItems.filter((item) => ["Before", "After"].includes(photoTimelineMeta[item.id]?.tag || "")).length],
                 ["Years covered", photoTimelineYears.length],
               ].map(([label, value]) => (
                 <div key={String(label)} style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: "12px 14px", background: "#FFFFFF" }}>
@@ -13269,7 +13335,7 @@ export default function AtlasPage() {
               <input
                 value={photoTimelineSearch}
                 onChange={(event) => setPhotoTimelineSearch(event.target.value)}
-                placeholder="Search photos, assets, areas, painting..."
+                placeholder="Search photos, assets, areas, labels..."
                 style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }}
               />
               <select value={photoTimelineAssetId} onChange={(event) => setPhotoTimelineAssetId(event.target.value)} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", background: "white", fontWeight: 700 }}>
@@ -13298,21 +13364,32 @@ export default function AtlasPage() {
                       <span style={{ height: 1, background: "#DDE5ED", flex: 1 }} />
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(190px, 1fr))", gap: 12 }}>
-                      {items.map((item) => (
-                        <button key={item.id} type="button" onClick={() => window.open(item.source, "_blank", "noopener,noreferrer")} style={{ border: "1px solid #D7E0EA", borderRadius: 14, overflow: "hidden", background: "white", padding: 0, textAlign: "left", cursor: "pointer" }}>
-                          <div style={{ aspectRatio: "4 / 3", background: "#EEF3F7", overflow: "hidden" }}>
-                            <img src={item.source} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                          </div>
-                          <div style={{ padding: 11 }}>
-                            <div style={{ fontWeight: 900, color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
-                            <div style={{ fontSize: 12, color: colors.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.assetName}</div>
-                            <div style={{ fontSize: 11, color: colors.muted, marginTop: 6, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                              <span>{item.origin}</span>
-                              <span>{item.createdAt ? formatDate(String(item.createdAt).slice(0, 10)) : "No date"}</span>
+                      {items.map((item) => {
+                        const tag = photoTimelineMeta[item.id]?.tag || "Unlabeled";
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setSelectedPhotoTimelineId(item.id)}
+                            style={{ border: `1px solid ${selectedPhotoTimelineId === item.id ? "#175CD3" : "#D7E0EA"}`, borderRadius: 14, overflow: "hidden", background: "white", padding: 0, textAlign: "left", cursor: "pointer", boxShadow: selectedPhotoTimelineId === item.id ? "0 0 0 2px rgba(23,92,211,.12)" : "none" }}
+                          >
+                            <div style={{ aspectRatio: "4 / 3", background: "#EEF3F7", overflow: "hidden", position: "relative" }}>
+                              <img src={item.source} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                              {tag !== "Unlabeled" ? (
+                                <span style={{ position: "absolute", top: 8, left: 8, borderRadius: 999, padding: "4px 8px", background: tag === "Before" ? "#FFF4E5" : tag === "After" ? "#EAF7F1" : "#EDF3FF", color: tag === "Before" ? "#B54708" : tag === "After" ? "#087443" : "#175CD3", fontSize: 11, fontWeight: 950, border: "1px solid rgba(255,255,255,.8)" }}>{tag}</span>
+                              ) : null}
                             </div>
-                          </div>
-                        </button>
-                      ))}
+                            <div style={{ padding: 11 }}>
+                              <div style={{ fontWeight: 900, color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                              <div style={{ fontSize: 12, color: colors.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.assetName}</div>
+                              <div style={{ fontSize: 11, color: colors.muted, marginTop: 6, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                <span>{item.origin}</span>
+                                <span>{item.createdAt ? formatDate(String(item.createdAt).slice(0, 10)) : "No date"}</span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -13320,6 +13397,80 @@ export default function AtlasPage() {
             ) : (
               <div style={emptyStateStyle}>No photos match the current timeline filters.</div>
             )}
+
+            {selectedPhotoTimelineItem && selectedPhotoMeta ? (
+              <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(15, 23, 42, .55)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", padding: isMobile ? 0 : 24 }} onClick={() => setSelectedPhotoTimelineId("")}>
+                <div role="dialog" aria-modal="true" aria-label="Photo timeline details" onClick={(event) => event.stopPropagation()} style={{ width: isMobile ? "100%" : "min(1080px, 94vw)", maxHeight: isMobile ? "92vh" : "90vh", overflow: "auto", borderRadius: isMobile ? "18px 18px 0 0" : 20, background: "#FFFFFF", boxShadow: "0 24px 70px rgba(15,23,42,.3)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: "1px solid #DDE5ED", position: "sticky", top: 0, background: "#FFFFFF", zIndex: 2 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, color: colors.muted, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".08em" }}>Photo Timeline</div>
+                      <strong style={{ color: colors.navy3, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedPhotoTimelineItem.name}</strong>
+                    </div>
+                    <button type="button" onClick={() => setSelectedPhotoTimelineId("")} aria-label="Close photo details" style={{ border: "1px solid #CBD5E1", width: 36, height: 36, borderRadius: 10, background: "white", fontSize: 22, cursor: "pointer" }}>{closeSymbol}</button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.45fr) minmax(300px, .75fr)", gap: 0 }}>
+                    <div style={{ background: "#101828", minHeight: isMobile ? 280 : 560, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                      <img src={selectedPhotoTimelineItem.source} alt={selectedPhotoTimelineItem.name} style={{ maxWidth: "100%", maxHeight: isMobile ? "56vh" : 620, objectFit: "contain", display: "block" }} />
+                    </div>
+                    <aside style={{ padding: 18, display: "grid", gap: 16, alignContent: "start" }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy3, marginBottom: 8 }}>Progress label</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 7 }}>
+                          {(["Unlabeled", "Before", "During", "After"] as PhotoTimelineTag[]).map((tag) => (
+                            <button key={tag} type="button" onClick={() => updateSelectedPhotoMeta({ tag })} style={{ border: `1px solid ${selectedPhotoMeta.tag === tag ? "#175CD3" : "#CBD5E1"}`, borderRadius: 9, background: selectedPhotoMeta.tag === tag ? "#EDF3FF" : "#FFFFFF", color: selectedPhotoMeta.tag === tag ? "#175CD3" : colors.text, minHeight: 36, fontWeight: 900, cursor: "pointer", fontSize: 12 }}>{tag}</button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 9, border: "1px solid #DDE5ED", borderRadius: 12, padding: 12, background: "#F8FAFC" }}>
+                        {[
+                          ["Date", selectedPhotoTimelineItem.createdAt ? formatDate(String(selectedPhotoTimelineItem.createdAt).slice(0, 10)) : "No date recorded"],
+                          ["Source", selectedPhotoTimelineItem.origin],
+                          ["Asset", selectedPhotoTimelineItem.assetName],
+                          ["Location", selectedPhotoLocation || selectedPhotoTimelineItem.area],
+                        ].map(([label, value]) => (
+                          <div key={label} style={{ display: "grid", gridTemplateColumns: "78px minmax(0, 1fr)", gap: 9, fontSize: 13 }}>
+                            <span style={{ color: colors.muted, fontWeight: 800 }}>{label}</span>
+                            <strong style={{ color: colors.navy3 }}>{value}</strong>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 900, color: colors.navy3, marginBottom: 7 }}>Timeline notes</label>
+                        <textarea value={selectedPhotoMeta.notes} onChange={(event) => updateSelectedPhotoMeta({ notes: event.target.value })} placeholder="Add what changed, who completed it, paint color, repair details, or inspection notes..." style={{ width: "100%", minHeight: 110, resize: "vertical", border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, font: "inherit" }} />
+                      </div>
+
+                      {selectedPhotoTimelineItem.sourceNotes ? (
+                        <div style={{ border: "1px solid #DDE5ED", borderRadius: 11, padding: 11 }}>
+                          <div style={{ fontSize: 12, color: colors.muted, fontWeight: 900, marginBottom: 5 }}>Source notes</div>
+                          <div style={{ fontSize: 13, lineHeight: 1.5, color: colors.text, whiteSpace: "pre-wrap" }}>{selectedPhotoTimelineItem.sourceNotes}</div>
+                        </div>
+                      ) : null}
+
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy3, marginBottom: 7 }}>Related work orders</div>
+                        <div style={{ display: "grid", gap: 7 }}>
+                          {selectedPhotoWorkOrders.map((record) => (
+                            <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setSelectedPhotoTimelineId(""); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, border: "1px solid #DDE5ED", borderRadius: 10, background: "#FFFFFF", padding: "9px 10px", textAlign: "left", cursor: "pointer" }}>
+                              <span style={{ minWidth: 0 }}>
+                                <strong style={{ display: "block", color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong>
+                                <small style={{ color: colors.muted }}>{record.date ? formatDate(record.date) : "No date"}</small>
+                              </span>
+                              <span style={badgeStyle(String(record.status || "Open"))}>{record.status || "Open"}</span>
+                            </button>
+                          ))}
+                          {!selectedPhotoWorkOrders.length ? <div style={{ ...noticeStyle, margin: 0 }}>No work orders are linked to this asset.</div> : null}
+                        </div>
+                      </div>
+
+                      <button type="button" onClick={() => window.open(selectedPhotoTimelineItem.source, "_blank", "noopener,noreferrer")} style={{ ...secondaryButtonStyle, width: "100%" }}>Open original image</button>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
