@@ -135,6 +135,9 @@ type PhotoTimelineMeta = {
   milestoneTitle?: string;
   milestoneDate?: string;
   milestoneType?: "Started" | "Inspection" | "Vendor Visit" | "Delivery" | "Progress" | "Completed" | "Custom";
+  displayName?: string;
+  tags?: string;
+  assetIdOverride?: string;
 };
 
 type PhotoTimelineProject = {
@@ -13023,6 +13026,9 @@ export default function AtlasPage() {
         assetName: assetName(photo.assetId || "") || "General property",
         area: assetName(photo.assetId || "") || "General property",
         origin: "Asset photo",
+        sourceKind: "asset" as const,
+        sourceId: photo.id,
+        fileId: "",
         documentId: "",
         sourceNotes: "",
       })),
@@ -13044,11 +13050,25 @@ export default function AtlasPage() {
               : document.targetName || document.area || "General property",
             area: document.area || document.targetName || "General property",
             origin: "Document image",
+            sourceKind: "document" as const,
+            sourceId: document.id,
+            fileId: file.id,
             documentId: document.id,
             sourceNotes: document.notes || document.pastedText || "",
           })),
       ),
-    ].filter((item) => Boolean(item.source));
+    ].filter((item) => Boolean(item.source)).map((item) => {
+      const meta = photoTimelineMeta[item.id];
+      const overriddenAssetId = meta?.assetIdOverride;
+      const overriddenAsset = overriddenAssetId ? assetRecords.find((asset) => asset.id === overriddenAssetId) : undefined;
+      return {
+        ...item,
+        name: meta?.displayName?.trim() || item.name,
+        assetId: overriddenAssetId !== undefined ? overriddenAssetId : item.assetId,
+        assetName: overriddenAssetId !== undefined ? (overriddenAsset ? overriddenAsset.name : "General property") : item.assetName,
+        area: overriddenAssetId !== undefined ? (overriddenAsset ? overriddenAsset.name : "General property") : item.area,
+      };
+    });
 
     const dateValues = allPhotoTimelineItems
       .map((item) => (item.createdAt ? new Date(item.createdAt).getTime() : Number.NaN))
@@ -13131,6 +13151,117 @@ export default function AtlasPage() {
       ));
     };
 
+    const removeTimelinePhotoReferences = (timelineId: string) => {
+      setPhotoTimelineMeta((current) => {
+        const next = { ...current };
+        delete next[timelineId];
+        return next;
+      });
+      setPhotoTimelineProjects((current) => current.map((project) =>
+        project.coverPhotoId === timelineId ? { ...project, coverPhotoId: "" } : project,
+      ));
+      setPhotoLightboxIds((current) => current.filter((id) => id !== timelineId));
+      if (photoCompareBeforeId === timelineId) setPhotoCompareBeforeId("");
+      if (photoCompareAfterId === timelineId) setPhotoCompareAfterId("");
+      setSelectedPhotoTimelineId("");
+    };
+
+    const replaceSelectedTimelinePhoto = async (file: File) => {
+      if (!selectedPhotoTimelineItem || !file.type.startsWith("image/")) return;
+      const uploaded = await fileToUploadedRecord(file);
+      if (!uploaded.dataUrl && !uploaded.url) return;
+
+      if (selectedPhotoTimelineItem.sourceKind === "asset") {
+        const existing = photos.find((photo) => photo.id === selectedPhotoTimelineItem.sourceId);
+        if (!existing) return;
+        const updated: PhotoRecord = {
+          ...existing,
+          name: file.name || existing.name,
+          dataUrl: uploaded.dataUrl,
+          url: uploaded.url,
+        };
+        await cachePhotoRecords([updated]);
+        setPhotos((current) => {
+          const next = current.map((photo) => photo.id === updated.id ? updated : photo);
+          persistPhotoRecords(next);
+          return next;
+        });
+        const synced = await postAtlasRecord("asset_photos", updated);
+        updateSelectedPhotoMeta({ displayName: file.name || selectedPhotoMeta?.displayName });
+        showSaveToast(synced ? "Timeline photo replaced and synced." : "Timeline photo replaced on this device; sync did not finish.", synced ? "success" : "warning");
+        return;
+      }
+
+      const documentRecord = intakeDocs.find((record) => record.id === selectedPhotoTimelineItem.documentId);
+      const existingFile = documentRecord?.files?.find((item) => item.id === selectedPhotoTimelineItem.fileId);
+      if (!documentRecord || !existingFile) {
+        showSaveToast("This document image is not stored in the editable Atlas vault.", "warning");
+        return;
+      }
+      const replacement: UploadedFileRecord = { ...uploaded, id: existingFile.id, createdAt: existingFile.createdAt || uploaded.createdAt };
+      const updatedDocument = normalizeDocument({
+        ...documentRecord,
+        files: (documentRecord.files || []).map((item) => item.id === existingFile.id ? replacement : item),
+      });
+      replaceDocumentInVault(updatedDocument);
+      try {
+        await postDocumentToAtlasVault(updatedDocument);
+        updateSelectedPhotoMeta({ displayName: file.name || selectedPhotoMeta?.displayName });
+        showSaveToast("Timeline document image replaced and synced.");
+      } catch {
+        showSaveToast("Image replaced on this device; Atlas sync did not finish.", "warning");
+      }
+    };
+
+    const deleteSelectedTimelinePhoto = async () => {
+      if (!selectedPhotoTimelineItem) return;
+      const linkedProject = photoTimelineProjects.find((project) => project.id === selectedPhotoMeta?.projectId);
+      const warning = linkedProject ? ` It is linked to the project “${linkedProject.title}”.` : "";
+      if (!window.confirm(`Delete ${selectedPhotoTimelineItem.name} from Atlas?${warning} This cannot be undone.`)) return;
+
+      if (selectedPhotoTimelineItem.sourceKind === "asset") {
+        const photo = photos.find((record) => record.id === selectedPhotoTimelineItem.sourceId);
+        if (!photo) return;
+        const deleted = await deleteAtlasRecord("asset_photos", photo.id);
+        if (!deleted) { showSaveToast("Atlas could not delete that photo.", "warning"); return; }
+        await deleteCachedPhoto(photo.id);
+        setPhotos((current) => {
+          const next = current.filter((record) => record.id !== photo.id);
+          persistPhotoRecords(next);
+          return next;
+        });
+        removeTimelinePhotoReferences(selectedPhotoTimelineItem.id);
+        showSaveToast("Timeline photo deleted.");
+        return;
+      }
+
+      const documentRecord = intakeDocs.find((record) => record.id === selectedPhotoTimelineItem.documentId);
+      const file = documentRecord?.files?.find((item) => item.id === selectedPhotoTimelineItem.fileId);
+      if (!documentRecord || !file) {
+        showSaveToast("This document image is not stored in the editable Atlas vault.", "warning");
+        return;
+      }
+      const remainingFiles = (documentRecord.files || []).filter((item) => item.id !== file.id);
+      try {
+        if (remainingFiles.length) {
+          const updated = normalizeDocument({ ...documentRecord, files: remainingFiles });
+          replaceDocumentInVault(updated);
+          await postDocumentToAtlasVault(updated);
+        } else {
+          setIntakeDocs((current) => {
+            const next = current.filter((record) => record.id !== documentRecord.id);
+            saveStoredArray(storageKeys.intakeDocs[0], next);
+            return next;
+          });
+          await deleteDocumentFromAtlasVault(documentRecord.id);
+        }
+        removeTimelinePhotoReferences(selectedPhotoTimelineItem.id);
+        showSaveToast("Timeline image deleted.");
+      } catch {
+        showSaveToast("The image could not be fully deleted from Atlas.", "warning");
+      }
+    };
+
     const createWorkOrderFromPhoto = () => {
       if (!selectedPhotoTimelineItem) return;
       const project = photoTimelineProjects.find((record) => record.id === selectedPhotoMeta?.projectId);
@@ -13145,7 +13276,7 @@ export default function AtlasPage() {
         status: "Open",
         priority: "Medium",
         workType: "Work Order",
-        notes: `Created from Photo Timeline 4.1: ${selectedPhotoTimelineItem.name}${selectedPhotoMeta?.notes ? `\n\nPhoto note: ${selectedPhotoMeta.notes}` : ""}`,
+        notes: `Created from Photo Timeline 4.2: ${selectedPhotoTimelineItem.name}${selectedPhotoMeta?.notes ? `\n\nPhoto note: ${selectedPhotoMeta.notes}` : ""}`,
       });
       setServiceRecords((current) => byTitle([record, ...current]));
       updateSelectedPhotoMeta({ workOrderId: id });
@@ -13276,7 +13407,7 @@ export default function AtlasPage() {
           <section style={{ ...sectionStyle, marginBottom: 18 }}>
             <SectionHeader
               eyebrow="Visual Property History"
-              title="Photo Timeline 4.1"
+              title="Photo Timeline 4.2"
               detail="Project workflow integration with editable metadata, milestones, linked Atlas records, mobile navigation, and persistent project controls."
             />
 
@@ -13401,7 +13532,7 @@ export default function AtlasPage() {
                       <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Primary work order<select value={selectedPhotoProject.workOrderId || ""} onChange={(event) => updateSelectedPhotoProject({ workOrderId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{serviceRecords.map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
                       <label style={{ fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Project progress: {Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))}%<input type="range" min="0" max="100" value={Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))} onChange={(event) => updateSelectedPhotoProject({ progress: Number(event.target.value) })} style={{ width: "100%", accentColor: "#175CD3", marginTop: 8 }} /></label>
                       <textarea value={selectedPhotoProject.notes} onChange={(event) => updateSelectedPhotoProject({ notes: event.target.value })} placeholder="Project summary, scope, milestones, materials, or key decisions..." style={{ width: "100%", minHeight: 100, border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, font: "inherit" }} />
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button type="button" onClick={() => { updateSelectedPhotoProject({ archived: true }); setSelectedPhotoProjectId(""); }} style={secondaryButtonStyle}>Archive project</button><button type="button" onClick={() => { setPhotoTimelineProjects((current) => current.filter((project) => project.id !== selectedPhotoProject.id)); setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === selectedPhotoProject.id ? { ...meta, projectId: undefined } : meta]))); setSelectedPhotoProjectId(""); }} style={{ ...secondaryButtonStyle, color: "#B42318", borderColor: "#FDA29B" }}>Delete project</button></div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button type="button" onClick={() => { updateSelectedPhotoProject({ archived: !selectedPhotoProject.archived }); if (!selectedPhotoProject.archived) setSelectedPhotoProjectId(""); }} style={secondaryButtonStyle}>{selectedPhotoProject.archived ? "Restore project" : "Archive project"}</button><button type="button" onClick={() => { if (!window.confirm(`Delete project “${selectedPhotoProject.title}”? Photos will remain in Atlas but will become unassigned.`)) return; setPhotoTimelineProjects((current) => current.filter((project) => project.id !== selectedPhotoProject.id)); setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === selectedPhotoProject.id ? { ...meta, projectId: undefined } : meta]))); setSelectedPhotoProjectId(""); }} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete project</button></div>
                     </aside>
                   </div>
                 </div>
@@ -13525,7 +13656,13 @@ export default function AtlasPage() {
                     <div style={{ background: "#101828", minHeight: isMobile ? 300 : 620, display: "grid", placeItems: "center", padding: 16, cursor: "zoom-in" }} onClick={() => openLightbox(selectedPhotoTimelineItem.id)}><img src={selectedPhotoTimelineItem.source} alt={selectedPhotoTimelineItem.name} style={{ maxWidth: "100%", maxHeight: isMobile ? "56vh" : 640, objectFit: "contain" }} /></div>
                     <aside style={{ padding: 18, display: "grid", gap: 14, alignContent: "start" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>{(["Unlabeled", "Before", "During", "After"] as PhotoTimelineTag[]).map((tag) => <button key={tag} type="button" onClick={() => updateSelectedPhotoMeta({ tag })} style={{ border: `1px solid ${selectedPhotoMeta.tag === tag ? "#175CD3" : "#CBD5E1"}`, borderRadius: 9, background: selectedPhotoMeta.tag === tag ? "#EDF3FF" : "white", color: selectedPhotoMeta.tag === tag ? "#175CD3" : colors.text, minHeight: 36, fontWeight: 900, cursor: "pointer", fontSize: 12 }}>{tag}</button>)}</div>
-                      <select value={selectedPhotoMeta.projectId || ""} onChange={(event) => updateSelectedPhotoMeta({ projectId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">No project story</option>{photoTimelineProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select>
+                      <div style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 12, background: colors.panel, display: "grid", gap: 9 }}>
+                        <strong style={{ color: colors.navy3 }}>Photo details</strong>
+                        <Field label="Photo title" value={selectedPhotoMeta.displayName || selectedPhotoTimelineItem.name} onChange={(value) => updateSelectedPhotoMeta({ displayName: value })} />
+                        <Field label="Tags" value={selectedPhotoMeta.tags || ""} onChange={(value) => updateSelectedPhotoMeta({ tags: value })} />
+                        <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked asset<select value={selectedPhotoMeta.assetIdOverride !== undefined ? selectedPhotoMeta.assetIdOverride : selectedPhotoTimelineItem.assetId} onChange={(event) => updateSelectedPhotoMeta({ assetIdOverride: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">General property</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                      </div>
+                      <select value={selectedPhotoMeta.projectId || ""} onChange={(event) => updateSelectedPhotoMeta({ projectId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">No project story</option>{photoTimelineProjects.filter((project) => !project.archived || project.id === selectedPhotoMeta.projectId).map((project) => <option key={project.id} value={project.id}>{project.title}{project.archived ? " (Archived)" : ""}</option>)}</select>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Photographer" value={selectedPhotoMeta.photographer || ""} onChange={(value) => updateSelectedPhotoMeta({ photographer: value })} /><Field label="Weather" value={selectedPhotoMeta.weather || ""} onChange={(value) => updateSelectedPhotoMeta({ weather: value })} /></div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Date taken" type="date" value={selectedPhotoMeta.dateTaken || String(selectedPhotoTimelineItem.createdAt || "").slice(0, 10)} onChange={(value) => updateSelectedPhotoMeta({ dateTaken: value })} /><label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Location<select value={selectedPhotoMeta.locationId || selectedPhotoAsset?.locationId || ""} onChange={(event) => updateSelectedPhotoMeta({ locationId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">General property</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label></div>
                       <div style={{ border: "1px solid #DDE5ED", borderRadius: 12, padding: 12, background: "#F8FAFC", display: "grid", gap: 9 }}><strong style={{ color: colors.navy3 }}>Timeline milestone</strong><Field label="Milestone title" value={selectedPhotoMeta.milestoneTitle || ""} onChange={(value) => updateSelectedPhotoMeta({ milestoneTitle: value, timelineNote: Boolean(value.trim()) })} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Type<select value={selectedPhotoMeta.milestoneType || "Progress"} onChange={(event) => updateSelectedPhotoMeta({ milestoneType: event.target.value as PhotoTimelineMeta["milestoneType"] })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}>{["Started","Inspection","Vendor Visit","Delivery","Progress","Completed","Custom"].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><Field label="Milestone date" type="date" value={selectedPhotoMeta.milestoneDate || selectedPhotoMeta.dateTaken || String(selectedPhotoTimelineItem.createdAt || "").slice(0, 10)} onChange={(value) => updateSelectedPhotoMeta({ milestoneDate: value })} /></div></div>
@@ -13542,6 +13679,8 @@ export default function AtlasPage() {
                         <button type="button" onClick={() => openComparison(selectedPhotoMeta.projectId)} style={secondaryButtonStyle}>Compare</button>
                         <button type="button" onClick={() => { const link = document.createElement("a"); link.href = selectedPhotoTimelineItem.source; link.download = selectedPhotoTimelineItem.name || "atlas-photo"; link.click(); }} style={secondaryButtonStyle}>Download</button>
                         <button type="button" onClick={() => { if (navigator.share) void navigator.share({ title: selectedPhotoTimelineItem.name, url: selectedPhotoTimelineItem.source }); else void navigator.clipboard?.writeText(selectedPhotoTimelineItem.source); }} style={secondaryButtonStyle}>Share</button>
+                        <label style={{ ...secondaryButtonStyle, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", margin: 0 }}>Replace Photo<input type="file" accept="image/*" style={{ display: "none" }} onChange={(event) => { const file = event.target.files?.[0]; if (file) void replaceSelectedTimelinePhoto(file); event.currentTarget.value = ""; }} /></label>
+                        <button type="button" onClick={() => void deleteSelectedTimelinePhoto()} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete Photo</button>
                       </div>
                     </aside>
                   </div>
