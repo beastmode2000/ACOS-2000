@@ -13614,7 +13614,7 @@ export default function AtlasPage() {
                       <SelectField
                         label="Location"
                         value={
-                          locationRecords.find(
+                          locations.find(
                             (location) =>
                               location.id === selectedPhotoProject.locationId,
                           )?.name || ""
@@ -13622,12 +13622,12 @@ export default function AtlasPage() {
                         onChange={(value) =>
                           updateSelectedPhotoProject({
                             locationId:
-                              locationRecords.find(
+                              locations.find(
                                 (location) => location.name === value,
                               )?.id || "",
                           })
                         }
-                        options={["", ...locationRecords.map((location) => location.name)]}
+                        options={["", ...locations.map((location) => location.name)]}
                       />
                       <SelectField
                         label="Vendor"
@@ -13689,7 +13689,37 @@ export default function AtlasPage() {
                         }
                         options={["", ...selectedPhotoProjectItems.map((item) => item.name)]}
                       />
-                      <button type="button" onClick={() => { setPhotoTimelineProjects((current) => current.filter((project) => project.id !== selectedPhotoProject.id)); setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === selectedPhotoProject.id ? { ...meta, projectId: undefined } : meta]))); setSelectedPhotoProjectId(""); }} style={{ ...secondaryButtonStyle, color: "#B42318", borderColor: "#FDA29B" }}>Delete project story</button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPhotoTimelineProjects((current) =>
+                            current.filter(
+                              (project) => project.id !== selectedPhotoProject.id,
+                            ),
+                          );
+                          setPhotoTimelineMeta((current) => {
+                            const next: Record<string, PhotoTimelineMeta> = {};
+
+                            Object.keys(current).forEach((id) => {
+                              const meta = current[id];
+                              next[id] =
+                                meta.projectId === selectedPhotoProject.id
+                                  ? { ...meta, projectId: undefined }
+                                  : meta;
+                            });
+
+                            return next;
+                          });
+                          setSelectedPhotoProjectId("");
+                        }}
+                        style={{
+                          ...secondaryButtonStyle,
+                          color: "#B42318",
+                          borderColor: "#FDA29B",
+                        }}
+                      >
+                        Delete project story
+                      </button>
                     </aside>
                   </div>
                 </div>
