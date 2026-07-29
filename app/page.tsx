@@ -29832,6 +29832,11 @@ const inputStyle: React.CSSProperties = {
   fontWeight: 750,
 };
 
+const selectStyle: React.CSSProperties = {
+  ...inputStyle,
+  cursor: "pointer",
+};
+
 const formGridStyle: React.CSSProperties = {
   display: "grid",
   gap: 11,
