@@ -12876,7 +12876,7 @@ export default function AtlasPage() {
       { label: "Safety", query: "safety", terms: ["safety", "alarm", "generator", "emergency", "inspection"], icon: "⚠" },
     ];
     const healthCategories = statusDefinitions.map((definition) => {
-      const matches = (record: ServiceRecord) => definition.terms.some((term) => `${(record as AtlasServiceRecord).workCategory || ""} ${record.title || ""} ${record.notes || ""} ${record.area || ""}`.toLowerCase().includes(term));
+      const matches = (record: ServiceRecord) => definition.terms.some((term) => `${(record as AtlasServiceRecord).workCategory || ""} ${(record as AtlasServiceRecord).responsibilityArea || ""} ${record.title || ""} ${record.notes || ""}`.toLowerCase().includes(term));
       const matchingOpen = openWork.filter(matches);
       const matchingCompleted = completedWork.filter(matches);
       const overdue = matchingOpen.filter((record) => Boolean(record.date) && String(record.date) < today);
