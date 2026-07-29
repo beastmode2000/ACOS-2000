@@ -9131,6 +9131,61 @@ export default function AtlasPage() {
     );
   }
 
+  async function reopenWorkOrder(record: AtlasServiceRecord) {
+    if (!record?.id) return;
+
+    const history = Array.isArray(record.serviceHistory) ? record.serviceHistory : [];
+    const latestCompletion = history[0];
+    const restoredDate = String(latestCompletion?.dueDate || record.date || "");
+    const restoredStatusRaw = String(latestCompletion?.statusBefore || "Open");
+    const restoredStatus = restoredStatusRaw === "Completed" ? "Open" : restoredStatusRaw;
+    const completionDate = latestCompletion?.completedAt
+      ? String(latestCompletion.completedAt).slice(0, 10)
+      : String(record.lastCompletedDate || "");
+
+    const remainingCompletionHistory = [...(record.completionHistory || [])];
+    if (completionDate) {
+      const index = remainingCompletionHistory.lastIndexOf(completionDate);
+      if (index >= 0) remainingCompletionHistory.splice(index, 1);
+    }
+
+    const remainingServiceHistory = latestCompletion ? history.slice(1) : history;
+    const previousCompletion = remainingServiceHistory[0]?.completedAt
+      ? String(remainingServiceHistory[0].completedAt).slice(0, 10)
+      : remainingCompletionHistory[remainingCompletionHistory.length - 1] || "";
+
+    const reopened = normalizeService({
+      ...record,
+      status: restoredStatus,
+      date: restoredDate,
+      lastCompletedDate: previousCompletion,
+      completionHistory: remainingCompletionHistory,
+      serviceHistory: remainingServiceHistory,
+      checklist: latestCompletion?.checklist || record.checklist || [],
+      notes: latestCompletion?.notes ?? record.notes,
+      notesHistory: latestCompletion?.notesHistory || record.notesHistory || [],
+      photos: latestCompletion?.photos || record.photos || [],
+      documents: latestCompletion?.documents || record.documents || [],
+      assetId: latestCompletion?.assetId || record.assetId || "",
+      vendorId: latestCompletion?.vendorId || record.vendorId || "",
+      procedureId: latestCompletion?.procedureId || record.procedureId || "",
+      locationId: latestCompletion?.locationId || record.locationId || "",
+    });
+
+    setServiceRecords((current) =>
+      byTitle(current.map((item) => (item.id === reopened.id ? reopened : item))),
+    );
+    setDatabaseStatus(`Reopening ${reopened.title || "work order"}...`);
+    const saved = await postAtlasRecord("work_orders", reopened);
+    if (!saved) {
+      markRecordDirty("work_order", reopened.id);
+      window.alert("Atlas reopened this work order in this browser, but shared saving failed. Do not refresh until the save succeeds.");
+      return;
+    }
+    clearRecordDirty("work_order", reopened.id);
+    setDatabaseStatus(`Reopened ${reopened.title || "work order"}.`);
+  }
+
   function startNewCalendarDraft(date?: string) {
     const targetDate = date || selectedCalendarDate || todayISO();
     setSelectedCalendarDate(targetDate);
@@ -12762,6 +12817,18 @@ export default function AtlasPage() {
     }).slice(0, 6);
     const priorityRank = (record: ServiceRecord) => record.priority === "High" ? 0 : record.priority === "Medium" ? 1 : 2;
     const todaysWork = [...dueToday].sort((a, b) => priorityRank(a) - priorityRank(b) || String(a.title || "").localeCompare(String(b.title || ""))).slice(0, 6);
+    const completedTodayOccurrences = serviceRecords.flatMap((record) =>
+      (record.serviceHistory || [])
+        .filter((entry) => String(entry.completedAt || "").slice(0, 10) === today)
+        .map((entry) => ({ record, entry })),
+    ).slice(0, 6);
+    const nextSevenDaysEnd = new Date(`${today}T12:00:00`);
+    nextSevenDaysEnd.setDate(nextSevenDaysEnd.getDate() + 7);
+    const nextSevenDaysISO = nextSevenDaysEnd.toISOString().slice(0, 10);
+    const upcomingWork = openWork
+      .filter((record) => Boolean(record.date) && String(record.date) > today && String(record.date) <= nextSevenDaysISO)
+      .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) || priorityRank(a) - priorityRank(b))
+      .slice(0, 6);
     const todaysRequests = activeRequests.filter((request) => String(request.submittedAt || "").slice(0, 10) === today || String(request.preferredTiming || "").toLowerCase().includes("today")).slice(0, 4);
     const todaysLogEntries = todayLogEntries.filter((entry) => entry.date === today && entry.propertyId === activePropertyId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     const scheduledRoutineEvents = todayEvents.filter((item) => Boolean((item as CalendarItem & { recurring?: boolean }).recurring));
@@ -12871,7 +12938,33 @@ export default function AtlasPage() {
         <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}><div><div style={eyebrowStyle}>Estate Health</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>Operational overview</h2></div><strong style={{ fontSize: 34, color: estateHealth >= 85 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }}>{estateHealth}%</strong></div><div style={{ height: 9, borderRadius: 999, background: "#E8EEF4", overflow: "hidden", marginTop: 13 }}><div style={{ width: `${estateHealth}%`, height: "100%", background: estateHealth >= 85 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }} /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 9, marginTop: 14 }}>{[["Due today",dueToday.length],["Overdue",overdueWork.length],["High priority",highPriority.length],["Requests",activeRequests.length]].map(([label,value]) => <button key={String(label)} type="button" onClick={() => setScreen(label === "Requests" ? "requests" : "history")} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#F8FAFC", textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", fontSize: 22, color: colors.navy }}>{value}</strong><small style={mutedSmallStyle}>{label}</small></button>)}</div></section>
       );
       if (id === "today-upcoming") return (
-        <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><div style={eyebrowStyle}>Today & Upcoming</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>Current work plan</h2></div><button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Calendar</button></div><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{todaysWork.map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.workCategory || "Work order"}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}{!todaysWork.length ? <div style={noticeStyle}>No work orders are due today.</div> : null}</div><div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 8, marginTop: 12 }}><input value={todayLogText} onChange={(event) => setTodayLogText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTodayLogEntry(); }} placeholder="Add a quick task or field note…" style={inputStyle} /><select value={todayLogCategory} onChange={(event) => setTodayLogCategory(event.target.value as TodayLogEntry["category"])} style={selectStyle}>{["Task","Repair","Inspection","Vendor","Delivery","Note"].map((item) => <option key={item}>{item}</option>)}</select><button type="button" onClick={addTodayLogEntry} style={goldButtonStyle}>Add</button></div></section>
+        <section style={cardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div><div style={eyebrowStyle}>Today & Upcoming</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>Current work plan</h2></div>
+            <button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Calendar</button>
+          </div>
+
+          <div style={{ marginTop: 12 }}><div style={fieldLabelStyle}>Due today</div></div>
+          <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
+            {todaysWork.map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.workCategory || "Work order"}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
+            {!todaysWork.length ? <div style={noticeStyle}>No open work orders are due today.</div> : null}
+          </div>
+
+          {completedTodayOccurrences.length ? <>
+            <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Completed today</div></div>
+            <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
+              {completedTodayOccurrences.map(({ record, entry }) => <div key={`${record.id}-${entry.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", alignItems: "center", gap: 8, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}><button type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", color: colors.navy }}><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{entry.dueDate ? `Due ${formatDate(entry.dueDate)}` : "Completed occurrence"}</small></button><span style={badgeStyle("Completed")}>Completed</span><button type="button" onClick={() => void reopenWorkOrder(record as AtlasServiceRecord)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Undo Done</button></div>)}
+            </div>
+          </> : null}
+
+          <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Next 7 days</div></div>
+          <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
+            {upcomingWork.map((record) => <button key={`upcoming-${record.id}`} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{formatDate(record.date)}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
+            {!upcomingWork.length ? <div style={noticeStyle}>No work orders are due in the next 7 days.</div> : null}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 8, marginTop: 12 }}><input value={todayLogText} onChange={(event) => setTodayLogText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTodayLogEntry(); }} placeholder="Add a quick task or field note…" style={inputStyle} /><select value={todayLogCategory} onChange={(event) => setTodayLogCategory(event.target.value as TodayLogEntry["category"])} style={selectStyle}>{["Task","Repair","Inspection","Vendor","Delivery","Note"].map((item) => <option key={item}>{item}</option>)}</select><button type="button" onClick={addTodayLogEntry} style={goldButtonStyle}>Add</button></div>
+        </section>
       );
       if (id === "property-status") return (
         <section style={cardStyle}><div style={eyebrowStyle}>Property Status</div><h2 style={{ margin: "3px 0 12px", color: colors.navy }}>Live operating areas</h2><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9 }}>{liveStatuses.map((item) => { const statusColor = item.status === "Critical" ? colors.red : item.status === "Attention" ? colors.gold : colors.green; return <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}><button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 21 }}>{item.icon}</span><span style={{ width: 9, height: 9, borderRadius: 999, background: statusColor }} /></div><strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong><small style={mutedSmallStyle}>{item.count} open · {item.status}</small></button><button type="button" onClick={() => addDashboardWorkOrder(item.label)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 30, marginTop: 8, padding: "4px 7px", fontSize: 11 }}>+ Work Order</button></div>; })}</div></section>
@@ -18099,15 +18192,16 @@ export default function AtlasPage() {
           }
         `}</style>
         {selectedService?.id ? (
-          <div style={{ display: "flex", alignItems: "end", gap: 10, flexWrap: "wrap", marginBottom: 12, padding: 12, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF" }}>
-            <label style={{ display: "grid", gap: 5, minWidth: 190 }}>
-              <span style={fieldLabelStyle}>Estimated time</span>
-              <select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: (event.currentTarget.value || undefined) as WorkEffort | undefined })} style={inputStyle}>
-                <option value="">No estimate</option>
-                {(["5 minutes", "15 minutes", "30 minutes", "1 hour", "Half Day", "Full Day", "Multi-Day"] as WorkEffort[]).map((effort) => <option key={effort} value={effort}>{effort}</option>)}
-              </select>
-            </label>
-            {selectedService.responsibilityArea ? <div style={{ flex: "1 1 240px", minWidth: 0 }}><span style={fieldLabelStyle}>Created from</span><div style={{ marginTop: 5, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC", color: colors.navy, fontSize: 12, fontWeight: 850 }}>{selectedService.responsibilityArea}</div></div> : null}
+          <div style={{ marginBottom: 12, padding: 14, border: `2px solid ${colors.gold}`, borderRadius: 12, background: "#FFFBEB" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <div><div style={eyebrowStyle}>Schedule & estimate</div><strong style={{ color: colors.navy }}>Edit when this work is due and how long it should take</strong></div>
+              {(selectedService.status === "Completed" || (selectedService.serviceHistory || []).length > 0) ? <button type="button" onClick={() => void reopenWorkOrder(selectedService as AtlasServiceRecord)} style={{ ...secondaryButtonStyle, width: "auto" }}>Undo Done / Reopen</button> : null}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(170px,0.7fr) minmax(190px,0.8fr) minmax(220px,1.5fr)", gap: 10, alignItems: "end" }}>
+              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Due date</span><input type="date" value={selectedService.date || ""} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
+              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated time</span><select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: (event.currentTarget.value || undefined) as WorkEffort | undefined })} style={inputStyle}><option value="">No estimate</option>{(["5 minutes", "15 minutes", "30 minutes", "1 hour", "Half Day", "Full Day", "Multi-Day"] as WorkEffort[]).map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label>
+              {selectedService.responsibilityArea ? <div style={{ minWidth: 0 }}><span style={fieldLabelStyle}>Created from</span><div style={{ marginTop: 5, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", color: colors.navy, fontSize: 12, fontWeight: 850 }}>{selectedService.responsibilityArea}</div></div> : <div />}
+            </div>
           </div>
         ) : null}
         <AtlasWorkOrders
