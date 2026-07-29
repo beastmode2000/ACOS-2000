@@ -9138,7 +9138,10 @@ export default function AtlasPage() {
     const latestCompletion = history[0];
     const restoredDate = String(latestCompletion?.dueDate || record.date || "");
     const restoredStatusRaw = String(latestCompletion?.statusBefore || "Open");
-    const restoredStatus = restoredStatusRaw === "Completed" ? "Open" : restoredStatusRaw;
+    const restoredStatus: ServiceStatus =
+      isServiceStatus(restoredStatusRaw) && restoredStatusRaw !== "Completed"
+        ? restoredStatusRaw
+        : "Open";
     const completionDate = latestCompletion?.completedAt
       ? String(latestCompletion.completedAt).slice(0, 10)
       : String(record.lastCompletedDate || "");
