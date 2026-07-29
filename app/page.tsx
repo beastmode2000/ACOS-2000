@@ -376,6 +376,23 @@ const atlasNavigationSections: {
   { label: "Tools", items: ["parts", "links", "assistant"] },
 ];
 
+const atlasMoreToolsScreens: AtlasScreen[] = [
+  "planner",
+  "insights",
+  "manuals",
+  "procedures",
+  "parts",
+];
+
+const atlasPrimaryNavigationSections = atlasNavigationSections
+  .map((section) => ({
+    ...section,
+    items: section.items.filter(
+      (screenId) => !atlasMoreToolsScreens.includes(screenId),
+    ),
+  }))
+  .filter((section) => section.items.length > 0);
+
 type WorkCompletionEntry = {
   id: string;
   completedAt: string;
@@ -3830,10 +3847,12 @@ export default function AtlasPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
   useEffect(() => {
     try {
       setSidebarCollapsed(window.localStorage.getItem("atlas-sidebar-collapsed") === "true");
+      setMoreToolsOpen(window.localStorage.getItem("atlas-more-tools-open") === "true");
     } catch {
       // Keep the sidebar open when browser storage is unavailable.
     }
@@ -3846,6 +3865,14 @@ export default function AtlasPage() {
       // The UI still works when browser storage is unavailable.
     }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("atlas-more-tools-open", String(moreToolsOpen));
+    } catch {
+      // The navigation still works when browser storage is unavailable.
+    }
+  }, [moreToolsOpen]);
   const [activePropertyId, setActivePropertyId] = useState("2000");
   const [allowedPropertyIds, setAllowedPropertyIds] = useState<string[]>([
     "2000",
@@ -8920,6 +8947,26 @@ export default function AtlasPage() {
     setContactMessage("");
   }
 
+  function openWorkOrderById(recordId: string) {
+    if (!recordId) return;
+
+    // A direct record link must never inherit a dashboard category filter.
+    setDashboardWorkFilter("");
+    setScreen("history");
+    setSelectedServiceId(recordId);
+
+    // Re-apply the selection after the Work Orders screen mounts so the
+    // selected record opens instead of leaving the user at the list.
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        setSelectedServiceId(recordId);
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+      });
+    }
+  }
+
   function addDashboardWorkOrder(areaLabel: string) {
     const contextByArea: Record<string, Partial<AtlasServiceRecord>> = {
       Maintenance: { workCategory: "🔧 Maintenance", responsibilityArea: "Operations Dashboard · Maintenance" },
@@ -12978,7 +13025,12 @@ export default function AtlasPage() {
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 14 }}>
           {healthCategories.map((category) => {
             const tone = category.status === "Healthy" ? colors.green : category.status === "Attention" ? colors.gold : colors.red;
-            return <button key={category.label} type="button" onClick={() => { setQuery(category.query); setSelectedServiceId(category.matchingOpen[0]?.id || null); setScreen("history"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, padding: 11, background: "#FFFFFF", textAlign: "left", cursor: "pointer", display: "grid", gap: 7 }}>
+            return <button key={category.label} type="button" onClick={() => {
+              setQuery(category.query);
+              const firstRecordId = category.matchingOpen[0]?.id || "";
+              if (firstRecordId) openWorkOrderById(firstRecordId);
+              else { setSelectedServiceId(""); setScreen("history"); }
+            }} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, padding: 11, background: "#FFFFFF", textAlign: "left", cursor: "pointer", display: "grid", gap: 7 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><span style={{ display: "flex", alignItems: "center", gap: 7 }}><span aria-hidden="true">{category.icon}</span><strong style={{ color: colors.navy }}>{category.label}</strong></span><strong style={{ color: tone }}>{category.score}%</strong></div>
               <div style={{ height: 6, borderRadius: 999, background: "#E8EEF4", overflow: "hidden" }}><div style={{ width: `${category.score}%`, height: "100%", background: tone }} /></div>
               <small style={{ color: colors.muted }}>{category.reason}</small>
@@ -12988,7 +13040,7 @@ export default function AtlasPage() {
         </div>
         <div style={{ marginTop: 14, borderTop: `1px solid ${colors.line}`, paddingTop: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Needs Attention</strong><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 9px", fontSize: 11 }}>View all work</button></div>
-          <div style={{ display: "grid", gap: 7 }}>{estateNeedsAttention.map(({ category, record }) => <div key={`${category.label}-${record.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 11, padding: "9px 10px", background: "#F8FAFC" }}><button type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title || "Work order"}</strong><small style={mutedSmallStyle}>{category.label}{record.date ? ` · ${new Date(`${record.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}` : ""}{record.priority ? ` · ${record.priority}` : ""}</small></button><button type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Open</button></div>)}{!estateNeedsAttention.length ? <div style={noticeStyle}>No urgent estate-health issues are currently detected.</div> : null}</div>
+          <div style={{ display: "grid", gap: 7 }}>{estateNeedsAttention.map(({ category, record }) => <div key={`${category.label}-${record.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 11, padding: "9px 10px", background: "#F8FAFC" }}><button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title || "Work order"}</strong><small style={mutedSmallStyle}>{category.label}{record.date ? ` · ${new Date(`${record.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}` : ""}{record.priority ? ` · ${record.priority}` : ""}</small></button><button type="button" onClick={() => openWorkOrderById(record.id)} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Open</button></div>)}{!estateNeedsAttention.length ? <div style={noticeStyle}>No urgent estate-health issues are currently detected.</div> : null}</div>
         </div>
       </section>;
       if (id === "today-upcoming") return (
@@ -13000,20 +13052,20 @@ export default function AtlasPage() {
 
           <div style={{ marginTop: 12 }}><div style={fieldLabelStyle}>Due today</div></div>
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
-            {todaysWork.map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.workCategory || "Work order"}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
+            {todaysWork.map((record) => <button key={record.id} type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.workCategory || "Work order"}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
             {!todaysWork.length ? <div style={noticeStyle}>No open work orders are due today.</div> : null}
           </div>
 
           {completedTodayOccurrences.length ? <>
             <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Completed today</div></div>
             <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
-              {completedTodayOccurrences.map(({ record, entry }) => <div key={`${record.id}-${entry.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", alignItems: "center", gap: 8, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}><button type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", color: colors.navy }}><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{entry.dueDate ? `Due ${formatDate(entry.dueDate)}` : "Completed occurrence"}</small></button><span style={badgeStyle("Completed")}>Completed</span><button type="button" onClick={() => void reopenWorkOrder(record as AtlasServiceRecord)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Undo Done</button></div>)}
+              {completedTodayOccurrences.map(({ record, entry }) => <div key={`${record.id}-${entry.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", alignItems: "center", gap: 8, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}><button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", color: colors.navy }}><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{entry.dueDate ? `Due ${formatDate(entry.dueDate)}` : "Completed occurrence"}</small></button><span style={badgeStyle("Completed")}>Completed</span><button type="button" onClick={() => void reopenWorkOrder(record as AtlasServiceRecord)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Undo Done</button></div>)}
             </div>
           </> : null}
 
           <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Next 7 days</div></div>
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
-            {upcomingWork.map((record) => <button key={`upcoming-${record.id}`} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{formatDate(record.date)}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
+            {upcomingWork.map((record) => <button key={`upcoming-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{formatDate(record.date)}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
             {!upcomingWork.length ? <div style={noticeStyle}>No work orders are due in the next 7 days.</div> : null}
           </div>
 
@@ -28454,15 +28506,31 @@ export default function AtlasPage() {
                 style={mobileMenuSelectStyle}
                 aria-label="Open Atlas section"
               >
-                {screens
-                  .filter(
-                    (item) => item.id !== "intake" && item.id !== "manuals",
-                  )
-                  .map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
+                <optgroup label="Main">
+                  {screens
+                    .filter(
+                      (item) =>
+                        item.id !== "intake" &&
+                        !atlasMoreToolsScreens.includes(item.id),
+                    )
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="More Tools">
+                  {atlasMoreToolsScreens
+                    .map((screenId) =>
+                      screens.find((item) => item.id === screenId),
+                    )
+                    .filter(Boolean)
+                    .map((item) => (
+                      <option key={item!.id} value={item!.id}>
+                        {item!.label}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
             </div>
           ) : (
@@ -28478,7 +28546,7 @@ export default function AtlasPage() {
                 {!sidebarCollapsed ? <span>Collapse</span> : null}
               </button>
               <nav style={sidebarNavStyle} aria-label="Atlas sections">
-                {atlasNavigationSections.map((section) => (
+                {atlasPrimaryNavigationSections.map((section) => (
                   <div key={section.label} style={sidebarNavSectionStyle}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>{section.label}</div>
                     <div style={sidebarNavItemsStyle}>
@@ -28522,6 +28590,65 @@ export default function AtlasPage() {
                     </div>
                   </div>
                 ))}
+
+                <div style={sidebarNavSectionStyle}>
+                  <button
+                    type="button"
+                    className="atlas-sidebar-nav-button"
+                    onClick={() => setMoreToolsOpen((current) => !current)}
+                    aria-expanded={moreToolsOpen}
+                    title={sidebarCollapsed ? "More Tools" : undefined}
+                    style={{
+                      ...navButtonStyle,
+                      justifyContent: sidebarCollapsed ? "center" : "space-between",
+                      borderColor: atlasMoreToolsScreens.includes(screen)
+                        ? colors.gold
+                        : "rgba(255,255,255,0.18)",
+                      background: atlasMoreToolsScreens.includes(screen)
+                        ? colors.gold
+                        : "rgba(255,255,255,0.06)",
+                      color: atlasMoreToolsScreens.includes(screen)
+                        ? colors.navy
+                        : "#FFFFFF",
+                    }}
+                  >
+                    <span className="atlas-sidebar-nav-label">More Tools</span>
+                    {!sidebarCollapsed ? (
+                      <span aria-hidden="true" style={{ fontSize: 12 }}>
+                        {moreToolsOpen ? "▴" : "▾"}
+                      </span>
+                    ) : null}
+                  </button>
+
+                  {moreToolsOpen || atlasMoreToolsScreens.includes(screen) ? (
+                    <div style={{ ...sidebarNavItemsStyle, marginTop: 6, paddingLeft: sidebarCollapsed ? 0 : 8 }}>
+                      {atlasMoreToolsScreens.map((screenId) => {
+                        const item = screens.find(
+                          (candidate) => candidate.id === screenId,
+                        );
+                        if (!item) return null;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className="atlas-sidebar-nav-button"
+                            title={sidebarCollapsed ? item.label : undefined}
+                            onClick={() => setScreen(item.id)}
+                            style={{
+                              ...navButtonStyle,
+                              borderColor: screen === item.id ? colors.gold : "transparent",
+                              background: screen === item.id ? colors.gold : "transparent",
+                              color: screen === item.id ? colors.navy : "#FFFFFF",
+                              fontSize: 12,
+                            }}
+                          >
+                            <span className="atlas-sidebar-nav-label">{item.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
               </nav>
             </>
           )}
