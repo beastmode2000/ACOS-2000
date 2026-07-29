@@ -123,6 +123,13 @@ type PhotoTimelineMeta = {
   tag: PhotoTimelineTag;
   notes: string;
   projectId?: string;
+  photographer?: string;
+  vendorId?: string;
+  workOrderId?: string;
+  documentId?: string;
+  procedureId?: string;
+  weather?: string;
+  timelineNote?: boolean;
 };
 
 type PhotoTimelineProject = {
@@ -136,6 +143,9 @@ type PhotoTimelineProject = {
   notes: string;
   coverPhotoId: string;
   createdAt: string;
+  progress?: number;
+  phase?: string;
+  completedAt?: string;
 };
 
 type WorkItemType =
@@ -3901,7 +3911,21 @@ export default function AtlasPage() {
   const [selectedPhotoTimelineId, setSelectedPhotoTimelineId] = useState("");
   const [photoTimelineView, setPhotoTimelineView] = useState<"timeline" | "projects">("projects");
   const [photoTimelineProjectCategory, setPhotoTimelineProjectCategory] = useState<PhotoTimelineProjectCategory | "All">("All");
+  const [photoTimelineTagFilter, setPhotoTimelineTagFilter] = useState<PhotoTimelineTag | "All">("All");
+  const [photoTimelineVendorFilter, setPhotoTimelineVendorFilter] = useState("all");
+  const [photoTimelineMonthFilter, setPhotoTimelineMonthFilter] = useState("all");
+  const [photoTimelineScrubber, setPhotoTimelineScrubber] = useState(100);
   const [selectedPhotoProjectId, setSelectedPhotoProjectId] = useState("");
+  const [photoLightboxIds, setPhotoLightboxIds] = useState<string[]>([]);
+  const [photoLightboxIndex, setPhotoLightboxIndex] = useState(-1);
+  const [photoLightboxZoom, setPhotoLightboxZoom] = useState(1);
+  const [photoLightboxPan, setPhotoLightboxPan] = useState({ x: 0, y: 0 });
+  const [photoLightboxDragging, setPhotoLightboxDragging] = useState(false);
+  const [photoLightboxDragOrigin, setPhotoLightboxDragOrigin] = useState({ x: 0, y: 0 });
+  const [photoCompareOpen, setPhotoCompareOpen] = useState(false);
+  const [photoCompareBeforeId, setPhotoCompareBeforeId] = useState("");
+  const [photoCompareAfterId, setPhotoCompareAfterId] = useState("");
+  const [photoComparePosition, setPhotoComparePosition] = useState(50);
   const [photoTimelineProjects, setPhotoTimelineProjects] = useState<PhotoTimelineProject[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -4044,6 +4068,37 @@ export default function AtlasPage() {
       console.warn("Atlas could not save photo timeline projects.", error);
     }
   }, [photoTimelineProjects]);
+
+  useEffect(() => {
+    if (photoLightboxIndex < 0 && !photoCompareOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPhotoLightboxIndex(-1);
+        setPhotoCompareOpen(false);
+        setPhotoLightboxZoom(1);
+        setPhotoLightboxPan({ x: 0, y: 0 });
+        return;
+      }
+
+      if (photoLightboxIndex < 0) return;
+      if (event.key === "ArrowRight") {
+        setPhotoLightboxIndex((current) => Math.min(photoLightboxIds.length - 1, current + 1));
+      }
+      if (event.key === "ArrowLeft") {
+        setPhotoLightboxIndex((current) => Math.max(0, current - 1));
+      }
+      if (event.key === "+" || event.key === "=") {
+        setPhotoLightboxZoom((current) => Math.min(5, Number((current + 0.25).toFixed(2))));
+      }
+      if (event.key === "-") {
+        setPhotoLightboxZoom((current) => Math.max(1, Number((current - 0.25).toFixed(2))));
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [photoCompareOpen, photoLightboxIds.length, photoLightboxIndex]);
 
   useEffect(() => {
     const allPropertyIds = ["2000", "6855", "3661", "hangar"];
@@ -13247,7 +13302,7 @@ export default function AtlasPage() {
   }
 
   function renderTimelineOrInsights(mode: "timeline" | "insights") {
-    const photoTimelineItems = [
+    const allPhotoTimelineItems = [
       ...photos.map((photo) => ({
         id: `asset-photo-${photo.id}`,
         name: photo.name || "Asset photo",
@@ -13282,50 +13337,46 @@ export default function AtlasPage() {
             sourceNotes: document.notes || document.pastedText || "",
           })),
       ),
-    ]
-      .filter((item) => Boolean(item.source))
+    ].filter((item) => Boolean(item.source));
+
+    const dateValues = allPhotoTimelineItems
+      .map((item) => (item.createdAt ? new Date(item.createdAt).getTime() : Number.NaN))
+      .filter(Number.isFinite);
+    const earliestPhotoTime = dateValues.length ? Math.min(...dateValues) : 0;
+    const latestPhotoTime = dateValues.length ? Math.max(...dateValues) : 0;
+    const scrubberCutoff = earliestPhotoTime && latestPhotoTime
+      ? earliestPhotoTime + ((latestPhotoTime - earliestPhotoTime) * photoTimelineScrubber) / 100
+      : Number.POSITIVE_INFINITY;
+
+    const photoTimelineItems = allPhotoTimelineItems
       .filter((item) => {
         const meta = photoTimelineMeta[item.id];
-        const haystack = `${item.name} ${item.assetName} ${item.area} ${item.origin} ${meta?.tag || ""} ${meta?.notes || ""}`.toLowerCase();
-        const searchMatches =
-          !photoTimelineSearch.trim() ||
-          haystack.includes(photoTimelineSearch.trim().toLowerCase());
-        const assetMatches =
-          photoTimelineAssetId === "all" || item.assetId === photoTimelineAssetId;
-        const year = item.createdAt ? String(new Date(item.createdAt).getFullYear()) : "Unknown";
-        const yearMatches = photoTimelineYear === "all" || year === photoTimelineYear;
-        const paintingMatches =
-          !photoTimelinePaintingOnly ||
-          /(paint|painting|stain|elliott|exterior|siding|trim|eave|coat)/i.test(haystack);
-        const logoMatches =
-          !photoTimelineHideLogos || !/(logo|brand mark|wordmark)/i.test(haystack);
-        return searchMatches && assetMatches && yearMatches && paintingMatches && logoMatches;
+        const project = photoTimelineProjects.find((record) => record.id === meta?.projectId);
+        const vendor = vendorRecords.find((record) => record.id === (meta?.vendorId || project?.vendorId))?.name || "";
+        const haystack = `${item.name} ${item.assetName} ${item.area} ${item.origin} ${meta?.tag || ""} ${meta?.notes || ""} ${vendor} ${project?.title || ""}`.toLowerCase();
+        const itemDate = item.createdAt ? new Date(item.createdAt) : null;
+        const itemTime = itemDate && !Number.isNaN(itemDate.getTime()) ? itemDate.getTime() : 0;
+        const itemMonth = itemDate && !Number.isNaN(itemDate.getTime()) ? String(itemDate.getMonth() + 1).padStart(2, "0") : "Unknown";
+        const itemYear = itemDate && !Number.isNaN(itemDate.getTime()) ? String(itemDate.getFullYear()) : "Unknown";
+        return (
+          (!photoTimelineSearch.trim() || haystack.includes(photoTimelineSearch.trim().toLowerCase())) &&
+          (photoTimelineAssetId === "all" || item.assetId === photoTimelineAssetId) &&
+          (photoTimelineYear === "all" || itemYear === photoTimelineYear) &&
+          (photoTimelineMonthFilter === "all" || itemMonth === photoTimelineMonthFilter) &&
+          (photoTimelineTagFilter === "All" || (meta?.tag || "Unlabeled") === photoTimelineTagFilter) &&
+          (photoTimelineVendorFilter === "all" || (meta?.vendorId || project?.vendorId || "") === photoTimelineVendorFilter) &&
+          (!photoTimelinePaintingOnly || /(paint|painting|stain|elliott|exterior|siding|trim|eave|coat)/i.test(haystack)) &&
+          (!photoTimelineHideLogos || !/(logo|brand mark|wordmark)/i.test(haystack)) &&
+          (!itemTime || itemTime <= scrubberCutoff)
+        );
       })
-      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 
-    const photoTimelineYears = Array.from(
-      new Set(
-        [...photos.map((photo) => photo.createdAt || ""), ...allDocuments.map((document) => document.createdAt || "")]
-          .filter(Boolean)
-          .map((date) => String(new Date(date).getFullYear())),
-      ),
-    ).sort((a, b) => b.localeCompare(a));
+    const photoTimelineYears = Array.from(new Set(allPhotoTimelineItems
+      .map((item) => item.createdAt ? String(new Date(item.createdAt).getFullYear()) : "")
+      .filter(Boolean))).sort((a, b) => b.localeCompare(a));
 
-    const photoTimelineGroups = photoTimelineItems.reduce<Record<string, typeof photoTimelineItems>>(
-      (groups, item) => {
-        const date = item.createdAt ? new Date(item.createdAt) : null;
-        const key = date && !Number.isNaN(date.getTime())
-          ? date.toLocaleDateString(undefined, { month: "long", year: "numeric" })
-          : "Date not recorded";
-        (groups[key] ||= []).push(item);
-        return groups;
-      },
-      {},
-    );
-
-    const selectedPhotoTimelineItem = photoTimelineItems.find(
-      (item) => item.id === selectedPhotoTimelineId,
-    );
+    const selectedPhotoTimelineItem = allPhotoTimelineItems.find((item) => item.id === selectedPhotoTimelineId);
     const selectedPhotoMeta = selectedPhotoTimelineItem
       ? photoTimelineMeta[selectedPhotoTimelineItem.id] || { tag: "Unlabeled" as PhotoTimelineTag, notes: "" }
       : null;
@@ -13335,11 +13386,11 @@ export default function AtlasPage() {
     const selectedPhotoLocation = selectedPhotoAsset
       ? locationName(selectedPhotoAsset.locationId || selectedPhotoAsset.locationIds?.[0] || "")
       : selectedPhotoTimelineItem?.area || "General property";
-    const selectedPhotoWorkOrders = selectedPhotoTimelineItem?.assetId
-      ? serviceRecords
-          .filter((record) => record.assetId === selectedPhotoTimelineItem.assetId)
-          .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
-          .slice(0, 3)
+    const selectedPhotoProject = photoTimelineProjects.find((project) => project.id === selectedPhotoProjectId);
+    const selectedPhotoProjectItems = selectedPhotoProject
+      ? allPhotoTimelineItems
+          .filter((item) => photoTimelineMeta[item.id]?.projectId === selectedPhotoProject.id)
+          .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
       : [];
 
     const updateSelectedPhotoMeta = (patch: Partial<PhotoTimelineMeta>) => {
@@ -13349,69 +13400,93 @@ export default function AtlasPage() {
         [selectedPhotoTimelineItem.id]: {
           tag: current[selectedPhotoTimelineItem.id]?.tag || "Unlabeled",
           notes: current[selectedPhotoTimelineItem.id]?.notes || "",
+          ...current[selectedPhotoTimelineItem.id],
           ...patch,
         },
       }));
     };
 
-    const projectCategories: PhotoTimelineProjectCategory[] = [
-      "Painting",
-      "Landscaping",
-      "Dock",
-      "Pool",
-      "Mechanical",
-      "General",
-    ];
-    const visiblePhotoProjects = photoTimelineProjects
-      .map((project) => ({
-        ...project,
-        items: photoTimelineItems
-          .filter((item) => photoTimelineMeta[item.id]?.projectId === project.id)
-          .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || ""))),
-      }))
-      .filter((project) =>
-        photoTimelineProjectCategory === "All" || project.category === photoTimelineProjectCategory,
-      )
-      .filter((project) => {
-        if (!photoTimelineSearch.trim()) return true;
-        const vendor = vendorRecords.find((record) => record.id === project.vendorId)?.name || "";
-        const workOrder = serviceRecords.find((record) => record.id === project.workOrderId)?.title || "";
-        return `${project.title} ${project.category} ${project.notes} ${vendor} ${workOrder}`
-          .toLowerCase()
-          .includes(photoTimelineSearch.trim().toLowerCase());
-      });
-    const selectedPhotoProject = photoTimelineProjects.find((project) => project.id === selectedPhotoProjectId);
-    const selectedPhotoProjectItems = selectedPhotoProject
-      ? photoTimelineItems
-          .filter((item) => photoTimelineMeta[item.id]?.projectId === selectedPhotoProject.id)
-          .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
-      : [];
     const updateSelectedPhotoProject = (patch: Partial<PhotoTimelineProject>) => {
       if (!selectedPhotoProject) return;
-      setPhotoTimelineProjects((current) =>
-        current.map((project) => project.id === selectedPhotoProject.id ? { ...project, ...patch } : project),
-      );
+      setPhotoTimelineProjects((current) => current.map((project) =>
+        project.id === selectedPhotoProject.id ? { ...project, ...patch } : project,
+      ));
     };
+
     const createPhotoProject = () => {
       const id = uid("photo-project");
       const project: PhotoTimelineProject = {
         id,
-        title: selectedPhotoTimelineItem?.assetName
-          ? `${selectedPhotoTimelineItem.assetName} Project`
-          : "New Property Project",
+        title: selectedPhotoTimelineItem?.assetName ? `${selectedPhotoTimelineItem.assetName} Project` : "New Property Project",
         category: /(paint|stain|elliott|coat|trim|siding)/i.test(selectedPhotoTimelineItem?.name || "") ? "Painting" : "General",
         assetId: selectedPhotoTimelineItem?.assetId || "",
         locationId: selectedPhotoAsset?.locationId || selectedPhotoAsset?.locationIds?.[0] || "",
         vendorId: "",
-        workOrderId: selectedPhotoWorkOrders[0]?.id || "",
+        workOrderId: "",
         notes: "",
         coverPhotoId: selectedPhotoTimelineItem?.id || "",
         createdAt: new Date().toISOString(),
+        progress: 0,
+        phase: "Started",
       };
       setPhotoTimelineProjects((current) => [project, ...current]);
       if (selectedPhotoTimelineItem) updateSelectedPhotoMeta({ projectId: id });
       setSelectedPhotoProjectId(id);
       setPhotoTimelineView("projects");
+    };
+
+    const openLightbox = (id: string, ids = photoTimelineItems.map((item) => item.id)) => {
+      const index = Math.max(0, ids.indexOf(id));
+      setPhotoLightboxIds(ids);
+      setPhotoLightboxIndex(index);
+      setPhotoLightboxZoom(1);
+      setPhotoLightboxPan({ x: 0, y: 0 });
+    };
+
+    const lightboxItem = photoLightboxIndex >= 0
+      ? allPhotoTimelineItems.find((item) => item.id === photoLightboxIds[photoLightboxIndex])
+      : undefined;
+
+    const openComparison = (projectId?: string) => {
+      const pool = projectId
+        ? allPhotoTimelineItems.filter((item) => photoTimelineMeta[item.id]?.projectId === projectId)
+        : allPhotoTimelineItems.filter((item) => !selectedPhotoTimelineItem?.assetId || item.assetId === selectedPhotoTimelineItem.assetId);
+      const before = pool.find((item) => photoTimelineMeta[item.id]?.tag === "Before") || pool[0];
+      const after = [...pool].reverse().find((item) => photoTimelineMeta[item.id]?.tag === "After") || pool[pool.length - 1];
+      if (!before || !after) return;
+      setPhotoCompareBeforeId(before.id);
+      setPhotoCompareAfterId(after.id);
+      setPhotoComparePosition(50);
+      setPhotoCompareOpen(true);
+    };
+
+    const compareBefore = allPhotoTimelineItems.find((item) => item.id === photoCompareBeforeId);
+    const compareAfter = allPhotoTimelineItems.find((item) => item.id === photoCompareAfterId);
+    const projectCategories: PhotoTimelineProjectCategory[] = ["Painting", "Landscaping", "Dock", "Pool", "Mechanical", "General"];
+
+    const visiblePhotoProjects = photoTimelineProjects
+      .map((project) => {
+        const items = allPhotoTimelineItems.filter((item) => photoTimelineMeta[item.id]?.projectId === project.id)
+          .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+        const notesCount = items.filter((item) => Boolean(photoTimelineMeta[item.id]?.notes?.trim() || photoTimelineMeta[item.id]?.timelineNote)).length;
+        const workOrderIds = new Set(items.map((item) => photoTimelineMeta[item.id]?.workOrderId).filter(Boolean));
+        if (project.workOrderId) workOrderIds.add(project.workOrderId);
+        const vendorIds = new Set(items.map((item) => photoTimelineMeta[item.id]?.vendorId).filter(Boolean));
+        if (project.vendorId) vendorIds.add(project.vendorId);
+        return { ...project, items, notesCount, workOrderCount: workOrderIds.size, vendorCount: vendorIds.size };
+      })
+      .filter((project) => photoTimelineProjectCategory === "All" || project.category === photoTimelineProjectCategory)
+      .filter((project) => !photoTimelineSearch.trim() || `${project.title} ${project.category} ${project.notes}`.toLowerCase().includes(photoTimelineSearch.trim().toLowerCase()));
+
+    const timelineGroups = photoTimelineItems.reduce<Record<string, typeof photoTimelineItems>>((groups, item) => {
+      const year = item.createdAt ? String(new Date(item.createdAt).getFullYear()) : "Date not recorded";
+      (groups[year] ||= []).push(item);
+      return groups;
+    }, {});
+
+    const projectLastUpdated = (items: typeof allPhotoTimelineItems, fallback: string) => {
+      const latest = [...items].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0]?.createdAt || fallback;
+      return latest ? formatDate(String(latest).slice(0, 10)) : "No date";
     };
 
     return (
@@ -13420,28 +13495,30 @@ export default function AtlasPage() {
           <section style={{ ...sectionStyle, marginBottom: 18 }}>
             <SectionHeader
               eyebrow="Visual Property History"
-              title="Photo Timeline"
-              detail="Build visual project stories with Before, During, and After photos, then compare the finished result."
+              title="Photo Timeline 4.0"
+              detail="A professional visual record for projects, renovations, repairs, landscaping, and property improvements."
             />
 
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
               <div style={{ display: "inline-flex", border: "1px solid #CBD5E1", borderRadius: 10, padding: 3, background: "#F8FAFC" }}>
-                {([
-                  ["projects", "Project Stories"],
-                  ["timeline", "Photo Timeline"],
-                ] as const).map(([value, label]) => (
+                {([[
+                  "projects", "Project Stories",
+                ], ["timeline", "Visual Timeline"]] as const).map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setPhotoTimelineView(value)} style={{ border: 0, borderRadius: 7, padding: "8px 12px", background: photoTimelineView === value ? "#175CD3" : "transparent", color: photoTimelineView === value ? "white" : colors.navy3, fontWeight: 900, cursor: "pointer" }}>{label}</button>
                 ))}
               </div>
-              <button type="button" onClick={createPhotoProject} style={goldButtonStyle}>+ New Project Story</button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" onClick={() => openComparison(selectedPhotoProjectId || undefined)} style={secondaryButtonStyle}>Compare Before / After</button>
+                <button type="button" onClick={createPhotoProject} style={goldButtonStyle}>+ New Project Story</button>
+              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
               {[
                 ["Visible photos", photoTimelineItems.length],
-                ["All photos", photos.length + allDocuments.reduce((count, document) => count + (document.files || []).filter((file) => String(file.type || "").startsWith("image/") || String(file.dataUrl || "").startsWith("data:image/") || /\.(png|jpe?g|webp|gif|avif)$/i.test(String(file.name || ""))).length, 0)],
-                ["Before / After", photoTimelineItems.filter((item) => ["Before", "After"].includes(photoTimelineMeta[item.id]?.tag || "")).length],
-                ["Years covered", photoTimelineYears.length],
+                ["Project stories", photoTimelineProjects.length],
+                ["Timeline notes", Object.values(photoTimelineMeta).filter((meta) => Boolean(meta.notes?.trim() || meta.timelineNote)).length],
+                ["Before / After", allPhotoTimelineItems.filter((item) => ["Before", "After"].includes(photoTimelineMeta[item.id]?.tag || "")).length],
               ].map(([label, value]) => (
                 <div key={String(label)} style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: "12px 14px", background: "#FFFFFF" }}>
                   <div style={{ fontSize: 12, color: colors.muted, fontWeight: 800 }}>{label}</div>
@@ -13450,276 +13527,95 @@ export default function AtlasPage() {
               ))}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1.6fr) minmax(150px, .8fr) minmax(130px, .7fr) minmax(140px, .75fr) auto auto", gap: 10, alignItems: "center", marginBottom: 16 }}>
-              <input
-                value={photoTimelineSearch}
-                onChange={(event) => setPhotoTimelineSearch(event.target.value)}
-                placeholder="Search photos, assets, areas, labels..."
-                style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }}
-              />
-              <select value={photoTimelineAssetId} onChange={(event) => setPhotoTimelineAssetId(event.target.value)} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", background: "white", fontWeight: 700 }}>
-                <option value="all">All assets</option>
-                {assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-              </select>
-              <select value={photoTimelineYear} onChange={(event) => setPhotoTimelineYear(event.target.value)} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", background: "white", fontWeight: 700 }}>
-                <option value="all">All years</option>
-                {photoTimelineYears.map((year) => <option key={year} value={year}>{year}</option>)}
-              </select>
-              <select value={photoTimelineProjectCategory} onChange={(event) => setPhotoTimelineProjectCategory(event.target.value as PhotoTimelineProjectCategory | "All")} disabled={photoTimelineView !== "projects"} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", background: photoTimelineView === "projects" ? "white" : "#F2F4F7", fontWeight: 700 }}>
-                <option value="All">All projects</option>
-                {projectCategories.map((category) => <option key={category} value={category}>{category}</option>)}
-              </select>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", fontWeight: 800, color: colors.navy3 }}>
-                <input type="checkbox" checked={photoTimelinePaintingOnly} onChange={(event) => setPhotoTimelinePaintingOnly(event.target.checked)} /> Painting only
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", fontWeight: 800, color: colors.navy3 }}>
-                <input type="checkbox" checked={photoTimelineHideLogos} onChange={(event) => setPhotoTimelineHideLogos(event.target.checked)} /> Hide logos
-              </label>
+            <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                <strong style={{ color: colors.navy3 }}>Timeline scrubber</strong>
+                <span style={{ color: colors.muted, fontWeight: 800 }}>{photoTimelineScrubber >= 100 ? "All dates" : `${photoTimelineScrubber}% of history`}</span>
+              </div>
+              <input type="range" min="0" max="100" value={photoTimelineScrubber} onChange={(event) => setPhotoTimelineScrubber(Number(event.target.value))} style={{ width: "100%", accentColor: "#175CD3" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: colors.muted, marginTop: 4 }}>
+                <span>{earliestPhotoTime ? new Date(earliestPhotoTime).getFullYear() : "Start"}</span>
+                <span>{latestPhotoTime ? new Date(latestPhotoTime).getFullYear() : "Current"}</span>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1.5fr) repeat(5, minmax(120px, .7fr))", gap: 9, marginBottom: 16 }}>
+              <input value={photoTimelineSearch} onChange={(event) => setPhotoTimelineSearch(event.target.value)} placeholder="Search projects, photos, notes, assets..." style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }} />
+              <select value={photoTimelineTagFilter} onChange={(event) => setPhotoTimelineTagFilter(event.target.value as PhotoTimelineTag | "All")} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="All">All phases</option>{(["Before", "During", "After", "Unlabeled"] as PhotoTimelineTag[]).map((tag) => <option key={tag}>{tag}</option>)}</select>
+              <select value={photoTimelineAssetId} onChange={(event) => setPhotoTimelineAssetId(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All assets</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select>
+              <select value={photoTimelineVendorFilter} onChange={(event) => setPhotoTimelineVendorFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All vendors</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select>
+              <select value={photoTimelineYear} onChange={(event) => setPhotoTimelineYear(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All years</option>{photoTimelineYears.map((year) => <option key={year}>{year}</option>)}</select>
+              <select value={photoTimelineMonthFilter} onChange={(event) => setPhotoTimelineMonthFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index} value={String(index + 1).padStart(2, "0")}>{new Date(2026, index, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}</select>
             </div>
 
             {photoTimelineView === "projects" ? (
               visiblePhotoProjects.length ? (
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(330px, 1fr))", gap: 14 }}>
                   {visiblePhotoProjects.map((project) => {
-                    const before = project.items.find((item) => photoTimelineMeta[item.id]?.tag === "Before");
-                    const after = [...project.items].reverse().find((item) => photoTimelineMeta[item.id]?.tag === "After");
-                    const cover = project.items.find((item) => item.id === project.coverPhotoId) || after || project.items[0];
-                    const dates = project.items.map((item) => item.createdAt).filter(Boolean).sort();
+                    const cover = project.items.find((item) => item.id === project.coverPhotoId) || project.items[0];
+                    const progress = Math.max(0, Math.min(100, Number(project.progress || 0)));
                     return (
-                      <button key={project.id} type="button" onClick={() => setSelectedPhotoProjectId(project.id)} style={{ border: "1px solid #D7E0EA", borderRadius: 16, background: "#FFFFFF", padding: 0, overflow: "hidden", textAlign: "left", cursor: "pointer", boxShadow: "0 8px 24px rgba(18,35,63,.07)" }}>
-                        <div style={{ display: "grid", gridTemplateColumns: before && after ? "1fr 1fr" : "1fr", height: 190, background: "#EEF3F7" }}>
-                          {(before && after ? [before, after] : cover ? [cover] : []).map((item, index) => (
-                            <div key={item.id} style={{ position: "relative", overflow: "hidden" }}>
-                              <img src={item.source} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                              {before && after ? <span style={{ position: "absolute", left: 9, bottom: 9, borderRadius: 999, padding: "4px 8px", background: "rgba(255,255,255,.9)", fontSize: 11, fontWeight: 950, color: index === 0 ? "#B54708" : "#087443" }}>{index === 0 ? "BEFORE" : "AFTER"}</span> : null}
+                      <article key={project.id} style={{ border: "1px solid #D7E0EA", borderRadius: 18, overflow: "hidden", background: "white", boxShadow: "0 8px 26px rgba(15,23,42,.06)" }}>
+                        <button type="button" onClick={() => setSelectedPhotoProjectId(project.id)} style={{ display: "block", width: "100%", border: 0, padding: 0, background: "white", textAlign: "left", cursor: "pointer" }}>
+                          <div style={{ aspectRatio: "16 / 9", background: "#E8EEF5", overflow: "hidden" }}>{cover ? <img src={cover.source} alt={project.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ height: "100%", display: "grid", placeItems: "center", color: colors.muted, fontWeight: 900 }}>No cover photo</div>}</div>
+                          <div style={{ padding: 16 }}>
+                            <div style={{ fontSize: 11, color: "#175CD3", fontWeight: 950, letterSpacing: ".08em", textTransform: "uppercase" }}>{project.category}</div>
+                            <h3 style={{ margin: "5px 0 12px", color: colors.navy3, fontSize: 20 }}>{project.title}</h3>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 13, color: colors.muted }}>
+                              <span><strong style={{ color: colors.navy3 }}>{project.items.length}</strong> Photos</span>
+                              <span><strong style={{ color: colors.navy3 }}>{project.notesCount}</strong> Timeline Notes</span>
+                              <span><strong style={{ color: colors.navy3 }}>{project.vendorCount}</strong> Vendors</span>
+                              <span><strong style={{ color: colors.navy3 }}>{project.workOrderCount}</strong> Work Orders</span>
                             </div>
-                          ))}
-                          {!cover ? <div style={{ display: "grid", placeItems: "center", color: colors.muted, fontWeight: 900 }}>Add photos to this story</div> : null}
-                        </div>
-                        <div style={{ padding: 14 }}>
-                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                            <strong style={{ color: colors.navy3, fontSize: 17 }}>{project.title}</strong>
-                            <span style={{ ...badgeStyle("Monitor"), flex: "0 0 auto" }}>{project.category}</span>
+                            <div style={{ marginTop: 14 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 900, color: colors.navy3, marginBottom: 6 }}><span>{project.phase || "Started"}</span><span>{progress}%</span></div><div style={{ height: 9, background: "#E7ECF2", borderRadius: 999, overflow: "hidden" }}><div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg,#175CD3,#C99A3D)", borderRadius: 999 }} /></div></div>
+                            <div style={{ marginTop: 12, fontSize: 12, color: colors.muted }}>Last updated <strong style={{ color: colors.navy3 }}>{projectLastUpdated(project.items, project.createdAt)}</strong></div>
                           </div>
-                          <div style={{ color: colors.muted, fontSize: 12, marginTop: 7 }}>{project.items.length} photo{project.items.length === 1 ? "" : "s"}{dates.length ? ` · ${formatDate(String(dates[0]).slice(0, 10))}${dates.length > 1 ? ` – ${formatDate(String(dates[dates.length - 1]).slice(0, 10))}` : ""}` : ""}</div>
-                          <div style={{ marginTop: 11, height: 7, borderRadius: 999, background: "#E4E7EC", overflow: "hidden" }}>
-                            <span style={{ display: "block", height: "100%", width: after ? "100%" : project.items.some((item) => photoTimelineMeta[item.id]?.tag === "During") ? "65%" : before ? "30%" : "8%", background: after ? "#087443" : "#175CD3", borderRadius: 999 }} />
-                          </div>
-                        </div>
-                      </button>
+                        </button>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 16px 16px" }}><button type="button" onClick={() => openComparison(project.id)} style={secondaryButtonStyle}>Compare</button><button type="button" onClick={() => cover && openLightbox(cover.id, project.items.map((item) => item.id))} style={secondaryButtonStyle}>Open Story</button></div>
+                      </article>
                     );
                   })}
                 </div>
-              ) : <div style={emptyStateStyle}>No project stories match the current filters. Open a photo or click New Project Story to begin.</div>
-            ) : photoTimelineItems.length ? (
-              <div style={{ display: "grid", gap: 22 }}>
-                {Object.entries(photoTimelineGroups).map(([month, items]) => (
-                  <div key={month}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                      <strong style={{ color: colors.navy3, fontSize: 17 }}>{month}</strong>
-                      <span style={{ color: colors.muted, fontSize: 12, fontWeight: 800 }}>{items.length} photo{items.length === 1 ? "" : "s"}</span>
-                      <span style={{ height: 1, background: "#DDE5ED", flex: 1 }} />
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(190px, 1fr))", gap: 12 }}>
-                      {items.map((item) => {
-                        const tag = photoTimelineMeta[item.id]?.tag || "Unlabeled";
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => setSelectedPhotoTimelineId(item.id)}
-                            style={{ border: `1px solid ${selectedPhotoTimelineId === item.id ? "#175CD3" : "#D7E0EA"}`, borderRadius: 14, overflow: "hidden", background: "white", padding: 0, textAlign: "left", cursor: "pointer", boxShadow: selectedPhotoTimelineId === item.id ? "0 0 0 2px rgba(23,92,211,.12)" : "none" }}
-                          >
-                            <div style={{ aspectRatio: "4 / 3", background: "#EEF3F7", overflow: "hidden", position: "relative" }}>
-                              <img src={item.source} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                              {tag !== "Unlabeled" ? (
-                                <span style={{ position: "absolute", top: 8, left: 8, borderRadius: 999, padding: "4px 8px", background: tag === "Before" ? "#FFF4E5" : tag === "After" ? "#EAF7F1" : "#EDF3FF", color: tag === "Before" ? "#B54708" : tag === "After" ? "#087443" : "#175CD3", fontSize: 11, fontWeight: 950, border: "1px solid rgba(255,255,255,.8)" }}>{tag}</span>
-                              ) : null}
-                            </div>
-                            <div style={{ padding: 11 }}>
-                              <div style={{ fontWeight: 900, color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
-                              <div style={{ fontSize: 12, color: colors.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.assetName}</div>
-                              <div style={{ fontSize: 11, color: colors.muted, marginTop: 6, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                <span>{item.origin}</span>
-                                <span>{item.createdAt ? formatDate(String(item.createdAt).slice(0, 10)) : "No date"}</span>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              ) : <div style={emptyStateStyle}>No project stories match the current filters.</div>
             ) : (
-              <div style={emptyStateStyle}>No photos match the current timeline filters.</div>
+              photoTimelineItems.length ? (
+                <div style={{ display: "grid", gap: 24 }}>
+                  {Object.entries(timelineGroups).sort(([a], [b]) => b.localeCompare(a)).map(([year, items]) => (
+                    <div key={year}>
+                      <h3 style={{ margin: "0 0 12px", color: colors.navy3, fontSize: 24 }}>{year}</h3>
+                      <div style={{ borderLeft: "3px solid #D7E0EA", marginLeft: 12, paddingLeft: 22, display: "grid", gap: 14 }}>
+                        {items.map((item) => { const meta = photoTimelineMeta[item.id] || { tag: "Unlabeled" as PhotoTimelineTag, notes: "" }; return (
+                          <button key={item.id} type="button" onClick={() => setSelectedPhotoTimelineId(item.id)} style={{ position: "relative", display: "grid", gridTemplateColumns: isMobile ? "96px minmax(0,1fr)" : "140px minmax(0,1fr) auto", gap: 14, alignItems: "center", border: "1px solid #D7E0EA", borderRadius: 14, padding: 10, background: "white", textAlign: "left", cursor: "pointer" }}>
+                            <span style={{ position: "absolute", left: -31, width: 15, height: 15, borderRadius: 999, background: meta.tag === "After" ? "#087443" : meta.tag === "Before" ? "#B54708" : "#175CD3", border: "3px solid white", boxShadow: "0 0 0 1px #CBD5E1" }} />
+                            <img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 10 }} />
+                            <span><strong style={{ display: "block", color: colors.navy3 }}>{meta.notes?.trim() || item.name}</strong><small style={{ display: "block", color: colors.muted, marginTop: 4 }}>{item.createdAt ? formatDate(String(item.createdAt).slice(0, 10)) : "No date"} · {item.assetName}</small></span>
+                            <span style={badgeStyle(meta.tag)}>{meta.tag}</span>
+                          </button>
+                        ); })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <div style={emptyStateStyle}>No photos match the current timeline filters.</div>
             )}
 
             {selectedPhotoProject ? (
-              <div style={{ position: "fixed", inset: 0, zIndex: 1190, background: "rgba(15,23,42,.58)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", padding: isMobile ? 0 : 24 }} onClick={() => setSelectedPhotoProjectId("")}>
-                <div role="dialog" aria-modal="true" aria-label="Project story" onClick={(event) => event.stopPropagation()} style={{ width: isMobile ? "100%" : "min(1180px, 95vw)", maxHeight: isMobile ? "94vh" : "92vh", overflow: "auto", borderRadius: isMobile ? "18px 18px 0 0" : 20, background: "#FFFFFF", boxShadow: "0 24px 70px rgba(15,23,42,.3)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: "1px solid #DDE5ED", position: "sticky", top: 0, background: "#FFFFFF", zIndex: 3 }}>
-                    <div><div style={{ fontSize: 11, color: colors.muted, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".08em" }}>Project Story</div><strong style={{ color: colors.navy3 }}>{selectedPhotoProject.title}</strong></div>
-                    <button type="button" onClick={() => setSelectedPhotoProjectId("")} aria-label="Close project story" style={{ border: "1px solid #CBD5E1", width: 36, height: 36, borderRadius: 10, background: "white", fontSize: 22, cursor: "pointer" }}>{closeSymbol}</button>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.45fr) 360px", gap: 0 }}>
-                    <div style={{ padding: 16, background: "#F8FAFC" }}>
-                      {(() => {
-                        const before = selectedPhotoProjectItems.find((item) => photoTimelineMeta[item.id]?.tag === "Before");
-                        const after = [...selectedPhotoProjectItems].reverse().find((item) => photoTimelineMeta[item.id]?.tag === "After");
-                        return before && after ? (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
-                            {[[before, "Before"], [after, "After"]].map(([item, label]) => { const photo = item as typeof before; return <button key={photo.id} type="button" onClick={() => setSelectedPhotoTimelineId(photo.id)} style={{ border: "1px solid #D7E0EA", borderRadius: 13, overflow: "hidden", padding: 0, background: "white", cursor: "pointer" }}><div style={{ aspectRatio: "4 / 3", overflow: "hidden" }}><img src={photo.source} alt={photo.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div><div style={{ padding: 9, fontWeight: 950, color: label === "Before" ? "#B54708" : "#087443" }}>{String(label).toUpperCase()}</div></button>; })}
-                          </div>
-                        ) : <div style={{ ...noticeStyle, marginBottom: 16 }}>Tag one photo Before and another After to create the side-by-side comparison.</div>;
-                      })()}
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(170px, 1fr))", gap: 10 }}>
-                        {selectedPhotoProjectItems.map((item) => (
-                          <button key={item.id} type="button" onClick={() => setSelectedPhotoTimelineId(item.id)} style={{ border: `1px solid ${selectedPhotoProject.coverPhotoId === item.id ? "#C99A3D" : "#D7E0EA"}`, borderRadius: 12, overflow: "hidden", padding: 0, background: "white", textAlign: "left", cursor: "pointer" }}>
-                            <div style={{ aspectRatio: "4 / 3", overflow: "hidden", position: "relative" }}><img src={item.source} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />{selectedPhotoProject.coverPhotoId === item.id ? <span style={{ position: "absolute", right: 7, top: 7, borderRadius: 999, padding: "4px 7px", background: "#FFF8E7", color: "#8A6500", fontSize: 10, fontWeight: 950 }}>COVER</span> : null}</div>
-                            <div style={{ padding: 9 }}><strong style={{ color: colors.navy3, fontSize: 12 }}>{photoTimelineMeta[item.id]?.tag || "Unlabeled"}</strong><div style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{item.createdAt ? formatDate(String(item.createdAt).slice(0, 10)) : "No date"}</div></div>
-                          </button>
-                        ))}
-                      </div>
-                      {!selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>No photos are assigned to this project yet.</div> : null}
-                    </div>
-                    <aside style={{ padding: 16, display: "grid", gap: 13, alignContent: "start" }}>
+              <div style={{ position: "fixed", inset: 0, zIndex: 1180, background: "rgba(15,23,42,.58)", display: "grid", placeItems: isMobile ? "end stretch" : "center", padding: isMobile ? 0 : 24 }} onClick={() => setSelectedPhotoProjectId("")}>
+                <div onClick={(event) => event.stopPropagation()} style={{ width: isMobile ? "100%" : "min(1180px,95vw)", maxHeight: isMobile ? "94vh" : "92vh", overflow: "auto", background: "white", borderRadius: isMobile ? "18px 18px 0 0" : 20, boxShadow: "0 24px 70px rgba(15,23,42,.32)" }}>
+                  <div style={{ position: "sticky", top: 0, zIndex: 3, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: 16, background: "white", borderBottom: "1px solid #DDE5ED" }}><div><small style={{ color: "#175CD3", fontWeight: 950 }}>PROJECT STORY</small><strong style={{ display: "block", color: colors.navy3, fontSize: 20 }}>{selectedPhotoProject.title}</strong></div><button type="button" onClick={() => setSelectedPhotoProjectId("")} style={{ ...secondaryButtonStyle, width: 40, padding: 8, fontSize: 20 }}>{closeSymbol}</button></div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.5fr) 340px", gap: 0 }}>
+                    <main style={{ padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}><strong style={{ color: colors.navy3 }}>Project filmstrip</strong><button type="button" onClick={() => openComparison(selectedPhotoProject.id)} style={secondaryButtonStyle}>Compare Before / After</button></div>
+                      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 10, scrollBehavior: "smooth" }}>{selectedPhotoProjectItems.map((item) => <button key={item.id} type="button" onClick={() => openLightbox(item.id, selectedPhotoProjectItems.map((record) => record.id))} style={{ flex: "0 0 150px", border: `2px solid ${selectedPhotoProject.coverPhotoId === item.id ? "#C99A3D" : "#D7E0EA"}`, borderRadius: 12, padding: 0, overflow: "hidden", background: "white", cursor: "pointer" }}><img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /><span style={{ display: "block", padding: 8, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>{photoTimelineMeta[item.id]?.tag || "Unlabeled"}</span></button>)}</div>
+                      {!selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>Open a photo and assign it to this project story.</div> : null}
+                    </main>
+                    <aside style={{ padding: 18, borderLeft: isMobile ? 0 : "1px solid #DDE5ED", borderTop: isMobile ? "1px solid #DDE5ED" : 0, display: "grid", gap: 12, alignContent: "start" }}>
                       <Field label="Project title" value={selectedPhotoProject.title} onChange={(value) => updateSelectedPhotoProject({ title: value })} />
-                      <SelectField
-                        label="Category"
-                        value={selectedPhotoProject.category}
-                        onChange={(value) =>
-                          updateSelectedPhotoProject({
-                            category: value as PhotoTimelineProjectCategory,
-                          })
-                        }
-                        options={projectCategories}
-                      />
-                      <SelectField
-                        label="Asset"
-                        value={
-                          assetRecords.find(
-                            (asset) => asset.id === selectedPhotoProject.assetId,
-                          )?.name || ""
-                        }
-                        onChange={(value) =>
-                          updateSelectedPhotoProject({
-                            assetId:
-                              assetRecords.find((asset) => asset.name === value)
-                                ?.id || "",
-                          })
-                        }
-                        options={["", ...assetRecords.map((asset) => asset.name)]}
-                      />
-                      <SelectField
-                        label="Location"
-                        value={
-                          locations.find(
-                            (location) =>
-                              location.id === selectedPhotoProject.locationId,
-                          )?.name || ""
-                        }
-                        onChange={(value) =>
-                          updateSelectedPhotoProject({
-                            locationId:
-                              locations.find(
-                                (location) => location.name === value,
-                              )?.id || "",
-                          })
-                        }
-                        options={["", ...locations.map((location) => location.name)]}
-                      />
-                      <SelectField
-                        label="Vendor"
-                        value={
-                          vendorRecords.find(
-                            (vendor) => vendor.id === selectedPhotoProject.vendorId,
-                          )?.name || ""
-                        }
-                        onChange={(value) =>
-                          updateSelectedPhotoProject({
-                            vendorId:
-                              vendorRecords.find((vendor) => vendor.name === value)
-                                ?.id || "",
-                          })
-                        }
-                        options={["", ...vendorRecords.map((vendor) => vendor.name)]}
-                      />
-                      <SelectField
-                        label="Work order"
-                        value={
-                          serviceRecords.find(
-                            (record) =>
-                              record.id === selectedPhotoProject.workOrderId,
-                          )?.title || ""
-                        }
-                        onChange={(value) =>
-                          updateSelectedPhotoProject({
-                            workOrderId:
-                              serviceRecords.find(
-                                (record) => record.title === value,
-                              )?.id || "",
-                          })
-                        }
-                        options={["", ...serviceRecords.map((record) => record.title)]}
-                      />
-                      <Field
-                        label="Project notes"
-                        value={selectedPhotoProject.notes}
-                        onChange={(value) =>
-                          updateSelectedPhotoProject({ notes: value })
-                        }
-                        multiline
-                        placeholder="Project notes"
-                      />
-                      <SelectField
-                        label="Cover photo"
-                        value={
-                          selectedPhotoProjectItems.find(
-                            (item) => item.id === selectedPhotoProject.coverPhotoId,
-                          )?.name || ""
-                        }
-                        onChange={(value) =>
-                          updateSelectedPhotoProject({
-                            coverPhotoId:
-                              selectedPhotoProjectItems.find(
-                                (item) => item.name === value,
-                              )?.id || "",
-                          })
-                        }
-                        options={["", ...selectedPhotoProjectItems.map((item) => item.name)]}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPhotoTimelineProjects((current) =>
-                            current.filter(
-                              (project) => project.id !== selectedPhotoProject.id,
-                            ),
-                          );
-                          setPhotoTimelineMeta((current) => {
-                            const next: Record<string, PhotoTimelineMeta> = {};
-
-                            Object.keys(current).forEach((id) => {
-                              const meta = current[id];
-                              next[id] =
-                                meta.projectId === selectedPhotoProject.id
-                                  ? { ...meta, projectId: undefined }
-                                  : meta;
-                            });
-
-                            return next;
-                          });
-                          setSelectedPhotoProjectId("");
-                        }}
-                        style={{
-                          ...secondaryButtonStyle,
-                          color: "#B42318",
-                          borderColor: "#FDA29B",
-                        }}
-                      >
-                        Delete project story
-                      </button>
+                      <SelectField label="Category" value={selectedPhotoProject.category} options={projectCategories} onChange={(value) => updateSelectedPhotoProject({ category: value as PhotoTimelineProjectCategory })} />
+                      <Field label="Current phase" value={selectedPhotoProject.phase || "Started"} onChange={(value) => updateSelectedPhotoProject({ phase: value })} />
+                      <label style={{ fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Project progress: {Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))}%<input type="range" min="0" max="100" value={Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))} onChange={(event) => updateSelectedPhotoProject({ progress: Number(event.target.value) })} style={{ width: "100%", accentColor: "#175CD3", marginTop: 8 }} /></label>
+                      <textarea value={selectedPhotoProject.notes} onChange={(event) => updateSelectedPhotoProject({ notes: event.target.value })} placeholder="Project summary, scope, milestones, materials, or key decisions..." style={{ width: "100%", minHeight: 100, border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, font: "inherit" }} />
+                      <button type="button" onClick={() => { setPhotoTimelineProjects((current) => current.filter((project) => project.id !== selectedPhotoProject.id)); setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === selectedPhotoProject.id ? { ...meta, projectId: undefined } : meta]))); setSelectedPhotoProjectId(""); }} style={{ ...secondaryButtonStyle, color: "#B42318", borderColor: "#FDA29B" }}>Delete project story</button>
                     </aside>
                   </div>
                 </div>
@@ -13727,87 +13623,60 @@ export default function AtlasPage() {
             ) : null}
 
             {selectedPhotoTimelineItem && selectedPhotoMeta ? (
-              <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(15, 23, 42, .55)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", padding: isMobile ? 0 : 24 }} onClick={() => setSelectedPhotoTimelineId("")}>
-                <div role="dialog" aria-modal="true" aria-label="Photo timeline details" onClick={(event) => event.stopPropagation()} style={{ width: isMobile ? "100%" : "min(1080px, 94vw)", maxHeight: isMobile ? "92vh" : "90vh", overflow: "auto", borderRadius: isMobile ? "18px 18px 0 0" : 20, background: "#FFFFFF", boxShadow: "0 24px 70px rgba(15,23,42,.3)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: "1px solid #DDE5ED", position: "sticky", top: 0, background: "#FFFFFF", zIndex: 2 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: colors.muted, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".08em" }}>Photo Timeline</div>
-                      <strong style={{ color: colors.navy3, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedPhotoTimelineItem.name}</strong>
-                    </div>
-                    <button type="button" onClick={() => setSelectedPhotoTimelineId("")} aria-label="Close photo details" style={{ border: "1px solid #CBD5E1", width: 36, height: 36, borderRadius: 10, background: "white", fontSize: 22, cursor: "pointer" }}>{closeSymbol}</button>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.45fr) minmax(300px, .75fr)", gap: 0 }}>
-                    <div style={{ background: "#101828", minHeight: isMobile ? 280 : 560, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-                      <img src={selectedPhotoTimelineItem.source} alt={selectedPhotoTimelineItem.name} style={{ maxWidth: "100%", maxHeight: isMobile ? "56vh" : 620, objectFit: "contain", display: "block" }} />
-                    </div>
-                    <aside style={{ padding: 18, display: "grid", gap: 16, alignContent: "start" }}>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy3, marginBottom: 8 }}>Progress label</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 7 }}>
-                          {(["Unlabeled", "Before", "During", "After"] as PhotoTimelineTag[]).map((tag) => (
-                            <button key={tag} type="button" onClick={() => updateSelectedPhotoMeta({ tag })} style={{ border: `1px solid ${selectedPhotoMeta.tag === tag ? "#175CD3" : "#CBD5E1"}`, borderRadius: 9, background: selectedPhotoMeta.tag === tag ? "#EDF3FF" : "#FFFFFF", color: selectedPhotoMeta.tag === tag ? "#175CD3" : colors.text, minHeight: 36, fontWeight: 900, cursor: "pointer", fontSize: 12 }}>{tag}</button>
-                          ))}
-                        </div>
+              <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(15,23,42,.58)", display: "grid", placeItems: isMobile ? "end stretch" : "center", padding: isMobile ? 0 : 24 }} onClick={() => setSelectedPhotoTimelineId("")}>
+                <div onClick={(event) => event.stopPropagation()} style={{ width: isMobile ? "100%" : "min(1180px,95vw)", maxHeight: isMobile ? "94vh" : "92vh", overflow: "auto", background: "white", borderRadius: isMobile ? "18px 18px 0 0" : 20, boxShadow: "0 24px 70px rgba(15,23,42,.32)" }}>
+                  <div style={{ position: "sticky", top: 0, zIndex: 3, display: "flex", justifyContent: "space-between", alignItems: "center", padding: 14, background: "white", borderBottom: "1px solid #DDE5ED" }}><div><small style={{ color: "#175CD3", fontWeight: 950 }}>PHOTO RECORD</small><strong style={{ display: "block", color: colors.navy3 }}>{selectedPhotoTimelineItem.name}</strong></div><button type="button" onClick={() => setSelectedPhotoTimelineId("")} style={{ ...secondaryButtonStyle, width: 40, padding: 8, fontSize: 20 }}>{closeSymbol}</button></div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.45fr) 380px" }}>
+                    <div style={{ background: "#101828", minHeight: isMobile ? 300 : 620, display: "grid", placeItems: "center", padding: 16, cursor: "zoom-in" }} onClick={() => openLightbox(selectedPhotoTimelineItem.id)}><img src={selectedPhotoTimelineItem.source} alt={selectedPhotoTimelineItem.name} style={{ maxWidth: "100%", maxHeight: isMobile ? "56vh" : 640, objectFit: "contain" }} /></div>
+                    <aside style={{ padding: 18, display: "grid", gap: 14, alignContent: "start" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>{(["Unlabeled", "Before", "During", "After"] as PhotoTimelineTag[]).map((tag) => <button key={tag} type="button" onClick={() => updateSelectedPhotoMeta({ tag })} style={{ border: `1px solid ${selectedPhotoMeta.tag === tag ? "#175CD3" : "#CBD5E1"}`, borderRadius: 9, background: selectedPhotoMeta.tag === tag ? "#EDF3FF" : "white", color: selectedPhotoMeta.tag === tag ? "#175CD3" : colors.text, minHeight: 36, fontWeight: 900, cursor: "pointer", fontSize: 12 }}>{tag}</button>)}</div>
+                      <select value={selectedPhotoMeta.projectId || ""} onChange={(event) => updateSelectedPhotoMeta({ projectId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">No project story</option>{photoTimelineProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Photographer" value={selectedPhotoMeta.photographer || ""} onChange={(value) => updateSelectedPhotoMeta({ photographer: value })} /><Field label="Weather" value={selectedPhotoMeta.weather || ""} onChange={(value) => updateSelectedPhotoMeta({ weather: value })} /></div>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked vendor<select value={selectedPhotoMeta.vendorId || ""} onChange={(event) => updateSelectedPhotoMeta({ vendorId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">None</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Related work order<select value={selectedPhotoMeta.workOrderId || ""} onChange={(event) => updateSelectedPhotoMeta({ workOrderId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">None</option>{serviceRecords.map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Related document<select value={selectedPhotoMeta.documentId || selectedPhotoTimelineItem.documentId || ""} onChange={(event) => updateSelectedPhotoMeta({ documentId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">None</option>{allDocuments.map((document) => <option key={document.id} value={document.id}>{document.title}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked procedure<select value={selectedPhotoMeta.procedureId || ""} onChange={(event) => updateSelectedPhotoMeta({ procedureId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">None</option>{procedureRecords.map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
+                      <div style={{ border: "1px solid #DDE5ED", borderRadius: 12, padding: 12, background: "#F8FAFC", display: "grid", gap: 8 }}>{[["Date taken", selectedPhotoTimelineItem.createdAt ? formatDate(String(selectedPhotoTimelineItem.createdAt).slice(0, 10)) : "No date recorded"], ["Asset", selectedPhotoTimelineItem.assetName], ["Location", selectedPhotoLocation || selectedPhotoTimelineItem.area], ["Source", selectedPhotoTimelineItem.origin]].map(([label, value]) => <div key={label} style={{ display: "grid", gridTemplateColumns: "88px 1fr", gap: 8, fontSize: 13 }}><span style={{ color: colors.muted, fontWeight: 800 }}>{label}</span><strong style={{ color: colors.navy3 }}>{value}</strong></div>)}</div>
+                      <textarea value={selectedPhotoMeta.notes} onChange={(event) => updateSelectedPhotoMeta({ notes: event.target.value, timelineNote: Boolean(event.target.value.trim()) })} placeholder="Add a timeline note, milestone, materials, repair details, or what changed..." style={{ width: "100%", minHeight: 105, border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, font: "inherit" }} />
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                        <button type="button" onClick={() => { setSelectedPhotoTimelineId(""); setScreen("history"); }} style={secondaryButtonStyle}>Add Work Order</button>
+                        <button type="button" onClick={() => updateSelectedPhotoMeta({ timelineNote: true })} style={secondaryButtonStyle}>Add Timeline Note</button>
+                        <button type="button" onClick={() => { const projectId = selectedPhotoMeta.projectId; if (projectId) setPhotoTimelineProjects((current) => current.map((project) => project.id === projectId ? { ...project, coverPhotoId: selectedPhotoTimelineItem.id } : project)); }} style={secondaryButtonStyle}>Make Cover Photo</button>
+                        <button type="button" onClick={() => openComparison(selectedPhotoMeta.projectId)} style={secondaryButtonStyle}>Compare</button>
+                        <button type="button" onClick={() => { const link = document.createElement("a"); link.href = selectedPhotoTimelineItem.source; link.download = selectedPhotoTimelineItem.name || "atlas-photo"; link.click(); }} style={secondaryButtonStyle}>Download</button>
+                        <button type="button" onClick={() => { if (navigator.share) void navigator.share({ title: selectedPhotoTimelineItem.name, url: selectedPhotoTimelineItem.source }); else void navigator.clipboard?.writeText(selectedPhotoTimelineItem.source); }} style={secondaryButtonStyle}>Share</button>
                       </div>
-
-                      <div>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 900, color: colors.navy3, marginBottom: 7 }}>Project story</label>
-                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-                          <select value={selectedPhotoMeta.projectId || ""} onChange={(event) => updateSelectedPhotoMeta({ projectId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: "9px 10px", background: "white", fontWeight: 700 }}>
-                            <option value="">Not assigned</option>
-                            {photoTimelineProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-                          </select>
-                          <button type="button" onClick={createPhotoProject} style={secondaryButtonStyle}>New</button>
-                        </div>
-                      </div>
-
-                      <div style={{ display: "grid", gap: 9, border: "1px solid #DDE5ED", borderRadius: 12, padding: 12, background: "#F8FAFC" }}>
-                        {[
-                          ["Date", selectedPhotoTimelineItem.createdAt ? formatDate(String(selectedPhotoTimelineItem.createdAt).slice(0, 10)) : "No date recorded"],
-                          ["Source", selectedPhotoTimelineItem.origin],
-                          ["Asset", selectedPhotoTimelineItem.assetName],
-                          ["Location", selectedPhotoLocation || selectedPhotoTimelineItem.area],
-                        ].map(([label, value]) => (
-                          <div key={label} style={{ display: "grid", gridTemplateColumns: "78px minmax(0, 1fr)", gap: 9, fontSize: 13 }}>
-                            <span style={{ color: colors.muted, fontWeight: 800 }}>{label}</span>
-                            <strong style={{ color: colors.navy3 }}>{value}</strong>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 900, color: colors.navy3, marginBottom: 7 }}>Timeline notes</label>
-                        <textarea value={selectedPhotoMeta.notes} onChange={(event) => updateSelectedPhotoMeta({ notes: event.target.value })} placeholder="Add what changed, who completed it, paint color, repair details, or inspection notes..." style={{ width: "100%", minHeight: 110, resize: "vertical", border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, font: "inherit" }} />
-                      </div>
-
-                      {selectedPhotoTimelineItem.sourceNotes ? (
-                        <div style={{ border: "1px solid #DDE5ED", borderRadius: 11, padding: 11 }}>
-                          <div style={{ fontSize: 12, color: colors.muted, fontWeight: 900, marginBottom: 5 }}>Source notes</div>
-                          <div style={{ fontSize: 13, lineHeight: 1.5, color: colors.text, whiteSpace: "pre-wrap" }}>{selectedPhotoTimelineItem.sourceNotes}</div>
-                        </div>
-                      ) : null}
-
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 900, color: colors.navy3, marginBottom: 7 }}>Related work orders</div>
-                        <div style={{ display: "grid", gap: 7 }}>
-                          {selectedPhotoWorkOrders.map((record) => (
-                            <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setSelectedPhotoTimelineId(""); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, border: "1px solid #DDE5ED", borderRadius: 10, background: "#FFFFFF", padding: "9px 10px", textAlign: "left", cursor: "pointer" }}>
-                              <span style={{ minWidth: 0 }}>
-                                <strong style={{ display: "block", color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong>
-                                <small style={{ color: colors.muted }}>{record.date ? formatDate(record.date) : "No date"}</small>
-                              </span>
-                              <span style={badgeStyle(String(record.status || "Open"))}>{record.status || "Open"}</span>
-                            </button>
-                          ))}
-                          {!selectedPhotoWorkOrders.length ? <div style={{ ...noticeStyle, margin: 0 }}>No work orders are linked to this asset.</div> : null}
-                        </div>
-                      </div>
-
-                      <button type="button" onClick={() => window.open(selectedPhotoTimelineItem.source, "_blank", "noopener,noreferrer")} style={{ ...secondaryButtonStyle, width: "100%" }}>Open original image</button>
                     </aside>
                   </div>
                 </div>
+              </div>
+            ) : null}
+
+            {photoCompareOpen && compareBefore && compareAfter ? (
+              <div style={{ position: "fixed", inset: 0, zIndex: 1400, background: "rgba(3,7,18,.94)", display: "grid", placeItems: "center", padding: isMobile ? 0 : 24 }} onClick={() => setPhotoCompareOpen(false)}>
+                <div onClick={(event) => event.stopPropagation()} style={{ width: "min(1280px,100vw)", height: isMobile ? "100vh" : "min(860px,94vh)", background: "#101828", borderRadius: isMobile ? 0 : 18, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0,1fr) auto" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12, color: "white" }}><strong>Before / After Comparison</strong><button type="button" onClick={() => setPhotoCompareOpen(false)} style={{ ...secondaryButtonStyle, width: 40, padding: 8 }}>{closeSymbol}</button></div>
+                  <div style={{ position: "relative", overflow: "hidden", background: "#000" }}>
+                    <img src={compareBefore.source} alt="Before" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+                    <div style={{ position: "absolute", inset: 0, clipPath: `inset(0 ${100 - photoComparePosition}% 0 0)` }}><img src={compareAfter.source} alt="After" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} /></div>
+                    <div style={{ position: "absolute", top: 0, bottom: 0, left: `${photoComparePosition}%`, width: 3, background: "white", boxShadow: "0 0 0 1px rgba(0,0,0,.3)" }}><span style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 42, height: 42, borderRadius: 999, background: "white", display: "grid", placeItems: "center", color: colors.navy3, fontWeight: 950 }}>↔</span></div>
+                    <span style={{ position: "absolute", top: 14, left: 14, ...badgeStyle("Open") }}>BEFORE</span><span style={{ position: "absolute", top: 14, right: 14, ...badgeStyle("Completed") }}>AFTER</span>
+                    <input aria-label="Before and after comparison slider" type="range" min="0" max="100" value={photoComparePosition} onChange={(event) => setPhotoComparePosition(Number(event.target.value))} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "ew-resize" }} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: 12, color: "white", fontSize: 13 }}><span>{compareBefore.name}</span><span style={{ textAlign: "right" }}>{compareAfter.name}</span></div>
+                </div>
+              </div>
+            ) : null}
+
+            {lightboxItem ? (
+              <div style={{ position: "fixed", inset: 0, zIndex: 1450, background: "rgba(3,7,18,.97)", display: "grid", gridTemplateRows: "auto minmax(0,1fr) auto" }} onClick={() => setPhotoLightboxIndex(-1)}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: 12, color: "white" }} onClick={(event) => event.stopPropagation()}><div><strong>{lightboxItem.name}</strong><small style={{ display: "block", opacity: .72 }}>{photoLightboxIndex + 1} of {photoLightboxIds.length} · Scroll to zoom · Drag to pan</small></div><button type="button" onClick={() => setPhotoLightboxIndex(-1)} style={{ ...secondaryButtonStyle, width: 40, padding: 8 }}>{closeSymbol}</button></div>
+                <div onClick={(event) => event.stopPropagation()} onWheel={(event) => { event.preventDefault(); setPhotoLightboxZoom((current) => Math.max(1, Math.min(5, Number((current + (event.deltaY < 0 ? .2 : -.2)).toFixed(2))))); }} onMouseDown={(event) => { setPhotoLightboxDragging(true); setPhotoLightboxDragOrigin({ x: event.clientX - photoLightboxPan.x, y: event.clientY - photoLightboxPan.y }); }} onMouseMove={(event) => { if (photoLightboxDragging) setPhotoLightboxPan({ x: event.clientX - photoLightboxDragOrigin.x, y: event.clientY - photoLightboxDragOrigin.y }); }} onMouseUp={() => setPhotoLightboxDragging(false)} onMouseLeave={() => setPhotoLightboxDragging(false)} style={{ position: "relative", overflow: "hidden", display: "grid", placeItems: "center", cursor: photoLightboxZoom > 1 ? (photoLightboxDragging ? "grabbing" : "grab") : "default" }}>
+                  <img src={lightboxItem.source} alt={lightboxItem.name} draggable={false} style={{ maxWidth: "94%", maxHeight: "100%", objectFit: "contain", transform: `translate(${photoLightboxPan.x}px, ${photoLightboxPan.y}px) scale(${photoLightboxZoom})`, transformOrigin: "center", transition: photoLightboxDragging ? "none" : "transform .12s ease", userSelect: "none" }} />
+                  <button type="button" disabled={photoLightboxIndex <= 0} onClick={() => { setPhotoLightboxIndex((current) => Math.max(0, current - 1)); setPhotoLightboxZoom(1); setPhotoLightboxPan({ x: 0, y: 0 }); }} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", ...secondaryButtonStyle, width: 44, height: 44, fontSize: 24, opacity: photoLightboxIndex <= 0 ? .35 : 1 }}>‹</button>
+                  <button type="button" disabled={photoLightboxIndex >= photoLightboxIds.length - 1} onClick={() => { setPhotoLightboxIndex((current) => Math.min(photoLightboxIds.length - 1, current + 1)); setPhotoLightboxZoom(1); setPhotoLightboxPan({ x: 0, y: 0 }); }} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", ...secondaryButtonStyle, width: 44, height: 44, fontSize: 24, opacity: photoLightboxIndex >= photoLightboxIds.length - 1 ? .35 : 1 }}>›</button>
+                </div>
+                <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: 10, background: "#0B1220", scrollBehavior: "smooth" }} onClick={(event) => event.stopPropagation()}>{photoLightboxIds.map((id, index) => { const item = allPhotoTimelineItems.find((record) => record.id === id); return item ? <button key={id} type="button" onClick={() => { setPhotoLightboxIndex(index); setPhotoLightboxZoom(1); setPhotoLightboxPan({ x: 0, y: 0 }); }} style={{ flex: "0 0 88px", border: `3px solid ${index === photoLightboxIndex ? "#C99A3D" : "transparent"}`, borderRadius: 10, padding: 0, overflow: "hidden", background: "transparent", cursor: "pointer" }}><img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /></button> : null; })}</div>
               </div>
             ) : null}
           </section>
