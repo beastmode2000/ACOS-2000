@@ -7987,9 +7987,35 @@ export default function AtlasPage() {
     }
   }
 
+  async function replaceSelectedDocumentFile(record: DocumentRecord, file?: File) {
+    if (!file) return;
+    const confirmed = window.confirm(`Replace the primary file for ${record.title || "this document"} with ${file.name}?`);
+    if (!confirmed) return;
+    try {
+      const dataUrl = await readFileDataUrl(file);
+      const replacement: UploadedFileRecord = {
+        id: uid("document-file"),
+        name: file.name,
+        type: file.type,
+        dataUrl,
+        createdAt: new Date().toISOString(),
+      };
+      const updated = normalizeDocument({
+        ...record,
+        href: "",
+        files: [replacement, ...(record.files || []).slice(1)],
+      });
+      replaceDocumentInVault(updated);
+      await postDocumentToAtlasVault(updated);
+      setDocumentSyncStatus(`Replaced the file for ${updated.title} and synced to Atlas.`);
+    } catch (error) {
+      setDocumentSyncStatus(error instanceof Error ? `File replacement failed: ${error.message}` : "File replacement failed.");
+    }
+  }
+
   async function deleteSelectedDocument(record: DocumentRecord) {
     const confirmed = window.confirm(
-      `Delete ${record.title}? This removes it from the Atlas document vault.`,
+      `Delete ${record.title}? This removes the document or photo from Atlas and from every view that uses this document record. This cannot be undone.`,
     );
     if (!confirmed) return;
 
@@ -8889,6 +8915,19 @@ export default function AtlasPage() {
     setContactDraft(blankContact());
     setContactEditorOpen(false);
     setContactMessage("");
+  }
+
+  function addDashboardWorkOrder(areaLabel: string) {
+    const contextByArea: Record<string, Partial<AtlasServiceRecord>> = {
+      Maintenance: { workCategory: "🔧 Maintenance", responsibilityArea: "Operations Dashboard · Maintenance" },
+      Landscaping: { workCategory: "🌳 Landscaping", responsibilityArea: "Operations Dashboard · Landscaping" },
+      "Pool & Spa": { workCategory: "🚿 Pool & Spa", responsibilityArea: "Operations Dashboard · Pool & Spa" },
+      Irrigation: { workCategory: "💧 Irrigation", responsibilityArea: "Operations Dashboard · Irrigation" },
+      "Dock & Marine": { workCategory: "🚤 Dock & Marine", responsibilityArea: "Operations Dashboard · Dock & Marine", locationId: locations.find((location) => /dock/i.test(location.name || ""))?.id || "" },
+      Vehicles: { workCategory: "🚗 Vehicles", responsibilityArea: "Operations Dashboard · Vehicles" },
+    };
+    setDashboardWorkFilter("");
+    addWorkOrder(contextByArea[areaLabel] || { responsibilityArea: `Operations Dashboard · ${areaLabel}` });
   }
 
   function addWorkOrder(initial: Partial<AtlasServiceRecord> = {}) {
@@ -12835,7 +12874,7 @@ export default function AtlasPage() {
         <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><div style={eyebrowStyle}>Today & Upcoming</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>Current work plan</h2></div><button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Calendar</button></div><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{todaysWork.map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.workCategory || "Work order"}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}{!todaysWork.length ? <div style={noticeStyle}>No work orders are due today.</div> : null}</div><div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 8, marginTop: 12 }}><input value={todayLogText} onChange={(event) => setTodayLogText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTodayLogEntry(); }} placeholder="Add a quick task or field note…" style={inputStyle} /><select value={todayLogCategory} onChange={(event) => setTodayLogCategory(event.target.value as TodayLogEntry["category"])} style={selectStyle}>{["Task","Repair","Inspection","Vendor","Delivery","Note"].map((item) => <option key={item}>{item}</option>)}</select><button type="button" onClick={addTodayLogEntry} style={goldButtonStyle}>Add</button></div></section>
       );
       if (id === "property-status") return (
-        <section style={cardStyle}><div style={eyebrowStyle}>Property Status</div><h2 style={{ margin: "3px 0 12px", color: colors.navy }}>Live operating areas</h2><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9 }}>{liveStatuses.map((item) => { const statusColor = item.status === "Critical" ? colors.red : item.status === "Attention" ? colors.gold : colors.green; return <button key={item.label} type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 12, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 21 }}>{item.icon}</span><span style={{ width: 9, height: 9, borderRadius: 999, background: statusColor }} /></div><strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong><small style={mutedSmallStyle}>{item.count} open · {item.status}</small></button>; })}</div></section>
+        <section style={cardStyle}><div style={eyebrowStyle}>Property Status</div><h2 style={{ margin: "3px 0 12px", color: colors.navy }}>Live operating areas</h2><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9 }}>{liveStatuses.map((item) => { const statusColor = item.status === "Critical" ? colors.red : item.status === "Attention" ? colors.gold : colors.green; return <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}><button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 21 }}>{item.icon}</span><span style={{ width: 9, height: 9, borderRadius: 999, background: statusColor }} /></div><strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong><small style={mutedSmallStyle}>{item.count} open · {item.status}</small></button><button type="button" onClick={() => addDashboardWorkOrder(item.label)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 30, marginTop: 8, padding: "4px 7px", fontSize: 11 }}>+ Work Order</button></div>; })}</div></section>
       );
       if (id === "routine") return <div style={cardStyle}><AtlasRoutines mode="dashboard" isMobile={isMobile} onOpenManager={() => setScreen("routines")} /><div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: colors.navy }}>{completedRoutineCount}/{visibleRoutineItems.length} complete · {routineProgress}%</div></div>;
       if (id === "atlas-brief") return <section style={{ ...cardStyle, background: "#F8FAFC" }}><div style={eyebrowStyle}>Atlas Brief</div><h2 style={{ margin: "3px 0 10px", color: colors.navy }}>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}.</h2><div style={{ display: "grid", gap: 9 }}>{briefLines.map((line, index) => <div key={index} style={{ display: "grid", gridTemplateColumns: "8px minmax(0,1fr)", gap: 9, fontSize: 13, lineHeight: 1.45 }}><span style={{ width: 7, height: 7, borderRadius: 999, background: index === 2 && overdueWork.length ? colors.red : colors.gold, marginTop: 6 }} /><span>{line}</span></div>)}</div><button type="button" onClick={() => setScreen("assistant")} style={{ ...goldButtonStyle, width: "100%", marginTop: 14 }}>Open Ask Atlas</button></section>;
@@ -18059,6 +18098,18 @@ export default function AtlasPage() {
             box-shadow: none !important;
           }
         `}</style>
+        {selectedService?.id ? (
+          <div style={{ display: "flex", alignItems: "end", gap: 10, flexWrap: "wrap", marginBottom: 12, padding: 12, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF" }}>
+            <label style={{ display: "grid", gap: 5, minWidth: 190 }}>
+              <span style={fieldLabelStyle}>Estimated time</span>
+              <select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: (event.currentTarget.value || undefined) as WorkEffort | undefined })} style={inputStyle}>
+                <option value="">No estimate</option>
+                {(["5 minutes", "15 minutes", "30 minutes", "1 hour", "Half Day", "Full Day", "Multi-Day"] as WorkEffort[]).map((effort) => <option key={effort} value={effort}>{effort}</option>)}
+              </select>
+            </label>
+            {selectedService.responsibilityArea ? <div style={{ flex: "1 1 240px", minWidth: 0 }}><span style={fieldLabelStyle}>Created from</span><div style={{ marginTop: 5, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC", color: colors.navy, fontSize: 12, fontWeight: 850 }}>{selectedService.responsibilityArea}</div></div> : null}
+          </div>
+        ) : null}
         <AtlasWorkOrders
         ListDrawerLayout={ListDrawerLayout}
         Field={Field}
@@ -19217,6 +19268,10 @@ export default function AtlasPage() {
                 Full Screen
               </button>
             ) : null}
+            <label style={{ ...secondaryButtonStyle, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              Replace File
+              <input type="file" style={{ display: "none" }} onChange={(event) => { void replaceSelectedDocumentFile(selectedDocument, event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
+            </label>
             <button
               type="button"
               onClick={() => void deleteSelectedDocument(selectedDocument)}
