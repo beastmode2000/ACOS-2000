@@ -138,6 +138,7 @@ type PhotoTimelineMeta = {
   displayName?: string;
   tags?: string;
   assetIdOverride?: string;
+  primaryContext?: "standalone" | "asset" | "project";
 };
 
 type PhotoTimelineProject = {
@@ -245,6 +246,9 @@ type DashboardWidgetSetting = {
   visible: boolean;
   collapsed: boolean;
   size: DashboardWidgetSize;
+  colSpan?: number;
+  rowSpan?: number;
+  locked?: boolean;
 };
 
 type DashboardSavedLayout = {
@@ -274,12 +278,30 @@ const defaultDashboardWidgetOrder: DashboardWidgetId[] = [
   "weather",
 ];
 
+const dashboardDefaultGrid: Record<DashboardWidgetId, { colSpan: number; rowSpan: number }> = {
+  hero: { colSpan: 12, rowSpan: 2 },
+  "estate-health": { colSpan: 7, rowSpan: 5 },
+  "today-upcoming": { colSpan: 7, rowSpan: 6 },
+  "property-status": { colSpan: 5, rowSpan: 7 },
+  routine: { colSpan: 5, rowSpan: 5 },
+  "atlas-brief": { colSpan: 5, rowSpan: 4 },
+  "recent-activity": { colSpan: 7, rowSpan: 6 },
+  weather: { colSpan: 12, rowSpan: 4 },
+};
+
+function legacySizeColumns(size: DashboardWidgetSize) {
+  return size === "small" ? 4 : size === "medium" ? 5 : size === "large" ? 7 : 12;
+}
+
 function makeDashboardWidgets(overrides: Partial<Record<DashboardWidgetId, Partial<DashboardWidgetSetting>>> = {}): DashboardWidgetSetting[] {
   return defaultDashboardWidgetOrder.map((id) => ({
     id,
     visible: true,
     collapsed: false,
     size: dashboardWidgetDefinitions[id].defaultSize,
+    colSpan: dashboardDefaultGrid[id].colSpan,
+    rowSpan: dashboardDefaultGrid[id].rowSpan,
+    locked: false,
     ...overrides[id],
   }));
 }
@@ -298,9 +320,17 @@ function normalizeDashboardWidgets(widgets: DashboardWidgetSetting[]): Dashboard
       visible: true,
       collapsed: false,
       size: dashboardWidgetDefinitions["property-status"].defaultSize,
+      colSpan: dashboardDefaultGrid["property-status"].colSpan,
+      rowSpan: dashboardDefaultGrid["property-status"].rowSpan,
+      locked: false,
     });
   }
-  return normalized;
+  return normalized.map((widget) => ({
+    ...widget,
+    colSpan: Math.max(3, Math.min(12, Number(widget.colSpan || legacySizeColumns(widget.size)))),
+    rowSpan: Math.max(2, Math.min(12, Number(widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan))),
+    locked: Boolean(widget.locked),
+  }));
 }
 
 const builtInDashboardLayouts: DashboardSavedLayout[] = [
@@ -13016,7 +13046,30 @@ export default function AtlasPage() {
       setDashboardLayoutId(id);
       showSaveToast(`${name} layout saved.`);
     };
-    const sizeColumns = (size: DashboardWidgetSize) => size === "small" ? 4 : size === "medium" ? 5 : size === "large" ? 7 : 12;
+    const beginWidgetResize = (event: React.PointerEvent, widget: DashboardWidgetSetting, direction: "x" | "y" | "xy") => {
+      if (isMobile || !dashboardEditMode || widget.locked) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const startCols = widget.colSpan || legacySizeColumns(widget.size);
+      const startRows = widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan;
+      const onMove = (moveEvent: PointerEvent) => {
+        const colDelta = Math.round((moveEvent.clientX - startX) / 92);
+        const rowDelta = Math.round((moveEvent.clientY - startY) / 72);
+        updateWidget(widget.id, {
+          colSpan: direction === "y" ? startCols : Math.max(3, Math.min(12, startCols + colDelta)),
+          rowSpan: direction === "x" ? startRows : Math.max(2, Math.min(12, startRows + rowDelta)),
+        });
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    };
+    const resetWidgetGrid = (id: DashboardWidgetId) => updateWidget(id, { ...dashboardDefaultGrid[id], locked: false });
     const cardStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, borderRadius: 18, background: "#FFFFFF", padding: isMobile ? 14 : 16, boxShadow: "0 10px 28px rgba(15, 23, 42, 0.05)", minWidth: 0 };
 
     const renderWidgetContent = (id: DashboardWidgetId) => {
@@ -13154,11 +13207,12 @@ export default function AtlasPage() {
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: colors.navy, fontSize: 13 }}>Dashboard View</strong><select value={dashboardLayoutId} onChange={(event) => applyLayout(event.target.value)} style={{ ...selectStyle, minWidth: 138, minHeight: 34, padding: "5px 9px", fontSize: 12 }}>{allLayouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardEditMode((current) => !current)} style={{ ...(dashboardEditMode ? goldButtonStyle : secondaryButtonStyle), minHeight: 34, padding: "6px 10px", fontSize: 12 }}>{dashboardEditMode ? "Done" : "Customize"}</button><button type="button" onClick={saveLayoutAs} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Save As</button><button type="button" onClick={() => applyLayout(isMobile ? "mobile" : "operations")} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Reset</button></div>
       </section>
-      {dashboardEditMode ? <section style={{ ...cardStyle, padding: 12 }}><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{dashboardWidgets.map((widget) => <button key={widget.id} type="button" onClick={() => updateWidget(widget.id, { visible: !widget.visible })} style={{ ...secondaryButtonStyle, opacity: widget.visible ? 1 : .55 }}>{widget.visible ? "✓" : "+"} {dashboardWidgetDefinitions[widget.id].title}</button>)}</div><p style={{ ...mutedSmallStyle, margin: "9px 0 0" }}>Drag widget headers to reorder. Use the size, collapse, and hide controls on each widget. Changes save automatically for this property.</p></section> : null}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(12,minmax(0,1fr))", gap: 12, alignItems: "start" }}>
-        {dashboardWidgets.filter((widget) => widget.visible).map((widget) => <div key={widget.id} draggable={dashboardEditMode} onDragStart={() => setDraggedDashboardWidgetId(widget.id)} onDragOver={(event) => { if (dashboardEditMode) event.preventDefault(); }} onDrop={() => moveWidget(widget.id)} style={{ gridColumn: isMobile ? "1 / -1" : `span ${sizeColumns(widget.size)}`, minWidth: 0, opacity: draggedDashboardWidgetId === widget.id ? .55 : 1, transition: "opacity .18s ease, transform .18s ease" }}>
-          {dashboardEditMode || widget.collapsed ? <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: `1px solid ${colors.line}`, borderBottom: widget.collapsed ? `1px solid ${colors.line}` : 0, borderRadius: widget.collapsed ? 14 : "14px 14px 0 0", background: colors.navy, color: "#FFFFFF", padding: "8px 10px", cursor: dashboardEditMode ? "grab" : "default" }}><strong>{dashboardWidgetDefinitions[widget.id].title}</strong><div style={{ display: "flex", gap: 5 }}>{dashboardEditMode ? <select value={widget.size} onChange={(event) => updateWidget(widget.id, { size: event.target.value as DashboardWidgetSize })} onClick={(event) => event.stopPropagation()} style={{ minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", padding: "0 7px" }}><option value="small" style={{ color: "#111" }}>Small</option><option value="medium" style={{ color: "#111" }}>Medium</option><option value="large" style={{ color: "#111" }}>Large</option><option value="full" style={{ color: "#111" }}>Full</option></select> : null}<button type="button" onClick={() => updateWidget(widget.id, { collapsed: !widget.collapsed })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.collapsed ? "+" : "−"}</button>{dashboardEditMode ? <button type="button" onClick={() => updateWidget(widget.id, { visible: false })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>×</button> : null}</div></div> : null}
-          {!widget.collapsed ? <div style={dashboardEditMode ? { border: `1px dashed ${colors.gold}`, borderTop: 0, borderRadius: "0 0 14px 14px" } : undefined}>{renderWidgetContent(widget.id)}</div> : null}
+      {dashboardEditMode ? <section style={{ ...cardStyle, padding: 12 }}><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{dashboardWidgets.map((widget) => <button key={widget.id} type="button" onClick={() => updateWidget(widget.id, { visible: !widget.visible })} style={{ ...secondaryButtonStyle, opacity: widget.visible ? 1 : .55 }}>{widget.visible ? "✓" : "+"} {dashboardWidgetDefinitions[widget.id].title}</button>)}</div><p style={{ ...mutedSmallStyle, margin: "9px 0 0" }}>Drag unlocked widget headers to move them. Resize from the right edge, bottom edge, or gold corner. The grid fills open space automatically and saves separately for this property.</p></section> : null}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(12,minmax(0,1fr))", gridAutoRows: isMobile ? "auto" : 72, gridAutoFlow: "dense", gap: 14, alignItems: "stretch" }}>
+        {dashboardWidgets.filter((widget) => widget.visible).map((widget) => <div key={widget.id} draggable={dashboardEditMode && !widget.locked} onDragStart={() => { if (!widget.locked) setDraggedDashboardWidgetId(widget.id); }} onDragOver={(event) => { if (dashboardEditMode && !widget.locked) event.preventDefault(); }} onDrop={() => moveWidget(widget.id)} style={{ position: "relative", gridColumn: isMobile ? "1 / -1" : `span ${widget.colSpan || legacySizeColumns(widget.size)}`, gridRow: isMobile ? "auto" : `span ${widget.collapsed ? 1 : widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan}`, minWidth: 0, minHeight: 0, opacity: draggedDashboardWidgetId === widget.id ? .55 : 1, transition: "opacity .18s ease, transform .18s ease", overflow: "hidden" }}>
+          {dashboardEditMode || widget.collapsed ? <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: `1px solid ${colors.line}`, borderBottom: widget.collapsed ? `1px solid ${colors.line}` : 0, borderRadius: widget.collapsed ? 14 : "14px 14px 0 0", background: colors.navy, color: "#FFFFFF", padding: "8px 10px", cursor: dashboardEditMode && !widget.locked ? "grab" : "default" }}><strong>{dashboardWidgetDefinitions[widget.id].title}</strong><div style={{ display: "flex", gap: 5, alignItems: "center" }}>{dashboardEditMode ? <><span style={{ fontSize: 11, opacity: .75 }}>{widget.colSpan || legacySizeColumns(widget.size)}×{widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan}</span><button type="button" title={widget.locked ? "Unlock widget" : "Lock widget"} onClick={(event) => { event.stopPropagation(); updateWidget(widget.id, { locked: !widget.locked }); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: widget.locked ? "rgba(230,169,43,.28)" : "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.locked ? "🔒" : "🔓"}</button><button type="button" title="Reset widget size" onClick={(event) => { event.stopPropagation(); resetWidgetGrid(widget.id); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>↺</button></> : null}<button type="button" onClick={() => updateWidget(widget.id, { collapsed: !widget.collapsed })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.collapsed ? "+" : "−"}</button>{dashboardEditMode ? <button type="button" onClick={() => updateWidget(widget.id, { visible: false })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>×</button> : null}</div></div> : null}
+          {!widget.collapsed ? <div style={{ height: "100%", overflow: "auto", ...(dashboardEditMode ? { border: `1px dashed ${colors.gold}`, borderTop: 0, borderRadius: "0 0 14px 14px" } : {}) }}>{renderWidgetContent(widget.id)}</div> : null}
+          {dashboardEditMode && !widget.collapsed && !widget.locked && !isMobile ? <><div onPointerDown={(event) => beginWidgetResize(event, widget, "x")} title="Resize width" style={{ position: "absolute", top: 42, right: 0, bottom: 12, width: 8, cursor: "ew-resize", zIndex: 5 }} /><div onPointerDown={(event) => beginWidgetResize(event, widget, "y")} title="Resize height" style={{ position: "absolute", left: 12, right: 12, bottom: 0, height: 8, cursor: "ns-resize", zIndex: 5 }} /><div onPointerDown={(event) => beginWidgetResize(event, widget, "xy")} title="Resize width and height" style={{ position: "absolute", right: 2, bottom: 2, width: 18, height: 18, borderRight: `3px solid ${colors.gold}`, borderBottom: `3px solid ${colors.gold}`, borderRadius: 2, cursor: "nwse-resize", zIndex: 6 }} /></> : null}
         </div>)}
       </div>
     </div>;
@@ -13771,7 +13825,7 @@ export default function AtlasPage() {
                             <img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} />
                             <span style={{ display: "block", padding: 8 }}>
                               <strong style={{ display: "block", color: colors.navy3, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</strong>
-                              <small style={{ display: "block", marginTop: 3, color: meta?.projectId ? colors.muted : "#B54708", fontWeight: 800 }}>{meta?.projectId ? (meta.tag || "Unlabeled") : "Needs project"}</small>
+                              <small style={{ display: "block", marginTop: 3, color: colors.muted, fontWeight: 800 }}>{meta?.primaryContext === "standalone" ? "Standalone" : meta?.projectId ? (meta.tag || "Project photo") : (meta?.assetIdOverride || item.assetId) ? "Asset photo" : "Unassigned"}</small>
                             </span>
                           </button>
                         );
@@ -13817,9 +13871,10 @@ export default function AtlasPage() {
                         <strong style={{ color: colors.navy3 }}>Photo details</strong>
                         <Field label="Photo title" value={selectedPhotoMeta.displayName || selectedPhotoTimelineItem.name} onChange={(value) => updateSelectedPhotoMeta({ displayName: value })} />
                         <Field label="Tags" value={selectedPhotoMeta.tags || ""} onChange={(value) => updateSelectedPhotoMeta({ tags: value })} />
-                        <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked asset<select value={selectedPhotoMeta.assetIdOverride !== undefined ? selectedPhotoMeta.assetIdOverride : selectedPhotoTimelineItem.assetId} onChange={(event) => updateSelectedPhotoMeta({ assetIdOverride: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">General property</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                        <div style={{ display: "grid", gap: 7 }}><span style={{ fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Photo belongs primarily to</span><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>{([['standalone','Standalone'],['asset','Asset'],['project','Project']] as const).map(([value,label]) => { const currentContext = selectedPhotoMeta.primaryContext || (selectedPhotoMeta.projectId ? "project" : (selectedPhotoMeta.assetIdOverride || selectedPhotoTimelineItem.assetId) ? "asset" : "standalone"); return <button key={value} type="button" onClick={() => updateSelectedPhotoMeta({ primaryContext: value })} style={{ border: `1px solid ${currentContext === value ? "#175CD3" : "#CBD5E1"}`, borderRadius: 9, background: currentContext === value ? "#EDF3FF" : "white", color: currentContext === value ? "#175CD3" : colors.text, minHeight: 36, fontWeight: 900, cursor: "pointer", fontSize: 12 }}>{label}</button>; })}</div></div>
+                        <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked asset <span style={{ color: colors.muted, fontWeight: 700 }}>(optional even for project photos)</span><select value={selectedPhotoMeta.assetIdOverride !== undefined ? selectedPhotoMeta.assetIdOverride : selectedPhotoTimelineItem.assetId} onChange={(event) => updateSelectedPhotoMeta({ assetIdOverride: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">No linked asset</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                        <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked project <span style={{ color: colors.muted, fontWeight: 700 }}>(optional even for asset photos)</span><select value={selectedPhotoMeta.projectId || ""} onChange={(event) => updateSelectedPhotoMeta({ projectId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">No linked project</option>{photoTimelineProjects.filter((project) => !project.archived || project.id === selectedPhotoMeta.projectId).map((project) => <option key={project.id} value={project.id}>{project.title}{project.archived ? " (Archived)" : ""}</option>)}</select></label>
                       </div>
-                      <select value={selectedPhotoMeta.projectId || ""} onChange={(event) => updateSelectedPhotoMeta({ projectId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white", fontWeight: 700 }}><option value="">No project story</option>{photoTimelineProjects.filter((project) => !project.archived || project.id === selectedPhotoMeta.projectId).map((project) => <option key={project.id} value={project.id}>{project.title}{project.archived ? " (Archived)" : ""}</option>)}</select>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Photographer" value={selectedPhotoMeta.photographer || ""} onChange={(value) => updateSelectedPhotoMeta({ photographer: value })} /><Field label="Weather" value={selectedPhotoMeta.weather || ""} onChange={(value) => updateSelectedPhotoMeta({ weather: value })} /></div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Date taken" type="date" value={selectedPhotoMeta.dateTaken || String(selectedPhotoTimelineItem.createdAt || "").slice(0, 10)} onChange={(value) => updateSelectedPhotoMeta({ dateTaken: value })} /><label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Location<select value={selectedPhotoMeta.locationId || selectedPhotoAsset?.locationId || ""} onChange={(event) => updateSelectedPhotoMeta({ locationId: event.target.value || undefined })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">General property</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label></div>
                       <div style={{ border: "1px solid #DDE5ED", borderRadius: 12, padding: 12, background: "#F8FAFC", display: "grid", gap: 9 }}><strong style={{ color: colors.navy3 }}>Timeline milestone</strong><Field label="Milestone title" value={selectedPhotoMeta.milestoneTitle || ""} onChange={(value) => updateSelectedPhotoMeta({ milestoneTitle: value, timelineNote: Boolean(value.trim()) })} /><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Type<select value={selectedPhotoMeta.milestoneType || "Progress"} onChange={(event) => updateSelectedPhotoMeta({ milestoneType: event.target.value as PhotoTimelineMeta["milestoneType"] })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}>{["Started","Inspection","Vendor Visit","Delivery","Progress","Completed","Custom"].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><Field label="Milestone date" type="date" value={selectedPhotoMeta.milestoneDate || selectedPhotoMeta.dateTaken || String(selectedPhotoTimelineItem.createdAt || "").slice(0, 10)} onChange={(value) => updateSelectedPhotoMeta({ milestoneDate: value })} /></div></div>
