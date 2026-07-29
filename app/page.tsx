@@ -3921,6 +3921,7 @@ export default function AtlasPage() {
   const [photoTimelineTagFilter, setPhotoTimelineTagFilter] = useState<PhotoTimelineTag | "All">("All");
   const [photoTimelineVendorFilter, setPhotoTimelineVendorFilter] = useState("all");
   const [photoTimelineMonthFilter, setPhotoTimelineMonthFilter] = useState("all");
+  const [photoTimelineOrganizationFilter, setPhotoTimelineOrganizationFilter] = useState<"all" | "unassigned" | "missing-tag" | "missing-date" | "before" | "during" | "after">("all");
   const [photoTimelineScrubber, setPhotoTimelineScrubber] = useState(100);
   const [selectedPhotoProjectId, setSelectedPhotoProjectId] = useState("");
   const [photoLightboxIds, setPhotoLightboxIds] = useState<string[]>([]);
@@ -13371,6 +13372,13 @@ export default function AtlasPage() {
           (photoTimelineAssetId === "all" || item.assetId === photoTimelineAssetId) &&
           (photoTimelineYear === "all" || itemYear === photoTimelineYear) &&
           (photoTimelineMonthFilter === "all" || itemMonth === photoTimelineMonthFilter) &&
+          (photoTimelineOrganizationFilter === "all" ||
+            (photoTimelineOrganizationFilter === "unassigned" && !meta?.projectId) ||
+            (photoTimelineOrganizationFilter === "missing-tag" && (!meta?.tag || meta.tag === "Unlabeled")) ||
+            (photoTimelineOrganizationFilter === "missing-date" && !item.createdAt && !meta?.dateTaken) ||
+            (photoTimelineOrganizationFilter === "before" && meta?.tag === "Before") ||
+            (photoTimelineOrganizationFilter === "during" && meta?.tag === "During") ||
+            (photoTimelineOrganizationFilter === "after" && meta?.tag === "After")) &&
           (photoTimelineTagFilter === "All" || (meta?.tag || "Unlabeled") === photoTimelineTagFilter) &&
           (photoTimelineVendorFilter === "all" || (meta?.vendorId || project?.vendorId || "") === photoTimelineVendorFilter) &&
           (!photoTimelinePaintingOnly || /(paint|painting|stain|elliott|exterior|siding|trim|eave|coat)/i.test(haystack)) &&
@@ -13533,6 +13541,33 @@ export default function AtlasPage() {
       return latest ? formatDate(String(latest).slice(0, 10)) : "No date";
     };
 
+    const unassignedPhotoCount = allPhotoTimelineItems.filter((item) => !photoTimelineMeta[item.id]?.projectId).length;
+    const missingTagPhotoCount = allPhotoTimelineItems.filter((item) => !photoTimelineMeta[item.id]?.tag || photoTimelineMeta[item.id]?.tag === "Unlabeled").length;
+    const missingDatePhotoCount = allPhotoTimelineItems.filter((item) => !item.createdAt && !photoTimelineMeta[item.id]?.dateTaken).length;
+    const localOnlyPhotoCount = allPhotoTimelineItems.filter((item) => String(item.source || "").startsWith("data:image/")).length;
+    const syncedPhotoCount = Math.max(0, allPhotoTimelineItems.length - localOnlyPhotoCount);
+    const recentPhotoItems = [...allPhotoTimelineItems]
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, isMobile ? 5 : 8);
+    const photosNeedingAttention = new Set(
+      allPhotoTimelineItems
+        .filter((item) => {
+          const meta = photoTimelineMeta[item.id];
+          return !meta?.projectId || !meta?.tag || meta.tag === "Unlabeled" || (!item.createdAt && !meta?.dateTaken);
+        })
+        .map((item) => item.id),
+    ).size;
+
+    const applyPhotoOrganizationFilter = (
+      filter: "all" | "unassigned" | "missing-tag" | "missing-date" | "before" | "during" | "after",
+    ) => {
+      setPhotoTimelineOrganizationFilter(filter);
+      setPhotoTimelineView("timeline");
+      window.requestAnimationFrame(() => {
+        document.getElementById("atlas-photo-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
+
     return (
       <>
         {mode === "timeline" ? (
@@ -13594,7 +13629,7 @@ export default function AtlasPage() {
 
             {photoTimelineView === "projects" ? (
               visiblePhotoProjects.length ? (
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(330px, 1fr))", gap: 14 }}>
+                <div id="atlas-photo-results" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(330px, 1fr))", gap: 14 }}>
                   {visiblePhotoProjects.map((project) => {
                     const cover = project.items.find((item) => item.id === project.coverPhotoId) || project.items[0];
                     const progress = Math.max(0, Math.min(100, Number(project.progress || 0)));
@@ -13671,6 +13706,115 @@ export default function AtlasPage() {
               </div>
             ) : null}
 
+            <section
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 18,
+                padding: isMobile ? 14 : 18,
+                background: "linear-gradient(180deg, #FFFFFF 0%, #F7FAFC 100%)",
+                boxShadow: "0 12px 30px rgba(11, 41, 64, 0.07)",
+                marginTop: 18,
+                marginBottom: 18,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={eyebrowStyle}>Photo Intake & Organization</div>
+                  <h3 style={{ margin: "4px 0 4px", color: colors.navy, fontSize: isMobile ? 20 : 24 }}>Find, review, and organize property photos</h3>
+                  <p style={{ ...mutedSmallStyle, margin: 0 }}>Search every photo record, review incomplete metadata, and move new images into the right project history.</p>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setScreen("inbox")} style={goldButtonStyle}>Upload Photos</button>
+                  <button type="button" onClick={() => applyPhotoOrganizationFilter("unassigned")} style={secondaryButtonStyle}>Review Unassigned</button>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <input
+                  value={photoTimelineSearch}
+                  onChange={(event) => setPhotoTimelineSearch(event.target.value)}
+                  placeholder="Search photo names, projects, assets, locations, vendors, work orders, photographers, dates, and notes..."
+                  style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 12, padding: "13px 14px", fontWeight: 750, fontSize: 14, background: "#FFFFFF" }}
+                />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                  {([
+                    ["all", "All Photos", allPhotoTimelineItems.length],
+                    ["unassigned", "Unassigned", unassignedPhotoCount],
+                    ["missing-tag", "Missing Tags", missingTagPhotoCount],
+                    ["missing-date", "No Date", missingDatePhotoCount],
+                    ["before", "Before", allPhotoTimelineItems.filter((item) => photoTimelineMeta[item.id]?.tag === "Before").length],
+                    ["during", "During", allPhotoTimelineItems.filter((item) => photoTimelineMeta[item.id]?.tag === "During").length],
+                    ["after", "After", allPhotoTimelineItems.filter((item) => photoTimelineMeta[item.id]?.tag === "After").length],
+                  ] as const).map(([value, label, count]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => applyPhotoOrganizationFilter(value)}
+                      style={{
+                        border: `1px solid ${photoTimelineOrganizationFilter === value ? "#175CD3" : "#CBD5E1"}`,
+                        borderRadius: 999,
+                        padding: "7px 11px",
+                        background: photoTimelineOrganizationFilter === value ? "#EDF3FF" : "#FFFFFF",
+                        color: photoTimelineOrganizationFilter === value ? "#175CD3" : colors.navy3,
+                        fontWeight: 900,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {label} · {count}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.65fr) minmax(250px, .75fr) minmax(250px, .75fr)", gap: 14, marginTop: 16 }}>
+                <div style={{ border: `1px solid ${colors.line}`, borderRadius: 15, padding: 14, background: "#FFFFFF", minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 11 }}>
+                    <div><strong style={{ color: colors.navy3 }}>Recently added</strong><div style={mutedSmallStyle}>Newest property photos across projects and records.</div></div>
+                    <button type="button" onClick={() => applyPhotoOrganizationFilter("all")} style={{ ...secondaryButtonStyle, width: "auto", padding: "6px 9px" }}>View all</button>
+                  </div>
+                  {recentPhotoItems.length ? (
+                    <div style={{ display: "flex", gap: 9, overflowX: "auto", paddingBottom: 4, scrollBehavior: "smooth" }}>
+                      {recentPhotoItems.map((item) => {
+                        const meta = photoTimelineMeta[item.id];
+                        return (
+                          <button key={item.id} type="button" onClick={() => setSelectedPhotoTimelineId(item.id)} style={{ flex: "0 0 118px", border: "1px solid #D7E0EA", borderRadius: 12, padding: 0, overflow: "hidden", background: "#FFFFFF", textAlign: "left", cursor: "pointer" }}>
+                            <img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} />
+                            <span style={{ display: "block", padding: 8 }}>
+                              <strong style={{ display: "block", color: colors.navy3, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</strong>
+                              <small style={{ display: "block", marginTop: 3, color: meta?.projectId ? colors.muted : "#B54708", fontWeight: 800 }}>{meta?.projectId ? (meta.tag || "Unlabeled") : "Needs project"}</small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : <div style={noticeStyle}>Newly added photos will appear here.</div>}
+                </div>
+
+                <div style={{ border: `1px solid ${colors.line}`, borderRadius: 15, padding: 14, background: "#FFFFFF" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><strong style={{ color: colors.navy3 }}>Needs attention</strong><span style={badgeStyle(photosNeedingAttention ? "Open" : "Completed")}>{photosNeedingAttention}</span></div>
+                  <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                    {[["Without projects", unassignedPhotoCount, "unassigned"], ["Missing timeline tags", missingTagPhotoCount, "missing-tag"], ["Missing dates", missingDatePhotoCount, "missing-date"]] .map(([label, count, filter]) => (
+                      <button key={String(label)} type="button" onClick={() => applyPhotoOrganizationFilter(filter as "unassigned" | "missing-tag" | "missing-date")} style={{ display: "flex", justifyContent: "space-between", gap: 10, border: 0, borderBottom: "1px solid #EEF2F6", padding: "8px 0", background: "transparent", color: colors.navy3, fontWeight: 800, cursor: "pointer", textAlign: "left" }}><span>{label}</span><strong>{count}</strong></button>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => applyPhotoOrganizationFilter(unassignedPhotoCount ? "unassigned" : missingTagPhotoCount ? "missing-tag" : "missing-date")} style={{ ...goldButtonStyle, width: "100%", marginTop: 12 }}>Review Photos</button>
+                </div>
+
+                <div style={{ border: `1px solid ${colors.line}`, borderRadius: 15, padding: 14, background: "#FFFFFF" }}>
+                  <strong style={{ color: colors.navy3 }}>Photo storage</strong>
+                  <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
+                    {[["Total photos", allPhotoTimelineItems.length], ["Synced records", syncedPhotoCount], ["Local-only images", localOnlyPhotoCount], ["Project stories", photoTimelineProjects.filter((project) => !project.archived).length]].map(([label, value]) => (
+                      <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", gap: 10, paddingBottom: 8, borderBottom: "1px solid #EEF2F6" }}><span style={{ color: colors.muted, fontWeight: 800 }}>{label}</span><strong style={{ color: colors.navy3 }}>{value}</strong></div>
+                    ))}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+                    <button type="button" onClick={() => setScreen("inbox")} style={goldButtonStyle}>Upload</button>
+                    <button type="button" onClick={() => setScreen("documents")} style={secondaryButtonStyle}>Documents</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             {selectedPhotoTimelineItem && selectedPhotoMeta ? (
               <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(15,23,42,.58)", display: "grid", placeItems: isMobile ? "end stretch" : "center", padding: isMobile ? 0 : 24 }} onClick={() => setSelectedPhotoTimelineId("")}>
                 <div onClick={(event) => event.stopPropagation()} style={{ width: isMobile ? "100%" : "min(1180px,95vw)", maxHeight: isMobile ? "94vh" : "92vh", overflow: "auto", background: "white", borderRadius: isMobile ? "18px 18px 0 0" : 20, boxShadow: "0 24px 70px rgba(15,23,42,.32)" }}>
@@ -13733,7 +13877,7 @@ export default function AtlasPage() {
           </section>
         ) : null}
 
-        <AtlasInsightsTimeline
+        {mode === "insights" ? <AtlasInsightsTimeline
         mode={mode}
         serviceRecords={serviceRecords}
         requestRecords={requestRecords}
@@ -13755,7 +13899,7 @@ export default function AtlasPage() {
         setSelectedServiceId={setSelectedServiceId}
         setSelectedRequestId={setSelectedRequestId}
         openCalendarItem={openCalendarItem}
-      />
+      /> : null}
       </>
     );
   }
