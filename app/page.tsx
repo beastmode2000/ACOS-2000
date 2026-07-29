@@ -13207,13 +13207,16 @@ export default function AtlasPage() {
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: colors.navy, fontSize: 13 }}>Dashboard View</strong><select value={dashboardLayoutId} onChange={(event) => applyLayout(event.target.value)} style={{ ...selectStyle, minWidth: 138, minHeight: 34, padding: "5px 9px", fontSize: 12 }}>{allLayouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardEditMode((current) => !current)} style={{ ...(dashboardEditMode ? goldButtonStyle : secondaryButtonStyle), minHeight: 34, padding: "6px 10px", fontSize: 12 }}>{dashboardEditMode ? "Done" : "Customize"}</button><button type="button" onClick={saveLayoutAs} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Save As</button><button type="button" onClick={() => applyLayout(isMobile ? "mobile" : "operations")} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Reset</button></div>
       </section>
-      {dashboardEditMode ? <section style={{ ...cardStyle, padding: 12 }}><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{dashboardWidgets.map((widget) => <button key={widget.id} type="button" onClick={() => updateWidget(widget.id, { visible: !widget.visible })} style={{ ...secondaryButtonStyle, opacity: widget.visible ? 1 : .55 }}>{widget.visible ? "✓" : "+"} {dashboardWidgetDefinitions[widget.id].title}</button>)}</div><p style={{ ...mutedSmallStyle, margin: "9px 0 0" }}>Drag unlocked widget headers to move them. Resize from the right edge, bottom edge, or gold corner. Height controls the widget’s minimum footprint; full content expands naturally and the main page handles scrolling.</p></section> : null}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(12,minmax(0,1fr))", gridAutoRows: isMobile ? "auto" : 72, gridAutoFlow: "dense", gap: 14, alignItems: "stretch" }}>
-        {dashboardWidgets.filter((widget) => widget.visible).map((widget) => <div key={widget.id} draggable={dashboardEditMode && !widget.locked} onDragStart={() => { if (!widget.locked) setDraggedDashboardWidgetId(widget.id); }} onDragOver={(event) => { if (dashboardEditMode && !widget.locked) event.preventDefault(); }} onDrop={() => moveWidget(widget.id)} style={{ position: "relative", gridColumn: isMobile ? "1 / -1" : `span ${widget.colSpan || legacySizeColumns(widget.size)}`, gridRow: isMobile ? "auto" : `span ${widget.collapsed ? 1 : widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan}`, minWidth: 0, minHeight: isMobile ? 0 : `${Math.max(1, widget.collapsed ? 1 : widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan) * 72}px`, alignSelf: "start", opacity: draggedDashboardWidgetId === widget.id ? .55 : 1, transition: "opacity .18s ease, transform .18s ease", overflow: "visible" }}>
-          {dashboardEditMode || widget.collapsed ? <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: `1px solid ${colors.line}`, borderBottom: widget.collapsed ? `1px solid ${colors.line}` : 0, borderRadius: widget.collapsed ? 14 : "14px 14px 0 0", background: colors.navy, color: "#FFFFFF", padding: "8px 10px", cursor: dashboardEditMode && !widget.locked ? "grab" : "default" }}><strong>{dashboardWidgetDefinitions[widget.id].title}</strong><div style={{ display: "flex", gap: 5, alignItems: "center" }}>{dashboardEditMode ? <><span style={{ fontSize: 11, opacity: .75 }}>{widget.colSpan || legacySizeColumns(widget.size)}×{widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan}</span><button type="button" title={widget.locked ? "Unlock widget" : "Lock widget"} onClick={(event) => { event.stopPropagation(); updateWidget(widget.id, { locked: !widget.locked }); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: widget.locked ? "rgba(230,169,43,.28)" : "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.locked ? "🔒" : "🔓"}</button><button type="button" title="Reset widget size" onClick={(event) => { event.stopPropagation(); resetWidgetGrid(widget.id); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>↺</button></> : null}<button type="button" onClick={() => updateWidget(widget.id, { collapsed: !widget.collapsed })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.collapsed ? "+" : "−"}</button>{dashboardEditMode ? <button type="button" onClick={() => updateWidget(widget.id, { visible: false })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>×</button> : null}</div></div> : null}
-          {!widget.collapsed ? <div style={{ minHeight: dashboardEditMode && !isMobile ? `${Math.max(1, widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan) * 72 - 46}px` : undefined, height: "auto", overflow: "visible", ...(dashboardEditMode ? { border: `1px dashed ${colors.gold}`, borderTop: 0, borderRadius: "0 0 14px 14px" } : {}) }}>{renderWidgetContent(widget.id)}</div> : null}
+      {dashboardEditMode ? <section style={{ ...cardStyle, padding: 12 }}><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{dashboardWidgets.map((widget) => <button key={widget.id} type="button" onClick={() => updateWidget(widget.id, { visible: !widget.visible })} style={{ ...secondaryButtonStyle, opacity: widget.visible ? 1 : .55 }}>{widget.visible ? "✓" : "+"} {dashboardWidgetDefinitions[widget.id].title}</button>)}</div><p style={{ ...mutedSmallStyle, margin: "9px 0 0" }}>Drag only from a widget header. Resize from the right edge, bottom edge, or gold corner. Widgets stay in normal document flow: no internal scrollbars and no overlapping. Content and photos reflow inside the selected width and height.</p></section> : null}
+      <div className="atlas-dashboard-layout-grid" style={{ display: "grid", gridTemplateColumns: "repeat(12,minmax(0,1fr))", gridAutoRows: "auto", gridAutoFlow: "row dense", gap: 14, alignItems: "start" }}>
+        {dashboardWidgets.filter((widget) => widget.visible).map((widget) => {
+        const widgetRows = Math.max(1, widget.collapsed ? 1 : widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan);
+        const widgetMinHeight = widget.collapsed || isMobile ? 0 : Math.max(0, widgetRows * 52);
+        return <div key={widget.id} className="atlas-dashboard-widget-frame" onDragOver={(event) => { if (dashboardEditMode) event.preventDefault(); }} onDrop={() => moveWidget(widget.id)} style={{ position: "relative", gridColumn: isMobile ? "1 / -1" : `span ${widget.colSpan || legacySizeColumns(widget.size)}`, gridRow: "auto", minWidth: 0, minHeight: widgetMinHeight || undefined, alignSelf: "start", opacity: draggedDashboardWidgetId === widget.id ? .55 : 1, transition: "opacity .18s ease, transform .18s ease", overflow: "visible", ['--atlas-widget-min-height' as string]: `${widgetMinHeight}px` }}>
+          {dashboardEditMode || widget.collapsed ? <div draggable={dashboardEditMode && !widget.locked} onDragStart={() => { if (!widget.locked) setDraggedDashboardWidgetId(widget.id); }} onDragEnd={() => setDraggedDashboardWidgetId("")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: `1px solid ${colors.line}`, borderBottom: widget.collapsed ? `1px solid ${colors.line}` : 0, borderRadius: widget.collapsed ? 14 : "14px 14px 0 0", background: colors.navy, color: "#FFFFFF", padding: "8px 10px", cursor: dashboardEditMode && !widget.locked ? "grab" : "default", userSelect: "none" }}><strong>{dashboardWidgetDefinitions[widget.id].title}</strong><div style={{ display: "flex", gap: 5, alignItems: "center" }}>{dashboardEditMode ? <><span style={{ fontSize: 11, opacity: .75 }}>{widget.colSpan || legacySizeColumns(widget.size)}×{widget.rowSpan || dashboardDefaultGrid[widget.id].rowSpan}</span><button type="button" title={widget.locked ? "Unlock widget" : "Lock widget"} onClick={(event) => { event.stopPropagation(); updateWidget(widget.id, { locked: !widget.locked }); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: widget.locked ? "rgba(230,169,43,.28)" : "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.locked ? "🔒" : "🔓"}</button><button type="button" title="Reset widget size" onClick={(event) => { event.stopPropagation(); resetWidgetGrid(widget.id); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>↺</button></> : null}<button type="button" onClick={() => updateWidget(widget.id, { collapsed: !widget.collapsed })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.collapsed ? "+" : "−"}</button>{dashboardEditMode ? <button type="button" onClick={() => updateWidget(widget.id, { visible: false })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>×</button> : null}</div></div> : null}
+          {!widget.collapsed ? <div className="atlas-dashboard-widget-content" style={{ minHeight: !isMobile ? Math.max(0, widgetMinHeight - (dashboardEditMode ? 46 : 0)) || undefined : undefined, height: "auto", overflow: "visible", ...(dashboardEditMode ? { border: `1px dashed ${colors.gold}`, borderTop: 0, borderRadius: "0 0 14px 14px" } : {}) }}>{renderWidgetContent(widget.id)}</div> : null}
           {dashboardEditMode && !widget.collapsed && !widget.locked && !isMobile ? <><div onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginWidgetResize(event, widget, "x"); }} title="Resize width" style={{ position: "absolute", top: 42, right: 0, bottom: 12, width: 8, cursor: "ew-resize", zIndex: 5 }} /><div onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginWidgetResize(event, widget, "y"); }} title="Resize height" style={{ position: "absolute", left: 12, right: 12, bottom: 0, height: 8, cursor: "ns-resize", zIndex: 5 }} /><div onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginWidgetResize(event, widget, "xy"); }} title="Resize width and height" style={{ position: "absolute", right: 2, bottom: 2, width: 18, height: 18, borderRight: `3px solid ${colors.gold}`, borderBottom: `3px solid ${colors.gold}`, borderRadius: 2, cursor: "nwse-resize", zIndex: 6 }} /></> : null}
-        </div>)}
+        </div>;})}
       </div>
     </div>;
   }
@@ -28389,6 +28392,44 @@ export default function AtlasPage() {
           }
           input, select, textarea, button, a {
             max-width: 100%;
+          }
+        }
+
+        .atlas-dashboard-layout-grid {
+          width: 100%;
+          align-items: start;
+        }
+        .atlas-dashboard-widget-frame {
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
+          contain: layout style;
+        }
+        .atlas-dashboard-widget-content {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+          overflow: visible !important;
+        }
+        .atlas-dashboard-widget-content > * {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+        }
+        .atlas-dashboard-widget-content img {
+          max-width: 100%;
+          height: auto;
+        }
+        @media (max-width: 819px) {
+          .atlas-dashboard-layout-grid {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+          }
+          .atlas-dashboard-widget-frame {
+            grid-column: 1 / -1 !important;
+            min-height: 0 !important;
           }
         }
 
