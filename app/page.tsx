@@ -12865,20 +12865,49 @@ export default function AtlasPage() {
     ].filter((item) => !dismissedDashboardFeedIds.includes(item.id)).sort((a,b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     const filteredDashboardFeed = dashboardFeedItems.filter((item) => dashboardFeedFilter === "All" || item.type === dashboardFeedFilter).slice(0, 10);
     const dashboardFeedCounts = (["All","Work","Requests","Vendors","Photos","Alerts"] as const).reduce((counts,key) => ({ ...counts, [key]: key === "All" ? dashboardFeedItems.length : dashboardFeedItems.filter((item) => item.type === key).length }), {} as Record<"All" | "Work" | "Requests" | "Vendors" | "Photos" | "Alerts", number>);
-    const estateHealth = Math.max(55, Math.min(99, 98 - (overdueWork.length * 3 + highPriority.length * 2 + activeRequests.length)));
     const statusDefinitions = [
-      { label: "Maintenance", query: "maintenance", terms: ["maintenance", "house", "electrical", "plumbing", "hvac"], icon: "🔧" },
-      { label: "Landscaping", query: "landscap", terms: ["landscap", "grounds", "cleaning"], icon: "🌿" },
-      { label: "Pool & Spa", query: "pool", terms: ["pool", "spa", "hot tub"], icon: "💧" },
-      { label: "Irrigation", query: "irrigation", terms: ["irrigation", "hydrawise"], icon: "🚿" },
-      { label: "Dock & Marine", query: "dock", terms: ["dock", "marine", "boat", "seadoo", "cobalt"], icon: "🚤" },
-      { label: "Vehicles", query: "vehicle", terms: ["vehicle", "garage", "car"], icon: "🚗" },
+      { label: "Maintenance", query: "maintenance", terms: ["maintenance", "electrical", "plumbing", "hvac", "repair"], icon: "🔧" },
+      { label: "Landscaping", query: "landscaping", terms: ["landscap", "grounds", "weeding", "lawn", "garden"], icon: "🌿" },
+      { label: "Irrigation", query: "irrigation", terms: ["irrigation", "hydrawise", "sprinkler", "watering"], icon: "🚿" },
+      { label: "Pool & Spa", query: "pool", terms: ["pool", "spa", "hot tub", "fountain"], icon: "💧" },
+      { label: "Dock & Marine", query: "dock", terms: ["dock", "marine", "boat", "seadoo", "sea-doo", "cobalt", "lift"], icon: "🚤" },
+      { label: "Vehicles", query: "vehicles", terms: ["vehicle", "garage", "car", "truck"], icon: "🚗" },
+      { label: "House", query: "house", terms: ["house", "room", "interior", "exterior", "appliance"], icon: "🏠" },
+      { label: "Safety", query: "safety", terms: ["safety", "alarm", "generator", "emergency", "inspection"], icon: "⚠" },
     ];
-    const liveStatuses = statusDefinitions.map((definition) => {
-      const matching = openWork.filter((record) => definition.terms.some((term) => `${(record as AtlasServiceRecord).workCategory || ""} ${record.title || ""} ${record.notes || ""}`.toLowerCase().includes(term)));
-      const critical = matching.some((record) => record.priority === "High" && Boolean(record.date) && String(record.date) <= today);
-      return { ...definition, count: matching.length, status: critical ? "Critical" : matching.length ? "Attention" : "Healthy" };
+    const healthCategories = statusDefinitions.map((definition) => {
+      const matches = (record: ServiceRecord) => definition.terms.some((term) => `${(record as AtlasServiceRecord).workCategory || ""} ${record.title || ""} ${record.notes || ""} ${record.area || ""}`.toLowerCase().includes(term));
+      const matchingOpen = openWork.filter(matches);
+      const matchingCompleted = completedWork.filter(matches);
+      const overdue = matchingOpen.filter((record) => Boolean(record.date) && String(record.date) < today);
+      const due = matchingOpen.filter((record) => record.date === today);
+      const urgent = matchingOpen.filter((record) => record.priority === "High");
+      const recentCompleted = matchingCompleted.filter((record) => {
+        const completedAt = completionTime(record as AtlasServiceRecord);
+        return completedAt > 0 && Date.now() - completedAt <= 30 * 24 * 60 * 60 * 1000;
+      });
+      const score = Math.max(35, Math.min(100, 100 - overdue.length * 12 - urgent.length * 7 - due.length * 3 - Math.max(0, matchingOpen.length - 4) * 2));
+      const status = score >= 88 ? "Healthy" : score >= 70 ? "Attention" : "Critical";
+      const trend = recentCompleted.length > overdue.length ? "Improving" : overdue.length > recentCompleted.length ? "Declining" : "Steady";
+      const reason = overdue.length
+        ? `${overdue.length} overdue item${overdue.length === 1 ? "" : "s"}${urgent.length ? ` · ${urgent.length} high priority` : ""}`
+        : urgent.length
+          ? `${urgent.length} high-priority item${urgent.length === 1 ? "" : "s"} open`
+          : matchingOpen.length
+            ? `${matchingOpen.length} open item${matchingOpen.length === 1 ? "" : "s"} · no overdue work`
+            : "No open issues detected";
+      return { ...definition, score, status, trend, reason, count: matchingOpen.length, overdue: overdue.length, urgent: urgent.length, matchingOpen };
     });
+    const estateHealth = Math.round(healthCategories.reduce((sum, category) => sum + category.score, 0) / Math.max(1, healthCategories.length));
+    const liveStatuses = healthCategories.map((category) => ({ ...category, status: category.status }));
+    const estateNeedsAttention = healthCategories
+      .flatMap((category) => category.matchingOpen.map((record) => ({ category, record })))
+      .sort((a, b) => {
+        const aOverdue = Boolean(a.record.date) && String(a.record.date) < today ? 0 : 1;
+        const bOverdue = Boolean(b.record.date) && String(b.record.date) < today ? 0 : 1;
+        return aOverdue - bOverdue || priorityRank(a.record) - priorityRank(b.record) || String(a.record.date || "9999-12-31").localeCompare(String(b.record.date || "9999-12-31"));
+      })
+      .slice(0, 4);
     const visibleRoutineItems: DashboardRoutineItem[] = dashboardRoutineItems.length ? dashboardRoutineItems : scheduledRoutineEvents.map((item) => ({ id: String(item.instanceId || item.id), title: item.title, detail: item.categoryLabel || item.area || "Recurring routine", time: item.time || "" }));
     const completedRoutineCount = visibleRoutineItems.filter((item) => completedDashboardRoutineIds.includes(item.id)).length;
     const routineProgress = visibleRoutineItems.length ? Math.round((completedRoutineCount / visibleRoutineItems.length) * 100) : 0;
@@ -12940,9 +12969,28 @@ export default function AtlasPage() {
           </div>
         </div>
       );
-      if (id === "estate-health") return (
-        <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}><div><div style={eyebrowStyle}>Estate Health</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>Operational overview</h2></div><strong style={{ fontSize: 34, color: estateHealth >= 85 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }}>{estateHealth}%</strong></div><div style={{ height: 9, borderRadius: 999, background: "#E8EEF4", overflow: "hidden", marginTop: 13 }}><div style={{ width: `${estateHealth}%`, height: "100%", background: estateHealth >= 85 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }} /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 9, marginTop: 14 }}>{[["Due today",dueToday.length],["Overdue",overdueWork.length],["High priority",highPriority.length],["Requests",activeRequests.length]].map(([label,value]) => <button key={String(label)} type="button" onClick={() => setScreen(label === "Requests" ? "requests" : "history")} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#F8FAFC", textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", fontSize: 22, color: colors.navy }}>{value}</strong><small style={mutedSmallStyle}>{label}</small></button>)}</div></section>
-      );
+      if (id === "estate-health") return <section style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div><div style={eyebrowStyle}>Estate Health 2.0</div><h2 style={{ margin: "3px 0 4px", color: colors.navy }}>Operational health</h2><p style={{ ...mutedSmallStyle, margin: 0 }}>Live score based on open, overdue, high-priority, and recently completed work.</p></div>
+          <div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 38, lineHeight: 1, color: estateHealth >= 88 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }}>{estateHealth}%</strong><small style={{ ...mutedSmallStyle, fontWeight: 800 }}>{estateHealth >= 88 ? "Healthy" : estateHealth >= 70 ? "Needs attention" : "Critical attention"}</small></div>
+        </div>
+        <div style={{ height: 10, borderRadius: 999, background: "#E8EEF4", overflow: "hidden", marginTop: 14 }}><div style={{ width: `${estateHealth}%`, height: "100%", background: estateHealth >= 88 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red, transition: "width .25s ease" }} /></div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 14 }}>
+          {healthCategories.map((category) => {
+            const tone = category.status === "Healthy" ? colors.green : category.status === "Attention" ? colors.gold : colors.red;
+            return <button key={category.label} type="button" onClick={() => { setQuery(category.query); setSelectedServiceId(category.matchingOpen[0]?.id || null); setScreen("history"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, padding: 11, background: "#FFFFFF", textAlign: "left", cursor: "pointer", display: "grid", gap: 7 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><span style={{ display: "flex", alignItems: "center", gap: 7 }}><span aria-hidden="true">{category.icon}</span><strong style={{ color: colors.navy }}>{category.label}</strong></span><strong style={{ color: tone }}>{category.score}%</strong></div>
+              <div style={{ height: 6, borderRadius: 999, background: "#E8EEF4", overflow: "hidden" }}><div style={{ width: `${category.score}%`, height: "100%", background: tone }} /></div>
+              <small style={{ color: colors.muted }}>{category.reason}</small>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><span style={{ fontSize: 11, fontWeight: 850, color: tone }}>{category.status}</span><span style={{ fontSize: 11, color: colors.muted }}>{category.trend === "Improving" ? "↗" : category.trend === "Declining" ? "↘" : "→"} {category.trend}</span></div>
+            </button>;
+          })}
+        </div>
+        <div style={{ marginTop: 14, borderTop: `1px solid ${colors.line}`, paddingTop: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Needs Attention</strong><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 9px", fontSize: 11 }}>View all work</button></div>
+          <div style={{ display: "grid", gap: 7 }}>{estateNeedsAttention.map(({ category, record }) => <div key={`${category.label}-${record.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 11, padding: "9px 10px", background: "#F8FAFC" }}><button type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title || "Work order"}</strong><small style={mutedSmallStyle}>{category.label}{record.date ? ` · ${new Date(`${record.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}` : ""}{record.priority ? ` · ${record.priority}` : ""}</small></button><button type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Open</button></div>)}{!estateNeedsAttention.length ? <div style={noticeStyle}>No urgent estate-health issues are currently detected.</div> : null}</div>
+        </div>
+      </section>;
       if (id === "today-upcoming") return (
         <section style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
