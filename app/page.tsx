@@ -13585,13 +13585,110 @@ export default function AtlasPage() {
                     </div>
                     <aside style={{ padding: 16, display: "grid", gap: 13, alignContent: "start" }}>
                       <Field label="Project title" value={selectedPhotoProject.title} onChange={(value) => updateSelectedPhotoProject({ title: value })} />
-                      <SelectField label="Category" value={selectedPhotoProject.category} onChange={(value) => updateSelectedPhotoProject({ category: value as PhotoTimelineProjectCategory })} options={projectCategories} />
-                      <SelectField label="Asset" value={selectedPhotoProject.assetId} onChange={(value) => updateSelectedPhotoProject({ assetId: value })} options={[{ value: "", label: "No linked asset" }, ...assetRecords.map((asset) => ({ value: asset.id, label: asset.name }))]} />
-                      <SelectField label="Location" value={selectedPhotoProject.locationId} onChange={(value) => updateSelectedPhotoProject({ locationId: value })} options={[{ value: "", label: "No linked location" }, ...locationRecords.map((location) => ({ value: location.id, label: location.name }))]} />
-                      <SelectField label="Vendor" value={selectedPhotoProject.vendorId} onChange={(value) => updateSelectedPhotoProject({ vendorId: value })} options={[{ value: "", label: "No linked vendor" }, ...vendorRecords.map((vendor) => ({ value: vendor.id, label: vendor.name }))]} />
-                      <SelectField label="Work order" value={selectedPhotoProject.workOrderId} onChange={(value) => updateSelectedPhotoProject({ workOrderId: value })} options={[{ value: "", label: "No linked work order" }, ...serviceRecords.map((record) => ({ value: record.id, label: record.title }))]} />
-                      <Field label="Project notes" value={selectedPhotoProject.notes} onChange={(value) => updateSelectedPhotoProject({ notes: value })} multiline placeholder="Project notes" />
-                      <SelectField label="Cover photo" value={selectedPhotoProject.coverPhotoId} onChange={(value) => updateSelectedPhotoProject({ coverPhotoId: value })} options={[{ value: "", label: "Automatic cover" }, ...selectedPhotoProjectItems.map((item) => ({ value: item.id, label: item.name }))]} />
+                      <SelectField
+                        label="Category"
+                        value={selectedPhotoProject.category}
+                        onChange={(value) =>
+                          updateSelectedPhotoProject({
+                            category: value as PhotoTimelineProjectCategory,
+                          })
+                        }
+                        options={projectCategories}
+                      />
+                      <SelectField
+                        label="Asset"
+                        value={
+                          assetRecords.find(
+                            (asset) => asset.id === selectedPhotoProject.assetId,
+                          )?.name || ""
+                        }
+                        onChange={(value) =>
+                          updateSelectedPhotoProject({
+                            assetId:
+                              assetRecords.find((asset) => asset.name === value)
+                                ?.id || "",
+                          })
+                        }
+                        options={["", ...assetRecords.map((asset) => asset.name)]}
+                      />
+                      <SelectField
+                        label="Location"
+                        value={
+                          locationRecords.find(
+                            (location) =>
+                              location.id === selectedPhotoProject.locationId,
+                          )?.name || ""
+                        }
+                        onChange={(value) =>
+                          updateSelectedPhotoProject({
+                            locationId:
+                              locationRecords.find(
+                                (location) => location.name === value,
+                              )?.id || "",
+                          })
+                        }
+                        options={["", ...locationRecords.map((location) => location.name)]}
+                      />
+                      <SelectField
+                        label="Vendor"
+                        value={
+                          vendorRecords.find(
+                            (vendor) => vendor.id === selectedPhotoProject.vendorId,
+                          )?.name || ""
+                        }
+                        onChange={(value) =>
+                          updateSelectedPhotoProject({
+                            vendorId:
+                              vendorRecords.find((vendor) => vendor.name === value)
+                                ?.id || "",
+                          })
+                        }
+                        options={["", ...vendorRecords.map((vendor) => vendor.name)]}
+                      />
+                      <SelectField
+                        label="Work order"
+                        value={
+                          serviceRecords.find(
+                            (record) =>
+                              record.id === selectedPhotoProject.workOrderId,
+                          )?.title || ""
+                        }
+                        onChange={(value) =>
+                          updateSelectedPhotoProject({
+                            workOrderId:
+                              serviceRecords.find(
+                                (record) => record.title === value,
+                              )?.id || "",
+                          })
+                        }
+                        options={["", ...serviceRecords.map((record) => record.title)]}
+                      />
+                      <Field
+                        label="Project notes"
+                        value={selectedPhotoProject.notes}
+                        onChange={(value) =>
+                          updateSelectedPhotoProject({ notes: value })
+                        }
+                        multiline
+                        placeholder="Project notes"
+                      />
+                      <SelectField
+                        label="Cover photo"
+                        value={
+                          selectedPhotoProjectItems.find(
+                            (item) => item.id === selectedPhotoProject.coverPhotoId,
+                          )?.name || ""
+                        }
+                        onChange={(value) =>
+                          updateSelectedPhotoProject({
+                            coverPhotoId:
+                              selectedPhotoProjectItems.find(
+                                (item) => item.name === value,
+                              )?.id || "",
+                          })
+                        }
+                        options={["", ...selectedPhotoProjectItems.map((item) => item.name)]}
+                      />
                       <button type="button" onClick={() => { setPhotoTimelineProjects((current) => current.filter((project) => project.id !== selectedPhotoProject.id)); setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === selectedPhotoProject.id ? { ...meta, projectId: undefined } : meta]))); setSelectedPhotoProjectId(""); }} style={{ ...secondaryButtonStyle, color: "#B42318", borderColor: "#FDA29B" }}>Delete project story</button>
                     </aside>
                   </div>
