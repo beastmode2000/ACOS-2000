@@ -266,7 +266,6 @@ const dashboardWidgetDefinitions: Record<DashboardWidgetId, { title: string; def
 
 const defaultDashboardWidgetOrder: DashboardWidgetId[] = [
   "hero",
-  "estate-health",
   "today-upcoming",
   "property-status",
   "routine",
@@ -285,13 +284,32 @@ function makeDashboardWidgets(overrides: Partial<Record<DashboardWidgetId, Parti
   }));
 }
 
+function normalizeDashboardWidgets(widgets: DashboardWidgetSetting[]): DashboardWidgetSetting[] {
+  const withoutStandaloneHealth = widgets.filter((widget) => widget.id !== "estate-health");
+  const seen = new Set<DashboardWidgetId>();
+  const normalized = withoutStandaloneHealth.filter((widget) => {
+    if (seen.has(widget.id)) return false;
+    seen.add(widget.id);
+    return true;
+  });
+  if (!seen.has("property-status")) {
+    normalized.splice(Math.min(2, normalized.length), 0, {
+      id: "property-status",
+      visible: true,
+      collapsed: false,
+      size: dashboardWidgetDefinitions["property-status"].defaultSize,
+    });
+  }
+  return normalized;
+}
+
 const builtInDashboardLayouts: DashboardSavedLayout[] = [
   { id: "operations", name: "Operations", widgets: makeDashboardWidgets() },
-  { id: "management", name: "Management", widgets: makeDashboardWidgets({ routine: { visible: false }, weather: { size: "large" }, "estate-health": { size: "full" } }) },
+  { id: "management", name: "Management", widgets: makeDashboardWidgets({ routine: { visible: false }, weather: { size: "large" }, "property-status": { size: "full" } }) },
   { id: "dock", name: "Dock", widgets: makeDashboardWidgets({ routine: { visible: false }, "atlas-brief": { size: "large" }, "property-status": { size: "full" } }) },
   { id: "landscaping", name: "Landscaping", widgets: makeDashboardWidgets({ "recent-activity": { size: "large" }, weather: { size: "full" }, routine: { size: "large" } }) },
   { id: "winter", name: "Winter", widgets: makeDashboardWidgets({ weather: { size: "large" }, routine: { size: "large" } }) },
-  { id: "mobile", name: "Mobile", widgets: makeDashboardWidgets({ hero: { size: "full" }, "estate-health": { size: "full" }, "today-upcoming": { size: "full" }, "property-status": { size: "full" }, routine: { size: "full" }, "atlas-brief": { size: "full" }, "recent-activity": { size: "full" }, weather: { size: "full" } }) },
+  { id: "mobile", name: "Mobile", widgets: makeDashboardWidgets({ hero: { size: "full" }, "today-upcoming": { size: "full" }, "property-status": { size: "full" }, routine: { size: "full" }, "atlas-brief": { size: "full" }, "recent-activity": { size: "full" }, weather: { size: "full" } }) },
 ];
 
 function loadDashboardRoutineItems(): DashboardRoutineItem[] {
@@ -3913,10 +3931,10 @@ export default function AtlasPage() {
         customLayouts?: DashboardSavedLayout[];
       };
       if (Array.isArray(parsed.widgets) && parsed.widgets.length) {
-        setDashboardWidgets(parsed.widgets);
+        setDashboardWidgets(normalizeDashboardWidgets(parsed.widgets));
       }
       setDashboardLayoutId(String(parsed.activeLayoutId || "operations"));
-      setCustomDashboardLayouts(Array.isArray(parsed.customLayouts) ? parsed.customLayouts : []);
+      setCustomDashboardLayouts(Array.isArray(parsed.customLayouts) ? parsed.customLayouts.map((layout) => ({ ...layout, widgets: normalizeDashboardWidgets(layout.widgets || []) })) : []);
     } catch {
       setDashboardWidgets(makeDashboardWidgets());
       setCustomDashboardLayouts([]);
@@ -12971,7 +12989,7 @@ export default function AtlasPage() {
       const layout = allLayouts.find((item) => item.id === layoutId);
       if (!layout) return;
       setDashboardLayoutId(layout.id);
-      setDashboardWidgets(layout.widgets.map((item) => ({ ...item })));
+      setDashboardWidgets(normalizeDashboardWidgets(layout.widgets.map((item) => ({ ...item }))));
       showSaveToast(`${layout.name} layout loaded.`);
     };
     const updateWidget = (id: DashboardWidgetId, changes: Partial<DashboardWidgetSetting>) => setDashboardWidgets((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item));
@@ -13073,7 +13091,17 @@ export default function AtlasPage() {
         </section>
       );
       if (id === "property-status") return (
-        <section style={cardStyle}><div style={eyebrowStyle}>Property Status</div><h2 style={{ margin: "3px 0 12px", color: colors.navy }}>Live operating areas</h2><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9 }}>{liveStatuses.map((item) => { const statusColor = item.status === "Critical" ? colors.red : item.status === "Attention" ? colors.gold : colors.green; return <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}><button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 21 }}>{item.icon}</span><span style={{ width: 9, height: 9, borderRadius: 999, background: statusColor }} /></div><strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong><small style={mutedSmallStyle}>{item.count} open · {item.status}</small></button><button type="button" onClick={() => addDashboardWorkOrder(item.label)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 30, marginTop: 8, padding: "4px 7px", fontSize: 11 }}>+ Work Order</button></div>; })}</div></section>
+        <section style={cardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div><div style={eyebrowStyle}>Property Status</div><h2 style={{ margin: "3px 0 4px", color: colors.navy }}>Live operating areas</h2><p style={{ ...mutedSmallStyle, margin: 0 }}>Estate health is built into each operating area.</p></div>
+            <div style={{ minWidth: 150, textAlign: "right" }}><strong style={{ display: "block", fontSize: 27, lineHeight: 1, color: estateHealth >= 88 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }}>{estateHealth}%</strong><small style={{ ...mutedSmallStyle, fontWeight: 800 }}>{estateHealth >= 88 ? "Estate healthy" : estateHealth >= 70 ? "Needs attention" : "Critical attention"}</small><div style={{ height: 6, borderRadius: 999, background: "#E8EEF4", overflow: "hidden", marginTop: 7 }}><div style={{ width: `${estateHealth}%`, height: "100%", background: estateHealth >= 88 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }} /></div></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 12 }}>{liveStatuses.map((item) => { const statusColor = item.status === "Critical" ? colors.red : item.status === "Attention" ? colors.gold : colors.green; return <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}><button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontSize: 21 }}>{item.icon}</span><strong style={{ fontSize: 14, color: statusColor }}>{item.score}%</strong></div><strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong><small style={mutedSmallStyle}>{item.count} open · {item.status}</small><div style={{ height: 6, borderRadius: 999, background: "#E8EEF4", overflow: "hidden", marginTop: 8 }}><div style={{ width: `${item.score}%`, height: "100%", background: statusColor }} /></div><small style={{ ...mutedSmallStyle, display: "block", marginTop: 6, minHeight: 30 }}>{item.reason}</small></button><button type="button" onClick={() => addDashboardWorkOrder(item.label)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 30, marginTop: 8, padding: "4px 7px", fontSize: 11 }}>+ Work Order</button></div>; })}</div>
+          <div style={{ borderTop: `1px solid ${colors.line}`, marginTop: 13, paddingTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Needs Attention</strong><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 9px", fontSize: 11 }}>View all work</button></div>
+            <div style={{ display: "grid", gap: 7 }}>{estateNeedsAttention.slice(0, 3).map(({ category, record }) => <div key={`area-health-${category.label}-${record.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 11, padding: "8px 9px", background: "#F8FAFC" }}><button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title || "Work order"}</strong><small style={mutedSmallStyle}>{category.label}{record.date ? ` · ${new Date(`${record.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}` : ""}{record.priority ? ` · ${record.priority}` : ""}</small></button><button type="button" onClick={() => openWorkOrderById(record.id)} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Open</button></div>)}{!estateNeedsAttention.length ? <div style={noticeStyle}>No urgent operating-area issues are currently detected.</div> : null}</div>
+          </div>
+        </section>
       );
       if (id === "routine") return <div style={cardStyle}><AtlasRoutines mode="dashboard" isMobile={isMobile} onOpenManager={() => setScreen("routines")} /><div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: colors.navy }}>{completedRoutineCount}/{visibleRoutineItems.length} complete · {routineProgress}%</div></div>;
       if (id === "atlas-brief") return <section style={{ ...cardStyle, background: "#F8FAFC" }}><div style={eyebrowStyle}>Atlas Brief</div><h2 style={{ margin: "3px 0 10px", color: colors.navy }}>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}.</h2><div style={{ display: "grid", gap: 9 }}>{briefLines.map((line, index) => <div key={index} style={{ display: "grid", gridTemplateColumns: "8px minmax(0,1fr)", gap: 9, fontSize: 13, lineHeight: 1.45 }}><span style={{ width: 7, height: 7, borderRadius: 999, background: index === 2 && overdueWork.length ? colors.red : colors.gold, marginTop: 6 }} /><span>{line}</span></div>)}</div><button type="button" onClick={() => setScreen("assistant")} style={{ ...goldButtonStyle, width: "100%", marginTop: 14 }}>Open Ask Atlas</button></section>;
