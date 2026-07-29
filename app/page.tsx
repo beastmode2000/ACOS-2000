@@ -28728,12 +28728,12 @@ export default function AtlasPage() {
               style={{
                 display: "flex",
                 flexDirection: isMobile ? "column" : "row",
-                gap: isMobile ? 10 : 14,
+                gap: isMobile ? 10 : 22,
                 justifyContent: "space-between",
                 alignItems: isMobile ? "stretch" : "center",
               }}
             >
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, flex: isMobile ? "0 0 auto" : "0 1 410px" }}>
                 {!isMobile ? (
                   <div style={eyebrowStyle}>
                     Private Property Command Center
@@ -28823,21 +28823,18 @@ export default function AtlasPage() {
 
               <div
                 style={{
-                  width: isMobile ? "100%" : 570,
-                  maxWidth: "100%",
+                  width: "100%",
+                  minWidth: 0,
+                  flex: isMobile ? "0 0 auto" : "1 1 760px",
                   display: "grid",
-                  gap: 8,
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "minmax(190px, .85fr) minmax(140px, .55fr) minmax(210px, .9fr) minmax(300px, 1.45fr)",
+                  gap: isMobile ? 8 : 10,
+                  alignItems: "stretch",
                 }}
               >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)",
-                    gap: 8,
-                    alignItems: "stretch",
-                  }}
-                >
-                  <select
+                <select
                     value={activePropertyId}
                     onChange={(event) => selectProperty(event.currentTarget.value)}
                     style={{
@@ -28855,8 +28852,33 @@ export default function AtlasPage() {
                         {property.name} — {property.detail}
                       </option>
                     ))}
-                  </select>
-                  <div style={{ minWidth: 0 }}>
+                </select>
+                <div style={{ minWidth: 0, display: "flex" }}>
+                  <div
+                    title="Current estate operating status"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: isMobile ? "flex-start" : "center",
+                      gap: 7,
+                      minHeight: 40,
+                      padding: "7px 11px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,.18)",
+                      background: "rgba(255,255,255,.10)",
+                      color: "#FFFFFF",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: serviceRecords.some((record) => record.status !== "Completed" && record.priority === "High") ? colors.gold2 : "#72D69C" }} />
+                    {serviceRecords.some((record) => record.status !== "Completed" && record.priority === "High")
+                      ? `${serviceRecords.filter((record) => record.status !== "Completed" && record.priority === "High").length} priorities`
+                      : "Estate healthy"}
+                  </div>
+                </div>
+                <div style={{ minWidth: 0, display: "flex" }}>
                     <AtlasNotifications
                       propertyId={activePropertyId}
                       propertyName={
@@ -28885,40 +28907,7 @@ export default function AtlasPage() {
                       onOpenParts={() => setScreen("parts")}
                     />
                   </div>
-                </div>
-
                 <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "auto minmax(0, 1fr)",
-                    gap: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <div
-                    title="Current estate operating status"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: isMobile ? "flex-start" : "center",
-                      gap: 7,
-                      minHeight: 40,
-                      padding: "7px 11px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,.18)",
-                      background: "rgba(255,255,255,.10)",
-                      color: "#FFFFFF",
-                      fontSize: 12,
-                      fontWeight: 900,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: 999, background: serviceRecords.some((record) => record.status !== "Completed" && record.priority === "High") ? colors.gold2 : "#72D69C" }} />
-                    {serviceRecords.some((record) => record.status !== "Completed" && record.priority === "High")
-                      ? `${serviceRecords.filter((record) => record.status !== "Completed" && record.priority === "High").length} priorities`
-                      : "Estate healthy"}
-                  </div>
-                  <div
                     style={{ position: "relative", minWidth: 0 }}
                     onBlur={() => {
                       window.setTimeout(() => {
@@ -28993,7 +28982,6 @@ export default function AtlasPage() {
                       </div>
                     ) : null}
                   </div>
-                </div>
               </div>
             </div>
           </header>
