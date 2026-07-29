@@ -12804,7 +12804,14 @@ export default function AtlasPage() {
         <div style={{ ...cardStyle, padding: isMobile ? "14px" : "17px 20px", background: `linear-gradient(135deg, ${colors.navy} 0%, #173B59 72%, #244E6E 100%)`, color: "#FFFFFF", border: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
             <div><div style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase", color: colors.gold2 }}>Atlas Command Center</div><h1 style={{ margin: "4px 0", fontSize: isMobile ? 25 : 31 }}>{activeProperty.name} Operations</h1><div style={{ opacity: .82, fontSize: 13 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</div></div>
-            <div style={{ minWidth: isMobile ? "100%" : 330 }}><div style={{ fontSize: 11, fontWeight: 800, opacity: .78, marginBottom: 6 }}>COMMAND SEARCH</div><input value={query} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} onFocus={() => setSearchOpen(true)} placeholder="Search Atlas records and operations…" style={{ width: "100%", minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.10)", color: "#FFFFFF", padding: "0 13px", outline: "none" }} /></div>
+            <div style={{ minWidth: isMobile ? "100%" : 290, display: "grid", gap: 7 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, opacity: .78, letterSpacing: ".08em" }}>ESTATE STATUS</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ width: 10, height: 10, borderRadius: 999, background: overdueWork.length ? colors.red : highPriority.length ? colors.gold : "#63D297", boxShadow: "0 0 0 4px rgba(255,255,255,.10)" }} />
+                <strong style={{ fontSize: 15 }}>{overdueWork.length ? `${overdueWork.length} overdue item${overdueWork.length === 1 ? "" : "s"}` : highPriority.length ? `${highPriority.length} high-priority item${highPriority.length === 1 ? "" : "s"}` : "All systems operating normally"}</strong>
+              </div>
+              <span style={{ fontSize: 12, opacity: .76 }}>{openWork.length} open work order{openWork.length === 1 ? "" : "s"} · {activeRequests.length} active request{activeRequests.length === 1 ? "" : "s"}</span>
+            </div>
           </div>
         </div>
       );
@@ -12824,9 +12831,9 @@ export default function AtlasPage() {
     };
 
     return <div className="atlas-command-dashboard" style={{ display: "grid", gap: 12 }}>
-      <section style={{ ...cardStyle, padding: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", background: "#F8FAFC" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: colors.navy }}>Dashboard layout</strong><select value={dashboardLayoutId} onChange={(event) => applyLayout(event.target.value)} style={{ ...selectStyle, minWidth: 150 }}>{allLayouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select></div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardEditMode((current) => !current)} style={dashboardEditMode ? goldButtonStyle : secondaryButtonStyle}>{dashboardEditMode ? "Done Customizing" : "Customize"}</button><button type="button" onClick={saveLayoutAs} style={secondaryButtonStyle}>Save Layout As</button><button type="button" onClick={() => applyLayout(isMobile ? "mobile" : "operations")} style={secondaryButtonStyle}>Reset</button></div>
+      <section style={{ ...cardStyle, padding: isMobile ? 9 : "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", background: "#F8FAFC", borderRadius: 14 }}>
+        <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: colors.navy, fontSize: 13 }}>Layout</strong><select value={dashboardLayoutId} onChange={(event) => applyLayout(event.target.value)} style={{ ...selectStyle, minWidth: 138, minHeight: 34, padding: "5px 9px", fontSize: 12 }}>{allLayouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select></div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardEditMode((current) => !current)} style={{ ...(dashboardEditMode ? goldButtonStyle : secondaryButtonStyle), minHeight: 34, padding: "6px 10px", fontSize: 12 }}>{dashboardEditMode ? "Done" : "Customize"}</button><button type="button" onClick={saveLayoutAs} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Save As</button><button type="button" onClick={() => applyLayout(isMobile ? "mobile" : "operations")} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Reset</button></div>
       </section>
       {dashboardEditMode ? <section style={{ ...cardStyle, padding: 12 }}><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{dashboardWidgets.map((widget) => <button key={widget.id} type="button" onClick={() => updateWidget(widget.id, { visible: !widget.visible })} style={{ ...secondaryButtonStyle, opacity: widget.visible ? 1 : .55 }}>{widget.visible ? "✓" : "+"} {dashboardWidgetDefinitions[widget.id].title}</button>)}</div><p style={{ ...mutedSmallStyle, margin: "9px 0 0" }}>Drag widget headers to reorder. Use the size, collapse, and hide controls on each widget. Changes save automatically for this property.</p></section> : null}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(12,minmax(0,1fr))", gap: 12, alignItems: "start" }}>
@@ -28268,211 +28275,176 @@ export default function AtlasPage() {
 
               <div
                 style={{
-                  width: isMobile ? "100%" : 320,
+                  width: isMobile ? "100%" : 570,
                   maxWidth: "100%",
+                  display: "grid",
+                  gap: 8,
                 }}
               >
-                <select
-                  value={activePropertyId}
-                  onChange={(event) => selectProperty(event.currentTarget.value)}
-                  style={{ ...inputStyle, marginBottom: 6, minHeight: 36, padding: "7px 10px", fontSize: 13, fontWeight: 900 }}
-                  aria-label="Active property"
-                >
-                  {atlasProperties.filter((property) => allowedPropertyIds.includes(property.id)).map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.name} — {property.detail}
-                    </option>
-                  ))}
-                </select>
-                <AtlasNotifications
-                  propertyId={activePropertyId}
-                  propertyName={
-                    atlasProperties.find(
-                      (property) => property.id === activePropertyId,
-                    )?.name || activePropertyId
-                  }
-                  workOrders={serviceRecords}
-                  parts={partRecords}
-                  inboxItems={inboxItems}
-                  requests={requestRecords}
-                  colors={colors}
-                  isMobile={isMobile}
-                  onOpenWork={(id) => {
-                    setSelectedServiceId(id);
-                    setScreen("history");
-                  }}
-                  onOpenInbox={(id) => {
-                    setSelectedInboxId(id);
-                    setScreen("inbox");
-                  }}
-                  onOpenRequest={(id) => {
-                    setSelectedRequestId(id);
-                    setScreen("requests");
-                  }}
-                  onOpenParts={() => setScreen("parts")}
-                />
                 <div
-                  style={{ position: "relative", minWidth: 0 }}
-                  onBlur={() => {
-                    window.setTimeout(() => {
-                      setQuery("");
-                      setSearchOpen(false);
-                    }, 120);
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)",
+                    gap: 8,
+                    alignItems: "stretch",
                   }}
                 >
-                  <input
-                    value={query}
-                    onFocus={() => setSearchOpen(true)}
-                    onChange={(event) => {
-                      setQuery(event.currentTarget.value);
-                      setSearchOpen(true);
-                      setSearchActiveIndex(0);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        setQuery("");
-                        setSearchOpen(false);
-                        setSearchActiveIndex(0);
-                        return;
-                      }
-
-                      if (event.key === "ArrowDown" && searchResults.length) {
-                        event.preventDefault();
-                        setSearchActiveIndex((current) =>
-                          Math.min(current + 1, searchResults.length - 1),
-                        );
-                        return;
-                      }
-
-                      if (event.key === "ArrowUp" && searchResults.length) {
-                        event.preventDefault();
-                        setSearchActiveIndex((current) =>
-                          Math.max(current - 1, 0),
-                        );
-                        return;
-                      }
-
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        if (globalInputLooksLikeQuestion(query)) {
-                          askAtlasFromGlobalSearch();
-                        } else if (searchResults[searchActiveIndex]) {
-                          openSearchResult(searchResults[searchActiveIndex]);
-                        } else if (query.trim()) {
-                          askAtlasFromGlobalSearch();
-                        }
-                      }
-                    }}
-                    placeholder="Search Atlas or ask a question..."
-                    aria-label="Search Atlas records or ask Atlas"
+                  <select
+                    value={activePropertyId}
+                    onChange={(event) => selectProperty(event.currentTarget.value)}
                     style={{
                       ...inputStyle,
-                      width: "100%",
-                      minHeight: isMobile ? 46 : undefined,
+                      minHeight: 40,
+                      padding: "7px 11px",
+                      fontSize: 13,
+                      fontWeight: 900,
+                      margin: 0,
                     }}
-                  />
-                  {searchOpen ? (
-                    <div style={searchDropStyle}>
-                      {query.trim() ? (
-                        <>
-                          {searchResults.length ? (
-                            <AtlasGroupedSearchResults
-                              results={searchResults}
-                              activeIndex={searchActiveIndex}
-                              query={query}
-                              onHover={setSearchActiveIndex}
-                              onOpen={openSearchResult}
-                              highlight={highlightedSearchText}
-                            />
-                          ) : (
-                            <div style={searchEmptyStyle}>
-                              No direct Atlas records match “{query.trim()}”.
-                            </div>
-                          )}
+                    aria-label="Active property"
+                  >
+                    {atlasProperties.filter((property) => allowedPropertyIds.includes(property.id)).map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name} — {property.detail}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ minWidth: 0 }}>
+                    <AtlasNotifications
+                      propertyId={activePropertyId}
+                      propertyName={
+                        atlasProperties.find(
+                          (property) => property.id === activePropertyId,
+                        )?.name || activePropertyId
+                      }
+                      workOrders={serviceRecords}
+                      parts={partRecords}
+                      inboxItems={inboxItems}
+                      requests={requestRecords}
+                      colors={colors}
+                      isMobile={isMobile}
+                      onOpenWork={(id) => {
+                        setSelectedServiceId(id);
+                        setScreen("history");
+                      }}
+                      onOpenInbox={(id) => {
+                        setSelectedInboxId(id);
+                        setScreen("inbox");
+                      }}
+                      onOpenRequest={(id) => {
+                        setSelectedRequestId(id);
+                        setScreen("requests");
+                      }}
+                      onOpenParts={() => setScreen("parts")}
+                    />
+                  </div>
+                </div>
 
-                          <button
-                            type="button"
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              askAtlasFromGlobalSearch();
-                            }}
-                            style={{
-                              ...searchResultStyle,
-                              background: "#F7FAFF",
-                              borderTop: `1px solid ${colors.line}`,
-                            }}
-                          >
-                            <span
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                gap: 10,
-                                alignItems: "center",
-                              }}
-                            >
-                              <strong>Ask Atlas: “{query.trim()}”</strong>
-                              <span style={searchTypeBadgeStyle}>AI</span>
-                            </span>
-                            <span style={mutedSmallStyle}>
-                              Search all Atlas records and explain the answer.
-                            </span>
-                          </button>
-                        </>
-                      ) : recentSearches.length ? (
-                        <div style={{ padding: 8 }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: 10,
-                              padding: "4px 6px 8px",
-                            }}
-                          >
-                            <strong style={{ fontSize: 12 }}>
-                              Recent searches
-                            </strong>
-                            <button
-                              type="button"
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                clearRecentSearches();
-                              }}
-                              style={{
-                                border: 0,
-                                background: "transparent",
-                                color: colors.muted,
-                                cursor: "pointer",
-                                fontSize: 12,
-                              }}
-                            >
-                              Clear
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "auto minmax(0, 1fr)",
+                    gap: 8,
+                    alignItems: "center",
+                  }}
+                >
+                  <div
+                    title="Current estate operating status"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: isMobile ? "flex-start" : "center",
+                      gap: 7,
+                      minHeight: 40,
+                      padding: "7px 11px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,.18)",
+                      background: "rgba(255,255,255,.10)",
+                      color: "#FFFFFF",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: serviceRecords.some((record) => record.status !== "Completed" && record.priority === "High") ? colors.gold2 : "#72D69C" }} />
+                    {serviceRecords.some((record) => record.status !== "Completed" && record.priority === "High")
+                      ? `${serviceRecords.filter((record) => record.status !== "Completed" && record.priority === "High").length} priorities`
+                      : "Estate healthy"}
+                  </div>
+                  <div
+                    style={{ position: "relative", minWidth: 0 }}
+                    onBlur={() => {
+                      window.setTimeout(() => {
+                        setQuery("");
+                        setSearchOpen(false);
+                      }, 120);
+                    }}
+                  >
+                    <input
+                      value={query}
+                      onFocus={() => setSearchOpen(true)}
+                      onChange={(event) => {
+                        setQuery(event.currentTarget.value);
+                        setSearchOpen(true);
+                        setSearchActiveIndex(0);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          setQuery("");
+                          setSearchOpen(false);
+                          setSearchActiveIndex(0);
+                          return;
+                        }
+                        if (event.key === "ArrowDown" && searchResults.length) {
+                          event.preventDefault();
+                          setSearchActiveIndex((current) => Math.min(current + 1, searchResults.length - 1));
+                          return;
+                        }
+                        if (event.key === "ArrowUp" && searchResults.length) {
+                          event.preventDefault();
+                          setSearchActiveIndex((current) => Math.max(current - 1, 0));
+                          return;
+                        }
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          if (globalInputLooksLikeQuestion(query)) askAtlasFromGlobalSearch();
+                          else if (searchResults[searchActiveIndex]) openSearchResult(searchResults[searchActiveIndex]);
+                          else if (query.trim()) askAtlasFromGlobalSearch();
+                        }
+                      }}
+                      placeholder="Search all Atlas records or ask a question…"
+                      aria-label="Global Atlas search"
+                      style={{
+                        ...inputStyle,
+                        width: "100%",
+                        minHeight: 40,
+                        margin: 0,
+                      }}
+                    />
+                    {searchOpen ? (
+                      <div style={searchDropStyle}>
+                        {query.trim() ? (
+                          <>
+                            {searchResults.length ? (
+                              <AtlasGroupedSearchResults results={searchResults} activeIndex={searchActiveIndex} query={query} onHover={setSearchActiveIndex} onOpen={openSearchResult} highlight={highlightedSearchText} />
+                            ) : (
+                              <div style={searchEmptyStyle}>No direct Atlas records match “{query.trim()}”.</div>
+                            )}
+                            <button type="button" onMouseDown={(event) => { event.preventDefault(); askAtlasFromGlobalSearch(); }} style={{ ...searchResultStyle, background: "#F7FAFF", borderTop: `1px solid ${colors.line}` }}>
+                              <span style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><strong>Ask Atlas: “{query.trim()}”</strong><span style={searchTypeBadgeStyle}>AI</span></span>
+                              <span style={mutedSmallStyle}>Search all Atlas records and explain the answer.</span>
                             </button>
+                          </>
+                        ) : recentSearches.length ? (
+                          <div style={{ padding: 8 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "4px 6px 8px" }}><strong style={{ fontSize: 12 }}>Recent searches</strong><button type="button" onMouseDown={(event) => { event.preventDefault(); clearRecentSearches(); }} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 12 }}>Clear</button></div>
+                            {recentSearches.map((item) => <button key={item} type="button" onMouseDown={(event) => { event.preventDefault(); setQuery(item); setSearchOpen(true); }} style={searchResultStyle}><strong>{item}</strong></button>)}
                           </div>
-                          {recentSearches.map((item) => (
-                            <button
-                              key={item}
-                              type="button"
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                setQuery(item);
-                                setSearchOpen(true);
-                              }}
-                              style={searchResultStyle}
-                            >
-                              <strong>{item}</strong>
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <div style={searchEmptyStyle}>
-                          Search assets, vendors, documents, photos, work
-                          orders, calendar items, parts, procedures, manuals,
-                          and links.
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
+                        ) : (
+                          <div style={searchEmptyStyle}>Search assets, vendors, documents, photos, timeline records, work orders, calendar items, procedures, manuals, parts, and links.</div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
