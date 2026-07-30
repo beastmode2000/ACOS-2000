@@ -4394,6 +4394,9 @@ export default function AtlasPage() {
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [assetEditorOpen, setAssetEditorOpen] = useState(false);
   const [assetSortOrder, setAssetSortOrder] = useState<"az" | "za">("az");
+  const [assetListDensity, setAssetListDensity] = useState<"comfortable" | "compact">(
+    "comfortable",
+  );
   const [assetListSearch, setAssetListSearch] = useState("");
   const [assetPanelCustomizeOpen, setAssetPanelCustomizeOpen] = useState(false);
   const [assetPanelScrolling, setAssetPanelScrolling] = useState(false);
@@ -4425,6 +4428,25 @@ export default function AtlasPage() {
   );
   const [scannerManualValue, setScannerManualValue] = useState("");
   const [lastScannedQr, setLastScannedQr] = useState("");
+
+  useEffect(() => {
+    try {
+      const storedDensity = window.localStorage.getItem("atlas_asset_list_density_v1");
+      if (storedDensity === "compact" || storedDensity === "comfortable") {
+        setAssetListDensity(storedDensity);
+      }
+    } catch {
+      // Keep the comfortable default when the preference cannot be read.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("atlas_asset_list_density_v1", assetListDensity);
+    } catch {
+      // List density is optional and should never interrupt Atlas.
+    }
+  }, [assetListDensity]);
 
   useEffect(() => {
     try {
@@ -16226,7 +16248,43 @@ export default function AtlasPage() {
               }
         }
         right={
-          <div style={assetListControlsStyle}>
+          <div style={{ ...assetListControlsStyle, flexWrap: "wrap" }}>
+            <div
+              role="group"
+              aria-label="Asset list spacing"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                border: `1px solid ${colors.line}`,
+                borderRadius: 10,
+                padding: 2,
+                background: "#FFFFFF",
+              }}
+            >
+              {(["comfortable", "compact"] as const).map((density) => (
+                <button
+                  key={density}
+                  type="button"
+                  onClick={() => setAssetListDensity(density)}
+                  aria-pressed={assetListDensity === density}
+                  style={{
+                    border: 0,
+                    borderRadius: 8,
+                    background:
+                      assetListDensity === density ? "#FFF3CF" : "transparent",
+                    color:
+                      assetListDensity === density ? colors.navy : colors.muted,
+                    padding: "7px 9px",
+                    fontSize: 11,
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {density === "comfortable" ? "Comfortable" : "Compact"}
+                </button>
+              ))}
+            </div>
             <select
               value={assetSortOrder}
               onChange={(event) =>
@@ -16346,7 +16404,8 @@ export default function AtlasPage() {
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                 <span style={mutedSmallStyle}>
-                  Showing {displayedAssets.length} of {assetRecords.length} assets
+                  Showing {displayedAssets.length} of {assetRecords.length} assets ·{" "}
+                  {assetListDensity === "compact" ? "Compact view" : "Comfortable view"}
                 </span>
                 {(assetListSearch || excludedAssetStatuses.length || excludedAssetCategories.length) ? (
                   <button
@@ -16364,7 +16423,12 @@ export default function AtlasPage() {
               </div>
             </section>
 
-            <div style={assetAlphabeticalListStyle}>
+            <div
+              style={{
+                ...assetAlphabeticalListStyle,
+                gap: assetListDensity === "compact" ? 6 : 10,
+              }}
+            >
             {displayedAssets.map((asset) => {
               const assetPhotos = photos.filter(
                 (photo) => photo.assetId === asset.id,
@@ -16474,12 +16538,20 @@ export default function AtlasPage() {
                       border: 0,
                       background: "transparent",
                       borderRadius: 12,
-                      paddingRight: 108,
+                      padding: assetListDensity === "compact" ? "9px 106px 9px 10px" : undefined,
+                      paddingRight: assetListDensity === "compact" ? 106 : 108,
                       textAlign: "left",
                     }}
                   >
                     <div style={{ ...recordListIdentityStyle, alignItems: "flex-start" }}>
-                      <div style={assetListThumbStyle}>
+                      <div
+                        style={{
+                          ...assetListThumbStyle,
+                          width: assetListDensity === "compact" ? 38 : undefined,
+                          height: assetListDensity === "compact" ? 38 : undefined,
+                          minWidth: assetListDensity === "compact" ? 38 : undefined,
+                        }}
+                      >
                         {coverPhotoSource ? (
                           <img
                             src={coverPhotoSource}
@@ -16508,7 +16580,7 @@ export default function AtlasPage() {
                         </div>
                         <div
                           style={{
-                            display: "grid",
+                            display: assetListDensity === "compact" ? "none" : "grid",
                             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                             gap: 5,
                             marginTop: 1,
@@ -16561,9 +16633,9 @@ export default function AtlasPage() {
                     style={{
                       position: "absolute",
                       right: 8,
-                      top: 8,
+                      top: assetListDensity === "compact" ? 7 : 8,
                       display: "grid",
-                      gap: 5,
+                      gap: assetListDensity === "compact" ? 4 : 5,
                       zIndex: 3,
                     }}
                   >
