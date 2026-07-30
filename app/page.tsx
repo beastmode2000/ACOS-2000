@@ -13506,6 +13506,52 @@ export default function AtlasPage() {
   }
 
   function renderDashboard() {
+    const teamSectionStyle: React.CSSProperties = {
+      width: "100%",
+      minWidth: 0,
+      background: colors.card,
+      border: `1px solid ${colors.line}`,
+      borderRadius: 18,
+      padding: isMobile ? 14 : 18,
+      boxShadow: "0 10px 28px rgba(15, 23, 42, 0.05)",
+    };
+    const teamCardStyle: React.CSSProperties = {
+      minWidth: 0,
+      background: "#FFFFFF",
+      border: `1px solid ${colors.line}`,
+      borderRadius: 14,
+      padding: isMobile ? 12 : 14,
+    };
+    const teamEyebrowStyle: React.CSSProperties = {
+      color: colors.gold,
+      fontSize: 11,
+      fontWeight: 900,
+      letterSpacing: ".09em",
+      textTransform: "uppercase",
+      marginBottom: 4,
+    };
+    const teamMutedSmallStyle: React.CSSProperties = {
+      color: colors.muted,
+      fontSize: 13,
+      lineHeight: 1.45,
+    };
+    const teamGoldButtonStyle: React.CSSProperties = {
+      border: `1px solid ${colors.gold}`,
+      background: colors.gold,
+      color: colors.navy,
+      borderRadius: 10,
+      padding: "9px 12px",
+      fontWeight: 900,
+      cursor: "pointer",
+    };
+    const teamNoticeStyle: React.CSSProperties = {
+      border: `1px solid ${colors.line}`,
+      background: "#FFFFFF",
+      borderRadius: 12,
+      padding: 13,
+      color: colors.muted,
+      fontSize: 13,
+    };
     if (isRestrictedStaffUser) {
       const teamOpen = staffVisibleServiceRecords.filter((record) => record.status !== "Completed");
       const teamCompleted = staffVisibleServiceRecords.filter((record) => record.status === "Completed");
@@ -13529,7 +13575,7 @@ export default function AtlasPage() {
         <div style={{ display: "grid", gap: 14 }}>
           <section
             style={{
-              ...sectionStyle,
+              ...teamSectionStyle,
               background: `linear-gradient(135deg, ${colors.navy}, ${colors.navy3})`,
               color: "#FFFFFF",
             }}
@@ -13576,7 +13622,7 @@ export default function AtlasPage() {
           {(teamHighPriority.length > 0 || teamWaiting.length > 0) ? (
             <section
               style={{
-                ...sectionStyle,
+                ...teamSectionStyle,
                 display: "grid",
                 gridTemplateColumns: isMobile
                   ? "1fr"
@@ -13584,15 +13630,15 @@ export default function AtlasPage() {
                 gap: 10,
               }}
             >
-              <div style={{ ...cardStyle, padding: 13 }}>
-                <div style={eyebrowStyle}>Needs Attention</div>
+              <div style={{ ...teamCardStyle, padding: 13 }}>
+                <div style={teamEyebrowStyle}>Needs Attention</div>
                 <strong style={{ color: colors.navy }}>
                   {teamHighPriority.length} high-priority assignment
                   {teamHighPriority.length === 1 ? "" : "s"}
                 </strong>
               </div>
-              <div style={{ ...cardStyle, padding: 13 }}>
-                <div style={eyebrowStyle}>Waiting</div>
+              <div style={{ ...teamCardStyle, padding: 13 }}>
+                <div style={teamEyebrowStyle}>Waiting</div>
                 <strong style={{ color: colors.navy }}>
                   {teamWaiting.length} assignment{teamWaiting.length === 1 ? "" : "s"} waiting
                 </strong>
@@ -13600,7 +13646,7 @@ export default function AtlasPage() {
             </section>
           ) : null}
 
-          <section style={sectionStyle}>
+          <section style={teamSectionStyle}>
             <SectionHeader
               eyebrow="My Assignments"
               title={teamWorkspace.centerTitle}
@@ -13611,7 +13657,7 @@ export default function AtlasPage() {
                 teamUpcoming.map((record) => (
                   <div
                     key={record.id}
-                    style={{ ...cardStyle, padding: 13, display: "grid", gap: 9 }}
+                    style={{ ...teamCardStyle, padding: 13, display: "grid", gap: 9 }}
                   >
                     <div
                       style={{
@@ -13623,7 +13669,7 @@ export default function AtlasPage() {
                       }}
                     >
                       <div style={{ minWidth: 0 }}>
-                        <div style={eyebrowStyle}>
+                        <div style={teamEyebrowStyle}>
                           {record.priority} priority · {record.status}
                         </div>
                         <strong
@@ -13635,14 +13681,14 @@ export default function AtlasPage() {
                         >
                           {record.title}
                         </strong>
-                        <span style={mutedSmallStyle}>
+                        <span style={teamMutedSmallStyle}>
                           {record.date ? formatDate(record.date) : "No due date"}
                           {record.assetId ? ` · ${assetName(record.assetId)}` : ""}
                         </span>
                       </div>
                       <button
                         type="button"
-                        style={{ ...goldButtonStyle, width: "auto" }}
+                        style={{ ...teamGoldButtonStyle, width: "auto" }}
                         onClick={() => {
                           setSelectedServiceId(record.id);
                           setWorkOrdersOpenKey((current) => current + 1);
@@ -13653,19 +13699,19 @@ export default function AtlasPage() {
                       </button>
                     </div>
                     {record.notes ? (
-                      <div style={{ ...mutedSmallStyle, lineHeight: 1.5 }}>
+                      <div style={{ ...teamMutedSmallStyle, lineHeight: 1.5 }}>
                         {record.notes}
                       </div>
                     ) : null}
                   </div>
                 ))
               ) : (
-                <div style={noticeStyle}>{teamWorkspace.emptyMessage}</div>
+                <div style={teamNoticeStyle}>{teamWorkspace.emptyMessage}</div>
               )}
             </div>
           </section>
 
-          <section style={sectionStyle}>
+          <section style={teamSectionStyle}>
             <SectionHeader
               eyebrow="Recent Activity"
               title="Completed Work"
@@ -13673,9 +13719,9 @@ export default function AtlasPage() {
             />
             <div style={{ display: "grid", gap: 8 }}>
               {teamCompleted.slice(0, 8).map((record) => (
-                <div key={record.id} style={{ ...cardStyle, padding: 11 }}>
+                <div key={record.id} style={{ ...teamCardStyle, padding: 11 }}>
                   <strong style={{ color: colors.navy }}>{record.title}</strong>
-                  <div style={mutedSmallStyle}>
+                  <div style={teamMutedSmallStyle}>
                     {record.lastCompletedDate
                       ? formatDate(record.lastCompletedDate)
                       : "Completed"}
@@ -13683,7 +13729,7 @@ export default function AtlasPage() {
                 </div>
               ))}
               {!teamCompleted.length ? (
-                <div style={noticeStyle}>
+                <div style={teamNoticeStyle}>
                   Completed assignments will appear here.
                 </div>
               ) : null}
