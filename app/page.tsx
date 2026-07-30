@@ -4401,6 +4401,7 @@ export default function AtlasPage() {
   const [favoriteAssetIds, setFavoriteAssetIds] = useState<string[]>([]);
   const [recentAssetIds, setRecentAssetIds] = useState<string[]>([]);
   const [assetQuickAccessOpen, setAssetQuickAccessOpen] = useState(true);
+  const [assetRecordQualityOpen, setAssetRecordQualityOpen] = useState(true);
   const [assetPanelCustomizeOpen, setAssetPanelCustomizeOpen] = useState(false);
   const [assetPanelSection, setAssetPanelSection] = useState<
     "overview" | "work" | "history" | "photos" | "documents" | "procedures" | "notes"
@@ -4451,6 +4452,11 @@ export default function AtlasPage() {
 
       const storedOpen = window.localStorage.getItem("atlas_asset_quick_access_open_v1");
       if (storedOpen === "false") setAssetQuickAccessOpen(false);
+
+      const storedQualityOpen = window.localStorage.getItem(
+        "atlas_asset_record_quality_open_v1",
+      );
+      if (storedQualityOpen === "false") setAssetRecordQualityOpen(false);
     } catch {
       // Keep clean defaults when saved asset shortcuts cannot be read.
     }
@@ -4482,6 +4488,15 @@ export default function AtlasPage() {
       );
     } catch {}
   }, [assetQuickAccessOpen]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "atlas_asset_record_quality_open_v1",
+        String(assetRecordQualityOpen),
+      );
+    } catch {}
+  }, [assetRecordQualityOpen]);
 
   useEffect(() => {
     try {
@@ -16114,6 +16129,77 @@ export default function AtlasPage() {
       .map((id) => assetRecords.find((asset) => asset.id === id))
       .filter((asset): asset is AssetRecord => Boolean(asset))
       .slice(0, 6);
+    const normalizeAssetMatchValue = (value: unknown) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+
+    const assetRecordQualityRows = assetRecords.map((asset) => {
+      const linkedManualCount = intakeDocs.filter(
+        (document) =>
+          document.linkedAssetId === asset.id ||
+          (document.targetType === "Asset" && document.targetId === asset.id),
+      ).length;
+      const linkedProcedureCount = procedureRecords.filter((procedure) =>
+        (procedure.linkedAssetIds || []).includes(asset.id),
+      ).length;
+      const missing: string[] = [];
+
+      if (!asset.locationId || asset.locationId === "general") {
+        missing.push("location");
+      }
+      if (!asset.serial?.trim()) missing.push("serial");
+      if (!asset.make?.trim() && !asset.model?.trim()) {
+        missing.push("make or model");
+      }
+      if (!(asset.vendorIds || []).length) missing.push("vendor");
+      if (!linkedManualCount) missing.push("manual");
+      if (!linkedProcedureCount) missing.push("procedure");
+
+      return {
+        asset,
+        missing,
+        completeness: Math.max(0, 6 - missing.length),
+      };
+    });
+
+    const incompleteAssetRows = assetRecordQualityRows
+      .filter((row) => row.missing.length >= 3)
+      .sort((a, b) => {
+        const missingDifference = b.missing.length - a.missing.length;
+        return missingDifference || a.asset.name.localeCompare(b.asset.name);
+      })
+      .slice(0, 8);
+
+    const duplicateAssetGroups = (() => {
+      const groups = new Map<string, AssetRecord[]>();
+
+      assetRecords.forEach((asset) => {
+        const serial = normalizeAssetMatchValue(asset.serial);
+        const name = normalizeAssetMatchValue(asset.name);
+        const model = normalizeAssetMatchValue(asset.model);
+        const make = normalizeAssetMatchValue(asset.make);
+
+        const key = serial
+          ? `serial:${serial}`
+          : name && model
+            ? `name-model:${name}|${model}`
+            : name && make
+              ? `name-make:${name}|${make}`
+              : "";
+
+        if (!key) return;
+        groups.set(key, [...(groups.get(key) || []), asset]);
+      });
+
+      return [...groups.values()]
+        .filter((group) => group.length > 1)
+        .sort((a, b) => b.length - a.length)
+        .slice(0, 6);
+    })();
+
     const displayedAssets = [...filteredAssets]
       .filter((asset) => !excludedAssetStatuses.includes(asset.status))
       .filter((asset) => !excludedAssetCategories.includes(asset.category))
@@ -16499,6 +16585,178 @@ export default function AtlasPage() {
                 ) : null}
               </div>
             </section>
+
+            {(duplicateAssetGroups.length || incompleteAssetRows.length) ? (
+              <section
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 14,
+                  background: "#FFFFFF",
+                  padding: 10,
+                  display: "grid",
+                  gap: 9,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <strong
+                      style={{
+                        display: "block",
+                        color: colors.navy,
+                        fontSize: 12,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Record Quality
+                    </strong>
+                    <span style={mutedSmallStyle}>
+                      {duplicateAssetGroups.length} possible duplicate group
+                      {duplicateAssetGroups.length === 1 ? "" : "s"} ·{" "}
+                      {incompleteAssetRows.length} incomplete record
+                      {incompleteAssetRows.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAssetRecordQualityOpen((current) => !current)}
+                    style={assetTinyButtonStyle}
+                    aria-expanded={assetRecordQualityOpen}
+                  >
+                    {assetRecordQualityOpen ? "Collapse" : "Review"}
+                  </button>
+                </div>
+
+                {assetRecordQualityOpen ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {duplicateAssetGroups.length ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <span style={assetInfoLabelStyle}>Possible Duplicates</span>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          {duplicateAssetGroups.map((group, index) => (
+                            <div
+                              key={`${group[0]?.id || "duplicate"}-${index}`}
+                              style={{
+                                border: `1px solid ${colors.line}`,
+                                borderRadius: 10,
+                                background: "#FFF9E8",
+                                padding: 8,
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  color: colors.navy,
+                                  fontSize: 11,
+                                  fontWeight: 850,
+                                }}
+                              >
+                                {group.length} records may describe the same asset
+                              </span>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {group.map((asset) => (
+                                  <button
+                                    key={asset.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedAssetId(asset.id);
+                                      setAssetEditorOpen(false);
+                                      setRecentAssetIds((current) => [
+                                        asset.id,
+                                        ...current.filter((id) => id !== asset.id),
+                                      ].slice(0, 8));
+                                    }}
+                                    style={{
+                                      ...assetTinyButtonStyle,
+                                      maxWidth: "100%",
+                                      background:
+                                        selectedAssetId === asset.id
+                                          ? "#FFF3CF"
+                                          : "#FFFFFF",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        display: "block",
+                                        maxWidth: 190,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {asset.name}
+                                      {asset.serial ? ` · ${asset.serial}` : ""}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <span style={mutedSmallStyle}>
+                          Atlas only flags possible matches. Nothing is merged automatically.
+                        </span>
+                      </div>
+                    ) : null}
+
+                    {incompleteAssetRows.length ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <span style={assetInfoLabelStyle}>Needs More Information</span>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          {incompleteAssetRows.map(({ asset, missing }) => (
+                            <button
+                              key={asset.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedAssetId(asset.id);
+                                setAssetPanelSection("overview");
+                                setAssetEditorOpen(false);
+                                setRecentAssetIds((current) => [
+                                  asset.id,
+                                  ...current.filter((id) => id !== asset.id),
+                                ].slice(0, 8));
+                              }}
+                              style={{
+                                border: `1px solid ${colors.line}`,
+                                borderRadius: 10,
+                                background:
+                                  selectedAssetId === asset.id ? "#F4F8FD" : "#FFFFFF",
+                                padding: 9,
+                                textAlign: "left",
+                                cursor: "pointer",
+                                minWidth: 0,
+                              }}
+                            >
+                              <strong
+                                style={{
+                                  display: "block",
+                                  color: colors.navy,
+                                  fontSize: 11,
+                                  wordBreak: "normal",
+                                  overflowWrap: "break-word",
+                                }}
+                              >
+                                {asset.name}
+                              </strong>
+                              <span style={mutedSmallStyle}>
+                                Missing: {missing.join(", ")}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
 
             {(favoriteAssets.length || recentAssets.length) ? (
               <section
