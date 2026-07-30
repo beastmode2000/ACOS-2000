@@ -17707,37 +17707,51 @@ export default function AtlasPage() {
                   ) : (
                     <div style={assetEmptyStateStyle}>No photos attached.</div>
                   )}
-                  <PhotoIntelligencePanel
-                    asset={selectedAsset}
-                    photos={selectedAssetPhotos}
-                    photoSource={photoSource}
-                    colors={colors}
-                    onSaveAsset={async (patch, summary) => {
-                      const updated = normalizeAsset({
-                        ...selectedAsset,
-                        ...patch,
-                        notes: [selectedAsset.notes, `Photo Intelligence: ${summary}`]
-                          .filter(Boolean)
-                          .join("\n"),
-                      });
-                      const saved = await postAtlasRecord("assets", updated);
-                      if (!saved) throw new Error("Atlas could not save the asset details.");
-                      setAssetRecords((current) =>
-                        byName(current.map((item) => item.id === updated.id ? updated : item)),
-                      );
-                      clearRecordDirty("asset", updated.id);
-                      showSaveToast("Asset details approved and saved.");
+                  <div
+                    className="atlas-photo-intelligence-shell"
+                    style={{
+                      minWidth: 0,
+                      width: "100%",
+                      boxSizing: "border-box",
+                      position: "relative",
+                      isolation: "isolate",
+                      display: "block",
+                      overflow: "hidden",
+                      marginTop: 2,
                     }}
-                    onDraftWorkOrder={(draft) =>
-                      addWorkOrder({
-                        assetId: selectedAsset.id,
-                        locationId: selectedAsset.locationId || "",
-                        title: draft.title,
-                        notes: draft.notes,
-                        priority: draft.priority,
-                      })
-                    }
-                  />
+                  >
+                    <PhotoIntelligencePanel
+                      asset={selectedAsset}
+                      photos={selectedAssetPhotos}
+                      photoSource={photoSource}
+                      colors={colors}
+                      onSaveAsset={async (patch, summary) => {
+                        const updated = normalizeAsset({
+                          ...selectedAsset,
+                          ...patch,
+                          notes: [selectedAsset.notes, `Photo Intelligence: ${summary}`]
+                            .filter(Boolean)
+                            .join("\n"),
+                        });
+                        const saved = await postAtlasRecord("assets", updated);
+                        if (!saved) throw new Error("Atlas could not save the asset details.");
+                        setAssetRecords((current) =>
+                          byName(current.map((item) => item.id === updated.id ? updated : item)),
+                        );
+                        clearRecordDirty("asset", updated.id);
+                        showSaveToast("Asset details approved and saved.");
+                      }}
+                      onDraftWorkOrder={(draft) =>
+                        addWorkOrder({
+                          assetId: selectedAsset.id,
+                          locationId: selectedAsset.locationId || "",
+                          title: draft.title,
+                          notes: draft.notes,
+                          priority: draft.priority,
+                        })
+                      }
+                    />
+                  </div>
                 </section>
               </div>
 
@@ -17866,7 +17880,15 @@ export default function AtlasPage() {
                 )}
               </section>
 
-              <div style={assetPanelFooterStyle}>
+              <div
+                style={{
+                  ...assetPanelFooterStyle,
+                  marginTop: 14,
+                  position: "relative",
+                  zIndex: 1,
+                  clear: "both",
+                }}
+              >
                 <div style={assetFileSummaryStyle}>
                   <strong>Manuals &amp; Files</strong>
                   <span style={assetCardHintStyle}>
@@ -28347,6 +28369,36 @@ export default function AtlasPage() {
           pointer-events: none !important;
         }
 
+        .atlas-photo-intelligence-shell,
+        .atlas-photo-intelligence-shell > *,
+        .atlas-photo-intelligence-shell > * > * {
+          min-width: 0 !important;
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+        .atlas-photo-intelligence-shell > * {
+          width: 100% !important;
+          position: relative !important;
+          inset: auto !important;
+          float: none !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+        }
+        .atlas-photo-intelligence-shell button,
+        .atlas-photo-intelligence-shell input,
+        .atlas-photo-intelligence-shell select,
+        .atlas-photo-intelligence-shell textarea {
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+        .atlas-photo-intelligence-shell p,
+        .atlas-photo-intelligence-shell span,
+        .atlas-photo-intelligence-shell strong,
+        .atlas-photo-intelligence-shell div {
+          word-break: normal !important;
+          overflow-wrap: break-word !important;
+        }
+
         .atlas-asset-drawer section,
         .atlas-asset-drawer section * {
           box-sizing: border-box;
@@ -32567,12 +32619,19 @@ const assetPanelFooterStyle: React.CSSProperties = {
 const assetFileSummaryStyle: React.CSSProperties = {
   minWidth: 0,
   width: "100%",
+  boxSizing: "border-box",
   display: "flex",
   alignItems: "center",
+  alignContent: "flex-start",
   gap: 7,
+  rowGap: 8,
   flexWrap: "wrap",
+  position: "relative",
+  zIndex: 2,
   color: colors.navy,
   fontSize: 11,
+  wordBreak: "normal",
+  overflowWrap: "normal",
 };
 
 const assetDeleteBottomButtonStyle: React.CSSProperties = {
