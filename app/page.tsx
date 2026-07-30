@@ -6418,27 +6418,101 @@ export default function AtlasPage() {
               assignmentAliases: [currentStaffFirstName, normalizedCurrentUserName].filter(Boolean),
             };
 
+  const marineDepartmentPattern = /marine|dock|boat|cobalt|sea.?doo|jet.?ski|pwc|lift|water trampoline|sean/i;
+  const recordSearchText = (...values: unknown[]) =>
+    values.map((value) => {
+      if (typeof value === "string" || typeof value === "number") return String(value);
+      try { return JSON.stringify(value || ""); } catch { return ""; }
+    }).join(" ").toLowerCase();
+
+  const isMarineLocationRecord = (location?: LocationRecord | null) =>
+    Boolean(location && marineDepartmentPattern.test(recordSearchText(location)));
+
+  const marineLocationIds = new Set(
+    locations.filter((location) => isMarineLocationRecord(location)).map((location) => location.id),
+  );
+
+  const isMarineAssetRecord = (asset?: AssetRecord | null) => {
+    if (!asset) return false;
+    const linkedLocationIds = [asset.locationId, ...((asset as AtlasAssetRecord).locationIds || [])].filter(Boolean);
+    return marineDepartmentPattern.test(recordSearchText(asset)) ||
+      linkedLocationIds.some((locationId) => marineLocationIds.has(String(locationId)));
+  };
+
+  const marineAssetIds = new Set(
+    assetRecords.filter((asset) => isMarineAssetRecord(asset)).map((asset) => asset.id),
+  );
+
+  assetRecords.forEach((asset) => {
+    if (!marineAssetIds.has(asset.id)) return;
+    [asset.locationId, ...((asset as AtlasAssetRecord).locationIds || [])]
+      .filter(Boolean)
+      .forEach((locationId) => marineLocationIds.add(String(locationId)));
+  });
+
+  const isMarineServiceRecord = (record: ServiceRecord) => {
+    const atlasRecord = record as AtlasServiceRecord;
+    return marineAssetIds.has(String(record.assetId || "")) ||
+      marineLocationIds.has(String(atlasRecord.locationId || "")) ||
+      marineDepartmentPattern.test(recordSearchText(
+        atlasRecord.workCategory,
+        atlasRecord.responsibilityArea,
+        atlasRecord.assignedTo,
+        record.title,
+        record.notes,
+      ));
+  };
+
+  const isMarineDocumentRecord = (document: DocumentRecord) => {
+    const linkedAssetId = String(document.linkedAssetId || (document.targetType === "Asset" ? document.targetId : "") || "");
+    const linkedLocationId = String(document.targetType === "Location" ? document.targetId : "");
+    return marineAssetIds.has(linkedAssetId) ||
+      marineLocationIds.has(linkedLocationId) ||
+      marineDepartmentPattern.test(recordSearchText(
+        document.title,
+        document.type,
+        document.area,
+        document.targetType,
+        document.targetName,
+        document.notes,
+        document.pastedText,
+        (document.files || []).map((file) => file.name),
+      ));
+  };
+
+  const seanVisibleAssetRecords = isSeanMarineUser
+    ? assetRecords.filter((asset) => marineAssetIds.has(asset.id))
+    : assetRecords;
+  const seanVisibleLocationRecords = isSeanMarineUser
+    ? locations.filter((location) => marineLocationIds.has(location.id))
+    : locations;
+  const seanVisiblePhotoRecords = isSeanMarineUser
+    ? photos.filter((photo) => marineAssetIds.has(String(photo.assetId || "")))
+    : photos;
+
   const staffVisibleServiceRecords = isRestrictedStaffUser
     ? serviceRecords.filter((record) => {
+        if (isSeanMarineUser) return isMarineServiceRecord(record);
         const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
         if (!assigned) return false;
-        const aliases = new Set(
-          [
-            currentStaffFirstName,
-            normalizedCurrentUserName,
-            ...teamWorkspace.assignmentAliases,
-          ]
-            .map((value) => String(value || "").trim().toLowerCase())
-            .filter(Boolean),
-        );
-        return [...aliases].some(
-          (alias) =>
-            assigned === alias ||
-            assigned.includes(alias) ||
-            alias.includes(assigned),
-        );
+        const aliases = new Set([
+          currentStaffFirstName,
+          normalizedCurrentUserName,
+          ...teamWorkspace.assignmentAliases,
+        ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean));
+        return [...aliases].some((alias) => assigned === alias || assigned.includes(alias) || alias.includes(assigned));
       })
     : serviceRecords;
+
+  useEffect(() => {
+    if (!isSeanMarineUser) return;
+    if (selectedAssetId && !marineAssetIds.has(selectedAssetId)) setSelectedAssetId("");
+    if (selectedLocationId && !marineLocationIds.has(selectedLocationId)) setSelectedLocationId("");
+    if (selectedDocumentId) {
+      const selected = mergeDocuments(documents, intakeDocs).find((document) => document.id === selectedDocumentId);
+      if (selected && !isMarineDocumentRecord(selected)) setSelectedDocumentId("");
+    }
+  }, [isSeanMarineUser, selectedAssetId, selectedLocationId, selectedDocumentId, assetRecords, locations, documents, intakeDocs]);
 
   const restrictedTeamScreenIds = new Set<AtlasScreen>(
     isAddisonUser
@@ -6548,7 +6622,7 @@ export default function AtlasPage() {
       notes: "",
     });
   const selectedAssetPhotos = selectedAssetId
-    ? photos
+    ? (isSeanMarineUser ? seanVisiblePhotoRecords : photos)
         .filter((photo) => photo.assetId === selectedAssetId)
         .sort((a, b) =>
           String(a.name || "").localeCompare(String(b.name || ""), undefined, {
@@ -6852,7 +6926,7 @@ export default function AtlasPage() {
   }, [q, mapLabels]);
 
   const filteredAssets = useMemo(() => {
-    const sorted = byName(assetRecords);
+    const sorted = byName(isSeanMarineUser ? seanVisibleAssetRecords : assetRecords);
     if (!q) return sorted;
     return sorted.filter((item) =>
       [
@@ -6870,7 +6944,7 @@ export default function AtlasPage() {
         .toLowerCase()
         .includes(q),
     );
-  }, [q, assetRecords, vendorRecords]);
+  }, [q, assetRecords, seanVisibleAssetRecords, isSeanMarineUser, vendorRecords]);
 
   const filteredVendors = useMemo(() => {
     const sorted = byName(vendorRecords);
@@ -7014,10 +7088,10 @@ export default function AtlasPage() {
     );
   }, [q, workLinks]);
 
-  const allDocuments = useMemo(
-    () => mergeDocuments(documents, intakeDocs),
-    [documents, intakeDocs],
-  );
+  const allDocuments = useMemo(() => {
+    const merged = mergeDocuments(documents, intakeDocs);
+    return isSeanMarineUser ? merged.filter((document) => isMarineDocumentRecord(document)) : merged;
+  }, [documents, intakeDocs, isSeanMarineUser, assetRecords, locations]);
 
   const allManualRecords = useMemo(() => {
     const documentManuals = allDocuments
@@ -17091,15 +17165,18 @@ export default function AtlasPage() {
   }
 
   function renderLocations() {
+    const locationSourceRecords = isSeanMarineUser ? seanVisibleLocationRecords : locations;
+    const locationAssetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
+    const locationWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
     const locationAssetCount = (locationId: string) =>
-      assetRecords.filter((asset) => assetHasLocation(asset, locationId)).length;
+      locationAssetSourceRecords.filter((asset) => assetHasLocation(asset, locationId)).length;
     const locationWorkCount = (locationId: string) => {
       const assetIds = new Set(
-        assetRecords
+        locationAssetSourceRecords
           .filter((asset) => assetHasLocation(asset, locationId))
           .map((asset) => asset.id),
       );
-      return serviceRecords.filter(
+      return locationWorkSourceRecords.filter(
         (record) =>
           record.status !== "Completed" &&
           (record.locationId === locationId || assetIds.has(record.assetId)),
@@ -17150,7 +17227,7 @@ export default function AtlasPage() {
     };
     const matchingAssetForLocation = (location: AtlasLocationRecord) => {
       const normalizedName = normalizeLocationName(location.name);
-      return assetRecords.find(
+      return locationAssetSourceRecords.find(
         (asset) => normalizeLocationName(asset.name) === normalizedName,
       );
     };
@@ -17173,7 +17250,7 @@ export default function AtlasPage() {
       const visited = new Set<string>();
       while (current.parentId && !visited.has(current.parentId)) {
         visited.add(current.parentId);
-        const parent = locations.find((item) => item.id === current.parentId);
+        const parent = locationSourceRecords.find((item) => item.id === current.parentId);
         if (!parent) break;
         depth += 1;
         current = parent;
@@ -17186,16 +17263,16 @@ export default function AtlasPage() {
       const visited = new Set<string>();
       while (current.parentId && !visited.has(current.parentId)) {
         visited.add(current.parentId);
-        const parent = locations.find((item) => item.id === current.parentId);
+        const parent = locationSourceRecords.find((item) => item.id === current.parentId);
         if (!parent) break;
         parts.unshift(parent.name);
         current = parent;
       }
       return parts.join(" / ");
     };
-    const possibleAssetLocations = locations.filter(locationLooksLikeAsset);
+    const possibleAssetLocations = locationSourceRecords.filter(locationLooksLikeAsset);
     const childLocationsFor = (parentId: string) =>
-      byName(locations.filter((location) => location.parentId === parentId));
+      byName(locationSourceRecords.filter((location) => location.parentId === parentId));
     const normalizedLocationSearch = locationSearch.trim().toLowerCase();
     const locationMatchesSearch = (location: AtlasLocationRecord) =>
       !normalizedLocationSearch ||
@@ -17228,7 +17305,7 @@ export default function AtlasPage() {
       let parentId = location.parentId || "";
       while (parentId) {
         matchingLocationIds.add(parentId);
-        parentId = locations.find((item) => item.id === parentId)?.parentId || "";
+        parentId = locationSourceRecords.find((item) => item.id === parentId)?.parentId || "";
       }
     });
     const flattenLocationTree = (parentId = "", depth = 0): {
@@ -17237,7 +17314,7 @@ export default function AtlasPage() {
       hasChildren: boolean;
     }[] =>
       byName(
-        locations.filter((location) =>
+        locationSourceRecords.filter((location) =>
           parentId
             ? location.parentId === parentId
             : !location.parentId,
@@ -17270,14 +17347,14 @@ export default function AtlasPage() {
       : [];
     const locationAssets = selectedLocation.id
       ? byName(
-          assetRecords.filter(
+          locationAssetSourceRecords.filter(
             (asset) => assetHasLocation(asset, selectedLocation.id),
           ),
         )
       : [];
     const locationAssetIds = new Set(locationAssets.map((asset) => asset.id));
     const locationWorkOrders = selectedLocation.id
-      ? serviceRecords.filter((record) =>
+      ? locationWorkSourceRecords.filter((record) =>
           selectedLocation.id === "general"
             ? true
             : record.locationId === selectedLocation.id ||
@@ -17341,27 +17418,27 @@ export default function AtlasPage() {
         : locationAssets.length && !locationDocuments.length
           ? "Assets are assigned here, but no location documents are linked yet."
           : "No immediate location issues are recorded.";
-    const topLevelLocationCount = locations.filter(
+    const topLevelLocationCount = locationSourceRecords.filter(
       (location) => !location.parentId,
     ).length;
-    const linkedLocationCount = locations.filter(
+    const linkedLocationCount = locationSourceRecords.filter(
       (location) =>
         locationAssetCount(location.id) > 0 ||
         locationWorkCount(location.id) > 0 ||
         locationPhotoCount(location.id) > 0 ||
         locationDocumentCount(location.id) > 0,
     ).length;
-    const locationsWithOpenWork = locations.filter(
+    const locationsWithOpenWork = locationSourceRecords.filter(
       (location) => locationWorkCount(location.id) > 0,
     ).length;
     const selectedLocationMatchingAsset = selectedLocation.id
       ? matchingAssetForLocation(selectedLocation)
       : undefined;
-    const vagueLocationAssetCount = assetRecords.filter((asset) => {
-      const location = locations.find((item) => item.id === asset.locationId);
+    const vagueLocationAssetCount = locationAssetSourceRecords.filter((asset) => {
+      const location = locationSourceRecords.find((item) => item.id === asset.locationId);
       return !asset.locationId || isVagueLocation(location);
     }).length;
-    const orphanLocationCount = locations.filter(
+    const orphanLocationCount = locationSourceRecords.filter(
       (location) =>
         Boolean(location.parentId) &&
         !locations.some((item) => item.id === location.parentId),
@@ -17376,7 +17453,7 @@ export default function AtlasPage() {
         path.unshift(current);
         visited.add(current.id);
         current = current.parentId
-          ? locations.find((location) => location.id === current?.parentId)
+          ? locationSourceRecords.find((location) => location.id === current?.parentId)
           : undefined;
       }
 
@@ -17549,9 +17626,9 @@ export default function AtlasPage() {
                   </div>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {assetRecords
+                  {locationAssetSourceRecords
                     .filter((asset) => {
-                      const location = locations.find((item) => item.id === asset.locationId);
+                      const location = locationSourceRecords.find((item) => item.id === asset.locationId);
                       return !asset.locationId || isVagueLocation(location);
                     })
                     .slice(0, 8)
@@ -18376,7 +18453,7 @@ export default function AtlasPage() {
                       </div>
                       <div style={recordInfoItemStyle}>
                         <span style={fieldLabelStyle}>Parent</span>
-                        <strong>{locations.find((location) => location.id === selectedLocation.parentId)?.name || "Top level"}</strong>
+                        <strong>{locationSourceRecords.find((location) => location.id === selectedLocation.parentId)?.name || "Top level"}</strong>
                       </div>
                       <div style={recordInfoItemStyle}>
                         <span style={fieldLabelStyle}>Hierarchy Path</span>
@@ -18558,7 +18635,7 @@ export default function AtlasPage() {
                   >
                     <option value="">+ Add Asset</option>
                     {byName(
-                      assetRecords.filter(
+                      locationAssetSourceRecords.filter(
                         (asset) => !assetHasLocation(asset, selectedLocation.id),
                       ),
                     ).map((asset) => (
@@ -18700,9 +18777,11 @@ export default function AtlasPage() {
   }
 
   function renderAssets() {
+    const assetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
+    const assetWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
     const attachedManuals = manualsForAsset(selectedAsset);
     const relatedWorkOrders = selectedAsset.id
-      ? [...serviceRecords]
+      ? [...assetWorkSourceRecords]
           .filter((record) => record.assetId === selectedAsset.id)
           .sort((a, b) =>
             String(
@@ -18756,11 +18835,11 @@ export default function AtlasPage() {
     const selectedAssetCoverSource = photoSource(selectedAssetCoverPhoto);
     const normalizedAssetSearch = assetListSearch.trim().toLowerCase();
     const favoriteAssets = favoriteAssetIds
-      .map((id) => assetRecords.find((asset) => asset.id === id))
+      .map((id) => assetSourceRecords.find((asset) => asset.id === id))
       .filter((asset): asset is AssetRecord => Boolean(asset));
     const recentAssets = recentAssetIds
       .filter((id) => !favoriteAssetIds.includes(id))
-      .map((id) => assetRecords.find((asset) => asset.id === id))
+      .map((id) => assetSourceRecords.find((asset) => asset.id === id))
       .filter((asset): asset is AssetRecord => Boolean(asset))
       .slice(0, 6);
     const normalizeAssetMatchValue = (value: unknown) =>
@@ -18770,7 +18849,7 @@ export default function AtlasPage() {
         .replace(/[^a-z0-9]+/g, " ")
         .trim();
 
-    const assetRecordQualityRows = assetRecords.map((asset) => {
+    const assetRecordQualityRows = assetSourceRecords.map((asset) => {
       const linkedManualCount = intakeDocs.filter(
         (document) =>
           document.linkedAssetId === asset.id ||
@@ -18813,7 +18892,7 @@ export default function AtlasPage() {
     const duplicateAssetGroups = (() => {
       const groups = new Map<string, AssetRecord[]>();
 
-      assetRecords.forEach((asset) => {
+      assetSourceRecords.forEach((asset) => {
         const serial = normalizeAssetMatchValue(asset.serial);
         const name = normalizeAssetMatchValue(asset.name);
         const model = normalizeAssetMatchValue(asset.model);
@@ -18837,10 +18916,10 @@ export default function AtlasPage() {
         .slice(0, 6);
     })();
 
-    const openAssetWorkOrderCount = serviceRecords.filter(
+    const openAssetWorkOrderCount = assetWorkSourceRecords.filter(
       (record) =>
         Boolean(record.assetId) &&
-        assetRecords.some((asset) => asset.id === record.assetId) &&
+        assetSourceRecords.some((asset) => asset.id === record.assetId) &&
         record.status !== "Completed",
     ).length;
     const displayedAssets = [...filteredAssets]
@@ -18879,7 +18958,7 @@ export default function AtlasPage() {
       .map((id) => vendorRecords.find((vendor) => vendor.id === id))
       .filter((vendor): vendor is VendorRecord => Boolean(vendor))
       .sort((a, b) => a.name.localeCompare(b.name));
-    const assetCategories = [...new Set(assetRecords.map((asset) => asset.category))]
+    const assetCategories = [...new Set(assetSourceRecords.map((asset) => asset.category))]
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
 
@@ -19223,7 +19302,7 @@ export default function AtlasPage() {
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                 <span style={mutedSmallStyle}>
-                  Showing {displayedAssets.length} of {assetRecords.length} assets ·{" "}
+                  Showing {displayedAssets.length} of {assetSourceRecords.length} assets ·{" "}
                   {assetListDensity === "compact" ? "Compact view" : "Comfortable view"}
                 </span>
                 {(assetListSearch || excludedAssetStatuses.length || excludedAssetCategories.length) ? (
@@ -19253,7 +19332,7 @@ export default function AtlasPage() {
               {[
                 {
                   label: "Tracked Assets",
-                  value: assetRecords.length,
+                  value: assetSourceRecords.length,
                   note: `${displayedAssets.length} currently visible`,
                 },
                 {
@@ -19784,7 +19863,7 @@ export default function AtlasPage() {
                   })[0] ||
                 assetPhotos[0];
               const coverPhotoSource = photoSource(coverPhoto);
-              const assetOpenWork = serviceRecords.filter(
+              const assetOpenWork = assetWorkSourceRecords.filter(
                 (record) => record.assetId === asset.id && record.status !== "Completed",
               );
               const assetDocumentCount = intakeDocs.filter(
@@ -19808,7 +19887,7 @@ export default function AtlasPage() {
                     : asset.status === "Seasonal"
                       ? "Seasonal"
                       : "Monitor";
-              const assetCompletedWork = serviceRecords
+              const assetCompletedWork = assetWorkSourceRecords
                 .filter(
                   (record) =>
                     record.assetId === asset.id &&
@@ -32420,16 +32499,32 @@ export default function AtlasPage() {
     const matcher = isLandscape
       ? /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i
       : /marine|dock|boat|cobalt|sea.?doo|lift|water trampoline|pwc|sean/i;
-    const matches = (value: unknown) => matcher.test(JSON.stringify(value || ""));
-    const departmentWork = serviceRecords.filter(matches);
+    const matches = (value: unknown) => matcher.test(recordSearchText(value));
+    const departmentWork = serviceRecords.filter((record) =>
+      isLandscape ? matches(record) && !isMarineServiceRecord(record) : isMarineServiceRecord(record),
+    );
     const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
     const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
-    const departmentAssets = assetRecords.filter(matches);
-    const departmentLocations = locations.filter(matches);
+    const departmentAssets = isLandscape
+      ? assetRecords.filter((asset) => matches(asset) && !isMarineAssetRecord(asset))
+      : assetRecords.filter((asset) => marineAssetIds.has(asset.id));
+    const departmentLocations = isLandscape
+      ? locations.filter((location) => matches(location) && !marineLocationIds.has(location.id))
+      : locations.filter((location) => marineLocationIds.has(location.id));
     const departmentVendors = vendorRecords.filter(matches);
-    const departmentDocuments = intakeDocs.filter(matches);
-    const departmentProcedures = procedureRecords.filter(matches);
-    const departmentRequests = requestRecords.filter(matches);
+    const departmentDocuments = mergeDocuments(documents, intakeDocs).filter((document) =>
+      isLandscape ? matches(document) && !isMarineDocumentRecord(document) : isMarineDocumentRecord(document),
+    );
+    const departmentProcedures = procedureRecords.filter((procedure) =>
+      isLandscape
+        ? matches(procedure) && !marineDepartmentPattern.test(recordSearchText(procedure))
+        : marineDepartmentPattern.test(recordSearchText(procedure)) ||
+          (procedure.linkedAssetIds || []).some((id) => marineAssetIds.has(id)) ||
+          (procedure.linkedLocationIds || []).some((id) => marineLocationIds.has(id)),
+    );
+    const departmentRequests = requestRecords.filter((request) =>
+      isLandscape ? matches(request) && !marineDepartmentPattern.test(recordSearchText(request)) : matches(request),
+    );
     const assignedNames = isLandscape ? ["Pat's Crew", "Addison"] : ["Sean"];
 
     const openCenter = (next: AtlasScreen) => setScreen(next);
