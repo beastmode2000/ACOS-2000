@@ -21669,7 +21669,7 @@ export default function AtlasPage() {
                     <span style={fieldLabelStyle}>Notes</span>
                     <p
                       style={{
-                        ...mutedStyle,
+                        ...mutedSmallStyle,
                         margin: "6px 0 0",
                         whiteSpace: "pre-wrap",
                       }}
