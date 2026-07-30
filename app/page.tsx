@@ -32714,7 +32714,7 @@ export default function AtlasPage() {
               )) : null}
               {departmentDrilldown === "documents" ? departmentDocuments.map((document) => (
                 <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); openCenter("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
-                  <span><strong>{document.title || "Untitled document"}</strong><small style={mutedSmallStyle}>{document.category || document.targetType || "Document / photo"}</small></span>
+                  <span><strong>{document.title || "Untitled document"}</strong><small style={mutedSmallStyle}>{document.type || document.targetType || "Document / photo"}</small></span>
                   <span style={badgeStyle("Document")}>Open</span>
                 </button>
               )) : null}
