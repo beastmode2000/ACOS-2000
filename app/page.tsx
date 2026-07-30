@@ -3941,6 +3941,9 @@ export default function AtlasPage() {
   const [isMobile, setIsMobile] = useState(false);
 
   const [dashboardEditMode, setDashboardEditMode] = useState(false);
+  const [dashboardCenterView, setDashboardCenterView] = useState<
+    "command" | "operations" | "intelligence" | "executive" | "owner"
+  >("command");
   const [dashboardLayoutId, setDashboardLayoutId] = useState("operations");
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetSetting[]>(
     () => makeDashboardWidgets(),
@@ -13654,7 +13657,304 @@ export default function AtlasPage() {
       </section>;
     };
 
+
+    type DashboardCenterView = "command" | "operations" | "intelligence" | "executive" | "owner";
+    const dashboardCenterTabs: { id: DashboardCenterView; label: string }[] = [
+      { id: "command", label: "Command Center" },
+      { id: "operations", label: "Operations 3.0" },
+      { id: "intelligence", label: "Intelligence 4.0" },
+      { id: "executive", label: "Executive" },
+      { id: "owner", label: "Owner" },
+    ];
+    const dashboardCenterSelector = (
+      <section style={{ ...cardStyle, padding: 8, display: "flex", gap: 6, overflowX: "auto", alignItems: "center" }}>
+        {dashboardCenterTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setDashboardCenterView(tab.id)}
+            style={{
+              ...(dashboardCenterView === tab.id ? goldButtonStyle : secondaryButtonStyle),
+              minHeight: 34,
+              padding: "6px 11px",
+              whiteSpace: "nowrap",
+              fontSize: 12,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </section>
+    );
+
+    const workText = (record: ServiceRecord) =>
+      `${record.title || ""} ${record.notes || ""} ${(record as AtlasServiceRecord).workCategory || ""}`.toLowerCase();
+    const waitingVendor = openWork.filter((record) => record.status === "Waiting" && /(vendor|contractor|service|quote|estimate|schedule)/i.test(workText(record)));
+    const waitingOwner = openWork.filter((record) => record.status === "Waiting" && /(owner|jeremy|jessica|steve|approval|decision)/i.test(workText(record)));
+    const waitingParts = openWork.filter((record) => record.status === "Waiting" && /(part|parts|material|order|delivery|backorder)/i.test(workText(record)));
+    const dueThisWeek = openWork.filter((record) => Boolean(record.date) && String(record.date) >= today && String(record.date) <= nextSevenDaysISO);
+    const flexibleRecurring = openWork.filter((record) => Boolean(record.recurring) && !record.date);
+    const fixedAppointments = [...todayEvents, ...upcomingEvents].filter((item) => Boolean(item.time)).slice(0, 12);
+    const staffNames = ["Nick", "Addison", "Pat's Crew", "Sean", "Vendors"] as const;
+    const effortHours = (record: AtlasServiceRecord) => {
+      const effort = String(record.effort || "");
+      if (effort === "5 minutes") return 0.1;
+      if (effort === "15 minutes") return 0.25;
+      if (effort === "30 minutes") return 0.5;
+      if (effort === "1 hour") return 1;
+      if (effort === "Half Day") return 4;
+      if (effort === "Full Day") return 8;
+      if (effort === "Multi-Day") return 16;
+      return 1;
+    };
+    const currentMonth = today.slice(0, 7);
+    const currentYear = today.slice(0, 4);
+    const serviceCost = (record: ServiceRecord) => Number(record.actualCost || record.estimatedCost || 0);
+    const monthlySpend = serviceRecords.filter((record) => String(record.date || record.lastCompletedDate || "").startsWith(currentMonth)).reduce((sum, record) => sum + serviceCost(record), 0);
+    const yearlySpend = serviceRecords.filter((record) => String(record.date || record.lastCompletedDate || "").startsWith(currentYear)).reduce((sum, record) => sum + serviceCost(record), 0);
+    const annualBudget = Math.max(yearlySpend, serviceRecords.reduce((sum, record) => sum + Number(record.estimatedCost || 0), 0));
+    const remainingBudget = Math.max(0, annualBudget - yearlySpend);
+    const documentationCoverage = assetRecords.length
+      ? Math.round((assetRecords.filter((asset) => Boolean(asset.notes || asset.make || asset.model || asset.serial)).length / assetRecords.length) * 100)
+      : 100;
+    const recurringMissed = openWork.filter((record) => Boolean(record.recurring) && Boolean(record.date) && String(record.date) < today);
+    const duplicateGroups = Object.values(openWork.reduce((groups, record) => {
+      const key = String(record.title || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
+      if (key) (groups[key] ||= []).push(record);
+      return groups;
+    }, {} as Record<string, ServiceRecord[]>)).filter((group) => group.length > 1);
+    const safetyOpen = openWork.filter((record) => /(safety|alarm|generator|emergency|inspection|fire|leak)/i.test(workText(record)));
+    const vendorIssues = waitingVendor.length + openWork.filter((record) => Boolean(record.vendorId) && String(record.date || "") < today).length;
+    const estateHealthScore = Math.max(0, Math.min(100, Math.round(
+      100
+      - overdueWork.length * 5
+      - highPriority.length * 3
+      - recurringMissed.length * 4
+      - safetyOpen.length * 4
+      - vendorIssues * 2
+      - Math.max(0, 85 - documentationCoverage) * 0.25
+    )));
+    const healthTone = estateHealthScore >= 85 ? colors.green : estateHealthScore >= 70 ? "#B54708" : colors.red;
+    const assetRisks = assetRecords.map((asset) => {
+      const related = serviceRecords.filter((record) => record.assetId === asset.id);
+      const relatedOpen = related.filter((record) => record.status !== "Completed");
+      const relatedOverdue = relatedOpen.filter((record) => Boolean(record.date) && String(record.date) < today);
+      const relatedHigh = relatedOpen.filter((record) => record.priority === "High");
+      const completedDates = related.flatMap((record) => [
+        record.lastCompletedDate,
+        ...(record.completionHistory || []),
+      ]).filter(Boolean).sort();
+      const lastService = completedDates[completedDates.length - 1] || "";
+      const daysSince = lastService ? Math.max(0, Math.floor((Date.now() - new Date(`${lastService}T12:00:00`).getTime()) / 86400000)) : 365;
+      const risk = Math.max(1, Math.min(100, Math.round(
+        18 + relatedOverdue.length * 18 + relatedHigh.length * 12 + relatedOpen.length * 4 + Math.min(24, daysSince / 30 * 2)
+      )));
+      const nextRecurring = relatedOpen.filter((record) => record.recurring && record.date).map((record) => String(record.date)).sort()[0] || "";
+      const daysUntil = nextRecurring ? Math.ceil((new Date(`${nextRecurring}T12:00:00`).getTime() - Date.now()) / 86400000) : Math.max(0, 180 - daysSince);
+      return {
+        asset,
+        risk,
+        daysUntil,
+        lastService,
+        cost: related.reduce((sum, record) => sum + serviceCost(record), 0),
+        open: relatedOpen.length,
+      };
+    }).sort((a, b) => b.risk - a.risk);
+    const vendorAnalytics = vendorRecords.map((vendor) => {
+      const records = serviceRecords.filter((record) => record.vendorId === vendor.id);
+      const completed = records.filter((record) => record.status === "Completed");
+      const overdue = records.filter((record) => record.status !== "Completed" && Boolean(record.date) && String(record.date) < today);
+      const totalCost = records.reduce((sum, record) => sum + serviceCost(record), 0);
+      const reliability = records.length ? Math.max(0, Math.round(100 - overdue.length / records.length * 100)) : 100;
+      const rating = Math.max(1, Math.min(5, Math.round((reliability / 20) * 10) / 10));
+      const lastService = completed.map((record) => String(record.lastCompletedDate || record.date || "")).filter(Boolean).sort().pop() || "";
+      return { vendor, records: records.length, completed: completed.length, overdue: overdue.length, totalCost, averageCost: records.length ? totalCost / records.length : 0, reliability, rating, lastService };
+    }).filter((item) => item.records > 0).sort((a, b) => b.reliability - a.reliability || b.completed - a.completed);
+    const locationRisk = locationRecords.map((location) => {
+      const records = openWork.filter((record) => (record as AtlasServiceRecord).locationId === location.id || assetRecords.some((asset) => asset.id === record.assetId && assetHasLocation(asset, location.id)));
+      const overdue = records.filter((record) => Boolean(record.date) && String(record.date) < today);
+      const risk = Math.min(100, records.length * 8 + overdue.length * 18 + records.filter((record) => record.priority === "High").length * 14);
+      return { location, records, overdue, risk };
+    }).filter((item) => item.records.length).sort((a, b) => b.risk - a.risk);
+    const categoryCosts = serviceRecords.reduce((map, record) => {
+      const category = String((record as AtlasServiceRecord).workCategory || "General").replace(/^[^\w]+/, "").trim() || "General";
+      map[category] = (map[category] || 0) + serviceCost(record);
+      return map;
+    }, {} as Record<string, number>);
+    const topCategoryCosts = Object.entries(categoryCosts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const staffAnalytics = staffNames.map((name) => {
+      const assigned = openWork.filter((record) => {
+        const assignedTo = String((record as AtlasServiceRecord).assignedTo || "").toLowerCase();
+        if (name === "Vendors") return Boolean(record.vendorId) || assignedTo.includes("vendor");
+        return assignedTo === name.toLowerCase();
+      });
+      const completedToday = completedTodayOccurrences.filter(({ record }) => {
+        const assignedTo = String((record as AtlasServiceRecord).assignedTo || "").toLowerCase();
+        if (name === "Vendors") return Boolean(record.vendorId) || assignedTo.includes("vendor");
+        return assignedTo === name.toLowerCase();
+      }).length;
+      const hours = assigned.reduce((sum, record) => sum + effortHours(record as AtlasServiceRecord), 0);
+      const dueSoon = assigned.filter((record) => Boolean(record.date) && String(record.date) <= nextSevenDaysISO).length;
+      return { name, assigned, completedToday, hours, dueSoon };
+    });
+    const recommendations = [
+      overdueWork.length ? { priority: "Critical", title: `Recover ${overdueWork.length} overdue item${overdueWork.length === 1 ? "" : "s"}`, detail: "Move the highest-risk overdue work into the next available staff or vendor slot.", action: () => setScreen("history") } : null,
+      safetyOpen.length ? { priority: "Critical", title: `Review ${safetyOpen.length} safety-related item${safetyOpen.length === 1 ? "" : "s"}`, detail: "Safety and inspection work should remain ahead of cosmetic or discretionary work.", action: () => setScreen("history") } : null,
+      recurringMissed.length ? { priority: "High", title: "Missed recurring maintenance detected", detail: `${recurringMissed.length} recurring occurrence${recurringMissed.length === 1 ? " is" : "s are"} past due.`, action: () => setScreen("planner") } : null,
+      duplicateGroups.length ? { priority: "Medium", title: "Possible duplicate work detected", detail: `${duplicateGroups.length} duplicate title group${duplicateGroups.length === 1 ? "" : "s"} should be consolidated before scheduling.`, action: () => setScreen("history") } : null,
+      waitingParts.length ? { priority: "Medium", title: "Bundle parts-dependent work", detail: `${waitingParts.length} item${waitingParts.length === 1 ? "" : "s"} can be grouped into the next purchasing cycle.`, action: () => setScreen("parts") } : null,
+      todaysWeather && Number(todaysWeather.precipChance || 0) >= 60 ? { priority: "Medium", title: "Shift weather-sensitive work", detail: "Move exposed landscaping, painting, and dock work to the next workable weather window.", action: () => setScreen("planner") } : null,
+      assetRisks[0] ? { priority: assetRisks[0].risk >= 70 ? "High" : "Medium", title: `${assetRisks[0].asset.name} has the highest asset risk`, detail: `Risk ${assetRisks[0].risk}/100 with ${assetRisks[0].open} open item${assetRisks[0].open === 1 ? "" : "s"}.`, action: () => { setSelectedAssetId(assetRisks[0].asset.id); setScreen("assets"); } } : null,
+    ].filter(Boolean) as { priority: string; title: string; detail: string; action: () => void }[];
+
+    const syncWorkOrderPatch = async (record: ServiceRecord, patch: Partial<AtlasServiceRecord>) => {
+      const updated = normalizeService({ ...(record as AtlasServiceRecord), ...patch });
+      setServiceRecords((current) => byTitle(current.map((item) => item.id === updated.id ? updated : item)));
+      const saved = await postAtlasRecord("work_orders", updated);
+      showSaveToast(saved ? `Saved ${updated.title}.` : `${updated.title} changed locally, but shared sync did not finish.`, saved ? "success" : "warning");
+    };
+    const skipWorkOccurrence = async (record: ServiceRecord) => {
+      if (!record.recurring) return;
+      const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit) ? record.recurrenceUnit : "Weeks";
+      const nextDate = nextRecurrenceDate(record.date || today, record.recurrenceInterval || 1, unit);
+      await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled" });
+    };
+    const moveWorkOccurrence = async (record: ServiceRecord, days: number) => {
+      await syncWorkOrderPatch(record, { date: addDays(record.date || today, days), status: "Scheduled" });
+    };
+
+    const compactWorkList = (title: string, records: ServiceRecord[], emptyText: string) => (
+      <section style={{ ...cardStyle, padding: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 9 }}>
+          <strong style={{ color: colors.navy }}>{title}</strong>
+          <span style={badgeStyle(records.length ? "Monitor" : "Completed")}>{records.length}</span>
+        </div>
+        <div style={{ display: "grid", gap: 7 }}>
+          {records.slice(0, 7).map((record) => (
+            <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9, display: "grid", gap: 7 }}>
+              <button type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", cursor: "pointer", color: colors.text }}>
+                <strong style={{ display: "block", fontSize: 13 }}>{record.title}</strong>
+                <span style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "Flexible"} · {record.priority || "Medium"} · {String((record as AtlasServiceRecord).assignedTo || "Unassigned")}</span>
+              </button>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                <select value={String((record as AtlasServiceRecord).assignedTo || "")} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.target.value })} style={{ ...selectStyle, minHeight: 30, padding: "4px 7px", fontSize: 11 }}>
+                  <option value="">Assign</option>
+                  {staffNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+                <button type="button" onClick={() => void completeWorkOrder(record as AtlasServiceRecord)} style={{ ...goldButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Complete</button>
+                {record.recurring ? <button type="button" onClick={() => void skipWorkOccurrence(record)} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Skip</button> : null}
+                <button type="button" onClick={() => void moveWorkOccurrence(record, 1)} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Move +1d</button>
+              </div>
+            </div>
+          ))}
+          {!records.length ? <span style={mutedSmallStyle}>{emptyText}</span> : null}
+        </div>
+      </section>
+    );
+
+    const metricBar = (label: string, value: number, max: number, suffix = "") => (
+      <div key={label} style={{ display: "grid", gap: 4 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}><span>{label}</span><strong>{value.toLocaleString()}{suffix}</strong></div>
+        <div style={{ height: 8, borderRadius: 999, background: colors.line, overflow: "hidden" }}><div style={{ width: `${max ? Math.max(2, Math.min(100, value / max * 100)) : 0}%`, height: "100%", background: colors.navy3 }} /></div>
+      </div>
+    );
+
+    const operationsCenter = (
+      <div style={{ display: "grid", gap: 12 }}>
+        <section style={{ ...sectionStyle, background: `linear-gradient(135deg, ${colors.navy}, ${colors.navy3})`, color: "#FFFFFF" }}>
+          <SectionHeader eyebrow="Atlas Operations Center 3.0" title={`${activeProperty.name} Daily Operations`} detail="Live priorities, assignments, schedule pressure, and completion flow from the existing Atlas work-order system." />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", gap: 8 }}>
+            {[["Due Today", dueToday.length], ["This Week", dueThisWeek.length], ["Overdue", overdueWork.length], ["High Priority", highPriority.length], ["Completed Today", completedTodayOccurrences.length]].map(([label, value]) => <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.2)", borderRadius: 12, padding: 10, background: "rgba(255,255,255,.08)" }}><span style={{ fontSize: 11, opacity: .8 }}>{label}</span><strong style={{ display: "block", fontSize: 25 }}>{value}</strong></div>)}
+          </div>
+        </section>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 12 }}>
+          {compactWorkList("Today's Priorities", [...dueToday, ...highPriority.filter((record) => !dueToday.some((item) => item.id === record.id))].slice(0, 8), "No priorities are due today.")}
+          {compactWorkList("Waiting", [...waitingVendor, ...waitingOwner, ...waitingParts].filter((record, index, all) => all.findIndex((item) => item.id === record.id) === index), "Nothing is currently waiting.")}
+          {compactWorkList("Recently Completed", recentActivity, "No recently completed work.")}
+        </div>
+        <section style={sectionStyle}>
+          <SectionHeader eyebrow="Staff Assignment Center" title="Workload and Progress" detail="Assignments use the existing work-order assignedTo field and save through the shared Atlas database." />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(5,minmax(0,1fr))", gap: 9 }}>
+            {staffAnalytics.map((staff) => <div key={staff.name} style={{ ...cardStyle, padding: 11 }}><strong style={{ color: colors.navy }}>{staff.name}</strong><div style={{ display: "grid", gap: 5, marginTop: 9, fontSize: 12 }}><span>Assigned <b>{staff.assigned.length}</b></span><span>Estimated <b>{staff.hours.toFixed(1)}h</b></span><span>Completed today <b>{staff.completedToday}</b></span><span>Upcoming <b>{staff.dueSoon}</b></span></div><div style={{ height: 7, borderRadius: 999, background: colors.line, overflow: "hidden", marginTop: 9 }}><div style={{ height: "100%", width: `${Math.min(100, staff.hours / 40 * 100)}%`, background: colors.gold }} /></div></div>)}
+          </div>
+        </section>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr .8fr", gap: 12 }}>
+          <section style={sectionStyle}>
+            <SectionHeader eyebrow="Weekly Planner" title="AI-Assisted Work Week" detail="The existing Atlas planner builds around recurring work, priority, workload, fixed commitments, and available weather." />
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(5,minmax(0,1fr))", gap: 8 }}>
+              {workPlanDays.map((day) => {
+                const tasks = workPlanTasks.filter((task) => task.scheduledDay === day);
+                return <div key={day} style={{ ...cardStyle, padding: 10, minHeight: 130 }}><strong>{day}</strong><span style={{ ...mutedSmallStyle, display: "block", marginBottom: 7 }}>{tasks.reduce((sum, task) => sum + task.minutes, 0) / 60}h planned</span>{tasks.slice(0,4).map((task) => <div key={task.id} style={{ borderTop: `1px solid ${colors.line}`, padding: "5px 0", fontSize: 11 }}>{task.title}</div>)}</div>;
+              })}
+            </div>
+            <div style={{ ...buttonRowStyle, marginTop: 10 }}><button type="button" onClick={() => setScreen("planner")} style={goldButtonStyle}>Open Weekly Planner</button><button type="button" onClick={buildWorkPlan} style={secondaryButtonStyle}>Rebuild Week</button></div>
+          </section>
+          <section style={sectionStyle}>
+            <SectionHeader eyebrow="Morning Brief" title="What Needs Attention" detail={todaysWeather ? `${weatherText(Number(todaysWeather.code || 0))}, ${Math.round(Number(todaysWeather.high || 0))}° high · ${Number(todaysWeather.precipChance || 0)}% precipitation` : "Weather is loading."} />
+            <div style={{ display: "grid", gap: 7 }}>
+              {recommendations.slice(0, 5).map((item) => <button key={item.title} type="button" onClick={item.action} style={{ ...cardStyle, padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{item.title}</strong><span style={mutedSmallStyle}>{item.detail}</span></button>)}
+              {vendorEvents.slice(0, 3).map((item) => <button key={item.instanceId || item.id} type="button" onClick={() => setScreen("calendar")} style={{ ...cardStyle, padding: 9, textAlign: "left", cursor: "pointer" }}><strong>{item.title}</strong><span style={{ ...mutedSmallStyle, display: "block" }}>{item.date === today ? "Today" : formatDate(item.date)} {item.time || ""}</span></button>)}
+            </div>
+          </section>
+        </div>
+        <section style={sectionStyle}>
+          <SectionHeader eyebrow="End of Day" title="Daily Closeout" detail="Completion and movement are derived from today’s work history and operations log." />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(6,minmax(0,1fr))", gap: 8 }}>
+            {[["Completed", completedTodayOccurrences.length], ["Moved", todaysLogEntries.filter((entry) => /moved|rescheduled/i.test(entry.text)).length], ["Skipped", todaysLogEntries.filter((entry) => /skip/i.test(entry.text)).length], ["Outstanding", dueToday.length], ["Hours", staffAnalytics.reduce((sum, staff) => sum + staff.hours, 0).toFixed(1)], ["Log Entries", todaysLogEntries.length]].map(([label, value]) => <div key={String(label)} style={{ ...cardStyle, padding: 10 }}><span style={mutedSmallStyle}>{label}</span><strong style={{ display: "block", fontSize: 22, color: colors.navy }}>{value}</strong></div>)}
+          </div>
+        </section>
+      </div>
+    );
+
+    const intelligenceCenter = (
+      <div style={{ display: "grid", gap: 12 }}>
+        <section style={{ ...sectionStyle, background: `linear-gradient(135deg, ${colors.navy}, #173E68)`, color: "#FFFFFF" }}>
+          <SectionHeader eyebrow="Atlas Intelligence Center 4.0" title="Estate Intelligence" detail="Risk, maintenance, cost, labor, vendor, and documentation signals calculated from the current Atlas records." />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "280px 1fr", gap: 14, alignItems: "center" }}>
+            <div style={{ display: "grid", placeItems: "center" }}><div style={{ width: 174, height: 174, borderRadius: "50%", display: "grid", placeItems: "center", background: `conic-gradient(${healthTone} ${estateHealthScore * 3.6}deg, rgba(255,255,255,.16) 0)`, padding: 12 }}><div style={{ width: "100%", height: "100%", borderRadius: "50%", background: colors.navy, display: "grid", placeItems: "center", textAlign: "center" }}><div><strong style={{ fontSize: 48 }}>{estateHealthScore}</strong><span style={{ display: "block", fontSize: 12, opacity: .78 }}>Estate Health</span></div></div></div></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>{[["Open Work", openWork.length], ["Overdue", overdueWork.length], ["Recurring Missed", recurringMissed.length], ["Asset Risks 70+", assetRisks.filter((item) => item.risk >= 70).length], ["Vendor Issues", vendorIssues], ["Documentation", `${documentationCoverage}%`]].map(([label,value]) => <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, padding: 9, background: "rgba(255,255,255,.07)" }}><span style={{ fontSize: 11, opacity: .78 }}>{label}</span><strong style={{ display: "block", fontSize: 21 }}>{value}</strong></div>)}</div>
+          </div>
+        </section>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.15fr .85fr", gap: 12 }}>
+          <section style={sectionStyle}><SectionHeader eyebrow="AI Operations Director" title="Recommended Next Actions" detail="Recommendations are recalculated from current work, asset, vendor, weather, and documentation signals." /><div style={{ display: "grid", gap: 8 }}>{recommendations.map((item,index) => <button key={item.title} type="button" onClick={item.action} style={{ ...cardStyle, padding: 11, textAlign: "left", cursor: "pointer", borderLeft: `4px solid ${index < 2 ? colors.red : colors.gold}` }}><span style={{ ...mutedSmallStyle, fontWeight: 900 }}>{item.priority}</span><strong style={{ display: "block", margin: "2px 0" }}>{item.title}</strong><span style={mutedSmallStyle}>{item.detail}</span></button>)}</div></section>
+          <section style={sectionStyle}><SectionHeader eyebrow="Detection" title="Maintenance Intelligence" detail="Automatic checks for missed, duplicate, waiting, and high-risk work." /><div style={{ display: "grid", gap: 8 }}>{[["Missed Maintenance", recurringMissed.length],["Duplicate Work Groups",duplicateGroups.length],["Waiting on Vendor",waitingVendor.length],["Waiting on Owner",waitingOwner.length],["Waiting on Parts",waitingParts.length],["Safety Items",safetyOpen.length]].map(([label,value]) => <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: 9, borderBottom: `1px solid ${colors.line}` }}><span>{label}</span><strong>{value}</strong></div>)}</div></section>
+        </div>
+        <section style={sectionStyle}><SectionHeader eyebrow="Predictive Maintenance" title="Asset Risk Scores" detail="Risk combines overdue work, priority, open workload, and time since recorded service." /><div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}><thead><tr>{["Asset","Risk","Likely Maintenance","Last Service","Open","Cost History","Action"].map((label) => <th key={label} style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${colors.line}`, fontSize: 11, color: colors.muted }}>{label}</th>)}</tr></thead><tbody>{assetRisks.slice(0,12).map((item) => <tr key={item.asset.id}><td style={{ padding: 8, borderBottom: `1px solid ${colors.line}` }}><strong>{item.asset.name}</strong></td><td style={{ padding: 8, borderBottom: `1px solid ${colors.line}` }}><span style={badgeStyle(item.risk >= 70 ? "High" : item.risk >= 40 ? "Medium" : "Online")}>{item.risk}</span></td><td style={{ padding: 8, borderBottom: `1px solid ${colors.line}` }}>{item.daysUntil <= 0 ? "Due now" : `${item.daysUntil} days`}</td><td style={{ padding: 8, borderBottom: `1px solid ${colors.line}` }}>{item.lastService ? formatDate(item.lastService) : "No recorded service"}</td><td style={{ padding: 8, borderBottom: `1px solid ${colors.line}` }}>{item.open}</td><td style={{ padding: 8, borderBottom: `1px solid ${colors.line}` }}>${item.cost.toLocaleString(undefined,{maximumFractionDigits:0})}</td><td style={{ padding: 8, borderBottom: `1px solid ${colors.line}` }}><button type="button" onClick={() => { setSelectedAssetId(item.asset.id); setScreen("assets"); }} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Open</button></td></tr>)}</tbody></table></div></section>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
+          <section style={sectionStyle}><SectionHeader eyebrow="Vendor Intelligence" title="Performance Dashboard" detail="Reliability is based on completed and overdue assigned work; cost uses recorded work-order values." /><div style={{ display: "grid", gap: 8 }}>{vendorAnalytics.slice(0,8).map((item) => <div key={item.vendor.id} style={{ ...cardStyle, padding: 10 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{item.vendor.name}</strong><span>{item.rating.toFixed(1)}/5</span></div><span style={mutedSmallStyle}>{item.reliability}% reliability · {item.records} jobs · ${item.averageCost.toLocaleString(undefined,{maximumFractionDigits:0})} avg · Last {item.lastService ? formatDate(item.lastService) : "not recorded"}</span></div>)}</div></section>
+          <section style={sectionStyle}><SectionHeader eyebrow="Budget Dashboard" title="Cost Analytics" detail="Actual cost is used when available; estimated cost is used otherwise." /><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginBottom: 12 }}>{[["Monthly Spend",`$${monthlySpend.toLocaleString(undefined,{maximumFractionDigits:0})}`],["Yearly Spend",`$${yearlySpend.toLocaleString(undefined,{maximumFractionDigits:0})}`],["Forecast Budget",`$${annualBudget.toLocaleString(undefined,{maximumFractionDigits:0})}`],["Remaining",`$${remainingBudget.toLocaleString(undefined,{maximumFractionDigits:0})}`]].map(([label,value]) => <div key={label} style={{ ...cardStyle, padding: 10 }}><span style={mutedSmallStyle}>{label}</span><strong style={{ display: "block", fontSize: 20 }}>{value}</strong></div>)}</div><div style={{ display: "grid", gap: 8 }}>{topCategoryCosts.map(([label,value]) => metricBar(label, Math.round(value), Math.max(...topCategoryCosts.map(([,amount]) => amount),1), "$"))}</div></section>
+        </div>
+        <section style={sectionStyle}><SectionHeader eyebrow="Interactive Estate Heat Map" title="Maintenance Concentration and Risk" detail="Select a location to open its Atlas record. Intensity is calculated from open, overdue, and high-priority work." /><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>{locationRisk.slice(0,16).map((item) => <button key={item.location.id} type="button" onClick={() => { setSelectedLocationId(item.location.id); setScreen("locations"); }} style={{ border: `1px solid ${item.risk >= 65 ? "#F5A6A6" : item.risk >= 35 ? "#F2D18A" : colors.line}`, borderRadius: 12, padding: 11, textAlign: "left", cursor: "pointer", background: item.risk >= 65 ? "#FFF0F0" : item.risk >= 35 ? "#FFF8E8" : "#F2F8F5" }}><strong style={{ display: "block" }}>{item.location.name}</strong><span style={mutedSmallStyle}>Risk {item.risk} · {item.records.length} open · {item.overdue.length} overdue</span></button>)}</div></section>
+      </div>
+    );
+
+    const executiveDashboard = (
+      <div style={{ display: "grid", gap: 12 }}>
+        <section style={{ ...sectionStyle, background: colors.navy, color: "#FFFFFF" }}><SectionHeader eyebrow="Executive Dashboard" title={`${activeProperty.name} Management Overview`} detail="Steve’s operational view of health, budget, risk, labor, projects, and major upcoming work." /><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(6,minmax(0,1fr))", gap: 8 }}>{[["Health",estateHealthScore],["Open",openWork.length],["Overdue",overdueWork.length],["Year Spend",`$${yearlySpend.toLocaleString(undefined,{maximumFractionDigits:0})}`],["Labor Hours",staffAnalytics.reduce((sum,item)=>sum+item.hours,0).toFixed(1)],["Projects",openWork.filter((record)=>(record as AtlasServiceRecord).workType==="Project").length]].map(([label,value]) => <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, padding: 9 }}><span style={{ fontSize: 11, opacity: .75 }}>{label}</span><strong style={{ display: "block", fontSize: 22 }}>{value}</strong></div>)}</div></section>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}><section style={sectionStyle}><SectionHeader eyebrow="Risk" title="Highest Operational Risks" detail="The most consequential current work and asset signals." /><div style={{ display: "grid", gap: 8 }}>{recommendations.slice(0,6).map((item) => <button key={item.title} type="button" onClick={item.action} style={{ ...cardStyle, padding: 10, textAlign: "left", cursor: "pointer" }}><strong>{item.title}</strong><span style={{ ...mutedSmallStyle, display: "block" }}>{item.detail}</span></button>)}</div></section><section style={sectionStyle}><SectionHeader eyebrow="Upcoming Major Work" title="Next Seven Days" detail="High-priority work, projects, and fixed appointments." /><div style={{ display: "grid", gap: 7 }}>{[...dueThisWeek.filter((record)=>record.priority==="High" || (record as AtlasServiceRecord).workType==="Project"), ...fixedAppointments].slice(0,10).map((item,index) => <div key={`${"id" in item ? item.id : index}-${index}`} style={{ borderBottom: `1px solid ${colors.line}`, padding: "7px 0" }}><strong>{item.title}</strong><span style={{ ...mutedSmallStyle, display: "block" }}>{item.date ? formatDate(item.date) : "Scheduled"} {"time" in item && item.time ? `· ${item.time}` : ""}</span></div>)}</div></section></div>
+      </div>
+    );
+
+    const ownerDashboard = (
+      <div style={{ display: "grid", gap: 12 }}>
+        <section style={{ ...sectionStyle, background: `linear-gradient(135deg, ${colors.navy}, ${colors.navy3})`, color: "#FFFFFF" }}><SectionHeader eyebrow="Owner Dashboard" title={`${activeProperty.name} Property Status`} detail="A clean owner view of estate health, major projects, recent photos, upcoming vendors, and budget." /><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>{[["Estate Health",`${estateHealthScore}/100`],["Major Projects",openWork.filter((record)=>(record as AtlasServiceRecord).workType==="Project").length],["Upcoming Vendors",vendorEvents.length],["Year Budget",`$${yearlySpend.toLocaleString(undefined,{maximumFractionDigits:0})}`]].map(([label,value]) => <div key={label} style={{ border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, padding: 10 }}><span style={{ fontSize: 11, opacity: .78 }}>{label}</span><strong style={{ display: "block", fontSize: 22 }}>{value}</strong></div>)}</div></section>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}><section style={sectionStyle}><SectionHeader eyebrow="Major Projects" title="Active Property Improvements" detail="Open Atlas records marked as projects." /><div style={{ display: "grid", gap: 8 }}>{openWork.filter((record)=>(record as AtlasServiceRecord).workType==="Project").slice(0,8).map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...cardStyle, padding: 10, textAlign: "left", cursor: "pointer" }}><strong>{record.title}</strong><span style={{ ...mutedSmallStyle, display: "block" }}>{record.date ? formatDate(record.date) : "No target date"} · {record.status}</span></button>)}</div></section><section style={sectionStyle}><SectionHeader eyebrow="Upcoming Vendors" title="Scheduled Property Visits" detail="Vendor-linked calendar commitments." /><div style={{ display: "grid", gap: 8 }}>{vendorEvents.map((item) => <button key={item.instanceId || item.id} type="button" onClick={() => setScreen("calendar")} style={{ ...cardStyle, padding: 10, textAlign: "left", cursor: "pointer" }}><strong>{item.title}</strong><span style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(item.date)} {item.time || ""}</span></button>)}</div></section></div>
+        <section style={sectionStyle}><SectionHeader eyebrow="Recent Photos" title="Property Progress" detail="The latest photos already stored in Atlas." /><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(6,minmax(0,1fr))", gap: 8 }}>{photos.slice().sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))).slice(0,12).map((photo) => { const source = photoSource(photo); return <button key={photo.id} type="button" onClick={() => setScreen("timeline")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 0, overflow: "hidden", background: colors.card, cursor: "pointer", textAlign: "left" }}>{source ? <img src={source} alt={photo.name || "Atlas property photo"} style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", display: "block" }} /> : <div style={{ aspectRatio: "4/3", display: "grid", placeItems: "center", background: colors.bg }}>Photo</div>}<span style={{ display: "block", padding: 7, fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{photo.name || "Property photo"}</span></button>; })}</div></section>
+      </div>
+    );
+
+    if (dashboardCenterView !== "command") {
+      return <div className="atlas-command-dashboard" style={{ display: "grid", gap: 12 }}>
+        {dashboardCenterSelector}
+        {dashboardCenterView === "operations" ? operationsCenter : null}
+        {dashboardCenterView === "intelligence" ? intelligenceCenter : null}
+        {dashboardCenterView === "executive" ? executiveDashboard : null}
+        {dashboardCenterView === "owner" ? ownerDashboard : null}
+      </div>;
+    }
+
     return <div className="atlas-command-dashboard" style={{ display: "grid", gap: 12 }}>
+      {dashboardCenterSelector}
       <section style={{ ...cardStyle, padding: isMobile ? 9 : "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", background: "#F8FAFC", borderRadius: 14 }}>
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: colors.navy, fontSize: 13 }}>Dashboard View</strong><select value={dashboardLayoutId} onChange={(event) => applyLayout(event.target.value)} style={{ ...selectStyle, minWidth: 138, minHeight: 34, padding: "5px 9px", fontSize: 12 }}>{allLayouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardEditMode((current) => !current)} style={{ ...(dashboardEditMode ? goldButtonStyle : secondaryButtonStyle), minHeight: 34, padding: "6px 10px", fontSize: 12 }}>{dashboardEditMode ? "Done" : "Customize"}</button><button type="button" onClick={saveLayoutAs} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Save As</button><button type="button" onClick={() => applyLayout(isMobile ? "mobile" : "operations")} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Reset</button></div>
