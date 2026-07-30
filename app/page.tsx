@@ -16173,6 +16173,9 @@ export default function AtlasPage() {
       };
     });
 
+    const incompleteAssetRecordCount = assetRecordQualityRows.filter(
+      (row) => row.missing.length >= 3,
+    ).length;
     const incompleteAssetRows = assetRecordQualityRows
       .filter((row) => row.missing.length >= 3)
       .sort((a, b) => {
@@ -16208,6 +16211,12 @@ export default function AtlasPage() {
         .slice(0, 6);
     })();
 
+    const openAssetWorkOrderCount = serviceRecords.filter(
+      (record) =>
+        Boolean(record.assetId) &&
+        assetRecords.some((asset) => asset.id === record.assetId) &&
+        record.status !== "Completed",
+    ).length;
     const displayedAssets = [...filteredAssets]
       .filter((asset) => !excludedAssetStatuses.includes(asset.status))
       .filter((asset) => !excludedAssetCategories.includes(asset.category))
@@ -16605,6 +16614,91 @@ export default function AtlasPage() {
                   </button>
                 ) : null}
               </div>
+            </section>
+
+            <section
+              aria-label="Asset activity snapshot"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
+                gap: 8,
+              }}
+            >
+              {[
+                {
+                  label: "Tracked Assets",
+                  value: assetRecords.length,
+                  note: `${displayedAssets.length} currently visible`,
+                },
+                {
+                  label: "Open Work",
+                  value: openAssetWorkOrderCount,
+                  note: "Linked work orders",
+                },
+                {
+                  label: "Needs Information",
+                  value: incompleteAssetRecordCount,
+                  note: "Missing 3 or more details",
+                },
+                {
+                  label: "Favorites",
+                  value: favoriteAssets.length,
+                  note: "Pinned for quick access",
+                },
+                {
+                  label: "Recently Viewed",
+                  value: recentAssets.length,
+                  note: "Recent non-favorites",
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  style={{
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 13,
+                    background: "#FFFFFF",
+                    padding: "10px 11px",
+                    minWidth: 0,
+                    boxShadow: "0 3px 10px rgba(21, 47, 79, 0.04)",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "block",
+                      color: colors.muted,
+                      fontSize: 9,
+                      fontWeight: 850,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                  <strong
+                    style={{
+                      display: "block",
+                      marginTop: 3,
+                      color: colors.navy,
+                      fontSize: 21,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {item.value}
+                  </strong>
+                  <span
+                    style={{
+                      display: "block",
+                      marginTop: 5,
+                      color: colors.muted,
+                      fontSize: 9,
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    {item.note}
+                  </span>
+                </div>
+              ))}
             </section>
 
             {assetBulkMode ? (
