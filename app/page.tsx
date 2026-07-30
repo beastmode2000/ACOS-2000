@@ -17969,7 +17969,17 @@ export default function AtlasPage() {
                       ))}
                     </div>
                   ) : (
-                    <div style={assetEmptyCardStyle}>No open work orders.</div>
+                    <div style={{
+                      border: `1px dashed ${colors.line}`,
+                      borderRadius: 10,
+                      background: "#F8FAFD",
+                      padding: 12,
+                      color: colors.muted,
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                      wordBreak: "normal",
+                      overflowWrap: "break-word",
+                    }}>No open work orders.</div>
                   )}
                 </section>
               ) : null}
@@ -17979,7 +17989,17 @@ export default function AtlasPage() {
                   <div style={{ ...assetCardHeaderStyle, marginBottom: 8 }}>
                     <strong>Procedures</strong>
                   </div>
-                  <div style={assetEmptyCardStyle}>
+                  <div style={{
+                      border: `1px dashed ${colors.line}`,
+                      borderRadius: 10,
+                      background: "#F8FAFD",
+                      padding: 12,
+                      color: colors.muted,
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                      wordBreak: "normal",
+                      overflowWrap: "break-word",
+                    }}>
                     {linkedAssetProcedures.length
                       ? `${linkedAssetProcedures.length} linked procedure${linkedAssetProcedures.length === 1 ? "" : "s"}.`
                       : "No procedures linked."}
