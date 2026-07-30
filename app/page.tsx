@@ -1346,56 +1346,6 @@ function blankContact(): ContactRecord {
   });
 }
 
-const ATLAS_WORK_CATEGORIES = [
-  "🔧 Maintenance",
-  "🧹 Cleaning",
-  "🌳 Landscaping",
-  "🚿 Pool & Spa",
-  "💧 Irrigation",
-  "⚡ Electrical",
-  "🚰 Plumbing",
-  "❄️ HVAC",
-  "🚤 Dock & Marine",
-  "🚗 Vehicles",
-  "🏠 House",
-  "📦 Inventory",
-  "📋 Project",
-  "✅ Inspection",
-  "🚨 Safety",
-  "📄 Admin",
-] as const;
-
-function normalizeWorkCategory(value: unknown) {
-  const raw = String(value || "").trim();
-  if (!raw) return "🔧 Maintenance";
-
-  const plain = raw
-    .replace(/^(?:\p{Extended_Pictographic}|\uFE0F|\u200D)+\s*/u, "")
-    .trim()
-    .toLowerCase();
-
-  const exact = ATLAS_WORK_CATEGORIES.find((category) =>
-    category.toLowerCase() === raw.toLowerCase(),
-  );
-  if (exact) return exact;
-
-  const byLabel = ATLAS_WORK_CATEGORIES.find((category) =>
-    category
-      .replace(/^(?:\p{Extended_Pictographic}|\uFE0F|\u200D)+\s*/u, "")
-      .trim()
-      .toLowerCase() === plain,
-  );
-
-  return byLabel || raw;
-}
-
-function workCategoryEmoji(value: unknown) {
-  const match = normalizeWorkCategory(value).match(
-    /^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u,
-  );
-  return match?.[1] || "🔧";
-}
-
 function normalizeService(
   record: Partial<AtlasServiceRecord>,
 ): AtlasServiceRecord {
@@ -1439,7 +1389,7 @@ function normalizeService(
         : record.recurring
           ? "Preventive Maintenance"
           : "Work Order",
-    workCategory: normalizeWorkCategory(
+    workCategory: String(
       record.workCategory ||
         (record as AtlasServiceRecord & { category?: string }).category ||
         "🔧 Maintenance",
@@ -9185,16 +9135,6 @@ export default function AtlasPage() {
       clean.recurrenceUnit =
         String(clean.recurrenceUnit || "Weeks").trim() || "Weeks";
       clean.season = String(clean.season || "Year-Round").trim() || "Year-Round";
-      clean.workCategory = normalizeWorkCategory(
-        clean.workCategory || clean.category || "🔧 Maintenance",
-      );
-      clean.emoji = workCategoryEmoji(clean.workCategory);
-      clean.assetId = String(clean.assetId || "");
-      clean.vendorId = String(clean.vendorId || "");
-      clean.procedureId = String(clean.procedureId || "");
-      clean.locationId = String(clean.locationId || "");
-      clean.assignedTo = String(clean.assignedTo || "");
-      clean.responsibilityArea = String(clean.responsibilityArea || "");
 
       [
         "date",
@@ -9275,7 +9215,7 @@ export default function AtlasPage() {
             "X-Atlas-Request-Id": requestId,
           },
           cache: "no-store",
-          redirect: "follow",
+          redirect: "manual",
           signal: controller.signal,
           body: JSON.stringify(body),
         });
@@ -9284,6 +9224,12 @@ export default function AtlasPage() {
         const payload = contentType.includes("application/json")
           ? await response.json().catch(() => ({}))
           : {};
+
+        if (response.type === "opaqueredirect" || response.status === 0) {
+          throw new Error(
+            `${operationLabel} was redirected instead of saved. Refresh Atlas and try again.`,
+          );
+        }
 
         if (!response.ok || payload?.ok !== true) {
           const message =
@@ -9907,23 +9853,37 @@ export default function AtlasPage() {
     const recordId = selectedServiceId || selectedService.id;
     if (!recordId) return;
 
-    const safePatch: Partial<AtlasServiceRecord> = { ...patch };
+    const safePatch: Partial<AtlasServiceRecord> & { category?: string } = {
+      ...patch,
+    };
 
-    if (Object.prototype.hasOwnProperty.call(safePatch, "workCategory")) {
-      safePatch.workCategory = normalizeWorkCategory(safePatch.workCategory);
-      safePatch.emoji = workCategoryEmoji(safePatch.workCategory);
+    if (Object.prototype.hasOwnProperty.call(patch, "workCategory")) {
+      const category = String(patch.workCategory || "🔧 Maintenance").trim() ||
+        "🔧 Maintenance";
+      safePatch.workCategory = category;
+      safePatch.category = category;
+      safePatch.emoji = String(patch.emoji || category.match(/^\S+/)?.[0] || "🔧");
     }
 
-    if (Object.prototype.hasOwnProperty.call(safePatch, "assetId"))
-      safePatch.assetId = String(safePatch.assetId || "");
-    if (Object.prototype.hasOwnProperty.call(safePatch, "vendorId"))
-      safePatch.vendorId = String(safePatch.vendorId || "");
-    if (Object.prototype.hasOwnProperty.call(safePatch, "procedureId"))
-      safePatch.procedureId = String(safePatch.procedureId || "");
-    if (Object.prototype.hasOwnProperty.call(safePatch, "locationId"))
-      safePatch.locationId = String(safePatch.locationId || "");
-    if (Object.prototype.hasOwnProperty.call(safePatch, "assignedTo"))
-      safePatch.assignedTo = String(safePatch.assignedTo || "");
+    if (Object.prototype.hasOwnProperty.call(patch, "status")) {
+      safePatch.status = isServiceStatus(patch.status) ? patch.status : "Open";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "priority")) {
+      safePatch.priority = isPriority(patch.priority) ? patch.priority : "Medium";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "date")) {
+      safePatch.date = String(patch.date || "").trim().slice(0, 10);
+    }
+
+    ["assetId", "vendorId", "procedureId", "locationId", "assignedTo"].forEach(
+      (key) => {
+        if (Object.prototype.hasOwnProperty.call(patch, key)) {
+          (safePatch as Record<string, unknown>)[key] = String(
+            (patch as Record<string, unknown>)[key] || "",
+          );
+        }
+      },
+    );
 
     markRecordDirty("work_order", recordId);
     setServiceRecords((current) =>
@@ -9956,24 +9916,14 @@ export default function AtlasPage() {
       assignedTo: String(selectedService.assignedTo || ""),
       responsibilityArea: String(selectedService.responsibilityArea || ""),
       notes: String(selectedService.notes || ""),
-      workCategory: normalizeWorkCategory(selectedService.workCategory),
-      emoji: workCategoryEmoji(selectedService.workCategory),
-      workType:
-        selectedService.workType === "Quick Task" ||
-        selectedService.workType === "Work Order" ||
-        selectedService.workType === "Preventive Maintenance" ||
-        selectedService.workType === "Project"
-          ? selectedService.workType
-          : selectedService.recurring
-            ? "Preventive Maintenance"
-            : "Work Order",
-      status: isServiceStatus(selectedService.status)
-        ? selectedService.status
-        : "Open",
-      priority: isPriority(selectedService.priority)
-        ? selectedService.priority
-        : "Medium",
-    });
+      workCategory: String(
+        selectedService.workCategory ||
+          (selectedService as AtlasServiceRecord & { category?: string }).category ||
+          "🔧 Maintenance",
+      ),
+    }) as AtlasServiceRecord & { category?: string };
+
+    prepared.category = prepared.workCategory;
 
     setDatabaseStatus(`Saving ${prepared.title || "work order"}...`);
 
@@ -9994,7 +9944,7 @@ export default function AtlasPage() {
     );
     clearRecordDirty("work_order", prepared.id);
     setDatabaseStatus(`Saved ${prepared.title || "work order"}.`);
-    setSelectedServiceId(prepared.id);
+    setSelectedServiceId("");
   }
 
   async function completeWorkOrder(record: AtlasServiceRecord) {
@@ -32697,14 +32647,18 @@ export default function AtlasPage() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(5, minmax(0, 1fr))", gap: 12 }}>
-          {[
-            ["Open Work", openWork.length, "open" as const],
-            ["Completed", completedWork.length, "completed" as const],
-            ["Assets / Areas", departmentAssets.length + departmentLocations.length, "assets" as const],
-            ["Requests", departmentRequests.length, "requests" as const],
-            ["Vendors", departmentVendors.length, "vendors" as const],
-          ].map(([label, value, target]) => (
-            <button key={String(label)} type="button" onClick={() => openDepartmentDrilldown(target)} style={{ ...metricStyle, textAlign: "left", cursor: "pointer" }}>
+          {([
+            { label: "Open Work", value: openWork.length, target: "open" },
+            { label: "Completed", value: completedWork.length, target: "completed" },
+            { label: "Assets / Areas", value: departmentAssets.length + departmentLocations.length, target: "assets" },
+            { label: "Requests", value: departmentRequests.length, target: "requests" },
+            { label: "Vendors", value: departmentVendors.length, target: "vendors" },
+          ] satisfies Array<{
+            label: string;
+            value: number;
+            target: "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures";
+          }>).map(({ label, value, target }) => (
+            <button key={label} type="button" onClick={() => openDepartmentDrilldown(target)} style={{ ...metricStyle, textAlign: "left", cursor: "pointer" }}>
               <span style={{ color: colors.muted, fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".07em" }}>{label}</span>
               <strong style={{ color: colors.navy, fontSize: 30 }}>{value}</strong>
             </button>
