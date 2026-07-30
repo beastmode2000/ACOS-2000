@@ -13791,7 +13791,7 @@ export default function AtlasPage() {
         /waiting|parts|owner|vendor|weather/i.test(String(record.status || "")),
       );
 
-      const teamChecklistItems = teamOpen.flatMap((record) =>
+      const assignedChecklistItems = teamOpen.flatMap((record) =>
         Array.isArray((record as AtlasServiceRecord).checklist)
           ? (record as AtlasServiceRecord).checklist!.map((item) => ({
               ...item,
@@ -13800,6 +13800,28 @@ export default function AtlasPage() {
             }))
           : [],
       );
+      const addisonRoutineFallback = [
+        { id: "addison-dog-turf", text: "Clean and inspect the dog turf area", completed: false, workOrderId: "routine", workOrderTitle: "Daily Property Routine" },
+        { id: "addison-packages", text: "Check and deliver packages", completed: false, workOrderId: "routine", workOrderTitle: "Daily Property Routine" },
+        { id: "addison-garage-garbage", text: "Check garage garbage and disposal areas", completed: false, workOrderId: "routine", workOrderTitle: "Daily Property Routine" },
+        { id: "addison-sweep", text: "Sweep primary walkways, patios, and courtyard", completed: false, workOrderId: "routine", workOrderTitle: "Daily Grounds Routine" },
+        { id: "addison-pots", text: "Check pots and dry areas for watering needs", completed: false, workOrderId: "routine", workOrderTitle: "Daily Grounds Routine" },
+        { id: "addison-fountain", text: "Inspect fountain condition and water level", completed: false, workOrderId: "routine", workOrderTitle: "Daily Grounds Routine" },
+        { id: "addison-weeding", text: "Complete assigned weeding and grounds work", completed: false, workOrderId: "routine", workOrderTitle: "Assigned Grounds Work" },
+        { id: "addison-final-walk", text: "Complete final property walkthrough and report issues", completed: false, workOrderId: "routine", workOrderTitle: "End-of-Day Check" },
+      ];
+      const storedRoutineChecklistItems = dashboardRoutineItems.map((item) => ({
+        id: item.id,
+        text: item.title,
+        completed: completedDashboardRoutineIds.includes(item.id),
+        workOrderId: "routine",
+        workOrderTitle: item.detail || "Daily Routine",
+      }));
+      const teamChecklistItems = isAddisonUser
+        ? [...storedRoutineChecklistItems, ...assignedChecklistItems].length
+          ? [...storedRoutineChecklistItems, ...assignedChecklistItems]
+          : addisonRoutineFallback
+        : assignedChecklistItems;
       const completedChecklistCount = teamChecklistItems.filter(
         (item) => item.completed,
       ).length;
