@@ -14167,7 +14167,16 @@ export default function AtlasPage() {
                     alignItems: "end",
                   }}
                 >
-                  <Field label="Search Areas">
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span
+                      style={{
+                        color: colors.muted,
+                        fontSize: 12,
+                        fontWeight: 900,
+                      }}
+                    >
+                      Search Areas
+                    </span>
                     <input
                       value={landscapeSearch}
                       onChange={(event) => setLandscapeSearch(event.target.value)}
@@ -14182,7 +14191,7 @@ export default function AtlasPage() {
                         color: colors.text,
                       }}
                     />
-                  </Field>
+                  </label>
 
                   <SelectField
                     label="Status Filter"
