@@ -4371,16 +4371,16 @@ export default function AtlasPage() {
             )
           : null;
         const role = String(payload?.currentUser?.role || matchedMember?.role || "viewer") as AtlasCurrentUser["role"];
-        const returnedPropertyIds = Array.isArray(payload?.currentUser?.propertyIds)
-          ? payload.currentUser.propertyIds.map(String)
+        const returnedPropertyIds: string[] = Array.isArray(payload?.currentUser?.propertyIds)
+          ? payload.currentUser.propertyIds.map((propertyId: unknown) => String(propertyId))
           : Array.isArray(matchedMember?.propertyIds)
-            ? matchedMember.propertyIds.map(String)
+            ? matchedMember.propertyIds.map((propertyId: unknown) => String(propertyId))
             : [];
         const isFullAccess = role === "master" || role === "administrator";
-        const allowed = isFullAccess
-          ? allPropertyIds
+        const allowed: string[] = isFullAccess
+          ? [...allPropertyIds]
           : returnedPropertyIds.length > 0
-            ? Array.from(new Set(returnedPropertyIds))
+            ? [...new Set<string>(returnedPropertyIds)]
             : ["2000"];
 
         setCurrentAtlasUser({
