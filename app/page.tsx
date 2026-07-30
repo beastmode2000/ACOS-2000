@@ -4249,6 +4249,7 @@ export default function AtlasPage() {
   const [hideDocumentLogos, setHideDocumentLogos] = useState(false);
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [selectedDocumentFileIndex, setSelectedDocumentFileIndex] = useState(0);
   const [favoriteDocumentIds, setFavoriteDocumentIds] = useState<string[]>([]);
   const [recentDocumentIds, setRecentDocumentIds] = useState<string[]>([]);
   const [documentQuickAccessOpen, setDocumentQuickAccessOpen] = useState(true);
@@ -4403,6 +4404,10 @@ export default function AtlasPage() {
       setRecentSearches([]);
     }
   }, []);
+
+  useEffect(() => {
+    setSelectedDocumentFileIndex(0);
+  }, [selectedDocumentId]);
 
   useEffect(() => {
     try {
@@ -22194,7 +22199,13 @@ export default function AtlasPage() {
     const selectedTargetKind = (selectedDocument?.targetType ||
       "General") as IntakeTargetKind;
     const selectedTargetOptions = documentTargetOptionsFor(selectedTargetKind);
-    const primaryFile = selectedDocument?.files?.[0] || null;
+    const selectedDocumentFiles = selectedDocument?.files || [];
+    const safeSelectedDocumentFileIndex = Math.min(
+      Math.max(0, selectedDocumentFileIndex),
+      Math.max(0, selectedDocumentFiles.length - 1),
+    );
+    const primaryFile =
+      selectedDocumentFiles[safeSelectedDocumentFileIndex] || null;
     const primarySource = primaryFile?.dataUrl || primaryFile?.url || "";
     const primaryType = String(primaryFile?.type || "").toLowerCase();
     const primaryName = String(primaryFile?.name || "").toLowerCase();
@@ -22206,12 +22217,25 @@ export default function AtlasPage() {
       primaryType.includes("pdf") ||
       primarySource.startsWith("data:application/pdf") ||
       primaryName.endsWith(".pdf") ||
-      selectedDocument?.href?.toLowerCase().includes(".pdf");
+      (!primaryFile &&
+        selectedDocument?.href?.toLowerCase().includes(".pdf"));
     const rawDocumentHref = primarySource || selectedDocument?.href || "";
     const documentHref =
       rawDocumentHref && primaryIsPdf
         ? `${rawDocumentHref.split("#")[0]}#page=${Math.max(1, blueprintPage)}`
         : rawDocumentHref;
+    const hasMultipleDocumentFiles = selectedDocumentFiles.length > 1;
+
+    function openDocumentFileByOffset(offset: number) {
+      if (!hasMultipleDocumentFiles) return;
+      setSelectedDocumentFileIndex((current) => {
+        return (
+          (current + offset + selectedDocumentFiles.length) %
+          selectedDocumentFiles.length
+        );
+      });
+      setBlueprintPage(1);
+    }
 
     const blueprintCandidate = allDocuments.find((document) => {
       const haystack = [
@@ -22498,6 +22522,7 @@ export default function AtlasPage() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            position: "relative",
           }}
         >
           {documentHref && primaryIsImage ? (
@@ -22583,6 +22608,77 @@ export default function AtlasPage() {
               </p>
             </div>
           )}
+
+          {hasMultipleDocumentFiles ? (
+            <>
+              <button
+                type="button"
+                aria-label="Previous attached file"
+                onClick={() => openDocumentFileByOffset(-1)}
+                style={{
+                  position: "absolute",
+                  left: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: 42,
+                  height: 42,
+                  borderRadius: 999,
+                  border: `1px solid ${colors.line}`,
+                  background: "rgba(255,255,255,0.94)",
+                  color: colors.navy,
+                  fontSize: 24,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  boxShadow: "0 5px 18px rgba(15,42,67,0.18)",
+                  zIndex: 3,
+                }}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                aria-label="Next attached file"
+                onClick={() => openDocumentFileByOffset(1)}
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: 42,
+                  height: 42,
+                  borderRadius: 999,
+                  border: `1px solid ${colors.line}`,
+                  background: "rgba(255,255,255,0.94)",
+                  color: colors.navy,
+                  fontSize: 24,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  boxShadow: "0 5px 18px rgba(15,42,67,0.18)",
+                  zIndex: 3,
+                }}
+              >
+                ›
+              </button>
+              <span
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  bottom: 10,
+                  transform: "translateX(-50%)",
+                  borderRadius: 999,
+                  background: "rgba(7,23,47,0.78)",
+                  color: "#FFFFFF",
+                  padding: "5px 9px",
+                  fontSize: 10,
+                  fontWeight: 850,
+                  zIndex: 3,
+                }}
+              >
+                {safeSelectedDocumentFileIndex + 1} /{" "}
+                {selectedDocumentFiles.length}
+              </span>
+            </>
+          ) : null}
         </div>
 
         <div
@@ -22603,6 +22699,12 @@ export default function AtlasPage() {
                 ? `Saved ${new Date(selectedDocument.createdAt).toLocaleString()}`
                 : "Saved document"}
             </p>
+            {hasMultipleDocumentFiles && primaryFile ? (
+              <p style={{ ...mutedSmallStyle, marginTop: 4 }}>
+                File {safeSelectedDocumentFileIndex + 1} of{" "}
+                {selectedDocumentFiles.length}: {primaryFile.name || "Attachment"}
+              </p>
+            ) : null}
           </div>
           <div style={buttonRowStyle}>
             {primaryFile ? (
@@ -22804,9 +22906,45 @@ export default function AtlasPage() {
           detail="Find documents by title, category, or linked property record. Select a preview card to view and edit it."
           isMobile={isMobile}
           drawerResetKey={selectedDocumentId || "document-new"}
-          gridStyleOverride={!isMobile && !selectedDocument ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}
-          listPanelStyleOverride={!isMobile && !selectedDocument ? { width: "100%", maxWidth: "none" } : undefined}
-          drawerStyleOverride={!isMobile && !selectedDocument ? { display: "none" } : undefined}
+          gridStyleOverride={
+            !isMobile
+              ? selectedDocument
+                ? {
+                    gridTemplateColumns: "minmax(300px, 34%) minmax(0, 66%)",
+                    alignItems: "start",
+                    gap: 14,
+                  }
+                : { gridTemplateColumns: "minmax(0, 1fr)" }
+              : undefined
+          }
+          listPanelStyleOverride={
+            !isMobile
+              ? selectedDocument
+                ? {
+                    width: "100%",
+                    maxWidth: "none",
+                    minWidth: 0,
+                    overflowX: "hidden",
+                  }
+                : { width: "100%", maxWidth: "none" }
+              : undefined
+          }
+          drawerStyleOverride={
+            !isMobile
+              ? selectedDocument
+                ? {
+                    position: "static",
+                    top: "auto",
+                    alignSelf: "start",
+                    width: "100%",
+                    minWidth: 0,
+                    maxHeight: "none",
+                    overflowY: "visible",
+                    overflowX: "hidden",
+                  }
+                : { display: "none" }
+              : undefined
+          }
           right={
             <>
               <button
@@ -22885,6 +23023,7 @@ export default function AtlasPage() {
                                 type="button"
                                 onClick={() => {
                                   setBlueprintPage(1);
+                                  setSelectedDocumentFileIndex(0);
                                   setSelectedDocumentId(document.id);
                                   setRecentDocumentIds((current) =>
                                     [
@@ -22921,6 +23060,7 @@ export default function AtlasPage() {
                                 type="button"
                                 onClick={() => {
                                   setBlueprintPage(1);
+                                  setSelectedDocumentFileIndex(0);
                                   setSelectedDocumentId(document.id);
                                   setRecentDocumentIds((current) =>
                                     [
@@ -23681,6 +23821,7 @@ export default function AtlasPage() {
                         onClick={() => {
                           documentListScrollYRef.current = window.scrollY;
                           setBlueprintPage(1);
+                          setSelectedDocumentFileIndex(0);
                           setSelectedDocumentId(document.id);
                           setRecentDocumentIds((current) => [
                             document.id,
