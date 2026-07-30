@@ -16163,9 +16163,13 @@ export default function AtlasPage() {
             : {
                 position: "sticky",
                 top: 8,
-                height: "auto",
-                maxHeight: "none",
-                overflow: "visible",
+                height: "calc(100vh - 24px)",
+                maxHeight: "calc(100vh - 24px)",
+                minHeight: 0,
+                overflowY: "auto",
+                overflowX: "hidden",
+                overscrollBehavior: "contain",
+                scrollbarGutter: "stable",
                 alignSelf: "start",
                 zIndex: 2,
               }
@@ -16989,9 +16993,12 @@ export default function AtlasPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(auto-fit, minmax(250px, 1fr))",
                     gap: 10,
                     marginTop: 10,
+                    alignItems: "start",
                   }}
                 >
                   <div
@@ -17086,6 +17093,10 @@ export default function AtlasPage() {
                       borderRadius: 10,
                       background: assetSetupItems.length ? "#FFF9E8" : "#FFFFFF",
                       padding: 10,
+                      minWidth: 0,
+                      width: "100%",
+                      boxSizing: "border-box",
+                      overflow: "hidden",
                     }}
                   >
                     <div
@@ -17093,11 +17104,31 @@ export default function AtlasPage() {
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        gap: 10,
+                        flexWrap: "wrap",
+                        gap: 8,
+                        minWidth: 0,
                       }}
                     >
-                      <span style={assetInfoLabelStyle}>Record Setup</span>
-                      <span style={badgeStyle(assetSetupItems.length ? "Monitor" : "Online")}>
+                      <span
+                        style={{
+                          ...assetInfoLabelStyle,
+                          whiteSpace: "nowrap",
+                          wordBreak: "normal",
+                          overflowWrap: "normal",
+                          flex: "1 1 130px",
+                        }}
+                      >
+                        Record Setup
+                      </span>
+                      <span
+                        style={{
+                          ...badgeStyle(assetSetupItems.length ? "Monitor" : "Online"),
+                          whiteSpace: "nowrap",
+                          wordBreak: "normal",
+                          overflowWrap: "normal",
+                          flex: "0 0 auto",
+                        }}
+                      >
                         {assetSetupItems.length
                           ? `${assetSetupCompleted} / 5 complete`
                           : "Complete"}
@@ -17111,8 +17142,12 @@ export default function AtlasPage() {
                             style={{
                               color: colors.navy,
                               fontSize: 11,
-                              lineHeight: 1.35,
+                              lineHeight: 1.4,
                               fontWeight: 800,
+                              whiteSpace: "normal",
+                              wordBreak: "normal",
+                              overflowWrap: "break-word",
+                              minWidth: 0,
                             }}
                           >
                             ○ {item}
