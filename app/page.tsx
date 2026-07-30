@@ -3845,6 +3845,125 @@ function ListDrawerLayout(props: {
               paddingBottom: "max(24px, env(safe-area-inset-bottom))",
             }}
           >
+            {(vagueLocationAssetCount || orphanLocationCount) ? (
+              <section
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 12,
+                  background: "#FFFFFF",
+                  padding: 10,
+                  display: "grid",
+                  gap: 9,
+                }}
+              >
+                <div>
+                  <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
+                    Hierarchy and Assignment Review
+                  </strong>
+                  <span style={mutedSmallStyle}>
+                    Assign assets to the most specific physical location and repair missing parent relationships.
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  <div style={recordInfoItemStyle}>
+                    <span style={fieldLabelStyle}>Assets needing location</span>
+                    <strong>{vagueLocationAssetCount}</strong>
+                    <small style={mutedSmallStyle}>General, unknown, or unassigned</small>
+                  </div>
+                  <div style={recordInfoItemStyle}>
+                    <span style={fieldLabelStyle}>Broken parent links</span>
+                    <strong>{orphanLocationCount}</strong>
+                    <small style={mutedSmallStyle}>Parent location no longer exists</small>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {assetRecords
+                    .filter((asset) => {
+                      const location = locations.find((item) => item.id === asset.locationId);
+                      return !asset.locationId || isVagueLocation(location);
+                    })
+                    .slice(0, 8)
+                    .map((asset) => (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAssetId(asset.id);
+                          setScreen("assets");
+                        }}
+                        style={secondaryButtonStyle}
+                      >
+                        Reassign {asset.name}
+                      </button>
+                    ))}
+                </div>
+              </section>
+            ) : null}
+
+            {possibleAssetLocations.length ? (
+              <section
+                style={{
+                  border: `1px solid ${colors.gold}`,
+                  borderRadius: 12,
+                  background: "#FFF9E8",
+                  padding: 10,
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div>
+                  <strong
+                    style={{
+                      display: "block",
+                      color: colors.navy,
+                      fontSize: 12,
+                    }}
+                  >
+                    Location Classification Review
+                  </strong>
+                  <span style={mutedSmallStyle}>
+                    These records look more like equipment or vehicles than
+                    physical property areas.
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {possibleAssetLocations.slice(0, 8).map((location) => (
+                    <button
+                      key={location.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedLocationId(location.id);
+                        setLocationEditorOpen(false);
+                        if (isMobile) setLocationMobileDrawerOpen(true);
+                      }}
+                      style={{
+                        ...secondaryButtonStyle,
+                        minHeight: 30,
+                        padding: "5px 8px",
+                        background: "#FFFFFF",
+                      }}
+                    >
+                      {location.name}
+                    </button>
+                  ))}
+                  {possibleAssetLocations.length > 8 ? (
+                    <span style={mutedSmallStyle}>
+                      +{possibleAssetLocations.length - 8} more
+                    </span>
+                  ) : null}
+                </div>
+                <span style={mutedSmallStyle}>
+                  Atlas will not move or delete these records automatically.
+                </span>
+              </section>
+            ) : null}
+
             <div
               style={{
                 position: "sticky",
@@ -14925,7 +15044,8 @@ export default function AtlasPage() {
       );
       return serviceRecords.filter(
         (record) =>
-          record.locationId === locationId || assetIds.has(record.assetId),
+          record.status !== "Completed" &&
+          (record.locationId === locationId || assetIds.has(record.assetId)),
       ).length;
     };
     const locationPhotoCount = (locationId: string) =>
@@ -14947,6 +15067,76 @@ export default function AtlasPage() {
       if (value.includes("room") || value.includes("house") || value.includes("bedroom")) return "🏠";
       return "📍";
     };
+    const assetLikeLocationTerms = [
+      "lift",
+      "boat",
+      "cobalt",
+      "sea doo",
+      "seadoo",
+      "jet ski",
+      "vehicle",
+      "generator",
+      "pump",
+      "boiler",
+      "freezer",
+      "refrigerator",
+      "mower",
+      "tractor",
+      "trailer",
+      "golf cart",
+      "hvac",
+      "dehumidifier",
+    ];
+    const locationLooksLikeAsset = (location: AtlasLocationRecord) => {
+      const value = `${location.name} ${location.type}`.toLowerCase();
+      return assetLikeLocationTerms.some((term) => value.includes(term));
+    };
+    const matchingAssetForLocation = (location: AtlasLocationRecord) => {
+      const normalizedName = normalizeLocationName(location.name);
+      return assetRecords.find(
+        (asset) => normalizeLocationName(asset.name) === normalizedName,
+      );
+    };
+    const vagueLocationNames = new Set([
+      "general",
+      "other",
+      "unknown",
+      "unassigned",
+      "misc",
+      "miscellaneous",
+    ]);
+    const isVagueLocation = (location?: AtlasLocationRecord) =>
+      Boolean(
+        location &&
+          vagueLocationNames.has(normalizeLocationName(location.name)),
+      );
+    const locationDepth = (location: AtlasLocationRecord) => {
+      let depth = 0;
+      let current = location;
+      const visited = new Set<string>();
+      while (current.parentId && !visited.has(current.parentId)) {
+        visited.add(current.parentId);
+        const parent = locations.find((item) => item.id === current.parentId);
+        if (!parent) break;
+        depth += 1;
+        current = parent;
+      }
+      return depth;
+    };
+    const locationPath = (location: AtlasLocationRecord) => {
+      const parts = [location.name];
+      let current = location;
+      const visited = new Set<string>();
+      while (current.parentId && !visited.has(current.parentId)) {
+        visited.add(current.parentId);
+        const parent = locations.find((item) => item.id === current.parentId);
+        if (!parent) break;
+        parts.unshift(parent.name);
+        current = parent;
+      }
+      return parts.join(" / ");
+    };
+    const possibleAssetLocations = locations.filter(locationLooksLikeAsset);
     const childLocationsFor = (parentId: string) =>
       byName(locations.filter((location) => location.parentId === parentId));
     const normalizedLocationSearch = locationSearch.trim().toLowerCase();
@@ -15107,6 +15297,18 @@ export default function AtlasPage() {
     const locationsWithOpenWork = locations.filter(
       (location) => locationWorkCount(location.id) > 0,
     ).length;
+    const selectedLocationMatchingAsset = selectedLocation.id
+      ? matchingAssetForLocation(selectedLocation)
+      : undefined;
+    const vagueLocationAssetCount = assetRecords.filter((asset) => {
+      const location = locations.find((item) => item.id === asset.locationId);
+      return !asset.locationId || isVagueLocation(location);
+    }).length;
+    const orphanLocationCount = locations.filter(
+      (location) =>
+        Boolean(location.parentId) &&
+        !locations.some((item) => item.id === location.parentId),
+    ).length;
     const selectedLocationPath = (() => {
       if (!selectedLocation.id) return [] as AtlasLocationRecord[];
       const path: AtlasLocationRecord[] = [];
@@ -15158,7 +15360,9 @@ export default function AtlasPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(6, minmax(0, 1fr))",
                 gap: 7,
               }}
             >
@@ -15166,6 +15370,21 @@ export default function AtlasPage() {
                 ["Top level", topLevelLocationCount, "Main property areas"],
                 ["Connected", linkedLocationCount, "With linked records"],
                 ["Active work", locationsWithOpenWork, "Locations with work"],
+                [
+                  "Review",
+                  possibleAssetLocations.length,
+                  "May belong in Assets",
+                ],
+                [
+                  "Unassigned Assets",
+                  vagueLocationAssetCount,
+                  "Need a real location",
+                ],
+                [
+                  "Hierarchy Issues",
+                  orphanLocationCount,
+                  "Missing parent records",
+                ],
               ].map(([label, value, note]) => (
                 <div
                   key={String(label)}
@@ -15400,7 +15619,16 @@ export default function AtlasPage() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {[location.type || "General", location.zone]
+                          {locationPath(location)}
+                        </small>
+                        <small
+                          style={{
+                            ...mutedSmallStyle,
+                            display: "block",
+                            marginTop: 2,
+                          }}
+                        >
+                          {[location.type || "General", `Level ${locationDepth(location) + 1}`]
                             .filter(Boolean)
                             .join(" · ")}
                         </small>
@@ -15640,6 +15868,75 @@ export default function AtlasPage() {
                   </div>
                 </div>
 
+                {locationLooksLikeAsset(selectedLocation) ? (
+                  <section
+                    style={{
+                      marginTop: 12,
+                      padding: 11,
+                      borderRadius: 12,
+                      border: `1px solid ${colors.gold}`,
+                      background: "#FFF9E8",
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <div>
+                      <strong
+                        style={{
+                          display: "block",
+                          color: colors.navy,
+                          fontSize: 12,
+                        }}
+                      >
+                        This record may be an asset
+                      </strong>
+                      <span style={mutedSmallStyle}>
+                        Locations should describe physical areas. Equipment,
+                        watercraft, vehicles, and lifts should normally be stored
+                        in Assets and assigned to a real location.
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 6,
+                      }}
+                    >
+                      {selectedLocationMatchingAsset ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAssetId(selectedLocationMatchingAsset.id);
+                            setScreen("assets");
+                          }}
+                          style={secondaryButtonStyle}
+                        >
+                          Open Matching Asset
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addAsset();
+                            setScreen("assets");
+                          }}
+                          style={secondaryButtonStyle}
+                        >
+                          Create Asset Record
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setLocationEditorOpen(true)}
+                        style={secondaryButtonStyle}
+                      >
+                        Review Location
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+
                 {!locationEditorOpen ? (
                   <section
                     style={{
@@ -15708,6 +16005,9 @@ export default function AtlasPage() {
                     />
                     <label style={{ display: "grid", gap: 7 }}>
                       <span style={fieldLabelStyle}>Parent Location</span>
+                      <small style={mutedSmallStyle}>
+                        Choose the immediate physical area above this location.
+                      </small>
                       <select
                         value={selectedLocation.name.trim() === "2000" ? "" : selectedLocation.parentId || ""}
                         disabled={selectedLocation.name.trim() === "2000"}
@@ -15793,6 +16093,12 @@ export default function AtlasPage() {
                       <div style={recordInfoItemStyle}>
                         <span style={fieldLabelStyle}>Parent</span>
                         <strong>{locations.find((location) => location.id === selectedLocation.parentId)?.name || "Top level"}</strong>
+                      </div>
+                      <div style={recordInfoItemStyle}>
+                        <span style={fieldLabelStyle}>Hierarchy Path</span>
+                        <strong style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>
+                          {locationPath(selectedLocation)}
+                        </strong>
                       </div>
                     </div>
                     {selectedLocation.zone ? <p style={recordNotesStyle}>{selectedLocation.zone}</p> : null}
@@ -15944,8 +16250,12 @@ export default function AtlasPage() {
               <section style={detailSectionStyle}>
                 <div style={detailSectionHeaderStyle}>
                   <div>
-                    <div style={eyebrowStyle}>Assets at this location</div>
+                    <div style={eyebrowStyle}>Assets Assigned Here</div>
                     <strong>{locationAssets.length} attached</strong>
+                    <div style={assetCardHintStyle}>
+                      Assets remain separate records; this only assigns their
+                      physical location.
+                    </div>
                   </div>
                   <select
                     value=""
@@ -15953,7 +16263,13 @@ export default function AtlasPage() {
                       const assetId = event.currentTarget.value;
                       if (assetId) void assignAssetToLocation(assetId);
                     }}
-                    style={{ ...inputStyle, width: isMobile ? "100%" : "auto", minWidth: 0, maxWidth: "100%" }}
+                    style={{
+                      ...inputStyle,
+                      width: isMobile ? "100%" : "auto",
+                      minWidth: 0,
+                      maxWidth: "100%",
+                      minHeight: isMobile ? 42 : undefined,
+                    }}
                     aria-label="Add an asset to this location"
                   >
                     <option value="">+ Add Asset</option>
@@ -15990,17 +16306,36 @@ export default function AtlasPage() {
                             {asset.status}
                           </span>
                         </button>
-                        {locationEditorOpen ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            flexWrap: "wrap",
+                          }}
+                        >
                           <button
                             type="button"
-                            onClick={() =>
-                              void removeAssetFromLocation(asset.id)
-                            }
-                            style={assetFileDeleteButtonStyle}
+                            onClick={() => {
+                              setSelectedAssetId(asset.id);
+                              setScreen("assets");
+                            }}
+                            style={secondaryButtonStyle}
                           >
-                            Remove
+                            Reassign
                           </button>
-                        ) : null}
+                          {locationEditorOpen ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void removeAssetFromLocation(asset.id)
+                              }
+                              style={assetFileDeleteButtonStyle}
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     ))}
                   </div>
