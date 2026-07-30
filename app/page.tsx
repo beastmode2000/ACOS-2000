@@ -4022,6 +4022,10 @@ export default function AtlasPage() {
       window.removeEventListener("storage", refreshRoutineItems);
     };
   }, []);
+  const atlasSaveQueueRef = useRef<Map<string, Promise<boolean>>>(new Map());
+  const atlasLastSaveRef = useRef<Map<string, string>>(new Map());
+  const atlasSaveAttemptRef = useRef(0);
+
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
   );
@@ -8784,69 +8788,257 @@ export default function AtlasPage() {
     }
   }
 
-  async function postAtlasRecord(table: AtlasTable, record: unknown) {
-    try {
-      const response = await fetch("/api/atlas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({
-          table,
-          record: {
-            ...((record && typeof record === "object") ? record : {}),
-            propertyId: activePropertyId,
-          },
-        }),
+  function normalizeAtlasSaveRecord(
+    table: AtlasTable,
+    record: unknown,
+  ): Record<string, unknown> {
+    const source =
+      record && typeof record === "object"
+        ? { ...(record as Record<string, unknown>) }
+        : {};
+
+    const clean: Record<string, unknown> = {};
+    Object.entries(source).forEach(([key, value]) => {
+      if (value !== undefined) clean[key] = value;
+    });
+
+    clean.propertyId = String(clean.propertyId || activePropertyId || "2000");
+
+    if (table === "work_orders") {
+      clean.recurring =
+        clean.recurring === true ||
+        clean.recurring === "true" ||
+        clean.recurring === 1;
+
+      const interval = Math.floor(Number(clean.recurrenceInterval || 1));
+      clean.recurrenceInterval =
+        Number.isFinite(interval) && interval > 0 ? interval : 1;
+      clean.recurrenceUnit =
+        String(clean.recurrenceUnit || "Weeks").trim() || "Weeks";
+      clean.season = String(clean.season || "Year-Round").trim() || "Year-Round";
+
+      [
+        "date",
+        "followUpDate",
+        "recurrenceEndDate",
+        "lastCompletedDate",
+      ].forEach((key) => {
+        const value = clean[key];
+        clean[key] =
+          typeof value === "string" ? value.trim().slice(0, 10) : "";
       });
 
-      const payload = await response.json().catch(() => ({}));
+      [
+        "completionHistory",
+        "checklist",
+        "notesHistory",
+        "serviceHistory",
+        "photos",
+        "documents",
+      ].forEach((key) => {
+        if (!Array.isArray(clean[key])) clean[key] = [];
+      });
+    }
 
-      if (!response.ok || payload?.ok !== true) {
-        throw new Error(
-          payload?.error || `Atlas save returned ${response.status}`,
-        );
+    if (table === "calendar") {
+      clean.date =
+        typeof clean.date === "string" ? clean.date.trim().slice(0, 10) : "";
+      clean.allDay = Boolean(clean.allDay);
+      clean.completed = Boolean(clean.completed);
+    }
+
+    [
+      "vendorIds",
+      "locationIds",
+      "documents",
+      "photos",
+      "requiredTools",
+      "requiredParts",
+      "steps",
+      "linkedAssetIds",
+      "linkedLocationIds",
+      "linkedVendorIds",
+      "customDetails",
+    ].forEach((key) => {
+      if (key in clean && !Array.isArray(clean[key])) clean[key] = [];
+    });
+
+    return clean;
+  }
+
+  function atlasRecordKey(
+    table: AtlasTable,
+    record: Record<string, unknown>,
+  ) {
+    return `${table}:${String(record.id || "new")}:${String(
+      record.propertyId || activePropertyId,
+    )}`;
+  }
+
+  async function atlasApiRequest(
+    method: "POST" | "DELETE",
+    body: Record<string, unknown>,
+    operationLabel: string,
+  ) {
+    const requestId = `atlas-${Date.now()}-${++atlasSaveAttemptRef.current}`;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 20000);
+
+      try {
+        const response = await fetch("/api/atlas", {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "X-Atlas-Request-Id": requestId,
+          },
+          cache: "no-store",
+          redirect: "manual",
+          signal: controller.signal,
+          body: JSON.stringify(body),
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        const payload = contentType.includes("application/json")
+          ? await response.json().catch(() => ({}))
+          : {};
+
+        if (response.type === "opaqueredirect" || response.status === 0) {
+          throw new Error(
+            `${operationLabel} was redirected instead of saved. Refresh Atlas and try again.`,
+          );
+        }
+
+        if (!response.ok || payload?.ok !== true) {
+          const message =
+            payload?.error ||
+            `${operationLabel} returned HTTP ${response.status}.`;
+
+          const retryable =
+            attempt === 1 &&
+            (response.status === 404 ||
+              response.status === 408 ||
+              response.status === 429 ||
+              response.status >= 500);
+
+          if (retryable) {
+            await new Promise((resolve) => window.setTimeout(resolve, 350));
+            continue;
+          }
+
+          throw new Error(message);
+        }
+
+        return payload as Record<string, unknown>;
+      } catch (error) {
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error(`${operationLabel} failed.`);
+
+        if (attempt === 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 350));
+          continue;
+        }
+      } finally {
+        window.clearTimeout(timeout);
       }
+    }
 
-      if (!payload?.id) {
-        throw new Error("Atlas API did not confirm the saved record ID.");
-      }
+    throw lastError || new Error(`${operationLabel} failed.`);
+  }
 
-      setDatabaseStatus("Saved to shared Atlas.");
+  async function postAtlasRecord(table: AtlasTable, record: unknown) {
+    const normalizedRecord = normalizeAtlasSaveRecord(table, record);
+    const key = atlasRecordKey(table, normalizedRecord);
+    const serialized = JSON.stringify(normalizedRecord);
+
+    if (
+      normalizedRecord.id &&
+      atlasLastSaveRef.current.get(key) === serialized
+    ) {
+      setDatabaseStatus("No unsaved Atlas changes.");
       return true;
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unknown Atlas save failure.";
+    }
 
-      console.error(`[Atlas ${table} save failed]`, error);
-      setDatabaseStatus(`Atlas API save failed: ${message}`);
-      return false;
+    const priorSave = atlasSaveQueueRef.current.get(key) || Promise.resolve(true);
+
+    const queuedSave = priorSave.then(async () => {
+      try {
+        setDatabaseStatus(`Saving ${table.replaceAll("_", " ")}...`);
+
+        const payload = await atlasApiRequest(
+          "POST",
+          {
+            table,
+            record: normalizedRecord,
+          },
+          `Atlas ${table.replaceAll("_", " ")} save`,
+        );
+
+        if (!payload.id) {
+          throw new Error("Atlas API did not confirm the saved record ID.");
+        }
+
+        atlasLastSaveRef.current.set(key, serialized);
+        setDatabaseStatus("Saved to shared Atlas.");
+        return true;
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unknown Atlas save failure.";
+
+        console.error(`[Atlas ${table} save failed]`, {
+          error,
+          recordId: normalizedRecord.id,
+          propertyId: normalizedRecord.propertyId,
+        });
+        setDatabaseStatus(`Save failed — changes kept open: ${message}`);
+        showSaveToast(`Save failed: ${message}`);
+        return false;
+      }
+    });
+
+    atlasSaveQueueRef.current.set(key, queuedSave);
+
+    try {
+      return await queuedSave;
+    } finally {
+      if (atlasSaveQueueRef.current.get(key) === queuedSave) {
+        atlasSaveQueueRef.current.delete(key);
+      }
     }
   }
 
   async function deleteAtlasRecord(table: AtlasTable, id: string) {
     if (!id) return false;
+
     try {
-      const response = await fetch("/api/atlas", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ table, id, propertyId: activePropertyId }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) {
-        throw new Error(
-          payload?.error || `Atlas delete returned ${response.status}`,
-        );
-      }
+      setDatabaseStatus(`Deleting ${table.replaceAll("_", " ")}...`);
+      await atlasApiRequest(
+        "DELETE",
+        {
+          table,
+          id,
+          propertyId: activePropertyId,
+        },
+        `Atlas ${table.replaceAll("_", " ")} delete`,
+      );
+
+      atlasLastSaveRef.current.delete(
+        `${table}:${id}:${activePropertyId}`,
+      );
       setDatabaseStatus("Deleted from Atlas.");
       return true;
     } catch (error) {
-      setDatabaseStatus(
-        error instanceof Error
-          ? `Delete failed: ${error.message}`
-          : "Delete failed.",
-      );
+      const message =
+        error instanceof Error ? error.message : "Delete failed.";
+      setDatabaseStatus(`Delete failed — record kept: ${message}`);
+      showSaveToast(`Delete failed: ${message}`);
       return false;
     }
   }
