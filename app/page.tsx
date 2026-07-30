@@ -3909,6 +3909,7 @@ export default function AtlasPage() {
   const [showPropertyLoading, setShowPropertyLoading] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
+  const [departmentCenter, setDepartmentCenter] = useState<"landscaping" | "marine" | "">("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
@@ -4819,6 +4820,7 @@ export default function AtlasPage() {
   }
 
   function setScreen(next: AtlasScreen, options?: { replace?: boolean }) {
+    setDepartmentCenter("");
     setScreenState(next);
 
     if (typeof window === "undefined") return;
@@ -32234,10 +32236,138 @@ export default function AtlasPage() {
     );
   }
 
+  function renderDepartmentCenter(kind: "landscaping" | "marine") {
+    const isLandscape = kind === "landscaping";
+    const title = isLandscape ? "Landscaping Center" : "Marine Center";
+    const icon = isLandscape ? "🌿" : "⚓";
+    const matcher = isLandscape
+      ? /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i
+      : /marine|dock|boat|cobalt|sea.?doo|lift|water trampoline|pwc|sean/i;
+    const matches = (value: unknown) => matcher.test(JSON.stringify(value || ""));
+    const departmentWork = serviceRecords.filter(matches);
+    const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
+    const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
+    const departmentAssets = assetRecords.filter(matches);
+    const departmentLocations = locations.filter(matches);
+    const departmentVendors = vendorRecords.filter(matches);
+    const departmentDocuments = documentRecords.filter(matches);
+    const departmentProcedures = procedureRecords.filter(matches);
+    const departmentRequests = requestRecords.filter(matches);
+    const assignedNames = isLandscape ? ["Pat's Crew", "Addison"] : ["Sean"];
+
+    const openCenter = (next: AtlasScreen) => setScreen(next);
+    const metricStyle: React.CSSProperties = {
+      border: `1px solid ${colors.line}`,
+      borderRadius: 16,
+      background: "#FFFFFF",
+      padding: 16,
+      minHeight: 112,
+      display: "grid",
+      alignContent: "space-between",
+      gap: 8,
+    };
+    const centerCardStyle: React.CSSProperties = {
+      border: `1px solid ${colors.line}`,
+      borderRadius: 18,
+      background: "#FFFFFF",
+      padding: 18,
+      display: "grid",
+      gap: 12,
+      minWidth: 0,
+    };
+
+    return (
+      <section style={{ display: "grid", gap: 18 }}>
+        <div style={{ ...centerCardStyle, background: "linear-gradient(135deg, #0A2D52 0%, #123F70 100%)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.15)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase", color: "#E8C86A" }}>{icon} Department Center</div>
+              <h2 style={{ margin: "6px 0 8px", fontSize: isMobile ? 27 : 34 }}>{title}</h2>
+              <p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.78)", lineHeight: 1.55 }}>
+                {isLandscape
+                  ? "One place for landscaping crews, areas, work orders, requests, vendors, procedures, documents, photos, and property map records."
+                  : "One place for Sean, boats, dock systems, lifts, marine service, requests, vendors, manuals, procedures, documents, and photos."}
+              </p>
+            </div>
+            <button type="button" onClick={() => addDashboardWorkOrder(isLandscape ? "Landscaping" : "Dock & Marine")} style={{ ...primaryButtonStyle, background: colors.gold, color: colors.navy }}>
+              + New {isLandscape ? "Landscaping" : "Marine"} Work Order
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(5, minmax(0, 1fr))", gap: 12 }}>
+          {[
+            ["Open Work", openWork.length, "history" as AtlasScreen],
+            ["Completed", completedWork.length, "history" as AtlasScreen],
+            ["Assets / Areas", departmentAssets.length + departmentLocations.length, "assets" as AtlasScreen],
+            ["Requests", departmentRequests.length, "requests" as AtlasScreen],
+            ["Vendors", departmentVendors.length, "vendors" as AtlasScreen],
+          ].map(([label, value, target]) => (
+            <button key={String(label)} type="button" onClick={() => openCenter(target as AtlasScreen)} style={{ ...metricStyle, textAlign: "left", cursor: "pointer" }}>
+              <span style={{ color: colors.muted, fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".07em" }}>{label}</span>
+              <strong style={{ color: colors.navy, fontSize: 30 }}>{value}</strong>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.35fr .65fr", gap: 16, alignItems: "start" }}>
+          <div style={centerCardStyle}>
+            <SectionHeader eyebrow="Current operations" title={isLandscape ? "Landscaping Work" : "Marine Work"} detail={`${openWork.length} open department items for ${atlasProperties.find((item) => item.id === activePropertyId)?.name || activePropertyId}.`} />
+            <div style={{ display: "grid", gap: 10 }}>
+              {openWork.slice(0, 8).map((item) => (
+                <button key={item.id} type="button" onClick={() => openWorkOrderById(item.id)} style={{ width: "100%", border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", cursor: "pointer" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ display: "block", color: colors.navy }}>{item.title || "Untitled work order"}</strong>
+                    <span style={{ color: colors.muted, fontSize: 12 }}>{item.assignedTo || "Unassigned"} · {item.date ? formatDate(item.date) : "No due date"}</span>
+                  </div>
+                  <span style={{ whiteSpace: "nowrap", borderRadius: 999, padding: "5px 9px", background: colors.panel, color: colors.navy, fontSize: 11, fontWeight: 900 }}>{item.status || "Open"}</span>
+                </button>
+              ))}
+              {!openWork.length ? <div style={noticeStyle}>No open {isLandscape ? "landscaping" : "marine"} work is currently recorded for this property.</div> : null}
+            </div>
+            <button type="button" onClick={() => openCenter("history")} style={secondaryButtonStyle}>Open All Work Orders</button>
+          </div>
+
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={centerCardStyle}>
+              <SectionHeader eyebrow="People" title={isLandscape ? "Crews" : "Marine Team"} detail="Open the Team Center for assignments and daily progress." />
+              {assignedNames.map((name) => <div key={name} style={{ padding: 12, borderRadius: 12, background: colors.panel, fontWeight: 900, color: colors.navy }}>{name}</div>)}
+              <button type="button" onClick={() => openCenter("team")} style={secondaryButtonStyle}>Open Team Center</button>
+            </div>
+            <div style={centerCardStyle}>
+              <SectionHeader eyebrow="Knowledge" title="Department Records" detail="Existing Atlas records, filtered into this department view." />
+              <div style={{ display: "grid", gap: 8 }}>
+                <button type="button" onClick={() => openCenter("documents")} style={secondaryButtonStyle}>Documents ({departmentDocuments.length})</button>
+                <button type="button" onClick={() => openCenter("procedures")} style={secondaryButtonStyle}>Procedures ({departmentProcedures.length})</button>
+                <button type="button" onClick={() => openCenter("vendors")} style={secondaryButtonStyle}>Vendors ({departmentVendors.length})</button>
+                <button type="button" onClick={() => openCenter("map")} style={secondaryButtonStyle}>Open Property Map</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 16 }}>
+          {[
+            { title: isLandscape ? "Areas & Assets" : "Boats, Dock & Lifts", count: departmentAssets.length + departmentLocations.length, target: "assets" as AtlasScreen, detail: isLandscape ? "Landscaping areas, grounds assets, and linked locations." : "Marine assets and their linked dock locations." },
+            { title: "Requests & Follow-up", count: departmentRequests.length, target: "requests" as AtlasScreen, detail: "Submitted requests and department follow-up work." },
+            { title: "History & Records", count: completedWork.length, target: "history" as AtlasScreen, detail: "Completed work and service history already stored in Atlas." },
+          ].map((card) => (
+            <button key={card.title} type="button" onClick={() => openCenter(card.target)} style={{ ...centerCardStyle, textAlign: "left", cursor: "pointer" }}>
+              <span style={{ fontSize: 28 }}>{card.count}</span>
+              <strong style={{ color: colors.navy, fontSize: 18 }}>{card.title}</strong>
+              <span style={{ color: colors.muted, lineHeight: 1.45 }}>{card.detail}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   function renderScreen() {
     let content: React.ReactNode;
 
-    if (screen === "dashboard") content = renderDashboard();
+    if (departmentCenter) content = renderDepartmentCenter(departmentCenter);
+    else if (screen === "dashboard") content = renderDashboard();
     else if (screen === "portfolio") content = renderPortfolio();
     else if (screen === "timeline")
       content = renderTimelineOrInsights("timeline");
@@ -33775,6 +33905,12 @@ export default function AtlasPage() {
                     ))}
                 </optgroup>
               </select>
+              {!isRestrictedStaffUser ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <button type="button" onClick={() => setDepartmentCenter("landscaping")} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === "landscaping" ? colors.gold : colors.line }}>🌿 Landscaping</button>
+                  <button type="button" onClick={() => setDepartmentCenter("marine")} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === "marine" ? colors.gold : colors.line }}>⚓ Marine</button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <>
@@ -33833,6 +33969,37 @@ export default function AtlasPage() {
                     </div>
                   </div>
                 ))}
+
+                {!isRestrictedStaffUser ? (
+                  <div style={sidebarNavSectionStyle}>
+                    <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>Departments</div>
+                    <div style={sidebarNavItemsStyle}>
+                      {([[
+                        "landscaping",
+                        "🌿 Landscaping",
+                      ], [
+                        "marine",
+                        "⚓ Marine",
+                      ]] as const).map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          className="atlas-sidebar-nav-button"
+                          title={sidebarCollapsed ? label : undefined}
+                          onClick={() => setDepartmentCenter(id)}
+                          style={{
+                            ...navButtonStyle,
+                            borderColor: departmentCenter === id ? colors.gold : "transparent",
+                            background: departmentCenter === id ? colors.gold : "transparent",
+                            color: departmentCenter === id ? colors.navy : "#FFFFFF",
+                          }}
+                        >
+                          <span className="atlas-sidebar-nav-label">{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 {!isRestrictedStaffUser ? (
                 <div style={sidebarNavSectionStyle}>
@@ -33937,9 +34104,11 @@ export default function AtlasPage() {
                 >
                   {screen === "dashboard" ? <AtlasMiniMark size={34} /> : null}
                   <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>
-                    {screen === "dashboard"
-                      ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
-                      : screens.find((item) => item.id === screen)?.label}
+                    {departmentCenter
+                      ? departmentCenter === "landscaping" ? "Landscaping Center" : "Marine Center"
+                      : screen === "dashboard"
+                        ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
+                        : screens.find((item) => item.id === screen)?.label}
                   </h1>
                   <div
                     role="status"
