@@ -4398,6 +4398,8 @@ export default function AtlasPage() {
     "comfortable",
   );
   const [assetListSearch, setAssetListSearch] = useState("");
+  const [assetBulkMode, setAssetBulkMode] = useState(false);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [favoriteAssetIds, setFavoriteAssetIds] = useState<string[]>([]);
   const [recentAssetIds, setRecentAssetIds] = useState<string[]>([]);
   const [assetQuickAccessOpen, setAssetQuickAccessOpen] = useState(true);
@@ -4435,6 +4437,12 @@ export default function AtlasPage() {
   );
   const [scannerManualValue, setScannerManualValue] = useState("");
   const [lastScannedQr, setLastScannedQr] = useState("");
+
+  useEffect(() => {
+    if (!assetBulkMode && selectedAssetIds.length) {
+      setSelectedAssetIds([]);
+    }
+  }, [assetBulkMode, selectedAssetIds.length]);
 
   useEffect(() => {
     try {
@@ -16448,6 +16456,19 @@ export default function AtlasPage() {
                 </button>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={() => setAssetBulkMode((current) => !current)}
+              aria-pressed={assetBulkMode}
+              style={{
+                ...assetAddButtonStyle,
+                background: assetBulkMode ? "#FFF3CF" : "#FFFFFF",
+                color: colors.navy,
+                borderColor: assetBulkMode ? colors.gold : colors.line,
+              }}
+            >
+              {assetBulkMode ? "Done Selecting" : "Select"}
+            </button>
             <select
               value={assetSortOrder}
               onChange={(event) =>
@@ -16585,6 +16606,115 @@ export default function AtlasPage() {
                 ) : null}
               </div>
             </section>
+
+            {assetBulkMode ? (
+              <section
+                style={{
+                  border: `1px solid ${colors.gold}`,
+                  borderRadius: 14,
+                  background: "#FFF9E8",
+                  padding: 10,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 8,
+                }}
+                aria-label="Selected asset actions"
+              >
+                <div style={{ minWidth: 0 }}>
+                  <strong
+                    style={{
+                      display: "block",
+                      color: colors.navy,
+                      fontSize: 12,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {selectedAssetIds.length} asset
+                    {selectedAssetIds.length === 1 ? "" : "s"} selected
+                  </strong>
+                  <span style={mutedSmallStyle}>
+                    Safe actions only. Nothing will be deleted or archived.
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                    gap: 6,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedAssetIds(
+                        selectedAssetIds.length === displayedAssets.length
+                          ? []
+                          : displayedAssets.map((asset) => asset.id),
+                      )
+                    }
+                    style={assetTinyButtonStyle}
+                  >
+                    {selectedAssetIds.length === displayedAssets.length &&
+                    displayedAssets.length
+                      ? "Clear Visible"
+                      : "Select All Visible"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!selectedAssetIds.length}
+                    onClick={() =>
+                      setFavoriteAssetIds((current) => [
+                        ...selectedAssetIds,
+                        ...current.filter((id) => !selectedAssetIds.includes(id)),
+                      ])
+                    }
+                    style={{
+                      ...assetTinyButtonStyle,
+                      opacity: selectedAssetIds.length ? 1 : 0.5,
+                      cursor: selectedAssetIds.length ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    Add to Favorites
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!selectedAssetIds.length}
+                    onClick={() =>
+                      setFavoriteAssetIds((current) =>
+                        current.filter((id) => !selectedAssetIds.includes(id)),
+                      )
+                    }
+                    style={{
+                      ...assetTinyButtonStyle,
+                      opacity: selectedAssetIds.length ? 1 : 0.5,
+                      cursor: selectedAssetIds.length ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    Remove Favorites
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!selectedAssetIds.length}
+                    onClick={() => setSelectedAssetIds([])}
+                    style={{
+                      ...assetTinyButtonStyle,
+                      opacity: selectedAssetIds.length ? 1 : 0.5,
+                      cursor: selectedAssetIds.length ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             {(duplicateAssetGroups.length || incompleteAssetRows.length) ? (
               <section
@@ -17003,16 +17133,66 @@ export default function AtlasPage() {
                   className="atlas-gold-hover-card"
                   style={{
                     position: "relative",
-                    border: `1px solid ${asset.id === selectedAsset.id ? colors.gold : colors.line}`,
+                    border: `1px solid ${
+                      selectedAssetIds.includes(asset.id) || asset.id === selectedAsset.id
+                        ? colors.gold
+                        : colors.line
+                    }`,
                     borderRadius: 12,
-                    background: asset.id === selectedAsset.id ? "#F4F8FD" : "#FFFFFF",
+                    background:
+                      selectedAssetIds.includes(asset.id) || asset.id === selectedAsset.id
+                        ? "#F4F8FD"
+                        : "#FFFFFF",
                     overflow: "visible",
                   }}
                 >
                   <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
+                  {assetBulkMode ? (
+                    <label
+                      style={{
+                        position: "absolute",
+                        left: 9,
+                        top: 9,
+                        zIndex: 5,
+                        width: 26,
+                        height: 26,
+                        display: "grid",
+                        placeItems: "center",
+                        border: `1px solid ${
+                          selectedAssetIds.includes(asset.id)
+                            ? colors.gold
+                            : colors.line
+                        }`,
+                        borderRadius: 8,
+                        background: "#FFFFFF",
+                        cursor: "pointer",
+                      }}
+                      aria-label={`Select ${asset.name}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedAssetIds.includes(asset.id)}
+                        onChange={(event) =>
+                          setSelectedAssetIds((current) =>
+                            event.target.checked
+                              ? [...current, asset.id]
+                              : current.filter((id) => id !== asset.id),
+                          )
+                        }
+                      />
+                    </label>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => {
+                      if (assetBulkMode) {
+                        setSelectedAssetIds((current) =>
+                          current.includes(asset.id)
+                            ? current.filter((id) => id !== asset.id)
+                            : [...current, asset.id],
+                        );
+                        return;
+                      }
                       setSelectedAssetId(asset.id);
                       setAssetEditorOpen(false);
                       setRecentAssetIds((current) => [
@@ -17026,8 +17206,15 @@ export default function AtlasPage() {
                       border: 0,
                       background: "transparent",
                       borderRadius: 12,
-                      padding: assetListDensity === "compact" ? "9px 118px 9px 10px" : undefined,
-                      paddingRight: assetListDensity === "compact" ? 118 : 120,
+                      padding:
+                        assetListDensity === "compact"
+                          ? `9px ${assetBulkMode ? 10 : 118}px 9px ${
+                              assetBulkMode ? 44 : 10
+                            }px`
+                          : undefined,
+                      paddingLeft: assetBulkMode ? 44 : undefined,
+                      paddingRight:
+                        assetBulkMode ? 10 : assetListDensity === "compact" ? 118 : 120,
                       textAlign: "left",
                     }}
                   >
@@ -17122,7 +17309,7 @@ export default function AtlasPage() {
                       position: "absolute",
                       right: 8,
                       top: assetListDensity === "compact" ? 7 : 8,
-                      display: "grid",
+                      display: assetBulkMode ? "none" : "grid",
                       gap: assetListDensity === "compact" ? 4 : 5,
                       zIndex: 3,
                     }}
