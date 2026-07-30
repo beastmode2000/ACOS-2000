@@ -4244,6 +4244,10 @@ export default function AtlasPage() {
   const [hideDocumentLogos, setHideDocumentLogos] = useState(false);
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [favoriteDocumentIds, setFavoriteDocumentIds] = useState<string[]>([]);
+  const [recentDocumentIds, setRecentDocumentIds] = useState<string[]>([]);
+  const [documentQuickAccessOpen, setDocumentQuickAccessOpen] = useState(true);
+  const [documentQualityOpen, setDocumentQualityOpen] = useState(true);
   const [blueprintPage, setBlueprintPage] = useState(1);
   const [openBlueprintSection, setOpenBlueprintSection] = useState<string | null>(null);
   const documentListScrollYRef = useRef(0);
@@ -4394,6 +4398,77 @@ export default function AtlasPage() {
       setRecentSearches([]);
     }
   }, []);
+
+  useEffect(() => {
+    try {
+      const favorites = window.localStorage.getItem(
+        "atlas_favorite_documents_v1",
+      );
+      const parsedFavorites = favorites ? JSON.parse(favorites) : [];
+      if (Array.isArray(parsedFavorites)) {
+        setFavoriteDocumentIds(parsedFavorites.map(String).filter(Boolean));
+      }
+
+      const recent = window.localStorage.getItem("atlas_recent_documents_v1");
+      const parsedRecent = recent ? JSON.parse(recent) : [];
+      if (Array.isArray(parsedRecent)) {
+        setRecentDocumentIds(
+          parsedRecent.map(String).filter(Boolean).slice(0, 8),
+        );
+      }
+
+      if (
+        window.localStorage.getItem("atlas_document_quick_access_open_v1") ===
+        "false"
+      ) {
+        setDocumentQuickAccessOpen(false);
+      }
+      if (
+        window.localStorage.getItem("atlas_document_quality_open_v1") ===
+        "false"
+      ) {
+        setDocumentQualityOpen(false);
+      }
+    } catch {
+      // Keep clean defaults if saved document shortcuts cannot be read.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "atlas_favorite_documents_v1",
+        JSON.stringify(favoriteDocumentIds),
+      );
+    } catch {}
+  }, [favoriteDocumentIds]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "atlas_recent_documents_v1",
+        JSON.stringify(recentDocumentIds.slice(0, 8)),
+      );
+    } catch {}
+  }, [recentDocumentIds]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "atlas_document_quick_access_open_v1",
+        String(documentQuickAccessOpen),
+      );
+    } catch {}
+  }, [documentQuickAccessOpen]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "atlas_document_quality_open_v1",
+        String(documentQualityOpen),
+      );
+    } catch {}
+  }, [documentQualityOpen]);
 
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [mapMoveLabelId, setMapMoveLabelId] = useState("");
@@ -21819,6 +21894,39 @@ export default function AtlasPage() {
       Number(hideDocumentLogos) +
       Number(Boolean(normalizedDocumentSearch));
 
+    const favoriteDocuments = favoriteDocumentIds
+      .map((id) => allDocuments.find((document) => document.id === id))
+      .filter((document): document is DocumentRecord => Boolean(document));
+    const recentDocuments = recentDocumentIds
+      .filter((id) => !favoriteDocumentIds.includes(id))
+      .map((id) => allDocuments.find((document) => document.id === id))
+      .filter((document): document is DocumentRecord => Boolean(document));
+
+    const incompleteDocuments = allDocuments.filter((document) => {
+      const hasContent = Boolean(
+        document.href ||
+          document.pastedText?.trim() ||
+          (document.files || []).length,
+      );
+      const hasRelationship = Boolean(
+        document.targetId ||
+          document.targetName?.trim() ||
+          document.area?.trim(),
+      );
+      return !document.title?.trim() || !hasContent || !hasRelationship;
+    });
+
+    const duplicateDocumentGroups = Array.from(
+      allDocuments.reduce((groups, document) => {
+        const key = document.title.trim().toLowerCase();
+        if (!key) return groups;
+        const current = groups.get(key) || [];
+        current.push(document);
+        groups.set(key, current);
+        return groups;
+      }, new Map<string, DocumentRecord[]>()),
+    ).filter(([, documents]) => documents.length > 1);
+
     const documentFileCount = allDocuments.reduce(
       (total, document) => total + (document.files?.length || 0),
       0,
@@ -22477,6 +22585,165 @@ export default function AtlasPage() {
           }
           list={
             <div style={{ display: "grid", gap: 12 }}>
+              {(favoriteDocuments.length > 0 || recentDocuments.length > 0) ? (
+                <section
+                  style={{
+                    ...cardStyle,
+                    display: "grid",
+                    gap: 9,
+                    padding: 11,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDocumentQuickAccessOpen((current) => !current)
+                    }
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      width: "100%",
+                      border: 0,
+                      background: "transparent",
+                      padding: 0,
+                      color: colors.navy,
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span>
+                      <strong style={{ display: "block" }}>Quick Access</strong>
+                      <span style={mutedSmallStyle}>
+                        Favorite and recently viewed documents
+                      </span>
+                    </span>
+                    <span aria-hidden="true">
+                      {documentQuickAccessOpen ? "−" : "+"}
+                    </span>
+                  </button>
+
+                  {documentQuickAccessOpen ? (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {[
+                        ["Favorites", favoriteDocuments],
+                        ["Recently Viewed", recentDocuments],
+                      ].map(([label, documents]) =>
+                        (documents as DocumentRecord[]).length ? (
+                          <div key={String(label)}>
+                            <span style={fieldLabelStyle}>{label}</span>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 6,
+                                marginTop: 6,
+                              }}
+                            >
+                              {(documents as DocumentRecord[]).slice(0, 6).map(
+                                (document) => (
+                                  <button
+                                    key={document.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setBlueprintPage(1);
+                                      setSelectedDocumentId(document.id);
+                                      setRecentDocumentIds((current) => [
+                                        document.id,
+                                        ...current.filter(
+                                          (id) => id !== document.id,
+                                        ),
+                                      ].slice(0, 8));
+                                    }}
+                                    style={smallSubtleButtonStyle}
+                                  >
+                                    {document.title || "Untitled document"}
+                                  </button>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        ) : null,
+                      )}
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {(incompleteDocuments.length > 0 ||
+                duplicateDocumentGroups.length > 0) ? (
+                <section
+                  style={{
+                    ...cardStyle,
+                    display: "grid",
+                    gap: 9,
+                    padding: 11,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDocumentQualityOpen((current) => !current)
+                    }
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      width: "100%",
+                      border: 0,
+                      background: "transparent",
+                      padding: 0,
+                      color: colors.navy,
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span>
+                      <strong style={{ display: "block" }}>
+                        Document Record Quality
+                      </strong>
+                      <span style={mutedSmallStyle}>
+                        {incompleteDocuments.length} incomplete ·{" "}
+                        {duplicateDocumentGroups.length} possible duplicate
+                        {duplicateDocumentGroups.length === 1 ? "" : " groups"}
+                      </span>
+                    </span>
+                    <span aria-hidden="true">
+                      {documentQualityOpen ? "−" : "+"}
+                    </span>
+                  </button>
+
+                  {documentQualityOpen ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "1fr"
+                          : "repeat(2, minmax(0, 1fr))",
+                        gap: 8,
+                      }}
+                    >
+                      <div style={recordInfoItemStyle}>
+                        <span style={fieldLabelStyle}>Incomplete Records</span>
+                        <strong>{incompleteDocuments.length}</strong>
+                        <span style={mutedSmallStyle}>
+                          Missing a title, file/content, or linked location
+                        </span>
+                      </div>
+                      <div style={recordInfoItemStyle}>
+                        <span style={fieldLabelStyle}>Possible Duplicates</span>
+                        <strong>{duplicateDocumentGroups.length}</strong>
+                        <span style={mutedSmallStyle}>
+                          Matching document titles that should be reviewed
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
               <section
                 style={{
                   display: "grid",
@@ -23142,6 +23409,10 @@ export default function AtlasPage() {
                           documentListScrollYRef.current = window.scrollY;
                           setBlueprintPage(1);
                           setSelectedDocumentId(document.id);
+                          setRecentDocumentIds((current) => [
+                            document.id,
+                            ...current.filter((id) => id !== document.id),
+                          ].slice(0, 8));
                         }}
                         aria-pressed={isSelected}
                         style={{
@@ -23222,6 +23493,64 @@ export default function AtlasPage() {
                             whiteSpace: "nowrap",
                           }}
                         >
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            aria-label={
+                              favoriteDocumentIds.includes(document.id)
+                                ? "Remove from favorites"
+                                : "Add to favorites"
+                            }
+                            aria-pressed={favoriteDocumentIds.includes(
+                              document.id,
+                            )}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setFavoriteDocumentIds((current) =>
+                                current.includes(document.id)
+                                  ? current.filter((id) => id !== document.id)
+                                  : [document.id, ...current],
+                              );
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" && event.key !== " ") {
+                                return;
+                              }
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setFavoriteDocumentIds((current) =>
+                                current.includes(document.id)
+                                  ? current.filter((id) => id !== document.id)
+                                  : [document.id, ...current],
+                              );
+                            }}
+                            style={{
+                              display: "grid",
+                              placeItems: "center",
+                              width: 24,
+                              height: 24,
+                              borderRadius: 8,
+                              border: `1px solid ${
+                                favoriteDocumentIds.includes(document.id)
+                                  ? colors.gold
+                                  : colors.line
+                              }`,
+                              background: favoriteDocumentIds.includes(
+                                document.id,
+                              )
+                                ? "#FFF3CF"
+                                : "#FFFFFF",
+                              color: favoriteDocumentIds.includes(document.id)
+                                ? "#9A6A00"
+                                : colors.muted,
+                              fontSize: 14,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {favoriteDocumentIds.includes(document.id)
+                              ? "★"
+                              : "☆"}
+                          </span>
                           <span>
                             {document.files?.length || 0} file
                             {(document.files?.length || 0) === 1 ? "" : "s"}
