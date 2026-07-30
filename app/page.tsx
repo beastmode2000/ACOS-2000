@@ -13770,7 +13770,7 @@ export default function AtlasPage() {
       const lastService = completed.map((record) => String(record.lastCompletedDate || record.date || "")).filter(Boolean).sort().pop() || "";
       return { vendor, records: records.length, completed: completed.length, overdue: overdue.length, totalCost, averageCost: records.length ? totalCost / records.length : 0, reliability, rating, lastService };
     }).filter((item) => item.records > 0).sort((a, b) => b.reliability - a.reliability || b.completed - a.completed);
-    const locationRisk = locationRecords.map((location) => {
+    const locationRisk = locations.map((location) => {
       const records = openWork.filter((record) => (record as AtlasServiceRecord).locationId === location.id || assetRecords.some((asset) => asset.id === record.assetId && assetHasLocation(asset, location.id)));
       const overdue = records.filter((record) => Boolean(record.date) && String(record.date) < today);
       const risk = Math.min(100, records.length * 8 + overdue.length * 18 + records.filter((record) => record.priority === "High").length * 14);
