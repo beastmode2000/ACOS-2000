@@ -257,6 +257,11 @@ type DashboardSavedLayout = {
   widgets: DashboardWidgetSetting[];
 };
 
+type DashboardWidgetDropTarget = {
+  id: DashboardWidgetId;
+  position: "before" | "after";
+};
+
 const dashboardWidgetDefinitions: Record<DashboardWidgetId, { title: string; defaultSize: DashboardWidgetSize }> = {
   hero: { title: "Command Center", defaultSize: "full" },
   "estate-health": { title: "Estate Health", defaultSize: "large" },
@@ -3942,6 +3947,7 @@ export default function AtlasPage() {
   );
   const [customDashboardLayouts, setCustomDashboardLayouts] = useState<DashboardSavedLayout[]>([]);
   const [draggedDashboardWidgetId, setDraggedDashboardWidgetId] = useState<DashboardWidgetId | null>(null);
+  const [dashboardWidgetDropTarget, setDashboardWidgetDropTarget] = useState<DashboardWidgetDropTarget | null>(null);
   const [dashboardFeedFilter, setDashboardFeedFilter] = useState<"All" | "Work" | "Requests" | "Vendors" | "Photos" | "Alerts">("All");
   const [dismissedDashboardFeedIds, setDismissedDashboardFeedIds] = useState<string[]>([]);
 
@@ -13024,18 +13030,25 @@ export default function AtlasPage() {
       showSaveToast(`${layout.name} layout loaded.`);
     };
     const updateWidget = (id: DashboardWidgetId, changes: Partial<DashboardWidgetSetting>) => setDashboardWidgets((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item));
-    const moveWidget = (targetId: DashboardWidgetId) => {
-      if (!draggedDashboardWidgetId || draggedDashboardWidgetId === targetId) return;
+    const moveWidget = (targetId: DashboardWidgetId, position: "before" | "after") => {
+      if (!draggedDashboardWidgetId || draggedDashboardWidgetId === targetId) {
+        setDraggedDashboardWidgetId(null);
+        setDashboardWidgetDropTarget(null);
+        return;
+      }
       setDashboardWidgets((current) => {
         const next = [...current];
         const from = next.findIndex((item) => item.id === draggedDashboardWidgetId);
-        const to = next.findIndex((item) => item.id === targetId);
-        if (from < 0 || to < 0) return current;
+        if (from < 0) return current;
         const [moved] = next.splice(from, 1);
-        next.splice(to, 0, moved);
+        const targetIndex = next.findIndex((item) => item.id === targetId);
+        if (targetIndex < 0) return current;
+        const insertionIndex = position === "after" ? targetIndex + 1 : targetIndex;
+        next.splice(insertionIndex, 0, moved);
         return next;
       });
       setDraggedDashboardWidgetId(null);
+      setDashboardWidgetDropTarget(null);
     };
     const saveLayoutAs = () => {
       const name = window.prompt("Name this dashboard layout:", "My Layout")?.trim();
@@ -13207,11 +13220,39 @@ export default function AtlasPage() {
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: colors.navy, fontSize: 13 }}>Dashboard View</strong><select value={dashboardLayoutId} onChange={(event) => applyLayout(event.target.value)} style={{ ...selectStyle, minWidth: 138, minHeight: 34, padding: "5px 9px", fontSize: 12 }}>{allLayouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardEditMode((current) => !current)} style={{ ...(dashboardEditMode ? goldButtonStyle : secondaryButtonStyle), minHeight: 34, padding: "6px 10px", fontSize: 12 }}>{dashboardEditMode ? "Done" : "Customize"}</button><button type="button" onClick={saveLayoutAs} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Save As</button><button type="button" onClick={() => applyLayout(isMobile ? "mobile" : "operations")} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Reset</button></div>
       </section>
-      {dashboardEditMode ? <section style={{ ...cardStyle, padding: 12 }}><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{dashboardWidgets.map((widget) => <button key={widget.id} type="button" onClick={() => updateWidget(widget.id, { visible: !widget.visible })} style={{ ...secondaryButtonStyle, opacity: widget.visible ? 1 : .55 }}>{widget.visible ? "✓" : "+"} {dashboardWidgetDefinitions[widget.id].title}</button>)}</div><p style={{ ...mutedSmallStyle, margin: "9px 0 0" }}>Drag only from a widget header. Resize width from the right edge. Widget height is automatic, so content and photos remain fully visible with no internal scrollbars or overlap.</p></section> : null}
+      {dashboardEditMode ? <section style={{ ...cardStyle, padding: 12 }}><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{dashboardWidgets.map((widget) => <button key={widget.id} type="button" onClick={() => updateWidget(widget.id, { visible: !widget.visible })} style={{ ...secondaryButtonStyle, opacity: widget.visible ? 1 : .55 }}>{widget.visible ? "✓" : "+"} {dashboardWidgetDefinitions[widget.id].title}</button>)}</div><p style={{ ...mutedSmallStyle, margin: "9px 0 0" }}>Drag from a widget header and drop before or after any other widget. The gold placement line shows exactly where it will land. Resize width from the right edge at any time. Height remains automatic, so content stays fully visible with no internal scrollbars or overlap.</p></section> : null}
       <div className="atlas-dashboard-layout-grid" style={{ display: "grid", gridTemplateColumns: "repeat(12,minmax(0,1fr))", gridAutoRows: "max-content", gridAutoFlow: "row", gap: 14, alignItems: "start" }}>
         {dashboardWidgets.filter((widget) => widget.visible).map((widget) => {
-        return <div key={widget.id} className="atlas-dashboard-widget-frame" onDragOver={(event) => { if (dashboardEditMode) event.preventDefault(); }} onDrop={() => moveWidget(widget.id)} style={{ position: "relative", gridColumn: isMobile ? "1 / -1" : `span ${widget.colSpan || legacySizeColumns(widget.size)}`, gridRow: "auto", minWidth: 0, height: "max-content", alignSelf: "start", opacity: draggedDashboardWidgetId === widget.id ? .55 : 1, transition: "opacity .18s ease, transform .18s ease", overflow: "visible" }}>
-          {dashboardEditMode || widget.collapsed ? <div draggable={dashboardEditMode && !widget.locked} onDragStart={() => { if (!widget.locked) setDraggedDashboardWidgetId(widget.id); }} onDragEnd={() => setDraggedDashboardWidgetId(null)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: `1px solid ${colors.line}`, borderBottom: widget.collapsed ? `1px solid ${colors.line}` : 0, borderRadius: widget.collapsed ? 14 : "14px 14px 0 0", background: colors.navy, color: "#FFFFFF", padding: "8px 10px", cursor: dashboardEditMode && !widget.locked ? "grab" : "default", userSelect: "none" }}><strong>{dashboardWidgetDefinitions[widget.id].title}</strong><div style={{ display: "flex", gap: 5, alignItems: "center" }}>{dashboardEditMode ? <><span style={{ fontSize: 11, opacity: .75 }}>{widget.colSpan || legacySizeColumns(widget.size)}/12 wide</span><button type="button" title={widget.locked ? "Unlock widget" : "Lock widget"} onClick={(event) => { event.stopPropagation(); updateWidget(widget.id, { locked: !widget.locked }); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: widget.locked ? "rgba(230,169,43,.28)" : "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.locked ? "🔒" : "🔓"}</button><button type="button" title="Reset widget size" onClick={(event) => { event.stopPropagation(); resetWidgetGrid(widget.id); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>↺</button></> : null}<button type="button" onClick={() => updateWidget(widget.id, { collapsed: !widget.collapsed })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.collapsed ? "+" : "−"}</button>{dashboardEditMode ? <button type="button" onClick={() => updateWidget(widget.id, { visible: false })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>×</button> : null}</div></div> : null}
+        const activeDropTarget = dashboardWidgetDropTarget?.id === widget.id ? dashboardWidgetDropTarget : null;
+        return <div
+          key={widget.id}
+          className="atlas-dashboard-widget-frame"
+          onDragOver={(event) => {
+            if (!dashboardEditMode || !draggedDashboardWidgetId || draggedDashboardWidgetId === widget.id) return;
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            const verticalPosition = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+            setDashboardWidgetDropTarget((current) =>
+              current?.id === widget.id && current.position === verticalPosition
+                ? current
+                : { id: widget.id, position: verticalPosition },
+            );
+          }}
+          onDragLeave={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+            setDashboardWidgetDropTarget((current) => current?.id === widget.id ? null : current);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            const position = dashboardWidgetDropTarget?.id === widget.id
+              ? dashboardWidgetDropTarget.position
+              : "before";
+            moveWidget(widget.id, position);
+          }}
+          style={{ position: "relative", gridColumn: isMobile ? "1 / -1" : `span ${widget.colSpan || legacySizeColumns(widget.size)}`, gridRow: "auto", minWidth: 0, height: "max-content", alignSelf: "start", opacity: draggedDashboardWidgetId === widget.id ? .55 : 1, transition: "opacity .18s ease, transform .18s ease", overflow: "visible" }}
+        >
+          {activeDropTarget ? <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, height: 5, borderRadius: 999, background: colors.gold, boxShadow: "0 0 0 3px rgba(230,169,43,.18)", top: activeDropTarget.position === "before" ? -9 : "auto", bottom: activeDropTarget.position === "after" ? -9 : "auto", zIndex: 20, pointerEvents: "none" }} /> : null}
+          {dashboardEditMode || widget.collapsed ? <div draggable={dashboardEditMode && !widget.locked} onDragStart={(event) => { if (!widget.locked) { event.dataTransfer.effectAllowed = "move"; setDraggedDashboardWidgetId(widget.id); setDashboardWidgetDropTarget(null); } }} onDragEnd={() => { setDraggedDashboardWidgetId(null); setDashboardWidgetDropTarget(null); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: `1px solid ${colors.line}`, borderBottom: widget.collapsed ? `1px solid ${colors.line}` : 0, borderRadius: widget.collapsed ? 14 : "14px 14px 0 0", background: colors.navy, color: "#FFFFFF", padding: "8px 10px", cursor: dashboardEditMode && !widget.locked ? "grab" : "default", userSelect: "none" }}><strong>{dashboardWidgetDefinitions[widget.id].title}</strong><div style={{ display: "flex", gap: 5, alignItems: "center" }}>{dashboardEditMode ? <><span style={{ fontSize: 11, opacity: .75 }}>{widget.colSpan || legacySizeColumns(widget.size)}/12 wide</span><button type="button" title={widget.locked ? "Unlock widget" : "Lock widget"} onClick={(event) => { event.stopPropagation(); updateWidget(widget.id, { locked: !widget.locked }); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: widget.locked ? "rgba(230,169,43,.28)" : "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.locked ? "🔒" : "🔓"}</button><button type="button" title="Reset widget size" onClick={(event) => { event.stopPropagation(); resetWidgetGrid(widget.id); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>↺</button></> : null}<button type="button" onClick={() => updateWidget(widget.id, { collapsed: !widget.collapsed })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.collapsed ? "+" : "−"}</button>{dashboardEditMode ? <button type="button" onClick={() => updateWidget(widget.id, { visible: false })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>×</button> : null}</div></div> : null}
           {!widget.collapsed ? <div className="atlas-dashboard-widget-content" style={{ height: "auto", minHeight: 0, overflow: "visible", ...(dashboardEditMode ? { border: `1px dashed ${colors.gold}`, borderTop: 0, borderRadius: "0 0 14px 14px" } : {}) }}>{renderWidgetContent(widget.id)}</div> : null}
           {dashboardEditMode && !widget.collapsed && !widget.locked && !isMobile ? <div onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginWidgetResize(event, widget, "x"); }} title="Resize widget width" style={{ position: "absolute", top: 42, right: -4, bottom: 4, width: 10, cursor: "ew-resize", zIndex: 5, touchAction: "none" }} /> : null}
         </div>;})}
