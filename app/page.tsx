@@ -6430,22 +6430,25 @@ export default function AtlasPage() {
       })
     : serviceRecords;
 
-  const restrictedTeamScreenIds = new Set<AtlasScreen>([
-    "dashboard",
-    "history",
-    "calendar",
-    "assets",
-    "documents",
-    "procedures",
-  ]);
+  const restrictedTeamScreenIds = new Set<AtlasScreen>(
+    isAddisonUser
+      ? ["dashboard", "history"]
+      : isSeanMarineUser
+        ? ["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"]
+        : ["dashboard", "history", "calendar", "assets", "documents", "procedures"],
+  );
   const visibleAtlasScreens = isRestrictedStaffUser
     ? screens.filter((item) => restrictedTeamScreenIds.has(item.id))
     : screens;
   const visiblePrimaryNavigationSections = isRestrictedStaffUser
     ? [
         {
-          label: "My Atlas",
-          items: ["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[],
+          label: isAddisonUser ? "My Day" : isSeanMarineUser ? "Marine Operations" : "My Atlas",
+          items: isAddisonUser
+            ? (["dashboard", "history"] as AtlasScreen[])
+            : isSeanMarineUser
+              ? (["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"] as AtlasScreen[])
+              : (["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[]),
         },
       ]
     : atlasPrimaryNavigationSections;
@@ -32296,7 +32299,7 @@ export default function AtlasPage() {
     const departmentAssets = assetRecords.filter(matches);
     const departmentLocations = locations.filter(matches);
     const departmentVendors = vendorRecords.filter(matches);
-    const departmentDocuments = documentRecords.filter(matches);
+    const departmentDocuments = intakeDocs.filter(matches);
     const departmentProcedures = procedureRecords.filter(matches);
     const departmentRequests = requestRecords.filter(matches);
     const assignedNames = isLandscape ? ["Pat's Crew", "Addison"] : ["Sean"];
