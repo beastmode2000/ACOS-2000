@@ -16461,7 +16461,7 @@ export default function AtlasPage() {
               onClick={() => setAssetBulkMode((current) => !current)}
               aria-pressed={assetBulkMode}
               style={{
-                ...assetAddButtonStyle,
+                ...assetEditButtonStyle,
                 background: assetBulkMode ? "#FFF3CF" : "#FFFFFF",
                 color: colors.navy,
                 borderColor: assetBulkMode ? colors.gold : colors.line,
