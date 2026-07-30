@@ -4795,7 +4795,7 @@ export default function AtlasPage() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(todayISO());
   const [selectedCalendarId, setSelectedCalendarId] = useState("");
   const [selectedCalendarOccurrenceDate, setSelectedCalendarOccurrenceDate] = useState("");
-  const [calendarDraft, setCalendarDraft] = useState<CalendarItem>(() =>
+  const [calendarDraft, setCalendarDraft] = useState<AtlasCalendarItem>(() =>
     blankCalendarItem(todayISO()),
   );
   const [calendarDirty, setCalendarDirty] = useState(false);
@@ -38509,5 +38509,3 @@ const linkStyle: React.CSSProperties = {
 };
 
       
-
-    
