@@ -22727,7 +22727,7 @@ export default function AtlasPage() {
                       style={{
                         ...secondaryButtonStyle,
                         borderColor: active ? colors.gold : colors.line,
-                        background: active ? "#FFF8E8" : colors.white,
+                        background: active ? "#FFF8E8" : colors.card,
                         boxShadow: active ? "0 0 0 2px rgba(201,154,61,.14)" : "none",
                       }}
                     >
