@@ -4040,6 +4040,11 @@ export default function AtlasPage() {
   const [activeMapPanelTab, setActiveMapPanelTab] = useState<
     "operations" | "info" | "vendors" | "photos" | "tabs"
   >("operations");
+  const [mapAreaSearch, setMapAreaSearch] = useState("");
+  const [mapStatusFilter, setMapStatusFilter] = useState<
+    "All" | "Critical" | "Active" | "Attention" | "Healthy"
+  >("All");
+  const [mapAreaNavigatorOpen, setMapAreaNavigatorOpen] = useState(true);
 
   const [locations, setLocations] =
     useState<AtlasLocationRecord[]>(fallbackLocations);
@@ -14354,6 +14359,24 @@ export default function AtlasPage() {
       label,
       operations: operationsForLabel(label),
     }));
+    const normalizedMapAreaSearch = mapAreaSearch.trim().toLowerCase();
+    const visibleMapOperations = mapOperations.filter(({ label, operations }) => {
+      const matchesSearch =
+        !normalizedMapAreaSearch ||
+        [
+          label.label,
+          label.category,
+          label.notes,
+          ...operations.locations.map((location) => location.name),
+          ...operations.assets.map((asset) => asset.name),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedMapAreaSearch);
+      const matchesStatus =
+        mapStatusFilter === "All" || operations.status === mapStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
     const selectedOperations = operationsForLabel(selectedMapLabel);
     const selectedMapVendors = vendorRecords.filter((vendor) =>
       (selectedMapLabel.vendorIds || []).includes(vendor.id),
@@ -14404,10 +14427,10 @@ export default function AtlasPage() {
           }}
         >
           {[
-            { label: "Open Work", value: totalOpen, note: "Across mapped areas" },
-            { label: "Critical Areas", value: criticalAreas, note: "Overdue or high priority" },
-            { label: "Active Areas", value: activeAreas, note: "Work in progress" },
-            { label: "Healthy Areas", value: healthyAreas, note: "No open work" },
+            { icon: "🔧", label: "Open Work", value: totalOpen, note: "Across mapped areas" },
+            { icon: "⚠", label: "Critical Areas", value: criticalAreas, note: "Overdue or high priority" },
+            { icon: "▶", label: "Active Areas", value: activeAreas, note: "Work in progress" },
+            { icon: "✓", label: "Healthy Areas", value: healthyAreas, note: "No open work" },
           ].map((item) => (
             <div
               key={item.label}
@@ -14419,7 +14442,31 @@ export default function AtlasPage() {
                 minWidth: 0,
               }}
             >
-              <div style={{ ...eyebrowStyle, fontSize: 10 }}>{item.label}</div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <div style={{ ...eyebrowStyle, fontSize: 10 }}>{item.label}</div>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 9,
+                    display: "grid",
+                    placeItems: "center",
+                    background: colors.panel,
+                    border: `1px solid ${colors.line}`,
+                    fontSize: 13,
+                  }}
+                >
+                  {item.icon}
+                </span>
+              </div>
               <div style={{ marginTop: 4, color: colors.navy, fontSize: 25, fontWeight: 950 }}>
                 {item.value}
               </div>
@@ -14488,7 +14535,61 @@ export default function AtlasPage() {
             </>
           }
           list={
-            <div>
+            <div style={{ display: "grid", gap: 10 }}>
+              <section
+                style={{
+                  ...cardStyle,
+                  display: "grid",
+                  gap: 8,
+                  position: isMobile ? "static" : "sticky",
+                  top: isMobile ? undefined : 0,
+                  zIndex: 6,
+                  padding: 10,
+                }}
+              >
+                <input
+                  value={mapAreaSearch}
+                  onChange={(event) => setMapAreaSearch(event.currentTarget.value)}
+                  placeholder="Search mapped areas, locations, or assets..."
+                  style={{ ...inputStyle, minHeight: isMobile ? 42 : undefined }}
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 6,
+                    alignItems: "center",
+                  }}
+                >
+                  {(["All", "Critical", "Active", "Attention", "Healthy"] as const).map(
+                    (status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setMapStatusFilter(status)}
+                        style={{
+                          ...smallSubtleButtonStyle,
+                          borderColor:
+                            mapStatusFilter === status
+                              ? colors.gold
+                              : colors.line,
+                          background:
+                            mapStatusFilter === status
+                              ? "#FFF3CF"
+                              : "#FFFFFF",
+                          color: colors.navy,
+                        }}
+                      >
+                        {status}
+                      </button>
+                    ),
+                  )}
+                  <span style={{ ...mutedSmallStyle, marginLeft: "auto" }}>
+                    {visibleMapOperations.length} of {mapOperations.length} areas
+                  </span>
+                </div>
+              </section>
+
               {!mapImageOk ? (
                 <div
                   style={{
@@ -14509,7 +14610,12 @@ export default function AtlasPage() {
                 onPointerUp={stopMapDrag}
                 onPointerLeave={stopMapDrag}
                 onPointerCancel={stopMapDrag}
-                style={mapShellStyle}
+                style={{
+                  ...mapShellStyle,
+                  minHeight: isMobile ? 430 : undefined,
+                  touchAction:
+                    mapMoveLabelId === selectedMapLabel.id ? "none" : "pan-x pan-y",
+                }}
               >
                 <img
                   src="/atlas-property-map.png"
@@ -14520,7 +14626,7 @@ export default function AtlasPage() {
                   style={mapImageStyle}
                 />
 
-                {mapOperations.map(({ label, operations }) => {
+                {visibleMapOperations.map(({ label, operations }) => {
                   const selected = label.id === selectedMapLabel.id;
                   const palette = statusPalette(operations.status);
                   return (
@@ -14597,6 +14703,142 @@ export default function AtlasPage() {
                   </span>
                 ))}
               </div>
+
+              <section
+                style={{
+                  ...cardStyle,
+                  display: "grid",
+                  gap: 8,
+                  padding: 10,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMapAreaNavigatorOpen((current) => !current)
+                  }
+                  style={{
+                    width: "100%",
+                    border: 0,
+                    background: "transparent",
+                    padding: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    color: colors.navy,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span>
+                    <strong style={{ display: "block" }}>
+                      Operational Area Navigator
+                    </strong>
+                    <span style={mutedSmallStyle}>
+                      Open any mapped area without tapping a small map pin
+                    </span>
+                  </span>
+                  <span aria-hidden="true">
+                    {mapAreaNavigatorOpen ? "−" : "+"}
+                  </span>
+                </button>
+
+                {mapAreaNavigatorOpen ? (
+                  visibleMapOperations.length ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "1fr"
+                          : "repeat(2, minmax(0, 1fr))",
+                        gap: 7,
+                      }}
+                    >
+                      {visibleMapOperations.map(({ label, operations }) => {
+                        const palette = statusPalette(operations.status);
+                        const selected = selectedMapLabel.id === label.id;
+                        return (
+                          <button
+                            key={label.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMapLabelId(label.id);
+                              setActiveMapPanelTab("operations");
+                              if (isMobile) setMapMobileDrawerOpen(true);
+                            }}
+                            style={{
+                              border: `1px solid ${
+                                selected ? colors.gold : colors.line
+                              }`,
+                              borderRadius: 12,
+                              background: selected ? "#FFF9E8" : "#FFFFFF",
+                              padding: 9,
+                              display: "grid",
+                              gridTemplateColumns: "10px minmax(0, 1fr) auto",
+                              gap: 8,
+                              alignItems: "center",
+                              minWidth: 0,
+                              textAlign: "left",
+                              cursor: "pointer",
+                              boxShadow: selected
+                                ? "0 6px 16px rgba(172,121,0,0.11)"
+                                : "none",
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: 999,
+                                background: palette.background,
+                              }}
+                            />
+                            <span style={{ minWidth: 0 }}>
+                              <strong
+                                style={{
+                                  display: "block",
+                                  color: colors.navy,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {label.label}
+                              </strong>
+                              <span style={mutedSmallStyle}>
+                                {operations.assets.length} assets ·{" "}
+                                {operations.documents.length} documents
+                              </span>
+                            </span>
+                            <span
+                              style={{
+                                minWidth: 28,
+                                height: 24,
+                                borderRadius: 999,
+                                display: "grid",
+                                placeItems: "center",
+                                padding: "0 7px",
+                                background: palette.soft,
+                                color: palette.background,
+                                fontSize: 10,
+                                fontWeight: 950,
+                              }}
+                            >
+                              {operations.openWork.length}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={emptyStateStyle}>
+                      No mapped areas match the current search and status filter.
+                    </div>
+                  )
+                ) : null}
+              </section>
             </div>
           }
           drawer={
