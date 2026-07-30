@@ -86,6 +86,30 @@ const DEFAULT_SECTIONS: WorkSection[] = [
 
 const SECTION_STORAGE_KEY = "atlas-work-section-settings-v1";
 const CATEGORY_STORAGE_KEY = "atlas-work-category-settings-v1";
+const FAVORITE_STORAGE_KEY = "atlas-work-favorites-v1";
+const RECENT_STORAGE_KEY = "atlas-work-recent-v1";
+
+type WorkTemplate = {
+  id: string;
+  label: string;
+  title: string;
+  workType: WorkItemType;
+  workCategory: string;
+  priority: "Low" | "Medium" | "High";
+  effort: WorkEffort;
+  recurring?: boolean;
+  recurrenceInterval?: number;
+  recurrenceUnit?: WorkOrderRecurrenceUnit;
+  checklist: string[];
+};
+
+const WORK_TEMPLATES: WorkTemplate[] = [
+  { id: "weekly-pool", label: "Weekly Pool Service", title: "Weekly Pool Service", workType: "Preventive Maintenance", workCategory: "🚿 Pool & Spa", priority: "Medium", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", checklist: ["Test and balance water", "Inspect pump and filter", "Clean baskets and waterline", "Record readings and observations"] },
+  { id: "boat-detail", label: "Boat Detail", title: "Boat Detail", workType: "Work Order", workCategory: "🚤 Dock & Marine", priority: "Medium", effort: "Half Day", checklist: ["Rinse exterior", "Wash and dry surfaces", "Clean upholstery and storage", "Inspect for damage", "Add completion photos"] },
+  { id: "fountain-clean", label: "Fountain Cleaning", title: "Clean Fountain", workType: "Preventive Maintenance", workCategory: "🔧 Maintenance", priority: "Medium", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", checklist: ["Remove debris", "Clean basin and surfaces", "Inspect pump and flow", "Treat water if needed"] },
+  { id: "irrigation-startup", label: "Irrigation Startup", title: "Seasonal Irrigation Startup", workType: "Preventive Maintenance", workCategory: "💧 Irrigation", priority: "High", effort: "Half Day", checklist: ["Open water supply", "Inspect controller", "Run every zone", "Document leaks and damaged heads", "Confirm final schedule"] },
+  { id: "boiler-inspection", label: "Boiler Inspection", title: "Monthly Boiler Inspection", workType: "Preventive Maintenance", workCategory: "❄️ HVAC", priority: "High", effort: "30 minutes", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Months", checklist: ["Check operating status", "Inspect pressure and temperature", "Check for leaks or faults", "Record readings"] },
+];
 
 function itemType(record: any): WorkItemType {
   if (
@@ -524,6 +548,31 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
   const [completedHistoryOpen, setCompletedHistoryOpen] = useState(true);
   const [completedHistoryLimit, setCompletedHistoryLimit] = useState(5);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [recentIds, setRecentIds] = useState<string[]>([]);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+
+  useEffect(() => {
+    try {
+      const favorites = JSON.parse(window.localStorage.getItem(FAVORITE_STORAGE_KEY) || "[]");
+      const recent = JSON.parse(window.localStorage.getItem(RECENT_STORAGE_KEY) || "[]");
+      setFavoriteIds(Array.isArray(favorites) ? favorites.map(String) : []);
+      setRecentIds(Array.isArray(recent) ? recent.map(String) : []);
+    } catch {
+      setFavoriteIds([]);
+      setRecentIds([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    setSelectedPhotoIndex(0);
+    if (!selectedService?.id) return;
+    setRecentIds((current) => {
+      const next = [selectedService.id, ...current.filter((id) => id !== selectedService.id)].slice(0, 8);
+      try { window.localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, [selectedService?.id]);
 
   useEffect(() => {
     setRecurrenceIntervalDraft(
@@ -605,6 +654,34 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       ),
     [locationRecords, locationFilter],
   );
+
+  function toggleFavorite(recordId: string) {
+    setFavoriteIds((current) => {
+      const next = current.includes(recordId)
+        ? current.filter((id) => id !== recordId)
+        : [recordId, ...current];
+      try { window.localStorage.setItem(FAVORITE_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  function openTemplate(templateId: string) {
+    const template = WORK_TEMPLATES.find((item) => item.id === templateId);
+    if (!template) return;
+    setDetailOpen(false);
+    setSelectedServiceId("");
+    setNewWorkDraft({
+      title: template.title,
+      workType: template.workType,
+      workCategory: template.workCategory,
+      priority: template.priority,
+      date: template.workType === "Quick Task" ? todayKey() : "",
+    });
+    setNewWorkOpen(true);
+    window.setTimeout(() => {
+      if (newWorkTitleRef.current) newWorkTitleRef.current.value = template.title;
+    }, 0);
+  }
 
   function clearFilters() {
     setLocalSearch("");
@@ -853,6 +930,28 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     assignedFilter,
   ].filter((value) => value !== "All").length + (localSearch.trim() ? 1 : 0);
 
+
+  const recordQuality = useMemo(() => {
+    const open = filteredServices.filter((record: any) => String(record.status || "") !== "Completed");
+    const incomplete = open.filter((record: any) =>
+      !String(record.title || "").trim() ||
+      (!String(record.date || "").trim() && itemType(record) !== "Project") ||
+      (!String(record.assetId || "").trim() && !String(record.locationId || "").trim()) ||
+      !String(record.assignedTo || "").trim()
+    );
+    const duplicateIds = new Set<string>();
+    const groups = new Map<string, any[]>();
+    open.forEach((record: any) => {
+      const key = `${String(record.title || "").trim().toLowerCase()}|${String(record.assetId || "")}|${dateKey(record.date)}`;
+      if (!String(record.title || "").trim()) return;
+      groups.set(key, [...(groups.get(key) || []), record]);
+    });
+    groups.forEach((records) => { if (records.length > 1) records.forEach((record) => duplicateIds.add(String(record.id))); });
+    return { incomplete, duplicateIds };
+  }, [filteredServices]);
+
+  const favoriteRecords = useMemo(() => favoriteIds.map((id) => filteredServices.find((record: any) => record.id === id)).filter(Boolean), [favoriteIds, filteredServices]);
+  const recentRecords = useMemo(() => recentIds.map((id) => filteredServices.find((record: any) => record.id === id)).filter(Boolean), [recentIds, filteredServices]);
 
   const workSummary = useMemo(() => {
     const openRecords = filteredServices.filter(
@@ -1122,6 +1221,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       effort: newWorkDraft.workType === "Quick Task" ? "15 minutes" : "30 minutes",
       status: "Open",
       recurring: newWorkDraft.workType === "Preventive Maintenance",
+      checklist: [],
     } as any);
     setNewWorkOpen(false);
   }
@@ -1134,6 +1234,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       setManageSectionsOpen((current) => !current);
     if (value === "categories")
       setManageCategoriesOpen((current) => !current);
+    if (value.startsWith("template:")) openTemplate(value.replace("template:", ""));
   }
 
   function handleDetailAction(value: string) {
@@ -1358,6 +1459,17 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             ) : null}
           </div>
           <div style={workOrderListBadgesStyle}>
+            <button
+              type="button"
+              onClick={(event) => { event.stopPropagation(); toggleFavorite(String(record.id)); }}
+              aria-label={favoriteIds.includes(String(record.id)) ? "Unpin work order" : "Pin work order"}
+              title={favoriteIds.includes(String(record.id)) ? "Unpin" : "Pin"}
+              style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 2 }}
+            >
+              {favoriteIds.includes(String(record.id)) ? "★" : "☆"}
+            </button>
+            {recordQuality.duplicateIds.has(String(record.id)) ? <span style={badgeStyle("High")}>Possible Duplicate</span> : null}
+            {recordQuality.incomplete.some((item: any) => item.id === record.id) ? <span style={recurringBadgeStyle}>Needs Info</span> : null}
             {overdue ? <span style={badgeStyle("High")}>Overdue</span> : null}
             {record.effort ? (
               <span style={recurringBadgeStyle}>{record.effort}</span>
@@ -1559,6 +1671,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <option value="plan">Plan My Day</option>
               <option value="sections">Manage Sections</option>
               <option value="categories">Manage Categories</option>
+              <optgroup label="New from Template">
+                {WORK_TEMPLATES.map((template) => (
+                  <option key={template.id} value={`template:${template.id}`}>{template.label}</option>
+                ))}
+              </optgroup>
             </select>
             <button
               type="button"
@@ -1728,6 +1845,38 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               </section>
             ) : null}
+
+            {(favoriteRecords.length || recentRecords.length) ? (
+              <section style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                {[
+                  { label: "Pinned", records: favoriteRecords.slice(0, 4) },
+                  { label: "Recently Viewed", records: recentRecords.slice(0, 4) },
+                ].filter((group) => group.records.length).map((group) => (
+                  <div key={group.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FFFFFF" }}>
+                    <div style={{ ...eyebrowStyle, opacity: 0.8 }}>{group.label}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+                      {group.records.map((record: any) => (
+                        <button key={record.id} type="button" onClick={() => { setNewWorkOpen(false); setDetailOpen(true); setSelectedServiceId(record.id); }} style={{ ...miniButtonStyle, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </section>
+            ) : null}
+
+            <section
+              aria-label="Work order quality"
+              style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}
+            >
+              <button type="button" onClick={() => { setStatusFilter("All"); setDueDateFilter("All"); }} style={{ ...rowButtonStyle, textAlign: "left", display: "grid", gap: 3 }}>
+                <strong>{recordQuality.incomplete.length} records need information</strong>
+                <span style={mutedSmallStyle}>Missing assignment, due date, asset, or location.</span>
+              </button>
+              <div style={{ ...rowButtonStyle, display: "grid", gap: 3 }}>
+                <strong>{recordQuality.duplicateIds.size} possible duplicates</strong>
+                <span style={mutedSmallStyle}>Matching title, asset, and due date.</span>
+              </div>
+            </section>
 
             <section
               aria-label="Work order summary"
@@ -2155,7 +2304,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => updateWorkOrder({ vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
                     </div>
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                      <button type="button" onClick={() => { void saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto" }}>Save</button>
+                      <button type="button" onClick={async () => { await saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto" }}>Save</button>
                     </div>
                   </div>
                 )}
@@ -2190,14 +2339,28 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 <input ref={photoInputRef} type="file" accept="image/*" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} style={{ display: "none" }} />
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, width: "auto" }}>Add Photos</button></div>
                 {photoMessage ? <p style={mutedSmallStyle}>{photoMessage}</p> : null}
-                {(selectedService.photos || []).length ? (
-                  <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
-                    {(selectedService.photos || []).map((photo: PhotoLike) => {
-                      const source = photoSource(photo);
-                      return <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px solid ${colors.line}` }}>{source ? <a href={source} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>{photo.name || "Work photo"}</a> : <span style={mutedSmallStyle}>{photo.name || "Photo unavailable"}</span>}<button type="button" onClick={() => removePhoto(photo.id)} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 12 }}>Remove</button></div>;
-                    })}
-                  </div>
-                ) : null}
+                {(selectedService.photos || []).length ? (() => {
+                  const photos = selectedService.photos || [];
+                  const safeIndex = Math.min(selectedPhotoIndex, Math.max(0, photos.length - 1));
+                  const photo = photos[safeIndex] as PhotoLike;
+                  const source = photoSource(photo);
+                  return (
+                    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                      <div style={{ position: "relative", minHeight: isMobile ? 220 : 320, border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {source ? <img src={source} alt={photo.name || "Work photo"} style={{ width: "100%", height: "100%", maxHeight: 460, objectFit: "contain" }} /> : <span style={mutedSmallStyle}>Photo unavailable</span>}
+                        {photos.length > 1 ? <>
+                          <button type="button" onClick={() => setSelectedPhotoIndex((safeIndex - 1 + photos.length) % photos.length)} aria-label="Previous photo" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>‹</button>
+                          <button type="button" onClick={() => setSelectedPhotoIndex((safeIndex + 1) % photos.length)} aria-label="Next photo" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>›</button>
+                          <span style={{ position: "absolute", left: "50%", bottom: 9, transform: "translateX(-50%)", background: "rgba(7,23,47,.78)", color: "white", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 800 }}>{safeIndex + 1} / {photos.length}</span>
+                        </> : null}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                        <a href={source || undefined} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>{photo.name || "Work photo"}</a>
+                        <button type="button" onClick={() => { removePhoto(photo.id); setSelectedPhotoIndex(0); }} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 12 }}>Remove</button>
+                      </div>
+                    </div>
+                  );
+                })() : null}
               </details>
 
               <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
@@ -2363,6 +2526,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </div>
                 ) : null}
               </section>
+
+              {isRecordDirty("work_orders", selectedService.id) ? (
+                <div style={{ position: "sticky", bottom: 0, zIndex: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: 10, border: `1px solid ${colors.gold}`, borderRadius: 12, background: "rgba(255,255,255,.97)", boxShadow: "0 -6px 20px rgba(15,42,67,.12)" }}>
+                  <span style={{ ...mutedSmallStyle, fontWeight: 800 }}>Unsaved changes</span>
+                  <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto", minHeight: 38 }}>Save Work Order</button>
+                </div>
+              ) : null}
 
               {renderLinkedDocuments("Work Order", selectedService.id)}
             </div>
