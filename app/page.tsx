@@ -4372,19 +4372,44 @@ export default function AtlasPage() {
         return response.json();
       })
       .then((payload) => {
-        const currentEmail = String(payload?.currentUser?.email || "").toLowerCase();
-        const matchedMember = Array.isArray(payload?.members)
-          ? payload.members.find(
-              (member: { email?: unknown }) =>
-                String(member?.email || "").toLowerCase() === currentEmail,
-            )
-          : null;
-        const role = String(payload?.currentUser?.role || matchedMember?.role || "viewer") as AtlasCurrentUser["role"];
-        const returnedPropertyIds: string[] = Array.isArray(payload?.currentUser?.propertyIds)
+        const normalizeEmail = (value: unknown) =>
+          String(value || "").trim().toLowerCase();
+        const currentEmail = normalizeEmail(payload?.currentUser?.email);
+        const members = Array.isArray(payload?.members) ? payload.members : [];
+        const matchedMember = members.find(
+          (member: { email?: unknown }) =>
+            Boolean(currentEmail) && normalizeEmail(member?.email) === currentEmail,
+        ) || null;
+
+        // The Team Center member record is authoritative for role and profile.
+        // The authentication session only proves who signed in; it must not
+        // accidentally give an invited employee the normal manager dashboard.
+        const rawRole = String(
+          matchedMember?.role || payload?.currentUser?.role || "viewer",
+        ).trim().toLowerCase();
+        const validRoles: AtlasCurrentUser["role"][] = [
+          "master",
+          "administrator",
+          "manager",
+          "employee",
+          "vendor",
+          "viewer",
+        ];
+        const role: AtlasCurrentUser["role"] = validRoles.includes(
+          rawRole as AtlasCurrentUser["role"],
+        )
+          ? (rawRole as AtlasCurrentUser["role"])
+          : "viewer";
+
+        const memberPropertyIds = Array.isArray(matchedMember?.propertyIds)
+          ? matchedMember.propertyIds.map((propertyId: unknown) => String(propertyId))
+          : [];
+        const sessionPropertyIds = Array.isArray(payload?.currentUser?.propertyIds)
           ? payload.currentUser.propertyIds.map((propertyId: unknown) => String(propertyId))
-          : Array.isArray(matchedMember?.propertyIds)
-            ? matchedMember.propertyIds.map((propertyId: unknown) => String(propertyId))
-            : [];
+          : [];
+        const returnedPropertyIds: string[] = memberPropertyIds.length
+          ? memberPropertyIds
+          : sessionPropertyIds;
         const isFullAccess = role === "master" || role === "administrator";
         const allowed: string[] = isFullAccess
           ? [...allPropertyIds]
@@ -4392,23 +4417,44 @@ export default function AtlasPage() {
             ? [...new Set<string>(returnedPropertyIds)]
             : ["2000"];
 
+        const memberPermissions =
+          matchedMember?.permissions && typeof matchedMember.permissions === "object"
+            ? matchedMember.permissions
+            : null;
+        const sessionPermissions =
+          payload?.currentUser?.permissions && typeof payload.currentUser.permissions === "object"
+            ? payload.currentUser.permissions
+            : {};
+        const memberAccessProfiles = Array.isArray(matchedMember?.accessProfiles)
+          ? matchedMember.accessProfiles.map(String)
+          : [];
+        const sessionAccessProfiles = Array.isArray(payload?.currentUser?.accessProfiles)
+          ? payload.currentUser.accessProfiles.map(String)
+          : [];
+
         setCurrentAtlasUser({
-          id: String(matchedMember?.id || ""),
-          name: String(matchedMember?.name || payload?.currentUser?.name || currentEmail || "Atlas User"),
+          id: String(matchedMember?.id || payload?.currentUser?.id || ""),
+          name: String(
+            matchedMember?.name ||
+              payload?.currentUser?.name ||
+              currentEmail ||
+              "Atlas User",
+          ),
           email: currentEmail,
           role,
           propertyIds: allowed,
-          permissions:
-            payload?.currentUser?.permissions && typeof payload.currentUser.permissions === "object"
-              ? payload.currentUser.permissions
-              : {},
-          accessProfiles: Array.isArray(payload?.currentUser?.accessProfiles)
-            ? payload.currentUser.accessProfiles.map(String)
-            : Array.isArray(matchedMember?.accessProfiles)
-              ? matchedMember.accessProfiles.map(String)
-              : [],
+          permissions: memberPermissions || sessionPermissions,
+          accessProfiles: memberAccessProfiles.length
+            ? memberAccessProfiles
+            : sessionAccessProfiles,
         });
         setAllowedPropertyIds(allowed);
+
+        const isRestrictedRole = ["employee", "vendor", "viewer"].includes(role);
+        if (isRestrictedRole) {
+          setDepartmentCenter("");
+          setScreenState("dashboard");
+        }
 
         if (!allowed.includes(activePropertyId)) {
           selectProperty(allowed[0] || "2000");
