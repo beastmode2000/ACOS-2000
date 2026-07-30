@@ -4197,6 +4197,12 @@ export default function AtlasPage() {
   const [manualCategoryFilter, setManualCategoryFilter] = useState<
     ManualCategory | "All"
   >("All");
+  const [manualLinkedFilter, setManualLinkedFilter] = useState<
+    "All" | "Linked" | "Unlinked"
+  >("All");
+  const [manualSortOrder, setManualSortOrder] = useState<
+    "Alphabetical" | "Newest" | "Category"
+  >("Alphabetical");
   const [manualMessage, setManualMessage] = useState(
     "Paste a manual PDF link, upload a file, or select an existing manual.",
   );
@@ -20810,21 +20816,67 @@ export default function AtlasPage() {
   function renderManuals() {
     const normalizedSearch = manualSearch.trim().toLowerCase();
 
+    const selectedManual =
+      allManualRecords.find((manual) => manual.id === selectedManualId) ||
+      allManualRecords[0];
+
     const filteredManuals = [...allManualRecords]
       .filter((manual) => {
-        if (!normalizedSearch) return true;
-        return [
-          manual.title,
-          manual.linkedAssetName,
-          manual.manufacturer,
-          manual.model,
-          manual.documentNumber,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedSearch);
+        const matchesSearch =
+          !normalizedSearch ||
+          [
+            manual.title,
+            manual.category,
+            manual.linkedAssetName,
+            manual.manufacturer,
+            manual.model,
+            manual.documentNumber,
+            manual.sourceLabel,
+            manual.notes,
+            ...(manual.files || []).map((file) => file.name),
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(normalizedSearch);
+
+        const matchesCategory =
+          manualCategoryFilter === "All" ||
+          manual.category === manualCategoryFilter;
+
+        const isLinked = Boolean(
+          manual.linkedAssetId || manual.linkedAssetName,
+        );
+        const matchesLinked =
+          manualLinkedFilter === "All" ||
+          (manualLinkedFilter === "Linked" && isLinked) ||
+          (manualLinkedFilter === "Unlinked" && !isLinked);
+
+        return matchesSearch && matchesCategory && matchesLinked;
       })
-      .sort((a, b) => a.title.localeCompare(b.title));
+      .sort((a, b) => {
+        if (manualSortOrder === "Newest") {
+          return String(b.createdAt || "").localeCompare(
+            String(a.createdAt || ""),
+          );
+        }
+        if (manualSortOrder === "Category") {
+          return (
+            a.category.localeCompare(b.category) ||
+            a.title.localeCompare(b.title)
+          );
+        }
+        return a.title.localeCompare(b.title);
+      });
+
+    const linkedManualCount = allManualRecords.filter(
+      (manual) => manual.linkedAssetId || manual.linkedAssetName,
+    ).length;
+    const openableManualCount = allManualRecords.filter((manual) =>
+      Boolean(openManualUrl(manual)),
+    ).length;
+    const categoryCount = new Set(
+      allManualRecords.map((manual) => manual.category),
+    ).size;
 
     function startNewManual() {
       setSelectedManualId("");
@@ -20899,6 +20951,7 @@ export default function AtlasPage() {
         );
       }
 
+      setSelectedManualId(prepared.id);
       setManualDraft(blankManual());
       setManualAddOpen(false);
     }
@@ -20913,11 +20966,20 @@ export default function AtlasPage() {
       });
     }
 
+    const selectedManualUrl = selectedManual
+      ? openManualUrl(selectedManual)
+      : "";
+    const selectedAsset = selectedManual?.linkedAssetId
+      ? assetRecords.find(
+          (asset) => asset.id === selectedManual.linkedAssetId,
+        )
+      : undefined;
+
     return (
       <ListDrawerLayout
         eyebrow="Manual Library"
-        title="Manuals"
-        detail="Manuals listed alphabetically with their attached asset and a direct Open button."
+        title="Browse Manuals"
+        detail="Search, filter, preview, and open equipment manuals without leaving the Atlas record structure."
         isMobile={isMobile}
         drawerResetKey={selectedManualId || "manual-new"}
         right={
@@ -20927,7 +20989,7 @@ export default function AtlasPage() {
               onClick={() => setScreen("documents")}
               style={secondaryButtonStyle}
             >
-              Back to Documents
+              Documents
             </button>
             <button
               type="button"
@@ -20939,20 +21001,175 @@ export default function AtlasPage() {
           </>
         }
         list={
-          <div style={stackStyle}>
-            <div style={cardStyle}>
+          <div style={{ ...stackStyle, minWidth: 0 }}>
+            <section
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(4, minmax(0, 1fr))",
+                gap: 8,
+              }}
+            >
+              {[
+                ["Manuals", allManualRecords.length, "Total records"],
+                ["Openable", openableManualCount, "PDF or web link"],
+                ["Linked", linkedManualCount, "Attached to assets"],
+                ["Categories", categoryCount, "Manual types"],
+              ].map(([label, value, note]) => (
+                <div
+                  key={String(label)}
+                  style={{
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 14,
+                    background: "#FFFFFF",
+                    padding: 10,
+                    minWidth: 0,
+                    boxShadow: "0 4px 14px rgba(15, 42, 67, 0.05)",
+                  }}
+                >
+                  <span style={fieldLabelStyle}>{label}</span>
+                  <strong
+                    style={{
+                      display: "block",
+                      color: colors.navy,
+                      fontSize: 21,
+                      lineHeight: 1,
+                      marginTop: 4,
+                    }}
+                  >
+                    {value}
+                  </strong>
+                  <span
+                    style={{
+                      ...mutedSmallStyle,
+                      display: "block",
+                      marginTop: 5,
+                    }}
+                  >
+                    {note}
+                  </span>
+                </div>
+              ))}
+            </section>
+
+            <section
+              style={{
+                ...cardStyle,
+                position: isMobile ? "static" : "sticky",
+                top: isMobile ? undefined : 0,
+                zIndex: 4,
+                display: "grid",
+                gap: 8,
+              }}
+            >
               <input
                 value={manualSearch}
                 onChange={(event) => setManualSearch(event.currentTarget.value)}
-                placeholder="Search manuals or assets..."
-                style={inputStyle}
+                placeholder="Search title, asset, manufacturer, model, file name, or notes..."
+                style={{ ...inputStyle, minHeight: isMobile ? 42 : undefined }}
               />
-            </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(3, minmax(0, 1fr))",
+                  gap: 7,
+                }}
+              >
+                <select
+                  value={manualCategoryFilter}
+                  onChange={(event) =>
+                    setManualCategoryFilter(
+                      event.currentTarget.value as ManualCategory | "All",
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="All">All categories</option>
+                  {manualCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={manualLinkedFilter}
+                  onChange={(event) =>
+                    setManualLinkedFilter(
+                      event.currentTarget.value as
+                        | "All"
+                        | "Linked"
+                        | "Unlinked",
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="All">All relationships</option>
+                  <option value="Linked">Linked to an asset</option>
+                  <option value="Unlinked">Not linked</option>
+                </select>
+
+                <select
+                  value={manualSortOrder}
+                  onChange={(event) =>
+                    setManualSortOrder(
+                      event.currentTarget.value as
+                        | "Alphabetical"
+                        | "Newest"
+                        | "Category",
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="Alphabetical">Alphabetical</option>
+                  <option value="Newest">Newest first</option>
+                  <option value="Category">Category</option>
+                </select>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 7,
+                }}
+              >
+                <span style={mutedSmallStyle}>
+                  {filteredManuals.length} of {allManualRecords.length} manuals
+                </span>
+                {manualSearch ||
+                manualCategoryFilter !== "All" ||
+                manualLinkedFilter !== "All" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualSearch("");
+                      setManualCategoryFilter("All");
+                      setManualLinkedFilter("All");
+                    }}
+                    style={smallSubtleButtonStyle}
+                  >
+                    Clear Filters
+                  </button>
+                ) : null}
+              </div>
+            </section>
 
             {manualAddOpen ? (
-              <div style={cardStyle}>
+              <section style={{ ...cardStyle, display: "grid", gap: 10 }}>
                 <div style={manualInlineFormHeaderStyle}>
-                  <strong>Add Manual</strong>
+                  <div>
+                    <strong>Add Manual</strong>
+                    <div style={mutedSmallStyle}>
+                      Upload a PDF or paste an official manual link.
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -20977,6 +21194,26 @@ export default function AtlasPage() {
                     onChange={(title) => updateManualDraft({ title })}
                     placeholder="Official manual title"
                   />
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Category</span>
+                    <select
+                      value={manualDraft.category}
+                      onChange={(event) =>
+                        updateManualDraft({
+                          category: event.currentTarget
+                            .value as ManualCategory,
+                        })
+                      }
+                      style={inputStyle}
+                    >
+                      {manualCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
                   <label style={{ display: "grid", gap: 6 }}>
                     <span style={fieldLabelStyle}>Attached asset</span>
@@ -21006,7 +21243,7 @@ export default function AtlasPage() {
                     label="PDF / manual link"
                     value={manualDraft.href}
                     onChange={(href) => updateManualDraft({ href })}
-                    placeholder="Paste the online PDF URL"
+                    placeholder="Paste the official PDF or web URL"
                   />
 
                   <Field
@@ -21023,6 +21260,22 @@ export default function AtlasPage() {
                     onChange={(model) => updateManualDraft({ model })}
                   />
 
+                  <Field
+                    label="Document number"
+                    value={manualDraft.documentNumber}
+                    onChange={(documentNumber) =>
+                      updateManualDraft({ documentNumber })
+                    }
+                  />
+
+                  <Field
+                    label="Source"
+                    value={manualDraft.sourceLabel}
+                    onChange={(sourceLabel) =>
+                      updateManualDraft({ sourceLabel })
+                    }
+                  />
+
                   <label style={{ display: "grid", gap: 6 }}>
                     <span style={fieldLabelStyle}>Upload PDF</span>
                     <input
@@ -21034,9 +21287,28 @@ export default function AtlasPage() {
                       style={inputStyle}
                     />
                   </label>
+
+                  <label
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      gridColumn: "1 / -1",
+                    }}
+                  >
+                    <span style={fieldLabelStyle}>Notes</span>
+                    <textarea
+                      value={manualDraft.notes}
+                      onChange={(event) =>
+                        updateManualDraft({
+                          notes: event.currentTarget.value,
+                        })
+                      }
+                      style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
+                    />
+                  </label>
                 </div>
 
-                <div style={{ ...buttonRowStyle, marginTop: 12 }}>
+                <div style={{ ...buttonRowStyle, marginTop: 2 }}>
                   <button
                     type="button"
                     onClick={() => void saveManual()}
@@ -21045,45 +21317,177 @@ export default function AtlasPage() {
                     Save Manual
                   </button>
                 </div>
-              </div>
+              </section>
             ) : null}
 
-            <div style={manualSimpleTableStyle}>
-              <div style={manualListHeaderStyle}>
-                <span>Manual</span>
-                <span>Asset</span>
-                <span>Actions</span>
-              </div>
+            {filteredManuals.length ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "minmax(0, 1fr)"
+                    : "repeat(2, minmax(0, 1fr))",
+                  gap: 9,
+                }}
+              >
+                {filteredManuals.map((manual) => {
+                  const manualOpenUrl = openManualUrl(manual);
+                  const selected = selectedManual?.id === manual.id;
+                  const firstFile = (manual.files || [])[0];
 
-              {filteredManuals.length ? (
-                <div style={manualCompactListStyle}>
-                  {filteredManuals.map((manual) => {
-                    const manualOpenUrl = openManualUrl(manual);
+                  return (
+                    <article
+                      key={manual.id}
+                      style={{
+                        border: `1px solid ${
+                          selected ? colors.gold : colors.line
+                        }`,
+                        borderRadius: 14,
+                        background: selected ? "#FFF9E8" : "#FFFFFF",
+                        padding: 10,
+                        minWidth: 0,
+                        boxShadow: selected
+                          ? "0 8px 20px rgba(172, 121, 0, 0.11)"
+                          : "0 3px 11px rgba(15, 42, 67, 0.04)",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedManualId(manual.id)}
+                        style={{
+                          width: "100%",
+                          border: 0,
+                          background: "transparent",
+                          padding: 0,
+                          textAlign: "left",
+                          cursor: "pointer",
+                          display: "grid",
+                          gridTemplateColumns: "54px minmax(0, 1fr)",
+                          gap: 10,
+                          minWidth: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 54,
+                            height: 68,
+                            borderRadius: 10,
+                            border: `1px solid ${colors.line}`,
+                            background: "#F4F7FA",
+                            display: "grid",
+                            placeItems: "center",
+                            overflow: "hidden",
+                            color: colors.navy,
+                            fontWeight: 900,
+                            fontSize: 11,
+                          }}
+                        >
+                          {firstFile?.type?.startsWith("image/") &&
+                          (firstFile.url || firstFile.dataUrl) ? (
+                            <img
+                              src={firstFile.url || firstFile.dataUrl}
+                              alt=""
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : (
+                            <span>PDF</span>
+                          )}
+                        </div>
 
-                    return (
-                      <div key={manual.id} style={manualSimpleRowStyle}>
-                        <span style={manualSimpleTitleStyle}>
-                          {manual.title}
+                        <div style={{ minWidth: 0 }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              border: `1px solid ${colors.line}`,
+                              borderRadius: 999,
+                              background: colors.panel,
+                              padding: "3px 7px",
+                              fontSize: 8,
+                              fontWeight: 850,
+                              color: colors.navy,
+                              marginBottom: 5,
+                            }}
+                          >
+                            {manual.category}
+                          </span>
+                          <strong
+                            style={{
+                              display: "block",
+                              color: colors.navy,
+                              fontSize: 12,
+                              lineHeight: 1.35,
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            {manual.title}
+                          </strong>
+                          <span
+                            style={{
+                              ...mutedSmallStyle,
+                              display: "block",
+                              marginTop: 5,
+                            }}
+                          >
+                            {manual.linkedAssetName || "Not linked to an asset"}
+                          </span>
+                          <span
+                            style={{
+                              ...mutedSmallStyle,
+                              display: "block",
+                              marginTop: 3,
+                            }}
+                          >
+                            {[manual.manufacturer, manual.model]
+                              .filter(Boolean)
+                              .join(" · ") || "Manufacturer not recorded"}
+                          </span>
+                        </div>
+                      </button>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: 6,
+                          marginTop: 9,
+                          paddingTop: 8,
+                          borderTop: `1px solid ${colors.line}`,
+                        }}
+                      >
+                        <span style={mutedSmallStyle}>
+                          {(manual.files || []).length} file
+                          {(manual.files || []).length === 1 ? "" : "s"}
                         </span>
-
-                        <span style={manualCompactAssetStyle}>
-                          {manual.linkedAssetName || "Not linked"}
-                        </span>
-
-                        <div style={manualActionRowStyle}>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 5,
+                          }}
+                        >
                           {manualOpenUrl ? (
                             <a
                               href={manualOpenUrl}
                               target="_blank"
                               rel="noreferrer"
                               style={manualCompactFileStyle}
-                              aria-label={`Open ${manual.title}`}
                             >
                               Open
                             </a>
-                          ) : (
-                            <span style={manualNoPdfStyle}>—</span>
-                          )}
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedManualId(manual.id)}
+                            style={smallSubtleButtonStyle}
+                          >
+                            Details
+                          </button>
                           <button
                             type="button"
                             onClick={() => void deleteManualRecord(manual)}
@@ -21093,18 +21497,243 @@ export default function AtlasPage() {
                           </button>
                         </div>
                       </div>
-                    );
-                  })}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <section
+                style={{
+                  ...cardStyle,
+                  display: "grid",
+                  placeItems: "center",
+                  textAlign: "center",
+                  minHeight: 170,
+                  padding: 20,
+                }}
+              >
+                <div>
+                  <strong
+                    style={{
+                      display: "block",
+                      color: colors.navy,
+                      marginBottom: 6,
+                    }}
+                  >
+                    No manuals match
+                  </strong>
+                  <span style={mutedSmallStyle}>
+                    Clear the filters or add a new manual record.
+                  </span>
                 </div>
-              ) : (
-                <p style={{ ...mutedSmallStyle, padding: 16 }}>
-                  No manuals match this search.
-                </p>
-              )}
-            </div>
+              </section>
+            )}
           </div>
         }
-        drawer={undefined}
+        drawer={
+          selectedManual ? (
+            <div style={{ ...stackStyle, minWidth: 0 }}>
+              <section
+                style={{
+                  ...cardStyle,
+                  display: "grid",
+                  gap: 10,
+                  minWidth: 0,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 9,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={eyebrowStyle}>Selected Manual</div>
+                    <h3
+                      style={{
+                        ...editorHeaderStyle,
+                        margin: "3px 0 0",
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {selectedManual.title}
+                    </h3>
+                  </div>
+                  <span
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 999,
+                      background: colors.panel,
+                      padding: "4px 8px",
+                      fontSize: 9,
+                      fontWeight: 850,
+                      color: colors.navy,
+                    }}
+                  >
+                    {selectedManual.category}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 13,
+                    background: "#F4F7FA",
+                    minHeight: isMobile ? 180 : 260,
+                    display: "grid",
+                    placeItems: "center",
+                    overflow: "hidden",
+                  }}
+                >
+                  {selectedManualUrl ? (
+                    <iframe
+                      title={selectedManual.title}
+                      src={selectedManualUrl}
+                      style={{
+                        width: "100%",
+                        height: isMobile ? 220 : 360,
+                        border: 0,
+                        background: "#FFFFFF",
+                      }}
+                    />
+                  ) : (
+                    <div style={{ textAlign: "center", padding: 18 }}>
+                      <strong
+                        style={{
+                          display: "block",
+                          color: colors.navy,
+                          marginBottom: 6,
+                        }}
+                      >
+                        No preview available
+                      </strong>
+                      <span style={mutedSmallStyle}>
+                        Add a PDF, uploaded file, or official web link.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    ["Asset", selectedManual.linkedAssetName || "Not linked"],
+                    [
+                      "Manufacturer",
+                      selectedManual.manufacturer || "Not recorded",
+                    ],
+                    ["Model", selectedManual.model || "Not recorded"],
+                    [
+                      "Document number",
+                      selectedManual.documentNumber || "Not recorded",
+                    ],
+                    ["Source", selectedManual.sourceLabel || "Not recorded"],
+                    [
+                      "Files",
+                      String((selectedManual.files || []).length),
+                    ],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} style={recordInfoItemStyle}>
+                      <span style={fieldLabelStyle}>{label}</span>
+                      <strong
+                        style={{
+                          overflowWrap: "anywhere",
+                          whiteSpace: "normal",
+                        }}
+                      >
+                        {value}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+
+                {selectedManual.notes ? (
+                  <div
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 11,
+                      background: "#FFFFFF",
+                      padding: 10,
+                    }}
+                  >
+                    <span style={fieldLabelStyle}>Notes</span>
+                    <p
+                      style={{
+                        ...mutedStyle,
+                        margin: "6px 0 0",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {selectedManual.notes}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 7,
+                  }}
+                >
+                  {selectedManualUrl ? (
+                    <a
+                      href={selectedManualUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        ...goldButtonStyle,
+                        textDecoration: "none",
+                        textAlign: "center",
+                        flex: isMobile ? "1 1 140px" : undefined,
+                      }}
+                    >
+                      Open Full Manual
+                    </a>
+                  ) : null}
+                  {selectedAsset ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAssetId(selectedAsset.id);
+                        setScreen("assets");
+                      }}
+                      style={{
+                        ...secondaryButtonStyle,
+                        flex: isMobile ? "1 1 140px" : undefined,
+                      }}
+                    >
+                      Open Linked Asset
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocumentSearch(selectedManual.title);
+                      setScreen("documents");
+                    }}
+                    style={{
+                      ...secondaryButtonStyle,
+                      flex: isMobile ? "1 1 140px" : undefined,
+                    }}
+                  >
+                    Find in Documents
+                  </button>
+                </div>
+              </section>
+            </div>
+          ) : undefined
+        }
       />
     );
   }
