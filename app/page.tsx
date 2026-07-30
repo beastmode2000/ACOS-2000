@@ -3919,6 +3919,9 @@ export default function AtlasPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [departmentCenter, setDepartmentCenter] = useState<"landscaping" | "marine" | "">("");
+  const [departmentDrilldown, setDepartmentDrilldown] = useState<
+    "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures" | ""
+  >("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
@@ -32527,7 +32530,43 @@ export default function AtlasPage() {
     );
     const assignedNames = isLandscape ? ["Pat's Crew", "Addison"] : ["Sean"];
 
-    const openCenter = (next: AtlasScreen) => setScreen(next);
+    const openCenter = (next: AtlasScreen) => {
+      setDepartmentCenter("");
+      setDepartmentDrilldown("");
+      setScreen(next);
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+      }
+    };
+    const openDepartmentDrilldown = (
+      next: "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures",
+    ) => {
+      setDepartmentDrilldown(next);
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          document.getElementById("atlas-department-record-list")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
+      }
+    };
+    const drilldownTitle =
+      departmentDrilldown === "open"
+        ? `Open ${isLandscape ? "Landscaping" : "Marine"} Work`
+        : departmentDrilldown === "completed"
+          ? `${isLandscape ? "Landscaping" : "Marine"} History`
+          : departmentDrilldown === "assets"
+            ? isLandscape ? "Landscaping Areas & Assets" : "Boats, Dock & Lifts"
+            : departmentDrilldown === "requests"
+              ? `${isLandscape ? "Landscaping" : "Marine"} Requests`
+              : departmentDrilldown === "vendors"
+                ? `${isLandscape ? "Landscaping" : "Marine"} Vendors`
+                : departmentDrilldown === "documents"
+                  ? `${isLandscape ? "Landscaping" : "Marine"} Documents & Photos`
+                  : departmentDrilldown === "procedures"
+                    ? `${isLandscape ? "Landscaping" : "Marine"} Procedures`
+                    : "";
     const metricStyle: React.CSSProperties = {
       border: `1px solid ${colors.line}`,
       borderRadius: 16,
@@ -32569,25 +32608,97 @@ export default function AtlasPage() {
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(5, minmax(0, 1fr))", gap: 12 }}>
           {[
-            ["Open Work", openWork.length, "history" as AtlasScreen],
-            ["Completed", completedWork.length, "history" as AtlasScreen],
-            ["Assets / Areas", departmentAssets.length + departmentLocations.length, "assets" as AtlasScreen],
-            ["Requests", departmentRequests.length, "requests" as AtlasScreen],
-            ["Vendors", departmentVendors.length, "vendors" as AtlasScreen],
+            ["Open Work", openWork.length, "open" as const],
+            ["Completed", completedWork.length, "completed" as const],
+            ["Assets / Areas", departmentAssets.length + departmentLocations.length, "assets" as const],
+            ["Requests", departmentRequests.length, "requests" as const],
+            ["Vendors", departmentVendors.length, "vendors" as const],
           ].map(([label, value, target]) => (
-            <button key={String(label)} type="button" onClick={() => openCenter(target as AtlasScreen)} style={{ ...metricStyle, textAlign: "left", cursor: "pointer" }}>
+            <button key={String(label)} type="button" onClick={() => openDepartmentDrilldown(target)} style={{ ...metricStyle, textAlign: "left", cursor: "pointer" }}>
               <span style={{ color: colors.muted, fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".07em" }}>{label}</span>
               <strong style={{ color: colors.navy, fontSize: 30 }}>{value}</strong>
             </button>
           ))}
         </div>
 
+        {departmentDrilldown ? (
+          <div id="atlas-department-record-list" style={{ ...centerCardStyle, scrollMarginTop: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <SectionHeader eyebrow={`${icon} Department records`} title={drilldownTitle} detail="These are the exact records included in the number you selected." />
+              <button type="button" onClick={() => setDepartmentDrilldown("")} style={secondaryButtonStyle}>Close List</button>
+            </div>
+            <div style={{ display: "grid", gap: 9 }}>
+              {departmentDrilldown === "open" ? openWork.map((record) => (
+                <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); setDepartmentDrilldown(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
+                  <span><strong>{record.title || "Untitled work order"}</strong><small style={mutedSmallStyle}>{record.assignedTo || "Unassigned"} · {record.date ? formatDate(record.date) : "No due date"}</small></span>
+                  <span style={badgeStyle(record.status || "Open")}>{record.status || "Open"}</span>
+                </button>
+              )) : null}
+              {departmentDrilldown === "completed" ? completedWork.map((record) => (
+                <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); setDepartmentDrilldown(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
+                  <span><strong>{record.title || "Untitled work order"}</strong><small style={mutedSmallStyle}>{record.lastCompletedDate ? formatDate(record.lastCompletedDate) : record.date ? formatDate(record.date) : "Completed"}</small></span>
+                  <span style={badgeStyle("Completed")}>Completed</span>
+                </button>
+              )) : null}
+              {departmentDrilldown === "assets" ? (
+                <>
+                  {departmentAssets.map((asset) => (
+                    <button key={`asset-${asset.id}`} type="button" onClick={() => { setSelectedAssetId(asset.id); openCenter("assets"); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
+                      <span><strong>{asset.name || "Unnamed asset"}</strong><small style={mutedSmallStyle}>{asset.category || "Marine asset"}</small></span>
+                      <span style={badgeStyle(asset.status || "Active")}>{asset.status || "Active"}</span>
+                    </button>
+                  ))}
+                  {departmentLocations.map((location) => (
+                    <button key={`location-${location.id}`} type="button" onClick={() => { setSelectedLocationId(location.id); openCenter("locations"); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
+                      <span><strong>{location.name || "Unnamed location"}</strong><small style={mutedSmallStyle}>{location.type || "Location"}</small></span>
+                      <span style={badgeStyle("Location")}>Location</span>
+                    </button>
+                  ))}
+                </>
+              ) : null}
+              {departmentDrilldown === "requests" ? departmentRequests.map((request) => (
+                <button key={request.id} type="button" onClick={() => { setSelectedRequestId(request.id); openCenter("requests"); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
+                  <span><strong>{request.title || "Untitled request"}</strong><small style={mutedSmallStyle}>{request.requesterName || "Request"}</small></span>
+                  <span style={badgeStyle(request.status || "New")}>{request.status || "New"}</span>
+                </button>
+              )) : null}
+              {departmentDrilldown === "vendors" ? departmentVendors.map((vendor) => (
+                <button key={vendor.id} type="button" onClick={() => { setSelectedVendorId(vendor.id); openCenter("vendors"); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
+                  <span><strong>{vendor.name || "Unnamed vendor"}</strong><small style={mutedSmallStyle}>{vendor.category || "Department vendor"}</small></span>
+                  <span style={badgeStyle("Vendor")}>Vendor</span>
+                </button>
+              )) : null}
+              {departmentDrilldown === "documents" ? departmentDocuments.map((document) => (
+                <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); openCenter("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
+                  <span><strong>{document.title || document.name || "Untitled document"}</strong><small style={mutedSmallStyle}>{document.category || document.targetType || "Document / photo"}</small></span>
+                  <span style={badgeStyle("Document")}>Open</span>
+                </button>
+              )) : null}
+              {departmentDrilldown === "procedures" ? departmentProcedures.map((procedure) => (
+                <button key={procedure.id} type="button" onClick={() => { setSelectedProcedureId(procedure.id); openCenter("procedures"); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
+                  <span><strong>{procedure.title || "Untitled procedure"}</strong><small style={mutedSmallStyle}>{procedure.category || procedure.area || "Procedure"}</small></span>
+                  <span style={badgeStyle(procedure.status || "Procedure")}>{procedure.status || "Procedure"}</span>
+                </button>
+              )) : null}
+              {((departmentDrilldown === "open" && !openWork.length) ||
+                (departmentDrilldown === "completed" && !completedWork.length) ||
+                (departmentDrilldown === "assets" && !(departmentAssets.length + departmentLocations.length)) ||
+                (departmentDrilldown === "requests" && !departmentRequests.length) ||
+                (departmentDrilldown === "vendors" && !departmentVendors.length) ||
+                (departmentDrilldown === "documents" && !departmentDocuments.length) ||
+                (departmentDrilldown === "procedures" && !departmentProcedures.length)) ? (
+                <div style={noticeStyle}>No matching department records are currently saved.</div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.35fr .65fr", gap: 16, alignItems: "start" }}>
           <div style={centerCardStyle}>
             <SectionHeader eyebrow="Current operations" title={isLandscape ? "Landscaping Work" : "Marine Work"} detail={`${openWork.length} open department items for ${atlasProperties.find((item) => item.id === activePropertyId)?.name || activePropertyId}.`} />
             <div style={{ display: "grid", gap: 10 }}>
               {openWork.slice(0, 8).map((item) => (
-                <button key={item.id} type="button" onClick={() => openWorkOrderById(item.id)} style={{ width: "100%", border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", cursor: "pointer" }}>
+                <button key={item.id} type="button" onClick={() => { setDepartmentCenter(""); setDepartmentDrilldown(""); openWorkOrderById(item.id); }} style={{ width: "100%", border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", cursor: "pointer" }}>
                   <div style={{ minWidth: 0 }}>
                     <strong style={{ display: "block", color: colors.navy }}>{item.title || "Untitled work order"}</strong>
                     <span style={{ color: colors.muted, fontSize: 12 }}>{item.assignedTo || "Unassigned"} · {item.date ? formatDate(item.date) : "No due date"}</span>
@@ -32597,7 +32708,7 @@ export default function AtlasPage() {
               ))}
               {!openWork.length ? <div style={noticeStyle}>No open {isLandscape ? "landscaping" : "marine"} work is currently recorded for this property.</div> : null}
             </div>
-            <button type="button" onClick={() => openCenter("history")} style={secondaryButtonStyle}>Open All Work Orders</button>
+            <button type="button" onClick={() => openDepartmentDrilldown("open")} style={secondaryButtonStyle}>Open All Work Orders</button>
           </div>
 
           <div style={{ display: "grid", gap: 16 }}>
@@ -32609,9 +32720,9 @@ export default function AtlasPage() {
             <div style={centerCardStyle}>
               <SectionHeader eyebrow="Knowledge" title="Department Records" detail="Existing Atlas records, filtered into this department view." />
               <div style={{ display: "grid", gap: 8 }}>
-                <button type="button" onClick={() => openCenter("documents")} style={secondaryButtonStyle}>Documents ({departmentDocuments.length})</button>
-                <button type="button" onClick={() => openCenter("procedures")} style={secondaryButtonStyle}>Procedures ({departmentProcedures.length})</button>
-                <button type="button" onClick={() => openCenter("vendors")} style={secondaryButtonStyle}>Vendors ({departmentVendors.length})</button>
+                <button type="button" onClick={() => openDepartmentDrilldown("documents")} style={secondaryButtonStyle}>Documents ({departmentDocuments.length})</button>
+                <button type="button" onClick={() => openDepartmentDrilldown("procedures")} style={secondaryButtonStyle}>Procedures ({departmentProcedures.length})</button>
+                <button type="button" onClick={() => openDepartmentDrilldown("vendors")} style={secondaryButtonStyle}>Vendors ({departmentVendors.length})</button>
                 <button type="button" onClick={() => openCenter("map")} style={secondaryButtonStyle}>Open Property Map</button>
               </div>
             </div>
@@ -32620,11 +32731,11 @@ export default function AtlasPage() {
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 16 }}>
           {[
-            { title: isLandscape ? "Areas & Assets" : "Boats, Dock & Lifts", count: departmentAssets.length + departmentLocations.length, target: "assets" as AtlasScreen, detail: isLandscape ? "Landscaping areas, grounds assets, and linked locations." : "Marine assets and their linked dock locations." },
-            { title: "Requests & Follow-up", count: departmentRequests.length, target: "requests" as AtlasScreen, detail: "Submitted requests and department follow-up work." },
-            { title: "History & Records", count: completedWork.length, target: "history" as AtlasScreen, detail: "Completed work and service history already stored in Atlas." },
+            { title: isLandscape ? "Areas & Assets" : "Boats, Dock & Lifts", count: departmentAssets.length + departmentLocations.length, target: "assets" as const, detail: isLandscape ? "Landscaping areas, grounds assets, and linked locations." : "Marine assets and their linked dock locations." },
+            { title: "Requests & Follow-up", count: departmentRequests.length, target: "requests" as const, detail: "Submitted requests and department follow-up work." },
+            { title: "History & Records", count: completedWork.length, target: "completed" as const, detail: "Completed work and service history already stored in Atlas." },
           ].map((card) => (
-            <button key={card.title} type="button" onClick={() => openCenter(card.target)} style={{ ...centerCardStyle, textAlign: "left", cursor: "pointer" }}>
+            <button key={card.title} type="button" onClick={() => openDepartmentDrilldown(card.target)} style={{ ...centerCardStyle, textAlign: "left", cursor: "pointer" }}>
               <span style={{ fontSize: 28 }}>{card.count}</span>
               <strong style={{ color: colors.navy, fontSize: 18 }}>{card.title}</strong>
               <span style={{ color: colors.muted, lineHeight: 1.45 }}>{card.detail}</span>
@@ -34179,8 +34290,8 @@ export default function AtlasPage() {
               </select>
               {!isRestrictedStaffUser ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <button type="button" onClick={() => setDepartmentCenter("landscaping")} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === "landscaping" ? colors.gold : colors.line }}>🌿 Landscaping</button>
-                  <button type="button" onClick={() => setDepartmentCenter("marine")} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === "marine" ? colors.gold : colors.line }}>⚓ Marine</button>
+                  <button type="button" onClick={() => { setDepartmentDrilldown(""); setDepartmentCenter("landscaping"); }} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === "landscaping" ? colors.gold : colors.line }}>🌿 Landscaping</button>
+                  <button type="button" onClick={() => { setDepartmentDrilldown(""); setDepartmentCenter("marine"); }} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === "marine" ? colors.gold : colors.line }}>⚓ Marine</button>
                 </div>
               ) : null}
             </div>
@@ -38626,5 +38737,3 @@ const linkStyle: React.CSSProperties = {
 };
 
       
-
-    
