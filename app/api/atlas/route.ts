@@ -1072,14 +1072,6 @@ export async function GET(request: NextRequest) {
       ORDER BY lower(name) ASC
     `) as unknown as JsonRecord[];
 
-    if (!Object.keys(record).length) {
-      return atlasJson(
-        { ok: false, error: "Atlas save record is required." },
-        400,
-        requestId,
-      );
-    }
-
     const access = await getAtlasAccessContext(sql, request);
     const mappedAssets = assetRows.map(mapAsset);
     const allowedAssets = access.restricted
@@ -1255,6 +1247,15 @@ export async function POST(request: NextRequest) {
       body.record && typeof body.record === "object"
         ? (body.record as JsonRecord)
         : {};
+
+    if (!Object.keys(record).length) {
+      return atlasJson(
+        { ok: false, error: "Atlas save record is required." },
+        400,
+        requestId,
+      );
+    }
+
     const propertyId =
       asString(record.propertyId) ||
       asString(body.propertyId) ||
