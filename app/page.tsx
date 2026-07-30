@@ -13965,7 +13965,14 @@ export default function AtlasPage() {
                   <h3 style={{ margin: "4px 0 4px", color: colors.navy, fontSize: isMobile ? 20 : 24 }}>Find, review, and organize property photos</h3>
                   <p style={{ ...mutedSmallStyle, margin: 0 }}>Search every photo record, review incomplete metadata, and move new images into the right project history.</p>
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 7,
+                    flexWrap: "wrap",
+                    width: isMobile ? "100%" : "auto",
+                  }}
+                >
                   <button type="button" onClick={() => setScreen("inbox")} style={goldButtonStyle}>Upload Photos</button>
                   <button type="button" onClick={() => applyPhotoOrganizationFilter("unassigned")} style={secondaryButtonStyle}>Review Unassigned</button>
                 </div>
@@ -17621,14 +17628,29 @@ export default function AtlasPage() {
                 </div>
               </div>
 
-              <div style={{ marginBottom: 12 }}>
+              <div
+                style={{
+                  marginBottom: isMobile ? 10 : 12,
+                  position: isMobile ? "sticky" : "static",
+                  top: isMobile ? 0 : undefined,
+                  zIndex: isMobile ? 12 : undefined,
+                  background: "#FFFFFF",
+                  paddingTop: isMobile ? 4 : 0,
+                  paddingBottom: isMobile ? 6 : 0,
+                }}
+              >
                 {isMobile ? (
                   <select
                     value={assetPanelSection}
                     onChange={(event) =>
                       setAssetPanelSection(event.target.value as typeof assetPanelSection)
                     }
-                    style={{ ...assetSortSelectStyle, width: "100%" }}
+                    style={{
+                      ...assetSortSelectStyle,
+                      width: "100%",
+                      minHeight: 42,
+                      fontSize: 13,
+                    }}
                     aria-label="Asset information section"
                   >
                     <option value="overview">Overview</option>
@@ -18108,10 +18130,13 @@ export default function AtlasPage() {
                 <div
                   style={{
                     display: assetPanelSection === "overview" ? "grid" : "none",
+                    paddingBottom: isMobile ? 8 : 0,
                     gridTemplateColumns: isMobile
-                      ? "1fr"
+                      ? "minmax(0, 1fr)"
                       : "repeat(auto-fit, minmax(250px, 1fr))",
-                    gap: 10,
+                    gap: isMobile ? 8 : 10,
+                    width: "100%",
+                    minWidth: 0,
                     marginTop: 10,
                     alignItems: "start",
                   }}
@@ -18120,44 +18145,159 @@ export default function AtlasPage() {
                     style={{
                       display: assetVisibleSections.linkedRecords === false ? "none" : "block",
                       border: `1px solid ${colors.line}`,
-                      borderRadius: 10,
+                      borderRadius: 12,
                       background: "#FFFFFF",
-                      padding: 10,
+                      padding: isMobile ? 9 : 10,
+                      minWidth: 0,
+                      overflow: "hidden",
                     }}
                   >
-                    <span style={assetInfoLabelStyle}>Linked Records</span>
                     <div
                       style={{
                         display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: 8,
                         flexWrap: "wrap",
-                        gap: 6,
-                        marginTop: 8,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <span style={assetInfoLabelStyle}>Asset Relationships</span>
+                        <div style={assetCardHintStyle}>
+                          Open every record connected to this asset.
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 999,
+                          background: colors.panel,
+                          color: colors.navy,
+                          padding: "4px 8px",
+                          fontSize: 9,
+                          fontWeight: 900,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {selectedVendors.length +
+                          linkedAssetProcedures.length +
+                          attachedManuals.length +
+                          linkedAssetDocuments.length +
+                          selectedAssetPhotos.length +
+                          linkedAssetParts.length +
+                          openAssetWorkOrders.length} linked
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "repeat(2, minmax(0, 1fr))"
+                          : "repeat(auto-fit, minmax(118px, 1fr))",
+                        gap: 7,
+                        marginTop: 10,
                       }}
                     >
                       {[
-                        ["Vendors", selectedVendors.length],
-                        ["Procedures", linkedAssetProcedures.length],
-                        ["Manuals", attachedManuals.length],
-                        ["Documents", linkedAssetDocuments.length],
-                        ["Photos", selectedAssetPhotos.length],
-                        ["Parts", linkedAssetParts.length],
-                      ].map(([label, count]) => (
-                        <span
-                          key={String(label)}
+                        {
+                          label: "Work Orders",
+                          count: openAssetWorkOrders.length,
+                          action: () => setAssetPanelSection("work"),
+                        },
+                        {
+                          label: "Vendors",
+                          count: selectedVendors.length,
+                          action: () => setScreen("vendors"),
+                        },
+                        {
+                          label: "Procedures",
+                          count: linkedAssetProcedures.length,
+                          action: () => setAssetPanelSection("procedures"),
+                        },
+                        {
+                          label: "Manuals",
+                          count: attachedManuals.length,
+                          action: () => {
+                            if (attachedManuals[0]) {
+                              setSelectedManualId(attachedManuals[0].id);
+                            }
+                            setScreen("manuals");
+                          },
+                        },
+                        {
+                          label: "Documents",
+                          count: linkedAssetDocuments.length,
+                          action: () => setAssetPanelSection("documents"),
+                        },
+                        {
+                          label: "Photos",
+                          count: selectedAssetPhotos.length,
+                          action: () => setAssetPanelSection("photos"),
+                        },
+                        {
+                          label: "Parts",
+                          count: linkedAssetParts.length,
+                          action: () => setScreen("parts"),
+                        },
+                        {
+                          label: "Location",
+                          count:
+                            selectedAsset.locationId &&
+                            selectedAsset.locationId !== "general"
+                              ? 1
+                              : 0,
+                          action: () => setScreen("locations"),
+                        },
+                      ].map((relationship) => (
+                        <button
+                          key={relationship.label}
+                          type="button"
+                          onClick={relationship.action}
                           style={{
                             border: `1px solid ${colors.line}`,
-                            borderRadius: 999,
-                            background: colors.panel,
-                            color: colors.navy,
-                            padding: "5px 8px",
-                            fontSize: 10,
-                            fontWeight: 900,
+                            borderRadius: 10,
+                            background:
+                              relationship.count > 0 ? "#F8FAFD" : "#FFFFFF",
+                            padding: isMobile ? "9px 8px" : "8px 9px",
+                            minHeight: isMobile ? 54 : 50,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 7,
+                            textAlign: "left",
+                            cursor: "pointer",
+                            minWidth: 0,
                           }}
                         >
-                          {label}: {count}
-                        </span>
+                          <span
+                            style={{
+                              color: colors.navy,
+                              fontSize: 10,
+                              fontWeight: 850,
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {relationship.label}
+                          </span>
+                          <strong
+                            style={{
+                              color:
+                                relationship.count > 0 ? colors.navy : colors.muted,
+                              fontSize: 15,
+                              lineHeight: 1,
+                              flex: "0 0 auto",
+                            }}
+                          >
+                            {relationship.count}
+                          </strong>
+                        </button>
                       ))}
                     </div>
+
                     <div
                       style={{
                         display: "flex",
@@ -18166,39 +18306,30 @@ export default function AtlasPage() {
                         marginTop: 9,
                       }}
                     >
-                      {linkedAssetProcedures[0] ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedProcedureId(linkedAssetProcedures[0].id);
-                            setScreen("procedures");
-                          }}
-                          style={assetTinyButtonStyle}
-                        >
-                          Open Procedures
-                        </button>
-                      ) : null}
-                      {attachedManuals[0] ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedManualId(attachedManuals[0].id);
-                            setScreen("manuals");
-                          }}
-                          style={assetTinyButtonStyle}
-                        >
-                          Open Manuals
-                        </button>
-                      ) : null}
                       <button
                         type="button"
                         onClick={() => {
                           setDocumentSearch(selectedAsset.name);
                           setScreen("documents");
                         }}
-                        style={assetTinyButtonStyle}
+                        style={{
+                          ...assetTinyButtonStyle,
+                          flex: isMobile ? "1 1 140px" : undefined,
+                          minHeight: isMobile ? 36 : undefined,
+                        }}
                       >
-                        Open Documents
+                        Search All Documents
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAssetEditorOpen(true)}
+                        style={{
+                          ...assetTinyButtonStyle,
+                          flex: isMobile ? "1 1 140px" : undefined,
+                          minHeight: isMobile ? 36 : undefined,
+                        }}
+                      >
+                        Manage Relationships
                       </button>
                     </div>
                   </div>
