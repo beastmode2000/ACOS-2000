@@ -22626,46 +22626,77 @@ export default function AtlasPage() {
 
                   {documentQuickAccessOpen ? (
                     <div style={{ display: "grid", gap: 8 }}>
-                      {[
-                        ["Favorites", favoriteDocuments],
-                        ["Recently Viewed", recentDocuments],
-                      ].map(([label, documents]) =>
-                        (documents as DocumentRecord[]).length ? (
-                          <div key={String(label)}>
-                            <span style={fieldLabelStyle}>{label}</span>
-                            <div
-                              style={{
-                                display: "flex",
-                                flexWrap: "wrap",
-                                gap: 6,
-                                marginTop: 6,
-                              }}
-                            >
-                              {(documents as DocumentRecord[]).slice(0, 6).map(
-                                (document) => (
-                                  <button
-                                    key={document.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setBlueprintPage(1);
-                                      setSelectedDocumentId(document.id);
-                                      setRecentDocumentIds((current) => [
-                                        document.id,
-                                        ...current.filter(
-                                          (id) => id !== document.id,
-                                        ),
-                                      ].slice(0, 8));
-                                    }}
-                                    style={smallSubtleButtonStyle}
-                                  >
-                                    {document.title || "Untitled document"}
-                                  </button>
-                                ),
-                              )}
-                            </div>
+                      {favoriteDocuments.length ? (
+                        <div>
+                          <span style={fieldLabelStyle}>Favorites</span>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 6,
+                              marginTop: 6,
+                            }}
+                          >
+                            {favoriteDocuments.slice(0, 6).map((document) => (
+                              <button
+                                key={document.id}
+                                type="button"
+                                onClick={() => {
+                                  setBlueprintPage(1);
+                                  setSelectedDocumentId(document.id);
+                                  setRecentDocumentIds((current) =>
+                                    [
+                                      document.id,
+                                      ...current.filter(
+                                        (id) => id !== document.id,
+                                      ),
+                                    ].slice(0, 8),
+                                  );
+                                }}
+                                style={smallSubtleButtonStyle}
+                              >
+                                {document.title || "Untitled document"}
+                              </button>
+                            ))}
                           </div>
-                        ) : null,
-                      )}
+                        </div>
+                      ) : null}
+
+                      {recentDocuments.length ? (
+                        <div>
+                          <span style={fieldLabelStyle}>Recently Viewed</span>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 6,
+                              marginTop: 6,
+                            }}
+                          >
+                            {recentDocuments.slice(0, 6).map((document) => (
+                              <button
+                                key={document.id}
+                                type="button"
+                                onClick={() => {
+                                  setBlueprintPage(1);
+                                  setSelectedDocumentId(document.id);
+                                  setRecentDocumentIds((current) =>
+                                    [
+                                      document.id,
+                                      ...current.filter(
+                                        (id) => id !== document.id,
+                                      ),
+                                    ].slice(0, 8),
+                                  );
+                                }}
+                                style={smallSubtleButtonStyle}
+                              >
+                                {document.title || "Untitled document"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </section>
