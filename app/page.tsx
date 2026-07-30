@@ -3944,6 +3944,14 @@ export default function AtlasPage() {
     "hangar",
   ]);
   const [currentAtlasUser, setCurrentAtlasUser] = useState<AtlasCurrentUser | null>(null);
+  const [showLandscapeFilters, setShowLandscapeFilters] = useState(true);
+  const [landscapeSearch, setLandscapeSearch] = useState("");
+  const [landscapeStatusFilter, setLandscapeStatusFilter] = useState<
+    "All" | "Not Finished" | "Completed" | "Needs Follow-up" | "Skipped"
+  >("All");
+  const [landscapeSeverityFilter, setLandscapeSeverityFilter] = useState<
+    "All" | "Low" | "Medium" | "High" | "Not Recorded"
+  >("All");
   const [query, setQuery] = useState("");
   const [dashboardWorkFilter, setDashboardWorkFilter] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -13756,6 +13764,56 @@ export default function AtlasPage() {
         ? Math.round((landscapeVisitCompleted / landscapeVisitTotal) * 100)
         : 0;
 
+      const filteredLandscapeWorksheetRecords =
+        landscapeWorksheetRecords.filter((record) => {
+          const atlasRecord = record as AtlasServiceRecord;
+          const areaName = String(
+            atlasRecord.responsibilityArea ||
+              locationName(atlasRecord.locationId || "") ||
+              record.title ||
+              "",
+          );
+          const notes = String(record.notes || "");
+          const needsFollowUp = notes.includes("LANDSCAPE FOLLOW-UP:");
+          const skipped = notes.includes("LANDSCAPE SKIPPED:");
+          const completed = record.status === "Completed";
+          const severityMatch = notes.match(
+            /WEED SEVERITY:\s*(Low|Medium|High)/i,
+          );
+          const severity = severityMatch?.[1] || "Not Recorded";
+          const searchValue = landscapeSearch.trim().toLowerCase();
+
+          const matchesSearch =
+            !searchValue ||
+            [
+              areaName,
+              record.title,
+              record.notes,
+              record.priority,
+              record.status,
+              severity,
+            ]
+              .join(" ")
+              .toLowerCase()
+              .includes(searchValue);
+
+          const matchesStatus =
+            landscapeStatusFilter === "All" ||
+            (landscapeStatusFilter === "Completed" && completed) ||
+            (landscapeStatusFilter === "Needs Follow-up" && needsFollowUp) ||
+            (landscapeStatusFilter === "Skipped" && skipped) ||
+            (landscapeStatusFilter === "Not Finished" &&
+              !completed &&
+              !needsFollowUp &&
+              !skipped);
+
+          const matchesSeverity =
+            landscapeSeverityFilter === "All" ||
+            landscapeSeverityFilter === severity;
+
+          return matchesSearch && matchesStatus && matchesSeverity;
+        });
+
       return (
         <div style={{ display: "grid", gap: 14 }}>
           <section
@@ -13827,7 +13885,7 @@ export default function AtlasPage() {
                 <div
                   style={{
                     height: 9,
-                    background: colors.soft,
+                    background: colors.panel,
                     borderRadius: 999,
                     overflow: "hidden",
                     marginTop: 8,
@@ -13853,7 +13911,7 @@ export default function AtlasPage() {
                 <div
                   style={{
                     height: 9,
-                    background: colors.soft,
+                    background: colors.panel,
                     borderRadius: 999,
                     overflow: "hidden",
                     marginTop: 8,
@@ -14054,7 +14112,7 @@ export default function AtlasPage() {
               <div
                 style={{
                   height: 10,
-                  background: colors.soft,
+                  background: colors.panel,
                   borderRadius: 999,
                   overflow: "hidden",
                   marginBottom: 14,
@@ -14069,9 +14127,124 @@ export default function AtlasPage() {
                 />
               </div>
 
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  marginBottom: 10,
+                }}
+              >
+                <button
+                  type="button"
+                  style={{
+                    ...teamGoldButtonStyle,
+                    width: "auto",
+                    background: "#FFFFFF",
+                  }}
+                  onClick={() => setShowLandscapeFilters((current) => !current)}
+                >
+                  {showLandscapeFilters ? "Hide Filters" : "Show Filters"}
+                </button>
+                <div style={teamMutedSmallStyle}>
+                  Showing {filteredLandscapeWorksheetRecords.length} of{" "}
+                  {landscapeWorksheetRecords.length} areas
+                </div>
+              </div>
+
+              {showLandscapeFilters ? (
+                <div
+                  style={{
+                    ...teamCardStyle,
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "minmax(180px,1.4fr) minmax(150px,1fr) minmax(150px,1fr) auto",
+                    gap: 8,
+                    marginBottom: 12,
+                    alignItems: "end",
+                  }}
+                >
+                  <Field label="Search Areas">
+                    <input
+                      value={landscapeSearch}
+                      onChange={(event) => setLandscapeSearch(event.target.value)}
+                      placeholder="Area, work, note, priority..."
+                      style={{
+                        width: "100%",
+                        minHeight: 42,
+                        borderRadius: 10,
+                        border: `1px solid ${colors.line}`,
+                        padding: "9px 11px",
+                        background: "#FFFFFF",
+                        color: colors.text,
+                      }}
+                    />
+                  </Field>
+
+                  <SelectField
+                    label="Status Filter"
+                    value={landscapeStatusFilter}
+                    onChange={(value) =>
+                      setLandscapeStatusFilter(
+                        value as
+                          | "All"
+                          | "Not Finished"
+                          | "Completed"
+                          | "Needs Follow-up"
+                          | "Skipped",
+                      )
+                    }
+                    options={[
+                      "All",
+                      "Not Finished",
+                      "Completed",
+                      "Needs Follow-up",
+                      "Skipped",
+                    ]}
+                  />
+
+                  <SelectField
+                    label="Severity Filter"
+                    value={landscapeSeverityFilter}
+                    onChange={(value) =>
+                      setLandscapeSeverityFilter(
+                        value as
+                          | "All"
+                          | "Low"
+                          | "Medium"
+                          | "High"
+                          | "Not Recorded",
+                      )
+                    }
+                    options={[
+                      "All",
+                      "Low",
+                      "Medium",
+                      "High",
+                      "Not Recorded",
+                    ]}
+                  />
+
+                  <button
+                    type="button"
+                    style={{ ...teamGoldButtonStyle, width: "auto" }}
+                    onClick={() => {
+                      setLandscapeSearch("");
+                      setLandscapeStatusFilter("All");
+                      setLandscapeSeverityFilter("All");
+                    }}
+                  >
+                    Clear Filters
+                  </button>
+                </div>
+              ) : null}
+
               <div style={{ display: "grid", gap: 10 }}>
-                {landscapeWorksheetRecords.length ? (
-                  landscapeWorksheetRecords.map((record) => {
+                {filteredLandscapeWorksheetRecords.length ? (
+                  filteredLandscapeWorksheetRecords.map((record) => {
                     const atlasRecord = record as AtlasServiceRecord;
                     const areaName =
                       atlasRecord.responsibilityArea ||
@@ -14254,6 +14427,20 @@ export default function AtlasPage() {
                           >
                             Photos & Details
                           </button>
+                          <button
+                            type="button"
+                            style={{
+                              ...teamGoldButtonStyle,
+                              width: "auto",
+                              background: "#FFFFFF",
+                            }}
+                            onClick={() => {
+                              setSelectedServiceId(record.id);
+                              setScreen("history");
+                            }}
+                          >
+                            Edit Assignment
+                          </button>
                         </div>
 
                         {record.notes ? (
@@ -14273,8 +14460,9 @@ export default function AtlasPage() {
                   })
                 ) : (
                   <div style={teamNoticeStyle}>
-                    Assigned landscaping areas will appear here as soon as work
-                    orders are assigned to Pat's Crew.
+                    {landscapeWorksheetRecords.length
+                      ? "No landscaping areas match the current filters."
+                      : "Assigned landscaping areas will appear here as soon as work orders are assigned to Pat's Crew."}
                   </div>
                 )}
               </div>
