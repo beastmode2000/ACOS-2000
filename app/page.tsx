@@ -16471,7 +16471,7 @@ export default function AtlasPage() {
               const assetOpenWork = serviceRecords.filter(
                 (record) => record.assetId === asset.id && record.status !== "Completed",
               );
-              const linkedAssetDocuments.length = intakeDocs.filter(
+              const assetDocumentCount = intakeDocs.filter(
                 (document) =>
                   document.linkedAssetId === asset.id ||
                   (document.targetType === "Asset" && document.targetId === asset.id),
@@ -16637,10 +16637,10 @@ export default function AtlasPage() {
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                           <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                            {openAssetWorkOrders.length} open work order{openAssetWorkOrders.length === 1 ? "" : "s"}
+                            {assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}
                           </span>
                           <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                            {linkedAssetDocuments.length} document{linkedAssetDocuments.length === 1 ? "" : "s"}
+                            {assetDocumentCount} document{assetDocumentCount === 1 ? "" : "s"}
                           </span>
                         </div>
                       </div>
@@ -16698,8 +16698,8 @@ export default function AtlasPage() {
                         ? formatDate(assetNextMaintenance.date)
                         : "Not scheduled"}
                     </span>
-                    <span>{openAssetWorkOrders.length} open work order{openAssetWorkOrders.length === 1 ? "" : "s"}</span>
-                    <span>{linkedAssetDocuments.length} linked document{linkedAssetDocuments.length === 1 ? "" : "s"}</span>
+                    <span>{assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}</span>
+                    <span>{assetDocumentCount} linked document{assetDocumentCount === 1 ? "" : "s"}</span>
                   </span>
                 </div>
               );
