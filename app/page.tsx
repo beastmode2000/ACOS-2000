@@ -102,6 +102,16 @@ import type {
 const closeSymbol = "\u00D7";
 const backArrow = "\u2190";
 
+type AtlasCurrentUser = {
+  id?: string;
+  name: string;
+  email: string;
+  role: "master" | "administrator" | "manager" | "employee" | "vendor" | "viewer";
+  propertyIds: string[];
+  permissions: Record<string, boolean>;
+  accessProfiles: string[];
+};
+
 type AssistantTurn = {
   id: string;
   role: "user" | "assistant";
@@ -3933,6 +3943,7 @@ export default function AtlasPage() {
     "3661",
     "hangar",
   ]);
+  const [currentAtlasUser, setCurrentAtlasUser] = useState<AtlasCurrentUser | null>(null);
   const [query, setQuery] = useState("");
   const [dashboardWorkFilter, setDashboardWorkFilter] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -4352,25 +4363,42 @@ export default function AtlasPage() {
         return response.json();
       })
       .then((payload) => {
-        const returnedPropertyIds = Array.isArray(
-          payload?.currentUser?.propertyIds,
-        )
+        const currentEmail = String(payload?.currentUser?.email || "").toLowerCase();
+        const matchedMember = Array.isArray(payload?.members)
+          ? payload.members.find(
+              (member: { email?: unknown }) =>
+                String(member?.email || "").toLowerCase() === currentEmail,
+            )
+          : null;
+        const role = String(payload?.currentUser?.role || matchedMember?.role || "viewer") as AtlasCurrentUser["role"];
+        const returnedPropertyIds = Array.isArray(payload?.currentUser?.propertyIds)
           ? payload.currentUser.propertyIds.map(String)
-          : [];
+          : Array.isArray(matchedMember?.propertyIds)
+            ? matchedMember.propertyIds.map(String)
+            : [];
+        const isFullAccess = role === "master" || role === "administrator";
+        const allowed = isFullAccess
+          ? allPropertyIds
+          : returnedPropertyIds.length > 0
+            ? Array.from(new Set(returnedPropertyIds))
+            : ["2000"];
 
-        const allowed =
-          returnedPropertyIds.length > 0
-            ? Array.from(
-                new Set([
-                  ...returnedPropertyIds,
-                  "2000",
-                  "6855",
-                  "3661",
-                  "hangar",
-                ]),
-              )
-            : allPropertyIds;
-
+        setCurrentAtlasUser({
+          id: String(matchedMember?.id || ""),
+          name: String(matchedMember?.name || payload?.currentUser?.name || currentEmail || "Atlas User"),
+          email: currentEmail,
+          role,
+          propertyIds: allowed,
+          permissions:
+            payload?.currentUser?.permissions && typeof payload.currentUser.permissions === "object"
+              ? payload.currentUser.permissions
+              : {},
+          accessProfiles: Array.isArray(payload?.currentUser?.accessProfiles)
+            ? payload.currentUser.accessProfiles.map(String)
+            : Array.isArray(matchedMember?.accessProfiles)
+              ? matchedMember.accessProfiles.map(String)
+              : [],
+        });
         setAllowedPropertyIds(allowed);
 
         if (!allowed.includes(activePropertyId)) {
@@ -6249,6 +6277,32 @@ export default function AtlasPage() {
       website: "",
       notes: "",
     });
+  const normalizedAccessProfiles = (currentAtlasUser?.accessProfiles || []).map((profile) =>
+    String(profile || "").trim().toLowerCase(),
+  );
+  const isRestrictedStaffUser = Boolean(
+    currentAtlasUser &&
+      ["employee", "vendor", "viewer"].includes(currentAtlasUser.role),
+  );
+  const isSeanMarineUser = Boolean(
+    currentAtlasUser &&
+      (normalizedAccessProfiles.some((profile) =>
+        ["sean", "marine", "marine-operations", "sean-marine"].includes(profile),
+      ) || /^sean(?:\s|$)/i.test(currentAtlasUser.name)),
+  );
+  const currentStaffFirstName = String(currentAtlasUser?.name || "").trim().split(/\s+/)[0].toLowerCase();
+  const staffVisibleServiceRecords = isRestrictedStaffUser
+    ? serviceRecords.filter((record) => {
+        const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
+        if (!assigned) return false;
+        return (
+          assigned === currentStaffFirstName ||
+          assigned === String(currentAtlasUser?.name || "").trim().toLowerCase() ||
+          (isSeanMarineUser && assigned.includes("sean"))
+        );
+      })
+    : serviceRecords;
+
   const selectedService =
     serviceRecords.find((service) => service.id === selectedServiceId) ??
     normalizeService({
@@ -13352,6 +13406,84 @@ export default function AtlasPage() {
   }
 
   function renderDashboard() {
+    if (isSeanMarineUser) {
+      const seanOpen = staffVisibleServiceRecords.filter((record) => record.status !== "Completed");
+      const seanCompleted = staffVisibleServiceRecords.filter((record) => record.status === "Completed");
+      const seanToday = seanOpen.filter((record) => record.date === todayISO());
+      const seanOverdue = seanOpen.filter((record) => Boolean(record.date) && record.date < todayISO());
+      const seanUpcoming = seanOpen
+        .filter((record) => !record.date || record.date >= todayISO())
+        .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")));
+
+      return (
+        <div style={{ display: "grid", gap: 14 }}>
+          <section style={{ ...sectionStyle, background: `linear-gradient(135deg, ${colors.navy}, ${colors.navy3})`, color: "#FFFFFF" }}>
+            <SectionHeader
+              eyebrow="Atlas Team Center"
+              title="Sean Marine Operations"
+              detail={`Welcome ${currentAtlasUser?.name || "Sean"}. This workspace only shows work assigned to you.`}
+            />
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
+              {[
+                ["Assigned", seanOpen.length],
+                ["Due Today", seanToday.length],
+                ["Overdue", seanOverdue.length],
+                ["Completed", seanCompleted.length],
+              ].map(([label, value]) => (
+                <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.22)", borderRadius: 12, padding: 12 }}>
+                  <span style={{ display: "block", fontSize: 11, opacity: .78 }}>{label}</span>
+                  <strong style={{ display: "block", marginTop: 4, fontSize: 25 }}>{value}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={sectionStyle}>
+            <SectionHeader eyebrow="My Assignments" title="Marine Work Center" detail="Open an assignment to add notes, photos, status updates, labor, materials, or completion information." />
+            <div style={{ display: "grid", gap: 9 }}>
+              {seanUpcoming.length ? seanUpcoming.map((record) => (
+                <div key={record.id} style={{ ...cardStyle, padding: 13, display: "grid", gap: 9 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={eyebrowStyle}>{record.priority} priority · {record.status}</div>
+                      <strong style={{ display: "block", color: colors.navy, fontSize: 16 }}>{record.title}</strong>
+                      <span style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No due date"}{record.assetId ? ` · ${assetName(record.assetId)}` : ""}</span>
+                    </div>
+                    <button
+                      type="button"
+                      style={{ ...goldButtonStyle, width: "auto" }}
+                      onClick={() => {
+                        setSelectedServiceId(record.id);
+                        setWorkOrdersOpenKey((current) => current + 1);
+                        setScreen("history");
+                      }}
+                    >
+                      Open Assignment
+                    </button>
+                  </div>
+                  {record.notes ? <div style={{ ...mutedSmallStyle, lineHeight: 1.5 }}>{record.notes}</div> : null}
+                </div>
+              )) : (
+                <div style={noticeStyle}>No open work is currently assigned to Sean.</div>
+              )}
+            </div>
+          </section>
+
+          <section style={sectionStyle}>
+            <SectionHeader eyebrow="Recent Activity" title="Completed Work" detail="Your most recently completed Atlas assignments." />
+            <div style={{ display: "grid", gap: 8 }}>
+              {seanCompleted.slice(0, 8).map((record) => (
+                <div key={record.id} style={{ ...cardStyle, padding: 11 }}>
+                  <strong style={{ color: colors.navy }}>{record.title}</strong>
+                  <div style={mutedSmallStyle}>{record.lastCompletedDate ? formatDate(record.lastCompletedDate) : "Completed"}</div>
+                </div>
+              ))}
+              {!seanCompleted.length ? <div style={noticeStyle}>Completed assignments will appear here.</div> : null}
+            </div>
+          </section>
+        </div>
+      );
+    }
     const today = todayISO();
     const activeProperty = atlasProperties.find((property) => property.id === activePropertyId) || atlasProperties[0];
     const openWork = serviceRecords.filter((record) => String(record.status || "Open") !== "Completed");
@@ -21306,15 +21438,15 @@ export default function AtlasPage() {
         goldButtonStyle={goldButtonStyle}
         stackStyle={stackStyle}
         eyebrowStyle={eyebrowStyle}
-        serviceRecords={serviceRecords}
+        serviceRecords={isRestrictedStaffUser ? staffVisibleServiceRecords : serviceRecords}
         colors={colors}
         filteredServices={
           dashboardWorkFilter
-            ? serviceRecords.filter((record) => {
+            ? staffVisibleServiceRecords.filter((record) => {
                 const text = `${(record as AtlasServiceRecord).workCategory || ""} ${record.title || ""} ${record.notes || ""}`.toLowerCase();
                 return text.includes(dashboardWorkFilter.toLowerCase());
               })
-            : serviceRecords
+            : staffVisibleServiceRecords
         }
         listStyle={listStyle}
         setSelectedServiceId={setSelectedServiceId}
