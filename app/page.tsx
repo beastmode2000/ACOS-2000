@@ -112,6 +112,12 @@ type AtlasCurrentUser = {
   accessProfiles: string[];
 };
 
+type AtlasCalendarItem = CalendarItem & {
+  propertyId?: string;
+  calendarOwner?: string;
+  ownerUserId?: string;
+};
+
 type AssistantTurn = {
   id: string;
   role: "user" | "assistant";
@@ -555,7 +561,7 @@ function slugify(value: string) {
 function blankCalendarItem(
   date = todayISO(),
   _defaultColorId = "maintenance",
-): CalendarItem {
+): AtlasCalendarItem {
   return {
     id: "",
     date,
@@ -1489,7 +1495,7 @@ function normalizeProcedure(record: Partial<ProcedureRecord>): ProcedureRecord {
   };
 }
 
-function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
+function normalizeCalendar(record: Partial<AtlasCalendarItem>): AtlasCalendarItem {
   const title = String(record.title ?? "Untitled Calendar Item");
   const rawColorId =
     String(record.colorId ?? "") ||
@@ -1523,6 +1529,9 @@ function normalizeCalendar(record: Partial<CalendarItem>): CalendarItem {
     source: record.source || "manual",
     originalId: String(record.originalId || ""),
     instanceId: String(record.instanceId || ""),
+    propertyId: String(record.propertyId || ""),
+    calendarOwner: String(record.calendarOwner || ""),
+    ownerUserId: String(record.ownerUserId || ""),
   };
 }
 
@@ -4112,7 +4121,8 @@ export default function AtlasPage() {
   const [requestPortalToken, setRequestPortalToken] = useState("");
   const [marineRequestPortalToken, setMarineRequestPortalToken] = useState("");
   const [requestMessage, setRequestMessage] = useState("Loading requests...");
-  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
+  const [calendarItems, setCalendarItems] = useState<AtlasCalendarItem[]>([]);
+  const [seanCalendarPropertyFilter, setSeanCalendarPropertyFilter] = useState("all");
   const [todayLogEntries, setTodayLogEntries] = useState<TodayLogEntry[]>([]);
   const [todayLogText, setTodayLogText] = useState("");
   const [todayLogCategory, setTodayLogCategory] = useState<TodayLogEntry["category"]>("Task");
@@ -6614,7 +6624,7 @@ export default function AtlasPage() {
 
   const workOrderCalendarItems = useMemo(
     () =>
-      serviceRecords
+      (isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords)
         .filter((record) => record.date)
         .map((record) =>
           normalizeCalendar({
@@ -6643,7 +6653,7 @@ export default function AtlasPage() {
             source: "work-order",
           }),
         ),
-    [serviceRecords],
+    [serviceRecords, staffVisibleServiceRecords, isSeanMarineUser],
   );
 
   const contactBirthdayItems = useMemo<CalendarItem[]>(() => {
@@ -6671,16 +6681,21 @@ export default function AtlasPage() {
       );
   }, [contactRecords, calendarCursor]);
 
-  const baseCalendarItems = useMemo(
-    () => [
-      ...calendarItems,
+  const baseCalendarItems = useMemo(() => {
+    const personalItems = calendarItems.filter((item) => {
+      const owner = String(item.calendarOwner || "").toLowerCase();
+      if (isSeanMarineUser) return owner === "sean";
+      return owner !== "sean";
+    });
+
+    return [
+      ...personalItems,
       ...workOrderCalendarItems,
-      ...contactBirthdayItems,
+      ...(isSeanMarineUser ? [] : contactBirthdayItems),
       ...usHolidayItems,
       ...jewishHolidayItems,
-    ],
-    [calendarItems, workOrderCalendarItems, contactBirthdayItems, usHolidayItems, jewishHolidayItems],
-  );
+    ];
+  }, [calendarItems, workOrderCalendarItems, contactBirthdayItems, usHolidayItems, jewishHolidayItems, isSeanMarineUser]);
 
   const visibleCalendarItems = useMemo(
     () =>
@@ -6745,6 +6760,17 @@ export default function AtlasPage() {
     return Array.from(expanded.values());
   }, [visibleCalendarItems, calendarCursor]);
 
+  const seanVisibleCalendarItems = useMemo(() => {
+    if (!isSeanMarineUser || seanCalendarPropertyFilter === "all") {
+      return expandedCalendarItems;
+    }
+
+    return expandedCalendarItems.filter((item) => {
+      if (item.source === "us-holiday" || item.source === "jewish-holiday") return true;
+      return String(item.propertyId || "2000") === seanCalendarPropertyFilter;
+    });
+  }, [expandedCalendarItems, isSeanMarineUser, seanCalendarPropertyFilter]);
+
   const calendarFilterLabels = useMemo(() => {
     const labels = new Set<string>();
     baseCalendarItems.forEach((item) => labels.add(categoryForEvent(item)));
@@ -6762,11 +6788,11 @@ export default function AtlasPage() {
   const selectedDayEvents = useMemo(
     () =>
       byTitle(
-        expandedCalendarItems.filter(
+        (isSeanMarineUser ? seanVisibleCalendarItems : expandedCalendarItems).filter(
           (item) => item.date === selectedCalendarDate,
         ),
       ),
-    [expandedCalendarItems, selectedCalendarDate],
+    [expandedCalendarItems, seanVisibleCalendarItems, isSeanMarineUser, selectedCalendarDate],
   );
 
   const weatherByDate = useMemo(() => {
@@ -10000,6 +10026,15 @@ export default function AtlasPage() {
 
   function addCalendarItem(date?: string) {
     startNewCalendarDraft(date);
+    if (isSeanMarineUser) {
+      setCalendarDraft((current) => ({
+        ...current,
+        propertyId: seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter,
+        calendarOwner: "sean",
+        ownerUserId: String(currentAtlasUser?.id || currentAtlasUser?.email || "sean"),
+      }));
+      setCalendarDirty(true);
+    }
   }
 
   function updateCalendarItem(patch: Partial<CalendarItem>) {
@@ -10014,7 +10049,7 @@ export default function AtlasPage() {
         "";
       const nextLinkedType = patch.linkedType ?? current.linkedType;
 
-      const next: CalendarItem = {
+      const next: AtlasCalendarItem = {
         ...current,
         ...patch,
         id: selectedCalendarId || current.id || "",
@@ -10034,6 +10069,9 @@ export default function AtlasPage() {
         linkedName: patch.linkedName ?? current.linkedName ?? "",
         completed: false,
         source: "manual",
+        propertyId: String((patch as Partial<AtlasCalendarItem>).propertyId ?? current.propertyId ?? (isSeanMarineUser ? (seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter) : activePropertyId)),
+        calendarOwner: String((patch as Partial<AtlasCalendarItem>).calendarOwner ?? current.calendarOwner ?? (isSeanMarineUser ? "sean" : "")),
+        ownerUserId: String((patch as Partial<AtlasCalendarItem>).ownerUserId ?? current.ownerUserId ?? (isSeanMarineUser ? (currentAtlasUser?.id || currentAtlasUser?.email || "sean") : "")),
       };
 
       if (nextLinkedType === "None" || !nextLinkedType) {
@@ -10067,7 +10105,7 @@ export default function AtlasPage() {
       ? originalSeriesRecord?.date || calendarDraft.date
       : calendarDraft.date;
 
-    const record: CalendarItem = normalizeCalendar({
+    const record: AtlasCalendarItem = normalizeCalendar({
       ...calendarDraft,
       id: selectedCalendarId || uid("cal"),
       title: calendarDraft.title.trim() || "Untitled Calendar Item",
@@ -10107,13 +10145,18 @@ export default function AtlasPage() {
       linkedName: calendarDraft.linkedName || "",
       completed: false,
       source: "manual",
+      propertyId: String(calendarDraft.propertyId || (isSeanMarineUser ? (seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter) : activePropertyId)),
+      calendarOwner: isSeanMarineUser ? "sean" : String(calendarDraft.calendarOwner || ""),
+      ownerUserId: isSeanMarineUser
+        ? String(currentAtlasUser?.id || currentAtlasUser?.email || "sean")
+        : String(calendarDraft.ownerUserId || ""),
     });
 
     setDatabaseStatus("Saving calendar event to shared Atlas...");
 
     const saved = await postAtlasRecord("calendar", {
       ...record,
-      propertyId: activePropertyId,
+      propertyId: record.propertyId || activePropertyId,
       status: "Scheduled",
     });
 
@@ -22655,7 +22698,69 @@ export default function AtlasPage() {
   }
 
   function renderCalendar() {
+    const seanProperty = String(selectedCalendar.propertyId || (seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter));
+    const propertyPalette: Record<string, string> = {
+      "2000": "#175CD3",
+      "6855": "#7C3AED",
+      "3661": "#087443",
+      hangar: "#B54708",
+    };
+
     return (
+      <div style={{ display: "grid", gap: 14 }}>
+        {isSeanMarineUser ? (
+          <section style={{ ...sectionStyle, padding: isMobile ? 14 : 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div>
+                <div style={eyebrowStyle}>Sean Personal Calendar</div>
+                <h2 style={{ margin: "4px 0 6px", color: colors.navy3 }}>All Properties Schedule</h2>
+                <p style={{ ...mutedSmallStyle, margin: 0 }}>One private, editable calendar for marine work, appointments, travel, vendors, pickups, and personal reminders across every assigned property.</p>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[{ id: "all", name: "All Properties" }, ...atlasProperties].map((property) => {
+                  const active = seanCalendarPropertyFilter === property.id;
+                  return (
+                    <button
+                      key={property.id}
+                      type="button"
+                      onClick={() => setSeanCalendarPropertyFilter(property.id)}
+                      style={{
+                        ...secondaryButtonStyle,
+                        borderColor: active ? colors.gold : colors.line,
+                        background: active ? "#FFF8E8" : colors.white,
+                        boxShadow: active ? "0 0 0 2px rgba(201,154,61,.14)" : "none",
+                      }}
+                    >
+                      {property.id !== "all" ? <span style={{ width: 9, height: 9, borderRadius: 999, background: propertyPalette[property.id], display: "inline-block", marginRight: 7 }} /> : null}
+                      {property.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 340px) 1fr", gap: 12, alignItems: "end" }}>
+              <label style={fieldLabelStyle}>
+                Event property
+                <select
+                  value={seanProperty}
+                  onChange={(event) => {
+                    setCalendarDirty(true);
+                    setCalendarDraft((current) => ({
+                      ...current,
+                      propertyId: event.target.value,
+                      calendarOwner: "sean",
+                      ownerUserId: String(currentAtlasUser?.id || currentAtlasUser?.email || "sean"),
+                    }));
+                  }}
+                  style={inputStyle}
+                >
+                  {atlasProperties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
+                </select>
+              </label>
+              <div style={{ ...noticeStyle, margin: 0 }}>Property colors identify where Sean is scheduled. Event category colors remain fully editable inside each calendar entry.</div>
+            </div>
+          </section>
+        ) : null}
       <AtlasCalendar
         Field={Field}
         ListDrawerLayout={ListDrawerLayout}
@@ -22711,7 +22816,7 @@ export default function AtlasPage() {
         dangerButtonStyle={dangerButtonStyle}
         deleteCalendarItem={deleteCalendarItem}
         editorHeaderStyle={editorHeaderStyle}
-        expandedCalendarItems={expandedCalendarItems}
+        expandedCalendarItems={isSeanMarineUser ? seanVisibleCalendarItems : expandedCalendarItems}
         eyebrowStyle={eyebrowStyle}
         fieldLabelStyle={fieldLabelStyle}
         formGridStyle={formGridStyle}
@@ -22761,6 +22866,7 @@ export default function AtlasPage() {
         weatherText={weatherText}
         weekCells={weekCells}
       />
+      </div>
     );
   }
 
@@ -32338,7 +32444,7 @@ export default function AtlasPage() {
                   : "One place for Sean, boats, dock systems, lifts, marine service, requests, vendors, manuals, procedures, documents, and photos."}
               </p>
             </div>
-            <button type="button" onClick={() => addDashboardWorkOrder(isLandscape ? "Landscaping" : "Dock & Marine")} style={{ ...primaryButtonStyle, background: colors.gold, color: colors.navy }}>
+            <button type="button" onClick={() => addDashboardWorkOrder(isLandscape ? "Landscaping" : "Dock & Marine")} style={{ ...goldButtonStyle, color: colors.navy }}>
               + New {isLandscape ? "Landscaping" : "Marine"} Work Order
             </button>
           </div>
@@ -38403,3 +38509,5 @@ const linkStyle: React.CSSProperties = {
 };
 
       
+
+    
