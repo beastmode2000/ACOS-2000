@@ -16844,7 +16844,7 @@ export default function AtlasPage() {
                     onChange={(event) =>
                       setAssetPanelSection(event.target.value as typeof assetPanelSection)
                     }
-                    style={{ ...assetSelectStyle, width: "100%" }}
+                    style={{ ...assetSortSelectStyle, width: "100%" }}
                     aria-label="Asset information section"
                   >
                     <option value="overview">Overview</option>
