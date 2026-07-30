@@ -4398,6 +4398,9 @@ export default function AtlasPage() {
     "comfortable",
   );
   const [assetListSearch, setAssetListSearch] = useState("");
+  const [favoriteAssetIds, setFavoriteAssetIds] = useState<string[]>([]);
+  const [recentAssetIds, setRecentAssetIds] = useState<string[]>([]);
+  const [assetQuickAccessOpen, setAssetQuickAccessOpen] = useState(true);
   const [assetPanelCustomizeOpen, setAssetPanelCustomizeOpen] = useState(false);
   const [assetPanelSection, setAssetPanelSection] = useState<
     "overview" | "work" | "history" | "photos" | "documents" | "procedures" | "notes"
@@ -4431,6 +4434,54 @@ export default function AtlasPage() {
   );
   const [scannerManualValue, setScannerManualValue] = useState("");
   const [lastScannedQr, setLastScannedQr] = useState("");
+
+  useEffect(() => {
+    try {
+      const storedFavorites = window.localStorage.getItem("atlas_favorite_assets_v1");
+      const parsedFavorites = storedFavorites ? JSON.parse(storedFavorites) : [];
+      if (Array.isArray(parsedFavorites)) {
+        setFavoriteAssetIds(parsedFavorites.map(String).filter(Boolean));
+      }
+
+      const storedRecent = window.localStorage.getItem("atlas_recent_assets_v1");
+      const parsedRecent = storedRecent ? JSON.parse(storedRecent) : [];
+      if (Array.isArray(parsedRecent)) {
+        setRecentAssetIds(parsedRecent.map(String).filter(Boolean).slice(0, 8));
+      }
+
+      const storedOpen = window.localStorage.getItem("atlas_asset_quick_access_open_v1");
+      if (storedOpen === "false") setAssetQuickAccessOpen(false);
+    } catch {
+      // Keep clean defaults when saved asset shortcuts cannot be read.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "atlas_favorite_assets_v1",
+        JSON.stringify(favoriteAssetIds),
+      );
+    } catch {}
+  }, [favoriteAssetIds]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "atlas_recent_assets_v1",
+        JSON.stringify(recentAssetIds.slice(0, 8)),
+      );
+    } catch {}
+  }, [recentAssetIds]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "atlas_asset_quick_access_open_v1",
+        String(assetQuickAccessOpen),
+      );
+    } catch {}
+  }, [assetQuickAccessOpen]);
 
   useEffect(() => {
     try {
@@ -16055,6 +16106,14 @@ export default function AtlasPage() {
       selectedAssetPhotos[0];
     const selectedAssetCoverSource = photoSource(selectedAssetCoverPhoto);
     const normalizedAssetSearch = assetListSearch.trim().toLowerCase();
+    const favoriteAssets = favoriteAssetIds
+      .map((id) => assetRecords.find((asset) => asset.id === id))
+      .filter((asset): asset is AssetRecord => Boolean(asset));
+    const recentAssets = recentAssetIds
+      .filter((id) => !favoriteAssetIds.includes(id))
+      .map((id) => assetRecords.find((asset) => asset.id === id))
+      .filter((asset): asset is AssetRecord => Boolean(asset))
+      .slice(0, 6);
     const displayedAssets = [...filteredAssets]
       .filter((asset) => !excludedAssetStatuses.includes(asset.status))
       .filter((asset) => !excludedAssetCategories.includes(asset.category))
@@ -16441,6 +16500,155 @@ export default function AtlasPage() {
               </div>
             </section>
 
+            {(favoriteAssets.length || recentAssets.length) ? (
+              <section
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 14,
+                  background: "#FFFFFF",
+                  padding: 10,
+                  display: "grid",
+                  gap: 9,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <strong
+                      style={{
+                        display: "block",
+                        color: colors.navy,
+                        fontSize: 12,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Quick Access
+                    </strong>
+                    <span style={mutedSmallStyle}>
+                      Favorite and recently viewed assets
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAssetQuickAccessOpen((current) => !current)}
+                    style={assetTinyButtonStyle}
+                    aria-expanded={assetQuickAccessOpen}
+                  >
+                    {assetQuickAccessOpen ? "Collapse" : "Open"}
+                  </button>
+                </div>
+
+                {assetQuickAccessOpen ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {favoriteAssets.length ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <span style={assetInfoLabelStyle}>Favorites</span>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {favoriteAssets.map((asset) => (
+                            <button
+                              key={asset.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedAssetId(asset.id);
+                                setAssetEditorOpen(false);
+                                setRecentAssetIds((current) => [
+                                  asset.id,
+                                  ...current.filter((id) => id !== asset.id),
+                                ].slice(0, 8));
+                              }}
+                              style={{
+                                ...assetTinyButtonStyle,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
+                                maxWidth: "100%",
+                                background:
+                                  selectedAssetId === asset.id ? "#FFF3CF" : "#FFFFFF",
+                              }}
+                            >
+                              <span aria-hidden="true">★</span>
+                              <span
+                                style={{
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  maxWidth: 180,
+                                }}
+                              >
+                                {asset.name}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {recentAssets.length ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span style={assetInfoLabelStyle}>Recently Viewed</span>
+                          <button
+                            type="button"
+                            onClick={() => setRecentAssetIds([])}
+                            style={assetTinyButtonStyle}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {recentAssets.map((asset) => (
+                            <button
+                              key={asset.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedAssetId(asset.id);
+                                setAssetEditorOpen(false);
+                                setRecentAssetIds((current) => [
+                                  asset.id,
+                                  ...current.filter((id) => id !== asset.id),
+                                ].slice(0, 8));
+                              }}
+                              style={{
+                                ...assetTinyButtonStyle,
+                                maxWidth: "100%",
+                                background:
+                                  selectedAssetId === asset.id ? "#F4F8FD" : "#FFFFFF",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: "block",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  maxWidth: 180,
+                                }}
+                              >
+                                {asset.name}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
             <div
               style={{
                 ...assetAlphabeticalListStyle,
@@ -16549,6 +16757,10 @@ export default function AtlasPage() {
                     onClick={() => {
                       setSelectedAssetId(asset.id);
                       setAssetEditorOpen(false);
+                      setRecentAssetIds((current) => [
+                        asset.id,
+                        ...current.filter((id) => id !== asset.id),
+                      ].slice(0, 8));
                     }}
                     style={{
                       ...assetListRowStyle,
@@ -16556,8 +16768,8 @@ export default function AtlasPage() {
                       border: 0,
                       background: "transparent",
                       borderRadius: 12,
-                      padding: assetListDensity === "compact" ? "9px 106px 9px 10px" : undefined,
-                      paddingRight: assetListDensity === "compact" ? 106 : 108,
+                      padding: assetListDensity === "compact" ? "9px 118px 9px 10px" : undefined,
+                      paddingRight: assetListDensity === "compact" ? 118 : 120,
                       textAlign: "left",
                     }}
                   >
@@ -16657,6 +16869,39 @@ export default function AtlasPage() {
                       zIndex: 3,
                     }}
                   >
+                    <button
+                      type="button"
+                      title={
+                        favoriteAssetIds.includes(asset.id)
+                          ? "Remove from favorites"
+                          : "Add to favorites"
+                      }
+                      aria-label={
+                        favoriteAssetIds.includes(asset.id)
+                          ? `Remove ${asset.name} from favorites`
+                          : `Add ${asset.name} to favorites`
+                      }
+                      aria-pressed={favoriteAssetIds.includes(asset.id)}
+                      onClick={() =>
+                        setFavoriteAssetIds((current) =>
+                          current.includes(asset.id)
+                            ? current.filter((id) => id !== asset.id)
+                            : [asset.id, ...current],
+                        )
+                      }
+                      style={{
+                        ...assetTinyButtonStyle,
+                        minWidth: 34,
+                        color: favoriteAssetIds.includes(asset.id)
+                          ? "#9A6500"
+                          : colors.muted,
+                        background: favoriteAssetIds.includes(asset.id)
+                          ? "#FFF3CF"
+                          : "#FFFFFF",
+                      }}
+                    >
+                      {favoriteAssetIds.includes(asset.id) ? "★" : "☆"}
+                    </button>
                     <button
                       type="button"
                       title="Edit asset"
