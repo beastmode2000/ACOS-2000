@@ -17469,9 +17469,34 @@ export default function AtlasPage() {
                 </section>
 
                 <section style={assetCardStyle}>
-                  <div style={assetCardHeaderStyle}>
-                    <strong>Photos</strong>
-                    <div style={assetPhotoHeaderActionsStyle}>
+                  <div
+                    style={{
+                      ...assetCardHeaderStyle,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      rowGap: 6,
+                    }}
+                  >
+                    <strong
+                      style={{
+                        whiteSpace: "nowrap",
+                        wordBreak: "keep-all",
+                        overflowWrap: "normal",
+                        flex: "0 0 auto",
+                        minWidth: "max-content",
+                      }}
+                    >
+                      Photos
+                    </strong>
+                    <div
+                      style={{
+                        ...assetPhotoHeaderActionsStyle,
+                        flexWrap: "wrap",
+                        justifyContent: "flex-end",
+                        minWidth: 0,
+                        flex: "1 1 170px",
+                      }}
+                    >
                       <button
                         type="button"
                         onClick={() => void pasteAssetPhoto()}
@@ -31982,9 +32007,12 @@ const assetCardHeaderStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
+  flexWrap: "wrap",
   gap: 5,
   color: colors.navy,
   fontSize: 11,
+  wordBreak: "normal",
+  overflowWrap: "normal",
 };
 
 const assetCardHintStyle: React.CSSProperties = {
@@ -32166,8 +32194,11 @@ const assetNotesTextStyle: React.CSSProperties = {
 };
 
 const assetPhotoHeaderActionsStyle: React.CSSProperties = {
+  minWidth: 0,
   display: "flex",
   alignItems: "center",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
   gap: 4,
 };
 
