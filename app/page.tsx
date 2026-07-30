@@ -6284,24 +6284,124 @@ export default function AtlasPage() {
     currentAtlasUser &&
       ["employee", "vendor", "viewer"].includes(currentAtlasUser.role),
   );
+  const normalizedCurrentUserName = String(currentAtlasUser?.name || "").trim().toLowerCase();
+  const currentStaffFirstName = normalizedCurrentUserName.split(/\s+/)[0] || "";
+
+  const hasTeamProfile = (...profiles: string[]) =>
+    normalizedAccessProfiles.some((profile) => profiles.includes(profile));
+
   const isSeanMarineUser = Boolean(
     currentAtlasUser &&
-      (normalizedAccessProfiles.some((profile) =>
-        ["sean", "marine", "marine-operations", "sean-marine"].includes(profile),
-      ) || /^sean(?:\s|$)/i.test(currentAtlasUser.name)),
+      (hasTeamProfile("sean", "marine", "marine-operations", "sean-marine") ||
+        /^sean(?:\s|$)/i.test(currentAtlasUser.name)),
   );
-  const currentStaffFirstName = String(currentAtlasUser?.name || "").trim().split(/\s+/)[0].toLowerCase();
+  const isAddisonUser = Boolean(
+    currentAtlasUser &&
+      (hasTeamProfile("addison", "grounds", "grounds-operations", "daily-routines") ||
+        /^addison(?:\s|$)/i.test(currentAtlasUser.name)),
+  );
+  const isPatCrewUser = Boolean(
+    currentAtlasUser &&
+      (hasTeamProfile("pat", "pat-crew", "landscaping", "landscape-crew", "grounds-crew") ||
+        /^(pat|patrick)(?:\s|$)/i.test(currentAtlasUser.name) ||
+        normalizedCurrentUserName.includes("crew")),
+  );
+  const isVendorPortalUser = Boolean(
+    currentAtlasUser &&
+      (currentAtlasUser.role === "vendor" ||
+        hasTeamProfile("vendor", "vendor-portal", "service-provider")),
+  );
+
+  const teamWorkspace = isSeanMarineUser
+    ? {
+        title: "Sean Marine Operations",
+        centerTitle: "Marine Work Center",
+        detail: "Boat, dock, lift, and marine-service work assigned to you.",
+        emptyMessage: "No open marine work is currently assigned to Sean.",
+        assignmentAliases: ["sean"],
+      }
+    : isAddisonUser
+      ? {
+          title: "Addison Grounds & Daily Operations",
+          centerTitle: "Daily Work Center",
+          detail: "Daily routines, grounds work, property care, and assigned maintenance.",
+          emptyMessage: "No open work is currently assigned to Addison.",
+          assignmentAliases: ["addison"],
+        }
+      : isPatCrewUser
+        ? {
+            title: "Pat's Crew Landscaping",
+            centerTitle: "Landscaping Work Center",
+            detail: "Weekly weeding, landscaping priorities, assigned beds, and completion work.",
+            emptyMessage: "No open landscaping work is currently assigned to Pat's Crew.",
+            assignmentAliases: ["pat", "pat's crew", "pats crew", "landscape crew", "landscaping crew"],
+          }
+        : isVendorPortalUser
+          ? {
+              title: `${currentAtlasUser?.name || "Vendor"} Service Portal`,
+              centerTitle: "Assigned Service Work",
+              detail: "Service requests and work orders assigned specifically to your company.",
+              emptyMessage: "No open service work is currently assigned to this vendor.",
+              assignmentAliases: [currentStaffFirstName, normalizedCurrentUserName].filter(Boolean),
+            }
+          : {
+              title: `${currentAtlasUser?.name || "Team Member"} Work Center`,
+              centerTitle: "My Work Center",
+              detail: "Work orders and routines assigned specifically to you.",
+              emptyMessage: "No open work is currently assigned to you.",
+              assignmentAliases: [currentStaffFirstName, normalizedCurrentUserName].filter(Boolean),
+            };
+
   const staffVisibleServiceRecords = isRestrictedStaffUser
     ? serviceRecords.filter((record) => {
         const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
         if (!assigned) return false;
-        return (
-          assigned === currentStaffFirstName ||
-          assigned === String(currentAtlasUser?.name || "").trim().toLowerCase() ||
-          (isSeanMarineUser && assigned.includes("sean"))
+        const aliases = new Set(
+          [
+            currentStaffFirstName,
+            normalizedCurrentUserName,
+            ...teamWorkspace.assignmentAliases,
+          ]
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter(Boolean),
+        );
+        return [...aliases].some(
+          (alias) =>
+            assigned === alias ||
+            assigned.includes(alias) ||
+            alias.includes(assigned),
         );
       })
     : serviceRecords;
+
+  const restrictedTeamScreenIds = new Set<Screen>([
+    "dashboard",
+    "history",
+    "calendar",
+    "assets",
+    "documents",
+    "procedures",
+  ]);
+  const visibleAtlasScreens = isRestrictedStaffUser
+    ? screens.filter((item) => restrictedTeamScreenIds.has(item.id))
+    : screens;
+  const visiblePrimaryNavigationSections = isRestrictedStaffUser
+    ? [
+        {
+          label: "My Atlas",
+          items: ["dashboard", "history", "calendar", "assets", "documents", "procedures"] as Screen[],
+        },
+      ]
+    : atlasPrimaryNavigationSections;
+  const visibleMoreToolsScreens = isRestrictedStaffUser
+    ? ([] as Screen[])
+    : atlasMoreToolsScreens;
+
+  useEffect(() => {
+    if (isRestrictedStaffUser && !restrictedTeamScreenIds.has(screen)) {
+      setScreen("dashboard");
+    }
+  }, [isRestrictedStaffUser, screen]);
 
   const selectedService =
     serviceRecords.find((service) => service.id === selectedServiceId) ??
@@ -13406,79 +13506,187 @@ export default function AtlasPage() {
   }
 
   function renderDashboard() {
-    if (isSeanMarineUser) {
-      const seanOpen = staffVisibleServiceRecords.filter((record) => record.status !== "Completed");
-      const seanCompleted = staffVisibleServiceRecords.filter((record) => record.status === "Completed");
-      const seanToday = seanOpen.filter((record) => record.date === todayISO());
-      const seanOverdue = seanOpen.filter((record) => Boolean(record.date) && record.date < todayISO());
-      const seanUpcoming = seanOpen
-        .filter((record) => !record.date || record.date >= todayISO())
-        .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")));
+    if (isRestrictedStaffUser) {
+      const teamOpen = staffVisibleServiceRecords.filter((record) => record.status !== "Completed");
+      const teamCompleted = staffVisibleServiceRecords.filter((record) => record.status === "Completed");
+      const teamToday = teamOpen.filter((record) => record.date === todayISO());
+      const teamOverdue = teamOpen.filter(
+        (record) => Boolean(record.date) && String(record.date) < todayISO(),
+      );
+      const teamUpcoming = teamOpen
+        .filter((record) => !record.date || String(record.date) >= todayISO())
+        .sort((a, b) =>
+          String(a.date || "9999-12-31").localeCompare(
+            String(b.date || "9999-12-31"),
+          ),
+        );
+      const teamHighPriority = teamOpen.filter((record) => record.priority === "High");
+      const teamWaiting = teamOpen.filter((record) =>
+        /waiting|parts|owner|vendor|weather/i.test(String(record.status || "")),
+      );
 
       return (
         <div style={{ display: "grid", gap: 14 }}>
-          <section style={{ ...sectionStyle, background: `linear-gradient(135deg, ${colors.navy}, ${colors.navy3})`, color: "#FFFFFF" }}>
+          <section
+            style={{
+              ...sectionStyle,
+              background: `linear-gradient(135deg, ${colors.navy}, ${colors.navy3})`,
+              color: "#FFFFFF",
+            }}
+          >
             <SectionHeader
               eyebrow="Atlas Team Center"
-              title="Sean Marine Operations"
-              detail={`Welcome ${currentAtlasUser?.name || "Sean"}. This workspace only shows work assigned to you.`}
+              title={teamWorkspace.title}
+              detail={`Welcome ${currentAtlasUser?.name || "Team Member"}. ${teamWorkspace.detail}`}
             />
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2,minmax(0,1fr))"
+                  : "repeat(4,minmax(0,1fr))",
+                gap: 8,
+              }}
+            >
               {[
-                ["Assigned", seanOpen.length],
-                ["Due Today", seanToday.length],
-                ["Overdue", seanOverdue.length],
-                ["Completed", seanCompleted.length],
+                ["Assigned", teamOpen.length],
+                ["Due Today", teamToday.length],
+                ["Overdue", teamOverdue.length],
+                ["Completed", teamCompleted.length],
               ].map(([label, value]) => (
-                <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.22)", borderRadius: 12, padding: 12 }}>
-                  <span style={{ display: "block", fontSize: 11, opacity: .78 }}>{label}</span>
-                  <strong style={{ display: "block", marginTop: 4, fontSize: 25 }}>{value}</strong>
+                <div
+                  key={String(label)}
+                  style={{
+                    border: "1px solid rgba(255,255,255,.22)",
+                    borderRadius: 12,
+                    padding: 12,
+                  }}
+                >
+                  <span style={{ display: "block", fontSize: 11, opacity: 0.78 }}>
+                    {label}
+                  </span>
+                  <strong style={{ display: "block", marginTop: 4, fontSize: 25 }}>
+                    {value}
+                  </strong>
                 </div>
               ))}
             </div>
           </section>
 
+          {(teamHighPriority.length > 0 || teamWaiting.length > 0) ? (
+            <section
+              style={{
+                ...sectionStyle,
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(2,minmax(0,1fr))",
+                gap: 10,
+              }}
+            >
+              <div style={{ ...cardStyle, padding: 13 }}>
+                <div style={eyebrowStyle}>Needs Attention</div>
+                <strong style={{ color: colors.navy }}>
+                  {teamHighPriority.length} high-priority assignment
+                  {teamHighPriority.length === 1 ? "" : "s"}
+                </strong>
+              </div>
+              <div style={{ ...cardStyle, padding: 13 }}>
+                <div style={eyebrowStyle}>Waiting</div>
+                <strong style={{ color: colors.navy }}>
+                  {teamWaiting.length} assignment{teamWaiting.length === 1 ? "" : "s"} waiting
+                </strong>
+              </div>
+            </section>
+          ) : null}
+
           <section style={sectionStyle}>
-            <SectionHeader eyebrow="My Assignments" title="Marine Work Center" detail="Open an assignment to add notes, photos, status updates, labor, materials, or completion information." />
+            <SectionHeader
+              eyebrow="My Assignments"
+              title={teamWorkspace.centerTitle}
+              detail="Open an assignment to review details, add notes or photos, update status, and record completion."
+            />
             <div style={{ display: "grid", gap: 9 }}>
-              {seanUpcoming.length ? seanUpcoming.map((record) => (
-                <div key={record.id} style={{ ...cardStyle, padding: 13, display: "grid", gap: 9 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={eyebrowStyle}>{record.priority} priority · {record.status}</div>
-                      <strong style={{ display: "block", color: colors.navy, fontSize: 16 }}>{record.title}</strong>
-                      <span style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No due date"}{record.assetId ? ` · ${assetName(record.assetId)}` : ""}</span>
-                    </div>
-                    <button
-                      type="button"
-                      style={{ ...goldButtonStyle, width: "auto" }}
-                      onClick={() => {
-                        setSelectedServiceId(record.id);
-                        setWorkOrdersOpenKey((current) => current + 1);
-                        setScreen("history");
+              {teamUpcoming.length ? (
+                teamUpcoming.map((record) => (
+                  <div
+                    key={record.id}
+                    style={{ ...cardStyle, padding: 13, display: "grid", gap: 9 }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
                       }}
                     >
-                      Open Assignment
-                    </button>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={eyebrowStyle}>
+                          {record.priority} priority · {record.status}
+                        </div>
+                        <strong
+                          style={{
+                            display: "block",
+                            color: colors.navy,
+                            fontSize: 16,
+                          }}
+                        >
+                          {record.title}
+                        </strong>
+                        <span style={mutedSmallStyle}>
+                          {record.date ? formatDate(record.date) : "No due date"}
+                          {record.assetId ? ` · ${assetName(record.assetId)}` : ""}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        style={{ ...goldButtonStyle, width: "auto" }}
+                        onClick={() => {
+                          setSelectedServiceId(record.id);
+                          setWorkOrdersOpenKey((current) => current + 1);
+                          setScreen("history");
+                        }}
+                      >
+                        Open Assignment
+                      </button>
+                    </div>
+                    {record.notes ? (
+                      <div style={{ ...mutedSmallStyle, lineHeight: 1.5 }}>
+                        {record.notes}
+                      </div>
+                    ) : null}
                   </div>
-                  {record.notes ? <div style={{ ...mutedSmallStyle, lineHeight: 1.5 }}>{record.notes}</div> : null}
-                </div>
-              )) : (
-                <div style={noticeStyle}>No open work is currently assigned to Sean.</div>
+                ))
+              ) : (
+                <div style={noticeStyle}>{teamWorkspace.emptyMessage}</div>
               )}
             </div>
           </section>
 
           <section style={sectionStyle}>
-            <SectionHeader eyebrow="Recent Activity" title="Completed Work" detail="Your most recently completed Atlas assignments." />
+            <SectionHeader
+              eyebrow="Recent Activity"
+              title="Completed Work"
+              detail="Your most recently completed Atlas assignments."
+            />
             <div style={{ display: "grid", gap: 8 }}>
-              {seanCompleted.slice(0, 8).map((record) => (
+              {teamCompleted.slice(0, 8).map((record) => (
                 <div key={record.id} style={{ ...cardStyle, padding: 11 }}>
                   <strong style={{ color: colors.navy }}>{record.title}</strong>
-                  <div style={mutedSmallStyle}>{record.lastCompletedDate ? formatDate(record.lastCompletedDate) : "Completed"}</div>
+                  <div style={mutedSmallStyle}>
+                    {record.lastCompletedDate
+                      ? formatDate(record.lastCompletedDate)
+                      : "Completed"}
+                  </div>
                 </div>
               ))}
-              {!seanCompleted.length ? <div style={noticeStyle}>Completed assignments will appear here.</div> : null}
+              {!teamCompleted.length ? (
+                <div style={noticeStyle}>
+                  Completed assignments will appear here.
+                </div>
+              ) : null}
             </div>
           </section>
         </div>
@@ -32642,7 +32850,7 @@ export default function AtlasPage() {
                 aria-label="Open Atlas section"
               >
                 <optgroup label="Main">
-                  {screens
+                  {visibleAtlasScreens
                     .filter(
                       (item) =>
                         item.id !== "intake" &&
@@ -32655,7 +32863,7 @@ export default function AtlasPage() {
                     ))}
                 </optgroup>
                 <optgroup label="More Tools">
-                  {atlasMoreToolsScreens
+                  {visibleMoreToolsScreens
                     .map((screenId) =>
                       screens.find((item) => item.id === screenId),
                     )
@@ -32681,7 +32889,7 @@ export default function AtlasPage() {
                 {!sidebarCollapsed ? <span>Collapse</span> : null}
               </button>
               <nav style={sidebarNavStyle} aria-label="Atlas sections">
-                {atlasPrimaryNavigationSections.map((section) => (
+                {visiblePrimaryNavigationSections.map((section) => (
                   <div key={section.label} style={sidebarNavSectionStyle}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>{section.label}</div>
                     <div style={sidebarNavItemsStyle}>
@@ -32726,6 +32934,7 @@ export default function AtlasPage() {
                   </div>
                 ))}
 
+                {!isRestrictedStaffUser ? (
                 <div style={sidebarNavSectionStyle}>
                   <button
                     type="button"
@@ -32736,13 +32945,13 @@ export default function AtlasPage() {
                     style={{
                       ...navButtonStyle,
                       justifyContent: sidebarCollapsed ? "center" : "space-between",
-                      borderColor: atlasMoreToolsScreens.includes(screen)
+                      borderColor: visibleMoreToolsScreens.includes(screen)
                         ? colors.gold
                         : "rgba(255,255,255,0.18)",
-                      background: atlasMoreToolsScreens.includes(screen)
+                      background: visibleMoreToolsScreens.includes(screen)
                         ? colors.gold
                         : "rgba(255,255,255,0.06)",
-                      color: atlasMoreToolsScreens.includes(screen)
+                      color: visibleMoreToolsScreens.includes(screen)
                         ? colors.navy
                         : "#FFFFFF",
                     }}
@@ -32755,9 +32964,9 @@ export default function AtlasPage() {
                     ) : null}
                   </button>
 
-                  {moreToolsOpen || atlasMoreToolsScreens.includes(screen) ? (
+                  {moreToolsOpen || visibleMoreToolsScreens.includes(screen) ? (
                     <div style={{ ...sidebarNavItemsStyle, marginTop: 6, paddingLeft: sidebarCollapsed ? 0 : 8 }}>
-                      {atlasMoreToolsScreens.map((screenId) => {
+                      {visibleMoreToolsScreens.map((screenId) => {
                         const item = screens.find(
                           (candidate) => candidate.id === screenId,
                         );
@@ -32784,6 +32993,7 @@ export default function AtlasPage() {
                     </div>
                   ) : null}
                 </div>
+                ) : null}
               </nav>
             </>
           )}
