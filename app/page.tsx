@@ -3845,64 +3845,6 @@ function ListDrawerLayout(props: {
               paddingBottom: "max(24px, env(safe-area-inset-bottom))",
             }}
           >
-            {possibleAssetLocations.length ? (
-              <section
-                style={{
-                  border: `1px solid ${colors.gold}`,
-                  borderRadius: 12,
-                  background: "#FFF9E8",
-                  padding: 10,
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                <div>
-                  <strong
-                    style={{
-                      display: "block",
-                      color: colors.navy,
-                      fontSize: 12,
-                    }}
-                  >
-                    Location Classification Review
-                  </strong>
-                  <span style={mutedSmallStyle}>
-                    These records look more like equipment or vehicles than
-                    physical property areas.
-                  </span>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {possibleAssetLocations.slice(0, 8).map((location) => (
-                    <button
-                      key={location.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedLocationId(location.id);
-                        setLocationEditorOpen(false);
-                        if (isMobile) setLocationMobileDrawerOpen(true);
-                      }}
-                      style={{
-                        ...secondaryButtonStyle,
-                        minHeight: 30,
-                        padding: "5px 8px",
-                        background: "#FFFFFF",
-                      }}
-                    >
-                      {location.name}
-                    </button>
-                  ))}
-                  {possibleAssetLocations.length > 8 ? (
-                    <span style={mutedSmallStyle}>
-                      +{possibleAssetLocations.length - 8} more
-                    </span>
-                  ) : null}
-                </div>
-                <span style={mutedSmallStyle}>
-                  Atlas will not move or delete these records automatically.
-                </span>
-              </section>
-            ) : null}
-
             <div
               style={{
                 position: "sticky",
@@ -15414,6 +15356,64 @@ export default function AtlasPage() {
                       </button>
                     ))}
                 </div>
+              </section>
+            ) : null}
+
+            {possibleAssetLocations.length ? (
+              <section
+                style={{
+                  border: `1px solid ${colors.gold}`,
+                  borderRadius: 12,
+                  background: "#FFF9E8",
+                  padding: 10,
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div>
+                  <strong
+                    style={{
+                      display: "block",
+                      color: colors.navy,
+                      fontSize: 12,
+                    }}
+                  >
+                    Location Classification Review
+                  </strong>
+                  <span style={mutedSmallStyle}>
+                    These records look more like equipment or vehicles than
+                    physical property areas.
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {possibleAssetLocations.slice(0, 8).map((location) => (
+                    <button
+                      key={location.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedLocationId(location.id);
+                        setLocationEditorOpen(false);
+                        if (isMobile) setLocationMobileDrawerOpen(true);
+                      }}
+                      style={{
+                        ...secondaryButtonStyle,
+                        minHeight: 30,
+                        padding: "5px 8px",
+                        background: "#FFFFFF",
+                      }}
+                    >
+                      {location.name}
+                    </button>
+                  ))}
+                  {possibleAssetLocations.length > 8 ? (
+                    <span style={mutedSmallStyle}>
+                      +{possibleAssetLocations.length - 8} more
+                    </span>
+                  ) : null}
+                </div>
+                <span style={mutedSmallStyle}>
+                  Atlas will not move or delete these records automatically.
+                </span>
               </section>
             ) : null}
 
