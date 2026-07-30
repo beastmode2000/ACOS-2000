@@ -32338,7 +32338,7 @@ export default function AtlasPage() {
                   : "One place for Sean, boats, dock systems, lifts, marine service, requests, vendors, manuals, procedures, documents, and photos."}
               </p>
             </div>
-            <button type="button" onClick={() => addDashboardWorkOrder(isLandscape ? "Landscaping" : "Dock & Marine")} style={{ ...primaryButtonStyle, background: colors.gold, color: colors.navy }}>
+            <button type="button" onClick={() => addDashboardWorkOrder(isLandscape ? "Landscaping" : "Dock & Marine")} style={{ ...goldButtonStyle, color: colors.navy }}>
               + New {isLandscape ? "Landscaping" : "Marine"} Work Order
             </button>
           </div>
