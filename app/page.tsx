@@ -6374,7 +6374,7 @@ export default function AtlasPage() {
       })
     : serviceRecords;
 
-  const restrictedTeamScreenIds = new Set<Screen>([
+  const restrictedTeamScreenIds = new Set<AtlasScreen>([
     "dashboard",
     "history",
     "calendar",
@@ -6389,12 +6389,12 @@ export default function AtlasPage() {
     ? [
         {
           label: "My Atlas",
-          items: ["dashboard", "history", "calendar", "assets", "documents", "procedures"] as Screen[],
+          items: ["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[],
         },
       ]
     : atlasPrimaryNavigationSections;
   const visibleMoreToolsScreens = isRestrictedStaffUser
-    ? ([] as Screen[])
+    ? ([] as AtlasScreen[])
     : atlasMoreToolsScreens;
 
   useEffect(() => {
