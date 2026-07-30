@@ -16136,8 +16136,9 @@ export default function AtlasPage() {
 
     return (
       <ListDrawerLayout
-        eyebrow="Property Records"
+        eyebrow="Property Equipment"
         title="Assets"
+        detail="Search, review, and maintain equipment records for the selected property."
         isMobile={isMobile}
         drawerResetKey={selectedAssetId || "asset-empty"}
         mobileDrawerOpen={isMobile && Boolean(selectedAssetId)}
@@ -16145,9 +16146,11 @@ export default function AtlasPage() {
           setSelectedAssetId("");
           setAssetEditorOpen(false);
         }}
-        mobileDrawerTitle={selectedAsset.name || "Asset Details"}
+        mobileDrawerTitle={selectedAsset.name || "Asset Record"}
         gridStyleOverride={
-          isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined
+          isMobile
+            ? { minWidth: 0, overflowX: "hidden" }
+            : { gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)", gap: 14 }
         }
         listPanelStyleOverride={
           isMobile
@@ -16175,10 +16178,10 @@ export default function AtlasPage() {
                 setAssetSortOrder(event.currentTarget.value as "az" | "za")
               }
               style={assetSortSelectStyle}
-              aria-label="Asset alphabetical order"
+              aria-label="Sort assets alphabetically"
             >
-              <option value="az">A – Z</option>
-              <option value="za">Z – A</option>
+              <option value="az">Name: A–Z</option>
+              <option value="za">Name: Z–A</option>
             </select>
             <button type="button" onClick={addAsset} style={goldButtonStyle}>
               Add Asset
@@ -16195,18 +16198,22 @@ export default function AtlasPage() {
                 padding: 12,
                 display: "grid",
                 gap: 10,
+                position: isMobile ? "relative" : "sticky",
+                top: isMobile ? "auto" : 8,
+                zIndex: isMobile ? "auto" : 4,
+                boxShadow: isMobile ? "none" : "0 8px 22px rgba(24, 43, 77, 0.06)",
               }}
             >
               <input
                 value={assetListSearch}
                 onChange={(event) => setAssetListSearch(event.currentTarget.value)}
-                placeholder="Search assets, models, serials, locations, vendors..."
+                placeholder="Search by asset, model, serial number, location, or vendor..."
                 style={inputStyle}
                 aria-label="Search assets"
               />
 
               <div style={{ display: "grid", gap: 7 }}>
-                <span style={assetInfoLabelStyle}>Status</span>
+                <span style={assetInfoLabelStyle}>Asset Status</span>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {(["Online", "Monitor", "Offline", "Seasonal"] as Status[]).map((status) => {
                     const enabled = !excludedAssetStatuses.includes(status);
@@ -16248,7 +16255,7 @@ export default function AtlasPage() {
 
               {assetCategories.length ? (
                 <div style={{ display: "grid", gap: 7 }}>
-                  <span style={assetInfoLabelStyle}>Categories</span>
+                  <span style={assetInfoLabelStyle}>Asset Categories</span>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {assetCategories.map((category) => {
                       const enabled = !excludedAssetCategories.includes(category);
@@ -16284,7 +16291,7 @@ export default function AtlasPage() {
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                 <span style={mutedSmallStyle}>
-                  {displayedAssets.length} of {assetRecords.length} assets
+                  Showing {displayedAssets.length} of {assetRecords.length} assets
                 </span>
                 {(assetListSearch || excludedAssetStatuses.length || excludedAssetCategories.length) ? (
                   <button
@@ -16296,7 +16303,7 @@ export default function AtlasPage() {
                     }}
                     style={assetTinyButtonStyle}
                   >
-                    Reset Filters
+                    Clear Filters
                   </button>
                 ) : null}
               </div>
@@ -16412,7 +16419,7 @@ export default function AtlasPage() {
                       border: 0,
                       background: "transparent",
                       borderRadius: 12,
-                      paddingRight: 88,
+                      paddingRight: 108,
                       textAlign: "left",
                     }}
                   >
@@ -16441,7 +16448,7 @@ export default function AtlasPage() {
                             <span style={badgeStyle("Offline")}>Needs Service</span>
                           ) : null}
                           {assetSetupIncomplete ? (
-                            <span style={badgeStyle("Monitor")}>Setup</span>
+                            <span style={badgeStyle("Monitor")}>Needs Details</span>
                           ) : null}
                         </div>
                         <div
@@ -16449,7 +16456,7 @@ export default function AtlasPage() {
                             display: "grid",
                             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                             gap: 5,
-                            marginTop: 2,
+                            marginTop: 1,
                           }}
                         >
                           <span
@@ -16462,7 +16469,7 @@ export default function AtlasPage() {
                               minWidth: 0,
                             }}
                           >
-                            <strong style={{ color: colors.navy }}>Last:</strong>{" "}
+                            <strong style={{ color: colors.navy }}>Last service:</strong>{" "}
                             {assetCompletedWork[0]?.date
                               ? formatDate(assetCompletedWork[0].date)
                               : "No service recorded"}
@@ -16477,7 +16484,7 @@ export default function AtlasPage() {
                               minWidth: 0,
                             }}
                           >
-                            <strong style={{ color: colors.navy }}>Next:</strong>{" "}
+                            <strong style={{ color: colors.navy }}>Next maintenance:</strong>{" "}
                             {assetNextMaintenance?.date
                               ? formatDate(assetNextMaintenance.date)
                               : "Not scheduled"}
@@ -16485,10 +16492,10 @@ export default function AtlasPage() {
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                           <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                            {assetOpenWork.length} open work
+                            {assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}
                           </span>
                           <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                            {assetDocumentCount} docs
+                            {assetDocumentCount} document{assetDocumentCount === 1 ? "" : "s"}
                           </span>
                         </div>
                       </div>
@@ -16519,14 +16526,14 @@ export default function AtlasPage() {
                     </button>
                     <button
                       type="button"
-                      title="Create work order"
+                      title="Create a work order"
                       aria-label={`Create work order for ${asset.name}`}
                       onClick={() =>
                         addWorkOrder({ assetId: asset.id, locationId: asset.locationId || "" })
                       }
                       style={assetTinyButtonStyle}
                     >
-                      + Work
+                      Work Order
                     </button>
                   </div>
 
@@ -16554,8 +16561,8 @@ export default function AtlasPage() {
             })}
             {displayedAssets.length === 0 ? (
               <div style={noticeStyle}>
-                <strong>No assets match these filters.</strong>
-                <p style={mutedSmallStyle}>Turn categories or statuses back on, or clear the search.</p>
+                <strong>No matching assets found.</strong>
+                <p style={mutedSmallStyle}>Adjust the search or select Clear Filters to show all assets.</p>
               </div>
             ) : null}
             </div>
@@ -16634,7 +16641,7 @@ export default function AtlasPage() {
                         }
                         style={assetPrimaryActionButtonStyle}
                       >
-                        Save
+                        Save Changes
                       </button>
                     </>
                   ) : null}
@@ -16655,7 +16662,7 @@ export default function AtlasPage() {
                       }
                       style={assetPrimaryActionButtonStyle}
                     >
-                      Save
+                      Save Changes
                     </button>
                   ) : null}
                   <button
@@ -16668,7 +16675,7 @@ export default function AtlasPage() {
                     }
                     style={assetActionButtonStyle}
                   >
-                    + Work Order
+                    Create Work Order
                   </button>
                 </div>
               </div>
@@ -16753,9 +16760,9 @@ export default function AtlasPage() {
               >
                 <div style={assetCardHeaderStyle}>
                   <div>
-                    <strong>Asset Intelligence</strong>
+                    <strong>Asset Status</strong>
                     <div style={assetCardHintStyle}>
-                      Equipment condition, active work, maintenance, and record setup
+                      Condition, active work, maintenance schedule, and record completeness
                     </div>
                   </div>
                   <span style={badgeStyle(assetConditionBadge)}>
