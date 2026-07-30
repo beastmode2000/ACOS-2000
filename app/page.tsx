@@ -15248,40 +15248,76 @@ export default function AtlasPage() {
               }}
             >
               {[
-                ["Top level", topLevelLocationCount, "Main property areas"],
-                ["Connected", linkedLocationCount, "With linked records"],
-                ["Active work", locationsWithOpenWork, "Locations with work"],
+                ["🏠", "Top level", topLevelLocationCount, "Main property areas"],
+                ["🔗", "Connected", linkedLocationCount, "With linked records"],
+                ["🔧", "Active work", locationsWithOpenWork, "Locations with work"],
                 [
+                  "↔",
                   "Review",
                   possibleAssetLocations.length,
                   "May belong in Assets",
                 ],
                 [
+                  "📦",
                   "Unassigned Assets",
                   vagueLocationAssetCount,
                   "Need a real location",
                 ],
                 [
+                  "⚠",
                   "Hierarchy Issues",
                   orphanLocationCount,
                   "Missing parent records",
                 ],
-              ].map(([label, value, note]) => (
+              ].map(([icon, label, value, note]) => (
                 <div
                   key={String(label)}
                   style={{
                     minWidth: 0,
-                    padding: "10px 9px",
-                    borderRadius: 11,
+                    padding: isMobile ? "10px 9px" : "11px 10px",
+                    borderRadius: 14,
                     border: `1px solid ${colors.line}`,
                     background: colors.card,
-                    boxShadow: "0 4px 12px rgba(15, 42, 67, 0.05)",
+                    boxShadow: "0 5px 16px rgba(15, 42, 67, 0.06)",
                   }}
                 >
-                  <span style={{ ...fieldLabelStyle, display: "block" }}>
-                    {label}
-                  </span>
-                  <strong style={{ display: "block", fontSize: 19, marginTop: 2 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ ...fieldLabelStyle, display: "block" }}>
+                      {label}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 9,
+                        display: "grid",
+                        placeItems: "center",
+                        background: colors.panel,
+                        border: `1px solid ${colors.line}`,
+                        fontSize: 14,
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      {icon}
+                    </span>
+                  </div>
+                  <strong
+                    style={{
+                      display: "block",
+                      fontSize: 22,
+                      lineHeight: 1,
+                      marginTop: 5,
+                      color: colors.navy,
+                    }}
+                  >
                     {value}
                   </strong>
                   <small
@@ -15291,6 +15327,7 @@ export default function AtlasPage() {
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
+                      marginTop: 5,
                     }}
                   >
                     {note}
@@ -15520,13 +15557,13 @@ export default function AtlasPage() {
                       border: `1px solid ${
                         selected || hovered ? colors.gold : colors.line
                       }`,
-                      borderRadius: 12,
+                      borderRadius: 14,
                       background: selected ? "#FFF9EC" : colors.card,
                       boxShadow: hovered
-                        ? "0 10px 24px rgba(15, 42, 67, 0.12), 0 0 0 1px rgba(201, 154, 61, 0.10)"
+                        ? "0 12px 28px rgba(15, 42, 67, 0.13), 0 0 0 1px rgba(201, 154, 61, 0.12)"
                         : selected
-                          ? "0 5px 14px rgba(15, 42, 67, 0.08)"
-                          : "none",
+                          ? "0 8px 20px rgba(15, 42, 67, 0.10)"
+                          : "0 3px 10px rgba(15, 42, 67, 0.04)",
                       transform: hovered ? "translateY(-2px)" : "translateY(0)",
                       transition:
                         "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
@@ -15549,8 +15586,10 @@ export default function AtlasPage() {
                         gap: 8,
                         alignItems: "center",
                         minWidth: 0,
-                        padding: "10px 10px",
-                        paddingLeft: 10 + Math.min(depth, 5) * 16,
+                        padding: isMobile ? "10px 9px" : "11px 10px",
+                        paddingLeft:
+                          (isMobile ? 9 : 10) +
+                          Math.min(depth, 5) * (isMobile ? 12 : 16),
                         textAlign: "left",
                         cursor: "pointer",
                       }}
@@ -15586,15 +15625,15 @@ export default function AtlasPage() {
                       <span
                         aria-hidden="true"
                         style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: 9,
+                          width: 38,
+                          height: 38,
+                          borderRadius: 11,
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
                           background: selected || hovered ? "#FFF1C7" : colors.panel,
                           border: `1px solid ${selected || hovered ? colors.gold : colors.line}`,
-                          fontSize: 16,
+                          fontSize: 18,
                         }}
                       >
                         {locationIcon(location)}
@@ -15610,6 +15649,22 @@ export default function AtlasPage() {
                         >
                           {location.name || "New Location"}
                         </strong>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            marginTop: 4,
+                            border: `1px solid ${colors.line}`,
+                            borderRadius: 999,
+                            background: colors.panel,
+                            color: colors.navy,
+                            padding: "3px 6px",
+                            fontSize: 8,
+                            fontWeight: 850,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {location.type || "Location"}
+                        </span>
                         <small
                           style={{
                             ...mutedSmallStyle,
@@ -15748,9 +15803,59 @@ export default function AtlasPage() {
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <h3 style={{ ...editorHeaderStyle, marginBottom: 0, minWidth: 0, overflowWrap: "anywhere" }}>
-                      {selectedLocation.name || "New Location"}
-                    </h3>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        minWidth: 0,
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: 12,
+                          display: "grid",
+                          placeItems: "center",
+                          background: "#FFF3CF",
+                          border: `1px solid ${colors.gold}`,
+                          fontSize: 20,
+                          flex: "0 0 auto",
+                        }}
+                      >
+                        {locationIcon(selectedLocation)}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <h3
+                          style={{
+                            ...editorHeaderStyle,
+                            marginBottom: 0,
+                            minWidth: 0,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {selectedLocation.name || "New Location"}
+                        </h3>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            marginTop: 4,
+                            border: `1px solid ${colors.line}`,
+                            borderRadius: 999,
+                            background: colors.panel,
+                            padding: "3px 7px",
+                            fontSize: 9,
+                            fontWeight: 850,
+                            color: colors.navy,
+                          }}
+                        >
+                          {selectedLocation.type || "Location"} · Level{" "}
+                          {locationDepth(selectedLocation) + 1}
+                        </span>
+                      </div>
+                    </div>
                     {selectedLocationPath.length > 1 ? (
                       <div
                         style={{
@@ -15800,7 +15905,10 @@ export default function AtlasPage() {
                       ...buttonRowStyle,
                       width: isMobile ? "100%" : undefined,
                       display: "grid",
-                      gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : undefined,
+                      gridTemplateColumns: isMobile
+                        ? "repeat(2, minmax(0, 1fr))"
+                        : undefined,
+                      gap: 7,
                     }}
                   >
                     <button
