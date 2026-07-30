@@ -6,6 +6,34 @@ export const runtime = "nodejs";
 
 type JsonRecord = Record<string, unknown>;
 
+function atlasJson(
+  body: JsonRecord,
+  status = 200,
+  requestId = "",
+) {
+  return NextResponse.json(
+    {
+      ...body,
+      requestId: requestId || undefined,
+    },
+    {
+      status,
+      headers: {
+        "Cache-Control": "no-store, max-age=0",
+        "X-Atlas-API": "atlas-core-save-engine-1",
+        ...(requestId ? { "X-Atlas-Request-Id": requestId } : {}),
+      },
+    },
+  );
+}
+
+function requestIdFor(request: NextRequest) {
+  return (
+    request.headers.get("x-atlas-request-id") ||
+    `atlas-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+}
+
 type AtlasTable =
   | "locations"
   | "vendors"
@@ -1044,6 +1072,14 @@ export async function GET(request: NextRequest) {
       ORDER BY lower(name) ASC
     `) as unknown as JsonRecord[];
 
+    if (!Object.keys(record).length) {
+      return atlasJson(
+        { ok: false, error: "Atlas save record is required." },
+        400,
+        requestId,
+      );
+    }
+
     const access = await getAtlasAccessContext(sql, request);
     const mappedAssets = assetRows.map(mapAsset);
     const allowedAssets = access.restricted
@@ -1115,19 +1151,35 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = requestIdFor(request);
+
   if (request.headers.get("x-atlas-user-role") === "viewer") {
-    return NextResponse.json(
+    return atlasJson(
       { ok: false, error: "Viewer access is read-only." },
-      { status: 403 },
+      403,
+      requestId,
     );
   }
+
   try {
     const sql = getSql();
     await ensurePartsTable(sql);
     await ensurePropertyColumns(sql);
-    const body = (await request.json().catch(function () {
-      return {};
-    })) as JsonRecord;
+
+    let body: JsonRecord;
+    try {
+      const parsed = await request.json();
+      body =
+        parsed && typeof parsed === "object"
+          ? (parsed as JsonRecord)
+          : {};
+    } catch {
+      return atlasJson(
+        { ok: false, error: "Atlas received invalid JSON." },
+        400,
+        requestId,
+      );
+    }
 
     const action = asString(body.action);
 
@@ -1188,11 +1240,26 @@ export async function POST(request: NextRequest) {
     }
 
     const table = cleanTable(body.table);
+    if (!table) {
+      return atlasJson(
+        {
+          ok: false,
+          error: "Unsupported table: " + asString(body.table),
+        },
+        400,
+        requestId,
+      );
+    }
+
     const record =
       body.record && typeof body.record === "object"
         ? (body.record as JsonRecord)
         : {};
-    const propertyId = asString(record.propertyId) || "2000";
+    const propertyId =
+      asString(record.propertyId) ||
+      asString(body.propertyId) ||
+      "2000";
+
     if (!(await authorizeAtlasRequest(sql, request, propertyId, "edit"))) {
       return NextResponse.json(
         {
@@ -1224,16 +1291,6 @@ export async function POST(request: NextRequest) {
       asString(record.id),
       record,
     );
-
-    if (!table) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Unsupported table: " + asString(body.table),
-        },
-        { status: 400 },
-      );
-    }
 
     if (table === "locations") {
       const id = getId(record, "location");
@@ -1941,7 +1998,7 @@ if (table === "assets") {
   } catch (error) {
     console.error("[Atlas POST error]", error);
 
-    return NextResponse.json(
+    return atlasJson(
       {
         ok: false,
         error:
@@ -1949,12 +2006,15 @@ if (table === "assets") {
             ? error.message
             : "Unknown Atlas database save error",
       },
-      { status: 500 },
+      500,
+      requestId,
     );
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  const requestId = requestIdFor(request);
+
   try {
     const sql = getSql();
 
@@ -1962,9 +2022,20 @@ export async function DELETE(request: NextRequest) {
     await ensurePartsTable(sql);
     await ensurePropertyColumns(sql);
 
-    const body = (await request.json().catch(function () {
-      return {};
-    })) as JsonRecord;
+    let body: JsonRecord;
+    try {
+      const parsed = await request.json();
+      body =
+        parsed && typeof parsed === "object"
+          ? (parsed as JsonRecord)
+          : {};
+    } catch {
+      return atlasJson(
+        { ok: false, error: "Atlas received invalid JSON." },
+        400,
+        requestId,
+      );
+    }
 
     const table = cleanTable(body.table);
     const id = asString(body.id);
@@ -2299,4 +2370,17 @@ export async function DELETE(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function OPTIONS(request: NextRequest) {
+  const requestId = requestIdFor(request);
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      Allow: "GET, POST, DELETE, OPTIONS",
+      "Cache-Control": "no-store, max-age=0",
+      "X-Atlas-API": "atlas-core-save-engine-1",
+      "X-Atlas-Request-Id": requestId,
+    },
+  });
 }
