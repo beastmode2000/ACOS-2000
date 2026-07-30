@@ -3845,67 +3845,6 @@ function ListDrawerLayout(props: {
               paddingBottom: "max(24px, env(safe-area-inset-bottom))",
             }}
           >
-            {(vagueLocationAssetCount || orphanLocationCount) ? (
-              <section
-                style={{
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 12,
-                  background: "#FFFFFF",
-                  padding: 10,
-                  display: "grid",
-                  gap: 9,
-                }}
-              >
-                <div>
-                  <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
-                    Hierarchy and Assignment Review
-                  </strong>
-                  <span style={mutedSmallStyle}>
-                    Assign assets to the most specific physical location and repair missing parent relationships.
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                    gap: 8,
-                  }}
-                >
-                  <div style={recordInfoItemStyle}>
-                    <span style={fieldLabelStyle}>Assets needing location</span>
-                    <strong>{vagueLocationAssetCount}</strong>
-                    <small style={mutedSmallStyle}>General, unknown, or unassigned</small>
-                  </div>
-                  <div style={recordInfoItemStyle}>
-                    <span style={fieldLabelStyle}>Broken parent links</span>
-                    <strong>{orphanLocationCount}</strong>
-                    <small style={mutedSmallStyle}>Parent location no longer exists</small>
-                  </div>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {assetRecords
-                    .filter((asset) => {
-                      const location = locations.find((item) => item.id === asset.locationId);
-                      return !asset.locationId || isVagueLocation(location);
-                    })
-                    .slice(0, 8)
-                    .map((asset) => (
-                      <button
-                        key={asset.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedAssetId(asset.id);
-                          setScreen("assets");
-                        }}
-                        style={secondaryButtonStyle}
-                      >
-                        Reassign {asset.name}
-                      </button>
-                    ))}
-                </div>
-              </section>
-            ) : null}
-
             {possibleAssetLocations.length ? (
               <section
                 style={{
@@ -15417,6 +15356,67 @@ export default function AtlasPage() {
                 </div>
               ))}
             </div>
+            {(vagueLocationAssetCount || orphanLocationCount) ? (
+              <section
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 12,
+                  background: "#FFFFFF",
+                  padding: 10,
+                  display: "grid",
+                  gap: 9,
+                }}
+              >
+                <div>
+                  <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
+                    Hierarchy and Assignment Review
+                  </strong>
+                  <span style={mutedSmallStyle}>
+                    Assign assets to the most specific physical location and repair missing parent relationships.
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  <div style={recordInfoItemStyle}>
+                    <span style={fieldLabelStyle}>Assets needing location</span>
+                    <strong>{vagueLocationAssetCount}</strong>
+                    <small style={mutedSmallStyle}>General, unknown, or unassigned</small>
+                  </div>
+                  <div style={recordInfoItemStyle}>
+                    <span style={fieldLabelStyle}>Broken parent links</span>
+                    <strong>{orphanLocationCount}</strong>
+                    <small style={mutedSmallStyle}>Parent location no longer exists</small>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {assetRecords
+                    .filter((asset) => {
+                      const location = locations.find((item) => item.id === asset.locationId);
+                      return !asset.locationId || isVagueLocation(location);
+                    })
+                    .slice(0, 8)
+                    .map((asset) => (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAssetId(asset.id);
+                          setScreen("assets");
+                        }}
+                        style={secondaryButtonStyle}
+                      >
+                        Reassign {asset.name}
+                      </button>
+                    ))}
+                </div>
+              </section>
+            ) : null}
+
             <div
               style={{
                 position: "sticky",
