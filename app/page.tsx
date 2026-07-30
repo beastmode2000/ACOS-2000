@@ -4395,6 +4395,16 @@ export default function AtlasPage() {
   const [assetEditorOpen, setAssetEditorOpen] = useState(false);
   const [assetSortOrder, setAssetSortOrder] = useState<"az" | "za">("az");
   const [assetListSearch, setAssetListSearch] = useState("");
+  const [assetPanelCustomizeOpen, setAssetPanelCustomizeOpen] = useState(false);
+  const [assetPanelScrolling, setAssetPanelScrolling] = useState(false);
+  const assetPanelScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [assetVisibleSections, setAssetVisibleSections] = useState<Record<string, boolean>>({
+    overview: true,
+    status: true,
+    linkedRecords: true,
+    recordSetup: true,
+    costs: false,
+  });
   const [excludedAssetStatuses, setExcludedAssetStatuses] = useState<string[]>([]);
   const [excludedAssetCategories, setExcludedAssetCategories] = useState<string[]>([]);
   const [selectedVendorId, setSelectedVendorId] = useState("");
@@ -4415,6 +4425,38 @@ export default function AtlasPage() {
   );
   const [scannerManualValue, setScannerManualValue] = useState("");
   const [lastScannedQr, setLastScannedQr] = useState("");
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("atlas_asset_visible_sections_v1");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === "object") {
+        setAssetVisibleSections((current) => ({ ...current, ...parsed }));
+      }
+    } catch {
+      // Keep safe defaults when saved display preferences cannot be read.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "atlas_asset_visible_sections_v1",
+        JSON.stringify(assetVisibleSections),
+      );
+    } catch {
+      // Display preferences are optional and should never interrupt Atlas.
+    }
+  }, [assetVisibleSections]);
+
+  useEffect(() => {
+    return () => {
+      if (assetPanelScrollTimerRef.current) {
+        clearTimeout(assetPanelScrollTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const mobileDetailOpen =
@@ -15326,6 +15368,15 @@ export default function AtlasPage() {
             <div
               style={{ ...stackStyle, minWidth: 0, overflowX: "hidden" }}
               tabIndex={0}
+              onScroll={() => {
+                setAssetPanelScrolling(true);
+                if (assetPanelScrollTimerRef.current) {
+                  clearTimeout(assetPanelScrollTimerRef.current);
+                }
+                assetPanelScrollTimerRef.current = setTimeout(() => {
+                  setAssetPanelScrolling(false);
+                }, 240);
+              }}
               onPaste={(event) => {
                 const files = imageFilesFromPasteEvent(event);
                 if (!files.length) return;
@@ -16575,7 +16626,7 @@ export default function AtlasPage() {
         drawer={
           selectedAsset.id ? (
             <div
-              className="atlas-asset-drawer"
+              className={`atlas-asset-drawer${assetPanelScrolling ? " atlas-asset-drawer-scrolling" : ""}`}
               style={{
                 ...assetFixedPanelStyle,
                 maxHeight: "none",
@@ -16681,17 +16732,124 @@ export default function AtlasPage() {
                   >
                     Create Work Order
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssetPanelCustomizeOpen((current) => !current)}
+                    style={{
+                      ...assetActionButtonStyle,
+                      borderColor: assetPanelCustomizeOpen ? colors.gold : colors.line,
+                      background: assetPanelCustomizeOpen ? "#FFF8E6" : "#FFFFFF",
+                    }}
+                    aria-expanded={assetPanelCustomizeOpen}
+                  >
+                    Customize
+                  </button>
                 </div>
               </div>
 
+              {assetPanelCustomizeOpen ? (
+                <section
+                  style={{
+                    border: `1px solid ${colors.gold}`,
+                    borderRadius: 12,
+                    background: "#FFF9E8",
+                    padding: 11,
+                    marginBottom: 12,
+                  }}
+                  aria-label="Visible asset information sections"
+                >
+                  <div style={{ ...assetCardHeaderStyle, marginBottom: 8 }}>
+                    <div>
+                      <strong style={{ whiteSpace: "nowrap" }}>Visible Sections</strong>
+                      <div style={assetCardHintStyle}>
+                        Choose what appears in the asset information panel.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAssetVisibleSections({
+                          overview: true,
+                          status: true,
+                          linkedRecords: true,
+                          recordSetup: true,
+                          costs: false,
+                        })
+                      }
+                      style={assetTinyButtonStyle}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile
+                        ? "1fr"
+                        : "repeat(2, minmax(0, 1fr))",
+                      gap: 7,
+                    }}
+                  >
+                    {[
+                      ["overview", "Asset Overview"],
+                      ["status", "Asset Status"],
+                      ["linkedRecords", "Linked Records"],
+                      ["recordSetup", "Record Setup"],
+                      ["costs", "Service Costs"],
+                    ].map(([key, label]) => (
+                      <label
+                        key={key}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          minWidth: 0,
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 9,
+                          background: "#FFFFFF",
+                          padding: "8px 9px",
+                          color: colors.navy,
+                          fontSize: 11,
+                          fontWeight: 850,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={assetVisibleSections[key] !== false}
+                          onChange={(event) =>
+                            setAssetVisibleSections((current) => ({
+                              ...current,
+                              [key]: event.target.checked,
+                            }))
+                          }
+                        />
+                        <span
+                          style={{
+                            whiteSpace: "nowrap",
+                            wordBreak: "normal",
+                            overflowWrap: "normal",
+                          }}
+                        >
+                          {label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ ...assetCardHintStyle, marginTop: 8 }}>
+                    Service Costs are hidden by default because expenses are managed separately.
+                  </div>
+                </section>
+              ) : null}
+
               <section
                 style={{
+                  display: assetVisibleSections.overview === false ? "none" : "grid",
                   border: `1px solid ${colors.line}`,
                   borderRadius: 14,
                   background: "linear-gradient(135deg, #FFFFFF 0%, #F6F9FD 100%)",
                   padding: isMobile ? 12 : 14,
                   marginBottom: 12,
-                  display: "grid",
                   gridTemplateColumns: isMobile
                     ? "repeat(2, minmax(0, 1fr))"
                     : "repeat(4, minmax(0, 1fr))",
@@ -16758,6 +16916,7 @@ export default function AtlasPage() {
               <section
                 style={{
                   ...assetCardStyle,
+                  display: assetVisibleSections.status === false ? "none" : "block",
                   marginBottom: 12,
                   background: "#F8FAFD",
                 }}
@@ -16939,7 +17098,13 @@ export default function AtlasPage() {
                       ],
                       action: () => setScreen("history"),
                     },
-                  ].map((item) => (
+                  ]
+                    .filter(
+                      (item) =>
+                        item.label !== "Service Cost" ||
+                        assetVisibleSections.costs !== false,
+                    )
+                    .map((item) => (
                     <button
                       key={item.label}
                       type="button"
@@ -17003,6 +17168,7 @@ export default function AtlasPage() {
                 >
                   <div
                     style={{
+                      display: assetVisibleSections.linkedRecords === false ? "none" : "block",
                       border: `1px solid ${colors.line}`,
                       borderRadius: 10,
                       background: "#FFFFFF",
@@ -17089,6 +17255,7 @@ export default function AtlasPage() {
 
                   <div
                     style={{
+                      display: assetVisibleSections.recordSetup === false ? "none" : "block",
                       border: `1px solid ${assetSetupItems.length ? "#D8B45C" : colors.line}`,
                       borderRadius: 10,
                       background: assetSetupItems.length ? "#FFF9E8" : "#FFFFFF",
@@ -28164,10 +28331,20 @@ export default function AtlasPage() {
           transform-origin: top center;
           transition: opacity 140ms ease, transform 160ms ease;
         }
-        .atlas-gold-hover-card:hover .atlas-gold-hover-popover,
+        .atlas-gold-hover-card:hover .atlas-gold-hover-popover {
+          opacity: 1;
+          transform: scale(1);
+          transition-delay: 900ms;
+        }
         .atlas-gold-hover-card:focus-visible .atlas-gold-hover-popover {
           opacity: 1;
           transform: scale(1);
+          transition-delay: 0ms;
+        }
+        .atlas-asset-drawer-scrolling .atlas-gold-hover-popover {
+          display: none !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
         }
         .atlas-gold-hover-popover > strong {
           color: #F5D98B;
