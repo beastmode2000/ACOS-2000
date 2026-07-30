@@ -101,14 +101,30 @@ type WorkTemplate = {
   recurrenceInterval?: number;
   recurrenceUnit?: WorkOrderRecurrenceUnit;
   checklist: string[];
+  preferredDay?: string;
+  completionWindowDays?: number;
+  flexibility?: "Fixed" | "Flexible" | "Anytime This Week";
+  defaultAssignee?: string;
+  backupAssignee?: string;
+  seasonalMonths?: number[];
 };
 
 const WORK_TEMPLATES: WorkTemplate[] = [
-  { id: "weekly-pool", label: "Weekly Pool Service", title: "Weekly Pool Service", workType: "Preventive Maintenance", workCategory: "🚿 Pool & Spa", priority: "Medium", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", checklist: ["Test and balance water", "Inspect pump and filter", "Clean baskets and waterline", "Record readings and observations"] },
-  { id: "boat-detail", label: "Boat Detail", title: "Boat Detail", workType: "Work Order", workCategory: "🚤 Dock & Marine", priority: "Medium", effort: "Half Day", checklist: ["Rinse exterior", "Wash and dry surfaces", "Clean upholstery and storage", "Inspect for damage", "Add completion photos"] },
-  { id: "fountain-clean", label: "Fountain Cleaning", title: "Clean Fountain", workType: "Preventive Maintenance", workCategory: "🔧 Maintenance", priority: "Medium", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", checklist: ["Remove debris", "Clean basin and surfaces", "Inspect pump and flow", "Treat water if needed"] },
-  { id: "irrigation-startup", label: "Irrigation Startup", title: "Seasonal Irrigation Startup", workType: "Preventive Maintenance", workCategory: "💧 Irrigation", priority: "High", effort: "Half Day", checklist: ["Open water supply", "Inspect controller", "Run every zone", "Document leaks and damaged heads", "Confirm final schedule"] },
-  { id: "boiler-inspection", label: "Boiler Inspection", title: "Monthly Boiler Inspection", workType: "Preventive Maintenance", workCategory: "❄️ HVAC", priority: "High", effort: "30 minutes", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Months", checklist: ["Check operating status", "Inspect pressure and temperature", "Check for leaks or faults", "Record readings"] },
+  { id: "dog-daily", label: "Dog Area Cleanup", title: "Clean Dog Area", workType: "Preventive Maintenance", workCategory: "🧹 Cleaning", priority: "High", effort: "15 minutes", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Days", preferredDay: "Any", completionWindowDays: 0, flexibility: "Fixed", defaultAssignee: "Addison", checklist: ["Remove waste and debris", "Rinse or treat problem spots", "Check turf condition", "Restock cleanup supplies"] },
+  { id: "goose-daily", label: "Goose Cleanup", title: "Goose Cleanup and Property Check", workType: "Preventive Maintenance", workCategory: "🧹 Cleaning", priority: "High", effort: "15 minutes", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Days", preferredDay: "Any", completionWindowDays: 0, flexibility: "Fixed", defaultAssignee: "Addison", checklist: ["Check dock and shoreline", "Remove droppings", "Rinse affected surfaces", "Note heavy activity areas"] },
+  { id: "pots-seasonal", label: "Water and Check Pots", title: "Water and Check Pots", workType: "Preventive Maintenance", workCategory: "🌳 Landscaping", priority: "High", effort: "30 minutes", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Days", preferredDay: "Any", completionWindowDays: 0, flexibility: "Fixed", defaultAssignee: "Addison", seasonalMonths: [4,5,6,7,8,9,10], checklist: ["Check soil moisture", "Water dry pots", "Deadhead and clean debris", "Report stressed plants"] },
+  { id: "mow-weekly", label: "Mow Lawns", title: "Mow Lawns", workType: "Preventive Maintenance", workCategory: "🌳 Landscaping", priority: "High", effort: "Half Day", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Tuesday", completionWindowDays: 2, flexibility: "Anytime This Week", defaultAssignee: "Pat's Crew", checklist: ["Mow all scheduled lawn areas", "Vary mowing direction", "Check for irrigation damage", "Remove visible clippings"] },
+  { id: "edge-blow", label: "Edge and Blow", title: "Edge and Blow Grounds", workType: "Preventive Maintenance", workCategory: "🌳 Landscaping", priority: "Medium", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Tuesday", completionWindowDays: 2, flexibility: "Anytime This Week", defaultAssignee: "Pat's Crew", checklist: ["Edge lawn borders", "Blow walks and patios", "Clear driveway and courtyard", "Clean around dock approach"] },
+  { id: "weekly-pool", label: "Pool and Spa Weekly Service", title: "Pool and Spa Weekly Service", workType: "Preventive Maintenance", workCategory: "🚿 Pool & Spa", priority: "High", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Wednesday", completionWindowDays: 1, flexibility: "Flexible", defaultAssignee: "Nick", checklist: ["Test and balance pool water", "Check spa water and temperature", "Inspect pump, filter, and baskets", "Clean waterline and surrounding area", "Record readings and observations"] },
+  { id: "fountain-clean", label: "Fountain Cleaning", title: "Clean Fountain", workType: "Preventive Maintenance", workCategory: "🔧 Maintenance", priority: "Medium", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Wednesday", completionWindowDays: 2, flexibility: "Anytime This Week", defaultAssignee: "Addison", checklist: ["Remove debris", "Clean basin and surfaces", "Inspect pump and flow", "Treat water if needed"] },
+  { id: "dock-clean", label: "Clean Dock", title: "Clean Dock", workType: "Preventive Maintenance", workCategory: "🚤 Dock & Marine", priority: "Medium", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Thursday", completionWindowDays: 2, flexibility: "Anytime This Week", defaultAssignee: "Addison", checklist: ["Remove debris and goose waste", "Rinse decking", "Clean seating and accessories", "Inspect bumpers, cleats, and lines"] },
+  { id: "boat-clean", label: "Clean Cobalt Boat", title: "Clean Cobalt Boat", workType: "Preventive Maintenance", workCategory: "🚤 Dock & Marine", priority: "Medium", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Thursday", completionWindowDays: 2, flexibility: "Anytime This Week", defaultAssignee: "Addison", seasonalMonths: [4,5,6,7,8,9,10], checklist: ["Rinse exterior", "Clean upholstery and flooring", "Wipe dash and glass", "Empty trash and organize storage", "Check for damage or low supplies"] },
+  { id: "seadoo-clean", label: "Clean Sea-Doo", title: "Clean Sea-Doo", workType: "Preventive Maintenance", workCategory: "🚤 Dock & Marine", priority: "Medium", effort: "30 minutes", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Thursday", completionWindowDays: 2, flexibility: "Anytime This Week", defaultAssignee: "Addison", seasonalMonths: [4,5,6,7,8,9,10], checklist: ["Rinse hull and deck", "Clean seat and storage", "Check fuel and visible damage", "Inspect lift position and cover"] },
+  { id: "cars-clean", label: "Clean Cars", title: "Clean Estate Vehicles", workType: "Preventive Maintenance", workCategory: "🚗 Vehicles", priority: "Medium", effort: "Half Day", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Thursday", completionWindowDays: 2, flexibility: "Anytime This Week", defaultAssignee: "Addison", checklist: ["Wash exteriors", "Vacuum interiors", "Clean glass", "Remove trash", "Check fuel, tires, and warning lights"] },
+  { id: "windows-rotation", label: "Window Cleaning Rotation", title: "Clean Scheduled Window Section", workType: "Preventive Maintenance", workCategory: "🏠 House", priority: "Low", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Friday", completionWindowDays: 4, flexibility: "Anytime This Week", defaultAssignee: "Addison", checklist: ["Confirm this week's window section", "Clean interior glass", "Clean accessible exterior glass", "Wipe frames and sills", "Record completed area"] },
+  { id: "irrigation-weekly", label: "Irrigation Walkthrough", title: "Weekly Irrigation Walkthrough", workType: "Preventive Maintenance", workCategory: "💧 Irrigation", priority: "High", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Tuesday", completionWindowDays: 3, flexibility: "Anytime This Week", defaultAssignee: "Nick", checklist: ["Run or observe priority zones", "Check dry spots and puddling", "Inspect damaged or blocked heads", "Review Hydrawise alerts", "Create repair work orders as needed"] },
+  { id: "final-walkthrough", label: "Friday Final Walkthrough", title: "Friday Property Walkthrough and Weekly Closeout", workType: "Preventive Maintenance", workCategory: "✅ Inspection", priority: "High", effort: "1 hour", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Weeks", preferredDay: "Friday", completionWindowDays: 0, flexibility: "Fixed", defaultAssignee: "Nick", checklist: ["Walk house exterior and grounds", "Check pool, spa, fountain, dock, and vehicles", "Confirm assigned work was completed", "Capture follow-up items", "Prepare next-week priorities"] },
+  { id: "boiler-inspection", label: "Monthly Boiler Inspection", title: "Monthly Boiler Inspection", workType: "Preventive Maintenance", workCategory: "❄️ HVAC", priority: "High", effort: "30 minutes", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Months", preferredDay: "Wednesday", completionWindowDays: 7, flexibility: "Flexible", defaultAssignee: "Nick", checklist: ["Check operating status", "Inspect pressure and temperature", "Check for leaks or faults", "Record readings"] },
 ];
 
 function itemType(record: any): WorkItemType {
@@ -551,6 +567,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+  const [pendingTemplate, setPendingTemplate] = useState<WorkTemplate | null>(null);
+  const [routinePlannerOpen, setRoutinePlannerOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -584,6 +602,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setNewWorkOpen(false);
     setDetailOpen(false);
     setPlanOpen(false);
+    setRoutinePlannerOpen(false);
     setManageSectionsOpen(false);
     setManageCategoriesOpen(false);
   }, [openResetKey]);
@@ -670,6 +689,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     if (!template) return;
     setDetailOpen(false);
     setSelectedServiceId("");
+    setPendingTemplate(template);
     setNewWorkDraft({
       title: template.title,
       workType: template.workType,
@@ -1184,6 +1204,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function openNewWork(workType: WorkItemType = "Work Order") {
+    setPendingTemplate(null);
     setDetailOpen(false);
     setSelectedServiceId("");
     setNewWorkDraft({
@@ -1221,15 +1242,26 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       effort: newWorkDraft.workType === "Quick Task" ? "15 minutes" : "30 minutes",
       status: "Open",
       recurring: newWorkDraft.workType === "Preventive Maintenance",
-      checklist: [],
+      recurrenceInterval: pendingTemplate?.recurrenceInterval || 1,
+      recurrenceUnit: pendingTemplate?.recurrenceUnit || "Weeks",
+      preferredDay: pendingTemplate?.preferredDay || "Any",
+      completionWindowDays: pendingTemplate?.completionWindowDays ?? 2,
+      routineFlexibility: pendingTemplate?.flexibility || "Flexible",
+      assignedTo: pendingTemplate?.defaultAssignee || "",
+      backupAssignee: pendingTemplate?.backupAssignee || "",
+      seasonalMonths: pendingTemplate?.seasonalMonths || [],
+      canReassign: true,
+      checklist: (pendingTemplate?.checklist || []).map((text) => ({ id: uid("check"), text, completed: false })),
     } as any);
     setNewWorkOpen(false);
+    setPendingTemplate(null);
   }
 
   function handleWorkOption(value: string) {
     if (value === "add-work") openNewWork("Work Order");
     if (value === "quick-task") quickTask();
     if (value === "plan") setPlanOpen((current) => !current);
+    if (value === "routine-planner") setRoutinePlannerOpen((current) => !current);
     if (value === "sections")
       setManageSectionsOpen((current) => !current);
     if (value === "categories")
@@ -1249,6 +1281,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       updateWorkOrder({ date: tomorrowDate(), status: "Scheduled" });
     if (value === "next-week")
       updateWorkOrder({ date: nextWeekDate(), status: "Scheduled" });
+    if (value === "skip-occurrence") {
+      const next = recurrencePreviewDates(selectedService, 1)[0];
+      if (next) updateWorkOrder({ date: next, status: "Scheduled", lastSkippedAt: new Date().toISOString() });
+    }
     if (value === "photo") quickAddPhoto(selectedService);
     if (value === "duplicate") duplicateWork(selectedService);
     if (value === "delete") void deleteWorkOrderRecord(selectedService);
@@ -1784,6 +1820,28 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   >
                     Create Work
                   </button>
+                </div>
+              </section>
+            ) : null}
+
+            {routinePlannerOpen ? (
+              <section style={{ ...filterPanelStyle, background: "#FFFFFF" }}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Recurring Work Planner 2.0</div>
+                    <strong>Build the estate maintenance rhythm</strong>
+                    <div style={mutedSmallStyle}>Create flexible weekly, monthly, daily, and seasonal routines. Assign each routine now and adjust it later.</div>
+                  </div>
+                  <button type="button" onClick={() => setRoutinePlannerOpen(false)} style={secondaryButtonStyle}>Close</button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 10 }}>
+                  {WORK_TEMPLATES.map((template) => (
+                    <button key={template.id} type="button" onClick={() => openTemplate(template.id)} style={{ ...rowButtonStyle, textAlign: "left", display: "grid", gap: 5, alignContent: "start" }}>
+                      <strong>{template.label}</strong>
+                      <span style={mutedSmallStyle}>{template.recurring ? `Every ${template.recurrenceInterval || 1} ${template.recurrenceUnit || "Weeks"}` : "One-time"} · {template.effort}</span>
+                      <span style={mutedSmallStyle}>{template.preferredDay || "Any day"} · {template.flexibility || "Flexible"}{template.defaultAssignee ? ` · ${template.defaultAssignee}` : ""}</span>
+                    </button>
+                  ))}
                 </div>
               </section>
             ) : null}
@@ -2392,7 +2450,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
                 <select value="" onChange={(event) => { handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, minHeight: 38, color: colors.muted, fontSize: 13, fontWeight: 500, background: "#FFFFFF" }} aria-label="Work order actions">
                   <option value="">Actions...</option>
-                  {selectedService.status === "Completed" ? <option value="reopen">Reopen</option> : <><option value="start">Start</option><option value="complete">{selectedService.recurring ? "Complete & Advance" : "Mark Done"}</option><option value="reschedule">Reschedule</option><option value="tomorrow">Tomorrow</option><option value="next-week">Next Week</option><option value="convert">Convert Type</option></>}
+                  {selectedService.status === "Completed" ? <option value="reopen">Reopen</option> : <><option value="start">Start</option><option value="complete">{selectedService.recurring ? "Complete & Advance" : "Mark Done"}</option><option value="reschedule">Reschedule</option><option value="tomorrow">Tomorrow</option><option value="next-week">Next Week</option>{selectedService.recurring ? <option value="skip-occurrence">Skip This Occurrence</option> : null}<option value="convert">Convert Type</option></>}
                   <option value="photo">Add Photo</option>
                   <option value="duplicate">Duplicate</option>
                   <option value="delete">Delete</option>
@@ -2472,6 +2530,31 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         updateWorkOrder({ recurrenceEndDate: value })
                       }
                     />
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Preferred Day</span>
+                      <select value={selectedService.preferredDay || "Any"} onChange={(event) => updateWorkOrder({ preferredDay: event.currentTarget.value })} style={inputStyle}>
+                        {["Any", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => <option key={day} value={day}>{day}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Completion Window</span>
+                      <select value={String(selectedService.completionWindowDays ?? 2)} onChange={(event) => updateWorkOrder({ completionWindowDays: Number(event.currentTarget.value) })} style={inputStyle}>
+                        <option value="0">Same day</option><option value="1">Within 1 day</option><option value="2">Within 2 days</option><option value="3">Within 3 days</option><option value="7">Anytime this week</option><option value="14">Within 2 weeks</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Scheduling Rule</span>
+                      <select value={selectedService.routineFlexibility || "Flexible"} onChange={(event) => updateWorkOrder({ routineFlexibility: event.currentTarget.value })} style={inputStyle}>
+                        <option value="Fixed">Fixed date</option><option value="Flexible">Flexible around preferred day</option><option value="Anytime This Week">Anytime this week</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Backup Assignee</span>
+                      <select value={selectedService.backupAssignee || ""} onChange={(event) => updateWorkOrder({ backupAssignee: event.currentTarget.value })} style={inputStyle}><option value="">None</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, gridColumn: "1 / -1", fontWeight: 700 }}>
+                      <input type="checkbox" checked={selectedService.canReassign !== false} onChange={(event) => updateWorkOrder({ canReassign: event.currentTarget.checked })} /> Allow this occurrence to be reassigned
+                    </label>
                     <div
                       style={{
                         gridColumn: "1 / -1",
