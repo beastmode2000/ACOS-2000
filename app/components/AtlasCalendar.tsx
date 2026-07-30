@@ -274,6 +274,44 @@ function sortAgenda(events: any[]): any[] {
   });
 }
 
+const CALENDAR_PIN_STORAGE_KEY = "atlas-calendar-pins-v1";
+const CALENDAR_RECENT_STORAGE_KEY = "atlas-calendar-recent-v1";
+
+function safeReadStringList(key: string): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function safeWriteStringList(key: string, values: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(values));
+  } catch {
+    // Calendar personalization must never interrupt scheduling.
+  }
+}
+
+function eventSearchText(event: any): string {
+  return [
+    event.title,
+    event.notes,
+    event.location,
+    event.categoryLabel,
+    event.area,
+    event.eventType,
+    event.linkedType,
+    event.linkedName,
+    event.time,
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
 export default function AtlasCalendar(
   props: AtlasCalendarProps,
 ) {
@@ -366,6 +404,15 @@ export default function AtlasCalendar(
   const [editorOpen, setEditorOpen] = React.useState(
     Boolean(selectedCalendarId),
   );
+  const [calendarSearch, setCalendarSearch] = React.useState("");
+  const [pinnedEventIds, setPinnedEventIds] = React.useState<string[]>([]);
+  const [recentEventIds, setRecentEventIds] = React.useState<string[]>([]);
+  const [showUpcoming, setShowUpcoming] = React.useState(false);
+
+  React.useEffect(() => {
+    setPinnedEventIds(safeReadStringList(CALENDAR_PIN_STORAGE_KEY));
+    setRecentEventIds(safeReadStringList(CALENDAR_RECENT_STORAGE_KEY));
+  }, []);
 
   React.useEffect(() => {
     if (!selectedCalendarId) return;
@@ -384,6 +431,23 @@ export default function AtlasCalendar(
     window.addEventListener("keydown", onEscape);
     return () => window.removeEventListener("keydown", onEscape);
   }, [detailOpen, selectedCalendarDate]);
+
+  React.useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select")) return;
+      if (event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        const date = selectedCalendarDate || calendarDateKey(todayISO());
+        setSelectedCalendarDate(date);
+        addCalendarItem(date);
+        setEditorOpen(true);
+        setDetailOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, [selectedCalendarDate, addCalendarItem, todayISO]);
 
   const todayKey = calendarDateKey(todayISO());
   const hasSelectedEvent = Boolean(selectedCalendarId);
@@ -424,6 +488,63 @@ export default function AtlasCalendar(
     () => sortAgenda(selectedDayEvents),
     [selectedDayEvents],
   );
+
+  const normalizedSearch = calendarSearch.trim().toLowerCase();
+
+  const visibleExpandedCalendarItems = React.useMemo(
+    () =>
+      normalizedSearch
+        ? expandedCalendarItems.filter((event: any) =>
+            eventSearchText(event).includes(normalizedSearch),
+          )
+        : expandedCalendarItems,
+    [expandedCalendarItems, normalizedSearch],
+  );
+
+  const upcomingEvents = React.useMemo(() => {
+    const start = calendarDateKey(todayISO());
+    const endDate = new Date(`${start}T12:00:00`);
+    endDate.setDate(endDate.getDate() + 7);
+    const end = calendarDateKey(endDate);
+    return sortAgenda(
+      visibleExpandedCalendarItems.filter((event: any) => {
+        const key = calendarDateKey(event.date);
+        return key >= start && key <= end;
+      }),
+    ).slice(0, 12);
+  }, [visibleExpandedCalendarItems, todayISO]);
+
+  const selectedConflicts = React.useMemo(() => {
+    if (!selectedCalendar?.date || selectedCalendar?.allDay || !selectedCalendar?.time) return [];
+    const selectedDateKey = calendarDateKey(selectedCalendar.date);
+    return expandedCalendarItems.filter((event: any) =>
+      event.id !== selectedCalendar.id &&
+      calendarDateKey(event.date) === selectedDateKey &&
+      !event.allDay &&
+      String(event.time || "") === String(selectedCalendar.time || ""),
+    );
+  }, [expandedCalendarItems, selectedCalendar]);
+
+  const selectedWarnings = React.useMemo(() => {
+    const warnings: string[] = [];
+    if (!String(selectedCalendar?.title || "").trim()) warnings.push("Add a title.");
+    if (!calendarDateKey(selectedCalendar?.date || selectedCalendarDate)) warnings.push("Add a valid date.");
+    if (!selectedCalendar?.allDay && !String(selectedCalendar?.time || "").trim()) warnings.push("Add a time or mark it all day.");
+    if (selectedCalendar?.linkedType && selectedCalendar.linkedType !== "None" && !selectedCalendar?.linkedId) warnings.push(`Choose the linked ${selectedCalendar.linkedType.toLowerCase()} record.`);
+    if (selectedConflicts.length) warnings.push(`${selectedConflicts.length} event${selectedConflicts.length === 1 ? "" : "s"} already use this time.`);
+    return warnings;
+  }, [selectedCalendar, selectedCalendarDate, selectedConflicts]);
+
+  const calendarSummary = React.useMemo(() => {
+    const monthPrefix = `${calendarCursor.getFullYear()}-${String(calendarCursor.getMonth() + 1).padStart(2, "0")}`;
+    const monthEvents = visibleExpandedCalendarItems.filter((event: any) => calendarDateKey(event.date).startsWith(monthPrefix));
+    return {
+      month: monthEvents.length,
+      recurring: monthEvents.filter((event: any) => event.repeat && event.repeat !== "None").length,
+      work: monthEvents.filter((event: any) => eventType(event).label === "Work Order").length,
+      pinned: pinnedEventIds.length,
+    };
+  }, [visibleExpandedCalendarItems, calendarCursor, pinnedEventIds]);
 
   const linkedOptions = React.useMemo(() => {
     if (selectedCalendar.linkedType === "Asset") {
@@ -471,6 +592,16 @@ export default function AtlasCalendar(
     byTitle,
   ]);
 
+  function togglePinnedEvent(event: any) {
+    const eventId = String(event?.id || "");
+    if (!eventId) return;
+    const next = pinnedEventIds.includes(eventId)
+      ? pinnedEventIds.filter((id) => id !== eventId)
+      : [eventId, ...pinnedEventIds];
+    setPinnedEventIds(next);
+    safeWriteStringList(CALENDAR_PIN_STORAGE_KEY, next);
+  }
+
   function showDay(date: string) {
     setSelectedCalendarDate(date);
     setSelectedCalendarId("");
@@ -486,6 +617,12 @@ export default function AtlasCalendar(
   }
 
   function openEvent(event: any) {
+    const eventId = String(event?.id || "");
+    if (eventId) {
+      const nextRecent = [eventId, ...recentEventIds.filter((id) => id !== eventId)].slice(0, 8);
+      setRecentEventIds(nextRecent);
+      safeWriteStringList(CALENDAR_RECENT_STORAGE_KEY, nextRecent);
+    }
     const linkedType = String(event?.linkedType || "");
     const linkedId = String(event?.linkedId || "");
 
@@ -559,7 +696,7 @@ export default function AtlasCalendar(
 
     const events = dateKey
       ? sortAgenda(
-          expandedCalendarItems.filter(
+          visibleExpandedCalendarItems.filter(
             (event: any) =>
               calendarDateKey(event.date) === dateKey,
           ),
@@ -965,6 +1102,14 @@ export default function AtlasCalendar(
                         >
                           <button
                             type="button"
+                            onClick={() => togglePinnedEvent(event)}
+                            style={secondaryButtonStyle}
+                          >
+                            {pinnedEventIds.includes(String(event.id || "")) ? "Unpin" : "Pin"}
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => editEvent(event)}
                             style={secondaryButtonStyle}
                           >
@@ -1053,6 +1198,27 @@ export default function AtlasCalendar(
                   Back to Day
                 </button>
               </div>
+
+              {selectedWarnings.length ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 5,
+                    marginBottom: 12,
+                    padding: 11,
+                    border: `1px solid ${selectedConflicts.length ? colors.red : colors.gold}`,
+                    borderRadius: 12,
+                    background: selectedConflicts.length ? "#FFF4F4" : "#FFF9EA",
+                    color: colors.text,
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  {selectedWarnings.map((warning) => (
+                    <span key={warning}>• {warning}</span>
+                  ))}
+                </div>
+              ) : null}
 
               <div style={formGridStyle}>
                 <label
@@ -1470,7 +1636,13 @@ export default function AtlasCalendar(
               <div
                 style={{
                   ...buttonRowStyle,
+                  position: "sticky",
+                  bottom: isMobile ? -16 : -22,
+                  zIndex: 6,
                   marginTop: 12,
+                  padding: "12px 0 4px",
+                  background: "#FFFFFF",
+                  borderTop: `1px solid ${colors.line}`,
                 }}
               >
                 {showCalendarSave ? (
@@ -1550,8 +1722,9 @@ export default function AtlasCalendar(
             boxSizing: "border-box",
             overflow: "hidden",
             display: "grid",
-            gridTemplateRows:
-              "auto auto minmax(0, 1fr)",
+            gridTemplateRows: showUpcoming
+              ? "auto auto auto minmax(0, 1fr)"
+              : "auto auto minmax(0, 1fr)",
             gap: isMobile ? 2 : 8,
             background: "#FFFFFF",
             border: `1px solid ${colors.line}`,
@@ -1742,6 +1915,29 @@ export default function AtlasCalendar(
                 + Add Event
               </button>
 
+              <input
+                type="search"
+                value={calendarSearch}
+                onChange={(event) => setCalendarSearch(event.currentTarget.value)}
+                placeholder="Search calendar"
+                aria-label="Search calendar"
+                style={{
+                  ...inputStyle,
+                  width: isMobile ? 108 : 190,
+                  minWidth: 0,
+                  padding: isMobile ? "5px 7px" : "8px 10px",
+                  fontSize: isMobile ? 10 : 13,
+                }}
+              />
+
+              <button
+                type="button"
+                onClick={() => setShowUpcoming((current) => !current)}
+                style={showUpcoming ? activeControlStyle : normalControlStyle}
+              >
+                Upcoming
+              </button>
+
               <details
                 style={{
                   ...calendarFilterDropdownStyle,
@@ -1875,6 +2071,63 @@ export default function AtlasCalendar(
               </details>
             </div>
           </header>
+
+          {showUpcoming ? (
+            <section
+              style={{
+                display: "grid",
+                gap: 8,
+                maxHeight: isMobile ? 110 : 150,
+                overflowY: "auto",
+                padding: isMobile ? 7 : 10,
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: "#F8FAFC",
+              }}
+            >
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[
+                  ["This Month", calendarSummary.month],
+                  ["Recurring", calendarSummary.recurring],
+                  ["Work Orders", calendarSummary.work],
+                  ["Pinned", calendarSummary.pinned],
+                ].map(([label, value]) => (
+                  <span key={String(label)} style={{ ...mutedSmallStyle, fontWeight: 800 }}>
+                    {label}: {value}
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: "grid", gap: 5 }}>
+                {upcomingEvents.map((event: any) => (
+                  <button
+                    key={event.instanceId || event.id}
+                    type="button"
+                    onClick={() => openEvent(event)}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      border: 0,
+                      background: "transparent",
+                      padding: 0,
+                      color: colors.text,
+                      textAlign: "left",
+                      cursor: "pointer",
+                      fontSize: 12,
+                    }}
+                  >
+                    <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {pinnedEventIds.includes(String(event.id || "")) ? "📌 " : ""}{event.title || "Untitled event"}
+                    </strong>
+                    <span style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>
+                      {formatDate(event.date)}{event.allDay ? "" : event.time ? ` · ${event.time}` : ""}
+                    </span>
+                  </button>
+                ))}
+                {!upcomingEvents.length ? <span style={mutedSmallStyle}>No matching events in the next seven days.</span> : null}
+              </div>
+            </section>
+          ) : null}
 
           <div
             style={{
