@@ -13505,6 +13505,53 @@ export default function AtlasPage() {
     );
   }
 
+
+  async function updateTeamAssignment(
+    record: ServiceRecord,
+    nextStatus: ServiceStatus,
+    note?: string,
+  ) {
+    const existingNotes = String(record.notes || "").trim();
+    const timestamp = new Date().toLocaleString();
+    const updatedNotes = note
+      ? [existingNotes, `[${timestamp}] ${note}`].filter(Boolean).join("\n\n")
+      : existingNotes;
+
+    const updated = normalizeService({
+      ...record,
+      status: nextStatus,
+      notes: updatedNotes,
+      lastCompletedDate:
+        nextStatus === "Completed"
+          ? todayISO()
+          : record.lastCompletedDate,
+    });
+
+    const saved = await postAtlasRecord("work_orders", updated);
+    if (!saved) {
+      window.alert("Atlas could not save this assignment update.");
+      return;
+    }
+
+    setServiceRecords((current) =>
+      current.map((item) => (item.id === updated.id ? updated : item)),
+    );
+  }
+
+  async function requestTeamAssignmentHelp(record: ServiceRecord) {
+    const reason = window.prompt(
+      "What help or clarification is needed?",
+      "",
+    );
+    if (reason === null) return;
+    const cleanReason = reason.trim() || "Help or clarification requested.";
+    await updateTeamAssignment(
+      record,
+      "Waiting",
+      `TEAM HELP REQUEST: ${cleanReason}`,
+    );
+  }
+
   function renderDashboard() {
     const teamSectionStyle: React.CSSProperties = {
       width: "100%",
@@ -13571,6 +13618,37 @@ export default function AtlasPage() {
         /waiting|parts|owner|vendor|weather/i.test(String(record.status || "")),
       );
 
+      const teamChecklistItems = teamOpen.flatMap((record) =>
+        Array.isArray((record as AtlasServiceRecord).checklist)
+          ? (record as AtlasServiceRecord).checklist!.map((item) => ({
+              ...item,
+              workOrderId: record.id,
+              workOrderTitle: record.title,
+            }))
+          : [],
+      );
+      const completedChecklistCount = teamChecklistItems.filter(
+        (item) => item.completed,
+      ).length;
+      const checklistProgress = teamChecklistItems.length
+        ? Math.round(
+            (completedChecklistCount / teamChecklistItems.length) * 100,
+          )
+        : teamCompleted.length + teamOpen.length > 0
+          ? Math.round(
+              (teamCompleted.length /
+                Math.max(1, teamCompleted.length + teamOpen.length)) *
+                100,
+            )
+          : 0;
+      const completedToday = teamCompleted.filter(
+        (record) => record.lastCompletedDate === todayISO(),
+      );
+      const dayTotal = teamToday.length + completedToday.length;
+      const dayProgress = dayTotal
+        ? Math.round((completedToday.length / dayTotal) * 100)
+        : 0;
+
       return (
         <div style={{ display: "grid", gap: 14 }}>
           <section
@@ -13616,6 +13694,76 @@ export default function AtlasPage() {
                   </strong>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section style={teamSectionStyle}>
+            <SectionHeader
+              eyebrow="Today"
+              title="Daily Progress"
+              detail="A quick view of today's completed work and checklist progress."
+            />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(2,minmax(0,1fr))",
+                gap: 12,
+              }}
+            >
+              <div style={teamCardStyle}>
+                <div style={teamEyebrowStyle}>Today's Work</div>
+                <strong style={{ color: colors.navy, fontSize: 24 }}>
+                  {dayProgress}%
+                </strong>
+                <div
+                  style={{
+                    height: 9,
+                    background: colors.soft,
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    marginTop: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${dayProgress}%`,
+                      height: "100%",
+                      background: colors.gold,
+                    }}
+                  />
+                </div>
+                <div style={{ ...teamMutedSmallStyle, marginTop: 7 }}>
+                  {completedToday.length} completed · {teamToday.length} remaining today
+                </div>
+              </div>
+              <div style={teamCardStyle}>
+                <div style={teamEyebrowStyle}>Checklist Progress</div>
+                <strong style={{ color: colors.navy, fontSize: 24 }}>
+                  {checklistProgress}%
+                </strong>
+                <div
+                  style={{
+                    height: 9,
+                    background: colors.soft,
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    marginTop: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${checklistProgress}%`,
+                      height: "100%",
+                      background: colors.gold,
+                    }}
+                  />
+                </div>
+                <div style={{ ...teamMutedSmallStyle, marginTop: 7 }}>
+                  {completedChecklistCount} of {teamChecklistItems.length} checklist items complete
+                </div>
+              </div>
             </div>
           </section>
 
@@ -13698,6 +13846,58 @@ export default function AtlasPage() {
                         Open Assignment
                       </button>
                     </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 7,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {record.status !== "In Progress" ? (
+                        <button
+                          type="button"
+                          style={{ ...teamGoldButtonStyle, width: "auto" }}
+                          onClick={() =>
+                            void updateTeamAssignment(record, "In Progress")
+                          }
+                        >
+                          Start
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        style={{
+                          ...teamGoldButtonStyle,
+                          width: "auto",
+                          background: "#FFFFFF",
+                        }}
+                        onClick={() =>
+                          void updateTeamAssignment(record, "Waiting")
+                        }
+                      >
+                        Waiting
+                      </button>
+                      <button
+                        type="button"
+                        style={{
+                          ...teamGoldButtonStyle,
+                          width: "auto",
+                          background: "#FFFFFF",
+                        }}
+                        onClick={() => void requestTeamAssignmentHelp(record)}
+                      >
+                        Need Help
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...teamGoldButtonStyle, width: "auto" }}
+                        onClick={() =>
+                          void updateTeamAssignment(record, "Completed")
+                        }
+                      >
+                        Complete
+                      </button>
+                    </div>
                     {record.notes ? (
                       <div style={{ ...teamMutedSmallStyle, lineHeight: 1.5 }}>
                         {record.notes}
@@ -13708,6 +13908,93 @@ export default function AtlasPage() {
               ) : (
                 <div style={teamNoticeStyle}>{teamWorkspace.emptyMessage}</div>
               )}
+            </div>
+          </section>
+
+          {isAddisonUser ? (
+            <section style={teamSectionStyle}>
+              <SectionHeader
+                eyebrow="Addison Routine"
+                title="Daily Checklist"
+                detail="Checklist items attached to Addison's assigned work orders."
+              />
+              <div style={{ display: "grid", gap: 8 }}>
+                {teamChecklistItems.length ? (
+                  teamChecklistItems.map((item) => (
+                    <div
+                      key={`${item.workOrderId}-${item.id}`}
+                      style={{
+                        ...teamCardStyle,
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 7,
+                          display: "grid",
+                          placeItems: "center",
+                          flex: "0 0 auto",
+                          border: `1px solid ${item.completed ? colors.gold : colors.line}`,
+                          background: item.completed ? colors.gold : "#FFFFFF",
+                          color: colors.navy,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {item.completed ? "✓" : ""}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ color: colors.navy }}>
+                          {item.text}
+                        </strong>
+                        <div style={teamMutedSmallStyle}>
+                          {item.workOrderTitle}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={teamNoticeStyle}>
+                    Addison's checklist will appear when checklist items are added
+                    to his assigned work orders.
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : null}
+
+          <section style={teamSectionStyle}>
+            <SectionHeader
+              eyebrow="End of Day"
+              title="Today's Summary"
+              detail="A live summary of completed, remaining, overdue, and waiting assignments."
+            />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2,minmax(0,1fr))"
+                  : "repeat(4,minmax(0,1fr))",
+                gap: 8,
+              }}
+            >
+              {[
+                ["Completed Today", completedToday.length],
+                ["Still Due Today", teamToday.length],
+                ["Overdue", teamOverdue.length],
+                ["Waiting", teamWaiting.length],
+              ].map(([label, value]) => (
+                <div key={String(label)} style={teamCardStyle}>
+                  <div style={teamEyebrowStyle}>{label}</div>
+                  <strong style={{ color: colors.navy, fontSize: 22 }}>
+                    {value}
+                  </strong>
+                </div>
+              ))}
             </div>
           </section>
 
