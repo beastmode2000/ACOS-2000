@@ -16471,7 +16471,7 @@ export default function AtlasPage() {
               const assetOpenWork = serviceRecords.filter(
                 (record) => record.assetId === asset.id && record.status !== "Completed",
               );
-              const assetDocumentCount = intakeDocs.filter(
+              const linkedAssetDocuments.length = intakeDocs.filter(
                 (document) =>
                   document.linkedAssetId === asset.id ||
                   (document.targetType === "Asset" && document.targetId === asset.id),
@@ -16637,10 +16637,10 @@ export default function AtlasPage() {
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                           <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                            {assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}
+                            {openAssetWorkOrders.length} open work order{openAssetWorkOrders.length === 1 ? "" : "s"}
                           </span>
                           <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                            {assetDocumentCount} document{assetDocumentCount === 1 ? "" : "s"}
+                            {linkedAssetDocuments.length} document{linkedAssetDocuments.length === 1 ? "" : "s"}
                           </span>
                         </div>
                       </div>
@@ -16698,8 +16698,8 @@ export default function AtlasPage() {
                         ? formatDate(assetNextMaintenance.date)
                         : "Not scheduled"}
                     </span>
-                    <span>{assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}</span>
-                    <span>{assetDocumentCount} linked document{assetDocumentCount === 1 ? "" : "s"}</span>
+                    <span>{openAssetWorkOrders.length} open work order{openAssetWorkOrders.length === 1 ? "" : "s"}</span>
+                    <span>{linkedAssetDocuments.length} linked document{linkedAssetDocuments.length === 1 ? "" : "s"}</span>
                   </span>
                 </div>
               );
@@ -16848,11 +16848,11 @@ export default function AtlasPage() {
                     aria-label="Asset information section"
                   >
                     <option value="overview">Overview</option>
-                    <option value="work">Work Orders ({assetOpenWork.length})</option>
+                    <option value="work">Work Orders ({openAssetWorkOrders.length})</option>
                     <option value="history">Service History ({assetHistory.length})</option>
                     <option value="photos">Photos ({selectedAssetPhotos.length})</option>
-                    <option value="documents">Documents ({assetDocumentCount})</option>
-                    <option value="procedures">Procedures ({assetProcedureCount})</option>
+                    <option value="documents">Documents ({linkedAssetDocuments.length})</option>
+                    <option value="procedures">Procedures ({linkedAssetProcedures.length})</option>
                     <option value="notes">Notes</option>
                   </select>
                 ) : (
@@ -16868,11 +16868,11 @@ export default function AtlasPage() {
                   >
                     {[
                       ["overview", "Overview", null],
-                      ["work", "Work Orders", assetOpenWork.length],
+                      ["work", "Work Orders", openAssetWorkOrders.length],
                       ["history", "Service History", assetHistory.length],
                       ["photos", "Photos", selectedAssetPhotos.length],
-                      ["documents", "Documents", assetDocumentCount],
-                      ["procedures", "Procedures", assetProcedureCount],
+                      ["documents", "Documents", linkedAssetDocuments.length],
+                      ["procedures", "Procedures", linkedAssetProcedures.length],
                       ["notes", "Notes", null],
                     ].map(([key, label, count]) => {
                       const active = assetPanelSection === key;
@@ -17942,14 +17942,14 @@ export default function AtlasPage() {
                       Create Work Order
                     </button>
                   </div>
-                  {assetOpenWork.length ? (
+                  {openAssetWorkOrders.length ? (
                     <div style={{ display: "grid", gap: 8 }}>
-                      {assetOpenWork.map((item) => (
+                      {openAssetWorkOrders.map((item) => (
                         <button
                           key={item.id}
                           type="button"
                           onClick={() => {
-                            setSelectedWorkId(item.id);
+                            setSelectedServiceId(item.id);
                             setScreen("history");
                           }}
                           style={{
@@ -17980,8 +17980,8 @@ export default function AtlasPage() {
                     <strong>Procedures</strong>
                   </div>
                   <div style={assetEmptyCardStyle}>
-                    {assetProcedureCount
-                      ? `${assetProcedureCount} linked procedure${assetProcedureCount === 1 ? "" : "s"}.`
+                    {linkedAssetProcedures.length
+                      ? `${linkedAssetProcedures.length} linked procedure${linkedAssetProcedures.length === 1 ? "" : "s"}.`
                       : "No procedures linked."}
                   </div>
                   <button
