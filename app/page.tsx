@@ -17601,9 +17601,8 @@ export default function AtlasPage() {
               <div
                 style={{
                   ...assetMiddleGridStyle,
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "minmax(180px, 28%) minmax(0, 1fr)",
+                  gridTemplateColumns: "minmax(0, 1fr)",
+                  alignItems: "start",
                 }}
               >
                 <section style={assetCardStyle}>
@@ -17661,7 +17660,8 @@ export default function AtlasPage() {
                         flexWrap: "wrap",
                         justifyContent: "flex-end",
                         minWidth: 0,
-                        flex: "1 1 170px",
+                        flex: "1 1 220px",
+                        width: "100%",
                       }}
                     >
                       <button
@@ -28346,6 +28346,21 @@ export default function AtlasPage() {
           opacity: 0 !important;
           pointer-events: none !important;
         }
+
+        .atlas-asset-drawer section,
+        .atlas-asset-drawer section * {
+          box-sizing: border-box;
+        }
+        .atlas-asset-drawer section {
+          min-width: 0;
+          max-width: 100%;
+        }
+        .atlas-asset-drawer button,
+        .atlas-asset-drawer input,
+        .atlas-asset-drawer select,
+        .atlas-asset-drawer textarea {
+          max-width: 100%;
+        }
         .atlas-gold-hover-popover > strong {
           color: #F5D98B;
           font-size: 10px;
@@ -32170,13 +32185,16 @@ const assetHeroPhotoImageStyle: React.CSSProperties = {
 const assetCardStyle: React.CSSProperties = {
   minWidth: 0,
   minHeight: 0,
+  width: "100%",
+  boxSizing: "border-box",
   display: "grid",
   alignContent: "start",
-  gap: 4,
-  padding: 6,
+  gap: 8,
+  padding: 10,
   border: `1px solid ${colors.line}`,
-  borderRadius: 9,
+  borderRadius: 10,
   background: colors.panel,
+  overflow: "hidden",
 };
 
 const assetCardHeaderStyle: React.CSSProperties = {
@@ -32329,8 +32347,9 @@ const assetAddVendorSelectStyle: React.CSSProperties = {
 const assetMiddleGridStyle: React.CSSProperties = {
   minWidth: 0,
   minHeight: 0,
+  width: "100%",
   display: "grid",
-  gap: 5,
+  gap: 10,
 };
 
 const assetIconButtonStyle: React.CSSProperties = {
@@ -32366,8 +32385,10 @@ const assetNotesTextStyle: React.CSSProperties = {
   margin: 0,
   color: colors.text,
   fontSize: 11,
-  lineHeight: 1.35,
+  lineHeight: 1.45,
   whiteSpace: "pre-wrap",
+  wordBreak: "normal",
+  overflowWrap: "anywhere",
 };
 
 const assetPhotoHeaderActionsStyle: React.CSSProperties = {
@@ -32532,26 +32553,34 @@ const assetHistoryTitleStyle: React.CSSProperties = {
 
 const assetPanelFooterStyle: React.CSSProperties = {
   minWidth: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  paddingTop: 1,
+  width: "100%",
+  boxSizing: "border-box",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr)",
+  alignItems: "start",
+  gap: 10,
+  paddingTop: 8,
+  paddingBottom: 4,
+  borderTop: `1px solid ${colors.line}`,
 };
 
 const assetFileSummaryStyle: React.CSSProperties = {
   minWidth: 0,
+  width: "100%",
   display: "flex",
   alignItems: "center",
-  gap: 6,
+  gap: 7,
   flexWrap: "wrap",
   color: colors.navy,
   fontSize: 11,
 };
 
 const assetDeleteBottomButtonStyle: React.CSSProperties = {
-  minHeight: 31,
-  padding: "6px 10px",
+  minHeight: 34,
+  width: "fit-content",
+  maxWidth: "100%",
+  justifySelf: "end",
+  padding: "7px 12px",
   border: "1px solid #E5484D",
   borderRadius: 8,
   background: "#FFFFFF",
