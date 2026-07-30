@@ -6331,8 +6331,8 @@ export default function AtlasPage() {
       : isPatCrewUser
         ? {
             title: "Pat's Crew Landscaping",
-            centerTitle: "Landscaping Work Center",
-            detail: "Weekly weeding, landscaping priorities, assigned beds, and completion work.",
+            centerTitle: "Assigned Landscaping Work",
+            detail: "Weekly landscaping worksheet, assigned beds, visit progress, notes, severity, photos, and follow-up work.",
             emptyMessage: "No open landscaping work is currently assigned to Pat's Crew.",
             assignmentAliases: ["pat", "pat's crew", "pats crew", "landscape crew", "landscaping crew"],
           }
@@ -13552,6 +13552,77 @@ export default function AtlasPage() {
     );
   }
 
+  async function updateLandscapeAssignment(
+    record: ServiceRecord,
+    action: "Complete" | "Follow Up" | "Skip" | "Severity" | "Crew Note",
+  ) {
+    if (action === "Complete") {
+      await updateTeamAssignment(
+        record,
+        "Completed",
+        "LANDSCAPE VISIT: Area completed.",
+      );
+      return;
+    }
+
+    if (action === "Follow Up") {
+      const note = window.prompt(
+        "What follow-up is needed for this area?",
+        "",
+      );
+      if (note === null) return;
+      await updateTeamAssignment(
+        record,
+        "Waiting",
+        `LANDSCAPE FOLLOW-UP: ${note.trim() || "Follow-up required."}`,
+      );
+      return;
+    }
+
+    if (action === "Skip") {
+      const reason = window.prompt(
+        "Why is this area being skipped?",
+        "Weather, access, or not needed this visit",
+      );
+      if (reason === null) return;
+      await updateTeamAssignment(
+        record,
+        "Open",
+        `LANDSCAPE SKIPPED: ${reason.trim() || "Skipped this visit."}`,
+      );
+      return;
+    }
+
+    if (action === "Severity") {
+      const severity = window.prompt(
+        "Enter weed severity: Low, Medium, or High",
+        "Medium",
+      );
+      if (severity === null) return;
+      const normalizedSeverity = severity.trim().toLowerCase();
+      const accepted =
+        normalizedSeverity === "low"
+          ? "Low"
+          : normalizedSeverity === "high"
+            ? "High"
+            : "Medium";
+      await updateTeamAssignment(
+        record,
+        record.status,
+        `WEED SEVERITY: ${accepted}`,
+      );
+      return;
+    }
+
+    const note = window.prompt("Add a crew note for this area:", "");
+    if (note === null || !note.trim()) return;
+    await updateTeamAssignment(
+      record,
+      record.status,
+      `CREW NOTE: ${note.trim()}`,
+    );
+  }
+
   function renderDashboard() {
     const teamSectionStyle: React.CSSProperties = {
       width: "100%",
@@ -13647,6 +13718,42 @@ export default function AtlasPage() {
       const dayTotal = teamToday.length + completedToday.length;
       const dayProgress = dayTotal
         ? Math.round((completedToday.length / dayTotal) * 100)
+        : 0;
+
+      const landscapeCompletedThisVisit = teamCompleted.filter((record) =>
+        String(record.notes || "").includes("LANDSCAPE VISIT: Area completed."),
+      );
+      const landscapeFollowUp = staffVisibleServiceRecords.filter((record) =>
+        String(record.notes || "").includes("LANDSCAPE FOLLOW-UP:"),
+      );
+      const landscapeSkipped = staffVisibleServiceRecords.filter((record) =>
+        String(record.notes || "").includes("LANDSCAPE SKIPPED:"),
+      );
+      const landscapeWorksheetRecords = [...teamOpen, ...landscapeCompletedThisVisit]
+        .filter((record, index, records) =>
+          records.findIndex((candidate) => candidate.id === record.id) === index,
+        )
+        .sort((a, b) => {
+          const areaA = String(
+            (a as AtlasServiceRecord).responsibilityArea ||
+              (a as AtlasServiceRecord).locationId ||
+              a.title ||
+              "",
+          );
+          const areaB = String(
+            (b as AtlasServiceRecord).responsibilityArea ||
+              (b as AtlasServiceRecord).locationId ||
+              b.title ||
+              "",
+          );
+          return areaA.localeCompare(areaB);
+        });
+      const landscapeVisitTotal = landscapeWorksheetRecords.length;
+      const landscapeVisitCompleted = landscapeWorksheetRecords.filter(
+        (record) => record.status === "Completed",
+      ).length;
+      const landscapeVisitProgress = landscapeVisitTotal
+        ? Math.round((landscapeVisitCompleted / landscapeVisitTotal) * 100)
         : 0;
 
       return (
@@ -13910,6 +14017,269 @@ export default function AtlasPage() {
               )}
             </div>
           </section>
+
+          {isPatCrewUser ? (
+            <section style={teamSectionStyle}>
+              <SectionHeader
+                eyebrow="Pat's Crew"
+                title="Weekly Landscaping Worksheet"
+                detail="Work through each assigned area, record severity and notes, flag follow-up, and mark the area complete."
+              />
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "repeat(2,minmax(0,1fr))"
+                    : "repeat(4,minmax(0,1fr))",
+                  gap: 8,
+                  marginBottom: 12,
+                }}
+              >
+                {[
+                  ["Visit Progress", `${landscapeVisitProgress}%`],
+                  ["Areas Complete", landscapeVisitCompleted],
+                  ["Needs Follow-up", landscapeFollowUp.length],
+                  ["Skipped", landscapeSkipped.length],
+                ].map(([label, value]) => (
+                  <div key={String(label)} style={teamCardStyle}>
+                    <div style={teamEyebrowStyle}>{label}</div>
+                    <strong style={{ color: colors.navy, fontSize: 22 }}>
+                      {value}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  height: 10,
+                  background: colors.soft,
+                  borderRadius: 999,
+                  overflow: "hidden",
+                  marginBottom: 14,
+                }}
+              >
+                <div
+                  style={{
+                    width: `${landscapeVisitProgress}%`,
+                    height: "100%",
+                    background: colors.gold,
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                {landscapeWorksheetRecords.length ? (
+                  landscapeWorksheetRecords.map((record) => {
+                    const atlasRecord = record as AtlasServiceRecord;
+                    const areaName =
+                      atlasRecord.responsibilityArea ||
+                      locationName(atlasRecord.locationId || "") ||
+                      record.title;
+                    const completed = record.status === "Completed";
+                    const needsFollowUp = String(record.notes || "").includes(
+                      "LANDSCAPE FOLLOW-UP:",
+                    );
+                    const skipped = String(record.notes || "").includes(
+                      "LANDSCAPE SKIPPED:",
+                    );
+                    const severityMatch = String(record.notes || "").match(
+                      /WEED SEVERITY:\s*(Low|Medium|High)/i,
+                    );
+                    const severity = severityMatch?.[1] || "Not recorded";
+
+                    return (
+                      <div
+                        key={`landscape-${record.id}`}
+                        style={{
+                          ...teamCardStyle,
+                          display: "grid",
+                          gap: 10,
+                          borderColor: completed
+                            ? "#BDE7D2"
+                            : needsFollowUp
+                              ? "#FFD8A8"
+                              : colors.line,
+                          background: completed
+                            ? "#F4FBF7"
+                            : needsFollowUp
+                              ? "#FFF9F0"
+                              : "#FFFFFF",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "flex-start",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={teamEyebrowStyle}>
+                              {completed
+                                ? "Completed"
+                                : needsFollowUp
+                                  ? "Needs Follow-up"
+                                  : skipped
+                                    ? "Skipped"
+                                    : "Not Finished"}
+                            </div>
+                            <strong
+                              style={{
+                                color: colors.navy,
+                                fontSize: 17,
+                                display: "block",
+                              }}
+                            >
+                              {areaName}
+                            </strong>
+                            {areaName !== record.title ? (
+                              <div style={teamMutedSmallStyle}>{record.title}</div>
+                            ) : null}
+                          </div>
+                          <span style={badgeStyle(completed ? "Completed" : record.status)}>
+                            {completed ? "Finished" : record.status}
+                          </span>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: isMobile
+                              ? "1fr"
+                              : "repeat(3,minmax(0,1fr))",
+                            gap: 7,
+                          }}
+                        >
+                          <div style={teamNoticeStyle}>
+                            <div style={teamEyebrowStyle}>Weed Severity</div>
+                            <strong style={{ color: colors.navy }}>{severity}</strong>
+                          </div>
+                          <div style={teamNoticeStyle}>
+                            <div style={teamEyebrowStyle}>Due</div>
+                            <strong style={{ color: colors.navy }}>
+                              {record.date ? formatDate(record.date) : "This visit"}
+                            </strong>
+                          </div>
+                          <div style={teamNoticeStyle}>
+                            <div style={teamEyebrowStyle}>Priority</div>
+                            <strong style={{ color: colors.navy }}>
+                              {record.priority}
+                            </strong>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 7,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            style={{ ...teamGoldButtonStyle, width: "auto" }}
+                            onClick={() =>
+                              void updateLandscapeAssignment(record, "Complete")
+                            }
+                          >
+                            Complete Area
+                          </button>
+                          <button
+                            type="button"
+                            style={{
+                              ...teamGoldButtonStyle,
+                              width: "auto",
+                              background: "#FFFFFF",
+                            }}
+                            onClick={() =>
+                              void updateLandscapeAssignment(record, "Severity")
+                            }
+                          >
+                            Weed Severity
+                          </button>
+                          <button
+                            type="button"
+                            style={{
+                              ...teamGoldButtonStyle,
+                              width: "auto",
+                              background: "#FFFFFF",
+                            }}
+                            onClick={() =>
+                              void updateLandscapeAssignment(record, "Crew Note")
+                            }
+                          >
+                            Crew Note
+                          </button>
+                          <button
+                            type="button"
+                            style={{
+                              ...teamGoldButtonStyle,
+                              width: "auto",
+                              background: "#FFFFFF",
+                            }}
+                            onClick={() =>
+                              void updateLandscapeAssignment(record, "Follow Up")
+                            }
+                          >
+                            Needs Follow-up
+                          </button>
+                          <button
+                            type="button"
+                            style={{
+                              ...teamGoldButtonStyle,
+                              width: "auto",
+                              background: "#FFFFFF",
+                            }}
+                            onClick={() =>
+                              void updateLandscapeAssignment(record, "Skip")
+                            }
+                          >
+                            Skip This Visit
+                          </button>
+                          <button
+                            type="button"
+                            style={{
+                              ...teamGoldButtonStyle,
+                              width: "auto",
+                              background: "#FFFFFF",
+                            }}
+                            onClick={() => {
+                              setSelectedServiceId(record.id);
+                              setScreen("history");
+                            }}
+                          >
+                            Photos & Details
+                          </button>
+                        </div>
+
+                        {record.notes ? (
+                          <div
+                            style={{
+                              ...teamMutedSmallStyle,
+                              whiteSpace: "pre-wrap",
+                              borderTop: `1px solid ${colors.line}`,
+                              paddingTop: 9,
+                            }}
+                          >
+                            {record.notes}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={teamNoticeStyle}>
+                    Assigned landscaping areas will appear here as soon as work
+                    orders are assigned to Pat's Crew.
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : null}
 
           {isAddisonUser ? (
             <section style={teamSectionStyle}>
