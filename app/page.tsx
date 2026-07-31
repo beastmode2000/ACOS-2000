@@ -165,6 +165,10 @@ type PhotoTimelineProject = {
   locationId: string;
   vendorId: string;
   workOrderId: string;
+  workOrderIds?: string[];
+  vendorIds?: string[];
+  documentIds?: string[];
+  assigneeIds?: string[];
   notes: string;
   coverPhotoId: string;
   createdAt: string;
@@ -485,6 +489,9 @@ type AtlasServiceRecord = ServiceRecord & {
   responsibilityArea?: string;
   emoji?: string;
   assignedTo?: string;
+  assignedPersonIds?: string[];
+  assignedVendorIds?: string[];
+  projectId?: string;
   locationId?: string;
   checklist?: WorkChecklistItem[];
   notesHistory?: WorkNoteEntry[];
@@ -1398,6 +1405,17 @@ function normalizeService(
     responsibilityArea: String(record.responsibilityArea || ""),
     emoji: String(record.emoji || ""),
     assignedTo: String(record.assignedTo || ""),
+    assignedPersonIds: Array.isArray(record.assignedPersonIds)
+      ? Array.from(new Set(record.assignedPersonIds.map(String).filter(Boolean)))
+      : record.assignedTo
+        ? [String(record.assignedTo)]
+        : [],
+    assignedVendorIds: Array.isArray(record.assignedVendorIds)
+      ? Array.from(new Set(record.assignedVendorIds.map(String).filter(Boolean)))
+      : record.vendorId
+        ? [String(record.vendorId)]
+        : [],
+    projectId: String(record.projectId || ""),
     locationId: String(record.locationId || ""),
     checklist: Array.isArray(record.checklist)
       ? record.checklist.map((item) => ({
@@ -4060,6 +4078,7 @@ export default function AtlasPage() {
   const atlasSaveQueueRef = useRef<Map<string, Promise<boolean>>>(new Map());
   const atlasLastSaveRef = useRef<Map<string, string>>(new Map());
   const atlasSaveAttemptRef = useRef(0);
+  const atlasActionLocksRef = useRef<Set<string>>(new Set());
 
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
@@ -4172,6 +4191,7 @@ export default function AtlasPage() {
   const [photoTimelineOrganizationFilter, setPhotoTimelineOrganizationFilter] = useState<"all" | "unassigned" | "missing-tag" | "missing-date" | "before" | "during" | "after">("all");
   const [photoTimelineScrubber, setPhotoTimelineScrubber] = useState(100);
   const [selectedPhotoProjectId, setSelectedPhotoProjectId] = useState("");
+  const [projectDetailTab, setProjectDetailTab] = useState<"overview" | "photos" | "documents" | "work" | "people" | "timeline">("overview");
   const [photoLightboxIds, setPhotoLightboxIds] = useState<string[]>([]);
   const [photoLightboxIndex, setPhotoLightboxIndex] = useState(-1);
   const [photoLightboxZoom, setPhotoLightboxZoom] = useState(1);
@@ -4188,7 +4208,15 @@ export default function AtlasPage() {
     try {
       const stored = window.localStorage.getItem("atlas-photo-timeline-projects-v1");
       const parsed = stored ? JSON.parse(stored) : [];
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed)
+        ? parsed.map((project) => ({
+            ...project,
+            workOrderIds: Array.isArray(project.workOrderIds) ? project.workOrderIds.map(String) : project.workOrderId ? [String(project.workOrderId)] : [],
+            vendorIds: Array.isArray(project.vendorIds) ? project.vendorIds.map(String) : project.vendorId ? [String(project.vendorId)] : [],
+            documentIds: Array.isArray(project.documentIds) ? project.documentIds.map(String) : [],
+            assigneeIds: Array.isArray(project.assigneeIds) ? project.assigneeIds.map(String) : [],
+          }))
+        : [];
     } catch {
       return [];
     }
@@ -8060,6 +8088,22 @@ export default function AtlasPage() {
     }, 3200);
   }
 
+  async function runAtlasActionOnce<T>(
+    key: string,
+    action: () => Promise<T>,
+  ): Promise<T | undefined> {
+    if (atlasActionLocksRef.current.has(key)) {
+      showSaveToast("That action is already processing.", "warning");
+      return undefined;
+    }
+    atlasActionLocksRef.current.add(key);
+    try {
+      return await action();
+    } finally {
+      atlasActionLocksRef.current.delete(key);
+    }
+  }
+
   async function addAssetPhotoFiles(fileList: FileList | File[] | null) {
     if (!selectedAsset.id || !fileList?.length) return;
 
@@ -8410,12 +8454,23 @@ export default function AtlasPage() {
       !window.confirm(`Delete work order ${record.title || "this work order"}?`)
     )
       return;
+    const actionKey = `delete-work-order:${record.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This work order is already being deleted.", "warning");
+      return;
+    }
+    atlasActionLocksRef.current.add(actionKey);
     const deleted = await deleteAtlasRecord("work_orders", record.id);
-    if (!deleted) return;
+    atlasActionLocksRef.current.delete(actionKey);
+    if (!deleted) {
+      showSaveToast("Atlas could not delete that work order.", "warning");
+      return;
+    }
     setServiceRecords((current) =>
       current.filter((item) => item.id !== record.id),
     );
     setSelectedServiceId("");
+    showSaveToast(`${record.title || "Work order"} deleted.`);
   }
 
   async function deleteProcedureRecord(record: ProcedureRecord) {
@@ -9012,6 +9067,7 @@ export default function AtlasPage() {
         : `Saved ${createdLabel}. Document-vault sync needs attention.`;
       resetIntakeDraft();
       setIntakeMessage(success);
+      showSaveToast(success, syncedToVault ? "success" : "warning");
       setDocumentSearch("");
       setSelectedDocumentId(normalizedRecord.id);
       setScreen("documents");
@@ -9020,9 +9076,9 @@ export default function AtlasPage() {
         openSavedAsset(finalTargetId);
       }
     } catch (error) {
-      setIntakeMessage(
-        error instanceof Error ? error.message : "Fast Intake save failed.",
-      );
+      const message = error instanceof Error ? error.message : "Fast Intake save failed.";
+      setIntakeMessage(message);
+      showSaveToast(message, "warning");
     }
   }
 
@@ -9875,7 +9931,7 @@ export default function AtlasPage() {
       safePatch.date = String(patch.date || "").trim().slice(0, 10);
     }
 
-    ["assetId", "vendorId", "procedureId", "locationId", "assignedTo"].forEach(
+    ["assetId", "vendorId", "procedureId", "locationId", "assignedTo", "projectId"].forEach(
       (key) => {
         if (Object.prototype.hasOwnProperty.call(patch, key)) {
           (safePatch as Record<string, unknown>)[key] = String(
@@ -9884,6 +9940,20 @@ export default function AtlasPage() {
         }
       },
     );
+
+    ["assignedPersonIds", "assignedVendorIds"].forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(patch, key)) {
+        (safePatch as Record<string, unknown>)[key] = Array.from(
+          new Set(
+            (Array.isArray((patch as Record<string, unknown>)[key])
+              ? ((patch as Record<string, unknown>)[key] as unknown[])
+              : [])
+              .map(String)
+              .filter(Boolean),
+          ),
+        );
+      }
+    });
 
     markRecordDirty("work_order", recordId);
     setServiceRecords((current) =>
@@ -9898,6 +9968,13 @@ export default function AtlasPage() {
       setDatabaseStatus("Save failed: no work order is selected.");
       return;
     }
+
+    const actionKey = `save-work-order:${selectedService.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This work order is already saving.", "warning");
+      return;
+    }
+    atlasActionLocksRef.current.add(actionKey);
 
     const prepared = normalizeService({
       ...selectedService,
@@ -9914,6 +9991,9 @@ export default function AtlasPage() {
       procedureId: String(selectedService.procedureId || ""),
       locationId: String(selectedService.locationId || ""),
       assignedTo: String(selectedService.assignedTo || ""),
+      assignedPersonIds: Array.isArray(selectedService.assignedPersonIds) ? selectedService.assignedPersonIds : [],
+      assignedVendorIds: Array.isArray(selectedService.assignedVendorIds) ? selectedService.assignedVendorIds : [],
+      projectId: String(selectedService.projectId || ""),
       responsibilityArea: String(selectedService.responsibilityArea || ""),
       notes: String(selectedService.notes || ""),
       workCategory: String(
@@ -9934,6 +10014,8 @@ export default function AtlasPage() {
       window.alert(
         "Atlas could not save this work order to the shared database. Your changes are still visible. Do not refresh until the save succeeds.",
       );
+      atlasActionLocksRef.current.delete(actionKey);
+      showSaveToast("Work order changed locally, but shared saving did not finish.", "warning");
       return;
     }
 
@@ -9944,10 +10026,18 @@ export default function AtlasPage() {
     );
     clearRecordDirty("work_order", prepared.id);
     setDatabaseStatus(`Saved ${prepared.title || "work order"}.`);
+    showSaveToast(`${prepared.title || "Work order"} saved.`);
+    atlasActionLocksRef.current.delete(actionKey);
     setSelectedServiceId("");
   }
 
   async function completeWorkOrder(record: AtlasServiceRecord) {
+    const actionKey = `complete-work-order:${record.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This work order is already being completed.", "warning");
+      return;
+    }
+    atlasActionLocksRef.current.add(actionKey);
     const completedDate = todayISO();
     const history = Array.from(
       new Set([...(record.completionHistory || []), completedDate]),
@@ -9991,6 +10081,8 @@ export default function AtlasPage() {
       await postAtlasRecord("work_orders", completed);
       clearRecordDirty("work_order", completed.id);
       setDatabaseStatus(`Completed ${completed.title}.`);
+      showSaveToast(`${completed.title || "Work order"} completed.`);
+      atlasActionLocksRef.current.delete(actionKey);
       return;
     }
 
@@ -10032,6 +10124,12 @@ export default function AtlasPage() {
         ? `Completed ${advanced.title}. Its recurring schedule has ended.`
         : `Completed ${advanced.title}. Next due ${formatDate(nextDate)}.`,
     );
+    showSaveToast(
+      scheduleEnded
+        ? `${advanced.title || "Work order"} completed.`
+        : `${advanced.title || "Work order"} completed. Next due ${formatDate(nextDate)}.`,
+    );
+    atlasActionLocksRef.current.delete(actionKey);
   }
 
   async function reopenWorkOrder(record: AtlasServiceRecord) {
@@ -15595,6 +15693,35 @@ export default function AtlasPage() {
           .filter((item) => photoTimelineMeta[item.id]?.projectId === selectedPhotoProject.id)
           .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
       : [];
+    const selectedProjectWorkOrders = selectedPhotoProject
+      ? serviceRecords.filter((record) =>
+          record.projectId === selectedPhotoProject.id ||
+          selectedPhotoProject.workOrderId === record.id ||
+          (selectedPhotoProject.workOrderIds || []).includes(record.id)
+        )
+      : [];
+    const selectedProjectDocuments = selectedPhotoProject
+      ? intakeDocs.filter((record) =>
+          (selectedPhotoProject.documentIds || []).includes(record.id) ||
+          record.targetId === selectedPhotoProject.id ||
+          selectedProjectWorkOrders.some((workOrder) => record.targetId === workOrder.id)
+        )
+      : [];
+    const selectedProjectVendors = selectedPhotoProject
+      ? vendorRecords.filter((vendor) =>
+          vendor.id === selectedPhotoProject.vendorId ||
+          (selectedPhotoProject.vendorIds || []).includes(vendor.id) ||
+          selectedProjectWorkOrders.some((workOrder) =>
+            workOrder.vendorId === vendor.id || (workOrder.assignedVendorIds || []).includes(vendor.id)
+          )
+        )
+      : [];
+    const selectedProjectPeople = selectedPhotoProject
+      ? contactRecords.filter((contact) =>
+          (selectedPhotoProject.assigneeIds || []).includes(contact.id) ||
+          selectedProjectWorkOrders.some((workOrder) => (workOrder.assignedPersonIds || []).includes(contact.id))
+        )
+      : [];
 
     const updateSelectedPhotoMeta = (patch: Partial<PhotoTimelineMeta>) => {
       if (!selectedPhotoTimelineItem) return;
@@ -15770,6 +15897,10 @@ export default function AtlasPage() {
         locationId: selectedPhotoAsset?.locationId || selectedPhotoAsset?.locationIds?.[0] || "",
         vendorId: "",
         workOrderId: "",
+        workOrderIds: [],
+        vendorIds: [],
+        documentIds: [],
+        assigneeIds: [],
         notes: "",
         coverPhotoId: selectedPhotoTimelineItem?.id || "",
         createdAt: new Date().toISOString(),
@@ -15781,6 +15912,7 @@ export default function AtlasPage() {
       setPhotoTimelineProjects((current) => [project, ...current]);
       if (selectedPhotoTimelineItem) updateSelectedPhotoMeta({ projectId: id });
       setSelectedPhotoProjectId(id);
+      setProjectDetailTab("overview");
       setPhotoTimelineView("projects");
     };
 
@@ -15933,7 +16065,7 @@ export default function AtlasPage() {
                     const progress = Math.max(0, Math.min(100, Number(project.progress || 0)));
                     return (
                       <article key={project.id} style={{ border: "1px solid #D7E0EA", borderRadius: 18, overflow: "hidden", background: "white", boxShadow: "0 8px 26px rgba(15,23,42,.06)" }}>
-                        <button type="button" onClick={() => setSelectedPhotoProjectId(project.id)} style={{ display: "block", width: "100%", border: 0, padding: 0, background: "white", textAlign: "left", cursor: "pointer" }}>
+                        <button type="button" onClick={() => { setSelectedPhotoProjectId(project.id); setProjectDetailTab("overview"); }} style={{ display: "block", width: "100%", border: 0, padding: 0, background: "white", textAlign: "left", cursor: "pointer" }}>
                           <div style={{ aspectRatio: "16 / 9", background: "#E8EEF5", overflow: "hidden" }}>{cover ? <img src={cover.source} alt={project.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ height: "100%", display: "grid", placeItems: "center", color: colors.muted, fontWeight: 900 }}>No cover photo</div>}</div>
                           <div style={{ padding: 16 }}>
                             <div style={{ fontSize: 11, color: "#175CD3", fontWeight: 950, letterSpacing: ".08em", textTransform: "uppercase" }}>{project.category}</div>
@@ -15982,9 +16114,13 @@ export default function AtlasPage() {
                   <div style={{ position: "sticky", top: 0, zIndex: 3, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: 16, background: "white", borderBottom: "1px solid #DDE5ED" }}><div><small style={{ color: "#175CD3", fontWeight: 950 }}>PROJECT STORY</small><strong style={{ display: "block", color: colors.navy3, fontSize: 20 }}>{selectedPhotoProject.title}</strong></div><button type="button" onClick={() => setSelectedPhotoProjectId("")} style={{ ...secondaryButtonStyle, width: 40, padding: 8, fontSize: 20 }}>{closeSymbol}</button></div>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.5fr) 340px", gap: 0 }}>
                     <main style={{ padding: 18 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}><strong style={{ color: colors.navy3 }}>Project filmstrip</strong><button type="button" onClick={() => openComparison(selectedPhotoProject.id)} style={secondaryButtonStyle}>Compare Before / After</button></div>
-                      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 10, scrollBehavior: "smooth" }}>{selectedPhotoProjectItems.map((item) => <button key={item.id} type="button" onClick={() => openLightbox(item.id, selectedPhotoProjectItems.map((record) => record.id))} style={{ flex: "0 0 150px", border: `2px solid ${selectedPhotoProject.coverPhotoId === item.id ? "#C99A3D" : "#D7E0EA"}`, borderRadius: 12, padding: 0, overflow: "hidden", background: "white", cursor: "pointer" }}><img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /><span style={{ display: "block", padding: 8, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>{photoTimelineMeta[item.id]?.tag || "Unlabeled"}</span></button>)}</div>
-                      {!selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>Open a photo and assign it to this project story.</div> : null}
+                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 16 }}>{([['overview','Overview'],['photos','Photos'],['documents','Documents'],['work','Work Orders'],['people','People & Vendors'],['timeline','Timeline']] as const).map(([value,label]) => <button key={value} type="button" onClick={() => setProjectDetailTab(value)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 10px", background: projectDetailTab === value ? colors.navy : "white", color: projectDetailTab === value ? "white" : colors.navy }}>{label}</button>)}</div>
+                      {projectDetailTab === "overview" ? <div style={{ display: "grid", gap: 12 }}><div style={{ ...cardStyle, boxShadow: "none" }}><div style={eyebrowStyle}>Project summary</div><h3 style={{ margin: "5px 0", color: colors.navy3 }}>{selectedPhotoProject.title}</h3><p style={{ margin: 0, whiteSpace: "pre-wrap", color: colors.text }}>{selectedPhotoProject.notes || "Add the project scope, decisions, and current status in the information panel."}</p></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 9 }}>{[["Photos",selectedPhotoProjectItems.length],["Documents",selectedProjectDocuments.length],["Work orders",selectedProjectWorkOrders.length],["People / vendors",selectedProjectPeople.length + selectedProjectVendors.length]].map(([label,value]) => <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 12, background: "#F8FAFC" }}><small style={mutedSmallStyle}>{label}</small><strong style={{ display: "block", fontSize: 24, color: colors.navy3 }}>{value}</strong></div>)}</div></div> : null}
+                      {projectDetailTab === "photos" ? <><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}><strong style={{ color: colors.navy3 }}>Project photos</strong><button type="button" onClick={() => openComparison(selectedPhotoProject.id)} style={secondaryButtonStyle}>Compare Before / After</button></div><div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 10, scrollBehavior: "smooth" }}>{selectedPhotoProjectItems.map((item) => <button key={item.id} type="button" onClick={() => openLightbox(item.id, selectedPhotoProjectItems.map((record) => record.id))} style={{ flex: "0 0 150px", border: `2px solid ${selectedPhotoProject.coverPhotoId === item.id ? "#C99A3D" : "#D7E0EA"}`, borderRadius: 12, padding: 0, overflow: "hidden", background: "white", cursor: "pointer" }}><img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /><span style={{ display: "block", padding: 8, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>{photoTimelineMeta[item.id]?.tag || "Unlabeled"}</span></button>)}</div>{!selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>Open a photo and assign it to this project.</div> : null}</> : null}
+                      {projectDetailTab === "documents" ? <div style={{ display: "grid", gap: 9 }}>{selectedProjectDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); setSelectedPhotoProjectId(""); setScreen("documents"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"} · {document.files?.length || 0} file(s)</small></button>)}{!selectedProjectDocuments.length ? <div style={emptyStateStyle}>No documents are linked to this project yet.</div> : null}</div> : null}
+                      {projectDetailTab === "work" ? <div style={{ display: "grid", gap: 9 }}>{selectedProjectWorkOrders.map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setSelectedPhotoProjectId(""); setScreen("history"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.status} · {record.date ? formatDate(record.date) : "No due date"}</small></button>)}{!selectedProjectWorkOrders.length ? <div style={emptyStateStyle}>No work orders are linked to this project yet.</div> : null}<button type="button" onClick={() => { addWorkOrder({ projectId: selectedPhotoProject.id, vendorId: selectedPhotoProject.vendorId || "", assignedVendorIds: selectedPhotoProject.vendorIds || [], assetId: selectedPhotoProject.assetId || "", locationId: selectedPhotoProject.locationId || "", responsibilityArea: `Project · ${selectedPhotoProject.title}` }); setSelectedPhotoProjectId(""); }} style={goldButtonStyle}>+ Add Project Work Order</button></div> : null}
+                      {projectDetailTab === "people" ? <div style={{ display: "grid", gap: 14 }}><section><strong style={{ color: colors.navy3 }}>Vendors</strong><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectVendors.map((vendor) => <button key={vendor.id} type="button" onClick={() => { setSelectedVendorId(vendor.id); setSelectedPhotoProjectId(""); setScreen("vendors"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{vendor.name}</strong><small style={mutedSmallStyle}>{vendor.category || "Vendor"}</small></button>)}{!selectedProjectVendors.length ? <div style={emptyStateStyle}>No vendors assigned.</div> : null}</div></section><section><strong style={{ color: colors.navy3 }}>People</strong><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectPeople.map((contact) => <div key={contact.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10 }}><strong>{contact.name}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{contact.role || contact.organization || "Contact"}</small></div>)}{!selectedProjectPeople.length ? <div style={emptyStateStyle}>No people assigned.</div> : null}</div></section></div> : null}
+                      {projectDetailTab === "timeline" ? <div style={{ display: "grid", gap: 10 }}>{selectedPhotoProjectItems.map((item) => { const meta = photoTimelineMeta[item.id] || { tag: "Unlabeled", notes: "" }; return <button key={item.id} type="button" onClick={() => openLightbox(item.id, selectedPhotoProjectItems.map((record) => record.id))} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{meta.milestoneTitle || meta.notes || item.name}</strong><small style={mutedSmallStyle}>{meta.milestoneDate || meta.dateTaken ? formatDate(String(meta.milestoneDate || meta.dateTaken)) : item.createdAt ? formatDate(String(item.createdAt).slice(0,10)) : "No date"} · {meta.milestoneType || meta.tag}</small></button>})}{!selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>No project timeline entries yet.</div> : null}</div> : null}
                     </main>
                     <aside style={{ padding: 18, borderLeft: isMobile ? 0 : "1px solid #DDE5ED", borderTop: isMobile ? "1px solid #DDE5ED" : 0, display: "grid", gap: 12, alignContent: "start" }}>
                       <Field label="Project title" value={selectedPhotoProject.title} onChange={(value) => updateSelectedPhotoProject({ title: value })} />
@@ -15993,11 +16129,13 @@ export default function AtlasPage() {
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Start date" type="date" value={selectedPhotoProject.startDate || ""} onChange={(value) => updateSelectedPhotoProject({ startDate: value })} /><Field label="Completed date" type="date" value={selectedPhotoProject.completedAt || ""} onChange={(value) => updateSelectedPhotoProject({ completedAt: value })} /></div>
                       <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked asset<select value={selectedPhotoProject.assetId || ""} onChange={(event) => updateSelectedPhotoProject({ assetId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked location<select value={selectedPhotoProject.locationId || ""} onChange={(event) => updateSelectedPhotoProject({ locationId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Primary vendor<select value={selectedPhotoProject.vendorId || ""} onChange={(event) => updateSelectedPhotoProject({ vendorId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
-                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Primary work order<select value={selectedPhotoProject.workOrderId || ""} onChange={(event) => updateSelectedPhotoProject({ workOrderId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{serviceRecords.map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Assigned vendors<select multiple value={selectedPhotoProject.vendorIds || (selectedPhotoProject.vendorId ? [selectedPhotoProject.vendorId] : [])} onChange={(event) => { const ids = Array.from(event.currentTarget.selectedOptions).map((option) => option.value); updateSelectedPhotoProject({ vendorIds: ids, vendorId: ids[0] || "" }); }} style={{ width: "100%", minHeight: 92, border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked work orders<select multiple value={selectedPhotoProject.workOrderIds || (selectedPhotoProject.workOrderId ? [selectedPhotoProject.workOrderId] : [])} onChange={(event) => { const ids = Array.from(event.currentTarget.selectedOptions).map((option) => option.value); updateSelectedPhotoProject({ workOrderIds: ids, workOrderId: ids[0] || "" }); setServiceRecords((current) => current.map((record) => ids.includes(record.id) ? normalizeService({ ...record, projectId: selectedPhotoProject.id }) : record)); }} style={{ width: "100%", minHeight: 92, border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}>{serviceRecords.map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Assigned people<select multiple value={selectedPhotoProject.assigneeIds || []} onChange={(event) => updateSelectedPhotoProject({ assigneeIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value) })} style={{ width: "100%", minHeight: 92, border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}>{contactRecords.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}{contact.organization ? ` · ${contact.organization}` : ""}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked documents<select multiple value={selectedPhotoProject.documentIds || []} onChange={(event) => updateSelectedPhotoProject({ documentIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value) })} style={{ width: "100%", minHeight: 92, border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}>{intakeDocs.map((document) => <option key={document.id} value={document.id}>{document.title}</option>)}</select></label>
                       <label style={{ fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Project progress: {Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))}%<input type="range" min="0" max="100" value={Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))} onChange={(event) => updateSelectedPhotoProject({ progress: Number(event.target.value) })} style={{ width: "100%", accentColor: "#175CD3", marginTop: 8 }} /></label>
                       <textarea value={selectedPhotoProject.notes} onChange={(event) => updateSelectedPhotoProject({ notes: event.target.value })} placeholder="Project summary, scope, milestones, materials, or key decisions..." style={{ width: "100%", minHeight: 100, border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, font: "inherit" }} />
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button type="button" onClick={() => { updateSelectedPhotoProject({ archived: !selectedPhotoProject.archived }); if (!selectedPhotoProject.archived) setSelectedPhotoProjectId(""); }} style={secondaryButtonStyle}>{selectedPhotoProject.archived ? "Restore project" : "Archive project"}</button><button type="button" onClick={() => { if (!window.confirm(`Delete project “${selectedPhotoProject.title}”? Photos will remain in Atlas but will become unassigned.`)) return; setPhotoTimelineProjects((current) => current.filter((project) => project.id !== selectedPhotoProject.id)); setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === selectedPhotoProject.id ? { ...meta, projectId: undefined } : meta]))); setSelectedPhotoProjectId(""); }} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete project</button></div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button type="button" onClick={() => { updateSelectedPhotoProject({ archived: !selectedPhotoProject.archived }); if (!selectedPhotoProject.archived) setSelectedPhotoProjectId(""); }} style={secondaryButtonStyle}>{selectedPhotoProject.archived ? "Restore project" : "Archive project"}</button><button type="button" onClick={() => { if (!window.confirm(`Delete project “${selectedPhotoProject.title}”? Photos will remain in Atlas but will become unassigned.`)) return; setPhotoTimelineProjects((current) => current.filter((project) => project.id !== selectedPhotoProject.id)); setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === selectedPhotoProject.id ? { ...meta, projectId: undefined } : meta]))); setSelectedPhotoProjectId(""); showSaveToast(`${selectedPhotoProject.title || "Project"} deleted.`); }} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete project</button></div>
                     </aside>
                   </div>
                 </div>
@@ -22772,6 +22910,11 @@ export default function AtlasPage() {
               <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Due date</span><input type="date" value={selectedService.date || ""} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
               <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated time</span><select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: (event.currentTarget.value || undefined) as WorkEffort | undefined })} style={inputStyle}><option value="">No estimate</option>{(["5 minutes", "15 minutes", "30 minutes", "1 hour", "Half Day", "Full Day", "Multi-Day"] as WorkEffort[]).map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label>
               {selectedService.responsibilityArea ? <div style={{ minWidth: 0 }}><span style={fieldLabelStyle}>Created from</span><div style={{ marginTop: 5, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", color: colors.navy, fontSize: 12, fontWeight: 850 }}>{selectedService.responsibilityArea}</div></div> : <div />}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
+              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned people</span><select multiple value={selectedService.assignedPersonIds || []} onChange={(event) => updateWorkOrder({ assignedPersonIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value) })} style={{ ...inputStyle, minHeight: 96 }}>{contactRecords.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}{contact.organization ? ` · ${contact.organization}` : ""}</option>)}</select><small style={mutedSmallStyle}>Hold Ctrl or Command to select more than one.</small></label>
+              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned vendors</span><select multiple value={selectedService.assignedVendorIds || []} onChange={(event) => updateWorkOrder({ assignedVendorIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value), vendorId: Array.from(event.currentTarget.selectedOptions)[0]?.value || "" })} style={{ ...inputStyle, minHeight: 96 }}>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select><small style={mutedSmallStyle}>Every selected vendor remains attached.</small></label>
+              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Linked project</span><select value={selectedService.projectId || ""} onChange={(event) => updateWorkOrder({ projectId: event.currentTarget.value })} style={inputStyle}><option value="">No project</option>{photoTimelineProjects.filter((project) => !project.archived || project.id === selectedService.projectId).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
             </div>
           </div>
         ) : null}
