@@ -23789,7 +23789,24 @@ export default function AtlasPage() {
           <div style={{ marginBottom: 12, padding: 14, border: `2px solid ${colors.gold}`, borderRadius: 12, background: "#FFFBEB" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
               <div><div style={eyebrowStyle}>Schedule & estimate</div><strong style={{ color: colors.navy }}>Edit when this work is due and how long it should take</strong></div>
-              {(selectedService.status === "Completed" || (selectedService.serviceHistory || []).length > 0) ? <button type="button" onClick={() => void reopenWorkOrder(selectedService as AtlasServiceRecord)} style={{ ...secondaryButtonStyle, width: "auto" }}>Undo Done / Reopen</button> : null}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {(selectedService.status === "Completed" || (selectedService.serviceHistory || []).length > 0) ? (
+                  <button
+                    type="button"
+                    onClick={() => void reopenWorkOrder(selectedService as AtlasServiceRecord)}
+                    style={{ ...secondaryButtonStyle, width: "auto" }}
+                  >
+                    Undo Done / Reopen
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void deleteWorkOrderRecord(selectedService)}
+                  style={{ ...dangerButtonStyle, width: "auto" }}
+                >
+                  Delete Work Order
+                </button>
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(170px,0.7fr) minmax(190px,0.8fr) minmax(220px,1.5fr)", gap: 10, alignItems: "end" }}>
               <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Due date</span><input type="date" value={selectedService.date || ""} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
