@@ -16996,7 +16996,7 @@ export default function AtlasPage() {
             { icon: "✓", label: "Healthy Areas", value: healthyAreas, note: "No open work" },
           ].map((item) => (
             <div
-              key={item.id === "planner" ? "Tasks" : item.label}
+              key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
               style={{
                 border: `1px solid ${colors.line}`,
                 borderRadius: 14,
@@ -17013,7 +17013,7 @@ export default function AtlasPage() {
                   gap: 8,
                 }}
               >
-                <div style={{ ...eyebrowStyle, fontSize: 10 }}>{item.id === "planner" ? "Tasks" : item.label}</div>
+                <div style={{ ...eyebrowStyle, fontSize: 10 }}>{((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}</div>
                 <span
                   aria-hidden="true"
                   style={{
@@ -19993,7 +19993,7 @@ export default function AtlasPage() {
                 },
               ].map((item) => (
                 <div
-                  key={item.id === "planner" ? "Tasks" : item.label}
+                  key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
                   style={{
                     border: `1px solid ${colors.line}`,
                     borderRadius: 13,
@@ -20014,7 +20014,7 @@ export default function AtlasPage() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {item.id === "planner" ? "Tasks" : item.label}
+                    {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
                   </span>
                   <strong
                     style={{
@@ -21186,7 +21186,7 @@ export default function AtlasPage() {
                   },
                 ].map((item) => (
                   <div
-                    key={item.id === "planner" ? "Tasks" : item.label}
+                    key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
                     style={{
                       border: `1px solid ${colors.line}`,
                       borderRadius: 10,
@@ -21195,7 +21195,7 @@ export default function AtlasPage() {
                       minWidth: 0,
                     }}
                   >
-                    <span style={assetInfoLabelStyle}>{item.id === "planner" ? "Tasks" : item.label}</span>
+                    <span style={assetInfoLabelStyle}>{((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}</span>
                     <strong
                       style={{
                         display: "block",
@@ -21412,7 +21412,7 @@ export default function AtlasPage() {
                     )
                     .map((item) => (
                     <button
-                      key={item.id === "planner" ? "Tasks" : item.label}
+                      key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
                       type="button"
                       className="atlas-gold-hover-card"
                       onClick={item.action}
@@ -21427,7 +21427,7 @@ export default function AtlasPage() {
                       }}
                     >
                       <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
-                      <span style={assetInfoLabelStyle}>{item.id === "planner" ? "Tasks" : item.label}</span>
+                      <span style={assetInfoLabelStyle}>{((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}</span>
                       <strong
                         style={{
                           display: "block",
@@ -25824,7 +25824,7 @@ export default function AtlasPage() {
                   },
                 ].map((item) => (
                   <div
-                    key={item.id === "planner" ? "Tasks" : item.label}
+                    key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
                     style={{
                       minWidth: 0,
                       border: `1px solid ${colors.line}`,
@@ -25875,7 +25875,7 @@ export default function AtlasPage() {
                         fontWeight: 900,
                       }}
                     >
-                      {item.id === "planner" ? "Tasks" : item.label}
+                      {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
                     </div>
                     <div
                       style={{
@@ -32695,7 +32695,7 @@ export default function AtlasPage() {
               },
             ].map((item) => (
               <div
-                key={item.id === "planner" ? "Tasks" : item.label}
+                key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
                 style={{
                   padding: "14px 16px",
                   border: `1px solid ${colors.line}`,
@@ -32704,7 +32704,7 @@ export default function AtlasPage() {
                 }}
               >
                 <div style={{ ...eyebrowStyle, marginBottom: 5 }}>
-                  {item.id === "planner" ? "Tasks" : item.label}
+                  {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
                 </div>
                 <strong style={{ fontSize: 20, color: colors.navy }}>
                   {item.value}
@@ -34896,7 +34896,7 @@ export default function AtlasPage() {
                     )
                     .map((item) => (
                       <option key={item.id} value={item.id}>
-                        {item.id === "planner" ? "Tasks" : item.label}
+                        {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
                       </option>
                     ))}
                 </optgroup>
@@ -35771,7 +35771,7 @@ export default function AtlasPage() {
                 borderColor: screen === item.id ? colors.gold : "transparent",
               }}
             >
-              {item.id === "planner" ? "Tasks" : item.label}
+              {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
             </button>
           ))}
         </nav>
