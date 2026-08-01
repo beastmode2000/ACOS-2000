@@ -214,6 +214,37 @@ type AtlasTaskMeta = {
   notes?: string;
 };
 
+type AtlasBacklogItem = {
+  id: string;
+  title: string;
+  category: string;
+  notes: string;
+  createdAt: string;
+};
+
+type AtlasVehicleCare = {
+  id: string;
+  name: string;
+  onsite: boolean;
+  lastCleaned: string;
+  priority: "Normal" | "High" | "Skip";
+  notes: string;
+};
+
+type AtlasSeasonalItem = {
+  id: string;
+  title: string;
+  season: WorkSeason;
+  windowStart: string;
+  targetDate: string;
+  deadline: string;
+  frequency: "Yearly" | "Seasonal" | "One-time";
+  assignedTo: "Nick" | "Addison" | "Vendor" | "Unassigned";
+  status: "Planned" | "Needs scheduling" | "Scheduled" | "Completed";
+  notes: string;
+  lastCompletedAt?: string;
+};
+
 type PropertyProfile = {
   id: string;
   name: string;
@@ -4932,9 +4963,18 @@ export default function AtlasPage() {
       return {};
     }
   });
-  const [tasksView, setTasksView] = useState<"tasks" | "planner">("tasks");
+  const [tasksView, setTasksView] = useState<"tasks" | "backlog" | "vehicles" | "seasonal" | "planner">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [backlogItems, setBacklogItems] = useState<AtlasBacklogItem[]>(() => readStoredArray<AtlasBacklogItem>(["atlas-backlog-v1"], []));
+  const [newBacklogTitle, setNewBacklogTitle] = useState("");
+  const [vehicleCare, setVehicleCare] = useState<AtlasVehicleCare[]>(() => readStoredArray<AtlasVehicleCare>(["atlas-vehicle-care-v1"], [
+    "Mercedes", "Rivian", "Porsche", "Lucid", "Ford", "Kia", "Honda", "Subaru"
+  ].map((name) => ({ id: slugify(`vehicle-${name}`), name, onsite: true, lastCleaned: "", priority: "Normal" as const, notes: "" }))));
+  const [seasonalItems, setSeasonalItems] = useState<AtlasSeasonalItem[]>(() => readStoredArray<AtlasSeasonalItem>(["atlas-seasonal-work-v1"], [
+    { id: "annual-appliance-service", title: "Annual appliance service", season: "Fall", windowStart: `${new Date().getFullYear()}-10-01`, targetDate: `${new Date().getFullYear()}-11-15`, deadline: `${new Date().getFullYear()}-12-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Complete during the colder months and before year end." },
+    { id: "winter-tires", title: "Install winter tires", season: "Fall", windowStart: `${new Date().getFullYear()}-10-15`, targetDate: `${new Date().getFullYear()}-11-01`, deadline: `${new Date().getFullYear()}-11-30`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Activate only for vehicles onsite and needing winter tires." }
+  ]));
   const [workPlanTargetHours, setWorkPlanTargetHours] = useState(7);
   const [workPlanSaving, setWorkPlanSaving] = useState(false);
   const [workPlanMessage, setWorkPlanMessage] = useState(
@@ -4953,6 +4993,10 @@ export default function AtlasPage() {
       console.warn("Atlas could not save task details.", error);
     }
   }, [taskMeta]);
+
+  useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
+  useEffect(() => { saveStoredArray("atlas-vehicle-care-v1", vehicleCare); }, [vehicleCare]);
+  useEffect(() => { saveStoredArray("atlas-seasonal-work-v1", seasonalItems); }, [seasonalItems]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
@@ -13479,6 +13523,72 @@ export default function AtlasPage() {
     showSaveToast("Task deleted.");
   }
 
+  function addBacklogItem() {
+    const title = newBacklogTitle.trim();
+    if (!title) return;
+    setBacklogItems((current) => [{ id: uid("backlog"), title, category: inferTaskCategory(title), notes: "", createdAt: new Date().toISOString() }, ...current]);
+    setNewBacklogTitle("");
+    showSaveToast("Added to Backlog.");
+  }
+
+  function backlogToTask(item: AtlasBacklogItem) {
+    const task: WorkPlanTask = { id: uid("plan-task"), title: item.title, minutes: 60, priority: "Medium", category: item.category || "General", locationId: "general", preferredDay: "Auto", locked: false, recurring: false, fixedTime: "", notes: item.notes || "" };
+    setWorkPlanTasks((current) => [task, ...current]);
+    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), notes: item.notes || "" } }));
+    setBacklogItems((current) => current.filter((entry) => entry.id !== item.id));
+    setSelectedTaskId(task.id);
+    setTasksView("tasks");
+    showSaveToast("Backlog item moved to Tasks.");
+  }
+
+  function daysSince(dateValue: string) {
+    if (!dateValue) return 9999;
+    const date = new Date(`${dateValue}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return 9999;
+    return Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
+  }
+
+  function vehicleDueScore(vehicle: AtlasVehicleCare) {
+    if (!vehicle.onsite || vehicle.priority === "Skip") return -1;
+    return daysSince(vehicle.lastCleaned) + (vehicle.priority === "High" ? 30 : 0);
+  }
+
+  function createVehicleCleaningTask(vehicle: AtlasVehicleCare) {
+    const task: WorkPlanTask = { id: uid("plan-task"), title: `Clean ${vehicle.name}`, minutes: 60, priority: vehicle.priority === "High" ? "High" : "Medium", category: "Cleanup / Prep", locationId: "general", preferredDay: "Thursday", locked: false, recurring: false, fixedTime: "", notes: "Created from Vehicle Care Rotation." };
+    setWorkPlanTasks((current) => [task, ...current]);
+    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: todayISO(), assignee: "Nick", createdAt: new Date().toISOString() } }));
+    setSelectedTaskId(task.id);
+    setTasksView("tasks");
+    showSaveToast(`${vehicle.name} cleaning added to Tasks.`);
+  }
+
+  function createSeasonalTask(item: AtlasSeasonalItem) {
+    const task: WorkPlanTask = { id: uid("plan-task"), title: item.title, minutes: 60, priority: "Medium", category: "Maintenance", locationId: "general", preferredDay: "Auto", locked: false, recurring: item.frequency !== "One-time", fixedTime: "", notes: item.notes };
+    setWorkPlanTasks((current) => [task, ...current]);
+    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: item.targetDate || item.deadline, assignee: item.assignedTo === "Addison" ? "Addison" : item.assignedTo === "Nick" ? "Nick" : "Unassigned", createdAt: new Date().toISOString(), notes: item.notes } }));
+    setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "Scheduled" } : entry));
+    setSelectedTaskId(task.id);
+    setTasksView("tasks");
+    showSaveToast("Seasonal work added to Tasks.");
+  }
+
+  function renderBacklog() {
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}><input value={newBacklogTitle} onChange={(event) => setNewBacklogTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addBacklogItem(); }} placeholder="Add an idea or someday item…" style={inputStyle}/><button type="button" onClick={addBacklogItem} style={goldButtonStyle}>Add to Backlog</button></div>
+      <div style={{ display: "grid", gap: 8 }}>{backlogItems.map((item) => <div key={item.id} style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}><div><strong>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{item.category} · Not scheduled · Cannot become overdue</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => backlogToTask(item)} style={goldButtonStyle}>Make Task</button><button type="button" onClick={() => setBacklogItems((current) => current.filter((entry) => entry.id !== item.id))} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button></div></div>)}{!backlogItems.length ? <div style={noticeStyle}>The Backlog is empty. Use it for ideas that should not have a due date yet.</div> : null}</div>
+    </div>;
+  }
+
+  function renderVehicleCare() {
+    const sorted = [...vehicleCare].sort((a,b) => vehicleDueScore(b) - vehicleDueScore(a));
+    return <div style={{ display: "grid", gap: 12 }}><div style={noticeStyle}>Mark which vehicles are onsite. Atlas prioritizes the onsite vehicle that has gone longest without cleaning instead of creating eight overdue weekly tasks.</div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>{sorted.map((vehicle) => <div key={vehicle.id} style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{vehicle.name}</strong><span style={badgeStyle(vehicle.onsite ? "Online" : "Offline")}>{vehicle.onsite ? "Onsite" : "Away"}</span></div><small style={{ ...mutedSmallStyle, display: "block", margin: "6px 0 10px" }}>{vehicle.lastCleaned ? `Last cleaned ${formatDate(vehicle.lastCleaned)} · ${daysSince(vehicle.lastCleaned)} days ago` : "No cleaning date recorded"}</small><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><label style={fieldLabelStyle}>Onsite<select value={vehicle.onsite ? "Yes" : "No"} onChange={(e) => setVehicleCare((current) => current.map((item) => item.id === vehicle.id ? { ...item, onsite: e.currentTarget.value === "Yes" } : item))} style={inputStyle}><option>Yes</option><option>No</option></select></label><label style={fieldLabelStyle}>Last cleaned<input type="date" value={vehicle.lastCleaned} onChange={(e) => setVehicleCare((current) => current.map((item) => item.id === vehicle.id ? { ...item, lastCleaned: e.currentTarget.value } : item))} style={inputStyle}/></label></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><button type="button" disabled={!vehicle.onsite} onClick={() => createVehicleCleaningTask(vehicle)} style={goldButtonStyle}>Add Cleaning Task</button><button type="button" onClick={() => setVehicleCare((current) => current.map((item) => item.id === vehicle.id ? { ...item, lastCleaned: todayISO() } : item))} style={secondaryButtonStyle}>Mark Cleaned</button></div></div>)}</div></div>;
+  }
+
+  function renderSeasonalWork() {
+    const today = todayISO();
+    return <div style={{ display: "grid", gap: 10 }}><div style={noticeStyle}>Seasonal and yearly work uses a scheduling window, target date, and deadline. It appears before it becomes urgent without forcing one rigid day.</div>{seasonalItems.map((item) => { const inWindow = today >= item.windowStart && today <= item.deadline && item.status !== "Completed"; return <div key={item.id} style={{ ...cardStyle, borderColor: inWindow ? "#D7B45A" : colors.line }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><div><strong>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{item.frequency} · {item.season} · Window {formatDate(item.windowStart)}–{formatDate(item.deadline)}</small></div><span style={badgeStyle(item.status === "Completed" ? "Completed" : inWindow ? "Open" : "Scheduled")}>{inWindow && item.status === "Planned" ? "Needs scheduling" : item.status}</span></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Field label="Window opens" type="date" value={item.windowStart} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, windowStart: value } : entry))}/><Field label="Target" type="date" value={item.targetDate} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, targetDate: value } : entry))}/><Field label="Deadline" type="date" value={item.deadline} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, deadline: value } : entry))}/></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><button type="button" onClick={() => createSeasonalTask(item)} style={goldButtonStyle}>Add to Tasks</button><button type="button" onClick={() => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "Completed", lastCompletedAt: new Date().toISOString() } : entry))} style={secondaryButtonStyle}>Mark Completed</button></div></div>; })}</div>;
+  }
+
   function renderWorkPlanner() {
     const visibleTasks = workPlanTasks
       .filter((task) => {
@@ -13506,11 +13616,14 @@ export default function AtlasPage() {
         {!isAddisonUser ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setTasksView("tasks")} style={tasksView === "tasks" ? goldButtonStyle : secondaryButtonStyle}>Tasks</button>
+            <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog</button>
+            <button type="button" onClick={() => setTasksView("vehicles")} style={tasksView === "vehicles" ? goldButtonStyle : secondaryButtonStyle}>Vehicle Rotation</button>
+            <button type="button" onClick={() => setTasksView("seasonal")} style={tasksView === "seasonal" ? goldButtonStyle : secondaryButtonStyle}>Seasonal</button>
             <button type="button" onClick={() => setTasksView("planner")} style={tasksView === "planner" ? goldButtonStyle : secondaryButtonStyle}>Plan Week</button>
           </div>
         ) : null}
 
-        {tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : (
+        {tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : (
           <>
             {!isAddisonUser ? (
               <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
@@ -15504,7 +15617,9 @@ export default function AtlasPage() {
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
             {dashboardUpcomingTasks.slice(0, 6).map((task) => <button key={`upcoming-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>Task · {formatDate(taskDetails(task.id).dueDate)} · {minutesLabel(task.minutes)}</small></span><span style={badgeStyle(task.priority)}>{task.priority}</span></button>)}
             {upcomingWork.map((record) => <button key={`upcoming-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{formatDate(record.date)}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
-            {!upcomingWork.length && !dashboardUpcomingTasks.length ? <div style={noticeStyle}>Nothing is scheduled in the next 7 days.</div> : null}
+            {seasonalItems.filter((item) => item.status !== "Completed" && todayISO() >= item.windowStart && todayISO() <= item.deadline).slice(0, 3).map((item) => <button key={`seasonal-${item.id}`} type="button" onClick={() => { setTasksView("seasonal"); setScreen("planner"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>Seasonal · schedule by {formatDate(item.deadline)}</small></span><span style={badgeStyle("Open")}>Needs scheduling</span></button>)}
+            {vehicleCare.filter((item) => item.onsite && vehicleDueScore(item) >= 14).sort((a,b) => vehicleDueScore(b)-vehicleDueScore(a)).slice(0,1).map((item) => <button key={`vehicle-due-${item.id}`} type="button" onClick={() => { setTasksView("vehicles"); setScreen("planner"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>Vehicle rotation: {item.name}</strong><small style={mutedSmallStyle}>{item.lastCleaned ? `${daysSince(item.lastCleaned)} days since cleaning` : "No cleaning record"}</small></span><span style={badgeStyle("Scheduled")}>Suggested</span></button>)}
+            {!upcomingWork.length && !dashboardUpcomingTasks.length && !seasonalItems.some((item) => item.status !== "Completed" && todayISO() >= item.windowStart && todayISO() <= item.deadline) ? <div style={noticeStyle}>Nothing is scheduled in the next 7 days.</div> : null}
           </div>
 
           <details style={{ marginTop: 14, borderTop: `1px solid ${colors.line}`, paddingTop: 12 }}>
