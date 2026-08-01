@@ -254,6 +254,86 @@ type AtlasDaySession = {
   notes: string;
 };
 
+type AtlasOperationsTemplateItem = {
+  title: string;
+  daysBefore: number;
+  minutes: number;
+  priority: "Low" | "Medium" | "High";
+  category: string;
+  addisonReady?: boolean;
+};
+
+type AtlasOperationsTemplate = {
+  id: string;
+  title: string;
+  detail: string;
+  category: PhotoTimelineProjectCategory;
+  createsProject: boolean;
+  items: AtlasOperationsTemplateItem[];
+};
+
+const atlasOperationsTemplates: AtlasOperationsTemplate[] = [
+  {
+    id: "graduation-party",
+    title: "Graduation Party Preparation",
+    detail: "Build a focused appearance, readiness, and final-walkthrough plan around the event date.",
+    category: "General",
+    createsProject: true,
+    items: [
+      { title: "Confirm party timing, guest areas, and owner priorities", daysBefore: 7, minutes: 30, priority: "High", category: "Planning" },
+      { title: "Landscape appearance walkthrough and punch list", daysBefore: 6, minutes: 60, priority: "High", category: "Landscaping" },
+      { title: "Weed beds, water pots, and clean courtyard", daysBefore: 4, minutes: 120, priority: "Medium", category: "Landscaping", addisonReady: true },
+      { title: "Mow and edge for graduation party", daysBefore: 2, minutes: 180, priority: "High", category: "Landscaping" },
+      { title: "Clean walkways, staircases, and outdoor furniture", daysBefore: 1, minutes: 120, priority: "High", category: "Cleanup / Prep", addisonReady: true },
+      { title: "Pool, spa, dock, lighting, and restroom readiness check", daysBefore: 1, minutes: 90, priority: "High", category: "Inspection" },
+      { title: "Final party walkthrough", daysBefore: 0, minutes: 45, priority: "High", category: "Inspection" },
+      { title: "Post-party cleanup and reset", daysBefore: -1, minutes: 180, priority: "Medium", category: "Cleanup / Prep", addisonReady: true },
+    ],
+  },
+  {
+    id: "owner-arrival",
+    title: "Owner Arrival Readiness",
+    detail: "Prepare the property without flooding the dashboard with permanent recurring records.",
+    category: "General",
+    createsProject: false,
+    items: [
+      { title: "Owner arrival priorities and schedule review", daysBefore: 3, minutes: 30, priority: "High", category: "Planning" },
+      { title: "Grounds, driveway, courtyard, and entrance appearance", daysBefore: 2, minutes: 120, priority: "High", category: "Cleanup / Prep", addisonReady: true },
+      { title: "Pool, spa, dock, boats, and recreation readiness", daysBefore: 1, minutes: 90, priority: "High", category: "Inspection" },
+      { title: "Vehicles onsite and presentation check", daysBefore: 1, minutes: 60, priority: "Medium", category: "Vehicle Care" },
+      { title: "Final property walkthrough before arrival", daysBefore: 0, minutes: 45, priority: "High", category: "Inspection" },
+    ],
+  },
+  {
+    id: "winter-prep",
+    title: "Winter Preparation",
+    detail: "Create a seasonal checklist for vehicles, water systems, waterfront equipment, leaves, and freeze protection.",
+    category: "Mechanical",
+    createsProject: true,
+    items: [
+      { title: "Confirm winter tire needs for onsite vehicles", daysBefore: 21, minutes: 30, priority: "Medium", category: "Vehicle Care" },
+      { title: "Schedule irrigation and backflow winterization", daysBefore: 21, minutes: 30, priority: "High", category: "Irrigation" },
+      { title: "Winterize boat, Sea-Doo, and waterfront equipment", daysBefore: 14, minutes: 180, priority: "High", category: "Boat / Dock" },
+      { title: "Gutter, leaf, drain, and walkway cleanup", daysBefore: 7, minutes: 180, priority: "Medium", category: "Cleanup / Prep", addisonReady: true },
+      { title: "Freeze-protection and exterior plumbing walkthrough", daysBefore: 3, minutes: 90, priority: "High", category: "Inspection" },
+    ],
+  },
+  {
+    id: "spring-opening",
+    title: "Spring Opening",
+    detail: "Restart irrigation, waterfront equipment, furniture, grounds, and outdoor systems in a controlled sequence.",
+    category: "Landscaping",
+    createsProject: true,
+    items: [
+      { title: "Spring grounds and irrigation inspection", daysBefore: 14, minutes: 120, priority: "High", category: "Landscaping" },
+      { title: "Schedule irrigation startup and backflow testing", daysBefore: 12, minutes: 30, priority: "High", category: "Irrigation" },
+      { title: "Set out and clean outdoor furniture", daysBefore: 7, minutes: 120, priority: "Medium", category: "Cleanup / Prep", addisonReady: true },
+      { title: "Open and inspect boat, Sea-Doo, dock, and water equipment", daysBefore: 5, minutes: 180, priority: "High", category: "Boat / Dock" },
+      { title: "Final spring readiness walkthrough", daysBefore: 0, minutes: 60, priority: "Medium", category: "Inspection" },
+    ],
+  },
+];
+
 type PropertyProfile = {
   id: string;
   name: string;
@@ -4972,11 +5052,14 @@ export default function AtlasPage() {
       return {};
     }
   });
-  const [tasksView, setTasksView] = useState<"tasks" | "backlog" | "vehicles" | "seasonal" | "planner">("tasks");
+  const [tasksView, setTasksView] = useState<"tasks" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [backlogItems, setBacklogItems] = useState<AtlasBacklogItem[]>(() => readStoredArray<AtlasBacklogItem>(["atlas-backlog-v1"], []));
   const [newBacklogTitle, setNewBacklogTitle] = useState("");
+  const [templateDates, setTemplateDates] = useState<Record<string, string>>(() =>
+    Object.fromEntries(atlasOperationsTemplates.map((template) => [template.id, addDays(todayISO(), 7)])),
+  );
   const [vehicleCare, setVehicleCare] = useState<AtlasVehicleCare[]>(() => readStoredArray<AtlasVehicleCare>(["atlas-vehicle-care-v1"], [
     "Mercedes", "Rivian", "Porsche", "Lucid", "Ford", "Kia", "Honda", "Subaru"
   ].map((name) => ({ id: slugify(`vehicle-${name}`), name, onsite: true, lastCleaned: "", priority: "Normal" as const, notes: "" }))));
@@ -13583,6 +13666,114 @@ export default function AtlasPage() {
     showSaveToast("Seasonal work added to Tasks.");
   }
 
+  function applyOperationsTemplate(template: AtlasOperationsTemplate) {
+    const targetDate = templateDates[template.id] || addDays(todayISO(), 7);
+    const projectId = template.createsProject ? uid("project") : "";
+    const createdAt = new Date().toISOString();
+    const tasks = template.items.map((item) => ({
+      id: uid("plan-task"),
+      title: item.title,
+      minutes: item.minutes,
+      priority: item.priority,
+      category: item.category,
+      locationId: "general",
+      preferredDay: "Auto",
+      locked: false,
+      recurring: false,
+      fixedTime: "",
+      notes: `Created from ${template.title}.`,
+    } satisfies WorkPlanTask));
+
+    setWorkPlanTasks((current) => [...tasks, ...current]);
+    setTaskMeta((current) => {
+      const next = { ...current };
+      tasks.forEach((task, index) => {
+        const item = template.items[index];
+        next[task.id] = {
+          status: "Open",
+          dueDate: addDays(targetDate, -item.daysBefore),
+          assignee: item.addisonReady ? "Addison" : "Nick",
+          createdAt,
+          projectId: projectId || undefined,
+          notes: `Created from ${template.title}.`,
+        };
+      });
+      return next;
+    });
+
+    if (template.createsProject) {
+      const project: PhotoTimelineProject = {
+        id: projectId,
+        title: template.title,
+        category: template.category,
+        scale: template.items.length >= 7 ? "Major" : "Standard",
+        status: "Planning",
+        assetId: "",
+        locationId: "",
+        vendorId: "",
+        workOrderId: "",
+        workOrderIds: [],
+        vendorIds: [],
+        documentIds: [],
+        assigneeIds: [],
+        notes: `${template.detail} Target date: ${formatDate(targetDate)}.`,
+        coverPhotoId: "",
+        createdAt,
+        progress: 0,
+        phase: "Planning",
+        startDate: todayISO(),
+      };
+      setPhotoTimelineProjects((current) => [project, ...current]);
+    }
+
+    setSelectedTaskId(tasks[0]?.id || "");
+    setTasksView("tasks");
+    showSaveToast(`${template.title} created with ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`);
+  }
+
+  function makeSuggestedTaskRepeating(task: WorkPlanTask) {
+    const nextDue = addDays(todayISO(), 7);
+    setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, recurring: true, preferredDay: new Date().toLocaleDateString(undefined, { weekday: "long" }) } : item));
+    updateTaskDetails(task.id, { status: "Open", dueDate: nextDue, completedAt: undefined });
+    showSaveToast("Task marked as repeating and returned next week.");
+  }
+
+  function renderOperationsTemplates() {
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={noticeStyle}>Templates create a temporary, organized plan only when you approve it. They do not add permanent routines or clutter Atlas automatically.</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
+        {atlasOperationsTemplates.map((template) => <div key={template.id} style={cardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><div><strong style={{ color: colors.navy3 }}>{template.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{template.detail}</small></div><span style={badgeStyle(template.createsProject ? "Scheduled" : "Monitor")}>{template.createsProject ? "Project + tasks" : "Tasks"}</span></div>
+          <div style={{ marginTop: 10 }}><Field label="Event or target date" type="date" value={templateDates[template.id] || addDays(todayISO(), 7)} onChange={(value) => setTemplateDates((current) => ({ ...current, [template.id]: value }))}/></div>
+          <div style={{ marginTop: 9, padding: "8px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC" }}><small style={mutedSmallStyle}>{template.items.length} suggested actions · {template.items.filter((item) => item.addisonReady).length} automatically assigned to Addison</small></div>
+          <button type="button" onClick={() => applyOperationsTemplate(template)} style={{ ...goldButtonStyle, marginTop: 10 }}>Create Plan</button>
+        </div>)}
+      </div>
+    </div>;
+  }
+
+  function renderOperationsIntelligence() {
+    const today = todayISO();
+    const blocked = workPlanTasks.filter((task) => taskDetails(task.id).status === "Blocked");
+    const waiting = workPlanTasks.filter((task) => taskDetails(task.id).status === "Waiting");
+    const routineCandidates = workPlanTasks.filter((task) => {
+      const meta = taskDetails(task.id);
+      const text = `${task.title} ${task.category}`.toLowerCase();
+      const repeatable = ["clean", "check", "inspect", "mow", "edge", "water", "pool", "spa", "vehicle", "boat", "seadoo", "tool area", "walkway"].some((word) => text.includes(word));
+      return meta.status === "Completed" && !task.recurring && repeatable;
+    }).slice(0, 6);
+    const seasonalAttention = seasonalItems.filter((item) => item.status !== "Completed" && item.windowStart <= addDays(today, 45) && item.deadline >= today);
+    const vehiclesDue = vehicleCare.filter((vehicle) => vehicleDueScore(vehicle) >= 14).sort((a,b) => vehicleDueScore(b) - vehicleDueScore(a));
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={noticeStyle}>Atlas surfaces patterns and risks, but nothing is added or rescheduled until you approve it.</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
+        {[{ label: "Blocked", value: blocked.length, detail: "Needs your decision" }, { label: "Waiting", value: waiting.length, detail: "Follow-up may be due" }, { label: "Seasonal", value: seasonalAttention.length, detail: "Within 45 days" }, { label: "Vehicles", value: vehiclesDue.length, detail: "Onsite and becoming due" }].map((item) => <div key={item.label} style={cardStyle}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 4, fontSize: 24, color: colors.navy }}>{item.value}</strong><small style={mutedSmallStyle}>{item.detail}</small></div>)}
+      </div>
+      {routineCandidates.length ? <section style={cardStyle}><div style={eyebrowStyle}>Routine suggestions</div><h3 style={{ margin: "4px 0 10px", color: colors.navy }}>Completed work that may deserve a repeat</h3><div style={{ display: "grid", gap: 7 }}>{routineCandidates.map((task) => <div key={task.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", borderTop: `1px solid ${colors.line}`, paddingTop: 8 }}><span><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>Completed {taskDetails(task.id).completedAt ? new Date(taskDetails(task.id).completedAt!).toLocaleDateString() : "recently"}</small></span><button type="button" onClick={() => makeSuggestedTaskRepeating(task)} style={secondaryButtonStyle}>Repeat weekly</button></div>)}</div></section> : <div style={noticeStyle}>No repeating-work suggestions yet. Atlas will surface completed cleaning, inspection, mowing, watering, pool, vehicle, and similar tasks here.</div>}
+      {seasonalAttention.length ? <section style={cardStyle}><div style={eyebrowStyle}>Predictive reminders</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{seasonalAttention.map((item) => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}><span><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>Target {formatDate(item.targetDate)} · deadline {formatDate(item.deadline)}</small></span><button type="button" onClick={() => createSeasonalTask(item)} style={secondaryButtonStyle}>Schedule</button></div>)}</div></section> : null}
+    </div>;
+  }
+
   function renderBacklog() {
     return <div style={{ display: "grid", gap: 12 }}>
       <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}><input value={newBacklogTitle} onChange={(event) => setNewBacklogTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addBacklogItem(); }} placeholder="Add an idea or someday item…" style={inputStyle}/><button type="button" onClick={addBacklogItem} style={goldButtonStyle}>Add to Backlog</button></div>
@@ -13630,11 +13821,13 @@ export default function AtlasPage() {
             <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog</button>
             <button type="button" onClick={() => setTasksView("vehicles")} style={tasksView === "vehicles" ? goldButtonStyle : secondaryButtonStyle}>Vehicle Rotation</button>
             <button type="button" onClick={() => setTasksView("seasonal")} style={tasksView === "seasonal" ? goldButtonStyle : secondaryButtonStyle}>Seasonal</button>
+            <button type="button" onClick={() => setTasksView("templates")} style={tasksView === "templates" ? goldButtonStyle : secondaryButtonStyle}>Templates</button>
+            <button type="button" onClick={() => setTasksView("intelligence")} style={tasksView === "intelligence" ? goldButtonStyle : secondaryButtonStyle}>Atlas Manager</button>
             <button type="button" onClick={() => setTasksView("planner")} style={tasksView === "planner" ? goldButtonStyle : secondaryButtonStyle}>Plan Week</button>
           </div>
         ) : null}
 
-        {tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : (
+        {tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
           <>
             {!isAddisonUser ? (
               <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
@@ -15537,6 +15730,8 @@ export default function AtlasPage() {
       remainingCapacityMinutes > 90 ? { title: "You have useful open capacity", detail: `${formatWorkload(remainingCapacityMinutes)} remains for backlog, vehicle care, or project follow-up.`, action: () => { setTasksView("backlog"); setScreen("planner"); }, label: "Open Backlog" } : null,
       addisonReadyWork.length + addisonReadyRoutineItems.length > 0 ? { title: "Addison can absorb part of today", detail: `${addisonReadyWork.length + addisonReadyRoutineItems.length} low-risk item${addisonReadyWork.length + addisonReadyRoutineItems.length === 1 ? " is" : "s are"} suitable to review for delegation.`, action: () => setScreen("team"), label: "Review help" } : null,
       todaysWeather && Number(todaysWeather.precipChance || 0) >= 55 ? { title: "Weather may change the order", detail: "Handle exposed outdoor work during the driest window and keep indoor work as backup.", action: () => setScreen("calendar"), label: "Check schedule" } : null,
+      dashboardOpenTasks.some((task) => taskDetails(task.id).status === "Blocked") ? { title: "A task is blocked", detail: "Atlas found work that cannot move forward without a decision or dependency.", action: () => { setTasksView("intelligence"); setScreen("planner"); }, label: "Review blockers" } : null,
+      seasonalItems.some((item) => item.status !== "Completed" && item.windowStart <= addDays(today, 30) && item.deadline >= today) ? { title: "Seasonal work is entering its window", detail: "Review annual and seasonal work before it becomes urgent.", action: () => { setTasksView("seasonal"); setScreen("planner"); }, label: "Review seasonal" } : null,
       vehicleCare.some((vehicle) => vehicleDueScore(vehicle) >= 14) ? { title: "A vehicle is due for attention", detail: "The vehicle rotation has at least one onsite vehicle that is becoming due.", action: () => { setTasksView("vehicles"); setScreen("planner"); }, label: "Vehicle rotation" } : null,
     ].filter(Boolean) as Array<{ title: string; detail: string; action: () => void; label: string }>;
 
