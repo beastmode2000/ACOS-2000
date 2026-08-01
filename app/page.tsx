@@ -203,6 +203,17 @@ type WorkEffort =
   | "Full Day"
   | "Multi-Day";
 
+
+type AtlasTaskMeta = {
+  status: "Open" | "In Progress" | "Completed" | "Waiting" | "Blocked";
+  dueDate: string;
+  assignee: "Nick" | "Addison" | "Other" | "Unassigned";
+  completedAt?: string;
+  createdAt: string;
+  projectId?: string;
+  notes?: string;
+};
+
 type PropertyProfile = {
   id: string;
   name: string;
@@ -4910,12 +4921,38 @@ export default function AtlasPage() {
   const [weeklyMaintenanceSaving, setWeeklyMaintenanceSaving] = useState(false);
   const [dashboardAssistantOpen, setDashboardAssistantOpen] = useState(false);
   const [workPlanInput, setWorkPlanInput] = useState("");
-  const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>([]);
+  const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>(() =>
+    readStoredArray<WorkPlanTask>(["atlas-tasks-v1"], []),
+  );
+  const [taskMeta, setTaskMeta] = useState<Record<string, AtlasTaskMeta>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(window.localStorage.getItem("atlas-task-meta-v1") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  const [tasksView, setTasksView] = useState<"tasks" | "planner">("tasks");
+  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [newTaskTitle, setNewTaskTitle] = useState("");
   const [workPlanTargetHours, setWorkPlanTargetHours] = useState(7);
   const [workPlanSaving, setWorkPlanSaving] = useState(false);
   const [workPlanMessage, setWorkPlanMessage] = useState(
     "Paste one task per line, then build a balanced weekly plan.",
   );
+
+  useEffect(() => {
+    saveStoredArray("atlas-tasks-v1", workPlanTasks);
+  }, [workPlanTasks]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(taskMeta));
+    } catch (error) {
+      console.warn("Atlas could not save task details.", error);
+    }
+  }, [taskMeta]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
@@ -13019,6 +13056,13 @@ export default function AtlasPage() {
     });
 
     setWorkPlanTasks(next);
+    setTaskMeta((current) => {
+      const updated = { ...current };
+      next.forEach((task) => {
+        if (!updated[task.id]) updated[task.id] = { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString() };
+      });
+      return updated;
+    });
     setWorkPlanMessage(
       `Imported ${next.length} tasks. Review estimates, then build the week.`,
     );
@@ -13375,7 +13419,158 @@ export default function AtlasPage() {
     );
   }
 
+  function taskDetails(taskId: string): AtlasTaskMeta {
+    return taskMeta[taskId] || {
+      status: "Open",
+      dueDate: "",
+      assignee: "Unassigned",
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  function updateTaskDetails(taskId: string, patch: Partial<AtlasTaskMeta>) {
+    setTaskMeta((current) => ({
+      ...current,
+      [taskId]: { ...taskDetails(taskId), ...patch },
+    }));
+  }
+
+  function addAtlasTask(title = newTaskTitle) {
+    const clean = title.trim();
+    if (!clean) return;
+    const task: WorkPlanTask = {
+      id: uid("task"),
+      title: clean,
+      minutes: 30,
+      priority: "Medium",
+      category: inferTaskCategory(clean),
+      locationId: "general",
+      preferredDay: inferTaskDay(clean, inferTaskCategory(clean)),
+      locked: false,
+      recurring: false,
+      fixedTime: "",
+      notes: "",
+    };
+    setWorkPlanTasks((current) => [task, ...current]);
+    setTaskMeta((current) => ({
+      ...current,
+      [task.id]: {
+        status: "Open",
+        dueDate: todayISO(),
+        assignee: "Nick",
+        createdAt: new Date().toISOString(),
+      },
+    }));
+    setSelectedTaskId(task.id);
+    setNewTaskTitle("");
+    showSaveToast("Task added.");
+  }
+
+  function deleteAtlasTask(taskId: string) {
+    const task = workPlanTasks.find((item) => item.id === taskId);
+    if (!task || !window.confirm(`Delete “${task.title}”?`)) return;
+    setWorkPlanTasks((current) => current.filter((item) => item.id !== taskId));
+    setTaskMeta((current) => {
+      const next = { ...current };
+      delete next[taskId];
+      return next;
+    });
+    setSelectedTaskId("");
+    showSaveToast("Task deleted.");
+  }
+
   function renderWorkPlanner() {
+    const visibleTasks = workPlanTasks
+      .filter((task) => {
+        const meta = taskDetails(task.id);
+        if (isAddisonUser) return meta.assignee === "Addison" && meta.status !== "Completed";
+        return meta.status !== "Completed";
+      })
+      .sort((a, b) => {
+        const am = taskDetails(a.id);
+        const bm = taskDetails(b.id);
+        const priority = { High: 0, Medium: 1, Low: 2 } as const;
+        return String(am.dueDate || "9999-12-31").localeCompare(String(bm.dueDate || "9999-12-31")) || priority[a.priority] - priority[b.priority] || a.title.localeCompare(b.title);
+      });
+    const selectedTask = workPlanTasks.find((item) => item.id === selectedTaskId) || visibleTasks[0];
+    const selectedMeta = selectedTask ? taskDetails(selectedTask.id) : null;
+    const completedTasks = workPlanTasks.filter((task) => taskDetails(task.id).status === "Completed");
+
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        <SectionHeader
+          eyebrow="Work"
+          title={isAddisonUser ? "My Tasks" : "Tasks"}
+          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : "Track small one-time work here. Repairs stay in Work Orders; repeating work stays in Routines."}
+        />
+        {!isAddisonUser ? (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setTasksView("tasks")} style={tasksView === "tasks" ? goldButtonStyle : secondaryButtonStyle}>Tasks</button>
+            <button type="button" onClick={() => setTasksView("planner")} style={tasksView === "planner" ? goldButtonStyle : secondaryButtonStyle}>Plan Week</button>
+          </div>
+        ) : null}
+
+        {tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : (
+          <>
+            {!isAddisonUser ? (
+              <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
+                <input value={newTaskTitle} onChange={(event) => setNewTaskTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addAtlasTask(); }} placeholder="Add a task…" style={inputStyle} />
+                <button type="button" onClick={() => addAtlasTask()} style={goldButtonStyle}>Add Task</button>
+              </div>
+            ) : null}
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(270px, 36%) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
+              <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+                <div style={{ padding: 12, borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}>
+                  <strong>{visibleTasks.length} open task{visibleTasks.length === 1 ? "" : "s"}</strong>
+                  <small style={mutedSmallStyle}>{completedTasks.length} completed</small>
+                </div>
+                <div style={{ maxHeight: isMobile ? 420 : "68vh", overflowY: "auto" }}>
+                  {visibleTasks.map((task) => {
+                    const meta = taskDetails(task.id);
+                    const selected = selectedTask?.id === task.id;
+                    return <button key={task.id} type="button" onClick={() => setSelectedTaskId(task.id)} style={{ width: "100%", border: 0, borderBottom: `1px solid ${colors.line}`, background: selected ? "#F3F7FC" : "#FFFFFF", padding: 12, textAlign: "left", cursor: "pointer" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: colors.navy3 }}>{task.title}</strong><span style={badgeStyle(task.priority)}>{task.priority}</span></div>
+                      <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {minutesLabel(task.minutes)} · {meta.assignee}</small>
+                    </button>;
+                  })}
+                  {!visibleTasks.length ? <div style={{ padding: 18, ...mutedSmallStyle }}>{isAddisonUser ? "No tasks are currently assigned to Addison." : "No open tasks. Add one above when small one-time work comes up."}</div> : null}
+                </div>
+              </section>
+
+              <section style={{ ...cardStyle, position: isMobile ? "static" : "sticky", top: 16 }}>
+                {selectedTask && selectedMeta ? (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                      <div><div style={eyebrowStyle}>Task Details</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>{selectedTask.title}</h2></div>
+                      <span style={badgeStyle(selectedMeta.status === "Completed" ? "Completed" : selectedTask.priority)}>{selectedMeta.status}</span>
+                    </div>
+                    <Field label="Task"><input value={selectedTask.title} onChange={(event) => updateWorkPlanTask(selectedTask.id, { title: event.currentTarget.value })} style={inputStyle} /></Field>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                      <Field label="Due date"><input type="date" value={selectedMeta.dueDate} onChange={(event) => updateTaskDetails(selectedTask.id, { dueDate: event.currentTarget.value })} style={inputStyle} /></Field>
+                      <SelectField label="Status" value={selectedMeta.status} onChange={(value) => updateTaskDetails(selectedTask.id, { status: value as AtlasTaskMeta["status"], completedAt: value === "Completed" ? new Date().toISOString() : undefined })} options={["Open","In Progress","Waiting","Blocked","Completed"]} />
+                      <SelectField label="Priority" value={selectedTask.priority} onChange={(value) => updateWorkPlanTask(selectedTask.id, { priority: value as WorkOrderPriority })} options={["High","Medium","Low"]} />
+                      <SelectField label="Assigned to" value={selectedMeta.assignee} onChange={(value) => updateTaskDetails(selectedTask.id, { assignee: value as AtlasTaskMeta["assignee"] })} options={["Nick","Addison","Other","Unassigned"]} />
+                      <Field label="Estimated minutes"><input type="number" min={5} step={5} value={selectedTask.minutes} onChange={(event) => updateWorkPlanTask(selectedTask.id, { minutes: Math.max(5, Number(event.currentTarget.value) || 5) })} style={inputStyle} /></Field>
+                      <SelectField label="Category" value={selectedTask.category} onChange={(value) => updateWorkPlanTask(selectedTask.id, { category: value })} options={["General","Cleanup / Prep","Landscaping","Maintenance","Administration","Planning","Inspection"]} />
+                    </div>
+                    <Field label="Notes"><textarea value={selectedMeta.notes || selectedTask.notes || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { notes: event.currentTarget.value })} rows={5} style={textareaStyle} /></Field>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {selectedMeta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { assignee: "Addison", status: "Open" })} style={goldButtonStyle}>Give to Addison</button> : null}
+                      {selectedMeta.status !== "Completed" ? <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Completed", completedAt: new Date().toISOString() })} style={secondaryButtonStyle}>Done</button> : <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Reopen</button>}
+                      {!isAddisonUser ? <button type="button" onClick={() => deleteAtlasTask(selectedTask.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button> : null}
+                    </div>
+                  </div>
+                ) : <div style={noticeStyle}>Select a task from the list.</div>}
+              </section>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  function renderWeeklyPlanner() {
     const scheduledMinutes = workPlanDays.reduce<Record<WorkPlanDay, number>>(
       (acc, day) => {
         acc[day] = workPlanTasks
@@ -15144,6 +15339,15 @@ export default function AtlasPage() {
     const workSearchText = (record: AtlasServiceRecord) => `${record.title || ""} ${record.workCategory || ""} ${record.responsibilityArea || ""} ${record.notes || ""}`.toLowerCase();
     const themeMatchScore = (record: AtlasServiceRecord) => todayFocus.keywords.reduce((score, keyword) => score + (workSearchText(record).includes(keyword) ? 1 : 0), 0);
     const guidedTodaysWork = [...todaysWork].sort((a, b) => themeMatchScore(b as AtlasServiceRecord) - themeMatchScore(a as AtlasServiceRecord) || priorityRank(a) - priorityRank(b) || String(a.title || "").localeCompare(String(b.title || "")));
+    const dashboardOpenTasks = workPlanTasks.filter((task) => taskDetails(task.id).status !== "Completed");
+    const dashboardTodayTasks = dashboardOpenTasks.filter((task) => {
+      const meta = taskDetails(task.id);
+      return !meta.dueDate || meta.dueDate <= today;
+    }).sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.priority] - { High: 0, Medium: 1, Low: 2 }[b.priority]));
+    const dashboardUpcomingTasks = dashboardOpenTasks.filter((task) => {
+      const date = taskDetails(task.id).dueDate;
+      return date > today && date <= addDays(today, 7);
+    }).sort((a, b) => taskDetails(a.id).dueDate.localeCompare(taskDetails(b.id).dueDate));
     const addisonKeywords = ["weed", "dog turf", "fountain", "sweep", "pot", "dry spot", "water plants", "walkway", "stair", "clean", "wash", "tool area", "courtyard", "landscape cleanup"];
     const addisonBlockedKeywords = ["electrical", "boiler", "hvac", "repair", "diagnose", "roof", "lift service", "chemical", "plumbing", "inspection", "high priority"];
     const isAddisonReady = (title: string, detail = "") => {
@@ -15280,8 +15484,9 @@ export default function AtlasPage() {
 
           <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Today</div></div>
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
+            {dashboardTodayTasks.slice(0, 6).map((task) => { const meta = taskDetails(task.id); return <div key={`today-task-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10 }}><button type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>Task · {minutesLabel(task.minutes)} · {meta.assignee}</small></button>{meta.assignee !== "Addison" ? <button type="button" onClick={() => updateTaskDetails(task.id, { assignee: "Addison" })} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Give to Addison</button> : <span style={badgeStyle("Scheduled")}>Addison</span>}</div>; })}
             {guidedTodaysWork.map((record) => <button key={record.id} type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.workCategory || "Work order"}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
-            {!guidedTodaysWork.length ? <div style={noticeStyle}>No open work orders are due today. Use the focus suggestions above to build the day without creating unnecessary work orders.</div> : null}
+            {!guidedTodaysWork.length && !dashboardTodayTasks.length ? <div style={noticeStyle}>No tasks or work orders are due today. Use the focus suggestions above to build the day without creating unnecessary records.</div> : null}
           </div>
 
           {(addisonReadyWork.length || addisonReadyRoutineItems.length) ? (
@@ -15297,8 +15502,9 @@ export default function AtlasPage() {
 
           <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Upcoming · next 7 days</div></div>
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
+            {dashboardUpcomingTasks.slice(0, 6).map((task) => <button key={`upcoming-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>Task · {formatDate(taskDetails(task.id).dueDate)} · {minutesLabel(task.minutes)}</small></span><span style={badgeStyle(task.priority)}>{task.priority}</span></button>)}
             {upcomingWork.map((record) => <button key={`upcoming-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{formatDate(record.date)}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
-            {!upcomingWork.length ? <div style={noticeStyle}>Nothing is scheduled in the next 7 days.</div> : null}
+            {!upcomingWork.length && !dashboardUpcomingTasks.length ? <div style={noticeStyle}>Nothing is scheduled in the next 7 days.</div> : null}
           </div>
 
           <details style={{ marginTop: 14, borderTop: `1px solid ${colors.line}`, paddingTop: 12 }}>
@@ -15321,10 +15527,10 @@ export default function AtlasPage() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 12 }}>
             {liveStatuses.map((item) => (
-              <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}>
+              <div key={item.id === "planner" ? "Tasks" : item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}>
                 <button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}>
                   <span style={{ fontSize: 21 }}>{item.icon}</span>
-                  <strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong>
+                  <strong style={{ display: "block", marginTop: 7 }}>{item.id === "planner" ? "Tasks" : item.label}</strong>
                   <small style={mutedSmallStyle}>{item.count} open work order{item.count === 1 ? "" : "s"}</small>
                   <small style={{ ...mutedSmallStyle, display: "block", marginTop: 6, minHeight: 30 }}>{item.count ? item.reason : "No open work in this area."}</small>
                 </button>
@@ -16790,7 +16996,7 @@ export default function AtlasPage() {
             { icon: "✓", label: "Healthy Areas", value: healthyAreas, note: "No open work" },
           ].map((item) => (
             <div
-              key={item.label}
+              key={item.id === "planner" ? "Tasks" : item.label}
               style={{
                 border: `1px solid ${colors.line}`,
                 borderRadius: 14,
@@ -16807,7 +17013,7 @@ export default function AtlasPage() {
                   gap: 8,
                 }}
               >
-                <div style={{ ...eyebrowStyle, fontSize: 10 }}>{item.label}</div>
+                <div style={{ ...eyebrowStyle, fontSize: 10 }}>{item.id === "planner" ? "Tasks" : item.label}</div>
                 <span
                   aria-hidden="true"
                   style={{
@@ -19787,7 +19993,7 @@ export default function AtlasPage() {
                 },
               ].map((item) => (
                 <div
-                  key={item.label}
+                  key={item.id === "planner" ? "Tasks" : item.label}
                   style={{
                     border: `1px solid ${colors.line}`,
                     borderRadius: 13,
@@ -19808,7 +20014,7 @@ export default function AtlasPage() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {item.label}
+                    {item.id === "planner" ? "Tasks" : item.label}
                   </span>
                   <strong
                     style={{
@@ -20980,7 +21186,7 @@ export default function AtlasPage() {
                   },
                 ].map((item) => (
                   <div
-                    key={item.label}
+                    key={item.id === "planner" ? "Tasks" : item.label}
                     style={{
                       border: `1px solid ${colors.line}`,
                       borderRadius: 10,
@@ -20989,7 +21195,7 @@ export default function AtlasPage() {
                       minWidth: 0,
                     }}
                   >
-                    <span style={assetInfoLabelStyle}>{item.label}</span>
+                    <span style={assetInfoLabelStyle}>{item.id === "planner" ? "Tasks" : item.label}</span>
                     <strong
                       style={{
                         display: "block",
@@ -21206,7 +21412,7 @@ export default function AtlasPage() {
                     )
                     .map((item) => (
                     <button
-                      key={item.label}
+                      key={item.id === "planner" ? "Tasks" : item.label}
                       type="button"
                       className="atlas-gold-hover-card"
                       onClick={item.action}
@@ -21221,7 +21427,7 @@ export default function AtlasPage() {
                       }}
                     >
                       <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
-                      <span style={assetInfoLabelStyle}>{item.label}</span>
+                      <span style={assetInfoLabelStyle}>{item.id === "planner" ? "Tasks" : item.label}</span>
                       <strong
                         style={{
                           display: "block",
@@ -25618,7 +25824,7 @@ export default function AtlasPage() {
                   },
                 ].map((item) => (
                   <div
-                    key={item.label}
+                    key={item.id === "planner" ? "Tasks" : item.label}
                     style={{
                       minWidth: 0,
                       border: `1px solid ${colors.line}`,
@@ -25669,7 +25875,7 @@ export default function AtlasPage() {
                         fontWeight: 900,
                       }}
                     >
-                      {item.label}
+                      {item.id === "planner" ? "Tasks" : item.label}
                     </div>
                     <div
                       style={{
@@ -32489,7 +32695,7 @@ export default function AtlasPage() {
               },
             ].map((item) => (
               <div
-                key={item.label}
+                key={item.id === "planner" ? "Tasks" : item.label}
                 style={{
                   padding: "14px 16px",
                   border: `1px solid ${colors.line}`,
@@ -32498,7 +32704,7 @@ export default function AtlasPage() {
                 }}
               >
                 <div style={{ ...eyebrowStyle, marginBottom: 5 }}>
-                  {item.label}
+                  {item.id === "planner" ? "Tasks" : item.label}
                 </div>
                 <strong style={{ fontSize: 20, color: colors.navy }}>
                   {item.value}
@@ -34690,7 +34896,7 @@ export default function AtlasPage() {
                     )
                     .map((item) => (
                       <option key={item.id} value={item.id}>
-                        {item.label}
+                        {item.id === "planner" ? "Tasks" : item.label}
                       </option>
                     ))}
                 </optgroup>
@@ -34910,7 +35116,7 @@ export default function AtlasPage() {
                       ? departmentCenter === "landscaping" ? "Landscaping Center" : "Marine Center"
                       : screen === "dashboard"
                         ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
-                        : screen === "timeline" ? "Projects" : screens.find((item) => item.id === screen)?.label}
+                        : screen === "timeline" ? "Projects" : screen === "planner" ? "Tasks" : screens.find((item) => item.id === screen)?.label}
                   </h1>
                   <div
                     role="status"
@@ -35565,7 +35771,7 @@ export default function AtlasPage() {
                 borderColor: screen === item.id ? colors.gold : "transparent",
               }}
             >
-              {item.label}
+              {item.id === "planner" ? "Tasks" : item.label}
             </button>
           ))}
         </nav>
