@@ -20717,7 +20717,7 @@ export default function AtlasPage() {
                       minWidth: 0,
                     }}
                   >
-                    <span style={assetInfoLabelStyle}>{item.id === "timeline" ? "Projects" : item.label}</span>
+                    <span style={assetInfoLabelStyle}>{item.label}</span>
                     <strong
                       style={{
                         display: "block",
@@ -20949,7 +20949,7 @@ export default function AtlasPage() {
                       }}
                     >
                       <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
-                      <span style={assetInfoLabelStyle}>{item.id === "timeline" ? "Projects" : item.label}</span>
+                      <span style={assetInfoLabelStyle}>{item.label}</span>
                       <strong
                         style={{
                           display: "block",
