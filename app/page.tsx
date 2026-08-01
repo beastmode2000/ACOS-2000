@@ -15527,10 +15527,10 @@ export default function AtlasPage() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 12 }}>
             {liveStatuses.map((item) => (
-              <div key={item.id === "planner" ? "Tasks" : item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}>
+              <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}>
                 <button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}>
                   <span style={{ fontSize: 21 }}>{item.icon}</span>
-                  <strong style={{ display: "block", marginTop: 7 }}>{item.id === "planner" ? "Tasks" : item.label}</strong>
+                  <strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong>
                   <small style={mutedSmallStyle}>{item.count} open work order{item.count === 1 ? "" : "s"}</small>
                   <small style={{ ...mutedSmallStyle, display: "block", marginTop: 6, minHeight: 30 }}>{item.count ? item.reason : "No open work in this area."}</small>
                 </button>
