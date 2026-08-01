@@ -15832,11 +15832,11 @@ export default function AtlasPage() {
       window.addEventListener("pointerup", onUp);
     };
     const resetWidgetGrid = (id: DashboardWidgetId) => updateWidget(id, { ...dashboardDefaultGrid[id], locked: false });
-    const cardStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, borderRadius: 18, background: "#FFFFFF", padding: isMobile ? 14 : 16, boxShadow: "0 10px 28px rgba(15, 23, 42, 0.05)", minWidth: 0 };
+    const cardStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, borderRadius: 14, background: "#FFFFFF", padding: isMobile ? 13 : 15, boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)", minWidth: 0 };
 
     const renderWidgetContent = (id: DashboardWidgetId) => {
       if (id === "hero") return (
-        <div style={{ ...cardStyle, padding: isMobile ? "14px" : "17px 20px", background: `linear-gradient(135deg, ${colors.navy} 0%, #173B59 72%, #244E6E 100%)`, color: "#FFFFFF", border: 0 }}>
+        <div className="atlas-dashboard-hero atlas-visual-hero" style={{ ...cardStyle, padding: isMobile ? "14px" : "17px 20px", background: `linear-gradient(135deg, ${colors.navy} 0%, #173B59 72%, #244E6E 100%)`, color: "#FFFFFF", border: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
             <div><div style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase", color: colors.gold2 }}>Atlas Command Center</div><h1 style={{ margin: "4px 0", fontSize: isMobile ? 25 : 31 }}>{activeProperty.name} Operations</h1><div style={{ opacity: .82, fontSize: 13 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</div></div>
             <div style={{ minWidth: isMobile ? "100%" : 290, display: "grid", gap: 7 }}>
@@ -15858,7 +15858,7 @@ export default function AtlasPage() {
       );
       if (id === "estate-health") return null;
       if (id === "today-upcoming") return (
-        <section style={cardStyle}>
+        <section className="atlas-today-primary" style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div><div style={eyebrowStyle}>Today & Upcoming</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>A guided workday, not just a list</h2></div>
             <button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Calendar</button>
@@ -15971,7 +15971,7 @@ export default function AtlasPage() {
         </section>
       );
       if (id === "routine") return null;
-      if (id === "atlas-brief") return <section style={{ ...cardStyle, padding: isMobile ? "11px 13px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ flex: 1, minWidth: 0, overflowX: "auto", whiteSpace: "nowrap", fontSize: 13, color: colors.text }}>{briefLines.map((line, index) => <span key={index} style={{ marginRight: 18 }}><span style={{ color: index === 2 && overdueWork.length ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div><button type="button" onClick={() => setScreen("assistant")} style={{ ...secondaryButtonStyle, width: "auto", flex: "0 0 auto", minHeight: 32, padding: "5px 9px" }}>Ask Atlas</button></div></section>;
+      if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "11px 13px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ flex: 1, minWidth: 0, overflowX: "auto", whiteSpace: "nowrap", fontSize: 13, color: colors.text }}>{briefLines.map((line, index) => <span key={index} style={{ marginRight: 18 }}><span style={{ color: index === 2 && overdueWork.length ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div><button type="button" onClick={() => setScreen("assistant")} style={{ ...secondaryButtonStyle, width: "auto", flex: "0 0 auto", minHeight: 32, padding: "5px 9px" }}>Ask Atlas</button></div></section>;
       if (id === "recent-activity") return <section style={{ ...cardStyle, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
           <div><div style={eyebrowStyle}>Live Operations Feed</div><h3 style={{ margin: "3px 0 0", color: colors.navy }}>What is happening across {activeProperty?.name || activePropertyId}</h3><p style={{ ...mutedSmallStyle, margin: "5px 0 0" }}>Work, requests, vendors, photos, and operational alerts in one place.</p></div>
@@ -33960,6 +33960,94 @@ export default function AtlasPage() {
         * {
           box-sizing: border-box;
         }
+        html {
+          scrollbar-color: #9FB0BF #EEF2F5;
+          scrollbar-width: thin;
+        }
+        body {
+          background: #EEF2F5;
+          color: #17354D;
+        }
+        button, input, select, textarea {
+          font: inherit;
+        }
+        button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+          outline: 3px solid rgba(201,154,61,0.24) !important;
+          outline-offset: 1px;
+          border-color: #C99A3D !important;
+        }
+        .atlas-app-shell {
+          background: #EEF2F5 !important;
+        }
+        .atlas-app-shell main {
+          background: transparent;
+        }
+        .atlas-app-shell section {
+          scroll-margin-top: 18px;
+        }
+        .atlas-page-header {
+          border-radius: 0 0 14px 14px;
+        }
+        .atlas-page-header + * {
+          margin-top: 10px;
+        }
+        .atlas-brief-strip {
+          border-left: 4px solid #C99A3D !important;
+          border-radius: 10px !important;
+          box-shadow: none !important;
+          background: #FFFFFF !important;
+        }
+        .atlas-today-primary {
+          border-top: 4px solid #173B59 !important;
+          box-shadow: 0 10px 30px rgba(15,35,55,0.08) !important;
+        }
+        .atlas-visual-hero {
+          border-radius: 16px !important;
+          box-shadow: 0 14px 34px rgba(8,29,48,0.18) !important;
+        }
+        .atlas-app-shell details {
+          box-shadow: none !important;
+        }
+        .atlas-app-shell summary {
+          list-style-position: outside;
+        }
+        .atlas-app-shell button {
+          transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+        }
+        .atlas-app-shell button:hover {
+          border-color: rgba(201,154,61,0.72) !important;
+          box-shadow: 0 4px 14px rgba(15,35,55,0.08);
+        }
+        .atlas-app-shell input:hover, .atlas-app-shell select:hover, .atlas-app-shell textarea:hover {
+          border-color: #9FB0BF !important;
+        }
+        .atlas-app-shell ::-webkit-scrollbar {
+          width: 9px;
+          height: 9px;
+        }
+        .atlas-app-shell ::-webkit-scrollbar-track {
+          background: #EEF2F5;
+          border-radius: 999px;
+        }
+        .atlas-app-shell ::-webkit-scrollbar-thumb {
+          background: #A9B7C3;
+          border: 2px solid #EEF2F5;
+          border-radius: 999px;
+        }
+        .atlas-app-shell ::-webkit-scrollbar-thumb:hover {
+          background: #7F94A4;
+        }
+        @media (max-width: 760px) {
+          .atlas-page-header {
+            border-radius: 0 0 12px 12px;
+          }
+          .atlas-today-primary {
+            border-top-width: 3px !important;
+          }
+          .atlas-app-shell button {
+            min-height: 40px;
+          }
+        }
         .atlas-procedure-print {
           display: none;
         }
@@ -36730,9 +36818,9 @@ const tinyDangerButtonStyle: React.CSSProperties = {
 const cardStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
   background: colors.card,
-  borderRadius: 18,
+  borderRadius: 14,
   padding: 16,
-  boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)",
+  boxShadow: "0 5px 18px rgba(15, 35, 55, 0.055)",
 };
 
 const emptyStateStyle: React.CSSProperties = {
@@ -36934,11 +37022,11 @@ const calendarNavyShellStyle: React.CSSProperties = {
 };
 
 const sectionNavyBackdropStyle: React.CSSProperties = {
-  background: colors.navy,
-  border: `1px solid ${colors.navy3}`,
-  borderRadius: 24,
-  padding: 18,
-  boxShadow: "0 22px 55px rgba(7,27,47,0.22)",
+  background: "#F3F6F9",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 18,
+  padding: 14,
+  boxShadow: "none",
   width: "100%",
   minWidth: 0,
   boxSizing: "border-box",
@@ -36988,9 +37076,9 @@ const sectionStyle: React.CSSProperties = {
   boxSizing: "border-box",
   overflowWrap: "break-word",
   border: `1px solid ${colors.line}`,
-  borderRadius: 20,
-  padding: 18,
-  boxShadow: "0 18px 45px rgba(15, 23, 42, 0.06)",
+  borderRadius: 16,
+  padding: 16,
+  boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)",
 };
 
 const sectionHeaderStyle: React.CSSProperties = {
@@ -37020,11 +37108,11 @@ const statGridStyle: React.CSSProperties = {
 const modernStatStyle: React.CSSProperties = {
   background: colors.card,
   border: `1px solid ${colors.line}`,
-  borderRadius: 18,
-  padding: 18,
+  borderRadius: 14,
+  padding: 15,
   textAlign: "left",
   cursor: "pointer",
-  boxShadow: "0 16px 38px rgba(15,23,42,0.05)",
+  boxShadow: "0 4px 15px rgba(15,35,55,0.045)",
 };
 
 const statLabelStyle: React.CSSProperties = {
@@ -37061,16 +37149,17 @@ const listPanelStyle: React.CSSProperties = {
 };
 
 const drawerStyle: React.CSSProperties = {
-  background: colors.panel,
+  background: "#FFFFFF",
   border: `1px solid ${colors.line}`,
-  borderRadius: 20,
+  borderRadius: 16,
   padding: 14,
   position: "sticky",
   top: 12,
   alignSelf: "start",
-  maxHeight: "none",
-  overflow: "visible",
-  boxShadow: "0 16px 35px rgba(15,23,42,0.06)",
+  maxHeight: "calc(100vh - 28px)",
+  overflowY: "auto",
+  overflowX: "hidden",
+  boxShadow: "0 7px 22px rgba(15,35,55,0.065)",
   minWidth: 0,
   wordBreak: "break-word",
 };
@@ -37157,12 +37246,12 @@ const rowButtonStyle: React.CSSProperties = {
   alignItems: "flex-start",
   border: `1px solid ${colors.line}`,
   background: "#FFFFFF",
-  borderRadius: 16,
-  padding: 14,
+  borderRadius: 12,
+  padding: "12px 13px",
   textAlign: "left",
   cursor: "pointer",
   color: colors.text,
-  boxShadow: "0 10px 26px rgba(15,23,42,0.035)",
+  boxShadow: "none",
   overflow: "hidden",
   wordBreak: "break-word",
 };
@@ -37170,10 +37259,10 @@ const rowButtonStyle: React.CSSProperties = {
 const rowStaticStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
   background: "#FFFFFF",
-  borderRadius: 16,
-  padding: 14,
+  borderRadius: 12,
+  padding: "12px 13px",
   color: colors.text,
-  boxShadow: "0 10px 26px rgba(15,23,42,0.035)",
+  boxShadow: "none",
   minWidth: 0,
   wordBreak: "break-word",
 };
