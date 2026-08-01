@@ -214,126 +214,6 @@ type AtlasTaskMeta = {
   notes?: string;
 };
 
-type AtlasBacklogItem = {
-  id: string;
-  title: string;
-  category: string;
-  notes: string;
-  createdAt: string;
-};
-
-type AtlasVehicleCare = {
-  id: string;
-  name: string;
-  onsite: boolean;
-  lastCleaned: string;
-  priority: "Normal" | "High" | "Skip";
-  notes: string;
-};
-
-type AtlasSeasonalItem = {
-  id: string;
-  title: string;
-  season: WorkSeason;
-  windowStart: string;
-  targetDate: string;
-  deadline: string;
-  frequency: "Yearly" | "Seasonal" | "One-time";
-  assignedTo: "Nick" | "Addison" | "Vendor" | "Unassigned";
-  status: "Planned" | "Needs scheduling" | "Scheduled" | "Completed";
-  notes: string;
-  lastCompletedAt?: string;
-};
-
-type AtlasDaySession = {
-  date: string;
-  propertyId: string;
-  startedAt?: string;
-  endedAt?: string;
-  targetHours: number;
-  notes: string;
-};
-
-type AtlasOperationsTemplateItem = {
-  title: string;
-  daysBefore: number;
-  minutes: number;
-  priority: "Low" | "Medium" | "High";
-  category: string;
-  addisonReady?: boolean;
-};
-
-type AtlasOperationsTemplate = {
-  id: string;
-  title: string;
-  detail: string;
-  category: PhotoTimelineProjectCategory;
-  createsProject: boolean;
-  items: AtlasOperationsTemplateItem[];
-};
-
-const atlasOperationsTemplates: AtlasOperationsTemplate[] = [
-  {
-    id: "graduation-party",
-    title: "Graduation Party Preparation",
-    detail: "Build a focused appearance, readiness, and final-walkthrough plan around the event date.",
-    category: "General",
-    createsProject: true,
-    items: [
-      { title: "Confirm party timing, guest areas, and owner priorities", daysBefore: 7, minutes: 30, priority: "High", category: "Planning" },
-      { title: "Landscape appearance walkthrough and punch list", daysBefore: 6, minutes: 60, priority: "High", category: "Landscaping" },
-      { title: "Weed beds, water pots, and clean courtyard", daysBefore: 4, minutes: 120, priority: "Medium", category: "Landscaping", addisonReady: true },
-      { title: "Mow and edge for graduation party", daysBefore: 2, minutes: 180, priority: "High", category: "Landscaping" },
-      { title: "Clean walkways, staircases, and outdoor furniture", daysBefore: 1, minutes: 120, priority: "High", category: "Cleanup / Prep", addisonReady: true },
-      { title: "Pool, spa, dock, lighting, and restroom readiness check", daysBefore: 1, minutes: 90, priority: "High", category: "Inspection" },
-      { title: "Final party walkthrough", daysBefore: 0, minutes: 45, priority: "High", category: "Inspection" },
-      { title: "Post-party cleanup and reset", daysBefore: -1, minutes: 180, priority: "Medium", category: "Cleanup / Prep", addisonReady: true },
-    ],
-  },
-  {
-    id: "owner-arrival",
-    title: "Owner Arrival Readiness",
-    detail: "Prepare the property without flooding the dashboard with permanent recurring records.",
-    category: "General",
-    createsProject: false,
-    items: [
-      { title: "Owner arrival priorities and schedule review", daysBefore: 3, minutes: 30, priority: "High", category: "Planning" },
-      { title: "Grounds, driveway, courtyard, and entrance appearance", daysBefore: 2, minutes: 120, priority: "High", category: "Cleanup / Prep", addisonReady: true },
-      { title: "Pool, spa, dock, boats, and recreation readiness", daysBefore: 1, minutes: 90, priority: "High", category: "Inspection" },
-      { title: "Vehicles onsite and presentation check", daysBefore: 1, minutes: 60, priority: "Medium", category: "Vehicle Care" },
-      { title: "Final property walkthrough before arrival", daysBefore: 0, minutes: 45, priority: "High", category: "Inspection" },
-    ],
-  },
-  {
-    id: "winter-prep",
-    title: "Winter Preparation",
-    detail: "Create a seasonal checklist for vehicles, water systems, waterfront equipment, leaves, and freeze protection.",
-    category: "Mechanical",
-    createsProject: true,
-    items: [
-      { title: "Confirm winter tire needs for onsite vehicles", daysBefore: 21, minutes: 30, priority: "Medium", category: "Vehicle Care" },
-      { title: "Schedule irrigation and backflow winterization", daysBefore: 21, minutes: 30, priority: "High", category: "Irrigation" },
-      { title: "Winterize boat, Sea-Doo, and waterfront equipment", daysBefore: 14, minutes: 180, priority: "High", category: "Boat / Dock" },
-      { title: "Gutter, leaf, drain, and walkway cleanup", daysBefore: 7, minutes: 180, priority: "Medium", category: "Cleanup / Prep", addisonReady: true },
-      { title: "Freeze-protection and exterior plumbing walkthrough", daysBefore: 3, minutes: 90, priority: "High", category: "Inspection" },
-    ],
-  },
-  {
-    id: "spring-opening",
-    title: "Spring Opening",
-    detail: "Restart irrigation, waterfront equipment, furniture, grounds, and outdoor systems in a controlled sequence.",
-    category: "Landscaping",
-    createsProject: true,
-    items: [
-      { title: "Spring grounds and irrigation inspection", daysBefore: 14, minutes: 120, priority: "High", category: "Landscaping" },
-      { title: "Schedule irrigation startup and backflow testing", daysBefore: 12, minutes: 30, priority: "High", category: "Irrigation" },
-      { title: "Set out and clean outdoor furniture", daysBefore: 7, minutes: 120, priority: "Medium", category: "Cleanup / Prep", addisonReady: true },
-      { title: "Open and inspect boat, Sea-Doo, dock, and water equipment", daysBefore: 5, minutes: 180, priority: "High", category: "Boat / Dock" },
-      { title: "Final spring readiness walkthrough", daysBefore: 0, minutes: 60, priority: "Medium", category: "Inspection" },
-    ],
-  },
-];
-
 type PropertyProfile = {
   id: string;
   name: string;
@@ -5052,22 +4932,9 @@ export default function AtlasPage() {
       return {};
     }
   });
-  const [tasksView, setTasksView] = useState<"tasks" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
+  const [tasksView, setTasksView] = useState<"tasks" | "planner">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [backlogItems, setBacklogItems] = useState<AtlasBacklogItem[]>(() => readStoredArray<AtlasBacklogItem>(["atlas-backlog-v1"], []));
-  const [newBacklogTitle, setNewBacklogTitle] = useState("");
-  const [templateDates, setTemplateDates] = useState<Record<string, string>>(() =>
-    Object.fromEntries(atlasOperationsTemplates.map((template) => [template.id, addDays(todayISO(), 7)])),
-  );
-  const [vehicleCare, setVehicleCare] = useState<AtlasVehicleCare[]>(() => readStoredArray<AtlasVehicleCare>(["atlas-vehicle-care-v1"], [
-    "Mercedes", "Rivian", "Porsche", "Lucid", "Ford", "Kia", "Honda", "Subaru"
-  ].map((name) => ({ id: slugify(`vehicle-${name}`), name, onsite: true, lastCleaned: "", priority: "Normal" as const, notes: "" }))));
-  const [seasonalItems, setSeasonalItems] = useState<AtlasSeasonalItem[]>(() => readStoredArray<AtlasSeasonalItem>(["atlas-seasonal-work-v1"], [
-    { id: "annual-appliance-service", title: "Annual appliance service", season: "Fall", windowStart: `${new Date().getFullYear()}-10-01`, targetDate: `${new Date().getFullYear()}-11-15`, deadline: `${new Date().getFullYear()}-12-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Complete during the colder months and before year end." },
-    { id: "winter-tires", title: "Install winter tires", season: "Fall", windowStart: `${new Date().getFullYear()}-10-15`, targetDate: `${new Date().getFullYear()}-11-01`, deadline: `${new Date().getFullYear()}-11-30`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Activate only for vehicles onsite and needing winter tires." }
-  ]));
-  const [daySessions, setDaySessions] = useState<AtlasDaySession[]>(() => readStoredArray<AtlasDaySession>(["atlas-day-sessions-v1"], []));
   const [workPlanTargetHours, setWorkPlanTargetHours] = useState(7);
   const [workPlanSaving, setWorkPlanSaving] = useState(false);
   const [workPlanMessage, setWorkPlanMessage] = useState(
@@ -5086,11 +4953,6 @@ export default function AtlasPage() {
       console.warn("Atlas could not save task details.", error);
     }
   }, [taskMeta]);
-
-  useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
-  useEffect(() => { saveStoredArray("atlas-vehicle-care-v1", vehicleCare); }, [vehicleCare]);
-  useEffect(() => { saveStoredArray("atlas-seasonal-work-v1", seasonalItems); }, [seasonalItems]);
-  useEffect(() => { saveStoredArray("atlas-day-sessions-v1", daySessions); }, [daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
@@ -13617,180 +13479,6 @@ export default function AtlasPage() {
     showSaveToast("Task deleted.");
   }
 
-  function addBacklogItem() {
-    const title = newBacklogTitle.trim();
-    if (!title) return;
-    setBacklogItems((current) => [{ id: uid("backlog"), title, category: inferTaskCategory(title), notes: "", createdAt: new Date().toISOString() }, ...current]);
-    setNewBacklogTitle("");
-    showSaveToast("Added to Backlog.");
-  }
-
-  function backlogToTask(item: AtlasBacklogItem) {
-    const task: WorkPlanTask = { id: uid("plan-task"), title: item.title, minutes: 60, priority: "Medium", category: item.category || "General", locationId: "general", preferredDay: "Auto", locked: false, recurring: false, fixedTime: "", notes: item.notes || "" };
-    setWorkPlanTasks((current) => [task, ...current]);
-    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), notes: item.notes || "" } }));
-    setBacklogItems((current) => current.filter((entry) => entry.id !== item.id));
-    setSelectedTaskId(task.id);
-    setTasksView("tasks");
-    showSaveToast("Backlog item moved to Tasks.");
-  }
-
-  function daysSince(dateValue: string) {
-    if (!dateValue) return 9999;
-    const date = new Date(`${dateValue}T12:00:00`);
-    if (Number.isNaN(date.getTime())) return 9999;
-    return Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
-  }
-
-  function vehicleDueScore(vehicle: AtlasVehicleCare) {
-    if (!vehicle.onsite || vehicle.priority === "Skip") return -1;
-    return daysSince(vehicle.lastCleaned) + (vehicle.priority === "High" ? 30 : 0);
-  }
-
-  function createVehicleCleaningTask(vehicle: AtlasVehicleCare) {
-    const task: WorkPlanTask = { id: uid("plan-task"), title: `Clean ${vehicle.name}`, minutes: 60, priority: vehicle.priority === "High" ? "High" : "Medium", category: "Cleanup / Prep", locationId: "general", preferredDay: "Thursday", locked: false, recurring: false, fixedTime: "", notes: "Created from Vehicle Care Rotation." };
-    setWorkPlanTasks((current) => [task, ...current]);
-    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: todayISO(), assignee: "Nick", createdAt: new Date().toISOString() } }));
-    setSelectedTaskId(task.id);
-    setTasksView("tasks");
-    showSaveToast(`${vehicle.name} cleaning added to Tasks.`);
-  }
-
-  function createSeasonalTask(item: AtlasSeasonalItem) {
-    const task: WorkPlanTask = { id: uid("plan-task"), title: item.title, minutes: 60, priority: "Medium", category: "Maintenance", locationId: "general", preferredDay: "Auto", locked: false, recurring: item.frequency !== "One-time", fixedTime: "", notes: item.notes };
-    setWorkPlanTasks((current) => [task, ...current]);
-    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: item.targetDate || item.deadline, assignee: item.assignedTo === "Addison" ? "Addison" : item.assignedTo === "Nick" ? "Nick" : "Unassigned", createdAt: new Date().toISOString(), notes: item.notes } }));
-    setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "Scheduled" } : entry));
-    setSelectedTaskId(task.id);
-    setTasksView("tasks");
-    showSaveToast("Seasonal work added to Tasks.");
-  }
-
-  function applyOperationsTemplate(template: AtlasOperationsTemplate) {
-    const targetDate = templateDates[template.id] || addDays(todayISO(), 7);
-    const projectId = template.createsProject ? uid("project") : "";
-    const createdAt = new Date().toISOString();
-    const tasks = template.items.map((item) => ({
-      id: uid("plan-task"),
-      title: item.title,
-      minutes: item.minutes,
-      priority: item.priority,
-      category: item.category,
-      locationId: "general",
-      preferredDay: "Auto",
-      locked: false,
-      recurring: false,
-      fixedTime: "",
-      notes: `Created from ${template.title}.`,
-    } satisfies WorkPlanTask));
-
-    setWorkPlanTasks((current) => [...tasks, ...current]);
-    setTaskMeta((current) => {
-      const next = { ...current };
-      tasks.forEach((task, index) => {
-        const item = template.items[index];
-        next[task.id] = {
-          status: "Open",
-          dueDate: addDays(targetDate, -item.daysBefore),
-          assignee: item.addisonReady ? "Addison" : "Nick",
-          createdAt,
-          projectId: projectId || undefined,
-          notes: `Created from ${template.title}.`,
-        };
-      });
-      return next;
-    });
-
-    if (template.createsProject) {
-      const project: PhotoTimelineProject = {
-        id: projectId,
-        title: template.title,
-        category: template.category,
-        scale: template.items.length >= 7 ? "Major" : "Standard",
-        status: "Planning",
-        assetId: "",
-        locationId: "",
-        vendorId: "",
-        workOrderId: "",
-        workOrderIds: [],
-        vendorIds: [],
-        documentIds: [],
-        assigneeIds: [],
-        notes: `${template.detail} Target date: ${formatDate(targetDate)}.`,
-        coverPhotoId: "",
-        createdAt,
-        progress: 0,
-        phase: "Planning",
-        startDate: todayISO(),
-      };
-      setPhotoTimelineProjects((current) => [project, ...current]);
-    }
-
-    setSelectedTaskId(tasks[0]?.id || "");
-    setTasksView("tasks");
-    showSaveToast(`${template.title} created with ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`);
-  }
-
-  function makeSuggestedTaskRepeating(task: WorkPlanTask) {
-    const nextDue = addDays(todayISO(), 7);
-    setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? { ...item, recurring: true, preferredDay: new Date().toLocaleDateString(undefined, { weekday: "long" }) } : item));
-    updateTaskDetails(task.id, { status: "Open", dueDate: nextDue, completedAt: undefined });
-    showSaveToast("Task marked as repeating and returned next week.");
-  }
-
-  function renderOperationsTemplates() {
-    return <div style={{ display: "grid", gap: 12 }}>
-      <div style={noticeStyle}>Templates create a temporary, organized plan only when you approve it. They do not add permanent routines or clutter Atlas automatically.</div>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
-        {atlasOperationsTemplates.map((template) => <div key={template.id} style={cardStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><div><strong style={{ color: colors.navy3 }}>{template.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{template.detail}</small></div><span style={badgeStyle(template.createsProject ? "Scheduled" : "Monitor")}>{template.createsProject ? "Project + tasks" : "Tasks"}</span></div>
-          <div style={{ marginTop: 10 }}><Field label="Event or target date" type="date" value={templateDates[template.id] || addDays(todayISO(), 7)} onChange={(value) => setTemplateDates((current) => ({ ...current, [template.id]: value }))}/></div>
-          <div style={{ marginTop: 9, padding: "8px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC" }}><small style={mutedSmallStyle}>{template.items.length} suggested actions · {template.items.filter((item) => item.addisonReady).length} automatically assigned to Addison</small></div>
-          <button type="button" onClick={() => applyOperationsTemplate(template)} style={{ ...goldButtonStyle, marginTop: 10 }}>Create Plan</button>
-        </div>)}
-      </div>
-    </div>;
-  }
-
-  function renderOperationsIntelligence() {
-    const today = todayISO();
-    const blocked = workPlanTasks.filter((task) => taskDetails(task.id).status === "Blocked");
-    const waiting = workPlanTasks.filter((task) => taskDetails(task.id).status === "Waiting");
-    const routineCandidates = workPlanTasks.filter((task) => {
-      const meta = taskDetails(task.id);
-      const text = `${task.title} ${task.category}`.toLowerCase();
-      const repeatable = ["clean", "check", "inspect", "mow", "edge", "water", "pool", "spa", "vehicle", "boat", "seadoo", "tool area", "walkway"].some((word) => text.includes(word));
-      return meta.status === "Completed" && !task.recurring && repeatable;
-    }).slice(0, 6);
-    const seasonalAttention = seasonalItems.filter((item) => item.status !== "Completed" && item.windowStart <= addDays(today, 45) && item.deadline >= today);
-    const vehiclesDue = vehicleCare.filter((vehicle) => vehicleDueScore(vehicle) >= 14).sort((a,b) => vehicleDueScore(b) - vehicleDueScore(a));
-    return <div style={{ display: "grid", gap: 12 }}>
-      <div style={noticeStyle}>Atlas surfaces patterns and risks, but nothing is added or rescheduled until you approve it.</div>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
-        {[{ label: "Blocked", value: blocked.length, detail: "Needs your decision" }, { label: "Waiting", value: waiting.length, detail: "Follow-up may be due" }, { label: "Seasonal", value: seasonalAttention.length, detail: "Within 45 days" }, { label: "Vehicles", value: vehiclesDue.length, detail: "Onsite and becoming due" }].map((item) => <div key={item.label} style={cardStyle}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 4, fontSize: 24, color: colors.navy }}>{item.value}</strong><small style={mutedSmallStyle}>{item.detail}</small></div>)}
-      </div>
-      {routineCandidates.length ? <section style={cardStyle}><div style={eyebrowStyle}>Routine suggestions</div><h3 style={{ margin: "4px 0 10px", color: colors.navy }}>Completed work that may deserve a repeat</h3><div style={{ display: "grid", gap: 7 }}>{routineCandidates.map((task) => <div key={task.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", borderTop: `1px solid ${colors.line}`, paddingTop: 8 }}><span><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>Completed {taskDetails(task.id).completedAt ? new Date(taskDetails(task.id).completedAt!).toLocaleDateString() : "recently"}</small></span><button type="button" onClick={() => makeSuggestedTaskRepeating(task)} style={secondaryButtonStyle}>Repeat weekly</button></div>)}</div></section> : <div style={noticeStyle}>No repeating-work suggestions yet. Atlas will surface completed cleaning, inspection, mowing, watering, pool, vehicle, and similar tasks here.</div>}
-      {seasonalAttention.length ? <section style={cardStyle}><div style={eyebrowStyle}>Predictive reminders</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{seasonalAttention.map((item) => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}><span><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>Target {formatDate(item.targetDate)} · deadline {formatDate(item.deadline)}</small></span><button type="button" onClick={() => createSeasonalTask(item)} style={secondaryButtonStyle}>Schedule</button></div>)}</div></section> : null}
-    </div>;
-  }
-
-  function renderBacklog() {
-    return <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}><input value={newBacklogTitle} onChange={(event) => setNewBacklogTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addBacklogItem(); }} placeholder="Add an idea or someday item…" style={inputStyle}/><button type="button" onClick={addBacklogItem} style={goldButtonStyle}>Add to Backlog</button></div>
-      <div style={{ display: "grid", gap: 8 }}>{backlogItems.map((item) => <div key={item.id} style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}><div><strong>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{item.category} · Not scheduled · Cannot become overdue</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => backlogToTask(item)} style={goldButtonStyle}>Make Task</button><button type="button" onClick={() => setBacklogItems((current) => current.filter((entry) => entry.id !== item.id))} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button></div></div>)}{!backlogItems.length ? <div style={noticeStyle}>The Backlog is empty. Use it for ideas that should not have a due date yet.</div> : null}</div>
-    </div>;
-  }
-
-  function renderVehicleCare() {
-    const sorted = [...vehicleCare].sort((a,b) => vehicleDueScore(b) - vehicleDueScore(a));
-    return <div style={{ display: "grid", gap: 12 }}><div style={noticeStyle}>Mark which vehicles are onsite. Atlas prioritizes the onsite vehicle that has gone longest without cleaning instead of creating eight overdue weekly tasks.</div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>{sorted.map((vehicle) => <div key={vehicle.id} style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{vehicle.name}</strong><span style={badgeStyle(vehicle.onsite ? "Online" : "Offline")}>{vehicle.onsite ? "Onsite" : "Away"}</span></div><small style={{ ...mutedSmallStyle, display: "block", margin: "6px 0 10px" }}>{vehicle.lastCleaned ? `Last cleaned ${formatDate(vehicle.lastCleaned)} · ${daysSince(vehicle.lastCleaned)} days ago` : "No cleaning date recorded"}</small><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><label style={fieldLabelStyle}>Onsite<select value={vehicle.onsite ? "Yes" : "No"} onChange={(e) => setVehicleCare((current) => current.map((item) => item.id === vehicle.id ? { ...item, onsite: e.currentTarget.value === "Yes" } : item))} style={inputStyle}><option>Yes</option><option>No</option></select></label><label style={fieldLabelStyle}>Last cleaned<input type="date" value={vehicle.lastCleaned} onChange={(e) => setVehicleCare((current) => current.map((item) => item.id === vehicle.id ? { ...item, lastCleaned: e.currentTarget.value } : item))} style={inputStyle}/></label></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><button type="button" disabled={!vehicle.onsite} onClick={() => createVehicleCleaningTask(vehicle)} style={goldButtonStyle}>Add Cleaning Task</button><button type="button" onClick={() => setVehicleCare((current) => current.map((item) => item.id === vehicle.id ? { ...item, lastCleaned: todayISO() } : item))} style={secondaryButtonStyle}>Mark Cleaned</button></div></div>)}</div></div>;
-  }
-
-  function renderSeasonalWork() {
-    const today = todayISO();
-    return <div style={{ display: "grid", gap: 10 }}><div style={noticeStyle}>Seasonal and yearly work uses a scheduling window, target date, and deadline. It appears before it becomes urgent without forcing one rigid day.</div>{seasonalItems.map((item) => { const inWindow = today >= item.windowStart && today <= item.deadline && item.status !== "Completed"; return <div key={item.id} style={{ ...cardStyle, borderColor: inWindow ? "#D7B45A" : colors.line }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><div><strong>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{item.frequency} · {item.season} · Window {formatDate(item.windowStart)}–{formatDate(item.deadline)}</small></div><span style={badgeStyle(item.status === "Completed" ? "Completed" : inWindow ? "Open" : "Scheduled")}>{inWindow && item.status === "Planned" ? "Needs scheduling" : item.status}</span></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Field label="Window opens" type="date" value={item.windowStart} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, windowStart: value } : entry))}/><Field label="Target" type="date" value={item.targetDate} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, targetDate: value } : entry))}/><Field label="Deadline" type="date" value={item.deadline} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, deadline: value } : entry))}/></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><button type="button" onClick={() => createSeasonalTask(item)} style={goldButtonStyle}>Add to Tasks</button><button type="button" onClick={() => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "Completed", lastCompletedAt: new Date().toISOString() } : entry))} style={secondaryButtonStyle}>Mark Completed</button></div></div>; })}</div>;
-  }
-
   function renderWorkPlanner() {
     const visibleTasks = workPlanTasks
       .filter((task) => {
@@ -13818,16 +13506,11 @@ export default function AtlasPage() {
         {!isAddisonUser ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setTasksView("tasks")} style={tasksView === "tasks" ? goldButtonStyle : secondaryButtonStyle}>Tasks</button>
-            <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog</button>
-            <button type="button" onClick={() => setTasksView("vehicles")} style={tasksView === "vehicles" ? goldButtonStyle : secondaryButtonStyle}>Vehicle Rotation</button>
-            <button type="button" onClick={() => setTasksView("seasonal")} style={tasksView === "seasonal" ? goldButtonStyle : secondaryButtonStyle}>Seasonal</button>
-            <button type="button" onClick={() => setTasksView("templates")} style={tasksView === "templates" ? goldButtonStyle : secondaryButtonStyle}>Templates</button>
-            <button type="button" onClick={() => setTasksView("intelligence")} style={tasksView === "intelligence" ? goldButtonStyle : secondaryButtonStyle}>Atlas Manager</button>
             <button type="button" onClick={() => setTasksView("planner")} style={tasksView === "planner" ? goldButtonStyle : secondaryButtonStyle}>Plan Week</button>
           </div>
         ) : null}
 
-        {tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
+        {tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : (
           <>
             {!isAddisonUser ? (
               <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
@@ -15679,62 +15362,6 @@ export default function AtlasPage() {
       showSaveToast("Added to today’s plan.");
     };
 
-    const currentDaySession = daySessions.find((session) => session.date === today && session.propertyId === activePropertyId);
-    const taskWorkMinutes = dashboardTodayTasks.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0);
-    const workOrderMinutes = guidedTodaysWork.reduce((sum, record) => {
-      const effort = String((record as AtlasServiceRecord).effort || "");
-      const minutes = effort === "5 minutes" ? 5 : effort === "15 minutes" ? 15 : effort === "30 minutes" ? 30 : effort === "1 hour" ? 60 : effort === "Half Day" ? 240 : effort === "Full Day" ? 480 : effort === "Multi-Day" ? 480 : 45;
-      return sum + minutes;
-    }, 0);
-    const routineMinutesEstimate = visibleRoutineItems.filter((item) => !completedDashboardRoutineIds.includes(item.id)).length * 12;
-    const plannedMinutes = taskWorkMinutes + workOrderMinutes + routineMinutesEstimate;
-    const targetDayMinutes = Math.max(60, Math.round((currentDaySession?.targetHours || workPlanTargetHours || 7) * 60));
-    const remainingCapacityMinutes = targetDayMinutes - plannedMinutes;
-    const formatWorkload = (minutes: number) => {
-      const absolute = Math.abs(Math.round(minutes));
-      const hours = Math.floor(absolute / 60);
-      const remainder = absolute % 60;
-      return `${hours ? `${hours} hr ` : ""}${remainder ? `${remainder} min` : hours ? "" : "0 min"}`.trim();
-    };
-    const startMyDay = () => {
-      const now = new Date().toISOString();
-      setDaySessions((current) => {
-        const exists = current.some((session) => session.date === today && session.propertyId === activePropertyId);
-        return exists
-          ? current.map((session) => session.date === today && session.propertyId === activePropertyId ? { ...session, startedAt: session.startedAt || now, endedAt: undefined } : session)
-          : [{ date: today, propertyId: activePropertyId, startedAt: now, targetHours: workPlanTargetHours || 7, notes: "" }, ...current];
-      });
-      showSaveToast("Your guided workday is active.");
-    };
-    const endMyDay = () => {
-      const unfinishedFlexibleTasks = dashboardTodayTasks.filter((task) => task.priority !== "High" && taskDetails(task.id).status !== "Completed");
-      const shouldMove = unfinishedFlexibleTasks.length ? window.confirm(`End the day and move ${unfinishedFlexibleTasks.length} unfinished non-high-priority task${unfinishedFlexibleTasks.length === 1 ? "" : "s"} to tomorrow?`) : true;
-      if (shouldMove && unfinishedFlexibleTasks.length) {
-        setTaskMeta((current) => {
-          const next = { ...current };
-          unfinishedFlexibleTasks.forEach((task) => { next[task.id] = { ...taskDetails(task.id), dueDate: addDays(today, 1) }; });
-          return next;
-        });
-      }
-      const now = new Date().toISOString();
-      setDaySessions((current) => {
-        const exists = current.some((session) => session.date === today && session.propertyId === activePropertyId);
-        return exists
-          ? current.map((session) => session.date === today && session.propertyId === activePropertyId ? { ...session, endedAt: now } : session)
-          : [{ date: today, propertyId: activePropertyId, startedAt: now, endedAt: now, targetHours: workPlanTargetHours || 7, notes: "" }, ...current];
-      });
-      showSaveToast("Day closed and history preserved.");
-    };
-    const smartDaySuggestions = [
-      remainingCapacityMinutes < -60 ? { title: "Workload is over capacity", detail: `${formatWorkload(-remainingCapacityMinutes)} should move, delegate, or wait.`, action: () => setScreen("planner"), label: "Review tasks" } : null,
-      remainingCapacityMinutes > 90 ? { title: "You have useful open capacity", detail: `${formatWorkload(remainingCapacityMinutes)} remains for backlog, vehicle care, or project follow-up.`, action: () => { setTasksView("backlog"); setScreen("planner"); }, label: "Open Backlog" } : null,
-      addisonReadyWork.length + addisonReadyRoutineItems.length > 0 ? { title: "Addison can absorb part of today", detail: `${addisonReadyWork.length + addisonReadyRoutineItems.length} low-risk item${addisonReadyWork.length + addisonReadyRoutineItems.length === 1 ? " is" : "s are"} suitable to review for delegation.`, action: () => setScreen("team"), label: "Review help" } : null,
-      todaysWeather && Number(todaysWeather.precipChance || 0) >= 55 ? { title: "Weather may change the order", detail: "Handle exposed outdoor work during the driest window and keep indoor work as backup.", action: () => setScreen("calendar"), label: "Check schedule" } : null,
-      dashboardOpenTasks.some((task) => taskDetails(task.id).status === "Blocked") ? { title: "A task is blocked", detail: "Atlas found work that cannot move forward without a decision or dependency.", action: () => { setTasksView("intelligence"); setScreen("planner"); }, label: "Review blockers" } : null,
-      seasonalItems.some((item) => item.status !== "Completed" && item.windowStart <= addDays(today, 30) && item.deadline >= today) ? { title: "Seasonal work is entering its window", detail: "Review annual and seasonal work before it becomes urgent.", action: () => { setTasksView("seasonal"); setScreen("planner"); }, label: "Review seasonal" } : null,
-      vehicleCare.some((vehicle) => vehicleDueScore(vehicle) >= 14) ? { title: "A vehicle is due for attention", detail: "The vehicle rotation has at least one onsite vehicle that is becoming due.", action: () => { setTasksView("vehicles"); setScreen("planner"); }, label: "Vehicle rotation" } : null,
-    ].filter(Boolean) as Array<{ title: string; detail: string; action: () => void; label: string }>;
-
     const allLayouts = [...builtInDashboardLayouts, ...customDashboardLayouts];
     const applyLayout = (layoutId: string) => {
       const layout = allLayouts.find((item) => item.id === layoutId);
@@ -15811,13 +15438,7 @@ export default function AtlasPage() {
                 <strong style={{ fontSize: 15 }}>{overdueWork.length ? `${overdueWork.length} overdue item${overdueWork.length === 1 ? "" : "s"}` : highPriority.length ? `${highPriority.length} high-priority item${highPriority.length === 1 ? "" : "s"}` : "All systems operating normally"}</strong>
               </div>
               <span style={{ fontSize: 12, opacity: .76 }}>{openWork.length} open work order{openWork.length === 1 ? "" : "s"} · {activeRequests.length} active request{activeRequests.length === 1 ? "" : "s"}</span>
-              <span style={{ fontSize: 12, opacity: .9 }}>{formatWorkload(plannedMinutes)} planned · {remainingCapacityMinutes >= 0 ? `${formatWorkload(remainingCapacityMinutes)} open` : `${formatWorkload(-remainingCapacityMinutes)} over capacity`}</span>
             </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.16)" }}>
-            {!currentDaySession?.startedAt || currentDaySession?.endedAt ? <button type="button" onClick={startMyDay} style={{ ...teamGoldButtonStyle, minHeight: 34 }}>Start My Day</button> : <span style={{ border: "1px solid rgba(255,255,255,.28)", borderRadius: 10, padding: "8px 11px", fontWeight: 900, fontSize: 12 }}>Day started {new Date(currentDaySession.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>}
-            {currentDaySession?.startedAt && !currentDaySession?.endedAt ? <button type="button" onClick={endMyDay} style={{ border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.08)", color: "#FFFFFF", borderRadius: 10, padding: "8px 11px", fontWeight: 900, cursor: "pointer" }}>End My Day</button> : null}
-            {currentDaySession?.endedAt ? <span style={{ border: "1px solid rgba(255,255,255,.28)", borderRadius: 10, padding: "8px 11px", fontWeight: 900, fontSize: 12 }}>Day closed {new Date(currentDaySession.endedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span> : null}
           </div>
         </div>
       );
@@ -15828,14 +15449,6 @@ export default function AtlasPage() {
             <div><div style={eyebrowStyle}>Today & Upcoming</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>A guided workday, not just a list</h2></div>
             <button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Calendar</button>
           </div>
-
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
-            <div style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10, background: "#FFFFFF" }}><small style={fieldLabelStyle}>PLANNED</small><strong style={{ display: "block", marginTop: 3, color: colors.navy }}>{formatWorkload(plannedMinutes)}</strong><span style={mutedSmallStyle}>{dashboardTodayTasks.length} tasks · {guidedTodaysWork.length} work orders</span></div>
-            <div style={{ border: `1px solid ${remainingCapacityMinutes < 0 ? "#FACACA" : colors.line}`, borderRadius: 11, padding: 10, background: remainingCapacityMinutes < 0 ? "#FFF8F8" : "#FFFFFF" }}><small style={fieldLabelStyle}>CAPACITY</small><strong style={{ display: "block", marginTop: 3, color: remainingCapacityMinutes < 0 ? colors.red : colors.green }}>{remainingCapacityMinutes >= 0 ? `${formatWorkload(remainingCapacityMinutes)} open` : `${formatWorkload(-remainingCapacityMinutes)} over`}</strong><span style={mutedSmallStyle}>Based on a {Math.round(targetDayMinutes / 60 * 10) / 10}-hour day</span></div>
-            <div style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10, background: "#FFFFFF" }}><small style={fieldLabelStyle}>DELEGATION</small><strong style={{ display: "block", marginTop: 3, color: colors.navy }}>{addisonReadyWork.length + addisonReadyRoutineItems.length} Addison-ready</strong><span style={mutedSmallStyle}>Review before assigning</span></div>
-          </div>
-
-          {smartDaySuggestions.length ? <details open style={{ marginTop: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFDF7", padding: "9px 11px" }}><summary style={{ cursor: "pointer", fontWeight: 950, color: colors.navy }}>Atlas suggestions · {smartDaySuggestions.length}</summary><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{smartDaySuggestions.slice(0,4).map((suggestion) => <div key={suggestion.title} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", borderTop: `1px solid ${colors.line}`, paddingTop: 7 }}><span><strong style={{ display: "block", fontSize: 13 }}>{suggestion.title}</strong><small style={mutedSmallStyle}>{suggestion.detail}</small></span><button type="button" onClick={suggestion.action} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>{suggestion.label}</button></div>)}</div></details> : null}
 
           <div style={{ marginTop: 12, border: `1px solid #D7E3EC`, borderRadius: 12, background: "#F7FAFC", padding: "10px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -15891,9 +15504,7 @@ export default function AtlasPage() {
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
             {dashboardUpcomingTasks.slice(0, 6).map((task) => <button key={`upcoming-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>Task · {formatDate(taskDetails(task.id).dueDate)} · {minutesLabel(task.minutes)}</small></span><span style={badgeStyle(task.priority)}>{task.priority}</span></button>)}
             {upcomingWork.map((record) => <button key={`upcoming-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{formatDate(record.date)}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
-            {seasonalItems.filter((item) => item.status !== "Completed" && todayISO() >= item.windowStart && todayISO() <= item.deadline).slice(0, 3).map((item) => <button key={`seasonal-${item.id}`} type="button" onClick={() => { setTasksView("seasonal"); setScreen("planner"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>Seasonal · schedule by {formatDate(item.deadline)}</small></span><span style={badgeStyle("Open")}>Needs scheduling</span></button>)}
-            {vehicleCare.filter((item) => item.onsite && vehicleDueScore(item) >= 14).sort((a,b) => vehicleDueScore(b)-vehicleDueScore(a)).slice(0,1).map((item) => <button key={`vehicle-due-${item.id}`} type="button" onClick={() => { setTasksView("vehicles"); setScreen("planner"); }} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>Vehicle rotation: {item.name}</strong><small style={mutedSmallStyle}>{item.lastCleaned ? `${daysSince(item.lastCleaned)} days since cleaning` : "No cleaning record"}</small></span><span style={badgeStyle("Scheduled")}>Suggested</span></button>)}
-            {!upcomingWork.length && !dashboardUpcomingTasks.length && !seasonalItems.some((item) => item.status !== "Completed" && todayISO() >= item.windowStart && todayISO() <= item.deadline) ? <div style={noticeStyle}>Nothing is scheduled in the next 7 days.</div> : null}
+            {!upcomingWork.length && !dashboardUpcomingTasks.length ? <div style={noticeStyle}>Nothing is scheduled in the next 7 days.</div> : null}
           </div>
 
           <details style={{ marginTop: 14, borderTop: `1px solid ${colors.line}`, paddingTop: 12 }}>
@@ -15916,10 +15527,10 @@ export default function AtlasPage() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 12 }}>
             {liveStatuses.map((item) => (
-              <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}>
+              <div key={item.id === "planner" ? "Tasks" : item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}>
                 <button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}>
                   <span style={{ fontSize: 21 }}>{item.icon}</span>
-                  <strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong>
+                  <strong style={{ display: "block", marginTop: 7 }}>{item.id === "planner" ? "Tasks" : item.label}</strong>
                   <small style={mutedSmallStyle}>{item.count} open work order{item.count === 1 ? "" : "s"}</small>
                   <small style={{ ...mutedSmallStyle, display: "block", marginTop: 6, minHeight: 30 }}>{item.count ? item.reason : "No open work in this area."}</small>
                 </button>
@@ -17385,7 +16996,7 @@ export default function AtlasPage() {
             { icon: "✓", label: "Healthy Areas", value: healthyAreas, note: "No open work" },
           ].map((item) => (
             <div
-              key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+              key={item.id === "planner" ? "Tasks" : item.label}
               style={{
                 border: `1px solid ${colors.line}`,
                 borderRadius: 14,
@@ -17402,7 +17013,7 @@ export default function AtlasPage() {
                   gap: 8,
                 }}
               >
-                <div style={{ ...eyebrowStyle, fontSize: 10 }}>{((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}</div>
+                <div style={{ ...eyebrowStyle, fontSize: 10 }}>{item.id === "planner" ? "Tasks" : item.label}</div>
                 <span
                   aria-hidden="true"
                   style={{
@@ -20382,7 +19993,7 @@ export default function AtlasPage() {
                 },
               ].map((item) => (
                 <div
-                  key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+                  key={item.id === "planner" ? "Tasks" : item.label}
                   style={{
                     border: `1px solid ${colors.line}`,
                     borderRadius: 13,
@@ -20403,7 +20014,7 @@ export default function AtlasPage() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+                    {item.id === "planner" ? "Tasks" : item.label}
                   </span>
                   <strong
                     style={{
@@ -21575,7 +21186,7 @@ export default function AtlasPage() {
                   },
                 ].map((item) => (
                   <div
-                    key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+                    key={item.id === "planner" ? "Tasks" : item.label}
                     style={{
                       border: `1px solid ${colors.line}`,
                       borderRadius: 10,
@@ -21584,7 +21195,7 @@ export default function AtlasPage() {
                       minWidth: 0,
                     }}
                   >
-                    <span style={assetInfoLabelStyle}>{((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}</span>
+                    <span style={assetInfoLabelStyle}>{item.id === "planner" ? "Tasks" : item.label}</span>
                     <strong
                       style={{
                         display: "block",
@@ -21801,7 +21412,7 @@ export default function AtlasPage() {
                     )
                     .map((item) => (
                     <button
-                      key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+                      key={item.id === "planner" ? "Tasks" : item.label}
                       type="button"
                       className="atlas-gold-hover-card"
                       onClick={item.action}
@@ -21816,7 +21427,7 @@ export default function AtlasPage() {
                       }}
                     >
                       <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
-                      <span style={assetInfoLabelStyle}>{((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}</span>
+                      <span style={assetInfoLabelStyle}>{item.id === "planner" ? "Tasks" : item.label}</span>
                       <strong
                         style={{
                           display: "block",
@@ -26213,7 +25824,7 @@ export default function AtlasPage() {
                   },
                 ].map((item) => (
                   <div
-                    key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+                    key={item.id === "planner" ? "Tasks" : item.label}
                     style={{
                       minWidth: 0,
                       border: `1px solid ${colors.line}`,
@@ -26264,7 +25875,7 @@ export default function AtlasPage() {
                         fontWeight: 900,
                       }}
                     >
-                      {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+                      {item.id === "planner" ? "Tasks" : item.label}
                     </div>
                     <div
                       style={{
@@ -33084,7 +32695,7 @@ export default function AtlasPage() {
               },
             ].map((item) => (
               <div
-                key={((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+                key={item.id === "planner" ? "Tasks" : item.label}
                 style={{
                   padding: "14px 16px",
                   border: `1px solid ${colors.line}`,
@@ -33093,7 +32704,7 @@ export default function AtlasPage() {
                 }}
               >
                 <div style={{ ...eyebrowStyle, marginBottom: 5 }}>
-                  {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+                  {item.id === "planner" ? "Tasks" : item.label}
                 </div>
                 <strong style={{ fontSize: 20, color: colors.navy }}>
                   {item.value}
@@ -35285,7 +34896,7 @@ export default function AtlasPage() {
                     )
                     .map((item) => (
                       <option key={item.id} value={item.id}>
-                        {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+                        {item.id === "planner" ? "Tasks" : item.label}
                       </option>
                     ))}
                 </optgroup>
@@ -36160,7 +35771,7 @@ export default function AtlasPage() {
                 borderColor: screen === item.id ? colors.gold : "transparent",
               }}
             >
-              {((item as { id?: string }).id === "planner" ? "Tasks" : item.label)}
+              {item.id === "planner" ? "Tasks" : item.label}
             </button>
           ))}
         </nav>
