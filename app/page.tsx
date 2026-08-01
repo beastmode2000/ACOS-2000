@@ -245,6 +245,15 @@ type AtlasSeasonalItem = {
   lastCompletedAt?: string;
 };
 
+type AtlasDaySession = {
+  date: string;
+  propertyId: string;
+  startedAt?: string;
+  endedAt?: string;
+  targetHours: number;
+  notes: string;
+};
+
 type PropertyProfile = {
   id: string;
   name: string;
@@ -4975,6 +4984,7 @@ export default function AtlasPage() {
     { id: "annual-appliance-service", title: "Annual appliance service", season: "Fall", windowStart: `${new Date().getFullYear()}-10-01`, targetDate: `${new Date().getFullYear()}-11-15`, deadline: `${new Date().getFullYear()}-12-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Complete during the colder months and before year end." },
     { id: "winter-tires", title: "Install winter tires", season: "Fall", windowStart: `${new Date().getFullYear()}-10-15`, targetDate: `${new Date().getFullYear()}-11-01`, deadline: `${new Date().getFullYear()}-11-30`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Activate only for vehicles onsite and needing winter tires." }
   ]));
+  const [daySessions, setDaySessions] = useState<AtlasDaySession[]>(() => readStoredArray<AtlasDaySession>(["atlas-day-sessions-v1"], []));
   const [workPlanTargetHours, setWorkPlanTargetHours] = useState(7);
   const [workPlanSaving, setWorkPlanSaving] = useState(false);
   const [workPlanMessage, setWorkPlanMessage] = useState(
@@ -4997,6 +5007,7 @@ export default function AtlasPage() {
   useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
   useEffect(() => { saveStoredArray("atlas-vehicle-care-v1", vehicleCare); }, [vehicleCare]);
   useEffect(() => { saveStoredArray("atlas-seasonal-work-v1", seasonalItems); }, [seasonalItems]);
+  useEffect(() => { saveStoredArray("atlas-day-sessions-v1", daySessions); }, [daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
@@ -15475,6 +15486,60 @@ export default function AtlasPage() {
       showSaveToast("Added to today’s plan.");
     };
 
+    const currentDaySession = daySessions.find((session) => session.date === today && session.propertyId === activePropertyId);
+    const taskWorkMinutes = dashboardTodayTasks.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0);
+    const workOrderMinutes = guidedTodaysWork.reduce((sum, record) => {
+      const effort = String((record as AtlasServiceRecord).effort || "");
+      const minutes = effort === "5 minutes" ? 5 : effort === "15 minutes" ? 15 : effort === "30 minutes" ? 30 : effort === "1 hour" ? 60 : effort === "Half Day" ? 240 : effort === "Full Day" ? 480 : effort === "Multi-Day" ? 480 : 45;
+      return sum + minutes;
+    }, 0);
+    const routineMinutesEstimate = visibleRoutineItems.filter((item) => !completedDashboardRoutineIds.includes(item.id)).length * 12;
+    const plannedMinutes = taskWorkMinutes + workOrderMinutes + routineMinutesEstimate;
+    const targetDayMinutes = Math.max(60, Math.round((currentDaySession?.targetHours || workPlanTargetHours || 7) * 60));
+    const remainingCapacityMinutes = targetDayMinutes - plannedMinutes;
+    const formatWorkload = (minutes: number) => {
+      const absolute = Math.abs(Math.round(minutes));
+      const hours = Math.floor(absolute / 60);
+      const remainder = absolute % 60;
+      return `${hours ? `${hours} hr ` : ""}${remainder ? `${remainder} min` : hours ? "" : "0 min"}`.trim();
+    };
+    const startMyDay = () => {
+      const now = new Date().toISOString();
+      setDaySessions((current) => {
+        const exists = current.some((session) => session.date === today && session.propertyId === activePropertyId);
+        return exists
+          ? current.map((session) => session.date === today && session.propertyId === activePropertyId ? { ...session, startedAt: session.startedAt || now, endedAt: undefined } : session)
+          : [{ date: today, propertyId: activePropertyId, startedAt: now, targetHours: workPlanTargetHours || 7, notes: "" }, ...current];
+      });
+      showSaveToast("Your guided workday is active.");
+    };
+    const endMyDay = () => {
+      const unfinishedFlexibleTasks = dashboardTodayTasks.filter((task) => task.priority !== "High" && taskDetails(task.id).status !== "Completed");
+      const shouldMove = unfinishedFlexibleTasks.length ? window.confirm(`End the day and move ${unfinishedFlexibleTasks.length} unfinished non-high-priority task${unfinishedFlexibleTasks.length === 1 ? "" : "s"} to tomorrow?`) : true;
+      if (shouldMove && unfinishedFlexibleTasks.length) {
+        setTaskMeta((current) => {
+          const next = { ...current };
+          unfinishedFlexibleTasks.forEach((task) => { next[task.id] = { ...taskDetails(task.id), dueDate: addDays(today, 1) }; });
+          return next;
+        });
+      }
+      const now = new Date().toISOString();
+      setDaySessions((current) => {
+        const exists = current.some((session) => session.date === today && session.propertyId === activePropertyId);
+        return exists
+          ? current.map((session) => session.date === today && session.propertyId === activePropertyId ? { ...session, endedAt: now } : session)
+          : [{ date: today, propertyId: activePropertyId, startedAt: now, endedAt: now, targetHours: workPlanTargetHours || 7, notes: "" }, ...current];
+      });
+      showSaveToast("Day closed and history preserved.");
+    };
+    const smartDaySuggestions = [
+      remainingCapacityMinutes < -60 ? { title: "Workload is over capacity", detail: `${formatWorkload(-remainingCapacityMinutes)} should move, delegate, or wait.`, action: () => setScreen("planner"), label: "Review tasks" } : null,
+      remainingCapacityMinutes > 90 ? { title: "You have useful open capacity", detail: `${formatWorkload(remainingCapacityMinutes)} remains for backlog, vehicle care, or project follow-up.`, action: () => { setTasksView("backlog"); setScreen("planner"); }, label: "Open Backlog" } : null,
+      addisonReadyWork.length + addisonReadyRoutineItems.length > 0 ? { title: "Addison can absorb part of today", detail: `${addisonReadyWork.length + addisonReadyRoutineItems.length} low-risk item${addisonReadyWork.length + addisonReadyRoutineItems.length === 1 ? " is" : "s are"} suitable to review for delegation.`, action: () => setScreen("team"), label: "Review help" } : null,
+      todaysWeather && Number(todaysWeather.precipChance || 0) >= 55 ? { title: "Weather may change the order", detail: "Handle exposed outdoor work during the driest window and keep indoor work as backup.", action: () => setScreen("calendar"), label: "Check schedule" } : null,
+      vehicleCare.some((vehicle) => vehicleDueScore(vehicle) >= 14) ? { title: "A vehicle is due for attention", detail: "The vehicle rotation has at least one onsite vehicle that is becoming due.", action: () => { setTasksView("vehicles"); setScreen("planner"); }, label: "Vehicle rotation" } : null,
+    ].filter(Boolean) as Array<{ title: string; detail: string; action: () => void; label: string }>;
+
     const allLayouts = [...builtInDashboardLayouts, ...customDashboardLayouts];
     const applyLayout = (layoutId: string) => {
       const layout = allLayouts.find((item) => item.id === layoutId);
@@ -15551,7 +15616,13 @@ export default function AtlasPage() {
                 <strong style={{ fontSize: 15 }}>{overdueWork.length ? `${overdueWork.length} overdue item${overdueWork.length === 1 ? "" : "s"}` : highPriority.length ? `${highPriority.length} high-priority item${highPriority.length === 1 ? "" : "s"}` : "All systems operating normally"}</strong>
               </div>
               <span style={{ fontSize: 12, opacity: .76 }}>{openWork.length} open work order{openWork.length === 1 ? "" : "s"} · {activeRequests.length} active request{activeRequests.length === 1 ? "" : "s"}</span>
+              <span style={{ fontSize: 12, opacity: .9 }}>{formatWorkload(plannedMinutes)} planned · {remainingCapacityMinutes >= 0 ? `${formatWorkload(remainingCapacityMinutes)} open` : `${formatWorkload(-remainingCapacityMinutes)} over capacity`}</span>
             </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.16)" }}>
+            {!currentDaySession?.startedAt || currentDaySession?.endedAt ? <button type="button" onClick={startMyDay} style={{ ...teamGoldButtonStyle, minHeight: 34 }}>Start My Day</button> : <span style={{ border: "1px solid rgba(255,255,255,.28)", borderRadius: 10, padding: "8px 11px", fontWeight: 900, fontSize: 12 }}>Day started {new Date(currentDaySession.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>}
+            {currentDaySession?.startedAt && !currentDaySession?.endedAt ? <button type="button" onClick={endMyDay} style={{ border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.08)", color: "#FFFFFF", borderRadius: 10, padding: "8px 11px", fontWeight: 900, cursor: "pointer" }}>End My Day</button> : null}
+            {currentDaySession?.endedAt ? <span style={{ border: "1px solid rgba(255,255,255,.28)", borderRadius: 10, padding: "8px 11px", fontWeight: 900, fontSize: 12 }}>Day closed {new Date(currentDaySession.endedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span> : null}
           </div>
         </div>
       );
@@ -15562,6 +15633,14 @@ export default function AtlasPage() {
             <div><div style={eyebrowStyle}>Today & Upcoming</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>A guided workday, not just a list</h2></div>
             <button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Calendar</button>
           </div>
+
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+            <div style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10, background: "#FFFFFF" }}><small style={fieldLabelStyle}>PLANNED</small><strong style={{ display: "block", marginTop: 3, color: colors.navy }}>{formatWorkload(plannedMinutes)}</strong><span style={mutedSmallStyle}>{dashboardTodayTasks.length} tasks · {guidedTodaysWork.length} work orders</span></div>
+            <div style={{ border: `1px solid ${remainingCapacityMinutes < 0 ? "#FACACA" : colors.line}`, borderRadius: 11, padding: 10, background: remainingCapacityMinutes < 0 ? "#FFF8F8" : "#FFFFFF" }}><small style={fieldLabelStyle}>CAPACITY</small><strong style={{ display: "block", marginTop: 3, color: remainingCapacityMinutes < 0 ? colors.red : colors.green }}>{remainingCapacityMinutes >= 0 ? `${formatWorkload(remainingCapacityMinutes)} open` : `${formatWorkload(-remainingCapacityMinutes)} over`}</strong><span style={mutedSmallStyle}>Based on a {Math.round(targetDayMinutes / 60 * 10) / 10}-hour day</span></div>
+            <div style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10, background: "#FFFFFF" }}><small style={fieldLabelStyle}>DELEGATION</small><strong style={{ display: "block", marginTop: 3, color: colors.navy }}>{addisonReadyWork.length + addisonReadyRoutineItems.length} Addison-ready</strong><span style={mutedSmallStyle}>Review before assigning</span></div>
+          </div>
+
+          {smartDaySuggestions.length ? <details open style={{ marginTop: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFDF7", padding: "9px 11px" }}><summary style={{ cursor: "pointer", fontWeight: 950, color: colors.navy }}>Atlas suggestions · {smartDaySuggestions.length}</summary><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{smartDaySuggestions.slice(0,4).map((suggestion) => <div key={suggestion.title} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", borderTop: `1px solid ${colors.line}`, paddingTop: 7 }}><span><strong style={{ display: "block", fontSize: 13 }}>{suggestion.title}</strong><small style={mutedSmallStyle}>{suggestion.detail}</small></span><button type="button" onClick={suggestion.action} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>{suggestion.label}</button></div>)}</div></details> : null}
 
           <div style={{ marginTop: 12, border: `1px solid #D7E3EC`, borderRadius: 12, background: "#F7FAFC", padding: "10px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
