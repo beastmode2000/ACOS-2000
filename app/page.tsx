@@ -18676,7 +18676,7 @@ export default function AtlasPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                    gridTemplateColumns: "1fr",
                     gap: 8,
                   }}
                 >
@@ -25971,7 +25971,7 @@ export default function AtlasPage() {
             !isMobile
               ? selectedDocument
                 ? {
-                    gridTemplateColumns: "minmax(300px, 34%) minmax(0, 66%)",
+                    gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)",
                     alignItems: "start",
                     gap: 14,
                   }
@@ -25994,14 +25994,16 @@ export default function AtlasPage() {
             !isMobile
               ? selectedDocument
                 ? {
-                    position: "static",
-                    top: "auto",
+                    position: "sticky",
+                    top: 10,
                     alignSelf: "start",
                     width: "100%",
                     minWidth: 0,
-                    maxHeight: "none",
-                    overflowY: "visible",
+                    maxHeight: "calc(100vh - 24px)",
+                    overflowY: "auto",
                     overflowX: "hidden",
+                    overscrollBehavior: "contain",
+                    zIndex: 3,
                   }
                 : { display: "none" }
               : undefined
@@ -26354,7 +26356,7 @@ export default function AtlasPage() {
                     style={{
                       position: "relative",
                       display: "grid",
-                      gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) auto",
+                      gridTemplateColumns: "1fr",
                       alignItems: "center",
                       gap: 12,
                     }}
@@ -26403,7 +26405,7 @@ export default function AtlasPage() {
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: isMobile ? "flex-start" : "flex-end",
+                        justifyContent: "flex-start",
                         gap: 8,
                         flexWrap: "wrap",
                       }}
@@ -34036,6 +34038,30 @@ export default function AtlasPage() {
         }
         .atlas-app-shell ::-webkit-scrollbar-thumb:hover {
           background: #7F94A4;
+        }
+        .atlas-app-shell h1,
+        .atlas-app-shell h2,
+        .atlas-app-shell h3,
+        .atlas-app-shell h4,
+        .atlas-app-shell strong,
+        .atlas-app-shell span,
+        .atlas-app-shell p,
+        .atlas-app-shell button,
+        .atlas-app-shell label {
+          word-break: normal !important;
+          overflow-wrap: break-word;
+          writing-mode: horizontal-tb !important;
+        }
+        .atlas-app-shell input,
+        .atlas-app-shell select {
+          min-height: 36px !important;
+        }
+        .atlas-app-shell textarea {
+          min-height: 72px !important;
+          max-height: 150px;
+        }
+        .atlas-app-shell select {
+          text-overflow: ellipsis;
         }
         @media (max-width: 760px) {
           .atlas-page-header {
