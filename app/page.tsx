@@ -15097,6 +15097,67 @@ export default function AtlasPage() {
       todaysWeather ? `${weatherText(Number(todaysWeather.code || 0))}; ${irrigationAdvice(todaysWeather)}` : "Weather intelligence is loading.",
     ];
 
+    type DailyFocusPlan = {
+      title: string;
+      detail: string;
+      keywords: string[];
+      suggested: string[];
+    };
+
+    const dayName = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long" });
+    const weeklyFocus: Record<string, DailyFocusPlan> = {
+      Monday: {
+        title: "Reset, planning, and first mowing window",
+        detail: "Reset the property after the weekend, review new work, clean support spaces, and use the first suitable mowing and edging window.",
+        keywords: ["reset", "plan", "mow", "edge", "basement", "bathroom", "tool", "supply", "inventory", "package", "garbage"],
+        suggested: ["Daily opening property check", "Packages, garage garbage, and dog turf", "First mow and edge when conditions allow", "Basement bathroom and indoor tool-area reset"],
+      },
+      Tuesday: {
+        title: "Grounds, lawn, and irrigation",
+        detail: "Prioritize irrigation, lawns, dry spots, beds, vendor coordination, and one flexible vehicle-care slot.",
+        keywords: ["irrigation", "hydrawise", "lawn", "grounds", "water", "dry spot", "bed", "landscape", "vehicle", "wash"],
+        suggested: ["Irrigation and dry-spot inspection", "Grounds and lawn walkthrough", "Courtyard and walkway cleanup", "Vehicle-care rotation if time allows"],
+      },
+      Wednesday: {
+        title: "Landscape day",
+        detail: "Use the main work block for landscape appearance, beds, pruning, weeds, fountain, courtyard, and pool or spa checks. Mowing remains on its own twice-weekly rhythm.",
+        keywords: ["landscape", "weed", "prune", "bed", "fountain", "courtyard", "pool", "spa", "plant", "pot", "water"],
+        suggested: ["Detailed landscape walkthrough", "Beds, weeds, pruning, pots, and dry spots", "Pool, spa, fountain, and courtyard checks", "Landscape follow-ups and photo notes"],
+      },
+      Thursday: {
+        title: "Vehicles, dock, and recreation",
+        detail: "Focus on the waterfront, boat, Sea-Doo, lifts, vehicle-care rotation, and the second mowing and edging window when needed.",
+        keywords: ["dock", "boat", "seadoo", "sea-doo", "lift", "waterfront", "vehicle", "mercedes", "rivian", "porsche", "lucid", "ford", "kia", "honda", "subaru", "mow", "edge"],
+        suggested: ["Boat and Sea-Doo cleaning", "Dock, lift, and waterfront inspection", "Clean the highest-priority vehicles currently onsite", "Second mow and edge when conditions allow"],
+      },
+      Friday: {
+        title: "Readiness, closeout, and final walkthrough",
+        detail: "Finish open small work, prepare the estate for the weekend, reset work areas, and document anything that carries into next week.",
+        keywords: ["walkthrough", "pool", "spa", "walkway", "stair", "reset", "tool", "clean", "ready", "close", "photo", "note"],
+        suggested: ["Final property walkthrough", "Pool and spa readiness check", "Walkways, staircases, and work-area reset", "Update notes, photos, and next week’s priorities"],
+      },
+      Saturday: { title: "Essential checks only", detail: "Keep the plan light and surface only urgent, owner-requested, or safety-related work.", keywords: ["urgent", "safety", "owner", "pool", "spa"], suggested: ["Essential property check", "Urgent or owner-requested items only"] },
+      Sunday: { title: "Essential checks only", detail: "Keep the plan light and surface only urgent, owner-requested, or safety-related work.", keywords: ["urgent", "safety", "owner", "pool", "spa"], suggested: ["Essential property check", "Urgent or owner-requested items only"] },
+    };
+    const todayFocus = weeklyFocus[dayName] || weeklyFocus.Monday;
+    const dailyBaseline = ["Opening property check", "Dog turf, packages, and garage garbage"];
+    const workSearchText = (record: AtlasServiceRecord) => `${record.title || ""} ${record.workCategory || ""} ${record.responsibilityArea || ""} ${record.notes || ""}`.toLowerCase();
+    const themeMatchScore = (record: AtlasServiceRecord) => todayFocus.keywords.reduce((score, keyword) => score + (workSearchText(record).includes(keyword) ? 1 : 0), 0);
+    const guidedTodaysWork = [...todaysWork].sort((a, b) => themeMatchScore(b as AtlasServiceRecord) - themeMatchScore(a as AtlasServiceRecord) || priorityRank(a) - priorityRank(b) || String(a.title || "").localeCompare(String(b.title || "")));
+    const addisonKeywords = ["weed", "dog turf", "fountain", "sweep", "pot", "dry spot", "water plants", "walkway", "stair", "clean", "wash", "tool area", "courtyard", "landscape cleanup"];
+    const addisonBlockedKeywords = ["electrical", "boiler", "hvac", "repair", "diagnose", "roof", "lift service", "chemical", "plumbing", "inspection", "high priority"];
+    const isAddisonReady = (title: string, detail = "") => {
+      const text = `${title} ${detail}`.toLowerCase();
+      return addisonKeywords.some((keyword) => text.includes(keyword)) && !addisonBlockedKeywords.some((keyword) => text.includes(keyword));
+    };
+    const addisonReadyWork = guidedTodaysWork.filter((record) => isAddisonReady(record.title, `${record.workCategory || ""} ${record.notes || ""}`)).slice(0, 4);
+    const addisonReadyRoutineItems = visibleRoutineItems.filter((item) => isAddisonReady(item.title, item.detail)).slice(0, 4);
+    const suggestedTodayItems = [...dailyBaseline, ...todayFocus.suggested].filter((item, index, all) => all.indexOf(item) === index);
+    const addSuggestedTodayItem = (text: string) => {
+      setTodayLogEntries((current) => [{ id: uid("today-log"), propertyId: activePropertyId, date: today, category: "Task", text, createdAt: new Date().toISOString() }, ...current]);
+      showSaveToast("Added to today’s plan.");
+    };
+
     const allLayouts = [...builtInDashboardLayouts, ...customDashboardLayouts];
     const applyLayout = (layoutId: string) => {
       const layout = allLayouts.find((item) => item.id === layoutId);
@@ -15181,8 +15242,28 @@ export default function AtlasPage() {
       if (id === "today-upcoming") return (
         <section style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-            <div><div style={eyebrowStyle}>Today & Upcoming</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>What needs attention now</h2></div>
+            <div><div style={eyebrowStyle}>Today & Upcoming</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>A guided workday, not just a list</h2></div>
             <button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Calendar</button>
+          </div>
+
+          <div style={{ marginTop: 12, border: `1px solid #D7E3EC`, borderRadius: 12, background: "#F7FAFC", padding: "10px 12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ ...fieldLabelStyle, color: colors.gold }}>TODAY’S FOCUS · {dayName.toUpperCase()}</div>
+                <strong style={{ display: "block", marginTop: 3, color: colors.navy, fontSize: 16 }}>{todayFocus.title}</strong>
+                <small style={{ ...mutedSmallStyle, display: "block", marginTop: 4, maxWidth: 760 }}>{todayFocus.detail}</small>
+              </div>
+              <span style={{ ...badgeStyle("Monitor"), flex: "0 0 auto" }}>{guidedTodaysWork.length} due today</span>
+            </div>
+            <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+              {suggestedTodayItems.map((item) => {
+                const alreadyAdded = todaysLogEntries.some((entry) => entry.text.trim().toLowerCase() === item.trim().toLowerCase());
+                return <div key={item} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", paddingLeft: isMobile ? 0 : 12 }}>
+                  <span style={{ fontSize: 13, color: colors.text }}>↳ {item}</span>
+                  <button type="button" disabled={alreadyAdded} onClick={() => addSuggestedTodayItem(item)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 7px", fontSize: 11, opacity: alreadyAdded ? .55 : 1 }}>{alreadyAdded ? "Added" : "+ Today"}</button>
+                </div>;
+              })}
+            </div>
           </div>
 
           <details open style={{ marginTop: 12, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: "10px 12px" }}>
@@ -15199,9 +15280,20 @@ export default function AtlasPage() {
 
           <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Today</div></div>
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
-            {todaysWork.map((record) => <button key={record.id} type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.workCategory || "Work order"}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
-            {!todaysWork.length ? <div style={noticeStyle}>No open work orders are due today.</div> : null}
+            {guidedTodaysWork.map((record) => <button key={record.id} type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.workCategory || "Work order"}{record.effort ? ` · ${record.effort}` : ""}</small></span><span style={badgeStyle(String(record.priority || "Medium"))}>{record.priority || "Medium"}</span></button>)}
+            {!guidedTodaysWork.length ? <div style={noticeStyle}>No open work orders are due today. Use the focus suggestions above to build the day without creating unnecessary work orders.</div> : null}
           </div>
+
+          {(addisonReadyWork.length || addisonReadyRoutineItems.length) ? (
+            <details style={{ marginTop: 14, border: `1px solid #CFE4D8`, borderRadius: 12, background: "#F4FBF7", padding: "10px 12px" }}>
+              <summary style={{ cursor: "pointer", fontWeight: 900, color: colors.green }}>Addison-ready help · {addisonReadyWork.length + addisonReadyRoutineItems.length} suitable item{addisonReadyWork.length + addisonReadyRoutineItems.length === 1 ? "" : "s"}</summary>
+              <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                {addisonReadyWork.map((record) => <button key={`addison-work-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: `1px solid #D7EBDD`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy3 }}>{record.title}</strong><small style={mutedSmallStyle}>Existing work item · review before assigning</small></button>)}
+                {addisonReadyRoutineItems.map((item) => <div key={`addison-routine-${item.id}`} style={{ border: `1px solid #D7EBDD`, borderRadius: 9, background: "#FFFFFF", padding: 8 }}><strong style={{ display: "block", color: colors.navy3 }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail || "Routine checklist item"}</small></div>)}
+                <small style={{ ...mutedSmallStyle, marginTop: 2 }}>Atlas only suggests low-risk cleaning, grounds, watering, and reset work here. Confirm Addison is onsite before assigning it.</small>
+              </div>
+            </details>
+          ) : null}
 
           <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Upcoming · next 7 days</div></div>
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
