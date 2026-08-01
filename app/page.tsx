@@ -23797,8 +23797,102 @@ export default function AtlasPage() {
               {selectedService.responsibilityArea ? <div style={{ minWidth: 0 }}><span style={fieldLabelStyle}>Created from</span><div style={{ marginTop: 5, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", color: colors.navy, fontSize: 12, fontWeight: 850 }}>{selectedService.responsibilityArea}</div></div> : <div />}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
-              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned people</span><select multiple value={selectedService.assignedPersonIds || []} onChange={(event) => updateWorkOrder({ assignedPersonIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value) })} style={{ ...inputStyle, minHeight: 96 }}>{contactRecords.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}{contact.organization ? ` · ${contact.organization}` : ""}</option>)}</select><small style={mutedSmallStyle}>Hold Ctrl or Command to select more than one.</small></label>
-              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned vendors</span><select multiple value={selectedService.assignedVendorIds || []} onChange={(event) => updateWorkOrder({ assignedVendorIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value), vendorId: Array.from(event.currentTarget.selectedOptions)[0]?.value || "" })} style={{ ...inputStyle, minHeight: 96 }}>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select><small style={mutedSmallStyle}>Every selected vendor remains attached.</small></label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={fieldLabelStyle}>Assigned people</span>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    const personId = event.target.value;
+                    if (!personId) return;
+                    updateWorkOrder({
+                      assignedPersonIds: Array.from(
+                        new Set([...(selectedService.assignedPersonIds || []), personId]),
+                      ),
+                    });
+                    event.currentTarget.value = "";
+                  }}
+                  style={{ ...inputStyle, minHeight: 40 }}
+                >
+                  <option value="">Add a person...</option>
+                  {contactRecords
+                    .filter((contact) => !(selectedService.assignedPersonIds || []).includes(contact.id))
+                    .map((contact) => (
+                      <option key={contact.id} value={contact.id}>
+                        {contact.name}{contact.organization ? ` · ${contact.organization}` : ""}
+                      </option>
+                    ))}
+                </select>
+                {(selectedService.assignedPersonIds || []).length ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {(selectedService.assignedPersonIds || []).map((personId) => {
+                      const person = contactRecords.find((contact) => contact.id === personId);
+                      return (
+                        <button
+                          key={personId}
+                          type="button"
+                          onClick={() => updateWorkOrder({
+                            assignedPersonIds: (selectedService.assignedPersonIds || []).filter((id) => id !== personId),
+                          })}
+                          style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 8px", fontSize: 11 }}
+                          title="Remove person"
+                        >
+                          {person?.name || "Unknown person"} ×
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={fieldLabelStyle}>Assigned vendors</span>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    const vendorId = event.target.value;
+                    if (!vendorId) return;
+                    const nextVendorIds = Array.from(
+                      new Set([...(selectedService.assignedVendorIds || []), vendorId]),
+                    );
+                    updateWorkOrder({
+                      assignedVendorIds: nextVendorIds,
+                      vendorId: nextVendorIds[0] || "",
+                    });
+                    event.currentTarget.value = "";
+                  }}
+                  style={{ ...inputStyle, minHeight: 40 }}
+                >
+                  <option value="">Add a vendor...</option>
+                  {vendorRecords
+                    .filter((vendor) => !(selectedService.assignedVendorIds || []).includes(vendor.id))
+                    .map((vendor) => (
+                      <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                    ))}
+                </select>
+                {(selectedService.assignedVendorIds || []).length ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {(selectedService.assignedVendorIds || []).map((vendorId) => {
+                      const vendor = vendorRecords.find((item) => item.id === vendorId);
+                      return (
+                        <button
+                          key={vendorId}
+                          type="button"
+                          onClick={() => {
+                            const nextVendorIds = (selectedService.assignedVendorIds || []).filter((id) => id !== vendorId);
+                            updateWorkOrder({
+                              assignedVendorIds: nextVendorIds,
+                              vendorId: nextVendorIds[0] || "",
+                            });
+                          }}
+                          style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 8px", fontSize: 11 }}
+                          title="Remove vendor"
+                        >
+                          {vendor?.name || "Unknown vendor"} ×
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </label>
               <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Linked project</span><select value={selectedService.projectId || ""} onChange={(event) => updateWorkOrder({ projectId: event.currentTarget.value })} style={inputStyle}><option value="">No project</option>{photoTimelineProjects.filter((project) => !project.archived || project.id === selectedService.projectId).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
             </div>
           </div>
