@@ -157,10 +157,22 @@ type PhotoTimelineMeta = {
   primaryContext?: "standalone" | "asset" | "project";
 };
 
+type ProjectTimelineEntry = {
+  id: string;
+  projectId: string;
+  title: string;
+  notes: string;
+  date: string;
+  type: "Note" | "Milestone" | "Vendor Visit" | "Delivery" | "Inspection" | "Decision" | "Completed";
+  createdAt: string;
+};
+
 type PhotoTimelineProject = {
   id: string;
   title: string;
   category: PhotoTimelineProjectCategory;
+  scale?: "Quick" | "Standard" | "Major";
+  status?: "Planning" | "Active" | "Waiting" | "Completed";
   assetId: string;
   locationId: string;
   vendorId: string;
@@ -436,10 +448,10 @@ const atlasNavigationSections: {
   { label: "Overview", items: ["dashboard", "portfolio"] },
   {
     label: "Work",
-    items: ["history", "calendar", "planner", "routines", "team"],
+    items: ["history", "calendar", "planner", "routines", "team", "timeline"],
   },
   { label: "Intake", items: ["inbox", "requests", "qr"] },
-  { label: "Analytics", items: ["timeline", "insights", "reports"] },
+  { label: "Analytics", items: ["insights", "reports"] },
   { label: "Property", items: ["locations", "assets", "map"] },
   { label: "People", items: ["vendors", "contacts"] },
   {
@@ -4192,6 +4204,23 @@ export default function AtlasPage() {
   const [photoTimelineScrubber, setPhotoTimelineScrubber] = useState(100);
   const [selectedPhotoProjectId, setSelectedPhotoProjectId] = useState("");
   const [projectDetailTab, setProjectDetailTab] = useState<"overview" | "photos" | "documents" | "work" | "people" | "timeline">("overview");
+  const [projectTimelineEntries, setProjectTimelineEntries] = useState<ProjectTimelineEntry[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = window.localStorage.getItem("atlas-project-timeline-entries-v1");
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [projectQuickNoteTitle, setProjectQuickNoteTitle] = useState("");
+  const [projectQuickNoteText, setProjectQuickNoteText] = useState("");
+  const [projectQuickNoteDate, setProjectQuickNoteDate] = useState(todayISO());
+  const [projectQuickNoteType, setProjectQuickNoteType] = useState<ProjectTimelineEntry["type"]>("Note");
+  const [projectPhotoDate, setProjectPhotoDate] = useState(todayISO());
+  const [projectPhotoCaption, setProjectPhotoCaption] = useState("");
+  const [projectPhotoTag, setProjectPhotoTag] = useState<PhotoTimelineTag>("During");
   const [photoLightboxIds, setPhotoLightboxIds] = useState<string[]>([]);
   const [photoLightboxIndex, setPhotoLightboxIndex] = useState(-1);
   const [photoLightboxZoom, setPhotoLightboxZoom] = useState(1);
@@ -4368,6 +4397,18 @@ export default function AtlasPage() {
       console.warn("Atlas could not save photo timeline projects.", error);
     }
   }, [photoTimelineProjects]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        "atlas-project-timeline-entries-v1",
+        JSON.stringify(projectTimelineEntries),
+      );
+    } catch (error) {
+      console.warn("Atlas could not save project timeline entries.", error);
+    }
+  }, [projectTimelineEntries]);
 
   useEffect(() => {
     if (photoLightboxIndex < 0 && !photoCompareOpen) return;
@@ -15670,6 +15711,11 @@ export default function AtlasPage() {
           .filter((item) => photoTimelineMeta[item.id]?.projectId === selectedPhotoProject.id)
           .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
       : [];
+    const selectedProjectTimelineEntries = selectedPhotoProject
+      ? projectTimelineEntries
+          .filter((entry) => entry.projectId === selectedPhotoProject.id)
+          .sort((a, b) => `${b.date} ${b.createdAt}`.localeCompare(`${a.date} ${a.createdAt}`))
+      : [];
     const selectedProjectWorkOrders = selectedPhotoProject
       ? serviceRecords.filter((record) =>
           record.projectId === selectedPhotoProject.id ||
@@ -15864,12 +15910,104 @@ export default function AtlasPage() {
       });
     };
 
+    const addProjectQuickTimelineNote = () => {
+      if (!selectedPhotoProject) return;
+      const title = projectQuickNoteTitle.trim() || projectQuickNoteType;
+      const notes = projectQuickNoteText.trim();
+      if (!title && !notes) {
+        showSaveToast("Add a title or note first.", "warning");
+        return;
+      }
+      const entry: ProjectTimelineEntry = {
+        id: uid("project-note"),
+        projectId: selectedPhotoProject.id,
+        title,
+        notes,
+        date: projectQuickNoteDate || todayISO(),
+        type: projectQuickNoteType,
+        createdAt: new Date().toISOString(),
+      };
+      setProjectTimelineEntries((current) => [entry, ...current]);
+      setProjectQuickNoteTitle("");
+      setProjectQuickNoteText("");
+      setProjectQuickNoteDate(todayISO());
+      setProjectQuickNoteType("Note");
+      showSaveToast("Timeline note added.");
+    };
+
+    const addDatedProjectPhotos = async (files: FileList | null) => {
+      if (!selectedPhotoProject || !files?.length) return;
+      const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
+      if (!imageFiles.length) {
+        showSaveToast("Choose one or more image files.", "warning");
+        return;
+      }
+      try {
+        const uploadedFiles = await Promise.all(imageFiles.map(fileToUploadedRecord));
+        const date = projectPhotoDate || todayISO();
+        const createdAt = `${date}T12:00:00`;
+        const documentId = uid("project-photo-doc");
+        const document = normalizeDocument({
+          id: documentId,
+          propertyId: activePropertyId,
+          title: projectPhotoCaption.trim() || `${selectedPhotoProject.title} photos - ${formatDate(date)}`,
+          area: selectedPhotoProject.title,
+          type: "Project Photos",
+          targetType: "General",
+          targetId: selectedPhotoProject.id,
+          targetName: selectedPhotoProject.title,
+          notes: projectPhotoCaption.trim(),
+          files: uploadedFiles.map((file) => ({ ...file, createdAt })),
+          createdAt,
+        });
+        setIntakeDocs((current) => {
+          const next = mergeDocuments([document], current);
+          saveStoredArray(storageKeys.intakeDocs[0], next);
+          return next;
+        });
+        setPhotoTimelineProjects((current) => current.map((project) =>
+          project.id === selectedPhotoProject.id
+            ? { ...project, documentIds: Array.from(new Set([...(project.documentIds || []), documentId])) }
+            : project,
+        ));
+        const metaUpdates: Record<string, PhotoTimelineMeta> = {};
+        uploadedFiles.forEach((file) => {
+          const timelineId = `document-photo-${documentId}-${file.id}`;
+          metaUpdates[timelineId] = {
+            tag: projectPhotoTag,
+            notes: projectPhotoCaption.trim(),
+            projectId: selectedPhotoProject.id,
+            dateTaken: date,
+            milestoneDate: date,
+            milestoneTitle: projectPhotoCaption.trim() || file.name,
+            milestoneType: "Progress",
+            timelineNote: true,
+            locationId: selectedPhotoProject.locationId || undefined,
+            vendorId: selectedPhotoProject.vendorId || undefined,
+            primaryContext: "project",
+          };
+        });
+        setPhotoTimelineMeta((current) => ({ ...current, ...metaUpdates }));
+        try {
+          await postDocumentToAtlasVault(document);
+          showSaveToast(`${uploadedFiles.length} dated photo${uploadedFiles.length === 1 ? "" : "s"} added to the project timeline.`);
+        } catch {
+          showSaveToast("Photos were added on this device; Atlas sync did not finish.", "warning");
+        }
+        setProjectPhotoCaption("");
+      } catch {
+        showSaveToast("Atlas could not add those project photos.", "warning");
+      }
+    };
+
     const createPhotoProject = () => {
       const id = uid("photo-project");
       const project: PhotoTimelineProject = {
         id,
-        title: selectedPhotoTimelineItem?.assetName ? `${selectedPhotoTimelineItem.assetName} Project` : "New Property Project",
+        title: selectedPhotoTimelineItem?.assetName ? `${selectedPhotoTimelineItem.assetName} Project` : "Untitled Project",
         category: /(paint|stain|elliott|coat|trim|siding)/i.test(selectedPhotoTimelineItem?.name || "") ? "Painting" : "General",
+        scale: "Standard",
+        status: "Planning",
         assetId: selectedPhotoTimelineItem?.assetId || "",
         locationId: selectedPhotoAsset?.locationId || selectedPhotoAsset?.locationIds?.[0] || "",
         vendorId: "",
@@ -15982,7 +16120,7 @@ export default function AtlasPage() {
             <SectionHeader
               eyebrow="Projects"
               title="Project Center"
-              detail="Open a labeled project to see its overview, photos, documents, work orders, people, vendors, and timeline in one organized workspace."
+              detail="Create and manage anything from a quick one-day project to a major multi-phase property project. Every project keeps its notes, photos, documents, work orders, people, vendors, and timeline together."
             />
 
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
@@ -15995,7 +16133,7 @@ export default function AtlasPage() {
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button type="button" onClick={() => openComparison(selectedPhotoProjectId || undefined)} style={secondaryButtonStyle}>Compare Before / After</button>
-                <button type="button" onClick={createPhotoProject} style={goldButtonStyle}>+ New Project</button>
+                <button type="button" onClick={createPhotoProject} style={goldButtonStyle}>+ Create Project</button>
               </div>
             </div>
 
@@ -16097,11 +16235,62 @@ export default function AtlasPage() {
                       {projectDetailTab === "documents" ? <div style={{ display: "grid", gap: 9 }}>{selectedProjectDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); setSelectedPhotoProjectId(""); setScreen("documents"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"} · {document.files?.length || 0} file(s)</small></button>)}{!selectedProjectDocuments.length ? <div style={emptyStateStyle}>No documents are linked to this project yet.</div> : null}</div> : null}
                       {projectDetailTab === "work" ? <div style={{ display: "grid", gap: 9 }}>{selectedProjectWorkOrders.map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setSelectedPhotoProjectId(""); setScreen("history"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.status} · {record.date ? formatDate(record.date) : "No due date"}</small></button>)}{!selectedProjectWorkOrders.length ? <div style={emptyStateStyle}>No work orders are linked to this project yet.</div> : null}<button type="button" onClick={() => { addWorkOrder({ projectId: selectedPhotoProject.id, vendorId: selectedPhotoProject.vendorId || "", assignedVendorIds: selectedPhotoProject.vendorIds || [], assetId: selectedPhotoProject.assetId || "", locationId: selectedPhotoProject.locationId || "", responsibilityArea: `Project · ${selectedPhotoProject.title}` }); setSelectedPhotoProjectId(""); }} style={goldButtonStyle}>+ Add Project Work Order</button></div> : null}
                       {projectDetailTab === "people" ? <div style={{ display: "grid", gap: 14 }}><section><strong style={{ color: colors.navy3 }}>Vendors</strong><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectVendors.map((vendor) => <button key={vendor.id} type="button" onClick={() => { setSelectedVendorId(vendor.id); setSelectedPhotoProjectId(""); setScreen("vendors"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{vendor.name}</strong><small style={mutedSmallStyle}>{vendor.category || "Vendor"}</small></button>)}{!selectedProjectVendors.length ? <div style={emptyStateStyle}>No vendors assigned.</div> : null}</div></section><section><strong style={{ color: colors.navy3 }}>People</strong><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectPeople.map((contact) => <div key={contact.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10 }}><strong>{contact.name}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{contact.role || contact.organization || "Contact"}</small></div>)}{!selectedProjectPeople.length ? <div style={emptyStateStyle}>No people assigned.</div> : null}</div></section></div> : null}
-                      {projectDetailTab === "timeline" ? <div style={{ display: "grid", gap: 10 }}>{selectedPhotoProjectItems.map((item) => { const meta = photoTimelineMeta[item.id] || { tag: "Unlabeled", notes: "" }; return <button key={item.id} type="button" onClick={() => openLightbox(item.id, selectedPhotoProjectItems.map((record) => record.id))} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{meta.milestoneTitle || meta.notes || item.name}</strong><small style={mutedSmallStyle}>{meta.milestoneDate || meta.dateTaken ? formatDate(String(meta.milestoneDate || meta.dateTaken)) : item.createdAt ? formatDate(String(item.createdAt).slice(0,10)) : "No date"} · {meta.milestoneType || meta.tag}</small></button>})}{!selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>No project timeline entries yet.</div> : null}</div> : null}
+                      {projectDetailTab === "timeline" ? (
+                        <div style={{ display: "grid", gap: 16 }}>
+                          <section style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                              <div><strong style={{ color: colors.navy3 }}>Quick Timeline Note</strong><div style={mutedSmallStyle}>Record a decision, vendor visit, delivery, inspection, milestone, or simple progress update.</div></div>
+                              <span style={badgeStyle(projectQuickNoteType === "Completed" ? "Completed" : "Open")}>{projectQuickNoteType}</span>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 150px 170px", gap: 9, marginTop: 12 }}>
+                              <input value={projectQuickNoteTitle} onChange={(event) => setProjectQuickNoteTitle(event.target.value)} placeholder="Short title, such as West wall first coat complete" style={inputStyle} />
+                              <input type="date" value={projectQuickNoteDate} onChange={(event) => setProjectQuickNoteDate(event.target.value)} style={inputStyle} />
+                              <select value={projectQuickNoteType} onChange={(event) => setProjectQuickNoteType(event.target.value as ProjectTimelineEntry["type"])} style={inputStyle}>{(["Note", "Milestone", "Vendor Visit", "Delivery", "Inspection", "Decision", "Completed"] as ProjectTimelineEntry["type"][]).map((type) => <option key={type}>{type}</option>)}</select>
+                            </div>
+                            <textarea value={projectQuickNoteText} onChange={(event) => setProjectQuickNoteText(event.target.value)} placeholder="Add details, decisions, next steps, materials, or anything worth preserving in the project history..." style={{ ...inputStyle, minHeight: 88, marginTop: 9, resize: "vertical" }} />
+                            <button type="button" onClick={addProjectQuickTimelineNote} style={{ ...goldButtonStyle, marginTop: 9 }}>Add to Timeline</button>
+                          </section>
+
+                          <section style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#FFFFFF" }}>
+                            <div><strong style={{ color: colors.navy3 }}>Add Dated Photos</strong><div style={mutedSmallStyle}>Choose the actual photo date so each image lands in the correct place on the project timeline.</div></div>
+                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "150px 150px minmax(0,1fr)", gap: 9, marginTop: 12 }}>
+                              <input type="date" value={projectPhotoDate} onChange={(event) => setProjectPhotoDate(event.target.value)} style={inputStyle} />
+                              <select value={projectPhotoTag} onChange={(event) => setProjectPhotoTag(event.target.value as PhotoTimelineTag)} style={inputStyle}>{(["Before", "During", "After"] as PhotoTimelineTag[]).map((tag) => <option key={tag}>{tag}</option>)}</select>
+                              <input value={projectPhotoCaption} onChange={(event) => setProjectPhotoCaption(event.target.value)} placeholder="Caption or milestone, such as Great Room north second coat" style={inputStyle} />
+                            </div>
+                            <label style={{ ...goldButtonStyle, display: "inline-flex", marginTop: 9, cursor: "pointer" }}>Choose Photos<input type="file" accept="image/*" multiple onChange={(event) => { void addDatedProjectPhotos(event.currentTarget.files); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label>
+                          </section>
+
+                          <section>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}><strong style={{ color: colors.navy3 }}>Project History</strong><span style={mutedSmallStyle}>{selectedProjectTimelineEntries.length + selectedPhotoProjectItems.length} entries</span></div>
+                            <div style={{ borderLeft: "3px solid #D7E0EA", marginLeft: 10, paddingLeft: 18, display: "grid", gap: 10 }}>
+                              {[
+                                ...selectedProjectTimelineEntries.map((entry) => ({ kind: "note" as const, date: entry.date, createdAt: entry.createdAt, entry })),
+                                ...selectedPhotoProjectItems.map((item) => ({ kind: "photo" as const, date: String(photoTimelineMeta[item.id]?.milestoneDate || photoTimelineMeta[item.id]?.dateTaken || item.createdAt || "").slice(0, 10), createdAt: String(item.createdAt || ""), item })),
+                              ].sort((a, b) => `${b.date} ${b.createdAt}`.localeCompare(`${a.date} ${a.createdAt}`)).map((record) => record.kind === "note" ? (
+                                <article key={record.entry.id} style={{ position: "relative", border: "1px solid #D7E0EA", borderRadius: 12, padding: 12, background: "white" }}>
+                                  <span style={{ position: "absolute", left: -27, top: 17, width: 13, height: 13, borderRadius: 999, background: record.entry.type === "Completed" ? "#087443" : record.entry.type === "Decision" ? "#7C3AED" : "#175CD3", border: "3px solid white", boxShadow: "0 0 0 1px #CBD5E1" }} />
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}><div><strong style={{ color: colors.navy3 }}>{record.entry.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 3 }}>{formatDate(record.entry.date)} · {record.entry.type}</small></div><button type="button" onClick={() => setProjectTimelineEntries((current) => current.filter((entry) => entry.id !== record.entry.id))} style={{ border: 0, background: "transparent", color: colors.red, fontWeight: 900, cursor: "pointer" }}>Delete</button></div>
+                                  {record.entry.notes ? <p style={{ margin: "9px 0 0", color: colors.navy3, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{record.entry.notes}</p> : null}
+                                </article>
+                              ) : (() => { const item = record.item; const meta = photoTimelineMeta[item.id] || { tag: "Unlabeled" as PhotoTimelineTag, notes: "" }; return (
+                                <button key={item.id} type="button" onClick={() => openLightbox(item.id, selectedPhotoProjectItems.map((photo) => photo.id))} style={{ position: "relative", display: "grid", gridTemplateColumns: "82px minmax(0,1fr) auto", gap: 11, alignItems: "center", border: "1px solid #D7E0EA", borderRadius: 12, padding: 9, background: "white", textAlign: "left", cursor: "pointer" }}>
+                                  <span style={{ position: "absolute", left: -27, width: 13, height: 13, borderRadius: 999, background: meta.tag === "After" ? "#087443" : meta.tag === "Before" ? "#B54708" : "#C99A3D", border: "3px solid white", boxShadow: "0 0 0 1px #CBD5E1" }} />
+                                  <img src={item.source} alt={item.name} style={{ width: 82, height: 62, objectFit: "cover", borderRadius: 8 }} />
+                                  <span><strong style={{ display: "block", color: colors.navy3 }}>{meta.milestoneTitle || meta.notes || item.name}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No date"} · Photo</small></span>
+                                  <span style={badgeStyle(meta.tag || "During")}>{meta.tag || "During"}</span>
+                                </button>
+                              ); })())}
+                            </div>
+                            {!selectedProjectTimelineEntries.length && !selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>No project timeline entries yet. Add a quick note or dated photos above.</div> : null}
+                          </section>
+                        </div>
+                      ) : null}
                     </main>
                     <aside style={{ padding: 18, borderLeft: isMobile ? 0 : "1px solid #DDE5ED", borderTop: isMobile ? "1px solid #DDE5ED" : 0, display: "grid", gap: 12, alignContent: "start" }}>
                       <Field label="Project title" value={selectedPhotoProject.title} onChange={(value) => updateSelectedPhotoProject({ title: value })} />
                       <SelectField label="Category" value={selectedPhotoProject.category} options={projectCategories} onChange={(value) => updateSelectedPhotoProject({ category: value as PhotoTimelineProjectCategory })} />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><SelectField label="Project size" value={selectedPhotoProject.scale || "Standard"} options={["Quick", "Standard", "Major"]} onChange={(value) => updateSelectedPhotoProject({ scale: value as PhotoTimelineProject["scale"] })} /><SelectField label="Status" value={selectedPhotoProject.status || "Planning"} options={["Planning", "Active", "Waiting", "Completed"]} onChange={(value) => updateSelectedPhotoProject({ status: value as PhotoTimelineProject["status"] })} /></div>
                       <Field label="Current phase" value={selectedPhotoProject.phase || "Started"} onChange={(value) => updateSelectedPhotoProject({ phase: value })} />
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}><Field label="Start date" type="date" value={selectedPhotoProject.startDate || ""} onChange={(value) => updateSelectedPhotoProject({ startDate: value })} /><Field label="Completed date" type="date" value={selectedPhotoProject.completedAt || ""} onChange={(value) => updateSelectedPhotoProject({ completedAt: value })} /></div>
                       <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Linked asset<select value={selectedPhotoProject.assetId || ""} onChange={(event) => updateSelectedPhotoProject({ assetId: event.target.value })} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 9, padding: 10, background: "white" }}><option value="">None</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
