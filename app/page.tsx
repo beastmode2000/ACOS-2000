@@ -5052,7 +5052,7 @@ export default function AtlasPage() {
       return {};
     }
   });
-  const [tasksView, setTasksView] = useState<"tasks" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
+  const [tasksView, setTasksView] = useState<"tasks" | "addison" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [backlogItems, setBacklogItems] = useState<AtlasBacklogItem[]>(() => readStoredArray<AtlasBacklogItem>(["atlas-backlog-v1"], []));
@@ -13810,6 +13810,25 @@ export default function AtlasPage() {
     return <div style={{ display: "grid", gap: 10 }}><div style={noticeStyle}>Seasonal and yearly work uses a scheduling window, target date, and deadline. It appears before it becomes urgent without forcing one rigid day.</div>{seasonalItems.map((item) => { const inWindow = today >= item.windowStart && today <= item.deadline && item.status !== "Completed"; return <div key={item.id} style={{ ...cardStyle, borderColor: inWindow ? "#D7B45A" : colors.line }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><div><strong>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{item.frequency} · {item.season} · Window {formatDate(item.windowStart)}–{formatDate(item.deadline)}</small></div><span style={badgeStyle(item.status === "Completed" ? "Completed" : inWindow ? "Open" : "Scheduled")}>{inWindow && item.status === "Planned" ? "Needs scheduling" : item.status}</span></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Field label="Window opens" type="date" value={item.windowStart} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, windowStart: value } : entry))}/><Field label="Target" type="date" value={item.targetDate} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, targetDate: value } : entry))}/><Field label="Deadline" type="date" value={item.deadline} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, deadline: value } : entry))}/></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><button type="button" onClick={() => createSeasonalTask(item)} style={goldButtonStyle}>Add to Tasks</button><button type="button" onClick={() => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "Completed", lastCompletedAt: new Date().toISOString() } : entry))} style={secondaryButtonStyle}>Mark Completed</button></div></div>; })}</div>;
   }
 
+  function renderAddisonToday() {
+    const today = todayISO();
+    const assigned = workPlanTasks.filter((task) => {
+      const meta = taskDetails(task.id);
+      return meta.assignee === "Addison" && meta.status !== "Completed";
+    }).sort((a, b) => String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(String(taskDetails(b.id).dueDate || "9999-12-31")));
+    const todayAssigned = assigned.filter((task) => !taskDetails(task.id).dueDate || taskDetails(task.id).dueDate <= today);
+    const upcomingAssigned = assigned.filter((task) => taskDetails(task.id).dueDate > today);
+    const assignedMinutes = todayAssigned.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0);
+    const taskCard = (task: WorkPlanTask) => {
+      const meta = taskDetails(task.id);
+      return <div key={`addison-${task.id}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 11, display: "grid", gap: 8 }}>
+        <button type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{task.title}</strong><small style={mutedSmallStyle}>{task.category} · {minutesLabel(task.minutes)}{meta.dueDate ? ` · ${formatDate(meta.dueDate)}` : ""}</small></button>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => updateTaskDetails(task.id, { status: "In Progress" })} style={secondaryButtonStyle}>Start</button><button type="button" onClick={() => updateTaskDetails(task.id, { status: "Completed", completedAt: new Date().toISOString() })} style={goldButtonStyle}>Done</button><button type="button" onClick={() => updateTaskDetails(task.id, { status: "Blocked", notes: `${meta.notes ? `${meta.notes}\n` : ""}Needs help — ${new Date().toLocaleString()}` })} style={{ ...secondaryButtonStyle, color: colors.red }}>Needs Help</button></div>
+      </div>;
+    };
+    return <div style={{ display: "grid", gap: 12 }}><section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Delegated Work</div><h2 style={{ margin: "3px 0 4px", color: colors.navy }}>Addison Today</h2><p style={{ ...mutedSmallStyle, margin: 0 }}>A simple daily list for assigned cleanup, grounds, watering, vehicle, and preparation work.</p></div><div style={{ textAlign: "right" }}><strong style={{ display: "block", color: colors.navy }}>{todayAssigned.length} today</strong><small style={mutedSmallStyle}>{minutesLabel(assignedMinutes)}</small></div></div></section><section style={cardStyle}><div style={fieldLabelStyle}>TODAY</div><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{todayAssigned.map(taskCard)}{!todayAssigned.length ? <div style={noticeStyle}>No work is assigned to Addison for today.</div> : null}</div></section><details style={cardStyle}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.navy }}>Upcoming · {upcomingAssigned.length}</summary><div style={{ display: "grid", gap: 8, marginTop: 10 }}>{upcomingAssigned.map(taskCard)}{!upcomingAssigned.length ? <div style={noticeStyle}>No upcoming Addison tasks.</div> : null}</div></details></div>;
+  }
+
   function renderWorkPlanner() {
     const visibleTasks = workPlanTasks
       .filter((task) => {
@@ -13837,6 +13856,7 @@ export default function AtlasPage() {
         {!isAddisonUser ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setTasksView("tasks")} style={tasksView === "tasks" ? goldButtonStyle : secondaryButtonStyle}>Tasks</button>
+            <button type="button" onClick={() => setTasksView("addison")} style={tasksView === "addison" ? goldButtonStyle : secondaryButtonStyle}>Addison Today</button>
             <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog</button>
             <button type="button" onClick={() => setTasksView("vehicles")} style={tasksView === "vehicles" ? goldButtonStyle : secondaryButtonStyle}>Vehicle Rotation</button>
             <button type="button" onClick={() => setTasksView("seasonal")} style={tasksView === "seasonal" ? goldButtonStyle : secondaryButtonStyle}>Seasonal</button>
@@ -13846,7 +13866,7 @@ export default function AtlasPage() {
           </div>
         ) : null}
 
-        {tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
+        {tasksView === "addison" && !isAddisonUser ? renderAddisonToday() : tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
           <>
             {!isAddisonUser ? (
               <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
@@ -15684,6 +15704,11 @@ export default function AtlasPage() {
       const date = taskDetails(task.id).dueDate;
       return date > today && date <= addDays(today, 7);
     }).sort((a, b) => taskDetails(a.id).dueDate.localeCompare(taskDetails(b.id).dueDate));
+    const mustDoTasks = dashboardTodayTasks.filter((task) => task.priority === "High" || taskDetails(task.id).dueDate < today || taskDetails(task.id).status === "Blocked");
+    const shouldDoTasks = dashboardTodayTasks.filter((task) => !mustDoTasks.some((item) => item.id === task.id) && task.priority === "Medium");
+    const ifTimeTasks = dashboardTodayTasks.filter((task) => !mustDoTasks.some((item) => item.id === task.id) && !shouldDoTasks.some((item) => item.id === task.id));
+    const delegatedTodayTasks = dashboardTodayTasks.filter((task) => taskDetails(task.id).assignee === "Addison");
+    const waitingTodayTasks = dashboardTodayTasks.filter((task) => ["Waiting", "Blocked"].includes(taskDetails(task.id).status));
     const addisonKeywords = ["weed", "dog turf", "fountain", "sweep", "pot", "dry spot", "water plants", "walkway", "stair", "clean", "wash", "tool area", "courtyard", "landscape cleanup"];
     const addisonBlockedKeywords = ["electrical", "boiler", "hvac", "repair", "diagnose", "roof", "lift service", "chemical", "plumbing", "inspection", "high priority"];
     const isAddisonReady = (title: string, detail = "") => {
@@ -15727,22 +15752,13 @@ export default function AtlasPage() {
     };
     const endMyDay = () => {
       const unfinishedFlexibleTasks = dashboardTodayTasks.filter((task) => task.priority !== "High" && taskDetails(task.id).status !== "Completed");
-      const shouldMove = unfinishedFlexibleTasks.length ? window.confirm(`End the day and move ${unfinishedFlexibleTasks.length} unfinished non-high-priority task${unfinishedFlexibleTasks.length === 1 ? "" : "s"} to tomorrow?`) : true;
-      if (shouldMove && unfinishedFlexibleTasks.length) {
-        setTaskMeta((current) => {
-          const next = { ...current };
-          unfinishedFlexibleTasks.forEach((task) => { next[task.id] = { ...taskDetails(task.id), dueDate: addDays(today, 1) }; });
-          return next;
-        });
-      }
+      const delegatable = unfinishedFlexibleTasks.filter((task) => taskDetails(task.id).assignee !== "Addison" && isAddisonReady(task.title, `${task.category} ${task.notes || ""}`));
+      const moveTomorrow = unfinishedFlexibleTasks.length ? window.confirm(`Move ${unfinishedFlexibleTasks.length} unfinished non-high-priority task${unfinishedFlexibleTasks.length === 1 ? "" : "s"} to tomorrow?`) : false;
+      const giveToAddison = delegatable.length ? window.confirm(`Assign ${delegatable.length} suitable unfinished task${delegatable.length === 1 ? "" : "s"} to Addison?`) : false;
+      if (moveTomorrow || giveToAddison) setTaskMeta((current) => { const next = { ...current }; unfinishedFlexibleTasks.forEach((task) => { const meta = next[task.id] || taskDetails(task.id); next[task.id] = { ...meta, dueDate: moveTomorrow ? addDays(today, 1) : meta.dueDate, assignee: giveToAddison && delegatable.some((item) => item.id === task.id) ? "Addison" : meta.assignee }; }); return next; });
       const now = new Date().toISOString();
-      setDaySessions((current) => {
-        const exists = current.some((session) => session.date === today && session.propertyId === activePropertyId);
-        return exists
-          ? current.map((session) => session.date === today && session.propertyId === activePropertyId ? { ...session, endedAt: now } : session)
-          : [{ date: today, propertyId: activePropertyId, startedAt: now, endedAt: now, targetHours: workPlanTargetHours || 7, notes: "" }, ...current];
-      });
-      showSaveToast("Day closed and history preserved.");
+      setDaySessions((current) => { const exists = current.some((session) => session.date === today && session.propertyId === activePropertyId); return exists ? current.map((session) => session.date === today && session.propertyId === activePropertyId ? { ...session, endedAt: now } : session) : [{ date: today, propertyId: activePropertyId, startedAt: now, endedAt: now, targetHours: workPlanTargetHours || 7, notes: "" }, ...current]; });
+      showSaveToast("Day closed. Unfinished work was reviewed and history was preserved.");
     };
     const smartDaySuggestions = [
       remainingCapacityMinutes < -60 ? { title: "Workload is over capacity", detail: `${formatWorkload(-remainingCapacityMinutes)} should move, delegate, or wait.`, action: () => setScreen("planner"), label: "Review tasks" } : null,
@@ -15887,6 +15903,12 @@ export default function AtlasPage() {
               {overdueWork.slice(0, 4).map((record) => <button key={`overdue-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: `1px solid #FACACA`, borderRadius: 12, background: "#FFF8F8", padding: 10, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block" }}>{record.title}</strong><small style={mutedSmallStyle}>Overdue · {record.date ? formatDate(record.date) : "No due date"}</small></span><span style={badgeStyle("High")}>Review</span></button>)}
             </div>
           </> : null}
+
+          <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>TODAY'S PRIORITY QUEUE</div></div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 8 }}>
+            {[{ label: "Must Do", tasks: mustDoTasks, note: "Urgent, overdue, blocked, or high priority" }, { label: "Should Do", tasks: shouldDoTasks, note: "Important work planned for today" }, { label: "If Time Allows", tasks: ifTimeTasks, note: "Flexible work that can move" }].map((lane) => <div key={lane.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}><strong style={{ display: "block", color: colors.navy }}>{lane.label} · {lane.tasks.length}</strong><small style={mutedSmallStyle}>{lane.note}</small><div style={{ display: "grid", gap: 6, marginTop: 8 }}>{lane.tasks.slice(0, 4).map((task) => <button key={`${lane.label}-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", fontSize: 13 }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {taskDetails(task.id).assignee}</small></button>)}{!lane.tasks.length ? <small style={{ ...mutedSmallStyle, paddingTop: 5 }}>Nothing here.</small> : null}</div></div>)}
+          </div>
+          {(delegatedTodayTasks.length || waitingTodayTasks.length) ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}><button type="button" onClick={() => { setTasksView("addison"); setScreen("planner"); }} style={secondaryButtonStyle}>Delegated · {delegatedTodayTasks.length}</button><button type="button" onClick={() => { setTasksView("intelligence"); setScreen("planner"); }} style={secondaryButtonStyle}>Waiting / Blocked · {waitingTodayTasks.length}</button></div> : null}
 
           <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Today</div></div>
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
