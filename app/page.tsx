@@ -13545,16 +13545,16 @@ export default function AtlasPage() {
                       <div><div style={eyebrowStyle}>Task Details</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>{selectedTask.title}</h2></div>
                       <span style={badgeStyle(selectedMeta.status === "Completed" ? "Completed" : selectedTask.priority)}>{selectedMeta.status}</span>
                     </div>
-                    <Field label="Task"><input value={selectedTask.title} onChange={(event) => updateWorkPlanTask(selectedTask.id, { title: event.currentTarget.value })} style={inputStyle} /></Field>
+                    <Field label="Task" value={selectedTask.title} onChange={(value) => updateWorkPlanTask(selectedTask.id, { title: value })} />
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                      <Field label="Due date"><input type="date" value={selectedMeta.dueDate} onChange={(event) => updateTaskDetails(selectedTask.id, { dueDate: event.currentTarget.value })} style={inputStyle} /></Field>
+                      <Field label="Due date" type="date" value={selectedMeta.dueDate} onChange={(value) => updateTaskDetails(selectedTask.id, { dueDate: value })} />
                       <SelectField label="Status" value={selectedMeta.status} onChange={(value) => updateTaskDetails(selectedTask.id, { status: value as AtlasTaskMeta["status"], completedAt: value === "Completed" ? new Date().toISOString() : undefined })} options={["Open","In Progress","Waiting","Blocked","Completed"]} />
                       <SelectField label="Priority" value={selectedTask.priority} onChange={(value) => updateWorkPlanTask(selectedTask.id, { priority: value as WorkOrderPriority })} options={["High","Medium","Low"]} />
                       <SelectField label="Assigned to" value={selectedMeta.assignee} onChange={(value) => updateTaskDetails(selectedTask.id, { assignee: value as AtlasTaskMeta["assignee"] })} options={["Nick","Addison","Other","Unassigned"]} />
-                      <Field label="Estimated minutes"><input type="number" min={5} step={5} value={selectedTask.minutes} onChange={(event) => updateWorkPlanTask(selectedTask.id, { minutes: Math.max(5, Number(event.currentTarget.value) || 5) })} style={inputStyle} /></Field>
+                      <Field label="Estimated minutes" type="number" value={String(selectedTask.minutes)} onChange={(value) => updateWorkPlanTask(selectedTask.id, { minutes: Math.max(5, Number(value) || 5) })} />
                       <SelectField label="Category" value={selectedTask.category} onChange={(value) => updateWorkPlanTask(selectedTask.id, { category: value })} options={["General","Cleanup / Prep","Landscaping","Maintenance","Administration","Planning","Inspection"]} />
                     </div>
-                    <Field label="Notes"><textarea value={selectedMeta.notes || selectedTask.notes || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { notes: event.currentTarget.value })} rows={5} style={textareaStyle} /></Field>
+                    <Field label="Notes" value={selectedMeta.notes || selectedTask.notes || ""} onChange={(value) => updateTaskDetails(selectedTask.id, { notes: value })} multiline />
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {selectedMeta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { assignee: "Addison", status: "Open" })} style={goldButtonStyle}>Give to Addison</button> : null}
                       {selectedMeta.status !== "Completed" ? <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Completed", completedAt: new Date().toISOString() })} style={secondaryButtonStyle}>Done</button> : <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Reopen</button>}
