@@ -3992,7 +3992,7 @@ export default function AtlasPage() {
 
   const [dashboardEditMode, setDashboardEditMode] = useState(false);
   const [dashboardCenterView, setDashboardCenterView] = useState<
-    "command" | "operations" | "intelligence" | "executive" | "owner"
+    "command" | "operations" | "intelligence"
   >("command");
   const [dashboardLayoutId, setDashboardLayoutId] = useState("operations");
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetSetting[]>(
@@ -4293,6 +4293,10 @@ export default function AtlasPage() {
   const [fastIntakeSerial, setFastIntakeSerial] = useState("");
   const [fastIntakePriority, setFastIntakePriority] =
     useState<WorkOrderPriority>("Medium");
+  const [fastIntakeRecurring, setFastIntakeRecurring] = useState(false);
+  const [fastIntakeRecurrenceInterval, setFastIntakeRecurrenceInterval] = useState(1);
+  const [fastIntakeRecurrenceUnit, setFastIntakeRecurrenceUnit] = useState<WorkOrderRecurrenceUnit>("Weeks");
+  const [fastIntakeRecurrenceEndDate, setFastIntakeRecurrenceEndDate] = useState("");
   const [fastIntakeLocationId, setFastIntakeLocationId] = useState("general");
   const [fastIntakeAppendNotes, setFastIntakeAppendNotes] = useState(false);
   const [intakeTargetKind, setIntakeTargetKind] =
@@ -7816,6 +7820,10 @@ export default function AtlasPage() {
     setFastIntakeModel("");
     setFastIntakeSerial("");
     setFastIntakePriority("Medium");
+    setFastIntakeRecurring(false);
+    setFastIntakeRecurrenceInterval(1);
+    setFastIntakeRecurrenceUnit("Weeks");
+    setFastIntakeRecurrenceEndDate("");
     setFastIntakeLocationId("general");
     setFastIntakeAppendNotes(false);
     setIntakeNotes("");
@@ -8839,6 +8847,11 @@ export default function AtlasPage() {
           title: fastIntakeRecordName.trim() || title,
           status: "Open",
           priority: fastIntakePriority,
+          recurring: fastIntakeRecurring,
+          recurrenceInterval: Math.max(1, fastIntakeRecurrenceInterval),
+          recurrenceUnit: fastIntakeRecurrenceUnit,
+          recurrenceEndDate: fastIntakeRecurring ? fastIntakeRecurrenceEndDate : "",
+          workType: fastIntakeRecurring ? "Preventive Maintenance" : "Work Order",
           notes: combinedNotes,
           photos: intakeFiles.filter((file) =>
             (file.type || "").startsWith("image/"),
@@ -15114,33 +15127,7 @@ export default function AtlasPage() {
           </div>
         </div>
       );
-      if (id === "estate-health") return <section style={cardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div><div style={eyebrowStyle}>Estate Health 2.0</div><h2 style={{ margin: "3px 0 4px", color: colors.navy }}>Operational health</h2><p style={{ ...mutedSmallStyle, margin: 0 }}>Live score based on open, overdue, high-priority, and recently completed work.</p></div>
-          <div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 38, lineHeight: 1, color: estateHealth >= 88 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }}>{estateHealth}%</strong><small style={{ ...mutedSmallStyle, fontWeight: 800 }}>{estateHealth >= 88 ? "Healthy" : estateHealth >= 70 ? "Needs attention" : "Critical attention"}</small></div>
-        </div>
-        <div style={{ height: 10, borderRadius: 999, background: "#E8EEF4", overflow: "hidden", marginTop: 14 }}><div style={{ width: `${estateHealth}%`, height: "100%", background: estateHealth >= 88 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red, transition: "width .25s ease" }} /></div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 14 }}>
-          {healthCategories.map((category) => {
-            const tone = category.status === "Healthy" ? colors.green : category.status === "Attention" ? colors.gold : colors.red;
-            return <button key={category.label} type="button" onClick={() => {
-              setQuery(category.query);
-              const firstRecordId = category.matchingOpen[0]?.id || "";
-              if (firstRecordId) openWorkOrderById(firstRecordId);
-              else { setSelectedServiceId(""); setScreen("history"); }
-            }} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, padding: 11, background: "#FFFFFF", textAlign: "left", cursor: "pointer", display: "grid", gap: 7 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><span style={{ display: "flex", alignItems: "center", gap: 7 }}><span aria-hidden="true">{category.icon}</span><strong style={{ color: colors.navy }}>{category.label}</strong></span><strong style={{ color: tone }}>{category.score}%</strong></div>
-              <div style={{ height: 6, borderRadius: 999, background: "#E8EEF4", overflow: "hidden" }}><div style={{ width: `${category.score}%`, height: "100%", background: tone }} /></div>
-              <small style={{ color: colors.muted }}>{category.reason}</small>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><span style={{ fontSize: 11, fontWeight: 850, color: tone }}>{category.status}</span><span style={{ fontSize: 11, color: colors.muted }}>{category.trend === "Improving" ? "↗" : category.trend === "Declining" ? "↘" : "→"} {category.trend}</span></div>
-            </button>;
-          })}
-        </div>
-        <div style={{ marginTop: 14, borderTop: `1px solid ${colors.line}`, paddingTop: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Needs Attention</strong><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 9px", fontSize: 11 }}>View all work</button></div>
-          <div style={{ display: "grid", gap: 7 }}>{estateNeedsAttention.map(({ category, record }) => <div key={`${category.label}-${record.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 11, padding: "9px 10px", background: "#F8FAFC" }}><button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title || "Work order"}</strong><small style={mutedSmallStyle}>{category.label}{record.date ? ` · ${new Date(`${record.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}` : ""}{record.priority ? ` · ${record.priority}` : ""}</small></button><button type="button" onClick={() => openWorkOrderById(record.id)} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Open</button></div>)}{!estateNeedsAttention.length ? <div style={noticeStyle}>No urgent estate-health issues are currently detected.</div> : null}</div>
-        </div>
-      </section>;
+      if (id === "estate-health") return null;
       if (id === "today-upcoming") return (
         <section style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
@@ -15170,16 +15157,25 @@ export default function AtlasPage() {
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 8, marginTop: 12 }}><input value={todayLogText} onChange={(event) => setTodayLogText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTodayLogEntry(); }} placeholder="Add a quick task or field note…" style={inputStyle} /><select value={todayLogCategory} onChange={(event) => setTodayLogCategory(event.target.value as TodayLogEntry["category"])} style={selectStyle}>{["Task","Repair","Inspection","Vendor","Delivery","Note"].map((item) => <option key={item}>{item}</option>)}</select><button type="button" onClick={addTodayLogEntry} style={goldButtonStyle}>Add</button></div>
         </section>
       );
+      // Live Operating Areas intentionally uses plain cards only: no health score, percentage, progress bar, or status meter.
       if (id === "property-status") return (
         <section style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-            <div><div style={eyebrowStyle}>Property Status</div><h2 style={{ margin: "3px 0 4px", color: colors.navy }}>Live operating areas</h2><p style={{ ...mutedSmallStyle, margin: 0 }}>Estate health is built into each operating area.</p></div>
-            <div style={{ minWidth: 150, textAlign: "right" }}><strong style={{ display: "block", fontSize: 27, lineHeight: 1, color: estateHealth >= 88 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }}>{estateHealth}%</strong><small style={{ ...mutedSmallStyle, fontWeight: 800 }}>{estateHealth >= 88 ? "Estate healthy" : estateHealth >= 70 ? "Needs attention" : "Critical attention"}</small><div style={{ height: 6, borderRadius: 999, background: "#E8EEF4", overflow: "hidden", marginTop: 7 }}><div style={{ width: `${estateHealth}%`, height: "100%", background: estateHealth >= 88 ? colors.green : estateHealth >= 70 ? colors.gold : colors.red }} /></div></div>
+            <div><div style={eyebrowStyle}>Property Status</div><h2 style={{ margin: "3px 0 4px", color: colors.navy }}>Live operating areas</h2><p style={{ ...mutedSmallStyle, margin: 0 }}>Open an area to see all related work orders and add new work.</p></div>
+            <strong style={{ color: colors.navy }}>{openWork.length} open work order{openWork.length === 1 ? "" : "s"}</strong>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 12 }}>{liveStatuses.map((item) => { const statusColor = item.status === "Critical" ? colors.red : item.status === "Attention" ? colors.gold : colors.green; return <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}><button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontSize: 21 }}>{item.icon}</span><strong style={{ fontSize: 14, color: statusColor }}>{item.score}%</strong></div><strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong><small style={mutedSmallStyle}>{item.count} open · {item.status}</small><div style={{ height: 6, borderRadius: 999, background: "#E8EEF4", overflow: "hidden", marginTop: 8 }}><div style={{ width: `${item.score}%`, height: "100%", background: statusColor }} /></div><small style={{ ...mutedSmallStyle, display: "block", marginTop: 6, minHeight: 30 }}>{item.reason}</small></button><button type="button" onClick={() => addDashboardWorkOrder(item.label)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 30, marginTop: 8, padding: "4px 7px", fontSize: 11 }}>+ Work Order</button></div>; })}</div>
-          <div style={{ borderTop: `1px solid ${colors.line}`, marginTop: 13, paddingTop: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Needs Attention</strong><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 9px", fontSize: 11 }}>View all work</button></div>
-            <div style={{ display: "grid", gap: 7 }}>{estateNeedsAttention.slice(0, 3).map(({ category, record }) => <div key={`area-health-${category.label}-${record.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 11, padding: "8px 9px", background: "#F8FAFC" }}><button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title || "Work order"}</strong><small style={mutedSmallStyle}>{category.label}{record.date ? ` · ${new Date(`${record.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}` : ""}{record.priority ? ` · ${record.priority}` : ""}</small></button><button type="button" onClick={() => openWorkOrderById(record.id)} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Open</button></div>)}{!estateNeedsAttention.length ? <div style={noticeStyle}>No urgent operating-area issues are currently detected.</div> : null}</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 12 }}>
+            {liveStatuses.map((item) => (
+              <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}>
+                <button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}>
+                  <span style={{ fontSize: 21 }}>{item.icon}</span>
+                  <strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong>
+                  <small style={mutedSmallStyle}>{item.count} open work order{item.count === 1 ? "" : "s"}</small>
+                  <small style={{ ...mutedSmallStyle, display: "block", marginTop: 6, minHeight: 30 }}>{item.count ? item.reason : "No open work in this area."}</small>
+                </button>
+                <button type="button" onClick={() => addDashboardWorkOrder(item.label)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 30, marginTop: 8, padding: "4px 7px", fontSize: 11 }}>+ Work Order</button>
+              </div>
+            ))}
           </div>
         </section>
       );
@@ -15229,13 +15225,11 @@ export default function AtlasPage() {
     };
 
 
-    type DashboardCenterView = "command" | "operations" | "intelligence" | "executive" | "owner";
+    type DashboardCenterView = "command" | "operations" | "intelligence";
     const dashboardCenterTabs: { id: DashboardCenterView; label: string }[] = [
       { id: "command", label: "Command Center" },
       { id: "operations", label: "Operations 3.0" },
       { id: "intelligence", label: "Intelligence 4.0" },
-      { id: "executive", label: "Executive" },
-      { id: "owner", label: "Owner" },
     ];
     const dashboardCenterSelector = (
       <section style={{ ...cardStyle, padding: 8, display: "flex", gap: 6, overflowX: "auto", alignItems: "center" }}>
@@ -15499,28 +15493,11 @@ export default function AtlasPage() {
       </div>
     );
 
-    const executiveDashboard = (
-      <div style={{ display: "grid", gap: 12 }}>
-        <section style={{ ...sectionStyle, background: colors.navy, color: "#FFFFFF" }}><SectionHeader eyebrow="Executive Dashboard" title={`${activeProperty.name} Management Overview`} detail="Steve’s operational view of health, budget, risk, labor, projects, and major upcoming work." /><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(6,minmax(0,1fr))", gap: 8 }}>{[["Health",estateHealthScore],["Open",openWork.length],["Overdue",overdueWork.length],["Year Spend",`$${yearlySpend.toLocaleString(undefined,{maximumFractionDigits:0})}`],["Labor Hours",staffAnalytics.reduce((sum,item)=>sum+item.hours,0).toFixed(1)],["Projects",openWork.filter((record)=>(record as AtlasServiceRecord).workType==="Project").length]].map(([label,value]) => <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, padding: 9 }}><span style={{ fontSize: 11, opacity: .75 }}>{label}</span><strong style={{ display: "block", fontSize: 22 }}>{value}</strong></div>)}</div></section>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}><section style={sectionStyle}><SectionHeader eyebrow="Risk" title="Highest Operational Risks" detail="The most consequential current work and asset signals." /><div style={{ display: "grid", gap: 8 }}>{recommendations.slice(0,6).map((item) => <button key={item.title} type="button" onClick={item.action} style={{ ...cardStyle, padding: 10, textAlign: "left", cursor: "pointer" }}><strong>{item.title}</strong><span style={{ ...mutedSmallStyle, display: "block" }}>{item.detail}</span></button>)}</div></section><section style={sectionStyle}><SectionHeader eyebrow="Upcoming Major Work" title="Next Seven Days" detail="High-priority work, projects, and fixed appointments." /><div style={{ display: "grid", gap: 7 }}>{[...dueThisWeek.filter((record)=>record.priority==="High" || (record as AtlasServiceRecord).workType==="Project"), ...fixedAppointments].slice(0,10).map((item,index) => <div key={`${"id" in item ? item.id : index}-${index}`} style={{ borderBottom: `1px solid ${colors.line}`, padding: "7px 0" }}><strong>{item.title}</strong><span style={{ ...mutedSmallStyle, display: "block" }}>{item.date ? formatDate(item.date) : "Scheduled"} {"time" in item && item.time ? `· ${item.time}` : ""}</span></div>)}</div></section></div>
-      </div>
-    );
-
-    const ownerDashboard = (
-      <div style={{ display: "grid", gap: 12 }}>
-        <section style={{ ...sectionStyle, background: `linear-gradient(135deg, ${colors.navy}, ${colors.navy3})`, color: "#FFFFFF" }}><SectionHeader eyebrow="Owner Dashboard" title={`${activeProperty.name} Property Status`} detail="A clean owner view of estate health, major projects, recent photos, upcoming vendors, and budget." /><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>{[["Estate Health",`${estateHealthScore}/100`],["Major Projects",openWork.filter((record)=>(record as AtlasServiceRecord).workType==="Project").length],["Upcoming Vendors",vendorEvents.length],["Year Budget",`$${yearlySpend.toLocaleString(undefined,{maximumFractionDigits:0})}`]].map(([label,value]) => <div key={label} style={{ border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, padding: 10 }}><span style={{ fontSize: 11, opacity: .78 }}>{label}</span><strong style={{ display: "block", fontSize: 22 }}>{value}</strong></div>)}</div></section>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}><section style={sectionStyle}><SectionHeader eyebrow="Major Projects" title="Active Property Improvements" detail="Open Atlas records marked as projects." /><div style={{ display: "grid", gap: 8 }}>{openWork.filter((record)=>(record as AtlasServiceRecord).workType==="Project").slice(0,8).map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...cardStyle, padding: 10, textAlign: "left", cursor: "pointer" }}><strong>{record.title}</strong><span style={{ ...mutedSmallStyle, display: "block" }}>{record.date ? formatDate(record.date) : "No target date"} · {record.status}</span></button>)}</div></section><section style={sectionStyle}><SectionHeader eyebrow="Upcoming Vendors" title="Scheduled Property Visits" detail="Vendor-linked calendar commitments." /><div style={{ display: "grid", gap: 8 }}>{vendorEvents.map((item) => <button key={item.instanceId || item.id} type="button" onClick={() => setScreen("calendar")} style={{ ...cardStyle, padding: 10, textAlign: "left", cursor: "pointer" }}><strong>{item.title}</strong><span style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(item.date)} {item.time || ""}</span></button>)}</div></section></div>
-        <section style={sectionStyle}><SectionHeader eyebrow="Recent Photos" title="Property Progress" detail="The latest photos already stored in Atlas." /><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(6,minmax(0,1fr))", gap: 8 }}>{photos.slice().sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))).slice(0,12).map((photo) => { const source = photoSource(photo); return <button key={photo.id} type="button" onClick={() => setScreen("timeline")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 0, overflow: "hidden", background: colors.card, cursor: "pointer", textAlign: "left" }}>{source ? <img src={source} alt={photo.name || "Atlas property photo"} style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", display: "block" }} /> : <div style={{ aspectRatio: "4/3", display: "grid", placeItems: "center", background: colors.bg }}>Photo</div>}<span style={{ display: "block", padding: 7, fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{photo.name || "Property photo"}</span></button>; })}</div></section>
-      </div>
-    );
-
     if (dashboardCenterView !== "command") {
       return <div className="atlas-command-dashboard" style={{ display: "grid", gap: 12 }}>
         {dashboardCenterSelector}
         {dashboardCenterView === "operations" ? operationsCenter : null}
         {dashboardCenterView === "intelligence" ? intelligenceCenter : null}
-        {dashboardCenterView === "executive" ? executiveDashboard : null}
-        {dashboardCenterView === "owner" ? ownerDashboard : null}
       </div>;
     }
 
@@ -16003,29 +15980,29 @@ export default function AtlasPage() {
         {mode === "timeline" ? (
           <section style={{ ...sectionStyle, marginBottom: 18 }}>
             <SectionHeader
-              eyebrow="Visual Property History"
-              title="Photo Timeline 4.2"
-              detail="Project workflow integration with editable metadata, milestones, linked Atlas records, mobile navigation, and persistent project controls."
+              eyebrow="Projects"
+              title="Project Center"
+              detail="Open a labeled project to see its overview, photos, documents, work orders, people, vendors, and timeline in one organized workspace."
             />
 
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
               <div style={{ display: "inline-flex", border: "1px solid #CBD5E1", borderRadius: 10, padding: 3, background: "#F8FAFC" }}>
                 {([[
-                  "projects", "Project Stories",
+                  "projects", "Projects",
                 ], ["timeline", "Visual Timeline"]] as const).map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setPhotoTimelineView(value)} style={{ border: 0, borderRadius: 7, padding: "8px 12px", background: photoTimelineView === value ? "#175CD3" : "transparent", color: photoTimelineView === value ? "white" : colors.navy3, fontWeight: 900, cursor: "pointer" }}>{label}</button>
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button type="button" onClick={() => openComparison(selectedPhotoProjectId || undefined)} style={secondaryButtonStyle}>Compare Before / After</button>
-                <button type="button" onClick={createPhotoProject} style={goldButtonStyle}>+ New Project Story</button>
+                <button type="button" onClick={createPhotoProject} style={goldButtonStyle}>+ New Project</button>
               </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
               {[
                 ["Visible photos", photoTimelineItems.length],
-                ["Project stories", photoTimelineProjects.length],
+                ["Labeled projects", photoTimelineProjects.length],
                 ["Timeline notes", Object.values(photoTimelineMeta).filter((meta) => Boolean(meta.notes?.trim() || meta.timelineNote)).length],
                 ["Before / After", allPhotoTimelineItems.filter((item) => ["Before", "After"].includes(photoTimelineMeta[item.id]?.tag || "")).length],
               ].map(([label, value]) => (
@@ -20740,7 +20717,7 @@ export default function AtlasPage() {
                       minWidth: 0,
                     }}
                   >
-                    <span style={assetInfoLabelStyle}>{item.label}</span>
+                    <span style={assetInfoLabelStyle}>{item.id === "timeline" ? "Projects" : item.label}</span>
                     <strong
                       style={{
                         display: "block",
@@ -20972,7 +20949,7 @@ export default function AtlasPage() {
                       }}
                     >
                       <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
-                      <span style={assetInfoLabelStyle}>{item.label}</span>
+                      <span style={assetInfoLabelStyle}>{item.id === "timeline" ? "Projects" : item.label}</span>
                       <strong
                         style={{
                           display: "block",
@@ -28109,6 +28086,22 @@ export default function AtlasPage() {
                   </label>
                 ) : null}
 
+                {fastIntakeSaveMode === "Create Work Order" ? (
+                  <div style={{ gridColumn: "1 / -1", display: "grid", gap: 10, padding: 12, border: `1px solid ${colors.line}`, borderRadius: 12, background: colors.panel }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                      <input type="checkbox" checked={fastIntakeRecurring} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.preventDefault(); setFastIntakeRecurring(event.currentTarget.checked); }} style={{ width: 20, height: 20 }} />
+                      <span><strong style={{ display: "block", color: colors.navy }}>Recurring work order</strong><small style={mutedSmallStyle}>This updates only the draft. Nothing is sent until Approve and Save.</small></span>
+                    </label>
+                    {fastIntakeRecurring ? (
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                        <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Repeat every</span><input type="number" min="1" value={fastIntakeRecurrenceInterval} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.preventDefault(); setFastIntakeRecurrenceInterval(Math.max(1, Number(event.currentTarget.value) || 1)); }} style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Frequency</span><select value={fastIntakeRecurrenceUnit} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.preventDefault(); setFastIntakeRecurrenceUnit(event.currentTarget.value as WorkOrderRecurrenceUnit); }} style={inputStyle}>{(["Days", "Weeks", "Months", "Years"] as WorkOrderRecurrenceUnit[]).map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select></label>
+                        <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>End date (optional)</span><input type="date" value={fastIntakeRecurrenceEndDate} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.preventDefault(); setFastIntakeRecurrenceEndDate(event.currentTarget.value); }} style={inputStyle} /></label>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {fastIntakeSaveMode === "Create Asset" ? (
                   <>
                     <Field
@@ -33672,26 +33665,6 @@ export default function AtlasPage() {
           transform: translate(4px, -50%);
         }
 
-        .atlas-dashboard-health-fill {
-          position: relative;
-          overflow: hidden;
-          animation: atlasDashboardHealthGrow 760ms cubic-bezier(.2,.8,.2,1) both;
-          transform-origin: left center;
-        }
-        .atlas-dashboard-health-fill::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(
-            90deg,
-            transparent,
-            rgba(255,255,255,0.72),
-            transparent
-          );
-          transform: translateX(-120%);
-          animation: atlasDashboardHealthShine 2.8s ease-in-out infinite;
-        }
-
         @keyframes atlasDashboardEnter {
           from {
             opacity: 0;
@@ -33706,22 +33679,9 @@ export default function AtlasPage() {
           0%, 100% { transform: scale(0.96); opacity: 0.65; }
           50% { transform: scale(1.08); opacity: 1; }
         }
-        @keyframes atlasDashboardHealthGrow {
-          from { transform: scaleX(0); }
-          to { transform: scaleX(1); }
-        }
-        @keyframes atlasDashboardHealthShine {
-          0%, 55% { transform: translateX(-120%); }
-          78%, 100% { transform: translateX(120%); }
-        }
-
         @media (prefers-reduced-motion: reduce) {
           .atlas-command-dashboard > *,
           .atlas-dashboard-hero::after,
-          .atlas-dashboard-health-fill,
-          .atlas-dashboard-health-fill::after {
-            animation: none !important;
-          }
           .atlas-command-dashboard section,
           .atlas-command-dashboard button {
             transition: none !important;
@@ -34510,7 +34470,7 @@ export default function AtlasPage() {
                             key={item.id}
                             type="button"
                             className="atlas-sidebar-nav-button"
-                            title={sidebarCollapsed ? item.label : undefined}
+                            title={sidebarCollapsed ? (item.id === "timeline" ? "Projects" : item.label) : undefined}
                             onClick={() => {
                               if (item.id === "history") {
                                 setSelectedServiceId("");
@@ -34532,7 +34492,7 @@ export default function AtlasPage() {
                                 screen === item.id ? colors.navy : "#FFFFFF",
                             }}
                           >
-                            <span className="atlas-sidebar-nav-label">{item.label}</span>
+                            <span className="atlas-sidebar-nav-label">{item.id === "timeline" ? "Projects" : item.label}</span>
                           </button>
                         );
                       })}
@@ -34613,7 +34573,7 @@ export default function AtlasPage() {
                             key={item.id}
                             type="button"
                             className="atlas-sidebar-nav-button"
-                            title={sidebarCollapsed ? item.label : undefined}
+                            title={sidebarCollapsed ? (item.id === "timeline" ? "Projects" : item.label) : undefined}
                             onClick={() => setScreen(item.id)}
                             style={{
                               ...navButtonStyle,
@@ -34623,7 +34583,7 @@ export default function AtlasPage() {
                               fontSize: 12,
                             }}
                           >
-                            <span className="atlas-sidebar-nav-label">{item.label}</span>
+                            <span className="atlas-sidebar-nav-label">{item.id === "timeline" ? "Projects" : item.label}</span>
                           </button>
                         );
                       })}
@@ -34678,7 +34638,7 @@ export default function AtlasPage() {
                       ? departmentCenter === "landscaping" ? "Landscaping Center" : "Marine Center"
                       : screen === "dashboard"
                         ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
-                        : screens.find((item) => item.id === screen)?.label}
+                        : screen === "timeline" ? "Projects" : screens.find((item) => item.id === screen)?.label}
                   </h1>
                   <div
                     role="status"
@@ -34801,7 +34761,7 @@ export default function AtlasPage() {
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: serviceRecords.some((record) => record.status !== "Completed" && record.priority === "High") ? colors.gold2 : "#72D69C" }} />
                     {serviceRecords.some((record) => record.status !== "Completed" && record.priority === "High")
                       ? `${serviceRecords.filter((record) => record.status !== "Completed" && record.priority === "High").length} priorities`
-                      : "Estate healthy"}
+                      : "No urgent priorities"}
                   </div>
                 </div>
                 <div style={{ minWidth: 0, display: "flex" }}>
