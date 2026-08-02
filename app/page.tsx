@@ -4218,7 +4218,7 @@ export default function AtlasPage() {
     "hangar",
   ]);
   const [currentAtlasUser, setCurrentAtlasUser] = useState<AtlasCurrentUser | null>(null);
-  const [showLandscapeFilters, setShowLandscapeFilters] = useState(true);
+  const [showLandscapeFilters, setShowLandscapeFilters] = useState(false);
   const [landscapeSearch, setLandscapeSearch] = useState("");
   const [landscapeStatusFilter, setLandscapeStatusFilter] = useState<
     "All" | "Not Finished" | "Completed" | "Needs Follow-up" | "Skipped"
@@ -4359,6 +4359,7 @@ export default function AtlasPage() {
   const [locationVisibilityFilters, setLocationVisibilityFilters] = useState<
     Set<"assets" | "work" | "photos" | "empty">
   >(() => new Set(["assets", "work", "photos", "empty"]));
+  const [locationFiltersOpen, setLocationFiltersOpen] = useState(false);
 
   const [assetRecords, setAssetRecords] =
     useState<AtlasAssetRecord[]>(fallbackAssets.map(normalizeAsset));
@@ -19084,80 +19085,166 @@ export default function AtlasPage() {
               style={{
                 position: "sticky",
                 top: 0,
-                zIndex: 3,
+                zIndex: 8,
                 display: "grid",
-                gap: 9,
-                padding: "2px 2px 10px",
+                gap: 6,
+                padding: "4px 2px 8px",
                 background: colors.panel,
               }}
             >
-              <input
-                type="search"
-                value={locationSearch}
-                onChange={(event) => setLocationSearch(event.currentTarget.value)}
-                placeholder="Search locations, types, zones, or notes..."
-                aria-label="Search locations"
-                style={{ ...inputStyle, width: "100%", minWidth: 0 }}
-              />
               <div
                 style={{
                   display: "flex",
-                  flexWrap: "wrap",
-                  gap: 6,
+                  alignItems: "center",
+                  gap: 7,
+                  minWidth: 0,
+                  flexWrap: isMobile ? "wrap" : "nowrap",
                 }}
               >
-                {([
-                  ["assets", "Assets"],
-                  ["work", "Open work"],
-                  ["photos", "Photos"],
-                  ["empty", "Empty"],
-                ] as const).map(([filter, label]) => {
-                  const active = locationVisibilityFilters.has(filter);
-                  return (
-                    <button
-                      key={filter}
-                      type="button"
-                      onClick={() => toggleLocationFilter(filter)}
-                      aria-pressed={active}
+                <input
+                  type="search"
+                  value={locationSearch}
+                  onChange={(event) => setLocationSearch(event.currentTarget.value)}
+                  placeholder="Search locations..."
+                  aria-label="Search locations"
+                  style={{
+                    ...inputStyle,
+                    flex: "1 1 220px",
+                    minWidth: 0,
+                    height: 36,
+                    padding: "7px 10px",
+                  }}
+                />
+                <div style={{ position: "relative", flex: "0 0 auto" }}>
+                  <button
+                    type="button"
+                    onClick={() => setLocationFiltersOpen((current) => !current)}
+                    aria-expanded={locationFiltersOpen}
+                    aria-haspopup="menu"
+                    style={{
+                      ...secondaryButtonStyle,
+                      minHeight: 36,
+                      padding: "7px 10px",
+                      background:
+                        locationVisibilityFilters.size < 4 ? "#FFF3CF" : "#FFFFFF",
+                      borderColor:
+                        locationVisibilityFilters.size < 4 ? colors.gold : colors.line,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Filters{locationVisibilityFilters.size < 4 ? ` (${4 - locationVisibilityFilters.size})` : ""}
+                    {locationFiltersOpen ? " ▲" : " ▼"}
+                  </button>
+                  {locationFiltersOpen ? (
+                    <div
+                      role="menu"
                       style={{
-                        ...secondaryButtonStyle,
-                        minHeight: 30,
-                        padding: "5px 9px",
-                        borderColor: active ? colors.gold : colors.line,
-                        background: active ? "#FFF8E8" : colors.card,
-                        color: colors.navy,
-                        boxShadow: active
-                          ? "0 0 0 1px rgba(201, 154, 61, 0.12)"
-                          : "none",
+                        position: "absolute",
+                        right: 0,
+                        top: "calc(100% + 6px)",
+                        width: isMobile ? "min(280px, calc(100vw - 34px))" : 260,
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 12,
+                        background: "#FFFFFF",
+                        padding: 9,
+                        boxShadow: "0 16px 38px rgba(24, 43, 77, 0.18)",
+                        display: "grid",
+                        gap: 6,
+                        zIndex: 30,
                       }}
                     >
-                      {active ? "✓ " : ""}
-                      {label}
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLocationSearch("");
-                    setLocationVisibilityFilters(
-                      new Set(["assets", "work", "photos", "empty"]),
-                    );
-                    setCollapsedLocationIds(new Set());
-                  }}
-                  style={{
-                    ...secondaryButtonStyle,
-                    minHeight: 30,
-                    padding: "5px 9px",
-                    marginLeft: "auto",
-                  }}
-                >
-                  Reset
-                </button>
+                      {([
+                        ["assets", "Has assets"],
+                        ["work", "Has open work"],
+                        ["photos", "Has photos"],
+                        ["empty", "Empty locations"],
+                      ] as const).map(([filter, label]) => {
+                        const active = locationVisibilityFilters.has(filter);
+                        return (
+                          <button
+                            key={filter}
+                            type="button"
+                            onClick={() => {
+                              toggleLocationFilter(filter);
+                              setLocationFiltersOpen(false);
+                            }}
+                            style={{
+                              ...secondaryButtonStyle,
+                              minHeight: 32,
+                              padding: "6px 8px",
+                              justifyContent: "flex-start",
+                              borderColor: active ? colors.gold : colors.line,
+                              background: active ? "#FFF8E8" : "#FFFFFF",
+                            }}
+                          >
+                            {active ? "✓ " : ""}{label}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocationVisibilityFilters(
+                            new Set(["assets", "work", "photos", "empty"]),
+                          );
+                          setLocationFiltersOpen(false);
+                        }}
+                        style={{ ...secondaryButtonStyle, minHeight: 32, padding: "6px 8px" }}
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                <span style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>
+                  {locationRows.length} results
+                </span>
+                {locationSearch || locationVisibilityFilters.size < 4 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLocationSearch("");
+                      setLocationVisibilityFilters(
+                        new Set(["assets", "work", "photos", "empty"]),
+                      );
+                      setCollapsedLocationIds(new Set());
+                      setLocationFiltersOpen(false);
+                    }}
+                    style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 8px" }}
+                  >
+                    Clear
+                  </button>
+                ) : null}
               </div>
-              <div style={{ ...mutedSmallStyle, paddingInline: 2 }}>
-                {locationRows.length} of {locations.length} locations shown
-              </div>
+              {locationVisibilityFilters.size < 4 ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {([
+                    ["assets", "Assets"],
+                    ["work", "Open work"],
+                    ["photos", "Photos"],
+                    ["empty", "Empty"],
+                  ] as const)
+                    .filter(([filter]) => !locationVisibilityFilters.has(filter))
+                    .map(([filter, label]) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => toggleLocationFilter(filter)}
+                        style={{
+                          ...secondaryButtonStyle,
+                          minHeight: 26,
+                          padding: "3px 7px",
+                          borderRadius: 999,
+                          background: "#FFF8E5",
+                          borderColor: colors.gold,
+                          fontSize: 11,
+                        }}
+                      >
+                        Hidden: {label} {closeSymbol}
+                      </button>
+                    ))}
+                </div>
+              ) : null}
             </div>
 
             <div style={{ ...listStyle, gap: 7 }}>
