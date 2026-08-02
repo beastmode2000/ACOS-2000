@@ -14376,8 +14376,32 @@ ${notes.trim()}` : notes.trim(),
             <Field label="Last serviced" type="date" value={selectedVehicle.lastServiced || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { lastServiced: value })} />
             <Field label="Next service" type="date" value={selectedVehicle.nextServiceDate || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { nextServiceDate: value })} />
             <SelectField label="Assigned" value={selectedVehicle.assignedTo || "Nick"} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { assignedTo: value as AtlasVehicleCare["assignedTo"] })} options={["Nick", "Addison", "Other", "Unassigned"]} />
-            <SelectField label="Asset" value={selectedVehicle.assetId || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { assetId: value })} options={[{ label: "Not linked", value: "" }, ...assetRecords.map((asset) => ({ label: asset.name, value: asset.id }))]} />
-            <SelectField label="Location" value={selectedVehicle.locationId || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { locationId: value })} options={[{ label: "Not linked", value: "" }, ...locationRecords.map((location) => ({ label: location.name, value: location.id }))]} />
+            <SelectField
+              label="Asset"
+              value={assetRecords.find((asset) => asset.id === selectedVehicle.assetId)?.name || "Not linked"}
+              onChange={(value) =>
+                updateVehicleCareRecord(selectedVehicle.id, {
+                  assetId:
+                    value === "Not linked"
+                      ? ""
+                      : assetRecords.find((asset) => asset.name === value)?.id || "",
+                })
+              }
+              options={["Not linked", ...assetRecords.map((asset) => asset.name)]}
+            />
+            <SelectField
+              label="Location"
+              value={locationRecords.find((location) => location.id === selectedVehicle.locationId)?.name || "Not linked"}
+              onChange={(value) =>
+                updateVehicleCareRecord(selectedVehicle.id, {
+                  locationId:
+                    value === "Not linked"
+                      ? ""
+                      : locationRecords.find((location) => location.name === value)?.id || "",
+                })
+              }
+              options={["Not linked", ...locationRecords.map((location) => location.name)]}
+            />
           </div>
 
           <div style={{ marginTop: 8 }}><Field label="Notes" multiline value={selectedVehicle.notes} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { notes: value })} /></div>
