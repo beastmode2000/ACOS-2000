@@ -236,6 +236,8 @@ type AtlasTaskMeta = {
   skippable?: boolean;
 };
 
+type TaskListFilter = "today" | "overdue" | "week" | "recurring" | "completed";
+
 type AtlasBacklogItem = {
   id: string;
   title: string;
@@ -5186,6 +5188,9 @@ export default function AtlasPage() {
   const [tasksView, setTasksView] = useState<"tasks" | "addison" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>("today");
+  const [taskSearch, setTaskSearch] = useState("");
+  const [taskFocusMode, setTaskFocusMode] = useState(false);
   const [backlogItems, setBacklogItems] = useState<AtlasBacklogItem[]>(() => readStoredArray<AtlasBacklogItem>(["atlas-backlog-v1"], []));
   const [newBacklogTitle, setNewBacklogTitle] = useState("");
   const [templateDates, setTemplateDates] = useState<Record<string, string>>(() =>
@@ -13954,6 +13959,56 @@ export default function AtlasPage() {
     showSaveToast("Task deleted.");
   }
 
+  function moveAtlasTaskToTomorrow(task: WorkPlanTask) {
+    updateTaskDetails(task.id, { dueDate: addDays(todayISO(), 1), status: "Open" });
+    showSaveToast(`${task.title} moved to tomorrow.`);
+  }
+
+  function addQuickTaskNote(task: WorkPlanTask) {
+    const current = taskDetails(task.id);
+    const note = window.prompt("Add a task note", "");
+    if (!note?.trim()) return;
+    updateTaskDetails(task.id, {
+      notes: `${current.notes ? `${current.notes}\n` : ""}${note.trim()} — ${new Date().toLocaleString()}`,
+    });
+    showSaveToast("Task note added.");
+  }
+
+  function addTaskPhoto(task: WorkPlanTask) {
+    setIntakeTitle(task.title);
+    setIntakeNotes(`Photo for task: ${task.title}`);
+    setFastIntakeKind("General Photo");
+    setScreen("intake");
+  }
+
+  function convertTaskToWorkOrder(task: WorkPlanTask) {
+    const meta = taskDetails(task.id);
+    const record = normalizeService({
+      id: uid("work-order"),
+      title: task.title,
+      date: meta.dueDate || todayISO(),
+      status: "Open",
+      priority: task.priority,
+      notes: meta.notes || task.notes || "Converted from Tasks.",
+      locationId: task.locationId === "general" ? "" : task.locationId,
+      assignedTo: meta.assignee === "Unassigned" ? "" : meta.assignee,
+      workType: "Work Order",
+      workCategory: task.category || "Maintenance",
+      effort: task.minutes <= 15 ? "15 minutes" : task.minutes <= 30 ? "30 minutes" : task.minutes <= 60 ? "1 hour" : task.minutes <= 240 ? "Half Day" : "Full Day",
+      recurring: task.recurring,
+      recurrenceInterval: meta.recurrenceInterval || 1,
+      recurrenceUnit: meta.recurrenceUnit || "Weeks",
+      recurrenceEndDate: meta.recurrenceEndDate || "",
+      season: meta.season || "Year-Round",
+      projectId: meta.projectId || "",
+    });
+    setServiceRecords((current) => byTitle([record, ...current]));
+    setSelectedServiceId(record.id);
+    updateTaskDetails(task.id, { status: "Completed", completedAt: new Date().toISOString() });
+    setScreen("history");
+    showSaveToast("Task converted to a Work Order.");
+  }
+
   function addBacklogItem() {
     const title = newBacklogTitle.trim();
     if (!title) return;
@@ -14167,49 +14222,74 @@ export default function AtlasPage() {
   }
 
   function renderWorkPlanner() {
-    const visibleTasks = workPlanTasks
+    const today = todayISO();
+    const weekEnd = addDays(today, 7);
+    const priorityOrder = { High: 0, Medium: 1, Low: 2 } as const;
+    const allTaskRows = workPlanTasks.filter((task) => {
+      const meta = taskDetails(task.id);
+      if (isAddisonUser) return meta.assignee === "Addison" && meta.status !== "Completed";
+      return true;
+    });
+    const counts = {
+      today: allTaskRows.filter((task) => {
+        const meta = taskDetails(task.id);
+        return meta.status !== "Completed" && (!meta.dueDate || meta.dueDate === today);
+      }).length,
+      overdue: allTaskRows.filter((task) => {
+        const meta = taskDetails(task.id);
+        return meta.status !== "Completed" && Boolean(meta.dueDate && meta.dueDate < today);
+      }).length,
+      week: allTaskRows.filter((task) => {
+        const meta = taskDetails(task.id);
+        return meta.status !== "Completed" && Boolean(meta.dueDate && meta.dueDate >= today && meta.dueDate <= weekEnd);
+      }).length,
+      recurring: allTaskRows.filter((task) => task.recurring && taskDetails(task.id).status !== "Completed").length,
+      completed: allTaskRows.filter((task) => taskDetails(task.id).status === "Completed").length,
+    };
+    const query = taskSearch.trim().toLowerCase();
+    const visibleTasks = allTaskRows
       .filter((task) => {
         const meta = taskDetails(task.id);
-        if (isAddisonUser) return meta.assignee === "Addison" && meta.status !== "Completed";
-        return meta.status !== "Completed";
+        if (query && !`${task.title} ${task.category} ${meta.notes || ""} ${meta.assignee}`.toLowerCase().includes(query)) return false;
+        if (taskListFilter === "completed") return meta.status === "Completed";
+        if (meta.status === "Completed") return false;
+        if (taskListFilter === "today") return !meta.dueDate || meta.dueDate === today;
+        if (taskListFilter === "overdue") return Boolean(meta.dueDate && meta.dueDate < today);
+        if (taskListFilter === "week") return Boolean(meta.dueDate && meta.dueDate >= today && meta.dueDate <= weekEnd);
+        if (taskListFilter === "recurring") return Boolean(task.recurring);
+        return true;
       })
       .sort((a, b) => {
         const am = taskDetails(a.id);
         const bm = taskDetails(b.id);
-        const priority = { High: 0, Medium: 1, Low: 2 } as const;
-        return String(am.dueDate || "9999-12-31").localeCompare(String(bm.dueDate || "9999-12-31")) || priority[a.priority] - priority[b.priority] || a.title.localeCompare(b.title);
+        return String(am.dueDate || "9999-12-31").localeCompare(String(bm.dueDate || "9999-12-31")) || priorityOrder[a.priority] - priorityOrder[b.priority] || a.title.localeCompare(b.title);
       });
     const selectedTask = workPlanTasks.find((item) => item.id === selectedTaskId) || visibleTasks[0];
     const selectedMeta = selectedTask ? taskDetails(selectedTask.id) : null;
-    const completedTasks = workPlanTasks.filter((task) => taskDetails(task.id).status === "Completed");
+    const focusTasks = allTaskRows.filter((task) => {
+      const meta = taskDetails(task.id);
+      return meta.status !== "Completed" && (!meta.dueDate || meta.dueDate <= today);
+    }).sort((a,b) => priorityOrder[a.priority] - priorityOrder[b.priority] || String(taskDetails(a.id).dueDate || "").localeCompare(String(taskDetails(b.id).dueDate || "")));
+    const focusIndex = Math.max(0, focusTasks.findIndex((task) => task.id === selectedTask?.id));
+    const focusTask = focusTasks[focusIndex] || focusTasks[0];
+    const focusMeta = focusTask ? taskDetails(focusTask.id) : null;
+
+    const filterButton = (id: TaskListFilter, label: string, count: number) => (
+      <button type="button" onClick={() => setTaskListFilter(id)} style={{ ...(taskListFilter === id ? goldButtonStyle : secondaryButtonStyle), padding: "7px 10px" }}>{label} · {count}</button>
+    );
 
     return (
       <div style={{ display: "grid", gap: 14 }}>
         <SectionHeader
           eyebrow={tasksView === "vehicles" ? "Operations" : tasksView === "planner" ? "Planning" : "Work"}
-          title={
-            isAddisonUser
-              ? "My Tasks"
-              : tasksView === "vehicles"
-                ? "Vehicle Care"
-                : tasksView === "planner"
-                  ? "Plan Week"
-                  : "Tasks"
-          }
-          detail={
-            isAddisonUser
-              ? "Work assigned to Addison for today and upcoming days."
-              : tasksView === "vehicles"
-                ? "Track which vehicles are onsite, when each was last cleaned, and create only the cleaning work that is actually needed."
-                : tasksView === "planner"
-                  ? "Balance existing Tasks, Work Orders, Routines, and project work across the week. Task records remain managed in Tasks."
-                  : "Track one-time and recurring tasks here. Repairs and service history stay in Work Orders."
-          }
+          title={isAddisonUser ? "My Tasks" : tasksView === "vehicles" ? "Vehicle Care" : tasksView === "planner" ? "Plan Week" : "Tasks"}
+          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : tasksView === "vehicles" ? "Track onsite status, cleaning history, and create only the vehicle work that is needed." : tasksView === "planner" ? "Balance existing work across the week. Tasks remain managed in Tasks." : "Your main daily work area for one-time and recurring tasks."}
+          right={tasksView === "tasks" && !isAddisonUser ? <button type="button" onClick={() => setTaskFocusMode(true)} disabled={!focusTasks.length} style={goldButtonStyle}>Start Working</button> : undefined}
         />
         {!isAddisonUser && tasksView !== "vehicles" && tasksView !== "planner" ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setTasksView("addison")} style={tasksView === "addison" ? goldButtonStyle : secondaryButtonStyle}>Addison Today</button>
-            <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog</button>
+            <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog · {backlogItems.length}</button>
             <button type="button" onClick={() => setTasksView("seasonal")} style={tasksView === "seasonal" ? goldButtonStyle : secondaryButtonStyle}>Seasonal</button>
             <button type="button" onClick={() => setTasksView("templates")} style={tasksView === "templates" ? goldButtonStyle : secondaryButtonStyle}>Templates</button>
             <button type="button" onClick={() => setTasksView("intelligence")} style={tasksView === "intelligence" ? goldButtonStyle : secondaryButtonStyle}>Atlas Manager</button>
@@ -14224,67 +14304,82 @@ export default function AtlasPage() {
                 <button type="button" onClick={() => addAtlasTask()} style={goldButtonStyle}>Add Task</button>
               </div>
             ) : null}
+            <div style={{ ...cardStyle, padding: 10, display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                {filterButton("today", "Today", counts.today)}
+                {filterButton("overdue", "Overdue", counts.overdue)}
+                {filterButton("week", "This Week", counts.week)}
+                {filterButton("recurring", "Recurring", counts.recurring)}
+                {filterButton("completed", "Completed", counts.completed)}
+              </div>
+              <input value={taskSearch} onChange={(event) => setTaskSearch(event.currentTarget.value)} placeholder="Search tasks…" style={{ ...inputStyle, padding: "8px 10px" }} />
+            </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(270px, 36%) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(300px, 38%) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
               <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-                <div style={{ padding: 12, borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}>
-                  <strong>{visibleTasks.length} open task{visibleTasks.length === 1 ? "" : "s"}</strong>
-                  <small style={mutedSmallStyle}>{completedTasks.length} completed</small>
+                <div style={{ padding: "10px 12px", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}>
+                  <strong>{visibleTasks.length} task{visibleTasks.length === 1 ? "" : "s"}</strong>
+                  <small style={mutedSmallStyle}>{minutesLabel(visibleTasks.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0))}</small>
                 </div>
-                <div style={{ maxHeight: isMobile ? 420 : "68vh", overflowY: "auto" }}>
+                <div style={{ maxHeight: isMobile ? 480 : "70vh", overflowY: "auto" }}>
                   {visibleTasks.map((task) => {
                     const meta = taskDetails(task.id);
                     const selected = selectedTask?.id === task.id;
-                    return <button key={task.id} type="button" onClick={() => setSelectedTaskId(task.id)} style={{ width: "100%", border: 0, borderBottom: `1px solid ${colors.line}`, background: selected ? "#F3F7FC" : "#FFFFFF", padding: 12, textAlign: "left", cursor: "pointer" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: colors.navy3 }}>{task.title}</strong><span style={badgeStyle(task.priority)}>{task.priority}</span></div>
-                      <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {minutesLabel(task.minutes)} · {meta.assignee}{task.recurring ? ` · Every ${Math.max(1, Number(meta.recurrenceInterval || 1))} ${(meta.recurrenceUnit || "Weeks").toLowerCase()}` : ""}</small>
-                    </button>;
+                    return <div key={task.id} style={{ borderBottom: `1px solid ${colors.line}`, background: selected ? "#F3F7FC" : "#FFFFFF", padding: "9px 10px", display: "grid", gap: 7 }}>
+                      <button type="button" onClick={() => setSelectedTaskId(task.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: colors.navy3 }}>{task.title}</strong><span style={badgeStyle(task.priority)}>{task.priority}</span></div>
+                        <small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {minutesLabel(task.minutes)} · {meta.assignee}{task.recurring ? " · Recurring" : ""}</small>
+                      </button>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        {meta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(task)} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Done</button> : null}
+                        {meta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(task)} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Tomorrow</button> : null}
+                        {meta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => updateTaskDetails(task.id, { assignee: "Addison", status: "Open" })} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Addison</button> : null}
+                        <button type="button" onClick={() => addQuickTaskNote(task)} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Note</button>
+                      </div>
+                    </div>;
                   })}
-                  {!visibleTasks.length ? <div style={{ padding: 18, ...mutedSmallStyle }}>{isAddisonUser ? "No tasks are currently assigned to Addison." : "No open tasks. Add one above when small one-time work comes up."}</div> : null}
+                  {!visibleTasks.length ? <div style={{ padding: 18, ...mutedSmallStyle }}>No tasks in this view.</div> : null}
                 </div>
               </section>
 
-              <section style={{ ...cardStyle, position: isMobile ? "static" : "sticky", top: 16 }}>
+              <section style={{ ...cardStyle, position: isMobile ? "static" : "sticky", top: 16, maxHeight: isMobile ? "none" : "calc(100vh - 150px)", overflowY: isMobile ? "visible" : "auto" }}>
                 {selectedTask && selectedMeta ? (
-                  <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 11 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                       <div><div style={eyebrowStyle}>Task Details</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>{selectedTask.title}</h2></div>
                       <span style={badgeStyle(selectedMeta.status === "Completed" ? "Completed" : selectedTask.priority)}>{selectedMeta.status}</span>
                     </div>
+                    <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                      {selectedMeta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(selectedTask)} style={goldButtonStyle}>Complete</button> : <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Reopen</button>}
+                      {selectedMeta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(selectedTask)} style={secondaryButtonStyle}>Tomorrow</button> : null}
+                      <button type="button" onClick={() => addTaskPhoto(selectedTask)} style={secondaryButtonStyle}>Add Photo</button>
+                      <button type="button" onClick={() => addQuickTaskNote(selectedTask)} style={secondaryButtonStyle}>Add Note</button>
+                      {!isAddisonUser ? <button type="button" onClick={() => convertTaskToWorkOrder(selectedTask)} style={secondaryButtonStyle}>Convert to Work Order</button> : null}
+                    </div>
                     <Field label="Task" value={selectedTask.title} onChange={(value) => updateWorkPlanTask(selectedTask.id, { title: value })} />
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9 }}>
                       <Field label="Due date" type="date" value={selectedMeta.dueDate} onChange={(value) => updateTaskDetails(selectedTask.id, { dueDate: value })} />
                       <SelectField label="Status" value={selectedMeta.status} onChange={(value) => updateTaskDetails(selectedTask.id, { status: value as AtlasTaskMeta["status"], completedAt: value === "Completed" ? new Date().toISOString() : undefined })} options={["Open","In Progress","Waiting","Blocked","Completed"]} />
                       <SelectField label="Priority" value={selectedTask.priority} onChange={(value) => updateWorkPlanTask(selectedTask.id, { priority: value as WorkOrderPriority })} options={["High","Medium","Low"]} />
                       <SelectField label="Assigned to" value={selectedMeta.assignee} onChange={(value) => updateTaskDetails(selectedTask.id, { assignee: value as AtlasTaskMeta["assignee"] })} options={["Nick","Addison","Other","Unassigned"]} />
                       <Field label="Estimated minutes" type="number" value={String(selectedTask.minutes)} onChange={(value) => updateWorkPlanTask(selectedTask.id, { minutes: Math.max(5, Number(value) || 5) })} />
-                      <SelectField label="Category" value={selectedTask.category} onChange={(value) => updateWorkPlanTask(selectedTask.id, { category: value })} options={["General","Cleanup / Prep","Landscaping","Maintenance","Administration","Planning","Inspection"]} />
+                      <SelectField label="Category" value={selectedTask.category} onChange={(value) => updateWorkPlanTask(selectedTask.id, { category: value })} options={["General","Cleanup / Prep","Landscaping","Maintenance","Administration","Planning","Inspection","Vehicle Care","Boat / Dock"]} />
                       <SelectField label="Preferred day" value={selectedTask.preferredDay || "Auto"} onChange={(value) => updateWorkPlanTask(selectedTask.id, { preferredDay: value as WorkPlanDay | "Auto" })} options={["Auto", ...workPlanDays]} />
                       <Field label="Preferred time" type="time" value={selectedTask.fixedTime || ""} onChange={(value) => updateWorkPlanTask(selectedTask.id, { fixedTime: value })} />
                       <SelectField label="Season" value={selectedMeta.season || "Year-Round"} onChange={(value) => updateTaskDetails(selectedTask.id, { season: value as WorkSeason })} options={["Year-Round","Spring","Summer","Fall","Winter"]} />
                       <SelectField label="Weather" value={selectedMeta.weatherDependency || "None"} onChange={(value) => updateTaskDetails(selectedTask.id, { weatherDependency: value as AtlasTaskMeta["weatherDependency"] })} options={["None","Dry","No rain","Warm","Cool","Low wind"]} />
                     </div>
-                    <div style={{ ...noticeStyle, display: "grid", gap: 10 }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}>
-                        <input type="checkbox" checked={Boolean(selectedTask.recurring)} onChange={(event) => updateWorkPlanTask(selectedTask.id, { recurring: event.currentTarget.checked })} />
-                        Repeating task
-                      </label>
-                      {selectedTask.recurring ? (
-                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                          <Field label="Repeat every" type="number" value={String(selectedMeta.recurrenceInterval || 1)} onChange={(value) => updateTaskDetails(selectedTask.id, { recurrenceInterval: Math.max(1, Number(value) || 1) })} />
-                          <SelectField label="Frequency" value={selectedMeta.recurrenceUnit || "Weeks"} onChange={(value) => updateTaskDetails(selectedTask.id, { recurrenceUnit: value as WorkOrderRecurrenceUnit })} options={["Days","Weeks","Months","Years"]} />
-                          <Field label="Repeat until" type="date" value={selectedMeta.recurrenceEndDate || ""} onChange={(value) => updateTaskDetails(selectedTask.id, { recurrenceEndDate: value })} />
-                          <div style={{ display: "grid", alignContent: "end", gap: 6 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={selectedMeta.flexibleTime !== false} onChange={(event) => updateTaskDetails(selectedTask.id, { flexibleTime: event.currentTarget.checked })} />Flexible time</label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={selectedMeta.skippable !== false} onChange={(event) => updateTaskDetails(selectedTask.id, { skippable: event.currentTarget.checked })} />Can skip an occurrence</label>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
+                    {!isAddisonUser && photoTimelineProjects.length ? <label style={fieldLabelStyle}>Project<select value={selectedMeta.projectId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { projectId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No project</option>{photoTimelineProjects.filter((project) => !project.archived).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label> : null}
+                    <details style={{ ...noticeStyle, padding: 10 }} open={Boolean(selectedTask.recurring)}>
+                      <summary style={{ cursor: "pointer", fontWeight: 900 }}>Recurring schedule</summary>
+                      <div style={{ display: "grid", gap: 9, marginTop: 9 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}><input type="checkbox" checked={Boolean(selectedTask.recurring)} onChange={(event) => updateWorkPlanTask(selectedTask.id, { recurring: event.currentTarget.checked })} />Repeating task</label>
+                        {selectedTask.recurring ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9 }}><Field label="Repeat every" type="number" value={String(selectedMeta.recurrenceInterval || 1)} onChange={(value) => updateTaskDetails(selectedTask.id, { recurrenceInterval: Math.max(1, Number(value) || 1) })} /><SelectField label="Frequency" value={selectedMeta.recurrenceUnit || "Weeks"} onChange={(value) => updateTaskDetails(selectedTask.id, { recurrenceUnit: value as WorkOrderRecurrenceUnit })} options={["Days","Weeks","Months","Years"]} /><Field label="Repeat until" type="date" value={selectedMeta.recurrenceEndDate || ""} onChange={(value) => updateTaskDetails(selectedTask.id, { recurrenceEndDate: value })} /><div style={{ display: "grid", alignContent: "end", gap: 6 }}><label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={selectedMeta.flexibleTime !== false} onChange={(event) => updateTaskDetails(selectedTask.id, { flexibleTime: event.currentTarget.checked })} />Flexible time</label><label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={selectedMeta.skippable !== false} onChange={(event) => updateTaskDetails(selectedTask.id, { skippable: event.currentTarget.checked })} />Can skip an occurrence</label></div></div> : null}
+                      </div>
+                    </details>
                     <Field label="Notes" value={selectedMeta.notes || selectedTask.notes || ""} onChange={(value) => updateTaskDetails(selectedTask.id, { notes: value })} multiline />
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {selectedMeta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { assignee: "Addison", status: "Open" })} style={goldButtonStyle}>Give to Addison</button> : null}
-                      {selectedMeta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(selectedTask)} style={secondaryButtonStyle}>Done</button> : <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Reopen</button>}
                       {selectedTask.recurring && selectedMeta.status !== "Completed" && selectedMeta.skippable !== false ? <button type="button" onClick={() => skipRecurringTask(selectedTask)} style={secondaryButtonStyle}>Skip occurrence</button> : null}
                       {!isAddisonUser ? <button type="button" onClick={() => deleteAtlasTask(selectedTask.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button> : null}
                     </div>
@@ -14294,6 +14389,8 @@ export default function AtlasPage() {
             </div>
           </>
         )}
+
+        {taskFocusMode ? <div style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(8,28,51,.62)", display: "grid", placeItems: "center", padding: 18 }} onClick={() => setTaskFocusMode(false)}><section style={{ ...cardStyle, width: "min(560px,100%)", padding: 20 }} onClick={(event) => event.stopPropagation()}>{focusTask && focusMeta ? <div style={{ display: "grid", gap: 14 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={eyebrowStyle}>Focus Mode · {focusIndex + 1} of {focusTasks.length}</div><h2 style={{ margin: "4px 0", color: colors.navy }}>{focusTask.title}</h2><small style={mutedSmallStyle}>{plannerLocationName(focusTask.locationId)} · {minutesLabel(focusTask.minutes)}{focusMeta.dueDate ? ` · ${formatDate(focusMeta.dueDate)}` : ""}</small></div><button type="button" onClick={() => setTaskFocusMode(false)} style={mapIconButtonStyle}>{closeSymbol}</button></div><Field label="Quick note" value={focusMeta.notes || ""} onChange={(value) => updateTaskDetails(focusTask.id, { notes: value })} multiline /><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => { completeAtlasTask(focusTask); const next = focusTasks[focusIndex + 1] || focusTasks[0]; if (next) setSelectedTaskId(next.id); }} style={goldButtonStyle}>Complete & Next</button><button type="button" onClick={() => { moveAtlasTaskToTomorrow(focusTask); const next = focusTasks[focusIndex + 1]; if (next) setSelectedTaskId(next.id); }} style={secondaryButtonStyle}>Tomorrow</button><button type="button" onClick={() => updateTaskDetails(focusTask.id, { status: "Blocked" })} style={{ ...secondaryButtonStyle, color: colors.red }}>Problem</button><button type="button" onClick={() => { const next = focusTasks[(focusIndex + 1) % focusTasks.length]; if (next) setSelectedTaskId(next.id); }} style={secondaryButtonStyle}>Next</button></div></div> : <div style={noticeStyle}>No tasks are due right now.</div>}</section></div> : null}
       </div>
     );
   }
