@@ -5897,20 +5897,24 @@ export default function AtlasPage() {
         setProcedureRecords(nextProcedures);
         setPartRecords(nextParts);
         if (apiTasks.length) {
-          setWorkPlanTasks((localTasks) => apiTasks.map((record) => {
-            const local = localTasks.find((task) => task.id === record.id);
-            const localUpdated = taskMeta[record.id]?.updatedAt || "";
-            const remoteUpdated = record.updatedAt || record.taskMeta?.updatedAt || "";
-            const source = local && localUpdated > remoteUpdated ? local : record;
-            return { id: source.id, title: source.title, minutes: source.minutes, priority: source.priority, category: source.category, locationId: source.locationId, preferredDay: source.preferredDay, locked: source.locked, recurring: source.recurring, fixedTime: source.fixedTime, notes: source.notes } as WorkPlanTask;
-          }));
-          setTaskMeta((localMeta) => Object.fromEntries(apiTasks.map((record) => {
+          setWorkPlanTasks((localTasks) => {
+            const remoteIds = new Set(apiTasks.map((record) => record.id));
+            const mergedRemote = apiTasks.map((record) => {
+              const local = localTasks.find((task) => task.id === record.id);
+              const localUpdated = taskMeta[record.id]?.updatedAt || "";
+              const remoteUpdated = record.updatedAt || record.taskMeta?.updatedAt || "";
+              const source = local && localUpdated > remoteUpdated ? local : record;
+              return { id: source.id, title: source.title, minutes: source.minutes, priority: source.priority, category: source.category, locationId: source.locationId, preferredDay: source.preferredDay, locked: source.locked, recurring: source.recurring, fixedTime: source.fixedTime, notes: source.notes } as WorkPlanTask;
+            });
+            return [...mergedRemote, ...localTasks.filter((task) => !remoteIds.has(task.id))];
+          });
+          setTaskMeta((localMeta) => ({ ...localMeta, ...Object.fromEntries(apiTasks.map((record) => {
             const remoteMeta = record.taskMeta || record;
             const local = localMeta[record.id];
             return [record.id, local?.updatedAt && local.updatedAt > String(remoteMeta.updatedAt || "") ? local : remoteMeta as AtlasTaskMeta];
-          })));
+          })) }));
         }
-        if (apiVehicles.length) setVehicleCare((localVehicles) => apiVehicles.map((remote) => { const local = localVehicles.find((vehicle) => vehicle.id === remote.id); return local?.updatedAt && local.updatedAt > String(remote.updatedAt || "") ? local : remote; }));
+        if (apiVehicles.length) setVehicleCare((localVehicles) => { const remoteIds = new Set(apiVehicles.map((vehicle) => vehicle.id)); return [...apiVehicles.map((remote) => { const local = localVehicles.find((vehicle) => vehicle.id === remote.id); return local?.updatedAt && local.updatedAt > String(remote.updatedAt || "") ? local : remote; }), ...localVehicles.filter((vehicle) => !remoteIds.has(vehicle.id))]; });
         if (apiDaySessions.length) setDaySessions(apiDaySessions);
         setOperationsHydrated(true);
 
@@ -10437,6 +10441,15 @@ export default function AtlasPage() {
     }
   }
 
+  async function deleteOperationalRecord(table: AtlasTable, id: string) {
+    const pendingKey = `atlas-operations-deletes-v1-${activePropertyId}`;
+    const pending = readStoredArray<{ table: string; id: string }>([pendingKey], []);
+    if (!pending.some((item) => item.table === String(table) && item.id === id)) saveStoredArray(pendingKey, [...pending, { table: String(table), id }]);
+    const deleted = await deleteAtlasRecord(table, id);
+    if (deleted) saveStoredArray(pendingKey, readStoredArray<{ table: string; id: string }>([pendingKey], []).filter((item) => item.table !== String(table) || item.id !== id));
+    return deleted;
+  }
+
   async function syncOperationalData() {
     if (operationsSyncRunningRef.current) return;
     operationsSyncRunningRef.current = true;
@@ -10451,6 +10464,11 @@ export default function AtlasPage() {
     try {
       window.localStorage.setItem(pendingKey, JSON.stringify(snapshot));
       setOperationsSyncState("saving");
+      const pendingDeletesKey = `atlas-operations-deletes-v1-${activePropertyId}`;
+      const pendingDeletes = readStoredArray<{ table: string; id: string }>([pendingDeletesKey], []);
+      const deleteResults = await Promise.all(pendingDeletes.map((item) => deleteAtlasRecord(item.table as AtlasTable, item.id)));
+      if (deleteResults.some((deleted) => !deleted)) throw new Error("A queued deletion is still waiting for shared Atlas.");
+      if (pendingDeletes.length) saveStoredArray(pendingDeletesKey, []);
       const results = await Promise.all([
         ...snapshot.tasks.map((record) => postAtlasRecord("tasks" as AtlasTable, record)),
         ...snapshot.vehicles.map((record) => postAtlasRecord("vehicle_care" as AtlasTable, record)),
@@ -14511,7 +14529,7 @@ export default function AtlasPage() {
       return next;
     });
     setSelectedTaskId("");
-    void deleteAtlasRecord("tasks" as AtlasTable, taskId);
+    void deleteOperationalRecord("tasks" as AtlasTable, taskId);
     showSaveToast("Task deleted.");
   }
 
@@ -14893,7 +14911,7 @@ ${notes.trim()}` : notes.trim(),
         {selectedVehicle ? <section style={{ ...cardStyle, position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)", overflowY: isMobile ? "visible" : "auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
             <div><div style={eyebrowStyle}>Fleet record</div><h3 style={{ margin: "3px 0 0", color: colors.navy }}>{selectedVehicle.name}</h3><small style={mutedSmallStyle}>{selectedVehicle.kind || "Vehicle"} · {selectedVehicle.onsite ? "Onsite" : "Away"}</small></div>
-            <button type="button" onClick={() => { if (window.confirm(`Delete ${selectedVehicle.name}?`)) { setVehicleCare((current) => current.filter((item) => item.id !== selectedVehicle.id)); void deleteAtlasRecord("vehicle_care" as AtlasTable, selectedVehicle.id); setSelectedVehicleId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+            <button type="button" onClick={() => { if (window.confirm(`Delete ${selectedVehicle.name}?`)) { setVehicleCare((current) => current.filter((item) => item.id !== selectedVehicle.id)); void deleteOperationalRecord("vehicle_care" as AtlasTable, selectedVehicle.id); setSelectedVehicleId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
@@ -14946,7 +14964,7 @@ ${notes.trim()}` : notes.trim(),
 
           <section style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${colors.line}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><div style={eyebrowStyle}>Connected Records</div><strong>Vehicle relationships</strong></div>{selectedVehicle.assetId ? <button type="button" onClick={() => { setSelectedAssetId(selectedVehicle.assetId || ""); setScreen("assets"); }} style={secondaryButtonStyle}>Open Asset</button> : null}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 9 }}>{[["Tasks",vehicleTasks.length],["Work Orders",vehicleWorkOrders.length],["Photos",vehiclePhotos.length],["Documents",vehicleDocuments.length]].map(([label,value]) => <div key={String(label)} style={{ ...recordInfoItemStyle, minWidth: 0 }}><small style={fieldLabelStyle}>{label}</small><strong>{value}</strong></div>)}</div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 9 }}>{[["Tasks",vehicleTasks.length],["Work Orders",vehicleWorkOrders.length],["Photos",vehiclePhotos.length],["Documents",vehicleDocuments.length]].map(([label,value]) => <div key={String(label)} style={{ ...recordInfoItemStyle, minWidth: 0 }}><small style={fieldLabelStyle}>{label}</small><strong>{value}</strong></div>)}</div>
             <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{vehicleTasks.map((task) => <button key={`vehicle-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>Task · {taskDetails(task.id).status}</small></span><span>›</span></button>)}{vehicleWorkOrders.map((record) => <button key={`vehicle-work-${record.id}`} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>Work Order · {record.status}</small></span><span>›</span></button>)}{vehicleDocuments.map((document) => <button key={`vehicle-document-${document.id}`} type="button" onClick={() => { setSelectedDocumentId(document.id); setScreen("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"}</small></span><span>›</span></button>)}</div>
             {vehiclePhotos.length ? <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 10 }}>{vehiclePhotos.map((photo) => <button key={photo.id} type="button" onClick={() => setPreviewFile(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 0, overflow: "hidden", background: "#FFFFFF", flex: "0 0 auto" }}><img src={photo.dataUrl || photo.url} alt={photo.name} style={{ width: 78, height: 60, objectFit: "cover", display: "block" }} /></button>)}</div> : null}
           </section>
@@ -38079,11 +38097,15 @@ ${notes.trim()}` : notes.trim(),
                         : screen === "timeline"
                           ? "Projects"
                           : screen === "planner"
-                            ? tasksView === "vehicles"
-                              ? "Vehicle Care"
-                              : tasksView === "planner"
-                                ? "Plan Week"
-                                : "Tasks"
+                            ? tasksView === "walk" ? "Walk Mode"
+                              : tasksView === "build" ? "Build My Day"
+                              : tasksView === "route" ? "Smart Route"
+                              : tasksView === "addison" ? "Addison Work Manager"
+                              : tasksView === "analytics" ? "Operations Analytics"
+                              : tasksView === "vehicles" ? "Vehicle Care"
+                              : tasksView === "seasonal" ? "Seasonal Intelligence"
+                              : tasksView === "planner" ? "Plan Week"
+                              : "Tasks"
                             : screens.find((item) => item.id === screen)?.label}
                   </h1>
                   <div
