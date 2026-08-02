@@ -4458,6 +4458,8 @@ export default function AtlasPage() {
   const [photoTimelineHideLogos, setPhotoTimelineHideLogos] = useState(true);
   const [selectedPhotoTimelineId, setSelectedPhotoTimelineId] = useState("");
   const [photoTimelineView, setPhotoTimelineView] = useState<"timeline" | "projects" | "activity" | "history">("projects");
+  const [estateTimelineTypeFilter, setEstateTimelineTypeFilter] = useState<"All" | "Project" | "Work Order" | "Photo" | "Document" | "Calendar" | "Task" | "Note">("All");
+  const [estateTimelineRange, setEstateTimelineRange] = useState<"all" | "today" | "week" | "month" | "year">("all");
   const [photoTimelineProjectCategory, setPhotoTimelineProjectCategory] = useState<PhotoTimelineProjectCategory | "All">("All");
   const [photoTimelineTagFilter, setPhotoTimelineTagFilter] = useState<PhotoTimelineTag | "All">("All");
   const [photoTimelineVendorFilter, setPhotoTimelineVendorFilter] = useState("all");
@@ -17491,15 +17493,39 @@ ${notes.trim()}` : notes.trim(),
     ];
 
     const activitySearch = photoTimelineSearch.trim().toLowerCase();
+    const estateTimelineToday = calendarDateValue(todayISO());
+    estateTimelineToday.setHours(0, 0, 0, 0);
+    const estateTimelineRangeStart = (() => {
+      const start = new Date(estateTimelineToday);
+      if (estateTimelineRange === "today") return start;
+      if (estateTimelineRange === "week") { start.setDate(start.getDate() - 6); return start; }
+      if (estateTimelineRange === "month") { start.setDate(1); return start; }
+      if (estateTimelineRange === "year") { start.setMonth(0, 1); return start; }
+      return null;
+    })();
     const visibleActivityItems = universalActivityItems
       .filter((item) => {
         const dateKey = String(item.date || "").slice(0, 10);
+        if (estateTimelineTypeFilter !== "All" && item.type !== estateTimelineTypeFilter) return false;
+        if (estateTimelineRangeStart) {
+          const itemDate = dateKey ? calendarDateValue(dateKey) : null;
+          if (!itemDate || Number.isNaN(itemDate.getTime()) || itemDate < estateTimelineRangeStart || itemDate > estateTimelineToday) return false;
+        }
         if (photoTimelineYear !== "all" && dateKey.slice(0, 4) !== photoTimelineYear) return false;
         if (photoTimelineMonthFilter !== "all" && dateKey.slice(5, 7) !== photoTimelineMonthFilter) return false;
         if (activitySearch && !`${item.title} ${item.detail} ${item.type}`.toLowerCase().includes(activitySearch)) return false;
         return true;
       })
       .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+    const todayMonthDay = todayISO().slice(5, 10);
+    const onThisDayItems = universalActivityItems
+      .filter((item) => {
+        const dateKey = String(item.date || "").slice(0, 10);
+        return Boolean(dateKey) && dateKey.slice(5, 10) === todayMonthDay && dateKey !== todayISO();
+      })
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
+      .slice(0, 6);
 
     const activityGroups = visibleActivityItems.reduce<Record<string, UniversalActivityItem[]>>((groups, item) => {
       const dateKey = String(item.date || "").slice(0, 10) || "No date";
@@ -17544,7 +17570,7 @@ ${notes.trim()}` : notes.trim(),
               <div style={{ display: "inline-flex", border: "1px solid #CBD5E1", borderRadius: 10, padding: 3, background: "#F8FAFC" }}>
                 {([[
                   "projects", "Projects",
-                ], ["activity", "Activity"], ["history", "Estate History"], ["timeline", "Photo Timeline"]] as const).map(([value, label]) => (
+                ], ["activity", "Estate Timeline"], ["history", "Milestones"], ["timeline", "Photo Timeline"]] as const).map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setPhotoTimelineView(value)} style={{ border: 0, borderRadius: 7, padding: "8px 12px", background: photoTimelineView === value ? "#175CD3" : "transparent", color: photoTimelineView === value ? "white" : colors.navy3, fontWeight: 900, cursor: "pointer" }}>{label}</button>
                 ))}
               </div>
@@ -17581,12 +17607,15 @@ ${notes.trim()}` : notes.trim(),
             </div> : null}
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1.5fr) repeat(5, minmax(120px, .7fr))", gap: 9, marginBottom: 16 }}>
-              <input value={photoTimelineSearch} onChange={(event) => setPhotoTimelineSearch(event.target.value)} placeholder="Search projects, photos, notes, assets..." style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }} />
+              <input value={photoTimelineSearch} onChange={(event) => setPhotoTimelineSearch(event.target.value)} placeholder="Search estate history, projects, work, photos, documents..." style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }} />
+              {(photoTimelineView === "activity" || photoTimelineView === "history") ? <select value={estateTimelineTypeFilter} onChange={(event) => setEstateTimelineTypeFilter(event.target.value as typeof estateTimelineTypeFilter)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="All">All record types</option>{(["Project", "Work Order", "Photo", "Document", "Calendar", "Task", "Note"] as const).map((type) => <option key={type} value={type}>{type}</option>)}</select> : null}
+              {(photoTimelineView === "activity" || photoTimelineView === "history") ? <select value={estateTimelineRange} onChange={(event) => { setEstateTimelineRange(event.target.value as typeof estateTimelineRange); if (event.target.value !== "all") { setPhotoTimelineYear("all"); setPhotoTimelineMonthFilter("all"); } }} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All dates</option><option value="today">Today</option><option value="week">Last 7 days</option><option value="month">This month</option><option value="year">This year</option></select> : null}
               {photoTimelineView === "timeline" ? <select value={photoTimelineTagFilter} onChange={(event) => setPhotoTimelineTagFilter(event.target.value as PhotoTimelineTag | "All")} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="All">All phases</option>{([...PHOTO_TIMELINE_TAGS.filter((tag) => tag !== "Unlabeled"), "Unlabeled"] as PhotoTimelineTag[]).map((tag) => <option key={tag}>{tag}</option>)}</select> : null}
               {photoTimelineView === "timeline" ? <select value={photoTimelineAssetId} onChange={(event) => setPhotoTimelineAssetId(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All assets</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select> : null}
               {photoTimelineView === "timeline" ? <select value={photoTimelineVendorFilter} onChange={(event) => setPhotoTimelineVendorFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All vendors</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select> : null}
               {photoTimelineView !== "projects" ? <select value={photoTimelineYear} onChange={(event) => setPhotoTimelineYear(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All years</option>{photoTimelineYears.map((year) => <option key={year}>{year}</option>)}</select> : null}
-              {photoTimelineView !== "projects" ? <select value={photoTimelineMonthFilter} onChange={(event) => setPhotoTimelineMonthFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index} value={String(index + 1).padStart(2, "0")}>{new Date(2026, index, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}</select> : null}
+              {photoTimelineView !== "projects" ? <select value={photoTimelineMonthFilter} onChange={(event) => { setPhotoTimelineMonthFilter(event.target.value); if (event.target.value !== "all") setEstateTimelineRange("all"); }} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index} value={String(index + 1).padStart(2, "0")}>{new Date(2026, index, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}</select> : null}
+              {(photoTimelineView === "activity" || photoTimelineView === "history") && (photoTimelineSearch || estateTimelineTypeFilter !== "All" || estateTimelineRange !== "all" || photoTimelineYear !== "all" || photoTimelineMonthFilter !== "all") ? <button type="button" onClick={() => { setPhotoTimelineSearch(""); setEstateTimelineTypeFilter("All"); setEstateTimelineRange("all"); setPhotoTimelineYear("all"); setPhotoTimelineMonthFilter("all"); }} style={secondaryButtonStyle}>Clear</button> : null}
             </div>
 
             {photoTimelineView === "projects" ? (
@@ -17728,6 +17757,10 @@ ${notes.trim()}` : notes.trim(),
               </div>
             ) : photoTimelineView === "activity" ? (
               <div id="atlas-activity-results" style={{ display: "grid", gap: 16 }}>
+                {onThisDayItems.length ? <section style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: 12, background: "linear-gradient(135deg,#FFF9E8,#FFFFFF)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}><div><strong style={{ color: colors.navy3 }}>On This Day</strong><small style={{ ...mutedSmallStyle, display: "block" }}>Earlier estate activity from this calendar date.</small></div><span style={badgeStyle("Seasonal")}>{onThisDayItems.length}</span></div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 7 }}>{onThisDayItems.map((item) => <button key={`on-this-day-${item.id}`} type="button" onClick={item.action} disabled={!item.action} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: "9px 10px", background: "white", textAlign: "left", cursor: item.action ? "pointer" : "default", display: "grid", gridTemplateColumns: "30px minmax(0,1fr) auto", gap: 8, alignItems: "center" }}><span style={{ fontSize: 17 }}>{item.icon}</span><span style={{ minWidth: 0 }}><strong style={{ display: "block", color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.detail}</small></span><small style={mutedSmallStyle}>{String(item.date).slice(0,4)}</small></button>)}</div>
+                </section> : null}
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
                   {[
                     ["All activity", visibleActivityItems.length],
