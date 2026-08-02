@@ -225,6 +225,15 @@ type AtlasTaskMeta = {
   createdAt: string;
   projectId?: string;
   notes?: string;
+  recurrenceInterval?: number;
+  recurrenceUnit?: WorkOrderRecurrenceUnit;
+  recurrenceEndDate?: string;
+  lastCompletedDate?: string;
+  completionHistory?: string[];
+  season?: WorkSeason;
+  weatherDependency?: "None" | "Dry" | "No rain" | "Warm" | "Cool" | "Low wind";
+  flexibleTime?: boolean;
+  skippable?: boolean;
 };
 
 type AtlasBacklogItem = {
@@ -13807,6 +13816,14 @@ export default function AtlasPage() {
       dueDate: "",
       assignee: "Unassigned",
       createdAt: new Date().toISOString(),
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      completionHistory: [],
+      season: "Year-Round",
+      weatherDependency: "None",
+      flexibleTime: true,
+      skippable: true,
     };
   }
 
@@ -13815,6 +13832,60 @@ export default function AtlasPage() {
       ...current,
       [taskId]: { ...taskDetails(taskId), ...patch },
     }));
+  }
+
+  function advanceRecurringTask(task: WorkPlanTask, meta: AtlasTaskMeta) {
+    const completedDate = todayISO();
+    const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
+    const unit = meta.recurrenceUnit || "Weeks";
+    const nextDate = nextRecurrenceDate(meta.dueDate || completedDate, interval, unit);
+    const recurrenceEnded = Boolean(meta.recurrenceEndDate && nextDate > meta.recurrenceEndDate);
+    const history = Array.from(new Set([...(meta.completionHistory || []), completedDate])).sort();
+
+    if (recurrenceEnded) {
+      updateTaskDetails(task.id, {
+        status: "Completed",
+        completedAt: new Date().toISOString(),
+        lastCompletedDate: completedDate,
+        completionHistory: history,
+      });
+      showSaveToast(`${task.title} completed. Its recurring schedule has ended.`);
+      return;
+    }
+
+    updateTaskDetails(task.id, {
+      status: "Open",
+      dueDate: nextDate,
+      completedAt: undefined,
+      lastCompletedDate: completedDate,
+      completionHistory: history,
+    });
+    showSaveToast(`${task.title} completed. Next due ${formatDate(nextDate)}.`);
+  }
+
+  function completeAtlasTask(task: WorkPlanTask) {
+    const meta = taskDetails(task.id);
+    if (task.recurring) {
+      advanceRecurringTask(task, meta);
+      return;
+    }
+    updateTaskDetails(task.id, {
+      status: "Completed",
+      completedAt: new Date().toISOString(),
+      lastCompletedDate: todayISO(),
+      completionHistory: Array.from(new Set([...(meta.completionHistory || []), todayISO()])).sort(),
+    });
+    showSaveToast(`${task.title} completed.`);
+  }
+
+  function skipRecurringTask(task: WorkPlanTask) {
+    const meta = taskDetails(task.id);
+    if (!task.recurring || meta.skippable === false) return;
+    const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
+    const unit = meta.recurrenceUnit || "Weeks";
+    const nextDate = nextRecurrenceDate(meta.dueDate || todayISO(), interval, unit);
+    updateTaskDetails(task.id, { dueDate: nextDate, status: "Open" });
+    showSaveToast(`${task.title} skipped. Next due ${formatDate(nextDate)}.`);
   }
 
   function addAtlasTask(title = newTaskTitle) {
@@ -13841,6 +13912,14 @@ export default function AtlasPage() {
         dueDate: todayISO(),
         assignee: "Nick",
         createdAt: new Date().toISOString(),
+        recurrenceInterval: 1,
+        recurrenceUnit: "Weeks",
+        recurrenceEndDate: "",
+        completionHistory: [],
+        season: "Year-Round",
+        weatherDependency: "None",
+        flexibleTime: true,
+        skippable: true,
       },
     }));
     setSelectedTaskId(task.id);
@@ -14131,7 +14210,7 @@ export default function AtlasPage() {
                     const selected = selectedTask?.id === task.id;
                     return <button key={task.id} type="button" onClick={() => setSelectedTaskId(task.id)} style={{ width: "100%", border: 0, borderBottom: `1px solid ${colors.line}`, background: selected ? "#F3F7FC" : "#FFFFFF", padding: 12, textAlign: "left", cursor: "pointer" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: colors.navy3 }}>{task.title}</strong><span style={badgeStyle(task.priority)}>{task.priority}</span></div>
-                      <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {minutesLabel(task.minutes)} · {meta.assignee}</small>
+                      <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {minutesLabel(task.minutes)} · {meta.assignee}{task.recurring ? ` · Every ${Math.max(1, Number(meta.recurrenceInterval || 1))} ${(meta.recurrenceUnit || "Weeks").toLowerCase()}` : ""}</small>
                     </button>;
                   })}
                   {!visibleTasks.length ? <div style={{ padding: 18, ...mutedSmallStyle }}>{isAddisonUser ? "No tasks are currently assigned to Addison." : "No open tasks. Add one above when small one-time work comes up."}</div> : null}
@@ -14153,11 +14232,33 @@ export default function AtlasPage() {
                       <SelectField label="Assigned to" value={selectedMeta.assignee} onChange={(value) => updateTaskDetails(selectedTask.id, { assignee: value as AtlasTaskMeta["assignee"] })} options={["Nick","Addison","Other","Unassigned"]} />
                       <Field label="Estimated minutes" type="number" value={String(selectedTask.minutes)} onChange={(value) => updateWorkPlanTask(selectedTask.id, { minutes: Math.max(5, Number(value) || 5) })} />
                       <SelectField label="Category" value={selectedTask.category} onChange={(value) => updateWorkPlanTask(selectedTask.id, { category: value })} options={["General","Cleanup / Prep","Landscaping","Maintenance","Administration","Planning","Inspection"]} />
+                      <SelectField label="Preferred day" value={selectedTask.preferredDay || "Auto"} onChange={(value) => updateWorkPlanTask(selectedTask.id, { preferredDay: value as WorkPlanDay | "Auto" })} options={["Auto", ...workPlanDays]} />
+                      <Field label="Preferred time" type="time" value={selectedTask.fixedTime || ""} onChange={(value) => updateWorkPlanTask(selectedTask.id, { fixedTime: value })} />
+                      <SelectField label="Season" value={selectedMeta.season || "Year-Round"} onChange={(value) => updateTaskDetails(selectedTask.id, { season: value as WorkSeason })} options={["Year-Round","Spring","Summer","Fall","Winter"]} />
+                      <SelectField label="Weather" value={selectedMeta.weatherDependency || "None"} onChange={(value) => updateTaskDetails(selectedTask.id, { weatherDependency: value as AtlasTaskMeta["weatherDependency"] })} options={["None","Dry","No rain","Warm","Cool","Low wind"]} />
+                    </div>
+                    <div style={{ ...noticeStyle, display: "grid", gap: 10 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}>
+                        <input type="checkbox" checked={Boolean(selectedTask.recurring)} onChange={(event) => updateWorkPlanTask(selectedTask.id, { recurring: event.currentTarget.checked })} />
+                        Repeating task
+                      </label>
+                      {selectedTask.recurring ? (
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                          <Field label="Repeat every" type="number" value={String(selectedMeta.recurrenceInterval || 1)} onChange={(value) => updateTaskDetails(selectedTask.id, { recurrenceInterval: Math.max(1, Number(value) || 1) })} />
+                          <SelectField label="Frequency" value={selectedMeta.recurrenceUnit || "Weeks"} onChange={(value) => updateTaskDetails(selectedTask.id, { recurrenceUnit: value as WorkOrderRecurrenceUnit })} options={["Days","Weeks","Months","Years"]} />
+                          <Field label="Repeat until" type="date" value={selectedMeta.recurrenceEndDate || ""} onChange={(value) => updateTaskDetails(selectedTask.id, { recurrenceEndDate: value })} />
+                          <div style={{ display: "grid", alignContent: "end", gap: 6 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={selectedMeta.flexibleTime !== false} onChange={(event) => updateTaskDetails(selectedTask.id, { flexibleTime: event.currentTarget.checked })} />Flexible time</label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={selectedMeta.skippable !== false} onChange={(event) => updateTaskDetails(selectedTask.id, { skippable: event.currentTarget.checked })} />Can skip an occurrence</label>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                     <Field label="Notes" value={selectedMeta.notes || selectedTask.notes || ""} onChange={(value) => updateTaskDetails(selectedTask.id, { notes: value })} multiline />
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {selectedMeta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { assignee: "Addison", status: "Open" })} style={goldButtonStyle}>Give to Addison</button> : null}
-                      {selectedMeta.status !== "Completed" ? <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Completed", completedAt: new Date().toISOString() })} style={secondaryButtonStyle}>Done</button> : <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Reopen</button>}
+                      {selectedMeta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(selectedTask)} style={secondaryButtonStyle}>Done</button> : <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Reopen</button>}
+                      {selectedTask.recurring && selectedMeta.status !== "Completed" && selectedMeta.skippable !== false ? <button type="button" onClick={() => skipRecurringTask(selectedTask)} style={secondaryButtonStyle}>Skip occurrence</button> : null}
                       {!isAddisonUser ? <button type="button" onClick={() => deleteAtlasTask(selectedTask.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button> : null}
                     </div>
                   </div>
