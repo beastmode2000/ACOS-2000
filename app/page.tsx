@@ -4137,6 +4137,7 @@ export default function AtlasPage() {
   const [operationsSyncState, setOperationsSyncState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [operationsSyncMessage, setOperationsSyncMessage] = useState("No pending changes");
   const [operationsHydrated, setOperationsHydrated] = useState(false);
+  const [fleetSetupState, setFleetSetupState] = useState<"idle" | "working" | "ready" | "failed">("idle");
   const [showPropertyLoading, setShowPropertyLoading] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
@@ -4272,6 +4273,7 @@ export default function AtlasPage() {
   const [dashboardWorkFilter, setDashboardWorkFilter] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
+  const [voiceAssistantListening, setVoiceAssistantListening] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [savedCommands, setSavedCommands] = useState<string[]>([]);
@@ -4370,6 +4372,7 @@ export default function AtlasPage() {
   const atlasActionLocksRef = useRef<Set<string>>(new Set());
   const operationsSyncTimerRef = useRef<number | null>(null);
   const operationsSyncRunningRef = useRef(false);
+  const fleetSetupRunningRef = useRef(false);
 
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
@@ -5328,6 +5331,11 @@ export default function AtlasPage() {
     window.addEventListener("focus", retry);
     return () => { window.removeEventListener("online", retry); window.removeEventListener("focus", retry); };
   }, [operationsSyncState, activePropertyId, workPlanTasks, taskMeta, vehicleCare, daySessions]);
+
+  useEffect(() => {
+    if (!ready || !operationsHydrated || syncState !== "synced" || !vehicleCare.length) return;
+    void setupFleetAssetsAndSchedules();
+  }, [ready, operationsHydrated, syncState, activePropertyId, vehicleCare.length, assetRecords.length, workPlanTasks.length, serviceRecords.length, calendarItems.length]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -5460,6 +5468,17 @@ export default function AtlasPage() {
 
     if (!linkedId || !linkedType || linkedType === "None") {
       return false;
+    }
+
+    if (linkedType === "Task") {
+      setSelectedTaskId(linkedId);
+      setTasksView("tasks");
+      setScreen("planner");
+      window.requestAnimationFrame(() => {
+        setSelectedTaskId(linkedId);
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      });
+      return true;
     }
 
     if (linkedType === "Asset") {
@@ -8387,13 +8406,68 @@ export default function AtlasPage() {
     return () => window.removeEventListener("keydown", openCommandCenter);
   }, [commandCenterOpen]);
 
+  function startVoiceAssistant() {
+    type RecognitionInstance = { continuous: boolean; interimResults: boolean; lang: string; start: () => void; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
+    type RecognitionConstructor = new () => RecognitionInstance;
+    const speechWindow = window as unknown as { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    setCommandCenterOpen(true);
+    setSearchOpen(true);
+    setSearchActiveIndex(0);
+    if (!Recognition) {
+      setVoiceAssistantListening(false);
+      setQuery("");
+      showSaveToast("Voice input is not available in this browser. Type your request in Command Center.", "warning");
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim() || "";
+      setQuery(transcript);
+      setSearchActiveIndex(0);
+      if (transcript) rememberSearch(transcript);
+    };
+    recognition.onerror = () => showSaveToast("Atlas could not hear that request. Tap Talk to Atlas and try again.", "warning");
+    recognition.onend = () => setVoiceAssistantListening(false);
+    setVoiceAssistantListening(true);
+    recognition.start();
+  }
+
+  function spokenCommandDate(value: string) {
+    const clean = value.toLowerCase();
+    if (/\btoday\b/.test(clean)) return todayISO();
+    if (/\btomorrow\b/.test(clean)) return addDays(todayISO(), 1);
+    if (/\bnext week\b/.test(clean)) return addDays(todayISO(), 7);
+    const weekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    const weekdayIndex = weekdays.findIndex((day) => new RegExp(`\\b${day}\\b`).test(clean));
+    if (weekdayIndex < 0) return "";
+    const currentDay = new Date(`${todayISO()}T12:00:00`).getDay();
+    const offset = ((weekdayIndex - currentDay + 7) % 7) || 7;
+    return addDays(todayISO(), offset);
+  }
+
   function commandCreation(value = query) {
     const clean = value.trim();
-    const match = clean.match(/^(task|work\s*order|project)\s+(.+)$/i);
+    const match = clean.match(/^(?:(?:add|create|schedule|make)\s+(?:a\s+)?)?(task|work\s*order|project)\s+(.+)$/i) || clean.match(/^(schedule)\s+(.+)$/i);
     if (!match) return null;
+    const naturalSchedule = match[1].toLowerCase() === "schedule";
+    const rawTitle = match[2].trim();
+    const title = rawTitle
+      .replace(/\s+(?:for\s+)?(?:today|tomorrow|next week|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b.*$/i, "")
+      .replace(/\s+(?:assigned?\s+to|give\s+to)\s+addison\b.*$/i, "")
+      .replace(/\s+(?:for\s+)?\d+\s*(?:minutes?|mins?|hours?|hrs?)\b.*$/i, "")
+      .trim();
+    const durationMatch = rawTitle.match(/\b(\d+)\s*(minutes?|mins?|hours?|hrs?)\b/i);
+    const minutes = durationMatch ? Number(durationMatch[1]) * (/hour|hr/i.test(durationMatch[2]) ? 60 : 1) : undefined;
     return {
-      kind: match[1].toLowerCase().replace(/\s+/g, " ") as "task" | "work order" | "project",
-      title: match[2].trim(),
+      kind: (naturalSchedule ? "task" : match[1].toLowerCase().replace(/\s+/g, " ")) as "task" | "work order" | "project",
+      title,
+      dueDate: spokenCommandDate(rawTitle),
+      assignee: /\baddison\b/i.test(rawTitle) ? "Addison" as const : undefined,
+      minutes,
     };
   }
 
@@ -8489,13 +8563,17 @@ export default function AtlasPage() {
     rememberSearch(value);
     closeCommandCenter();
     if (command.kind === "task") {
-      addAtlasTask(command.title);
+      const taskId = addAtlasTask(command.title);
+      if (taskId) {
+        if (command.minutes) setWorkPlanTasks((current) => current.map((task) => task.id === taskId ? { ...task, minutes: Math.max(5, command.minutes || task.minutes) } : task));
+        if (command.dueDate || command.assignee) updateTaskDetails(taskId, { dueDate: command.dueDate || todayISO(), assignee: command.assignee || "Nick" });
+      }
       setTasksView("tasks");
       setScreen("planner");
       return true;
     }
     if (command.kind === "work order") {
-      addWorkOrder({ title: command.title });
+      addWorkOrder({ title: command.title, date: command.dueDate || "", assignedTo: command.assignee || "" });
       showSaveToast("Work order created.");
       return true;
     }
@@ -14548,7 +14626,7 @@ export default function AtlasPage() {
 
   function addAtlasTask(title = newTaskTitle) {
     const clean = title.trim();
-    if (!clean) return;
+    if (!clean) return "";
     const task: WorkPlanTask = {
       id: uid("task"),
       title: clean,
@@ -14583,6 +14661,7 @@ export default function AtlasPage() {
     setSelectedTaskId(task.id);
     setNewTaskTitle("");
     showSaveToast("Task added.");
+    return task.id;
   }
 
   function deleteAtlasTask(taskId: string) {
@@ -14785,6 +14864,156 @@ ${notes.trim()}` : notes.trim(),
     showSaveToast(`${name} added to Fleet Manager.`);
   }
 
+  async function setupFleetAssetsAndSchedules() {
+    if (fleetSetupRunningRef.current || !vehicleCare.length) return;
+    fleetSetupRunningRef.current = true;
+    setFleetSetupState("working");
+    try {
+      const nextAssets = [...assetRecords];
+      const nextVehicles = [...vehicleCare];
+      const nextTasks = [...workPlanTasks];
+      const nextTaskMeta = { ...taskMeta };
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      let createdAssets = 0;
+      let createdTasks = 0;
+      let createdWorkOrders = 0;
+      let createdCalendarItems = 0;
+
+      for (const vehicle of vehicleCare) {
+        let asset = nextAssets.find((item) => item.id === vehicle.assetId) || nextAssets.find((item) => normalizeLocationName(item.name) === normalizeLocationName(vehicle.name));
+        if (!asset) {
+          asset = normalizeAsset({
+            id: uid("asset"),
+            name: vehicle.name,
+            category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Marine / Watercraft" : vehicle.kind === "Equipment" ? "Equipment" : "Vehicle",
+            status: vehicle.onsite ? "Online" : "Seasonal",
+            locationId: vehicle.locationId || "general",
+            locationIds: [vehicle.locationId || "general"],
+            notes: `Fleet Asset created from Vehicle Care.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
+            vendorIds: [],
+          });
+          nextAssets.push(asset);
+          recordsToSave.push({ table: "assets", record: { ...asset, propertyId: activePropertyId } });
+          createdAssets += 1;
+        }
+
+        const vehicleIndex = nextVehicles.findIndex((item) => item.id === vehicle.id);
+        if (vehicleIndex >= 0 && nextVehicles[vehicleIndex].assetId !== asset.id) {
+          nextVehicles[vehicleIndex] = { ...nextVehicles[vehicleIndex], assetId: asset.id, locationId: vehicle.locationId || asset.locationId, updatedAt: new Date().toISOString() };
+        }
+
+        const cleaningInterval = Math.max(1, Number(vehicle.cleaningIntervalDays || (vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 7 : 14)));
+        const cleaningDueDate = vehicle.lastCleaned ? addDays(vehicle.lastCleaned, cleaningInterval) : todayISO();
+        let cleaningTask = nextTasks.find((task) => taskDetails(task.id).vehicleId === vehicle.id) || nextTasks.find((task) => normalizeLocationName(task.title) === normalizeLocationName(`Clean ${vehicle.name}`));
+        if (!cleaningTask) {
+          cleaningTask = {
+            id: uid("fleet-task"),
+            title: `Clean ${vehicle.name}`,
+            minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45,
+            priority: vehicle.priority === "High" ? "High" : "Medium",
+            category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Vehicle Care",
+            locationId: vehicle.locationId || asset.locationId || "general",
+            preferredDay: "Thursday",
+            locked: false,
+            recurring: true,
+            fixedTime: "",
+            notes: `Recurring Fleet cleaning for ${vehicle.name}.`,
+          };
+          nextTasks.push(cleaningTask);
+          createdTasks += 1;
+        } else {
+          const taskIndex = nextTasks.findIndex((task) => task.id === cleaningTask!.id);
+          nextTasks[taskIndex] = { ...cleaningTask, recurring: true, locationId: vehicle.locationId || asset.locationId || "general" };
+          cleaningTask = nextTasks[taskIndex];
+        }
+        nextTaskMeta[cleaningTask.id] = {
+          ...taskDetails(cleaningTask.id),
+          status: taskDetails(cleaningTask.id).status === "Completed" ? "Open" : taskDetails(cleaningTask.id).status,
+          dueDate: taskDetails(cleaningTask.id).dueDate || cleaningDueDate,
+          assignee: vehicle.assignedTo === "Addison" ? "Addison" : "Nick",
+          createdAt: taskDetails(cleaningTask.id).createdAt || new Date().toISOString(),
+          assetId: asset.id,
+          vehicleId: vehicle.id,
+          recurrenceInterval: cleaningInterval,
+          recurrenceUnit: "Days",
+          season: "Year-Round",
+          updatedAt: new Date().toISOString(),
+        };
+
+        const serviceInterval = Math.max(1, Number(vehicle.serviceIntervalDays || 180));
+        const serviceDueDate = vehicle.nextServiceDate || addDays(vehicle.lastServiced || todayISO(), serviceInterval);
+        let serviceWorkOrder = nextWorkOrders.find((record) => record.assetId === asset!.id && record.recurring && /service|maintenance/i.test(record.title));
+        if (!serviceWorkOrder) {
+          serviceWorkOrder = normalizeService({
+            id: uid("fleet-wo"),
+            title: `${vehicle.name} recurring service`,
+            assetId: asset.id,
+            locationId: vehicle.locationId || asset.locationId || "",
+            date: serviceDueDate,
+            status: "Open",
+            priority: vehicle.priority === "High" ? "High" : "Medium",
+            notes: `Recurring Fleet service for ${vehicle.name}.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
+            recurring: true,
+            recurrenceInterval: serviceInterval,
+            recurrenceUnit: "Days",
+            season: "Year-Round",
+            workType: "Preventive Maintenance",
+            workCategory: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "🚤 Dock & Marine" : "🚗 Vehicles",
+            responsibilityArea: `Fleet · ${vehicle.name}`,
+            assignedTo: vehicle.assignedTo || "Nick",
+          });
+          nextWorkOrders.push(serviceWorkOrder);
+          createdWorkOrders += 1;
+          recordsToSave.push({ table: "work_orders", record: { ...serviceWorkOrder, propertyId: activePropertyId } });
+        }
+
+        const calendarDefinitions: AtlasCalendarItem[] = [
+          normalizeCalendar({ id: `fleet-clean-${vehicle.id}`, propertyId: activePropertyId, date: nextTaskMeta[cleaningTask.id].dueDate, title: `Clean ${vehicle.name}`, area: "Vehicle Care", categoryLabel: "Vehicle Care", allDay: true, repeat: cleaningInterval === 7 ? "Weekly" : "Custom", reminder: "Morning of", notes: `Recurring every ${cleaningInterval} days. Changes stay linked to the Fleet Asset and Task.`, linkedType: "Task", linkedId: cleaningTask.id, linkedName: cleaningTask.title, source: "task", status: "Scheduled" }),
+          normalizeCalendar({ id: `fleet-service-${vehicle.id}`, propertyId: activePropertyId, date: serviceWorkOrder.date || serviceDueDate, title: `${vehicle.name} service`, area: "Vehicle Care", categoryLabel: "Vehicle Care", allDay: true, repeat: "Custom", reminder: "Week before", notes: `Recurring every ${serviceInterval} days. Open the linked Work Order for service history, documents, and cost.`, linkedType: "Work Order", linkedId: serviceWorkOrder.id, linkedName: serviceWorkOrder.title, source: "work-order", status: "Scheduled" }),
+        ];
+        for (const calendarRecord of calendarDefinitions) {
+          const existingIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
+          if (existingIndex >= 0) {
+            const existing = nextCalendar[existingIndex];
+            if (JSON.stringify(existing) !== JSON.stringify(calendarRecord)) {
+              nextCalendar[existingIndex] = calendarRecord;
+              recordsToSave.push({ table: "calendar", record: calendarRecord });
+            }
+          } else {
+            nextCalendar.push(calendarRecord);
+            recordsToSave.push({ table: "calendar", record: calendarRecord });
+            createdCalendarItems += 1;
+          }
+        }
+      }
+
+      if (createdAssets) setAssetRecords(byName(nextAssets));
+      if (createdTasks || nextTasks.some((task, index) => task !== workPlanTasks[index])) {
+        setWorkPlanTasks(nextTasks);
+        setTaskMeta(nextTaskMeta);
+      }
+      if (createdWorkOrders) setServiceRecords(byTitle(nextWorkOrders));
+      if (createdCalendarItems || nextCalendar.some((item, index) => item !== calendarItems[index])) {
+        setCalendarItems(byTitle(nextCalendar));
+        saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      }
+      if (nextVehicles.some((vehicle, index) => vehicle.assetId !== vehicleCare[index]?.assetId)) setVehicleCare(nextVehicles);
+
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some Fleet records are waiting to sync.");
+      setFleetSetupState("ready");
+      if (createdAssets || createdTasks || createdWorkOrders || createdCalendarItems) showSaveToast(`Fleet setup complete: ${createdAssets} Assets, ${createdTasks} recurring Tasks, ${createdWorkOrders} service Work Orders, and ${createdCalendarItems} Calendar items added.`);
+    } catch (error) {
+      console.error("Atlas Fleet setup failed", error);
+      setFleetSetupState("failed");
+      showSaveToast("Fleet setup needs another sync attempt.", "warning");
+    } finally {
+      fleetSetupRunningRef.current = false;
+    }
+  }
+
   function createSeasonalTask(item: AtlasSeasonalItem) {
     const task: WorkPlanTask = { id: uid("plan-task"), title: item.title, minutes: 60, priority: "Medium", category: "Maintenance", locationId: "general", preferredDay: "Auto", locked: false, recurring: item.frequency !== "One-time", fixedTime: "", notes: item.notes };
     setWorkPlanTasks((current) => [task, ...current]);
@@ -14954,9 +15183,10 @@ ${notes.trim()}` : notes.trim(),
         {[{ label: "Fleet", value: vehicleCare.length }, { label: "Onsite", value: onsiteCount }, { label: "Cleaning due", value: dueCount }, { label: "Service due", value: serviceDueCount }].map((item) => <div key={item.label} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 23, color: colors.navy }}>{item.value}</strong></div>)}
       </div>
 
-      <div style={{ ...cardStyle, padding: 10, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
+      <div style={{ ...cardStyle, padding: 10, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto auto", gap: 8 }}>
         <input value={newVehicleName} onChange={(event) => setNewVehicleName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addFleetVehicle(); }} placeholder="Add vehicle, boat, or equipment…" style={inputStyle} />
         <button type="button" onClick={addFleetVehicle} style={goldButtonStyle}>Add</button>
+        <button type="button" onClick={() => void setupFleetAssetsAndSchedules()} disabled={fleetSetupState === "working"} style={fleetSetupState === "ready" ? secondaryButtonStyle : goldButtonStyle}>{fleetSetupState === "working" ? "Setting Up…" : fleetSetupState === "failed" ? "Retry Fleet Sync" : fleetSetupState === "ready" ? "Fleet Synced ✓" : "Set Up Fleet"}</button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(280px,36%) minmax(0,1fr)", gap: 12, alignItems: "start" }}>
@@ -38353,6 +38583,7 @@ ${notes.trim()}` : notes.trim(),
                   <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>✦</span>
                   {!isMobile ? <span>Ask Atlas</span> : null}
                 </button>
+                <button type="button" onClick={startVoiceAssistant} aria-label="Talk to Atlas" title="Talk to Atlas" style={{ ...secondaryButtonStyle, width: "auto", minWidth: isMobile ? 44 : 112, minHeight: 40, margin: 0, padding: isMobile ? "7px 10px" : "7px 12px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap", borderColor: voiceAssistantListening ? colors.gold : "rgba(255,255,255,.24)", background: voiceAssistantListening ? colors.gold : "rgba(255,255,255,.12)", color: voiceAssistantListening ? colors.navy : "#FFFFFF" }}><span aria-hidden="true" style={{ fontSize: 16 }}>{voiceAssistantListening ? "●" : "🎤"}</span>{!isMobile ? <span>{voiceAssistantListening ? "Listening…" : "Talk to Atlas"}</span> : null}</button>
                 <div
                     style={{ position: "relative", minWidth: 0, gridColumn: isMobile ? "1 / -1" : undefined }}
                     onBlur={() => {
@@ -38518,6 +38749,7 @@ ${notes.trim()}` : notes.trim(),
                     aria-label="Find or create anything in Atlas"
                     style={{ border: 0, outline: 0, background: "transparent", flex: 1, minWidth: 0, fontSize: isMobile ? 17 : 19, color: colors.navy, fontWeight: 750 }}
                   />
+                  <button type="button" onClick={startVoiceAssistant} title="Speak a request" aria-label="Speak to Atlas" style={{ border: 0, background: voiceAssistantListening ? "#FFF3C4" : "transparent", color: voiceAssistantListening ? colors.navy : colors.muted, width: 36, height: 36, borderRadius: 999, fontSize: 18, cursor: "pointer" }}>{voiceAssistantListening ? "●" : "🎤"}</button>
                   {query.trim() ? <button type="button" onClick={() => toggleSavedCommand()} title={savedCommands.some((item) => item.toLowerCase() === query.trim().toLowerCase()) ? "Remove saved command" : "Save this command"} aria-label="Save command" style={{ border: 0, background: "transparent", color: savedCommands.some((item) => item.toLowerCase() === query.trim().toLowerCase()) ? colors.gold2 : colors.muted, fontSize: 21, cursor: "pointer", padding: 4 }}>★</button> : null}
                   {!isMobile ? <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 7, padding: "4px 7px" }}>ESC</span> : null}
                   <button type="button" onClick={closeCommandCenter} aria-label="Close command center" style={{ ...secondaryButtonStyle, width: 38, minWidth: 38, height: 38, padding: 0, borderRadius: 999, fontSize: 20 }}>{closeSymbol}</button>
