@@ -16607,11 +16607,29 @@ export default function AtlasPage() {
       }));
     };
 
+    const saveProjectToSharedAtlas = async (project: PhotoTimelineProject) => {
+      const projectPhotoMeta = Object.fromEntries(
+        Object.entries(photoTimelineMeta).filter(([, meta]) => meta.projectId === project.id),
+      );
+      const saved = await postAtlasRecord("projects", {
+        ...project,
+        propertyId: activePropertyId,
+        timelineEntries: projectTimelineEntries.filter((entry) => entry.projectId === project.id),
+        photoMeta: projectPhotoMeta,
+      });
+      if (saved) {
+        showSaveToast("Project saved to shared Atlas.");
+      }
+      return saved;
+    };
+
     const updateSelectedPhotoProject = (patch: Partial<PhotoTimelineProject>) => {
       if (!selectedPhotoProject) return;
+      const nextProject = { ...selectedPhotoProject, ...patch };
       setPhotoTimelineProjects((current) => current.map((project) =>
-        project.id === selectedPhotoProject.id ? { ...project, ...patch } : project,
+        project.id === selectedPhotoProject.id ? nextProject : project,
       ));
+      void saveProjectToSharedAtlas(nextProject);
     };
 
     const deleteSelectedPhotoProject = async () => {
@@ -16898,7 +16916,7 @@ export default function AtlasPage() {
       }
     };
 
-    const createPhotoProject = () => {
+    const createPhotoProject = async () => {
       const suggestedTitle = selectedPhotoTimelineItem?.assetName
         ? `${selectedPhotoTimelineItem.assetName} Project`
         : "";
@@ -16937,6 +16955,11 @@ export default function AtlasPage() {
       setSelectedPhotoProjectId(id);
       setProjectDetailTab("overview");
       setPhotoTimelineView("projects");
+
+      const saved = await saveProjectToSharedAtlas(project);
+      if (!saved) {
+        showSaveToast("Project is still on this device, but it did not save to shared Atlas.", "warning");
+      }
     };
 
     const openLightbox = (id: string, ids = photoTimelineItems.map((item) => item.id)) => {
@@ -17256,30 +17279,7 @@ export default function AtlasPage() {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.65fr) minmax(250px, .75fr) minmax(250px, .75fr)", gap: 14, marginTop: 16 }}>
-                <div style={{ border: `1px solid ${colors.line}`, borderRadius: 15, padding: 14, background: "#FFFFFF", minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 11 }}>
-                    <div><strong style={{ color: colors.navy3 }}>Recently added</strong><div style={mutedSmallStyle}>Newest property photos across projects and records.</div></div>
-                    <button type="button" onClick={() => applyPhotoOrganizationFilter("all")} style={{ ...secondaryButtonStyle, width: "auto", padding: "6px 9px" }}>View all</button>
-                  </div>
-                  {recentPhotoItems.length ? (
-                    <div style={{ display: "flex", gap: 9, overflowX: "auto", paddingBottom: 4, scrollBehavior: "smooth" }}>
-                      {recentPhotoItems.map((item) => {
-                        const meta = photoTimelineMeta[item.id];
-                        return (
-                          <button key={item.id} type="button" onClick={() => setSelectedPhotoTimelineId(item.id)} style={{ flex: "0 0 118px", border: "1px solid #D7E0EA", borderRadius: 12, padding: 0, overflow: "hidden", background: "#FFFFFF", textAlign: "left", cursor: "pointer" }}>
-                            <img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} />
-                            <span style={{ display: "block", padding: 8 }}>
-                              <strong style={{ display: "block", color: colors.navy3, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</strong>
-                              <small style={{ display: "block", marginTop: 3, color: colors.muted, fontWeight: 800 }}>{meta?.primaryContext === "standalone" ? "Standalone" : meta?.projectId ? (meta.tag || "Project photo") : (meta?.assetIdOverride || item.assetId) ? "Asset photo" : "Unassigned"}</small>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : <div style={noticeStyle}>Newly added photos will appear here.</div>}
-                </div>
-
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(250px, 1fr))", gap: 14, marginTop: 16 }}>
                 <div style={{ border: `1px solid ${colors.line}`, borderRadius: 15, padding: 14, background: "#FFFFFF" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><strong style={{ color: colors.navy3 }}>Needs attention</strong><span style={badgeStyle(photosNeedingAttention ? "Open" : "Completed")}>{photosNeedingAttention}</span></div>
                   <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
