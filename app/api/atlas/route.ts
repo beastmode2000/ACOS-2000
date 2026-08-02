@@ -1151,8 +1151,8 @@ export async function GET(request: NextRequest) {
       documents: allowedDocumentRows.map(mapDocument),
       photos: allowedPhotoRows.map(mapPhoto),
       partRecords: allowedPartRows.map(mapPart),
-      projects: access.restricted ? [] : projectRows.map((row) => row.record || {}),
-      projectRecords: access.restricted ? [] : projectRows.map((row) => row.record || {}),
+      projects: projectRows.map((row) => row.record || {}),
+      projectRecords: projectRows.map((row) => row.record || {}),
     });
   } catch (error) {
     return NextResponse.json(
