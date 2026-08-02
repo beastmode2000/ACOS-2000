@@ -3870,7 +3870,7 @@ function ListDrawerLayout(props: {
         }
       : {
           ...drawerGridStyle,
-          gridTemplateColumns: "minmax(240px, 32%) minmax(0, 68%)",
+          gridTemplateColumns: "minmax(280px, 34%) minmax(0, 66%)",
           height: "auto",
           minHeight: 0,
           overflow: "visible",
@@ -3938,9 +3938,9 @@ function ListDrawerLayout(props: {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: 16,
-            paddingBottom: 14,
-            marginBottom: 12,
+            gap: 10,
+            paddingBottom: 9,
+            marginBottom: 9,
             borderBottom: `1px solid ${colors.line}`,
             flexWrap: "wrap",
           }}
@@ -3968,6 +3968,8 @@ function ListDrawerLayout(props: {
         }
       >
         <div
+          className="atlas-record-list-panel"
+          data-atlas-record-list
           style={
             props.listPanelStyleOverride
               ? { ...desktopListStyle, ...props.listPanelStyleOverride }
@@ -3979,13 +3981,15 @@ function ListDrawerLayout(props: {
         {!props.isMobile || props.mobileDrawerOpen === undefined ? (
           <div
             ref={drawerScrollRef}
+            className="atlas-record-detail"
+            data-atlas-detail-panel
             style={
               props.drawerStyleOverride
                 ? { ...desktopDrawerStyle, ...props.drawerStyleOverride }
                 : desktopDrawerStyle
             }
           >
-            {props.drawer}
+            <div className="atlas-record-detail-content">{props.drawer}</div>
           </div>
         ) : null}
       </div>
@@ -4062,7 +4066,10 @@ function ListDrawerLayout(props: {
                 {closeSymbol}
               </button>
             </div>
-            <div style={{ minWidth: 0, padding: 14, overflowX: "hidden" }}>
+            <div
+              className="atlas-record-detail-content atlas-record-detail-content--mobile"
+              style={{ minWidth: 0, padding: 12, overflowX: "hidden" }}
+            >
               {props.drawer}
             </div>
           </div>
@@ -34582,6 +34589,75 @@ export default function AtlasPage() {
           max-height: calc(100vh - 22px);
           overflow: auto;
         }
+        .atlas-record-list-panel {
+          min-width: 0;
+        }
+        .atlas-record-list-panel > div {
+          gap: 6px !important;
+        }
+        .atlas-record-list-panel button {
+          min-height: 0 !important;
+        }
+        .atlas-record-list-panel button:not([aria-label]) {
+          padding-top: 8px !important;
+          padding-bottom: 8px !important;
+        }
+        .atlas-record-detail {
+          padding: 0 !important;
+          border-radius: 14px !important;
+          border-color: #CDD7E1 !important;
+          background: #FFFFFF !important;
+          box-shadow: 0 8px 24px rgba(15,35,55,0.07);
+          scrollbar-gutter: stable;
+        }
+        .atlas-record-detail-content {
+          min-width: 0;
+          padding: 12px;
+        }
+        .atlas-record-detail-content > :first-child {
+          margin-top: 0 !important;
+        }
+        .atlas-record-detail-content > section,
+        .atlas-record-detail-content > div {
+          min-width: 0;
+        }
+        .atlas-record-detail-content h1,
+        .atlas-record-detail-content h2,
+        .atlas-record-detail-content h3 {
+          margin-top: 0;
+          line-height: 1.15 !important;
+        }
+        .atlas-record-detail-content label {
+          gap: 4px !important;
+        }
+        .atlas-record-detail-content input,
+        .atlas-record-detail-content select {
+          min-height: 36px !important;
+          padding-top: 7px !important;
+          padding-bottom: 7px !important;
+        }
+        .atlas-record-detail-content textarea {
+          min-height: 64px !important;
+        }
+        .atlas-record-detail-content button {
+          min-height: 34px;
+        }
+        .atlas-record-detail-content details > summary {
+          padding-top: 8px !important;
+          padding-bottom: 8px !important;
+        }
+        @media (max-width: 760px) {
+          .atlas-record-detail-content--mobile {
+            padding: 10px !important;
+          }
+          .atlas-record-detail-content button {
+            min-height: 38px;
+          }
+          .atlas-record-list-panel button:not([aria-label]) {
+            padding-top: 9px !important;
+            padding-bottom: 9px !important;
+          }
+        }
         .atlas-quick-capture-button {
           position: fixed;
           right: 22px;
@@ -37758,8 +37834,8 @@ const listPanelStyle: React.CSSProperties = {
 const drawerStyle: React.CSSProperties = {
   background: "#FFFFFF",
   border: `1px solid ${colors.line}`,
-  borderRadius: 16,
-  padding: 14,
+  borderRadius: 14,
+  padding: 0,
   position: "sticky",
   top: 12,
   alignSelf: "start",
