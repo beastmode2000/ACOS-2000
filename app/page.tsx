@@ -14634,137 +14634,72 @@ ${notes.trim()}` : notes.trim(),
       },
       {} as Record<WorkPlanDay, number>,
     );
-    const lockedCount = workPlanTasks.filter((task) => task.locked).length;
-    const recurringCount = workPlanTasks.filter(
-      (task) => task.recurring,
-    ).length;
+    const unscheduledTasks = workPlanTasks.filter((task) => !task.scheduledDay);
+    const totalMinutes = workPlanTasks.reduce((sum, task) => sum + task.minutes, 0);
+    const capacityMinutes = workPlanTargetHours * 60 * workPlanDays.length;
+    const overCapacity = Math.max(0, totalMinutes - capacityMinutes);
+
+    const movePlannerTask = (taskId: string, dayValue: string) => {
+      const nextDay = dayValue as WorkPlanDay;
+      updateWorkPlanTask(taskId, {
+        preferredDay: nextDay,
+        scheduledDay: nextDay,
+        scheduledDate: nextWorkWeekDates()[nextDay],
+      });
+    };
 
     return (
-      <div
-        style={{ display: "grid", gap: 16 }}
-        onClick={(event) => {
-          event.stopPropagation();
-          const target =
-            event.target instanceof HTMLElement ? event.target : null;
-          const outsideAnchor = target?.closest("a");
-          if (outsideAnchor && !event.currentTarget.contains(outsideAnchor)) {
-            event.preventDefault();
-          }
-        }}
-        onPointerDown={(event) => {
-          event.stopPropagation();
-        }}
-      >
+      <div style={{ display: "grid", gap: 12 }} onClick={(event) => event.stopPropagation()}>
         <section style={sectionStyle}>
           <SectionHeader
             brand
-            eyebrow="Weekly Operations"
-            title="Operations Planner"
-            detail="Lock recurring commitments first, then let Atlas build a balanced week around them."
+            eyebrow="Planning"
+            title="Plan Week"
+            detail="Arrange existing Tasks, Work Orders, Routines, and project actions across the week. Edit the records in their own sections."
             right={
               <div style={buttonRowStyle}>
-                <button
-                  type="button"
-                  onClick={() => setScreen("dashboard")}
-                  style={secondaryButtonStyle}
-                >
-                  {backArrow} Dashboard
-                </button>
-                <button
-                  type="button"
-                  onClick={buildWorkPlan}
-                  style={goldButtonStyle}
-                >
-                  Build My Week
-                </button>
+                <button type="button" onClick={() => { setTasksView("tasks"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Tasks</button>
+                <button type="button" onClick={buildWorkPlan} style={goldButtonStyle}>Rebalance Week</button>
               </div>
             }
           />
-          <div style={statGridStyle}>
-            <StatCard label="Tasks" value={workPlanTasks.length} />
-            <StatCard label="Locked" value={lockedCount} />
-            <StatCard label="Weekly" value={recurringCount} />
-            <StatCard label="Daily Target" value={`${workPlanTargetHours}h`} />
+          <div style={{ ...statGridStyle, marginTop: 10 }}>
+            <StatCard label="Planned" value={workPlanTasks.length} />
+            <StatCard label="Workload" value={minutesLabel(totalMinutes)} />
+            <StatCard label="Unscheduled" value={unscheduledTasks.length} />
+            <StatCard label="Capacity" value={overCapacity ? `${minutesLabel(overCapacity)} over` : `${minutesLabel(Math.max(0, capacityMinutes - totalMinutes))} open`} />
           </div>
         </section>
 
-        <section style={sectionStyle}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 180px",
-              gap: 12,
-            }}
-          >
+        <section style={{ ...cardStyle, padding: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
             <div>
-              <label style={fieldLabelStyle}>Add tasks — one per line</label>
-              <textarea
-                value={workPlanInput}
-                onChange={(event) =>
-                  setWorkPlanInput(event.currentTarget.value)
-                }
-                placeholder={
-                  "Trash and recycling Monday 8 AM 45 minutes locked weekly\nTuesday landscaping 3 hours\nFriday final walkthrough 1 hour locked weekly"
-                }
-                style={{ ...inputStyle, minHeight: 135, resize: "vertical" }}
-              />
-              <p style={mutedSmallStyle}>
-                Use plain language. Add “locked,” “weekly,” a weekday, and a
-                time when a commitment must not move.
-              </p>
+              <strong style={{ display: "block", color: colors.navy }}>Weekly capacity</strong>
+              <small style={mutedSmallStyle}>Choose the normal amount of schedulable work per day, then import current Tasks or rebalance the existing plan.</small>
             </div>
-            <div style={{ display: "grid", alignContent: "start", gap: 10 }}>
-              <label style={fieldLabelStyle}>Scheduled work per day</label>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 6,
-                }}
-              >
-                {[6, 6.5, 7, 7.5].map((hours) => (
-                  <button
-                    key={hours}
-                    type="button"
-                    onClick={() => setWorkPlanTargetHours(hours)}
-                    style={{
-                      ...secondaryButtonStyle,
-                      padding: "8px 6px",
-                      background:
-                        workPlanTargetHours === hours
-                          ? colors.gold
-                          : colors.card,
-                      color:
-                        workPlanTargetHours === hours
-                          ? colors.navy
-                          : colors.text,
-                      borderColor:
-                        workPlanTargetHours === hours
-                          ? colors.gold
-                          : colors.line,
-                    }}
-                  >
-                    {hours}h
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={importWorkPlanTasks}
-                style={secondaryButtonStyle}
-              >
-                Import Tasks
-              </button>
-              <button
-                type="button"
-                onClick={buildWorkPlan}
-                style={goldButtonStyle}
-              >
-                Build My Week
-              </button>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
+              {[6, 6.5, 7, 7.5, 8].map((hours) => (
+                <button
+                  key={hours}
+                  type="button"
+                  onClick={() => setWorkPlanTargetHours(hours)}
+                  style={{
+                    ...secondaryButtonStyle,
+                    minWidth: 48,
+                    padding: "7px 9px",
+                    background: workPlanTargetHours === hours ? colors.gold : colors.card,
+                    color: workPlanTargetHours === hours ? colors.navy : colors.text,
+                    borderColor: workPlanTargetHours === hours ? colors.gold : colors.line,
+                  }}
+                >
+                  {hours}h
+                </button>
+              ))}
+              <button type="button" onClick={importWorkPlanTasks} style={secondaryButtonStyle}>Import Current Tasks</button>
+              <button type="button" onClick={buildWorkPlan} style={goldButtonStyle}>Build Week</button>
             </div>
           </div>
-          <div style={{ ...noticeStyle, marginTop: 12 }}>{workPlanMessage}</div>
+          <div style={{ ...noticeStyle, marginTop: 10 }}>{workPlanMessage}</div>
         </section>
 
         {workPlanTasks.length ? (
@@ -14772,102 +14707,50 @@ ${notes.trim()}` : notes.trim(),
             <section style={sectionStyle}>
               <SectionHeader
                 eyebrow="Week"
-                title="Planned Work"
-                detail="Locked items stay fixed. Flexible work fills the remaining time."
+                title="Workload Board"
+                detail="Move work between days here. Open the original record when its details need to change."
               />
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "repeat(5, minmax(0, 1fr))",
-                  gap: 10,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(5, minmax(0, 1fr))", gap: 9 }}>
                 {workPlanDays.map((day) => {
-                  const tasks = workPlanTasks.filter(
-                    (task) => task.scheduledDay === day,
-                  );
+                  const tasks = workPlanTasks.filter((task) => task.scheduledDay === day);
                   const total = scheduledMinutes[day] || 0;
-                  const buffer = Math.max(0, 8 * 60 - total);
-                  const percent = Math.min(
-                    100,
-                    Math.round((total / (8 * 60)) * 100),
-                  );
+                  const target = workPlanTargetHours * 60;
+                  const percent = Math.min(100, Math.round((total / Math.max(1, target)) * 100));
+                  const overloaded = total > target;
                   return (
-                    <div
-                      key={day}
-                      style={{ ...cardStyle, minHeight: 170, padding: 12 }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 8,
-                        }}
-                      >
-                        <strong>{day}</strong>
-                        <span style={mutedSmallStyle}>
-                          {minutesLabel(buffer)} open
-                        </span>
+                    <div key={day} style={{ ...cardStyle, minHeight: 180, padding: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                        <strong style={{ color: colors.navy }}>{day}</strong>
+                        <small style={{ ...mutedSmallStyle, color: overloaded ? colors.red : undefined }}>{minutesLabel(total)} / {workPlanTargetHours}h</small>
                       </div>
-                      <div
-                        style={{
-                          height: 6,
-                          borderRadius: 999,
-                          background: colors.line,
-                          overflow: "hidden",
-                          margin: "8px 0",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${percent}%`,
-                            height: "100%",
-                            background: percent > 94 ? colors.red : colors.gold,
-                          }}
-                        />
+                      <div style={{ height: 5, borderRadius: 999, background: colors.line, overflow: "hidden", margin: "7px 0 9px" }}>
+                        <div style={{ width: `${percent}%`, height: "100%", background: overloaded ? colors.red : colors.gold }} />
                       </div>
-                      <div style={{ display: "grid", gap: 7 }}>
+                      <div style={{ display: "grid", gap: 6 }}>
                         {tasks.map((task) => (
-                          <div
-                            key={task.id}
-                            style={{
-                              borderTop: `1px solid ${colors.line}`,
-                              paddingTop: 7,
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 5,
-                                alignItems: "center",
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              {task.locked ? (
-                                <span style={calendarCompactPillStyle}>
-                                  Locked
-                                </span>
-                              ) : null}
-                              {task.recurring ? (
-                                <span style={calendarCompactPillStyle}>
-                                  Weekly
-                                </span>
-                              ) : null}
-                              <strong style={{ fontSize: 12 }}>
+                          <div key={task.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: task.locked ? "#FFF9EB" : colors.card }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "flex-start" }}>
+                              <button
+                                type="button"
+                                onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }}
+                                style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", color: colors.navy, fontWeight: 900, fontSize: 12, cursor: "pointer", minWidth: 0 }}
+                              >
                                 {task.title}
-                              </strong>
+                              </button>
+                              {task.locked ? <span style={{ ...calendarCompactPillStyle, flexShrink: 0 }}>Fixed</span> : null}
                             </div>
-                            <div style={{ ...mutedSmallStyle, fontSize: 11 }}>
-                              {task.fixedTime ? `${task.fixedTime} · ` : ""}
-                              {minutesLabel(task.minutes)} · {task.category}
-                            </div>
+                            <div style={{ ...mutedSmallStyle, fontSize: 10, marginTop: 3 }}>{minutesLabel(task.minutes)} · {plannerLocationName(task.locationId)}{task.fixedTime ? ` · ${task.fixedTime}` : ""}</div>
+                            <select
+                              aria-label={`Move ${task.title}`}
+                              value={day}
+                              onChange={(event) => movePlannerTask(task.id, event.currentTarget.value)}
+                              style={{ ...selectStyle, minHeight: 28, padding: "3px 6px", fontSize: 10, marginTop: 6 }}
+                            >
+                              {workPlanDays.map((optionDay) => <option key={optionDay} value={optionDay}>Move to {optionDay}</option>)}
+                            </select>
                           </div>
                         ))}
-                        {!tasks.length ? (
-                          <span style={mutedSmallStyle}>Open</span>
-                        ) : null}
+                        {!tasks.length ? <span style={{ ...mutedSmallStyle, padding: "8px 2px" }}>Open capacity</span> : null}
                       </div>
                     </div>
                   );
@@ -14875,251 +14758,49 @@ ${notes.trim()}` : notes.trim(),
               </div>
             </section>
 
-            <section style={sectionStyle}>
-              <SectionHeader
-                eyebrow="Review"
-                title="Tasks & Commitments"
-                detail="Edit estimates, lock fixed items, and set recurring weekly tasks before approval."
-              />
-              <div
-                style={{
-                  maxHeight: 430,
-                  overflowY: "auto",
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 12,
-                }}
-              >
-                {workPlanTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    style={{
-                      display: "grid",
-                      gap: 8,
-                      padding: 10,
-                      borderBottom: `1px solid ${colors.line}`,
-                      background: colors.card,
-                    }}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <input
-                      value={task.title}
-                      onChange={(event) =>
-                        updateWorkPlanTask(task.id, {
-                          title: event.currentTarget.value,
-                        })
-                      }
-                      style={inputStyle}
-                    />
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: isMobile
-                          ? "1fr 1fr"
-                          : "repeat(7, minmax(95px, 1fr))",
-                        gap: 7,
-                      }}
-                    >
-                      <div style={plannerControlCardStyle}>
-                        <span style={plannerControlLabelStyle}>Minutes</span>
-                        <strong>{task.minutes}</strong>
-                        <div style={plannerControlButtonsStyle}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateWorkPlanTask(task.id, {
-                                minutes: Math.max(15, task.minutes - 15),
-                              })
-                            }
-                            style={plannerMiniButtonStyle}
-                          >
-                            −15
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateWorkPlanTask(task.id, {
-                                minutes: task.minutes + 15,
-                              })
-                            }
-                            style={plannerMiniButtonStyle}
-                          >
-                            +15
-                          </button>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateWorkPlanTask(task.id, {
-                            priority: cyclePlannerPriority(task.priority),
-                          })
-                        }
-                        style={plannerControlButtonStyle}
-                      >
-                        <span style={plannerControlLabelStyle}>Priority</span>
-                        <strong>{task.priority}</strong>
-                        <small>Tap to change</small>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateWorkPlanTask(task.id, {
-                            locationId: cyclePlannerLocation(task.locationId),
-                          })
-                        }
-                        style={plannerControlButtonStyle}
-                      >
-                        <span style={plannerControlLabelStyle}>Location</span>
-                        <strong>{plannerLocationName(task.locationId)}</strong>
-                        <small>Tap to change</small>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextDay = cyclePlannerDay(
-                            task.scheduledDay || task.preferredDay,
-                          );
-                          updateWorkPlanTask(task.id, {
-                            preferredDay: nextDay,
-                            scheduledDay:
-                              nextDay === "Auto" ? undefined : nextDay,
-                            scheduledDate:
-                              nextDay === "Auto"
-                                ? undefined
-                                : nextWorkWeekDates()[nextDay],
-                          });
-                        }}
-                        style={plannerControlButtonStyle}
-                      >
-                        <span style={plannerControlLabelStyle}>Day</span>
-                        <strong>
-                          {task.scheduledDay || task.preferredDay || "Auto"}
-                        </strong>
-                        <small>Tap to change</small>
-                      </button>
-
-                      <div style={plannerControlCardStyle}>
-                        <span style={plannerControlLabelStyle}>Time</span>
-                        <strong>{task.fixedTime || "Auto"}</strong>
-                        <div style={plannerControlButtonsStyle}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateWorkPlanTask(task.id, {
-                                fixedTime: shiftPlannerTime(
-                                  task.fixedTime,
-                                  -15,
-                                ),
-                              })
-                            }
-                            style={plannerMiniButtonStyle}
-                          >
-                            −15
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateWorkPlanTask(task.id, {
-                                fixedTime: shiftPlannerTime(task.fixedTime, 15),
-                              })
-                            }
-                            style={plannerMiniButtonStyle}
-                          >
-                            +15
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateWorkPlanTask(task.id, { fixedTime: "" })
-                            }
-                            style={plannerMiniButtonStyle}
-                          >
-                            Auto
-                          </button>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateWorkPlanTask(task.id, {
-                            locked: !task.locked,
-                          })
-                        }
-                        style={{
-                          ...plannerControlButtonStyle,
-                          background: task.locked ? "#FFF4D8" : colors.card,
-                          borderColor: task.locked ? colors.gold : colors.line,
-                        }}
-                      >
-                        <span style={plannerControlLabelStyle}>Locked</span>
-                        <strong>{task.locked ? "Yes" : "No"}</strong>
-                        <small>Tap to toggle</small>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateWorkPlanTask(task.id, {
-                            recurring: !task.recurring,
-                          })
-                        }
-                        style={{
-                          ...plannerControlButtonStyle,
-                          background: task.recurring ? "#EEF6FF" : colors.card,
-                          borderColor: task.recurring
-                            ? colors.navy3
-                            : colors.line,
-                        }}
-                      >
-                        <span style={plannerControlLabelStyle}>Weekly</span>
-                        <strong>{task.recurring ? "Yes" : "No"}</strong>
-                        <small>Tap to toggle</small>
-                      </button>
+            {unscheduledTasks.length ? (
+              <section style={{ ...cardStyle, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                  <div><div style={eyebrowStyle}>Needs a day</div><strong style={{ color: colors.navy }}>Unscheduled Work</strong></div>
+                  <span style={calendarCompactPillStyle}>{unscheduledTasks.length}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 7 }}>
+                  {unscheduledTasks.map((task) => (
+                    <div key={task.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+                      <span><strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {task.category}</small></span>
+                      <select value="" onChange={(event) => movePlannerTask(task.id, event.currentTarget.value)} style={{ ...selectStyle, minHeight: 30, padding: "4px 6px", fontSize: 10 }}>
+                        <option value="" disabled>Choose day</option>
+                        {workPlanDays.map((day) => <option key={day} value={day}>{day}</option>)}
+                      </select>
                     </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ ...buttonRowStyle, marginTop: 12 }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm("Clear all planner tasks?"))
-                      setWorkPlanTasks([]);
-                  }}
-                  style={dangerButtonStyle}
-                >
-                  Clear Planner
-                </button>
-                <button
-                  type="button"
-                  onClick={buildWorkPlan}
-                  style={secondaryButtonStyle}
-                >
-                  Rebalance Week
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void approveWorkPlan()}
-                  disabled={workPlanSaving}
-                  style={{
-                    ...goldButtonStyle,
-                    opacity: workPlanSaving ? 0.65 : 1,
-                    cursor: workPlanSaving ? "wait" : "pointer",
-                  }}
-                >
-                  {workPlanSaving
-                    ? "Adding to Calendar..."
-                    : "Approve & Add to Calendar"}
-                </button>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <section style={{ ...cardStyle, padding: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div><strong style={{ display: "block", color: colors.navy }}>Finish the plan</strong><small style={mutedSmallStyle}>This board arranges work only. Task details, recurrence, notes, and completion stay in Tasks.</small></div>
+                <div style={buttonRowStyle}>
+                  <button type="button" onClick={() => { if (window.confirm("Clear this weekly plan? Tasks will remain in Tasks.")) setWorkPlanTasks([]); }} style={dangerButtonStyle}>Clear Plan</button>
+                  <button type="button" onClick={buildWorkPlan} style={secondaryButtonStyle}>Rebalance</button>
+                  <button
+                    type="button"
+                    onClick={() => void approveWorkPlan()}
+                    disabled={workPlanSaving}
+                    style={{ ...goldButtonStyle, opacity: workPlanSaving ? 0.65 : 1, cursor: workPlanSaving ? "wait" : "pointer" }}
+                  >
+                    {workPlanSaving ? "Adding to Calendar..." : "Approve & Add to Calendar"}
+                  </button>
+                </div>
               </div>
             </section>
           </>
-        ) : null}
+        ) : (
+          <section style={{ ...noticeStyle, padding: 18 }}>
+            No work is loaded into Plan Week yet. Use <strong>Import Current Tasks</strong> to bring in active Tasks, then build or arrange the week.
+          </section>
+        )}
       </div>
     );
   }
