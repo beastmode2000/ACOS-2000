@@ -4274,6 +4274,8 @@ export default function AtlasPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [voiceAssistantListening, setVoiceAssistantListening] = useState(false);
+  const [voiceAssistantTranscript, setVoiceAssistantTranscript] = useState("");
+  const [voiceAssistantReviewReady, setVoiceAssistantReviewReady] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [savedCommands, setSavedCommands] = useState<string[]>([]);
@@ -4373,6 +4375,8 @@ export default function AtlasPage() {
   const operationsSyncTimerRef = useRef<number | null>(null);
   const operationsSyncRunningRef = useRef(false);
   const fleetSetupRunningRef = useRef(false);
+  const voiceRecognitionRef = useRef<{ stop: () => void } | null>(null);
+  const voiceAssistantCancelledRef = useRef(false);
 
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
@@ -8397,9 +8401,7 @@ export default function AtlasPage() {
         setSearchActiveIndex(0);
       }
       if (event.key === "Escape" && commandCenterOpen) {
-        setCommandCenterOpen(false);
-        setSearchOpen(false);
-        setQuery("");
+        closeCommandCenter();
       }
     };
     window.addEventListener("keydown", openCommandCenter);
@@ -8407,13 +8409,21 @@ export default function AtlasPage() {
   }, [commandCenterOpen]);
 
   function startVoiceAssistant() {
-    type RecognitionInstance = { continuous: boolean; interimResults: boolean; lang: string; start: () => void; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
+    type RecognitionInstance = { continuous: boolean; interimResults: boolean; lang: string; start: () => void; stop: () => void; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
     type RecognitionConstructor = new () => RecognitionInstance;
     const speechWindow = window as unknown as { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     setCommandCenterOpen(true);
     setSearchOpen(true);
     setSearchActiveIndex(0);
+    if (voiceAssistantListening) {
+      voiceRecognitionRef.current?.stop();
+      return;
+    }
+    setQuery("");
+    setVoiceAssistantTranscript("");
+    setVoiceAssistantReviewReady(false);
+    voiceAssistantCancelledRef.current = false;
     if (!Recognition) {
       setVoiceAssistantListening(false);
       setQuery("");
@@ -8421,19 +8431,43 @@ export default function AtlasPage() {
       return;
     }
     const recognition = new Recognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    let latestTranscript = "";
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.lang = "en-US";
     recognition.onresult = (event) => {
-      const transcript = event.results[0]?.[0]?.transcript?.trim() || "";
-      setQuery(transcript);
+      latestTranscript = Array.from({ length: event.results.length }, (_, index) => event.results[index]?.[0]?.transcript || "").join(" ").trim();
+      setVoiceAssistantTranscript(latestTranscript);
+      setQuery(latestTranscript);
       setSearchActiveIndex(0);
-      if (transcript) rememberSearch(transcript);
     };
     recognition.onerror = () => showSaveToast("Atlas could not hear that request. Tap Talk to Atlas and try again.", "warning");
-    recognition.onend = () => setVoiceAssistantListening(false);
+    recognition.onend = () => {
+      voiceRecognitionRef.current = null;
+      setVoiceAssistantListening(false);
+      if (!voiceAssistantCancelledRef.current) {
+        setVoiceAssistantReviewReady(true);
+        if (latestTranscript) setQuery(latestTranscript);
+      }
+    };
+    voiceRecognitionRef.current = recognition;
     setVoiceAssistantListening(true);
     recognition.start();
+  }
+
+  function stopVoiceAssistant() {
+    voiceRecognitionRef.current?.stop();
+    setVoiceAssistantListening(false);
+  }
+
+  function cancelVoiceAssistant() {
+    voiceAssistantCancelledRef.current = true;
+    voiceRecognitionRef.current?.stop();
+    voiceRecognitionRef.current = null;
+    setVoiceAssistantListening(false);
+    setVoiceAssistantReviewReady(false);
+    setVoiceAssistantTranscript("");
+    setQuery("");
   }
 
   function spokenCommandDate(value: string) {
@@ -8517,6 +8551,12 @@ export default function AtlasPage() {
   }
 
   function closeCommandCenter() {
+    voiceAssistantCancelledRef.current = true;
+    voiceRecognitionRef.current?.stop();
+    voiceRecognitionRef.current = null;
+    setVoiceAssistantListening(false);
+    setVoiceAssistantReviewReady(false);
+    setVoiceAssistantTranscript("");
     setCommandCenterOpen(false);
     setSearchOpen(false);
     setSearchActiveIndex(0);
@@ -38754,6 +38794,43 @@ ${notes.trim()}` : notes.trim(),
                   {!isMobile ? <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 7, padding: "4px 7px" }}>ESC</span> : null}
                   <button type="button" onClick={closeCommandCenter} aria-label="Close command center" style={{ ...secondaryButtonStyle, width: 38, minWidth: 38, height: 38, padding: 0, borderRadius: 999, fontSize: 20 }}>{closeSymbol}</button>
                 </div>
+
+                {voiceAssistantListening || voiceAssistantReviewReady ? (
+                  <div style={{ padding: 14, background: voiceAssistantListening ? "#FFF9E8" : "#F2F8F5", borderBottom: `1px solid ${colors.line}`, display: "grid", gap: 11 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span aria-hidden="true" style={{ width: 13, height: 13, borderRadius: 999, flex: "0 0 auto", background: voiceAssistantListening ? "#D9473F" : "#2E8B68", boxShadow: voiceAssistantListening ? "0 0 0 5px rgba(217,71,63,.14)" : "none" }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <strong style={{ display: "block", color: colors.navy, fontSize: 16 }}>{voiceAssistantListening ? "Atlas is listening" : "Listening stopped — review before adding"}</strong>
+                        <span style={mutedSmallStyle}>{voiceAssistantListening ? "Speak naturally. Nothing will be saved until you tap Add." : "Atlas has not saved or added anything yet."}</span>
+                      </div>
+                      {voiceAssistantListening ? <button type="button" onClick={stopVoiceAssistant} style={{ ...primaryButtonStyle, background: "#D9473F", whiteSpace: "nowrap" }}>Stop Listening</button> : null}
+                    </div>
+
+                    <div aria-live="polite" style={{ minHeight: 46, padding: "11px 12px", borderRadius: 10, border: `1px solid ${voiceAssistantListening ? "#E7C86D" : colors.line}`, background: "#FFFFFF", color: voiceAssistantTranscript ? colors.navy : colors.muted, fontSize: 15, fontWeight: voiceAssistantTranscript ? 750 : 600 }}>
+                      {voiceAssistantTranscript || (voiceAssistantListening ? "Waiting for you to speak…" : "Atlas did not hear a request.")}
+                    </div>
+
+                    {!voiceAssistantListening ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+                        <button type="button" onClick={cancelVoiceAssistant} style={secondaryButtonStyle}>Cancel</button>
+                        <button type="button" onClick={startVoiceAssistant} style={secondaryButtonStyle}>🎤 Try Again</button>
+                        {commandCreation(query) ? (
+                          <button type="button" onClick={() => runCommandCreation()} style={primaryButtonStyle}>
+                            {commandCreation(query)!.kind === "task" ? "Add Task" : commandCreation(query)!.kind === "work order" ? "Add Work Order" : "Add Project"}
+                          </button>
+                        ) : newRecordCommand(query) ? (
+                          <button type="button" onClick={() => openNewRecordFromCommand(newRecordCommand(query)!)} style={primaryButtonStyle}>
+                            Open New {newRecordCommand(query) === "task" ? "Task" : newRecordCommand(query) === "work order" ? "Work Order" : "Project"}
+                          </button>
+                        ) : navigationCommand(query) ? (
+                          <button type="button" onClick={() => runNavigationCommand()} style={primaryButtonStyle}>Open {navigationCommand(query)!.label}</button>
+                        ) : (
+                          <button type="button" onClick={() => setVoiceAssistantReviewReady(false)} style={primaryButtonStyle}>Show Results</button>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <div style={{ overflowY: "auto", overscrollBehavior: "contain" }}>
                   {query.trim() ? (
