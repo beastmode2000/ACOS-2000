@@ -158,6 +158,7 @@ type PhotoTimelineMeta = {
 };
 
 type ProjectTimelineEntry = {
+  propertyId?: string;
   id: string;
   projectId: string;
   title: string;
@@ -168,6 +169,7 @@ type ProjectTimelineEntry = {
 };
 
 type PhotoTimelineProject = {
+  propertyId?: string;
   id: string;
   title: string;
   category: PhotoTimelineProjectCategory;
@@ -4344,6 +4346,7 @@ export default function AtlasPage() {
       return [];
     }
   });
+  const [projectsApiHydrated, setProjectsApiHydrated] = useState(false);
   const [projectQuickNoteTitle, setProjectQuickNoteTitle] = useState("");
   const [projectQuickNoteText, setProjectQuickNoteText] = useState("");
   const [projectQuickNoteDate, setProjectQuickNoteDate] = useState(todayISO());
@@ -4539,6 +4542,25 @@ export default function AtlasPage() {
       console.warn("Atlas could not save project timeline entries.", error);
     }
   }, [projectTimelineEntries]);
+
+
+  useEffect(() => {
+    if (!projectsApiHydrated) return;
+    const timer = window.setTimeout(() => {
+      for (const project of photoTimelineProjects) {
+        const projectPhotoMeta = Object.fromEntries(
+          Object.entries(photoTimelineMeta).filter(([, meta]) => meta.projectId === project.id),
+        );
+        void postAtlasRecord("projects", {
+          ...project,
+          propertyId: activePropertyId,
+          timelineEntries: projectTimelineEntries.filter((entry) => entry.projectId === project.id),
+          photoMeta: projectPhotoMeta,
+        });
+      }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [projectsApiHydrated, photoTimelineProjects, projectTimelineEntries, photoTimelineMeta, activePropertyId]);
 
   useEffect(() => {
     if (photoLightboxIndex < 0 && !photoCompareOpen) return;
@@ -5577,6 +5599,11 @@ export default function AtlasPage() {
           : Array.isArray(payload.parts)
             ? payload.parts
             : [];
+        const apiProjects = Array.isArray(payload.projectRecords)
+          ? payload.projectRecords
+          : Array.isArray(payload.projects)
+            ? payload.projects
+            : [];
         const apiPhotos = (
           Array.isArray(payload.photos)
             ? payload.photos
@@ -5815,6 +5842,64 @@ export default function AtlasPage() {
         await cachePhotoRecords(apiPhotos);
         setPhotos(apiPhotos);
         persistPhotoRecords(apiPhotos);
+
+        const normalizeProject = (value: unknown): PhotoTimelineProject & { timelineEntries?: ProjectTimelineEntry[]; photoMeta?: Record<string, PhotoTimelineMeta> } => {
+          const project = value && typeof value === "object" ? value as Record<string, unknown> : {};
+          return {
+            ...(project as unknown as PhotoTimelineProject),
+            propertyId: String(project.propertyId || activePropertyId),
+            id: String(project.id || ""),
+            title: String(project.title || "New Project"),
+            category: (project.category || "General") as PhotoTimelineProjectCategory,
+            assetId: String(project.assetId || ""),
+            locationId: String(project.locationId || ""),
+            vendorId: String(project.vendorId || ""),
+            workOrderId: String(project.workOrderId || ""),
+            workOrderIds: Array.isArray(project.workOrderIds) ? project.workOrderIds.map(String) : project.workOrderId ? [String(project.workOrderId)] : [],
+            vendorIds: Array.isArray(project.vendorIds) ? project.vendorIds.map(String) : project.vendorId ? [String(project.vendorId)] : [],
+            documentIds: Array.isArray(project.documentIds) ? project.documentIds.map(String) : [],
+            assigneeIds: Array.isArray(project.assigneeIds) ? project.assigneeIds.map(String) : [],
+            notes: String(project.notes || ""),
+            coverPhotoId: String(project.coverPhotoId || ""),
+            createdAt: String(project.createdAt || new Date().toISOString()),
+            timelineEntries: Array.isArray(project.timelineEntries) ? project.timelineEntries as ProjectTimelineEntry[] : [],
+            photoMeta: project.photoMeta && typeof project.photoMeta === "object" ? project.photoMeta as Record<string, PhotoTimelineMeta> : {},
+          };
+        };
+
+        let sharedProjects = apiProjects.map(normalizeProject).filter((project) => project.id);
+        if (sharedProjects.length === 0 && typeof window !== "undefined") {
+          const localProjects = readStoredArray<PhotoTimelineProject>(["atlas-photo-timeline-projects-v1"], [])
+            .filter((project) => activePropertyId === "2000" || project.propertyId === activePropertyId);
+          const localEntries = readStoredArray<ProjectTimelineEntry>(["atlas-project-timeline-entries-v1"], []);
+          const localMeta = (() => {
+            try {
+              const raw = window.localStorage.getItem("atlas-photo-timeline-meta-v1");
+              const parsed = raw ? JSON.parse(raw) : {};
+              return parsed && typeof parsed === "object" ? parsed as Record<string, PhotoTimelineMeta> : {};
+            } catch { return {} as Record<string, PhotoTimelineMeta>; }
+          })();
+          if (localProjects.length) {
+            const uploaded: typeof sharedProjects = [];
+            for (const project of localProjects) {
+              const record = {
+                ...project,
+                propertyId: activePropertyId,
+                timelineEntries: localEntries.filter((entry) => entry.projectId === project.id),
+                photoMeta: Object.fromEntries(Object.entries(localMeta).filter(([, meta]) => meta.projectId === project.id)),
+              };
+              if (await postAtlasRecord("projects", record)) uploaded.push(normalizeProject(record));
+            }
+            sharedProjects = uploaded;
+            if (uploaded.length) window.localStorage.setItem(`atlas-project-migration-v1-${activePropertyId}`, "done");
+          }
+        }
+
+        setPhotoTimelineProjects(sharedProjects.map(({ timelineEntries, photoMeta, ...project }) => project));
+        setProjectTimelineEntries(sharedProjects.flatMap((project) => project.timelineEntries || []));
+        setPhotoTimelineMeta((current) => ({ ...current, ...Object.assign({}, ...sharedProjects.map((project) => project.photoMeta || {})) }));
+        setSelectedPhotoProjectId((current) => sharedProjects.some((project) => project.id === current) ? current : "");
+        setProjectsApiHydrated(true);
 
         setDatabaseStatus(
           `Atlas loaded: ${nextAssets.length} assets, ${nextVendors.length} vendors, ${nextServices.length} work orders.`,
@@ -16517,10 +16602,12 @@ export default function AtlasPage() {
       ));
     };
 
-    const deleteSelectedPhotoProject = () => {
+    const deleteSelectedPhotoProject = async () => {
       if (!selectedPhotoProject) return;
       const projectId = selectedPhotoProject.id;
       if (!window.confirm(`Delete project “${selectedPhotoProject.title}”? Photos and documents will remain in Atlas, but they will no longer be linked to this project.`)) return;
+      const deleted = await deleteAtlasRecord("projects", projectId);
+      if (!deleted) return;
       setPhotoTimelineProjects((current) => current.filter((project) => project.id !== projectId));
       setProjectTimelineEntries((current) => current.filter((entry) => entry.projectId !== projectId));
       setPhotoTimelineMeta((current) => Object.fromEntries(Object.entries(current).map(([id, meta]) => [id, meta.projectId === projectId ? { ...meta, projectId: undefined, primaryContext: meta.primaryContext === "project" ? "standalone" : meta.primaryContext } : meta])));
