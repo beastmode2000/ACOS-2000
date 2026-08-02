@@ -17353,7 +17353,7 @@ export default function AtlasPage() {
               </div>
             </div>
 
-            {!(["activity", "history"] as const).includes(photoTimelineView) && (!isMobile || photoTimelineView !== "projects") ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+            {(photoTimelineView !== "activity" && photoTimelineView !== "history") && (!isMobile || photoTimelineView !== "projects") ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
               {[
                 ["Visible photos", photoTimelineItems.length],
                 ["Visible projects", visiblePhotoProjects.length],
@@ -17367,7 +17367,7 @@ export default function AtlasPage() {
               ))}
             </div> : null}
 
-            {!(["activity", "history"] as const).includes(photoTimelineView) && (!isMobile || photoTimelineView !== "projects") ? <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
+            {(photoTimelineView !== "activity" && photoTimelineView !== "history") && (!isMobile || photoTimelineView !== "projects") ? <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
                 <strong style={{ color: colors.navy3 }}>Timeline scrubber</strong>
                 <span style={{ color: colors.muted, fontWeight: 800 }}>{photoTimelineScrubber >= 100 ? "All dates" : `${photoTimelineScrubber}% of history`}</span>
