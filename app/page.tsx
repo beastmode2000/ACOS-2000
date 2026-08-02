@@ -14745,6 +14745,10 @@ ${notes.trim()}` : notes.trim(),
     const dueCount = vehicleCare.filter((item) => vehicleDueScore(item) >= Math.max(1, Number(item.cleaningIntervalDays || 14))).length;
     const onsiteCount = vehicleCare.filter((item) => item.onsite).length;
     const serviceDueCount = vehicleCare.filter((item) => item.nextServiceDate && item.nextServiceDate <= todayISO()).length;
+    const vehicleTasks = selectedVehicle ? workPlanTasks.filter((task) => taskDetails(task.id).vehicleId === selectedVehicle.id || Boolean(selectedVehicle.assetId && taskDetails(task.id).assetId === selectedVehicle.assetId)) : [];
+    const vehicleWorkOrders = selectedVehicle ? serviceRecords.filter((record) => Boolean(selectedVehicle.assetId && record.assetId === selectedVehicle.assetId) || record.notes?.includes(selectedVehicle.name)) : [];
+    const vehicleDocuments = selectedVehicle ? intakeDocs.filter((document) => Boolean(selectedVehicle.assetId && (document.linkedAssetId === selectedVehicle.assetId || document.targetId === selectedVehicle.assetId)) || (document.targetName === selectedVehicle.name && document.targetType === "Asset")) : [];
+    const vehiclePhotos = vehicleDocuments.flatMap((document) => document.files || []).filter((file) => String(file.type || "").startsWith("image/") || String(file.dataUrl || "").startsWith("data:image/"));
 
     const cleanStatus = (vehicle: AtlasVehicleCare) => {
       if (!vehicle.onsite) return { label: "Away", tone: "Offline" };
@@ -14833,6 +14837,13 @@ ${notes.trim()}` : notes.trim(),
             <button type="button" onClick={() => addVehicleIssue(selectedVehicle)} style={secondaryButtonStyle}>Add Issue</button>
             <button type="button" onClick={() => createVehicleWorkOrder(selectedVehicle)} style={secondaryButtonStyle}>Work Order</button>
           </div>
+
+          <section style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${colors.line}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><div style={eyebrowStyle}>Connected Records</div><strong>Vehicle relationships</strong></div>{selectedVehicle.assetId ? <button type="button" onClick={() => { setSelectedAssetId(selectedVehicle.assetId || ""); setScreen("assets"); }} style={secondaryButtonStyle}>Open Asset</button> : null}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 9 }}>{[["Tasks",vehicleTasks.length],["Work Orders",vehicleWorkOrders.length],["Photos",vehiclePhotos.length],["Documents",vehicleDocuments.length]].map(([label,value]) => <div key={String(label)} style={{ ...recordInfoItemStyle, minWidth: 0 }}><small style={fieldLabelStyle}>{label}</small><strong>{value}</strong></div>)}</div>
+            <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{vehicleTasks.map((task) => <button key={`vehicle-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>Task · {taskDetails(task.id).status}</small></span><span>›</span></button>)}{vehicleWorkOrders.map((record) => <button key={`vehicle-work-${record.id}`} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>Work Order · {record.status}</small></span><span>›</span></button>)}{vehicleDocuments.map((document) => <button key={`vehicle-document-${document.id}`} type="button" onClick={() => { setSelectedDocumentId(document.id); setScreen("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"}</small></span><span>›</span></button>)}</div>
+            {vehiclePhotos.length ? <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 10 }}>{vehiclePhotos.map((photo) => <button key={photo.id} type="button" onClick={() => setPreviewFile(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 0, overflow: "hidden", background: "#FFFFFF", flex: "0 0 auto" }}><img src={photo.dataUrl || photo.url} alt={photo.name} style={{ width: 78, height: 60, objectFit: "cover", display: "block" }} /></button>)}</div> : null}
+          </section>
 
           <section style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${colors.line}` }}>
             <div style={eyebrowStyle}>History</div>
@@ -17614,6 +17625,11 @@ ${notes.trim()}` : notes.trim(),
           (selectedPhotoProject.workOrderIds || []).includes(record.id)
         )
       : [];
+    const selectedProjectTasks = selectedPhotoProject
+      ? workPlanTasks
+          .filter((task) => taskDetails(task.id).projectId === selectedPhotoProject.id)
+          .sort((a, b) => String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(String(taskDetails(b.id).dueDate || "9999-12-31")))
+      : [];
     const selectedProjectDocuments = selectedPhotoProject
       ? intakeDocs.filter((record) =>
           (selectedPhotoProject.documentIds || []).includes(record.id) ||
@@ -18424,7 +18440,7 @@ ${notes.trim()}` : notes.trim(),
                                 </div>
                               </aside>
                             </div>
-                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 9 }}>{[["Photos",selectedPhotoProjectItems.length],["Documents",selectedProjectDocuments.length],["Work orders",selectedProjectWorkOrders.length],["People / vendors",selectedProjectPeople.length + selectedProjectVendors.length]].map(([label,value]) => <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 11, background: "#F8FAFC" }}><small style={mutedSmallStyle}>{label}</small><strong style={{ display: "block", fontSize: 20, color: colors.navy3 }}>{value}</strong></div>)}</div>
+                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", gap: 9 }}>{[["Photos",selectedPhotoProjectItems.length],["Documents",selectedProjectDocuments.length],["Tasks",selectedProjectTasks.length],["Work orders",selectedProjectWorkOrders.length],["People / vendors",selectedProjectPeople.length + selectedProjectVendors.length]].map(([label,value]) => <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 11, background: "#F8FAFC" }}><small style={mutedSmallStyle}>{label}</small><strong style={{ display: "block", fontSize: 20, color: colors.navy3 }}>{value}</strong></div>)}</div>
                           </div>
                         ) : null}
 
@@ -18440,7 +18456,7 @@ ${notes.trim()}` : notes.trim(),
                           </div>;
                         })}</div>{!selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>No photos are attached to this project.</div> : null}</> : null}
                         {projectDetailTab === "documents" ? <div style={{ display: "grid", gap: 9 }}>{selectedProjectDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); setScreen("documents"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"} · {document.files?.length || 0} file(s)</small></button>)}{!selectedProjectDocuments.length ? <div style={emptyStateStyle}>No documents are linked to this project yet.</div> : null}</div> : null}
-                        {projectDetailTab === "work" ? <div style={{ display: "grid", gap: 9 }}>{selectedProjectWorkOrders.map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.status} · {record.date ? formatDate(record.date) : "No due date"}</small></button>)}{!selectedProjectWorkOrders.length ? <div style={emptyStateStyle}>No work orders are linked to this project yet.</div> : null}<button type="button" onClick={() => addWorkOrder({ projectId: selectedPhotoProject.id, vendorId: selectedPhotoProject.vendorId || "", assignedVendorIds: selectedPhotoProject.vendorIds || [], assetId: selectedPhotoProject.assetId || "", locationId: selectedPhotoProject.locationId || "", responsibilityArea: `Project · ${selectedPhotoProject.title}` })} style={goldButtonStyle}>+ Add Project Work Order</button></div> : null}
+                        {projectDetailTab === "work" ? <div style={{ display: "grid", gap: 14 }}><section><div style={eyebrowStyle}>Tasks · {selectedProjectTasks.length}</div><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectTasks.map((task) => <button key={task.id} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).status} · {taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></button>)}{!selectedProjectTasks.length ? <div style={emptyStateStyle}>No Tasks are linked to this project yet.</div> : null}</div></section><section><div style={eyebrowStyle}>Work Orders · {selectedProjectWorkOrders.length}</div><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectWorkOrders.map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.status} · {record.date ? formatDate(record.date) : "No due date"}</small></button>)}{!selectedProjectWorkOrders.length ? <div style={emptyStateStyle}>No Work Orders are linked to this project yet.</div> : null}</div></section><button type="button" onClick={() => addWorkOrder({ projectId: selectedPhotoProject.id, vendorId: selectedPhotoProject.vendorId || "", assignedVendorIds: selectedPhotoProject.vendorIds || [], assetId: selectedPhotoProject.assetId || "", locationId: selectedPhotoProject.locationId || "", responsibilityArea: `Project · ${selectedPhotoProject.title}` })} style={goldButtonStyle}>+ Add Project Work Order</button></div> : null}
                         {projectDetailTab === "people" ? <div style={{ display: "grid", gap: 14 }}><section><strong style={{ color: colors.navy3 }}>Vendors</strong><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectVendors.map((vendor) => <button key={vendor.id} type="button" onClick={() => { setSelectedVendorId(vendor.id); setScreen("vendors"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{vendor.name}</strong><small style={mutedSmallStyle}>{vendor.category || "Vendor"}</small></button>)}{!selectedProjectVendors.length ? <div style={emptyStateStyle}>No vendors assigned.</div> : null}</div></section><section><strong style={{ color: colors.navy3 }}>People</strong><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectPeople.map((contact) => <div key={contact.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10 }}><strong>{contact.name}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{contact.role || contact.organization || "Contact"}</small></div>)}{!selectedProjectPeople.length ? <div style={emptyStateStyle}>No people assigned.</div> : null}</div></section></div> : null}
                       </div>
                     </>
@@ -19909,6 +19925,11 @@ ${notes.trim()}` : notes.trim(),
               locationAssetIds.has(record.assetId),
         )
       : [];
+    const locationTasks = selectedLocation.id
+      ? workPlanTasks
+          .filter((task) => selectedLocation.id === "general" ? true : task.locationId === selectedLocation.id || locationAssetIds.has(taskDetails(task.id).assetId || ""))
+          .sort((a, b) => String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(String(taskDetails(b.id).dueDate || "9999-12-31")))
+      : [];
     const locationHistory = locationWorkOrders
       .flatMap((record) => {
         const savedCompletions = (record.serviceHistory || []).map((entry) => ({
@@ -20957,7 +20978,7 @@ ${notes.trim()}` : notes.trim(),
                         display: "grid",
                         gridTemplateColumns: isMobile
                           ? "repeat(2, minmax(0, 1fr))"
-                          : "repeat(5, minmax(0, 1fr))",
+                          : "repeat(6, minmax(0, 1fr))",
                         gap: 8,
                         marginTop: 12,
                       }}
@@ -20965,6 +20986,7 @@ ${notes.trim()}` : notes.trim(),
                       {[
                         ["Assets", locationAssets.length],
                         ["Documents", locationDocuments.length],
+                        ["Tasks", locationTasks.length],
                         ["Open Work", openLocationWork.length],
                         ["Photos", locationPhotos.length],
                         ["Last Activity", latestLocationActivity ? formatDate(latestLocationActivity) : "None"],
@@ -21240,6 +21262,11 @@ ${notes.trim()}` : notes.trim(),
                     </div>
                   </div>
                 )}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}><div><div style={eyebrowStyle}>Tasks At This Location</div><strong>{locationTasks.length} related</strong></div><button type="button" onClick={() => { setTaskListFilter("today"); setTasksView("tasks"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Tasks</button></div>
+                {locationTasks.length ? <div style={compactLinkedListStyle}>{locationTasks.slice(0, 12).map((task) => <button key={`location-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></span><span style={badgeStyle(taskDetails(task.id).status)}>{taskDetails(task.id).status}</span></button>)}</div> : <p style={mutedSmallStyle}>No Tasks are linked to this location.</p>}
               </section>
 
               <section style={detailSectionStyle}>
@@ -25143,6 +25170,11 @@ ${notes.trim()}` : notes.trim(),
             ),
           )
       : [];
+    const relatedVendorTasks = selectedVendor.id
+      ? workPlanTasks
+          .filter((task) => taskDetails(task.id).vendorId === selectedVendor.id)
+          .sort((a, b) => String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(String(taskDetails(b.id).dueDate || "9999-12-31")))
+      : [];
     const lastVendorVisit =
       relatedVendorWorkOrders.find((record) => record.status === "Completed") ||
       relatedVendorWorkOrders[0];
@@ -25530,6 +25562,7 @@ ${notes.trim()}` : notes.trim(),
                 )}
               </section>
 
+              <section style={detailSectionStyle}><div style={detailSectionHeaderStyle}><div><div style={eyebrowStyle}>Related Tasks</div><strong>{relatedVendorTasks.length} linked</strong></div></div>{relatedVendorTasks.length ? <div style={compactLinkedListStyle}>{relatedVendorTasks.map((task) => <button key={`vendor-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></span><span style={badgeStyle(taskDetails(task.id).status)}>{taskDetails(task.id).status}</span></button>)}</div> : <p style={mutedSmallStyle}>No Tasks are linked to this vendor.</p>}</section>
               {renderLinkedDocuments("Vendor", selectedVendor.id)}
             </div>
           ) : (
