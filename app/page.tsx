@@ -16744,6 +16744,43 @@ export default function AtlasPage() {
         )
       : [];
 
+    const selectedProjectOpenWorkOrders = selectedProjectWorkOrders.filter(
+      (record) => !["Completed", "Closed", "Cancelled"].includes(String(record.status)),
+    );
+    const selectedProjectWaitingWorkOrders = selectedProjectOpenWorkOrders.filter(
+      (record) => record.status === "Waiting" || record.status === "Monitor",
+    );
+    const selectedProjectOverdueWorkOrders = selectedProjectOpenWorkOrders.filter(
+      (record) => Boolean(record.date) && record.date < todayISO(),
+    );
+    const selectedProjectLastActivity = selectedPhotoProject
+      ? [
+          selectedPhotoProject.createdAt,
+          selectedPhotoProject.completedAt,
+          ...selectedProjectTimelineEntries.map((entry) => entry.date || entry.createdAt),
+          ...selectedPhotoProjectItems.map((item) => item.createdAt || ""),
+          ...selectedProjectDocuments.map((document) => document.createdAt || ""),
+          ...selectedProjectWorkOrders.flatMap((record) => [record.lastCompletedDate || "", record.date || ""]),
+        ]
+          .filter(Boolean)
+          .sort((a, b) => String(b).localeCompare(String(a)))[0] || ""
+      : "";
+    const selectedProjectAttentionCount =
+      selectedProjectOverdueWorkOrders.length + selectedProjectWaitingWorkOrders.length;
+    const selectedProjectNextAction = selectedPhotoProject
+      ? selectedPhotoProject.status === "Completed"
+        ? "Project is complete. Confirm final photos and documents are attached."
+        : selectedPhotoProject.phase?.trim()
+          ? selectedPhotoProject.phase.trim()
+          : selectedProjectOverdueWorkOrders.length
+            ? `Review ${selectedProjectOverdueWorkOrders.length} overdue work order${selectedProjectOverdueWorkOrders.length === 1 ? "" : "s"}.`
+            : selectedProjectWaitingWorkOrders.length
+              ? `Resolve ${selectedProjectWaitingWorkOrders.length} waiting item${selectedProjectWaitingWorkOrders.length === 1 ? "" : "s"}.`
+              : selectedProjectOpenWorkOrders.length
+                ? `Continue ${selectedProjectOpenWorkOrders.length} open work order${selectedProjectOpenWorkOrders.length === 1 ? "" : "s"}.`
+                : "Set the next action or add the first linked work order."
+      : "";
+
     const updateSelectedPhotoMeta = (patch: Partial<PhotoTimelineMeta>) => {
       if (!selectedPhotoTimelineItem) return;
       setPhotoTimelineMeta((current) => ({
@@ -17430,6 +17467,21 @@ export default function AtlasPage() {
                       <div style={{ padding: isMobile ? 14 : 18, maxHeight: isMobile ? "none" : "calc(100vh - 350px)", overflowY: "auto" }}>
                         {projectDetailTab === "overview" ? (
                           <div style={{ display: "grid", gap: 14 }}>
+                            <section style={{ border: `1px solid ${selectedProjectAttentionCount ? "#F4C7A1" : colors.line}`, borderRadius: 12, padding: 11, background: selectedProjectAttentionCount ? "#FFF9F2" : "#F8FAFC" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                <div><div style={eyebrowStyle}>Record intelligence</div><strong style={{ color: colors.navy3 }}>{selectedProjectNextAction}</strong></div>
+                                <span style={badgeStyle(selectedProjectAttentionCount ? "Open" : selectedPhotoProject.status === "Completed" ? "Completed" : "Monitor")}>{selectedProjectAttentionCount ? `${selectedProjectAttentionCount} need attention` : "On track"}</span>
+                              </div>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9, fontSize: 12 }}>
+                                <span><strong>{selectedProjectOpenWorkOrders.length}</strong> open work</span>
+                                <span>·</span>
+                                <span><strong>{selectedProjectTimelineEntries.length}</strong> timeline entries</span>
+                                <span>·</span>
+                                <span><strong>{selectedPhotoProjectItems.length}</strong> photos</span>
+                                <span>·</span>
+                                <span>Last activity <strong>{selectedProjectLastActivity ? formatDate(String(selectedProjectLastActivity).slice(0, 10)) : "Not recorded"}</strong></span>
+                              </div>
+                            </section>
                             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.3fr) minmax(260px,.7fr)", gap: 14 }}>
                               <div style={{ display: "grid", gap: 12 }}>
                                 <div style={{ border: `1px solid ${colors.line}`, borderRadius: 13, padding: 14 }}><div style={eyebrowStyle}>Current project</div><textarea value={selectedPhotoProject.notes} onChange={(event) => updateSelectedPhotoProject({ notes: event.target.value })} placeholder="Project scope, current condition, key decisions, blockers, and next action..." style={{ width: "100%", minHeight: 125, border: 0, resize: "vertical", padding: 0, marginTop: 8, font: "inherit", color: colors.text, outline: "none" }} /></div>
