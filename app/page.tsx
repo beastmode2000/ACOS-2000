@@ -4138,6 +4138,7 @@ export default function AtlasPage() {
   const [operationsSyncMessage, setOperationsSyncMessage] = useState("No pending changes");
   const [operationsHydrated, setOperationsHydrated] = useState(false);
   const [fleetSetupState, setFleetSetupState] = useState<"idle" | "working" | "ready" | "failed">("idle");
+  const [waterCareSetupState, setWaterCareSetupState] = useState<"idle" | "working" | "ready" | "failed">("idle");
   const [showPropertyLoading, setShowPropertyLoading] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
@@ -4382,6 +4383,7 @@ export default function AtlasPage() {
   const operationsSyncTimerRef = useRef<number | null>(null);
   const operationsSyncRunningRef = useRef(false);
   const fleetSetupRunningRef = useRef(false);
+  const waterCareSetupRunningRef = useRef(false);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
@@ -14875,13 +14877,13 @@ export default function AtlasPage() {
       title: `Clean ${vehicle.name}`,
       minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45,
       priority: vehicle.priority === "High" ? "High" : "Medium",
-      category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Vehicle Care",
+      category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Garage",
       locationId: vehicle.locationId || "general",
       preferredDay: "Thursday",
       locked: false,
       recurring: false,
       fixedTime: "",
-      notes: `Created from Fleet Manager.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
+      notes: `Created from Garage.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
     };
     setWorkPlanTasks((current) => [task, ...current]);
     setTaskMeta((current) => ({
@@ -14944,10 +14946,10 @@ ${notes.trim()}` : notes.trim(),
       title: `${vehicle.name} service / repair`,
       assetId: vehicle.assetId || "",
       locationId: vehicle.locationId || "",
-      responsibilityArea: `Fleet · ${vehicle.name}`,
-      workCategory: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Vehicle Care",
+      responsibilityArea: `Garage · ${vehicle.name}`,
+      workCategory: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Garage",
       priority: vehicle.priority === "High" ? "High" : "Medium",
-      notes: vehicle.notes || "Created from Fleet Manager.",
+      notes: vehicle.notes || "Created from Garage.",
     });
   }
 
@@ -14963,7 +14965,7 @@ ${notes.trim()}` : notes.trim(),
       notes: "",
       kind: "Vehicle",
       assignedTo: "Nick",
-      cleaningIntervalDays: 14,
+      cleaningIntervalDays: 7,
       lastServiced: "",
       nextServiceDate: "",
       serviceIntervalDays: 180,
@@ -14972,7 +14974,7 @@ ${notes.trim()}` : notes.trim(),
     setVehicleCare((current) => [vehicle, ...current]);
     setSelectedVehicleId(vehicle.id);
     setNewVehicleName("");
-    showSaveToast(`${name} added to Fleet Manager.`);
+    showSaveToast(`${name} added to Garage.`);
   }
 
   async function setupFleetAssetsAndSchedules() {
@@ -15002,7 +15004,7 @@ ${notes.trim()}` : notes.trim(),
             status: vehicle.onsite ? "Online" : "Seasonal",
             locationId: vehicle.locationId || "general",
             locationIds: [vehicle.locationId || "general"],
-            notes: `Fleet Asset created from Vehicle Care.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
+            notes: `Garage Asset created from Garage care.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
             vendorIds: [],
           });
           nextAssets.push(asset);
@@ -15015,7 +15017,11 @@ ${notes.trim()}` : notes.trim(),
           nextVehicles[vehicleIndex] = { ...nextVehicles[vehicleIndex], assetId: asset.id, locationId: vehicle.locationId || asset.locationId, updatedAt: new Date().toISOString() };
         }
 
-        const cleaningInterval = Math.max(1, Number(vehicle.cleaningIntervalDays || (vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 7 : 14)));
+        const isGarageVehicle = vehicle.kind !== "Boat" && vehicle.kind !== "Watercraft" && vehicle.kind !== "Equipment";
+        const cleaningInterval = isGarageVehicle ? 7 : Math.max(1, Number(vehicle.cleaningIntervalDays || 7));
+        if (vehicleIndex >= 0 && isGarageVehicle) {
+          nextVehicles[vehicleIndex] = { ...nextVehicles[vehicleIndex], cleaningIntervalDays: 7 };
+        }
         const cleaningDueDate = vehicle.lastCleaned ? addDays(vehicle.lastCleaned, cleaningInterval) : todayISO();
         let cleaningTask = nextTasks.find((task) => taskDetails(task.id).vehicleId === vehicle.id) || nextTasks.find((task) => normalizeLocationName(task.title) === normalizeLocationName(`Clean ${vehicle.name}`));
         if (!cleaningTask) {
@@ -15024,13 +15030,13 @@ ${notes.trim()}` : notes.trim(),
             title: `Clean ${vehicle.name}`,
             minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45,
             priority: vehicle.priority === "High" ? "High" : "Medium",
-            category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Vehicle Care",
+            category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Garage",
             locationId: vehicle.locationId || asset.locationId || "general",
             preferredDay: "Thursday",
             locked: false,
             recurring: true,
             fixedTime: "",
-            notes: `Recurring Fleet cleaning for ${vehicle.name}.`,
+            notes: `Weekly Garage cleaning for ${vehicle.name}. Use Skip when the cleaning cannot be completed that week.`,
           };
           nextTasks.push(cleaningTask);
           createdTasks += 1;
@@ -15050,6 +15056,8 @@ ${notes.trim()}` : notes.trim(),
           recurrenceInterval: cleaningInterval,
           recurrenceUnit: "Days",
           season: "Year-Round",
+          skippable: true,
+          flexibleTime: true,
           updatedAt: new Date().toISOString(),
         };
 
@@ -15065,14 +15073,14 @@ ${notes.trim()}` : notes.trim(),
             date: serviceDueDate,
             status: "Open",
             priority: vehicle.priority === "High" ? "High" : "Medium",
-            notes: `Recurring Fleet service for ${vehicle.name}.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
+            notes: `Recurring Garage service for ${vehicle.name}.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
             recurring: true,
             recurrenceInterval: serviceInterval,
             recurrenceUnit: "Days",
             season: "Year-Round",
             workType: "Preventive Maintenance",
             workCategory: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "🚤 Dock & Marine" : "🚗 Vehicles",
-            responsibilityArea: `Fleet · ${vehicle.name}`,
+            responsibilityArea: `Garage · ${vehicle.name}`,
             assignedTo: vehicle.assignedTo || "Nick",
           });
           nextWorkOrders.push(serviceWorkOrder);
@@ -15081,8 +15089,8 @@ ${notes.trim()}` : notes.trim(),
         }
 
         const calendarDefinitions: AtlasCalendarItem[] = [
-          normalizeCalendar({ id: `fleet-clean-${vehicle.id}`, propertyId: activePropertyId, date: nextTaskMeta[cleaningTask.id].dueDate, title: `Clean ${vehicle.name}`, area: "Vehicle Care", categoryLabel: "Vehicle Care", allDay: true, repeat: cleaningInterval === 7 ? "Weekly" : "Custom", reminder: "Morning of", notes: `Recurring every ${cleaningInterval} days. Changes stay linked to the Fleet Asset and Task.`, linkedType: "Task", linkedId: cleaningTask.id, linkedName: cleaningTask.title, source: "task", status: "Scheduled" }),
-          normalizeCalendar({ id: `fleet-service-${vehicle.id}`, propertyId: activePropertyId, date: serviceWorkOrder.date || serviceDueDate, title: `${vehicle.name} service`, area: "Vehicle Care", categoryLabel: "Vehicle Care", allDay: true, repeat: "Custom", reminder: "Week before", notes: `Recurring every ${serviceInterval} days. Open the linked Work Order for service history, documents, and cost.`, linkedType: "Work Order", linkedId: serviceWorkOrder.id, linkedName: serviceWorkOrder.title, source: "work-order", status: "Scheduled" }),
+          normalizeCalendar({ id: `fleet-clean-${vehicle.id}`, propertyId: activePropertyId, date: nextTaskMeta[cleaningTask.id].dueDate, title: `Clean ${vehicle.name}`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: cleaningInterval === 7 ? "Weekly" : "Custom", reminder: "Morning of", notes: `Recurring every ${cleaningInterval} days. Use Skip when needed. Linked to the Garage Asset and Task.`, linkedType: "Task", linkedId: cleaningTask.id, linkedName: cleaningTask.title, source: "task", status: "Scheduled" }),
+          normalizeCalendar({ id: `fleet-service-${vehicle.id}`, propertyId: activePropertyId, date: serviceWorkOrder.date || serviceDueDate, title: `${vehicle.name} service`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: "Custom", reminder: "Week before", notes: `Recurring every ${serviceInterval} days. Open the linked Work Order for service history, documents, and cost.`, linkedType: "Work Order", linkedId: serviceWorkOrder.id, linkedName: serviceWorkOrder.title, source: "work-order", status: "Scheduled" }),
         ];
         for (const calendarRecord of calendarDefinitions) {
           const existingIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
@@ -15123,6 +15131,81 @@ ${notes.trim()}` : notes.trim(),
     } finally {
       fleetSetupRunningRef.current = false;
     }
+  }
+
+  async function setupPoolSpaCare() {
+    if (waterCareSetupRunningRef.current) return;
+    waterCareSetupRunningRef.current = true;
+    setWaterCareSetupState("working");
+    try {
+      const nextAssets = [...assetRecords];
+      const nextTasks = [...workPlanTasks];
+      const nextTaskMeta = { ...taskMeta };
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const findLocationId = (terms: string[]) => locations.find((location) => terms.some((term) => location.name.toLowerCase().includes(term)))?.id || "general";
+      const ensureCareAsset = (name: string, terms: string[], locationId: string) => {
+        let asset = nextAssets.find((item) => terms.some((term) => `${item.name} ${item.category}`.toLowerCase().includes(term)));
+        if (!asset) {
+          asset = normalizeAsset({ id: uid("asset"), name, category: "Pool & Spa", status: "Online", locationId, locationIds: [locationId], notes: `${name} care, treatment, cleaning, and service history.`, vendorIds: [] });
+          nextAssets.push(asset);
+          recordsToSave.push({ table: "assets", record: { ...asset, propertyId: activePropertyId } });
+        }
+        return asset;
+      };
+
+      const poolAsset = ensureCareAsset("Pool", ["pool"], findLocationId(["pool"]));
+      const spaAsset = ensureCareAsset("Spa", ["spa", "hot tub", "sundance"], findLocationId(["spa", "hot tub", "sundance"]));
+      const definitions = [
+        { key: "pool-treatment", title: "Treat pool — 2 bags OxySheen + 8 oz Pool Juice", minutes: 25, asset: poolAsset, everyWeeks: 1, offsetDays: 0, notes: "Weekly pool treatment. Add 2 bags of OxySheen and 8 oz of Pool Juice for phosphate control. Record readings or exceptions in the task notes." },
+        { key: "pool-brush", title: "Brush pool", minutes: 35, asset: poolAsset, everyWeeks: 4, offsetDays: 0, notes: "Pool cleaning rotation: brush. Complete additional vacuum methods the same week when conditions require them." },
+        { key: "pool-hand-vac", title: "Hand vacuum pool", minutes: 45, asset: poolAsset, everyWeeks: 4, offsetDays: 7, notes: "Pool cleaning rotation: hand vacuum. Complete additional methods when debris or conditions require them." },
+        { key: "pool-suction-vac", title: "Suction vacuum pool", minutes: 45, asset: poolAsset, everyWeeks: 4, offsetDays: 14, notes: "Pool cleaning rotation: suction vacuum. Complete additional methods when needed." },
+        { key: "pool-robot-vac", title: "Robot vacuum pool", minutes: 20, asset: poolAsset, everyWeeks: 4, offsetDays: 21, notes: "Pool cleaning rotation: deploy and clean the robot vacuum. Additional cleaning methods may be completed as needed." },
+        { key: "pool-backwash", title: "Check pool filter pressure / backwash if needed", minutes: 25, asset: poolAsset, everyWeeks: 1, offsetDays: 0, notes: "Check the filter pressure and water flow. Backwash only when the pressure rise or filter condition indicates it is needed; record the pressure and whether backwashing was completed." },
+        { key: "spa-treatment", title: "Test and treat spa", minutes: 25, asset: spaAsset, everyWeeks: 1, offsetDays: 1, notes: "Weekly spa water test and treatment. Record readings, chemicals added, and any water-quality issue." },
+      ];
+
+      for (const definition of definitions) {
+        let task = nextTasks.find((item) => normalizeLocationName(item.title) === normalizeLocationName(definition.title));
+        if (!task) {
+          task = { id: uid("care-task"), title: definition.title, minutes: definition.minutes, priority: "Medium", category: "Pool & Spa", locationId: definition.asset.locationId || "general", preferredDay: "Wednesday", locked: false, recurring: true, fixedTime: "", notes: definition.notes };
+          nextTasks.push(task);
+        } else {
+          const taskIndex = nextTasks.findIndex((item) => item.id === task!.id);
+          nextTasks[taskIndex] = { ...task, recurring: true, minutes: definition.minutes, category: "Pool & Spa", locationId: definition.asset.locationId || "general", notes: definition.notes };
+          task = nextTasks[taskIndex];
+        }
+        const existingMeta = taskDetails(task.id);
+        nextTaskMeta[task.id] = { ...existingMeta, status: existingMeta.status === "Completed" ? "Open" : existingMeta.status, dueDate: existingMeta.dueDate || addDays(todayISO(), definition.offsetDays), assignee: existingMeta.assignee === "Unassigned" ? "Nick" : existingMeta.assignee, createdAt: existingMeta.createdAt || new Date().toISOString(), assetId: definition.asset.id, recurrenceInterval: definition.everyWeeks, recurrenceUnit: "Weeks", season: "Year-Round", skippable: true, flexibleTime: true, notes: definition.notes, updatedAt: new Date().toISOString() };
+        const calendarRecord = normalizeCalendar({ id: `care-${definition.key}`, propertyId: activePropertyId, date: nextTaskMeta[task.id].dueDate, title: definition.title, area: "Pool & Spa", categoryLabel: "Pool & Spa", allDay: true, repeat: definition.everyWeeks === 1 ? "Weekly" : "Custom", reminder: "Morning of", notes: definition.notes, linkedType: "Task", linkedId: task.id, linkedName: task.title, source: "task", status: "Scheduled" });
+        const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
+        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
+        else nextCalendar.push(calendarRecord);
+        recordsToSave.push({ table: "calendar", record: calendarRecord });
+      }
+
+      setAssetRecords(byName(nextAssets));
+      setWorkPlanTasks(nextTasks);
+      setTaskMeta(nextTaskMeta);
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some Pool & Spa records are waiting to sync.");
+      setWaterCareSetupState("ready");
+      showSaveToast("Garage and Pool & Spa weekly care are ready.");
+    } catch (error) {
+      console.error("Atlas Pool & Spa setup failed", error);
+      setWaterCareSetupState("failed");
+      showSaveToast("Pool & Spa setup needs another sync attempt.", "warning");
+    } finally {
+      waterCareSetupRunningRef.current = false;
+    }
+  }
+
+  async function setupGarageAndWaterCare() {
+    await setupFleetAssetsAndSchedules();
+    await setupPoolSpaCare();
   }
 
   function createSeasonalTask(item: AtlasSeasonalItem) {
@@ -15291,18 +15374,18 @@ ${notes.trim()}` : notes.trim(),
 
     return <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
-        {[{ label: "Fleet", value: vehicleCare.length }, { label: "Onsite", value: onsiteCount }, { label: "Cleaning due", value: dueCount }, { label: "Service due", value: serviceDueCount }].map((item) => <div key={item.label} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 23, color: colors.navy }}>{item.value}</strong></div>)}
+        {[{ label: "Garage", value: vehicleCare.length }, { label: "Onsite", value: onsiteCount }, { label: "Cleaning due", value: dueCount }, { label: "Service due", value: serviceDueCount }].map((item) => <div key={item.label} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 23, color: colors.navy }}>{item.value}</strong></div>)}
       </div>
 
       <div style={{ ...cardStyle, padding: 10, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto auto", gap: 8 }}>
-        <input value={newVehicleName} onChange={(event) => setNewVehicleName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addFleetVehicle(); }} placeholder="Add vehicle, boat, or equipment…" style={inputStyle} />
+        <input value={newVehicleName} onChange={(event) => setNewVehicleName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addFleetVehicle(); }} placeholder="Add car, vehicle, boat, or equipment…" style={inputStyle} />
         <button type="button" onClick={addFleetVehicle} style={goldButtonStyle}>Add</button>
-        <button type="button" onClick={() => void setupFleetAssetsAndSchedules()} disabled={fleetSetupState === "working"} style={fleetSetupState === "ready" ? secondaryButtonStyle : goldButtonStyle}>{fleetSetupState === "working" ? "Setting Up…" : fleetSetupState === "failed" ? "Retry Fleet Sync" : fleetSetupState === "ready" ? "Fleet Synced ✓" : "Set Up Fleet"}</button>
+        <button type="button" onClick={() => void setupGarageAndWaterCare()} disabled={fleetSetupState === "working" || waterCareSetupState === "working"} style={fleetSetupState === "ready" && waterCareSetupState === "ready" ? secondaryButtonStyle : goldButtonStyle}>{fleetSetupState === "working" || waterCareSetupState === "working" ? "Setting Up…" : fleetSetupState === "failed" || waterCareSetupState === "failed" ? "Retry Weekly Care" : fleetSetupState === "ready" && waterCareSetupState === "ready" ? "Weekly Care Ready ✓" : "Set Up Weekly Care"}</button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(280px,36%) minmax(0,1fr)", gap: 12, alignItems: "start" }}>
         <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-          <div style={{ padding: "10px 12px", borderBottom: `1px solid ${colors.line}` }}><strong>Fleet</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Select a record to manage cleaning, service, issues, and history.</small></div>
+          <div style={{ padding: "10px 12px", borderBottom: `1px solid ${colors.line}` }}><strong>Garage</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Cars, vehicles, boats, cleaning, and service.</small></div>
           <div style={{ maxHeight: isMobile ? 460 : "72vh", overflowY: "auto" }}>
             {sorted.map((vehicle) => {
               const status = cleanStatus(vehicle);
@@ -15317,7 +15400,7 @@ ${notes.trim()}` : notes.trim(),
 
         {selectedVehicle ? <section style={{ ...cardStyle, position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)", overflowY: isMobile ? "visible" : "auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
-            <div><div style={eyebrowStyle}>Fleet record</div><h3 style={{ margin: "3px 0 0", color: colors.navy }}>{selectedVehicle.name}</h3><small style={mutedSmallStyle}>{selectedVehicle.kind || "Vehicle"} · {selectedVehicle.onsite ? "Onsite" : "Away"}</small></div>
+            <div><div style={eyebrowStyle}>Garage record</div><h3 style={{ margin: "3px 0 0", color: colors.navy }}>{selectedVehicle.name}</h3><small style={mutedSmallStyle}>{selectedVehicle.kind || "Vehicle"} · {selectedVehicle.onsite ? "Onsite" : "Away"}</small></div>
             <button type="button" onClick={() => { if (window.confirm(`Delete ${selectedVehicle.name}?`)) { setVehicleCare((current) => current.filter((item) => item.id !== selectedVehicle.id)); void deleteOperationalRecord("vehicle_care" as AtlasTable, selectedVehicle.id); setSelectedVehicleId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
           </div>
 
@@ -15380,7 +15463,7 @@ ${notes.trim()}` : notes.trim(),
             <div style={eyebrowStyle}>History</div>
             <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
               {(selectedVehicle.history || []).slice(0, 12).map((entry) => <div key={entry.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 8, alignItems: "start" }}><span style={badgeStyle(entry.type === "Issue" ? "High" : entry.type === "Serviced" ? "Scheduled" : "Completed")}>{entry.type}</span><span><small style={{ display: "block", color: colors.text }}>{new Date(entry.date).toLocaleString()}</small>{entry.notes ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{entry.notes}</small> : null}</span></div>)}
-              {!(selectedVehicle.history || []).length ? <div style={emptyStateStyle}>No fleet history recorded yet.</div> : null}
+              {!(selectedVehicle.history || []).length ? <div style={emptyStateStyle}>No Garage history recorded yet.</div> : null}
             </div>
           </section>
         </section> : <div style={emptyStateStyle}>Select a fleet record.</div>}
@@ -15783,8 +15866,8 @@ ${notes.trim()}` : notes.trim(),
       <div style={{ display: "grid", gap: 14 }}>
         <SectionHeader
           eyebrow={tasksView === "walk" ? "Field Operations" : tasksView === "analytics" ? "Performance" : tasksView === "addison" ? "Team Operations" : tasksView === "route" ? "Property Route" : tasksView === "build" ? "Estate Brain" : tasksView === "vehicles" ? "Operations" : tasksView === "planner" ? "Planning" : "Work"}
-          title={isAddisonUser ? "My Tasks" : tasksView === "walk" ? "Walk Mode" : tasksView === "analytics" ? "Operations Analytics" : tasksView === "addison" ? "Addison Work Manager" : tasksView === "route" ? "Smart Route" : tasksView === "build" ? "Build My Day" : tasksView === "vehicles" ? "Vehicle Care" : tasksView === "planner" ? "Plan Week" : "Tasks"}
-          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : tasksView === "walk" ? "A bright, simplified field view for completing work around the property." : tasksView === "analytics" ? "Use completed work history to see workload, delays, compliance, vendor performance, and project momentum." : tasksView === "addison" ? "Assign, explain, track, and review Addison’s daily work from one dedicated view." : tasksView === "route" ? "Complete nearby work together to reduce walking and context switching across the property." : tasksView === "build" ? "Atlas combines current work, routine, project, vehicle, weather, duration, and priority signals into one realistic day." : tasksView === "vehicles" ? "Track onsite status, cleaning history, and create only the vehicle work that is needed." : tasksView === "planner" ? "Balance existing work across the week. Tasks remain managed in Tasks." : "Your main daily work area for one-time and recurring tasks."}
+          title={isAddisonUser ? "My Tasks" : tasksView === "walk" ? "Walk Mode" : tasksView === "analytics" ? "Operations Analytics" : tasksView === "addison" ? "Addison Work Manager" : tasksView === "route" ? "Smart Route" : tasksView === "build" ? "Build My Day" : tasksView === "vehicles" ? "Garage" : tasksView === "planner" ? "Plan Week" : "Tasks"}
+          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : tasksView === "walk" ? "A bright, simplified field view for completing work around the property." : tasksView === "analytics" ? "Use completed work history to see workload, delays, compliance, vendor performance, and project momentum." : tasksView === "addison" ? "Assign, explain, track, and review Addison’s daily work from one dedicated view." : tasksView === "route" ? "Complete nearby work together to reduce walking and context switching across the property." : tasksView === "build" ? "Atlas combines current work, routine, project, vehicle, weather, duration, and priority signals into one realistic day." : tasksView === "vehicles" ? "Cars, vehicles, cleaning, service, and connected records." : tasksView === "planner" ? "Balance existing work across the week. Tasks remain managed in Tasks." : "Your main daily work area for one-time and recurring tasks."}
           right={tasksView === "tasks" && !isAddisonUser ? <button type="button" onClick={() => { setSelectedTaskId(focusTask?.id || ""); setTasksView("walk"); }} disabled={!focusTasks.length} style={goldButtonStyle}>Start Walk Mode</button> : undefined}
         />
         {!isAddisonUser && tasksView !== "vehicles" && tasksView !== "planner" ? (
@@ -15868,7 +15951,7 @@ ${notes.trim()}` : notes.trim(),
                       <SelectField label="Priority" value={selectedTask.priority} onChange={(value) => updateWorkPlanTask(selectedTask.id, { priority: value as WorkOrderPriority })} options={["High","Medium","Low"]} />
                       <SelectField label="Assigned to" value={selectedMeta.assignee} onChange={(value) => updateTaskDetails(selectedTask.id, { assignee: value as AtlasTaskMeta["assignee"] })} options={["Nick","Addison","Other","Unassigned"]} />
                       <Field label="Estimated minutes" type="number" value={String(selectedTask.minutes)} onChange={(value) => updateWorkPlanTask(selectedTask.id, { minutes: Math.max(5, Number(value) || 5) })} />
-                      <SelectField label="Category" value={selectedTask.category} onChange={(value) => updateWorkPlanTask(selectedTask.id, { category: value })} options={["General","Cleanup / Prep","Landscaping","Maintenance","Administration","Planning","Inspection","Vehicle Care","Boat / Dock"]} />
+                      <SelectField label="Category" value={selectedTask.category} onChange={(value) => updateWorkPlanTask(selectedTask.id, { category: value })} options={["General","Cleanup / Prep","Landscaping","Maintenance","Administration","Planning","Inspection","Garage","Pool & Spa","Vehicle Care","Boat / Dock"]} />
                       <SelectField label="Preferred day" value={selectedTask.preferredDay || "Auto"} onChange={(value) => updateWorkPlanTask(selectedTask.id, { preferredDay: value as WorkPlanDay | "Auto" })} options={["Auto", ...workPlanDays]} />
                       <Field label="Preferred time" type="time" value={selectedTask.fixedTime || ""} onChange={(value) => updateWorkPlanTask(selectedTask.id, { fixedTime: value })} />
                       <SelectField label="Season" value={selectedMeta.season || "Year-Round"} onChange={(value) => updateTaskDetails(selectedTask.id, { season: value as WorkSeason })} options={["Year-Round","Spring","Summer","Fall","Winter"]} />
@@ -38240,7 +38323,7 @@ ${notes.trim()}` : notes.trim(),
                   <option value="planner:addison">Addison Manager</option>
                   <option value="planner:analytics">Operations Analytics</option>
                   <option value="planner:tasks">Tasks</option>
-                  <option value="planner:vehicles">Vehicle Care</option>
+                  <option value="planner:vehicles">Garage</option>
                   <option value="planner:week">Plan Week</option>
                 </optgroup>
                 <optgroup label="Main">
@@ -38303,7 +38386,7 @@ ${notes.trim()}` : notes.trim(),
                             { id: "addison", label: "Addison Manager", view: "addison" as const },
                             { id: "analytics", label: "Operations Analytics", view: "analytics" as const },
                             { id: "tasks", label: "Tasks", view: "tasks" as const },
-                            { id: "vehicles", label: "Vehicle Care", view: "vehicles" as const },
+                            { id: "vehicles", label: "Garage", view: "vehicles" as const },
                             { id: "week", label: "Plan Week", view: "planner" as const },
                           ];
                           return (
@@ -38521,7 +38604,7 @@ ${notes.trim()}` : notes.trim(),
                               : tasksView === "route" ? "Smart Route"
                               : tasksView === "addison" ? "Addison Work Manager"
                               : tasksView === "analytics" ? "Operations Analytics"
-                              : tasksView === "vehicles" ? "Vehicle Care"
+                              : tasksView === "vehicles" ? "Garage"
                               : tasksView === "seasonal" ? "Seasonal Intelligence"
                               : tasksView === "planner" ? "Plan Week"
                               : "Tasks"
