@@ -8151,7 +8151,7 @@ export default function AtlasPage() {
       return;
     }
     setPhotoTimelineView("projects");
-    setSelectedPhotoTimelineProjectId("");
+    setSelectedPhotoProjectId("");
     setScreen("timeline");
   }
 
