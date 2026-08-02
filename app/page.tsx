@@ -7905,7 +7905,7 @@ export default function AtlasPage() {
       matches = index.filter((item) => item.title.toLowerCase().split(/\s+/).some((word) => commandWordDistance(word, needle) <= (needle.length > 6 ? 2 : 1)));
     }
 
-    const screenAffinity: Partial<Record<Screen, string[]>> = {
+    const screenAffinity: Partial<Record<AtlasScreen, string[]>> = {
       planner: ["task-"],
       history: ["wo-"],
       timeline: ["project-", "timeline-"],
