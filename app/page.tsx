@@ -16320,7 +16320,7 @@ export default function AtlasPage() {
         </section>
       );
       if (id === "routine") return null;
-      if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "11px 13px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ flex: 1, minWidth: 0, overflowX: "auto", whiteSpace: "nowrap", fontSize: 13, color: colors.text }}>{briefLines.map((line, index) => <span key={index} style={{ marginRight: 18 }}><span style={{ color: index === 2 && overdueWork.length ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div><button type="button" onClick={() => setScreen("assistant")} style={{ ...secondaryButtonStyle, width: "auto", flex: "0 0 auto", minHeight: 32, padding: "5px 9px" }}>Ask Atlas</button></div></section>;
+      if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "11px 13px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ flex: 1, minWidth: 0, overflowX: "auto", whiteSpace: "nowrap", fontSize: 13, color: colors.text }}>{briefLines.map((line, index) => <span key={index} style={{ marginRight: 18 }}><span style={{ color: index === 2 && overdueWork.length ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div></div></section>;
       if (id === "recent-activity") return <section style={{ ...cardStyle, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
           <div><div style={eyebrowStyle}>Live Operations Feed</div><h3 style={{ margin: "3px 0 0", color: colors.navy }}>What is happening across {activeProperty?.name || activePropertyId}</h3><p style={{ ...mutedSmallStyle, margin: "5px 0 0" }}>Work, requests, vendors, photos, and operational alerts in one place.</p></div>
@@ -36974,8 +36974,8 @@ export default function AtlasPage() {
                   flex: isMobile ? "0 0 auto" : "1 1 760px",
                   display: "grid",
                   gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "minmax(190px, .85fr) minmax(140px, .55fr) minmax(210px, .9fr) minmax(300px, 1.45fr)",
+                    ? "minmax(0, 1fr) auto"
+                    : "minmax(180px, .8fr) minmax(135px, .55fr) minmax(190px, .8fr) auto minmax(280px, 1.35fr)",
                   gap: isMobile ? 8 : 10,
                   alignItems: "stretch",
                 }}
@@ -37053,8 +37053,33 @@ export default function AtlasPage() {
                       onOpenParts={() => setScreen("parts")}
                     />
                   </div>
+                <button
+                  type="button"
+                  onClick={() => setDashboardAssistantOpen(true)}
+                  aria-label="Open Ask Atlas"
+                  title="Ask Atlas"
+                  style={{
+                    ...secondaryButtonStyle,
+                    width: "auto",
+                    minWidth: isMobile ? 44 : 104,
+                    minHeight: 40,
+                    margin: 0,
+                    padding: isMobile ? "7px 10px" : "7px 12px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 7,
+                    whiteSpace: "nowrap",
+                    borderColor: "rgba(255,255,255,.24)",
+                    background: "rgba(255,255,255,.12)",
+                    color: "#FFFFFF",
+                  }}
+                >
+                  <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>✦</span>
+                  {!isMobile ? <span>Ask Atlas</span> : null}
+                </button>
                 <div
-                    style={{ position: "relative", minWidth: 0 }}
+                    style={{ position: "relative", minWidth: 0, gridColumn: isMobile ? "1 / -1" : undefined }}
                     onBlur={() => {
                       window.setTimeout(() => {
                         setQuery("");
@@ -37140,31 +37165,7 @@ export default function AtlasPage() {
 
       {true ? (
         <>
-          <button
-            type="button"
-            onClick={() => setDashboardAssistantOpen(true)}
-            aria-label="Open Atlas AI Assistant"
-            title="Open Atlas AI Assistant"
-            style={{
-              position: "fixed",
-              right: isMobile ? 16 : 24,
-              bottom: isMobile ? 96 : 24,
-              zIndex: 120,
-              width: isMobile ? 54 : 58,
-              height: isMobile ? 54 : 58,
-              display: "grid",
-              placeItems: "center",
-              padding: 7,
-              borderRadius: 18,
-              border: `1px solid ${colors.gold2}`,
-              background: colors.navy,
-              color: "#FFFFFF",
-              boxShadow: "0 16px 34px rgba(7,27,47,0.28)",
-              cursor: "pointer",
-            }}
-          >
-            <AtlasMiniMark size={40} />
-          </button>
+
 
           {dashboardAssistantOpen ? (
             <div
