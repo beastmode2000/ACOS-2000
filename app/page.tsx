@@ -4276,6 +4276,13 @@ export default function AtlasPage() {
   const [voiceAssistantListening, setVoiceAssistantListening] = useState(false);
   const [voiceAssistantTranscript, setVoiceAssistantTranscript] = useState("");
   const [voiceAssistantReviewReady, setVoiceAssistantReviewReady] = useState(false);
+  const [voiceAssistantDraft, setVoiceAssistantDraft] = useState<{
+    kind: "task" | "work order" | "project";
+    title: string;
+    dueDate: string;
+    assignee: "Nick" | "Addison";
+    minutes: number;
+  } | null>(null);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [savedCommands, setSavedCommands] = useState<string[]>([]);
@@ -8423,6 +8430,7 @@ export default function AtlasPage() {
     setQuery("");
     setVoiceAssistantTranscript("");
     setVoiceAssistantReviewReady(false);
+    setVoiceAssistantDraft(null);
     voiceAssistantCancelledRef.current = false;
     if (!Recognition) {
       setVoiceAssistantListening(false);
@@ -8432,7 +8440,7 @@ export default function AtlasPage() {
     }
     const recognition = new Recognition();
     let latestTranscript = "";
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = "en-US";
     recognition.onresult = (event) => {
@@ -8447,7 +8455,24 @@ export default function AtlasPage() {
       setVoiceAssistantListening(false);
       if (!voiceAssistantCancelledRef.current) {
         setVoiceAssistantReviewReady(true);
-        if (latestTranscript) setQuery(latestTranscript);
+        if (latestTranscript) {
+          setQuery(latestTranscript);
+          const parsed = commandCreation(latestTranscript);
+          const fallbackTitle = latestTranscript
+            .replace(/^(?:please\s+)?(?:add|create|schedule|make)\s+(?:a\s+)?/i, "")
+            .replace(/^(?:task|work\s*order|project)\s+/i, "")
+            .replace(/\s+(?:for\s+)?(?:today|tomorrow|next week|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b.*$/i, "")
+            .replace(/\s+(?:assigned?\s+to|give\s+to)\s+addison\b.*$/i, "")
+            .replace(/\s+(?:for\s+)?\d+\s*(?:minutes?|mins?|hours?|hrs?)\b.*$/i, "")
+            .trim();
+          setVoiceAssistantDraft({
+            kind: parsed?.kind || (/work\s*order/i.test(latestTranscript) ? "work order" : /project/i.test(latestTranscript) ? "project" : "task"),
+            title: parsed?.title || fallbackTitle,
+            dueDate: parsed?.dueDate || spokenCommandDate(latestTranscript),
+            assignee: parsed?.assignee || (/\baddison\b/i.test(latestTranscript) ? "Addison" : "Nick"),
+            minutes: parsed?.minutes || 30,
+          });
+        }
       }
     };
     voiceRecognitionRef.current = recognition;
@@ -8467,7 +8492,35 @@ export default function AtlasPage() {
     setVoiceAssistantListening(false);
     setVoiceAssistantReviewReady(false);
     setVoiceAssistantTranscript("");
+    setVoiceAssistantDraft(null);
     setQuery("");
+  }
+
+  function saveVoiceAssistantDraft() {
+    const draft = voiceAssistantDraft;
+    if (!draft?.title.trim()) {
+      showSaveToast("Add a title before saving.", "warning");
+      return;
+    }
+    rememberSearch(voiceAssistantTranscript || `${draft.kind} ${draft.title}`);
+    closeCommandCenter();
+    if (draft.kind === "task") {
+      const taskId = addAtlasTask(draft.title.trim());
+      if (taskId) {
+        setWorkPlanTasks((current) => current.map((task) => task.id === taskId ? { ...task, minutes: Math.max(5, draft.minutes) } : task));
+        updateTaskDetails(taskId, { dueDate: draft.dueDate || todayISO(), assignee: draft.assignee });
+      }
+      setTasksView("tasks");
+      setScreen("planner");
+      showSaveToast("Task saved.");
+      return;
+    }
+    if (draft.kind === "work order") {
+      addWorkOrder({ title: draft.title.trim(), date: draft.dueDate, assignedTo: draft.assignee });
+      showSaveToast("Work order saved.");
+      return;
+    }
+    createProjectFromCommand(draft.title.trim());
   }
 
   function spokenCommandDate(value: string) {
@@ -8557,6 +8610,7 @@ export default function AtlasPage() {
     setVoiceAssistantListening(false);
     setVoiceAssistantReviewReady(false);
     setVoiceAssistantTranscript("");
+    setVoiceAssistantDraft(null);
     setCommandCenterOpen(false);
     setSearchOpen(false);
     setSearchActiveIndex(0);
@@ -36327,6 +36381,7 @@ ${notes.trim()}` : notes.trim(),
               <button type="button" onClick={() => openQuickCapture("task")}><span>✓</span>Task</button>
               <button type="button" onClick={() => openQuickCapture("work-order")}><span>🔧</span>Work Order</button>
               <button type="button" onClick={() => openQuickCapture("project")}><span>▣</span>Project</button>
+              <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Talk to Atlas</button>
             </div>
             <label className="atlas-quick-note-box">
               <span>Quick note</span>
@@ -36708,7 +36763,7 @@ ${notes.trim()}` : notes.trim(),
         .atlas-quick-capture-header small { display:block; margin-top:2px; color:#66788A; }
         .atlas-quick-capture-actions {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0,1fr));
+          grid-template-columns: repeat(3, minmax(0,1fr));
           gap: 7px;
         }
         .atlas-quick-capture-actions button {
@@ -36726,6 +36781,14 @@ ${notes.trim()}` : notes.trim(),
           cursor: pointer;
         }
         .atlas-quick-capture-actions button span { font-size: 18px; }
+        .atlas-quick-capture-actions .atlas-talk-action {
+          border-color: #CDAF54;
+          background: linear-gradient(145deg, #0B2947, #123D63);
+          color: #FFFFFF;
+          box-shadow: 0 7px 18px rgba(7,39,70,.16);
+        }
+        .atlas-quick-capture-actions .atlas-talk-action span { color: #E8C96A; }
+        .atlas-quick-capture-actions button:hover { border-color: #CDAF54; transform: translateY(-1px); }
         .atlas-quick-note-box { display:grid; gap:5px; color:#17354D; font-size:12px; font-weight:800; }
         .atlas-quick-note-box textarea { width:100%; min-height:76px !important; resize:vertical; border:1px solid #D7DEE5; border-radius:11px; padding:10px; }
         @media (max-width: 760px) {
@@ -38800,39 +38863,45 @@ ${notes.trim()}` : notes.trim(),
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <span aria-hidden="true" style={{ width: 13, height: 13, borderRadius: 999, flex: "0 0 auto", background: voiceAssistantListening ? "#D9473F" : "#2E8B68", boxShadow: voiceAssistantListening ? "0 0 0 5px rgba(217,71,63,.14)" : "none" }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <strong style={{ display: "block", color: colors.navy, fontSize: 16 }}>{voiceAssistantListening ? "Atlas is listening" : "Listening stopped — review before adding"}</strong>
-                        <span style={mutedSmallStyle}>{voiceAssistantListening ? "Speak naturally. Nothing will be saved until you tap Add." : "Atlas has not saved or added anything yet."}</span>
+                        <strong style={{ display: "block", color: colors.navy, fontSize: 16 }}>{voiceAssistantListening ? "Atlas is listening" : voiceAssistantDraft ? `Review ${voiceAssistantDraft.kind}` : "Listening stopped"}</strong>
+                        <span style={mutedSmallStyle}>{voiceAssistantListening ? "Speak naturally. Atlas will prepare an editable record." : voiceAssistantDraft ? "Check the details, make any changes, then save." : "Atlas did not create anything."}</span>
                       </div>
                       {voiceAssistantListening ? <button type="button" onClick={stopVoiceAssistant} style={{ ...goldButtonStyle, background: "#D9473F", whiteSpace: "nowrap" }}>Stop Listening</button> : null}
                     </div>
 
-                    <div aria-live="polite" style={{ minHeight: 46, padding: "11px 12px", borderRadius: 10, border: `1px solid ${voiceAssistantListening ? "#E7C86D" : colors.line}`, background: "#FFFFFF", color: voiceAssistantTranscript ? colors.navy : colors.muted, fontSize: 15, fontWeight: voiceAssistantTranscript ? 750 : 600 }}>
+                    <div aria-live="polite" style={{ minHeight: voiceAssistantListening ? 46 : 0, padding: voiceAssistantListening ? "11px 12px" : "7px 10px", borderRadius: 10, border: `1px solid ${voiceAssistantListening ? "#E7C86D" : colors.line}`, background: "#FFFFFF", color: voiceAssistantTranscript ? colors.navy : colors.muted, fontSize: voiceAssistantListening ? 15 : 12, fontWeight: voiceAssistantListening ? 750 : 600 }}>
                       {voiceAssistantTranscript || (voiceAssistantListening ? "Waiting for you to speak…" : "Atlas did not hear a request.")}
                     </div>
 
-                    {!voiceAssistantListening ? (
+                    {!voiceAssistantListening && voiceAssistantDraft ? (
+                      <div style={{ display: "grid", gap: 10, padding: 12, borderRadius: 12, border: `1px solid ${colors.line}`, background: "#FFFFFF" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "150px minmax(0,1fr)", gap: 10 }}>
+                          <label style={{ display: "grid", gap: 5 }}><span style={mutedSmallStyle}>Record type</span><select value={voiceAssistantDraft.kind} onChange={(event) => setVoiceAssistantDraft((current) => current ? { ...current, kind: event.currentTarget.value as "task" | "work order" | "project" } : current)} style={inputStyle}><option value="task">Task</option><option value="work order">Work Order</option><option value="project">Project</option></select></label>
+                          <label style={{ display: "grid", gap: 5 }}><span style={mutedSmallStyle}>Title</span><input autoFocus value={voiceAssistantDraft.title} onChange={(event) => setVoiceAssistantDraft((current) => current ? { ...current, title: event.currentTarget.value } : current)} style={inputStyle} /></label>
+                        </div>
+                        {voiceAssistantDraft.kind !== "project" ? (
+                          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
+                            <label style={{ display: "grid", gap: 5 }}><span style={mutedSmallStyle}>Date</span><input type="date" value={voiceAssistantDraft.dueDate} onChange={(event) => setVoiceAssistantDraft((current) => current ? { ...current, dueDate: event.currentTarget.value } : current)} style={inputStyle} /></label>
+                            <label style={{ display: "grid", gap: 5 }}><span style={mutedSmallStyle}>Assigned to</span><select value={voiceAssistantDraft.assignee} onChange={(event) => setVoiceAssistantDraft((current) => current ? { ...current, assignee: event.currentTarget.value as "Nick" | "Addison" } : current)} style={inputStyle}><option value="Nick">Nick</option><option value="Addison">Addison</option></select></label>
+                            {voiceAssistantDraft.kind === "task" ? <label style={{ display: "grid", gap: 5 }}><span style={mutedSmallStyle}>Minutes</span><input type="number" min={5} step={5} value={voiceAssistantDraft.minutes} onChange={(event) => setVoiceAssistantDraft((current) => current ? { ...current, minutes: Math.max(5, Number(event.currentTarget.value) || 5) } : current)} style={inputStyle} /></label> : null}
+                          </div>
+                        ) : null}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end", paddingTop: 2 }}>
+                          <button type="button" onClick={cancelVoiceAssistant} style={secondaryButtonStyle}>Cancel</button>
+                          <button type="button" onClick={startVoiceAssistant} style={secondaryButtonStyle}>🎤 Start Over</button>
+                          <button type="button" onClick={saveVoiceAssistantDraft} style={goldButtonStyle}>Save {voiceAssistantDraft.kind === "task" ? "Task" : voiceAssistantDraft.kind === "work order" ? "Work Order" : "Project"}</button>
+                        </div>
+                      </div>
+                    ) : !voiceAssistantListening ? (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
                         <button type="button" onClick={cancelVoiceAssistant} style={secondaryButtonStyle}>Cancel</button>
                         <button type="button" onClick={startVoiceAssistant} style={secondaryButtonStyle}>🎤 Try Again</button>
-                        {commandCreation(query) ? (
-                          <button type="button" onClick={() => runCommandCreation()} style={goldButtonStyle}>
-                            {commandCreation(query)!.kind === "task" ? "Add Task" : commandCreation(query)!.kind === "work order" ? "Add Work Order" : "Add Project"}
-                          </button>
-                        ) : newRecordCommand(query) ? (
-                          <button type="button" onClick={() => openNewRecordFromCommand(newRecordCommand(query)!)} style={goldButtonStyle}>
-                            Open New {newRecordCommand(query) === "task" ? "Task" : newRecordCommand(query) === "work order" ? "Work Order" : "Project"}
-                          </button>
-                        ) : navigationCommand(query) ? (
-                          <button type="button" onClick={() => runNavigationCommand()} style={goldButtonStyle}>Open {navigationCommand(query)!.label}</button>
-                        ) : (
-                          <button type="button" onClick={() => setVoiceAssistantReviewReady(false)} style={goldButtonStyle}>Show Results</button>
-                        )}
                       </div>
                     ) : null}
                   </div>
                 ) : null}
 
-                <div style={{ overflowY: "auto", overscrollBehavior: "contain" }}>
+                <div style={{ overflowY: "auto", overscrollBehavior: "contain", display: voiceAssistantReviewReady && voiceAssistantDraft ? "none" : "block" }}>
                   {query.trim() ? (
                     <>
                       {navigationCommand(query) ? <button type="button" onClick={() => runNavigationCommand()} style={{ ...searchResultStyle, padding: "13px 16px", background: "#EEF6FF", borderBottom: `1px solid ${colors.line}` }}><span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><strong>Open {navigationCommand(query)!.label}</strong><span style={searchTypeBadgeStyle}>GO</span></span><span style={mutedSmallStyle}>Context-aware Atlas command</span></button> : null}
