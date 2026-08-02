@@ -5222,6 +5222,21 @@ export default function AtlasPage() {
   useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
   useEffect(() => { saveStoredArray("atlas-vehicle-care-v1", vehicleCare); }, [vehicleCare]);
   useEffect(() => { saveStoredArray("atlas-seasonal-work-v1", seasonalItems); }, [seasonalItems]);
+
+  function updateVehicleCareRecord(
+    vehicleId: string,
+    patch: Partial<AtlasVehicleCare>,
+  ) {
+    setVehicleCare((current) => {
+      const next = current.map((item) =>
+        item.id === vehicleId ? { ...item, ...patch } : item,
+      );
+      // Save the exact edited value immediately. This prevents a first edit
+      // made just after opening Atlas from being replaced by delayed startup work.
+      saveStoredArray("atlas-vehicle-care-v1", next);
+      return next;
+    });
+  }
   useEffect(() => { saveStoredArray("atlas-day-sessions-v1", daySessions); }, [daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -14125,7 +14140,7 @@ export default function AtlasPage() {
 
   function renderVehicleCare() {
     const sorted = [...vehicleCare].sort((a,b) => vehicleDueScore(b) - vehicleDueScore(a));
-    return <div style={{ display: "grid", gap: 12 }}><div style={noticeStyle}>Mark which vehicles are onsite. Atlas prioritizes the onsite vehicle that has gone longest without cleaning instead of creating eight overdue weekly tasks.</div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>{sorted.map((vehicle) => <div key={vehicle.id} style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{vehicle.name}</strong><span style={badgeStyle(vehicle.onsite ? "Online" : "Offline")}>{vehicle.onsite ? "Onsite" : "Away"}</span></div><small style={{ ...mutedSmallStyle, display: "block", margin: "6px 0 10px" }}>{vehicle.lastCleaned ? `Last cleaned ${formatDate(vehicle.lastCleaned)} · ${daysSince(vehicle.lastCleaned)} days ago` : "No cleaning date recorded"}</small><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><label style={fieldLabelStyle}>Onsite<select value={vehicle.onsite ? "Yes" : "No"} onChange={(e) => setVehicleCare((current) => current.map((item) => item.id === vehicle.id ? { ...item, onsite: e.currentTarget.value === "Yes" } : item))} style={inputStyle}><option>Yes</option><option>No</option></select></label><label style={fieldLabelStyle}>Last cleaned<input type="date" value={vehicle.lastCleaned} onChange={(e) => setVehicleCare((current) => current.map((item) => item.id === vehicle.id ? { ...item, lastCleaned: e.currentTarget.value } : item))} style={inputStyle}/></label></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><button type="button" disabled={!vehicle.onsite} onClick={() => createVehicleCleaningTask(vehicle)} style={goldButtonStyle}>Add Cleaning Task</button><button type="button" onClick={() => setVehicleCare((current) => current.map((item) => item.id === vehicle.id ? { ...item, lastCleaned: todayISO() } : item))} style={secondaryButtonStyle}>Mark Cleaned</button></div></div>)}</div></div>;
+    return <div style={{ display: "grid", gap: 12 }}><div style={noticeStyle}>Mark which vehicles are onsite. Atlas prioritizes the onsite vehicle that has gone longest without cleaning instead of creating eight overdue weekly tasks.</div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>{sorted.map((vehicle) => <div key={vehicle.id} style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{vehicle.name}</strong><span style={badgeStyle(vehicle.onsite ? "Online" : "Offline")}>{vehicle.onsite ? "Onsite" : "Away"}</span></div><small style={{ ...mutedSmallStyle, display: "block", margin: "6px 0 10px" }}>{vehicle.lastCleaned ? `Last cleaned ${formatDate(vehicle.lastCleaned)} · ${daysSince(vehicle.lastCleaned)} days ago` : "No cleaning date recorded"}</small><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><label style={fieldLabelStyle}>Onsite<select value={vehicle.onsite ? "Yes" : "No"} onChange={(e) => updateVehicleCareRecord(vehicle.id, { onsite: e.currentTarget.value === "Yes" })} style={inputStyle}><option>Yes</option><option>No</option></select></label><label style={fieldLabelStyle}>Last cleaned<input type="date" value={vehicle.lastCleaned} onChange={(e) => updateVehicleCareRecord(vehicle.id, { lastCleaned: e.currentTarget.value })} style={inputStyle}/></label></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><button type="button" disabled={!vehicle.onsite} onClick={() => createVehicleCleaningTask(vehicle)} style={goldButtonStyle}>Add Cleaning Task</button><button type="button" onClick={() => updateVehicleCareRecord(vehicle.id, { lastCleaned: todayISO() })} style={secondaryButtonStyle}>Mark Cleaned</button></div></div>)}</div></div>;
   }
 
   function renderSeasonalWork() {
