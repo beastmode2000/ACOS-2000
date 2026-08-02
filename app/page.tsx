@@ -441,7 +441,7 @@ type DashboardWidgetDropTarget = {
 const dashboardWidgetDefinitions: Record<DashboardWidgetId, { title: string; defaultSize: DashboardWidgetSize }> = {
   hero: { title: "Command Center", defaultSize: "full" },
   "estate-health": { title: "Estate Health", defaultSize: "large" },
-  "today-upcoming": { title: "Today & Upcoming", defaultSize: "large" },
+  "today-upcoming": { title: "Mission Control", defaultSize: "large" },
   "property-status": { title: "Property Status", defaultSize: "large" },
   routine: { title: "Routine", defaultSize: "medium" },
   "atlas-brief": { title: "Atlas Brief", defaultSize: "medium" },
@@ -16104,19 +16104,23 @@ export default function AtlasPage() {
       if (id === "today-upcoming") return (
         <section className="atlas-today-primary" style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-            <div><div style={eyebrowStyle}>Today & Upcoming</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>A guided workday, not just a list</h2></div>
+            <div><div style={eyebrowStyle}>Mission Control</div><h2 style={{ margin: "3px 0 0", color: colors.navy }}>Today first. Everything else stays compact.</h2><small style={{ ...mutedSmallStyle, display: "block", marginTop: 3 }}>{todayFocus.title} · {dayName}</small></div>
             <button type="button" onClick={() => setScreen("calendar")} style={secondaryButtonStyle}>Calendar</button>
           </div>
 
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
-            <div style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10, background: "#FFFFFF" }}><small style={fieldLabelStyle}>PLANNED</small><strong style={{ display: "block", marginTop: 3, color: colors.navy }}>{formatWorkload(plannedMinutes)}</strong><span style={mutedSmallStyle}>{dashboardTodayTasks.length} tasks · {guidedTodaysWork.length} work orders</span></div>
-            <div style={{ border: `1px solid ${remainingCapacityMinutes < 0 ? "#FACACA" : colors.line}`, borderRadius: 11, padding: 10, background: remainingCapacityMinutes < 0 ? "#FFF8F8" : "#FFFFFF" }}><small style={fieldLabelStyle}>CAPACITY</small><strong style={{ display: "block", marginTop: 3, color: remainingCapacityMinutes < 0 ? colors.red : colors.green }}>{remainingCapacityMinutes >= 0 ? `${formatWorkload(remainingCapacityMinutes)} open` : `${formatWorkload(-remainingCapacityMinutes)} over`}</strong><span style={mutedSmallStyle}>Based on a {Math.round(targetDayMinutes / 60 * 10) / 10}-hour day</span></div>
-            <div style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10, background: "#FFFFFF" }}><small style={fieldLabelStyle}>DELEGATION</small><strong style={{ display: "block", marginTop: 3, color: colors.navy }}>{addisonReadyWork.length + addisonReadyRoutineItems.length} Addison-ready</strong><span style={mutedSmallStyle}>Review before assigning</span></div>
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", gap: 7 }}>
+            {[
+              { label: "Must do", value: mustDoTasks.length + overdueWork.length, detail: "Urgent or overdue" },
+              { label: "Should do", value: shouldDoTasks.length, detail: "Planned today" },
+              { label: "Waiting", value: waitingTodayTasks.length, detail: "Blocked or waiting" },
+              { label: "Delegated", value: delegatedTodayTasks.length, detail: "Assigned to Addison" },
+              { label: "Capacity", value: remainingCapacityMinutes >= 0 ? formatWorkload(remainingCapacityMinutes) : `-${formatWorkload(-remainingCapacityMinutes)}`, detail: remainingCapacityMinutes >= 0 ? "Open time" : "Over plan" },
+            ].map((metric) => <button key={metric.label} type="button" onClick={() => metric.label === "Delegated" ? setScreen("team") : metric.label === "Waiting" ? (setTasksView("intelligence"), setScreen("planner")) : setScreen("planner")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: "8px 9px", background: "#FFFFFF", textAlign: "left", cursor: "pointer", minWidth: 0 }}><small style={fieldLabelStyle}>{metric.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 2, color: colors.navy, fontSize: 17 }}>{metric.value}</strong><span style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{metric.detail}</span></button>)}
           </div>
 
-          {smartDaySuggestions.length ? <details open style={{ marginTop: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFDF7", padding: "9px 11px" }}><summary style={{ cursor: "pointer", fontWeight: 950, color: colors.navy }}>Atlas suggestions · {smartDaySuggestions.length}</summary><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{smartDaySuggestions.slice(0,4).map((suggestion) => <div key={suggestion.title} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", borderTop: `1px solid ${colors.line}`, paddingTop: 7 }}><span><strong style={{ display: "block", fontSize: 13 }}>{suggestion.title}</strong><small style={mutedSmallStyle}>{suggestion.detail}</small></span><button type="button" onClick={suggestion.action} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>{suggestion.label}</button></div>)}</div></details> : null}
+          {smartDaySuggestions.length ? <details style={{ marginTop: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFDF7", padding: "9px 11px" }}><summary style={{ cursor: "pointer", fontWeight: 950, color: colors.navy }}>Atlas suggestions · {smartDaySuggestions.length}</summary><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{smartDaySuggestions.slice(0,4).map((suggestion) => <div key={suggestion.title} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", borderTop: `1px solid ${colors.line}`, paddingTop: 7 }}><span><strong style={{ display: "block", fontSize: 13 }}>{suggestion.title}</strong><small style={mutedSmallStyle}>{suggestion.detail}</small></span><button type="button" onClick={suggestion.action} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>{suggestion.label}</button></div>)}</div></details> : null}
 
-          <div style={{ marginTop: 12, border: `1px solid #D7E3EC`, borderRadius: 12, background: "#F7FAFC", padding: "10px 12px" }}>
+          <details style={{ marginTop: 10, border: `1px solid #D7E3EC`, borderRadius: 12, background: "#F7FAFC", padding: "9px 11px" }}><summary style={{ cursor: "pointer", fontWeight: 950, color: colors.navy }}>Today’s focus · {todayFocus.title}</summary><div style={{ marginTop: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ ...fieldLabelStyle, color: colors.gold }}>TODAY’S FOCUS · {dayName.toUpperCase()}</div>
@@ -16134,9 +16138,9 @@ export default function AtlasPage() {
                 </div>;
               })}
             </div>
-          </div>
+          </div></details>
 
-          <details open style={{ marginTop: 12, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: "10px 12px" }}>
+          <details style={{ marginTop: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: "9px 11px" }}>
             <summary style={{ cursor: "pointer", fontWeight: 950, color: colors.navy3 }}>Today’s Routine <span style={{ color: colors.muted, fontWeight: 800 }}>· click to open checklist</span></summary>
             <div style={{ marginTop: 10, paddingLeft: isMobile ? 0 : 14 }}><AtlasRoutines mode="dashboard" isMobile={isMobile} onOpenManager={() => setScreen("routines")} /></div>
           </details>
@@ -16150,7 +16154,7 @@ export default function AtlasPage() {
 
           <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>TODAY'S PRIORITY QUEUE</div></div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 8 }}>
-            {[{ label: "Must Do", tasks: mustDoTasks, note: "Urgent, overdue, blocked, or high priority" }, { label: "Should Do", tasks: shouldDoTasks, note: "Important work planned for today" }, { label: "If Time Allows", tasks: ifTimeTasks, note: "Flexible work that can move" }].map((lane) => <div key={lane.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}><strong style={{ display: "block", color: colors.navy }}>{lane.label} · {lane.tasks.length}</strong><small style={mutedSmallStyle}>{lane.note}</small><div style={{ display: "grid", gap: 6, marginTop: 8 }}>{lane.tasks.slice(0, 4).map((task) => <button key={`${lane.label}-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", fontSize: 13 }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {taskDetails(task.id).assignee}</small></button>)}{!lane.tasks.length ? <small style={{ ...mutedSmallStyle, paddingTop: 5 }}>Nothing here.</small> : null}</div></div>)}
+            {[{ label: "Must Do", tasks: mustDoTasks, note: "Urgent, overdue, blocked, or high priority" }, { label: "Should Do", tasks: shouldDoTasks, note: "Important work planned for today" }, { label: "If Time Allows", tasks: ifTimeTasks, note: "Flexible work that can move" }].map((lane) => <div key={lane.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}><strong style={{ display: "block", color: colors.navy }}>{lane.label} · {lane.tasks.length}</strong><small style={mutedSmallStyle}>{lane.note}</small><div style={{ display: "grid", gap: 6, marginTop: 8 }}>{lane.tasks.slice(0, 3).map((task) => <button key={`${lane.label}-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", fontSize: 13 }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {taskDetails(task.id).assignee}</small></button>)}{!lane.tasks.length ? <small style={{ ...mutedSmallStyle, paddingTop: 5 }}>Nothing here.</small> : null}</div></div>)}
           </div>
           {(delegatedTodayTasks.length || waitingTodayTasks.length) ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}><button type="button" onClick={() => { setTasksView("addison"); setScreen("planner"); }} style={secondaryButtonStyle}>Delegated · {delegatedTodayTasks.length}</button><button type="button" onClick={() => { setTasksView("intelligence"); setScreen("planner"); }} style={secondaryButtonStyle}>Waiting / Blocked · {waitingTodayTasks.length}</button></div> : null}
 
