@@ -4097,6 +4097,85 @@ export default function AtlasPage() {
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const sectionNames = new Set([
+      "overview",
+      "notes",
+      "photos",
+      "documents",
+      "timeline",
+      "related",
+      "related records",
+    ]);
+
+    const decorateRecordPanels = () => {
+      document
+        .querySelectorAll<HTMLElement>(".atlas-record-detail-content")
+        .forEach((panel, panelIndex) => {
+          const headings = Array.from(
+            panel.querySelectorAll<HTMLElement>("h2, h3, details > summary"),
+          ).filter((heading) =>
+            sectionNames.has(String(heading.textContent || "").trim().toLowerCase()),
+          );
+
+          headings.forEach((heading, index) => {
+            const label = String(heading.textContent || "").trim();
+            const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+            const section = heading.closest<HTMLElement>("section, details") || heading.parentElement;
+            if (!section) return;
+            section.dataset.atlasRecordSection = slug;
+            section.id = `atlas-record-${panelIndex}-${slug}-${index}`;
+          });
+
+          const sections = Array.from(
+            panel.querySelectorAll<HTMLElement>("[data-atlas-record-section]"),
+          );
+          const existingNav = panel.querySelector<HTMLElement>(":scope > .atlas-record-section-nav");
+
+          if (sections.length < 2) {
+            existingNav?.remove();
+            return;
+          }
+
+          const signature = sections
+            .map((section) => section.dataset.atlasRecordSection || "")
+            .join("|");
+          if (existingNav?.dataset.signature === signature) return;
+          existingNav?.remove();
+
+          const nav = document.createElement("nav");
+          nav.className = "atlas-record-section-nav";
+          nav.dataset.signature = signature;
+          nav.setAttribute("aria-label", "Record sections");
+
+          sections.forEach((section) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            const raw = section.dataset.atlasRecordSection || "section";
+            button.textContent = raw
+              .split("-")
+              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(" ");
+            button.addEventListener("click", () => {
+              section.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+            nav.appendChild(button);
+          });
+
+          panel.prepend(nav);
+        });
+    };
+
+    decorateRecordPanels();
+    const observer = new MutationObserver(() => {
+      window.requestAnimationFrame(decorateRecordPanels);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [screen]);
+
+  useEffect(() => {
     try {
       setSidebarCollapsed(window.localStorage.getItem("atlas-sidebar-collapsed") === "true");
       setMoreToolsOpen(window.localStorage.getItem("atlas-more-tools-open") === "true");
@@ -34645,6 +34724,59 @@ export default function AtlasPage() {
         .atlas-record-detail-content details > summary {
           padding-top: 8px !important;
           padding-bottom: 8px !important;
+        }
+        .atlas-record-section-nav {
+          position: sticky;
+          top: -12px;
+          z-index: 8;
+          display: flex;
+          gap: 5px;
+          overflow-x: auto;
+          margin: -12px -12px 10px;
+          padding: 8px 12px;
+          border-bottom: 1px solid #D8E0E8;
+          background: rgba(255,255,255,.97);
+          backdrop-filter: blur(8px);
+          scrollbar-width: none;
+        }
+        .atlas-record-section-nav::-webkit-scrollbar {
+          display: none;
+        }
+        .atlas-record-section-nav button {
+          flex: 0 0 auto;
+          min-height: 30px !important;
+          padding: 5px 9px !important;
+          border: 1px solid #D4DDE6;
+          border-radius: 999px;
+          background: #F7F9FB;
+          color: #17324D;
+          font-size: 12px;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+        .atlas-record-section-nav button:hover {
+          border-color: #C99A3D;
+          background: #FFF9EB;
+        }
+        .atlas-record-detail-content [data-atlas-record-section] {
+          scroll-margin-top: 56px;
+          margin-top: 10px !important;
+          padding-top: 10px !important;
+          border-top: 1px solid #E1E7ED;
+        }
+        .atlas-record-detail-content [data-atlas-record-section]:first-of-type {
+          margin-top: 0 !important;
+        }
+        .atlas-record-detail-content [data-atlas-record-section] > h2,
+        .atlas-record-detail-content [data-atlas-record-section] > h3 {
+          margin-bottom: 8px !important;
+          color: #102A43;
+          font-size: 14px !important;
+          letter-spacing: .01em;
+        }
+        .atlas-record-detail-content [data-atlas-record-section] details,
+        .atlas-record-detail-content [data-atlas-record-section] section {
+          margin-bottom: 8px !important;
         }
         @media (max-width: 760px) {
           .atlas-record-detail-content--mobile {
