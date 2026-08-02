@@ -38803,7 +38803,7 @@ ${notes.trim()}` : notes.trim(),
                         <strong style={{ display: "block", color: colors.navy, fontSize: 16 }}>{voiceAssistantListening ? "Atlas is listening" : "Listening stopped — review before adding"}</strong>
                         <span style={mutedSmallStyle}>{voiceAssistantListening ? "Speak naturally. Nothing will be saved until you tap Add." : "Atlas has not saved or added anything yet."}</span>
                       </div>
-                      {voiceAssistantListening ? <button type="button" onClick={stopVoiceAssistant} style={{ ...primaryButtonStyle, background: "#D9473F", whiteSpace: "nowrap" }}>Stop Listening</button> : null}
+                      {voiceAssistantListening ? <button type="button" onClick={stopVoiceAssistant} style={{ ...goldButtonStyle, background: "#D9473F", whiteSpace: "nowrap" }}>Stop Listening</button> : null}
                     </div>
 
                     <div aria-live="polite" style={{ minHeight: 46, padding: "11px 12px", borderRadius: 10, border: `1px solid ${voiceAssistantListening ? "#E7C86D" : colors.line}`, background: "#FFFFFF", color: voiceAssistantTranscript ? colors.navy : colors.muted, fontSize: 15, fontWeight: voiceAssistantTranscript ? 750 : 600 }}>
@@ -38815,17 +38815,17 @@ ${notes.trim()}` : notes.trim(),
                         <button type="button" onClick={cancelVoiceAssistant} style={secondaryButtonStyle}>Cancel</button>
                         <button type="button" onClick={startVoiceAssistant} style={secondaryButtonStyle}>🎤 Try Again</button>
                         {commandCreation(query) ? (
-                          <button type="button" onClick={() => runCommandCreation()} style={primaryButtonStyle}>
+                          <button type="button" onClick={() => runCommandCreation()} style={goldButtonStyle}>
                             {commandCreation(query)!.kind === "task" ? "Add Task" : commandCreation(query)!.kind === "work order" ? "Add Work Order" : "Add Project"}
                           </button>
                         ) : newRecordCommand(query) ? (
-                          <button type="button" onClick={() => openNewRecordFromCommand(newRecordCommand(query)!)} style={primaryButtonStyle}>
+                          <button type="button" onClick={() => openNewRecordFromCommand(newRecordCommand(query)!)} style={goldButtonStyle}>
                             Open New {newRecordCommand(query) === "task" ? "Task" : newRecordCommand(query) === "work order" ? "Work Order" : "Project"}
                           </button>
                         ) : navigationCommand(query) ? (
-                          <button type="button" onClick={() => runNavigationCommand()} style={primaryButtonStyle}>Open {navigationCommand(query)!.label}</button>
+                          <button type="button" onClick={() => runNavigationCommand()} style={goldButtonStyle}>Open {navigationCommand(query)!.label}</button>
                         ) : (
-                          <button type="button" onClick={() => setVoiceAssistantReviewReady(false)} style={primaryButtonStyle}>Show Results</button>
+                          <button type="button" onClick={() => setVoiceAssistantReviewReady(false)} style={goldButtonStyle}>Show Results</button>
                         )}
                       </div>
                     ) : null}
