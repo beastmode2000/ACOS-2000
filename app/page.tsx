@@ -5223,12 +5223,13 @@ export default function AtlasPage() {
       return {};
     }
   });
-  const [tasksView, setTasksView] = useState<"tasks" | "build" | "route" | "addison" | "analytics" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
+  const [tasksView, setTasksView] = useState<"tasks" | "walk" | "build" | "route" | "addison" | "analytics" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>("today");
   const [taskSearch, setTaskSearch] = useState("");
   const [taskFocusMode, setTaskFocusMode] = useState(false);
+  const [walkVoiceListening, setWalkVoiceListening] = useState(false);
   const [backlogItems, setBacklogItems] = useState<AtlasBacklogItem[]>(() => readStoredArray<AtlasBacklogItem>(["atlas-backlog-v1"], []));
   const [newBacklogTitle, setNewBacklogTitle] = useState("");
   const [templateDates, setTemplateDates] = useState<Record<string, string>>(() =>
@@ -15172,6 +15173,66 @@ ${notes.trim()}` : notes.trim(),
     const focusTask = focusTasks[focusIndex] || focusTasks[0];
     const focusMeta = focusTask ? taskDetails(focusTask.id) : null;
 
+    const walkNext = (currentTask: WorkPlanTask) => {
+      const currentIndex = focusTasks.findIndex((task) => task.id === currentTask.id);
+      const next = focusTasks[currentIndex + 1] || focusTasks.find((task) => task.id !== currentTask.id);
+      setSelectedTaskId(next?.id || "");
+    };
+    const addWalkPhoto = async (task: WorkPlanTask, files: FileList | null) => {
+      if (!files?.length) return;
+      try {
+        const uploaded = await Promise.all(Array.from(files).filter((file) => file.type.startsWith("image/")).map(fileToUploadedRecord));
+        updateTaskDetails(task.id, { photos: [...(taskDetails(task.id).photos || []), ...uploaded] });
+        showSaveToast("Photo added to task.");
+      } catch {
+        showSaveToast("Atlas could not add that photo.", "warning");
+      }
+    };
+    const addWalkVoiceNote = (task: WorkPlanTask) => {
+      type SpeechRecognitionInstance = { continuous: boolean; interimResults: boolean; lang: string; start: () => void; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
+      type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+      const speechWindow = window as unknown as { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
+      const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+      if (!Recognition) {
+        const note = window.prompt("Voice capture is unavailable here. Type the field note instead:", "");
+        if (note?.trim()) updateTaskDetails(task.id, { notes: `${taskDetails(task.id).notes ? `${taskDetails(task.id).notes}\n` : ""}${note.trim()} — ${new Date().toLocaleString()}` });
+        return;
+      }
+      const recognition = new Recognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+      recognition.onresult = (event) => {
+        const transcript = event.results[0]?.[0]?.transcript?.trim();
+        if (transcript) updateTaskDetails(task.id, { notes: `${taskDetails(task.id).notes ? `${taskDetails(task.id).notes}\n` : ""}${transcript} — ${new Date().toLocaleString()}` });
+        showSaveToast(transcript ? "Voice note added." : "No voice note recorded.");
+      };
+      recognition.onerror = () => showSaveToast("Atlas could not record that voice note.", "warning");
+      recognition.onend = () => setWalkVoiceListening(false);
+      setWalkVoiceListening(true);
+      recognition.start();
+    };
+    const flagWalkProblem = (task: WorkPlanTask) => {
+      const meta = taskDetails(task.id);
+      const problem = window.prompt("What is the problem?", meta.problemFlag || "");
+      if (problem === null) return;
+      updateTaskDetails(task.id, { status: problem.trim() ? "Blocked" : "Open", problemFlag: problem.trim(), notes: problem.trim() ? `${meta.notes ? `${meta.notes}\n` : ""}PROBLEM: ${problem.trim()} — ${new Date().toLocaleString()}` : meta.notes });
+      if (problem.trim()) walkNext(task);
+    };
+    const renderWalkMode = () => {
+      if (!focusTask || !focusMeta) return <section style={{ ...cardStyle, minHeight: "65vh", display: "grid", placeItems: "center", textAlign: "center" }}><div><div style={{ fontSize: 52 }}>✓</div><h2 style={{ color: colors.navy }}>All caught up</h2><p style={mutedSmallStyle}>No open work is due right now.</p><button type="button" onClick={() => setTasksView("tasks")} style={goldButtonStyle}>Back to Tasks</button></div></section>;
+      const nearby = focusTasks.filter((task) => task.id !== focusTask.id && task.locationId === focusTask.locationId).slice(0, 3);
+      return <section style={{ minHeight: "72vh", borderRadius: 20, padding: isMobile ? 16 : 24, background: "linear-gradient(155deg,#FFFDF2 0%,#FFFFFF 58%,#F3F8FC 100%)", border: `2px solid ${colors.gold}`, boxShadow: "0 18px 50px rgba(8,28,51,.15)", display: "grid", alignContent: "start", gap: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><div style={{ ...eyebrowStyle, color: colors.navy }}>WALK MODE · {focusIndex + 1} OF {focusTasks.length}</div><small style={{ color: colors.muted }}>Outdoor field view</small></div><button type="button" onClick={() => setTasksView("tasks")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 44 }}>Exit</button></div>
+        <div style={{ borderRadius: 18, background: colors.navy, color: "#FFFFFF", padding: isMobile ? 18 : 25 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}><span style={{ padding: "5px 9px", borderRadius: 999, background: colors.gold, color: colors.navy, fontWeight: 900, fontSize: 12 }}>{focusTask.priority}</span><strong style={{ fontSize: 15 }}>{minutesLabel(focusTask.minutes)}</strong></div><h1 style={{ margin: "18px 0 8px", fontSize: isMobile ? 31 : 40, lineHeight: 1.08, color: "#FFFFFF" }}>{focusTask.title}</h1><div style={{ fontSize: 17, fontWeight: 800, color: colors.gold2 }}>{plannerLocationName(focusTask.locationId)}</div>{focusMeta.instructions || focusTask.notes || focusMeta.notes ? <p style={{ margin: "15px 0 0", fontSize: 16, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{focusMeta.instructions || focusTask.notes || focusMeta.notes}</p> : null}</div>
+        {focusMeta.problemFlag ? <div style={{ ...noticeStyle, border: "2px solid #D83737", background: "#FFF0F0", color: "#8A1111", fontSize: 15 }}><strong>Problem:</strong> {focusMeta.problemFlag}</div> : null}
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr 1fr", gap: 10 }}><button type="button" onClick={() => { const task = focusTask; walkNext(task); completeAtlasTask(task); }} style={{ ...goldButtonStyle, minHeight: 68, fontSize: 20 }}>✓ Complete</button><button type="button" onClick={() => { const task = focusTask; walkNext(task); task.recurring ? skipRecurringTask(task) : moveAtlasTaskToTomorrow(task); }} style={{ ...secondaryButtonStyle, minHeight: 68, fontSize: 18, background: "#FFFFFF" }}>Skip</button><button type="button" onClick={() => flagWalkProblem(focusTask)} style={{ ...secondaryButtonStyle, minHeight: 68, fontSize: 18, color: "#A51E1E", borderColor: "#D83737", background: "#FFFFFF" }}>Problem</button></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}><label style={{ ...secondaryButtonStyle, minHeight: 58, fontSize: 16, background: "#FFFFFF", cursor: "pointer" }}>📷 Photo<input type="file" accept="image/*" capture="environment" onChange={(event) => { void addWalkPhoto(focusTask, event.currentTarget.files); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label><button type="button" onClick={() => addWalkVoiceNote(focusTask)} disabled={walkVoiceListening} style={{ ...secondaryButtonStyle, minHeight: 58, fontSize: 16, background: walkVoiceListening ? colors.gold2 : "#FFFFFF" }}>{walkVoiceListening ? "Listening…" : "🎤 Voice Note"}</button></div>
+        {(focusMeta.photos || []).length ? <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>{(focusMeta.photos || []).map((photo) => <button key={photo.id} type="button" onClick={() => setPreviewFile(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 0, overflow: "hidden", background: "#FFFFFF" }}><img src={photo.dataUrl || photo.url} alt={photo.name} style={{ width: 88, height: 68, objectFit: "cover", display: "block" }} /></button>)}</div> : null}
+        {nearby.length ? <div><div style={{ ...eyebrowStyle, marginBottom: 8 }}>NEARBY · {plannerLocationName(focusTask.locationId)}</div><div style={{ display: "grid", gap: 8 }}>{nearby.map((task) => <button key={`walk-nearby-${task.id}`} type="button" onClick={() => setSelectedTaskId(task.id)} style={{ ...secondaryButtonStyle, background: "#FFFFFF", textAlign: "left", justifyContent: "space-between", minHeight: 52 }}><span>{task.title}</span><small>{minutesLabel(task.minutes)}</small></button>)}</div></div> : null}
+      </section>;
+    };
+
     const filterButton = (id: TaskListFilter, label: string, count: number) => (
       <button type="button" onClick={() => setTaskListFilter(id)} style={{ ...(taskListFilter === id ? goldButtonStyle : secondaryButtonStyle), padding: "7px 10px" }}>{label} · {count}</button>
     );
@@ -15179,14 +15240,15 @@ ${notes.trim()}` : notes.trim(),
     return (
       <div style={{ display: "grid", gap: 14 }}>
         <SectionHeader
-          eyebrow={tasksView === "analytics" ? "Performance" : tasksView === "addison" ? "Team Operations" : tasksView === "route" ? "Property Route" : tasksView === "build" ? "Estate Brain" : tasksView === "vehicles" ? "Operations" : tasksView === "planner" ? "Planning" : "Work"}
-          title={isAddisonUser ? "My Tasks" : tasksView === "analytics" ? "Operations Analytics" : tasksView === "addison" ? "Addison Work Manager" : tasksView === "route" ? "Smart Route" : tasksView === "build" ? "Build My Day" : tasksView === "vehicles" ? "Vehicle Care" : tasksView === "planner" ? "Plan Week" : "Tasks"}
-          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : tasksView === "analytics" ? "Use completed work history to see workload, delays, compliance, vendor performance, and project momentum." : tasksView === "addison" ? "Assign, explain, track, and review Addison’s daily work from one dedicated view." : tasksView === "route" ? "Complete nearby work together to reduce walking and context switching across the property." : tasksView === "build" ? "Atlas combines current work, routine, project, vehicle, weather, duration, and priority signals into one realistic day." : tasksView === "vehicles" ? "Track onsite status, cleaning history, and create only the vehicle work that is needed." : tasksView === "planner" ? "Balance existing work across the week. Tasks remain managed in Tasks." : "Your main daily work area for one-time and recurring tasks."}
-          right={tasksView === "tasks" && !isAddisonUser ? <button type="button" onClick={() => setTaskFocusMode(true)} disabled={!focusTasks.length} style={goldButtonStyle}>Start Working</button> : undefined}
+          eyebrow={tasksView === "walk" ? "Field Operations" : tasksView === "analytics" ? "Performance" : tasksView === "addison" ? "Team Operations" : tasksView === "route" ? "Property Route" : tasksView === "build" ? "Estate Brain" : tasksView === "vehicles" ? "Operations" : tasksView === "planner" ? "Planning" : "Work"}
+          title={isAddisonUser ? "My Tasks" : tasksView === "walk" ? "Walk Mode" : tasksView === "analytics" ? "Operations Analytics" : tasksView === "addison" ? "Addison Work Manager" : tasksView === "route" ? "Smart Route" : tasksView === "build" ? "Build My Day" : tasksView === "vehicles" ? "Vehicle Care" : tasksView === "planner" ? "Plan Week" : "Tasks"}
+          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : tasksView === "walk" ? "A bright, simplified field view for completing work around the property." : tasksView === "analytics" ? "Use completed work history to see workload, delays, compliance, vendor performance, and project momentum." : tasksView === "addison" ? "Assign, explain, track, and review Addison’s daily work from one dedicated view." : tasksView === "route" ? "Complete nearby work together to reduce walking and context switching across the property." : tasksView === "build" ? "Atlas combines current work, routine, project, vehicle, weather, duration, and priority signals into one realistic day." : tasksView === "vehicles" ? "Track onsite status, cleaning history, and create only the vehicle work that is needed." : tasksView === "planner" ? "Balance existing work across the week. Tasks remain managed in Tasks." : "Your main daily work area for one-time and recurring tasks."}
+          right={tasksView === "tasks" && !isAddisonUser ? <button type="button" onClick={() => { setSelectedTaskId(focusTask?.id || ""); setTasksView("walk"); }} disabled={!focusTasks.length} style={goldButtonStyle}>Start Walk Mode</button> : undefined}
         />
         {!isAddisonUser && tasksView !== "vehicles" && tasksView !== "planner" ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setTasksView("build")} style={tasksView === "build" ? goldButtonStyle : secondaryButtonStyle}>Build My Day</button>
+            <button type="button" onClick={() => { setSelectedTaskId(focusTask?.id || ""); setTasksView("walk"); }} style={tasksView === "walk" ? goldButtonStyle : secondaryButtonStyle}>Walk Mode</button>
             <button type="button" onClick={() => setTasksView("route")} style={tasksView === "route" ? goldButtonStyle : secondaryButtonStyle}>Smart Route</button>
             <button type="button" onClick={() => setTasksView("addison")} style={tasksView === "addison" ? goldButtonStyle : secondaryButtonStyle}>Addison Today</button>
             <button type="button" onClick={() => setTasksView("analytics")} style={tasksView === "analytics" ? goldButtonStyle : secondaryButtonStyle}>Analytics</button>
@@ -15197,7 +15259,7 @@ ${notes.trim()}` : notes.trim(),
           </div>
         ) : null}
 
-        {tasksView === "analytics" && !isAddisonUser ? renderOperationsAnalytics() : tasksView === "route" && !isAddisonUser ? renderSmartRoutePlanning() : tasksView === "build" && !isAddisonUser ? renderBuildMyDay() : tasksView === "addison" && !isAddisonUser ? renderAddisonToday() : tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
+        {tasksView === "walk" && !isAddisonUser ? renderWalkMode() : tasksView === "analytics" && !isAddisonUser ? renderOperationsAnalytics() : tasksView === "route" && !isAddisonUser ? renderSmartRoutePlanning() : tasksView === "build" && !isAddisonUser ? renderBuildMyDay() : tasksView === "addison" && !isAddisonUser ? renderAddisonToday() : tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
           <>
             {!isAddisonUser ? (
               <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
@@ -37526,7 +37588,9 @@ ${notes.trim()}` : notes.trim(),
               <select
                 value={
                   screen === "planner"
-                    ? tasksView === "build"
+                    ? tasksView === "walk"
+                      ? "planner:walk"
+                    : tasksView === "build"
                       ? "planner:build"
                       : tasksView === "route"
                         ? "planner:route"
@@ -37545,6 +37609,11 @@ ${notes.trim()}` : notes.trim(),
                   const nextValue = event.currentTarget.value;
                   if (nextValue === "planner:tasks") {
                     setTasksView("tasks");
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:walk") {
+                    setTasksView("walk");
                     setScreen("planner");
                     return;
                   }
@@ -37589,6 +37658,7 @@ ${notes.trim()}` : notes.trim(),
                 aria-label="Open Atlas section"
               >
                 <optgroup label="Work & Planning">
+                  <option value="planner:walk">Walk Mode</option>
                   <option value="planner:build">Build My Day</option>
                   <option value="planner:route">Smart Route</option>
                   <option value="planner:addison">Addison Manager</option>
@@ -37651,6 +37721,7 @@ ${notes.trim()}` : notes.trim(),
                       {section.items.map((screenId) => {
                         if (screenId === "planner") {
                           const workNavigation = [
+                            { id: "walk", label: "Walk Mode", view: "walk" as const },
                             { id: "build", label: "Build My Day", view: "build" as const },
                             { id: "route", label: "Smart Route", view: "route" as const },
                             { id: "addison", label: "Addison Manager", view: "addison" as const },
