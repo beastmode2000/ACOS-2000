@@ -20860,6 +20860,51 @@ ${notes.trim()}` : notes.trim(),
           .filter((part) => part.assetId === selectedAsset.id)
           .sort((a, b) => a.name.localeCompare(b.name))
       : [];
+    const linkedAssetTasks = selectedAsset.id
+      ? workPlanTasks
+          .filter((task) => taskDetails(task.id).assetId === selectedAsset.id)
+          .sort((a, b) => {
+            const left = taskDetails(a.id);
+            const right = taskDetails(b.id);
+            const leftDone = left.status === "Completed" ? 1 : 0;
+            const rightDone = right.status === "Completed" ? 1 : 0;
+            return leftDone - rightDone || String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"));
+          })
+      : [];
+    const openAssetTasks = linkedAssetTasks.filter(
+      (task) => taskDetails(task.id).status !== "Completed",
+    );
+    const linkedAssetProjects = selectedAsset.id
+      ? photoTimelineProjects
+          .filter((project) => project.assetId === selectedAsset.id)
+          .sort((a, b) => String(b.startDate || b.createdAt || "").localeCompare(String(a.startDate || a.createdAt || "")))
+      : [];
+    const activeAssetProjects = linkedAssetProjects.filter(
+      (project) => project.status !== "Completed" && !project.archived,
+    );
+    const linkedAssetVendors = selectedAsset.vendorIds
+      .map((id) => vendorRecords.find((vendor) => vendor.id === id))
+      .filter((vendor): vendor is VendorRecord => Boolean(vendor));
+    const assetLastActivityDate = [
+      ...assetHistory.map((entry) => entry.date),
+      ...linkedAssetTasks.map((task) => taskDetails(task.id).completedAt?.slice(0, 10) || taskDetails(task.id).dueDate || ""),
+      ...linkedAssetProjects.map((project) => project.completedAt || project.startDate || project.createdAt?.slice(0, 10) || ""),
+      ...selectedAssetPhotos.map((photo) => photo.createdAt?.slice(0, 10) || ""),
+      ...linkedAssetDocuments.map((document) => document.createdAt?.slice(0, 10) || ""),
+    ].filter(Boolean).sort().reverse()[0] || "";
+    const assetAttentionItems = [
+      ...overdueAssetWorkOrders.map((record) => `Overdue work order: ${record.title}`),
+      ...highPriorityAssetWorkOrders.map((record) => `High priority: ${record.title}`),
+      ...openAssetTasks
+        .filter((task) => Boolean(taskDetails(task.id).dueDate) && taskDetails(task.id).dueDate < todayISO())
+        .map((task) => `Overdue task: ${task.title}`),
+      ...(selectedAsset.status === "Offline" ? ["Asset is marked out of service"] : []),
+    ];
+    const assetRecommendedAction = assetAttentionItems[0]
+      || openAssetTasks[0]?.title
+      || openAssetWorkOrders[0]?.title
+      || activeAssetProjects[0]?.title
+      || (!linkedAssetProcedures.length ? "Link a maintenance procedure" : "No immediate action required");
     const openAssetWorkOrders = relatedWorkOrders
       .filter((record) => record.status !== "Completed")
       .sort((a, b) =>
@@ -22589,6 +22634,67 @@ ${notes.trim()}` : notes.trim(),
                     </strong>
                   </div>
                 ))}
+              </section>
+
+              <section
+                style={{
+                  ...assetCardStyle,
+                  display: assetPanelSection === "overview" ? "block" : "none",
+                  marginBottom: 12,
+                  background: "#FFFFFF",
+                  borderLeft: `4px solid ${assetAttentionItems.length ? "#D92D20" : colors.gold}`,
+                }}
+                aria-label="Asset intelligence"
+              >
+                <div style={assetCardHeaderStyle}>
+                  <div>
+                    <strong>Asset Intelligence</strong>
+                    <div style={assetCardHintStyle}>Current context, attention items, and the most useful next action</div>
+                  </div>
+                  <span style={badgeStyle(assetAttentionItems.length ? "High" : "Online")}>
+                    {assetAttentionItems.length ? `${assetAttentionItems.length} attention` : "On track"}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
+                    gap: 8,
+                    marginTop: 10,
+                  }}
+                >
+                  {[
+                    ["Open Tasks", String(openAssetTasks.length)],
+                    ["Open Work Orders", String(openAssetWorkOrders.length)],
+                    ["Active Projects", String(activeAssetProjects.length)],
+                    ["Last Activity", assetLastActivityDate ? formatDate(assetLastActivityDate) : "None"],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: "8px 9px", minWidth: 0 }}>
+                      <span style={assetInfoLabelStyle}>{label}</span>
+                      <strong style={{ display: "block", marginTop: 3, color: colors.navy, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 10, borderTop: `1px solid ${colors.line}`, paddingTop: 9 }}>
+                  <span style={assetInfoLabelStyle}>Recommended next action</span>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 4 }}>
+                    <strong style={{ color: colors.navy, fontSize: 13, lineHeight: 1.35 }}>{assetRecommendedAction}</strong>
+                    {openAssetTasks[0] ? (
+                      <button type="button" style={assetTinyButtonStyle} onClick={() => { setSelectedTaskId(openAssetTasks[0].id); setTasksView("tasks"); setScreen("planner"); }}>Open Task</button>
+                    ) : openAssetWorkOrders[0] ? (
+                      <button type="button" style={assetTinyButtonStyle} onClick={() => { setSelectedServiceId(openAssetWorkOrders[0].id); setScreen("history"); }}>Open Work</button>
+                    ) : activeAssetProjects[0] ? (
+                      <button type="button" style={assetTinyButtonStyle} onClick={() => { setSelectedPhotoProjectId(activeAssetProjects[0].id); setPhotoTimelineView("projects"); setScreen("timeline"); }}>Open Project</button>
+                    ) : null}
+                  </div>
+                </div>
+                {assetAttentionItems.length ? (
+                  <div style={{ marginTop: 9, display: "grid", gap: 5 }}>
+                    {assetAttentionItems.slice(0, 4).map((item) => (
+                      <div key={item} style={{ fontSize: 11, color: "#B42318", fontWeight: 800 }}>• {item}</div>
+                    ))}
+                  </div>
+                ) : null}
               </section>
 
               <section
