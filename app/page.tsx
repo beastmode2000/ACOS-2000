@@ -34362,7 +34362,7 @@ export default function AtlasPage() {
                 <strong>Quick Capture</strong>
                 <small>Save it now. Organize it where it belongs.</small>
               </div>
-              <button type="button" onClick={() => setQuickCaptureOpen(false)} style={iconButtonStyle}>{closeSymbol}</button>
+              <button type="button" onClick={() => setQuickCaptureOpen(false)} style={mapIconButtonStyle}>{closeSymbol}</button>
             </div>
             <div className="atlas-quick-capture-actions">
               <button type="button" onClick={() => openQuickCapture("photo")}><span>📷</span>Photo</button>
