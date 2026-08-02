@@ -220,7 +220,7 @@ type WorkEffort =
 type AtlasTaskMeta = {
   status: "Open" | "In Progress" | "Completed" | "Waiting" | "Blocked";
   dueDate: string;
-  assignee: "Nick" | "Addison" | "Other" | "Unassigned";
+  assignee: "Nick" | "Addison" | "Pat" | "Other" | "Unassigned";
   completedAt?: string;
   createdAt: string;
   projectId?: string;
@@ -245,6 +245,8 @@ type AtlasTaskMeta = {
   flexibleTime?: boolean;
   skippable?: boolean;
   updatedAt?: string;
+  assignmentScope?: "This occurrence" | "All future occurrences";
+  needsReview?: boolean;
 };
 
 type TaskListFilter = "today" | "overdue" | "week" | "recurring" | "completed";
@@ -4144,7 +4146,11 @@ export default function AtlasPage() {
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
   const [quickCaptureNote, setQuickCaptureNote] = useState("");
-  const [departmentCenter, setDepartmentCenter] = useState<"landscaping" | "marine" | "">("");
+  const [quickCaptureMode, setQuickCaptureMode] = useState<"create" | "existing">("create");
+  const [ownerUpdateOpen, setOwnerUpdateOpen] = useState(false);
+  const [ownerUpdateDraft, setOwnerUpdateDraft] = useState("");
+  type DepartmentKind = "house" | "garage" | "pool" | "landscaping" | "marine";
+  const [departmentCenter, setDepartmentCenter] = useState<DepartmentKind | "">("");
   const [departmentDrilldown, setDepartmentDrilldown] = useState<
     "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures" | ""
   >("");
@@ -4384,6 +4390,7 @@ export default function AtlasPage() {
   const operationsSyncRunningRef = useRef(false);
   const fleetSetupRunningRef = useRef(false);
   const waterCareSetupRunningRef = useRef(false);
+  const weeklyOperationsSetupRunningRef = useRef(false);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
@@ -5349,6 +5356,10 @@ export default function AtlasPage() {
     if (!ready || !operationsHydrated || syncState !== "synced" || !vehicleCare.length) return;
     void setupFleetAssetsAndSchedules();
   }, [ready, operationsHydrated, syncState, activePropertyId, vehicleCare.length, assetRecords.length, workPlanTasks.length, serviceRecords.length, calendarItems.length]);
+  useEffect(() => {
+    if (!ready || !operationsHydrated || syncState !== "synced") return;
+    void setupWeeklyOperations();
+  }, [ready, operationsHydrated, syncState, activePropertyId]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -9027,8 +9038,19 @@ export default function AtlasPage() {
     }
   }
 
-  function openQuickCapture(kind: "photo" | "document" | "task" | "work-order" | "project") {
+  function openQuickCapture(kind: "photo" | "document" | "task" | "work-order" | "project" | "asset" | "vendor" | "procedure") {
     setQuickCaptureOpen(false);
+    if (quickCaptureMode === "existing") {
+      if (kind === "photo" || kind === "document") setScreen("documents");
+      if (kind === "task") { setTasksView("tasks"); setScreen("planner"); }
+      if (kind === "work-order") setScreen("history");
+      if (kind === "project") { setPhotoTimelineView("projects"); setScreen("timeline"); }
+      if (kind === "asset") setScreen("assets");
+      if (kind === "vendor") setScreen("vendors");
+      if (kind === "procedure") setScreen("procedures");
+      showSaveToast("Choose the existing record to link.");
+      return;
+    }
     if (kind === "photo") {
       resetIntakeDraft();
       applyFastIntakeKind("General Photo");
@@ -9053,6 +9075,20 @@ export default function AtlasPage() {
       setScreen("history");
       return;
     }
+    if (kind === "asset") {
+      addAsset();
+      return;
+    }
+    if (kind === "vendor") {
+      setSelectedVendorId("");
+      setScreen("vendors");
+      return;
+    }
+    if (kind === "procedure") {
+      setSelectedProcedureId("");
+      setScreen("procedures");
+      return;
+    }
     setPhotoTimelineView("projects");
     setSelectedPhotoProjectId("");
     setScreen("timeline");
@@ -9071,6 +9107,54 @@ export default function AtlasPage() {
     }, ...current]);
     setQuickCaptureNote("");
     setQuickCaptureOpen(false);
+  }
+
+  function prepareWeeklyOwnerUpdate() {
+    const since = Date.now() - 7 * 86400000;
+    const completedTasks = workPlanTasks.filter((task) => {
+      const completedAt = taskDetails(task.id).completedAt;
+      return completedAt && new Date(completedAt).getTime() >= since;
+    });
+    const completedWork = serviceRecords.filter((record) => {
+      const completedDate = String((record as AtlasServiceRecord).lastCompletedDate || record.date || "");
+      const completedTime = completedDate ? new Date(`${completedDate.slice(0, 10)}T12:00:00`).getTime() : 0;
+      return record.status === "Completed" && completedTime >= since;
+    });
+    const activeProjects = photoTimelineProjects.filter((project) => !project.archived && project.status !== "Completed").slice(0, 5);
+    const importantProblems = [...workPlanTasks.filter((task) => taskDetails(task.id).status === "Blocked").map((task) => task.title), ...serviceRecords.filter((record) => record.status !== "Completed" && record.priority === "High").map((record) => record.title)].slice(0, 6);
+    const nextWeek = [...workPlanTasks].filter((task) => { const date = taskDetails(task.id).dueDate; return date >= todayISO() && date <= addDays(todayISO(), 7) && taskDetails(task.id).status !== "Completed"; }).slice(0, 8);
+    const bullets = (items: string[], empty: string) => items.length ? items.map((item) => `• ${item}`).join("\n") : `• ${empty}`;
+    setOwnerUpdateDraft([
+      `WEEKLY PROPERTY UPDATE — ${formatDate(todayISO())}`,
+      "",
+      "COMPLETED THIS WEEK",
+      bullets([...completedTasks.map((task) => task.title), ...completedWork.map((record) => record.title)].slice(0, 12), "No major completed work to report."),
+      "",
+      "PROPERTY UPDATES",
+      bullets(todayLogEntries.slice(0, 6).map((entry) => entry.text), "Normal weekly operations continued."),
+      "",
+      "VENDORS & PROJECTS",
+      bullets(activeProjects.map((project) => `${project.title} — ${project.status}`), "No significant vendor or project change."),
+      "",
+      "IMPORTANT PROBLEMS / DECISIONS NEEDED",
+      bullets(importantProblems, "None."),
+      "",
+      "PLANNED FOR NEXT WEEK",
+      bullets(nextWeek.map((task) => task.title), "Continue routine property operations."),
+    ].join("\n"));
+    setOwnerUpdateOpen(true);
+  }
+
+  function approveWeeklyOwnerUpdate() {
+    const text = ownerUpdateDraft.trim();
+    if (!text) return;
+    const record = { id: uid("owner-update"), propertyId: activePropertyId, date: todayISO(), text, approvedAt: new Date().toISOString(), status: "Approved — ready to send" };
+    const key = `atlas-owner-updates-v1-${activePropertyId}`;
+    const current = readStoredArray<typeof record>([key], []);
+    saveStoredArray(key, [record, ...current]);
+    setTodayLogEntries((entries) => [{ id: record.id, propertyId: activePropertyId, date: record.date, category: "Note", text: "Weekly owner update approved and ready to send.", createdAt: record.approvedAt }, ...entries]);
+    setOwnerUpdateOpen(false);
+    showSaveToast("Owner update approved and saved. Send it from the configured owner communication channel.");
   }
 
   function resetIntakeDraft() {
@@ -14683,6 +14767,14 @@ export default function AtlasPage() {
     }));
   }
 
+  function assignTaskTo(task: WorkPlanTask, person: "Addison" | "Pat") {
+    const meta = taskDetails(task.id);
+    const allFuture = task.recurring && window.confirm(`Assign all future occurrences of “${task.title}” to ${person}?\n\nChoose Cancel for this occurrence only.`);
+    const useToday = window.confirm(`Assign “${task.title}” to ${person} for today?\n\nChoose Cancel to keep its current date.`);
+    updateTaskDetails(task.id, { assignee: person, status: "Open", dueDate: useToday ? todayISO() : meta.dueDate, assignmentScope: allFuture ? "All future occurrences" : "This occurrence", needsReview: false });
+    showSaveToast(`Assigned to ${person}.`);
+  }
+
   function advanceRecurringTask(task: WorkPlanTask, meta: AtlasTaskMeta) {
     const completedDate = todayISO();
     const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
@@ -14708,6 +14800,9 @@ export default function AtlasPage() {
       completedAt: undefined,
       lastCompletedDate: completedDate,
       completionHistory: history,
+      assignee: meta.assignmentScope === "This occurrence" ? "Nick" : meta.assignee,
+      assignmentScope: meta.assignmentScope === "This occurrence" ? undefined : meta.assignmentScope,
+      needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
     });
     showSaveToast(`${task.title} completed. Next due ${formatDate(nextDate)}.`);
   }
@@ -14723,6 +14818,7 @@ export default function AtlasPage() {
       completedAt: new Date().toISOString(),
       lastCompletedDate: todayISO(),
       completionHistory: Array.from(new Set([...(meta.completionHistory || []), todayISO()])).sort(),
+      needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
     });
     showSaveToast(`${task.title} completed.`);
   }
@@ -15208,6 +15304,75 @@ ${notes.trim()}` : notes.trim(),
     await setupPoolSpaCare();
   }
 
+  async function setupWeeklyOperations() {
+    if (weeklyOperationsSetupRunningRef.current || typeof window === "undefined") return;
+    const setupKey = `atlas-weekly-operations-v1-${activePropertyId}`;
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    weeklyOperationsSetupRunningRef.current = true;
+    try {
+      const nextTasks = [...workPlanTasks];
+      const nextTaskMeta = { ...taskMeta };
+      const nextCalendar = [...calendarItems];
+      const calendarRecords: AtlasCalendarItem[] = [];
+      const weekdayDate = (weekday: string, weeksAhead = 0) => {
+        const weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+        const target = weekdays.indexOf(weekday);
+        const current = new Date(`${todayISO()}T12:00:00`).getDay();
+        return addDays(todayISO(), ((target - current + 7) % 7) + weeksAhead * 7);
+      };
+      const routines = [
+        { key: "monday-reset", day: "Monday", title: "Monday — Property Reset & Garage", minutes: 240, category: "House & Maintenance", notes: "Trash cans to street; weekend cleanup; interior/exterior walkthrough; owner requests; urgent and overdue work; geese and dog-area cleanup; scheduled vehicles; fuel/charging/tires/fluids/warning lights; deliveries; supplies; plan week; delegate appropriate work. Water pots and address dry spots." },
+        { key: "tuesday-dock", day: "Tuesday", title: "Tuesday — Dock, Waterfront & Recreation", minutes: 210, category: "Dock & Waterfront", notes: "Clean dock and shoreline geese debris; inspect boards, cleats, bumpers, dock boxes and lighting; inspect Cobalt, Sea-Doo, lifts, covers and rollers; inspect sport court, trampoline and recreation equipment; clean BBQ. Water pots and address dry spots." },
+        { key: "wednesday-landscape", day: "Wednesday", title: "Wednesday — Landscaping & Irrigation", minutes: 300, category: "Landscaping & Irrigation", notes: "Inspect lawns, beds, gardens, trees, pots and specialty plantings; review crew work; check irrigation zones, heads, pressure and dry spots; weed, prune and hand-water; inspect veggie boxes; photograph progress; record issues and create repair work orders when needed." },
+        { key: "thursday-outdoor", day: "Thursday", title: "Thursday — Pool, Spa & Outdoor Cleaning", minutes: 180, category: "Pool & Spa", notes: "Complete linked Pool & Spa treatment and cleaning tasks; inspect equipment and fountain; clean patio furniture, covers, outdoor heaters, BBQ exterior and skylights; complete the scheduled window zone; finish vehicle cleaning when needed; water pots and address dry spots." },
+        { key: "friday-ready", day: "Friday", title: "Friday — Maintenance & Weekend Readiness", minutes: 300, category: "House & Maintenance", notes: "Mow and edge; inspect boilers, pumps, HVAC, mechanical rooms, leaks, alarms, temperatures and unusual noises; test important lights, doors, gates and appliances; follow up vendors; update tasks, work orders, projects, photos and service history; restock; final walkthrough; prepare weekend and next week; review owner update." },
+        { key: "friday-spiders", day: "Friday", title: "Friday — Seasonal Spider Control", minutes: 75, category: "House & Maintenance", notes: "April through October: remove webs; inspect exterior walls, eaves, doors, windows, garages, dock structures and outdoor furniture; treat recurring problem areas when appropriate." },
+      ];
+      const windowZones = [
+        { key: "windows-waterside", title: "Clean windows — Waterside & Great Room", notes: "Waterside elevation, Great Room glass and adjacent exterior doors. Add notes and photos for access or condition issues." },
+        { key: "windows-east", title: "Clean windows — East Side & Bedrooms", notes: "East elevation and bedroom windows. Record screens, damage or access issues." },
+        { key: "windows-courtyard", title: "Clean windows — Courtyard & Main Entry", notes: "Courtyard, covered walkway, entrance and nearby glass." },
+        { key: "windows-garage", title: "Clean windows — Garages, ADU & Remaining Areas", notes: "Garage, ADU and remaining scheduled windows. Record completion notes and photos." },
+      ];
+      for (const [index, definition] of [...routines, ...windowZones.map((zone, zoneIndex) => ({ ...zone, day: "Thursday", minutes: 90, category: "House & Maintenance", weeksAhead: zoneIndex }))].entries()) {
+        const isWindow = index >= routines.length;
+        let task = nextTasks.find((item) => normalizeLocationName(item.title) === normalizeLocationName(definition.title));
+        if (!task) {
+          task = { id: uid("routine-task"), title: definition.title, minutes: definition.minutes, priority: "Medium", category: definition.category, locationId: "general", preferredDay: definition.day as WorkPlanDay, locked: false, recurring: true, fixedTime: "", notes: definition.notes };
+          nextTasks.push(task);
+        }
+        const meta = taskDetails(task.id);
+        const dueDate = meta.dueDate || weekdayDate(definition.day, "weeksAhead" in definition ? Number(definition.weeksAhead) : 0);
+        nextTaskMeta[task.id] = { ...meta, status: meta.status === "Completed" ? "Open" : meta.status, dueDate, assignee: meta.assignee || "Nick", createdAt: meta.createdAt || new Date().toISOString(), recurrenceInterval: isWindow ? 4 : 1, recurrenceUnit: "Weeks", recurrenceEndDate: definition.key === "friday-spiders" ? `${new Date().getFullYear()}-10-31` : "", season: definition.key === "friday-spiders" ? "Summer" : "Year-Round", skippable: true, flexibleTime: true, notes: definition.notes, updatedAt: new Date().toISOString() };
+        calendarRecords.push(normalizeCalendar({ id: `routine-${definition.key}`, propertyId: activePropertyId, date: dueDate, title: definition.title, area: definition.category, categoryLabel: "Routine", allDay: true, repeat: isWindow ? "Custom" : "Weekly", reminder: "Morning of", notes: definition.notes, linkedType: "Task", linkedId: task.id, linkedName: task.title, source: "task", status: "Scheduled" }));
+      }
+      calendarRecords.push(
+        normalizeCalendar({ id: "weekly-property-meeting", propertyId: activePropertyId, date: weekdayDate("Tuesday"), time: "10:00", title: "Weekly Property Meeting", area: "House & Maintenance", categoryLabel: "Meeting", allDay: false, repeat: "Weekly", reminder: "1 hour before", notes: "Nick, Steve, Summer and Pat.", linkedType: "None", linkedId: "", linkedName: "", source: "manual", status: "Scheduled" }),
+        normalizeCalendar({ id: "lanken-tuesday-crew", propertyId: activePropertyId, date: weekdayDate("Tuesday"), title: "Lanken Landscaping Crew", area: "Landscaping & Irrigation", categoryLabel: "Crew Visit", allDay: true, repeat: "Weekly", reminder: "Day before", notes: "Half-day Tuesday visit coordinated by Pat. Record planned work, areas, before/after photos, completed and unfinished work, and follow-up. Current progress: waterside bed grass removed and cleaned; mulching underway; work quality excellent.", linkedType: "None", linkedId: "", linkedName: "", source: "manual", status: "Scheduled" }),
+        normalizeCalendar({ id: "nick-steve-friday-meeting", propertyId: activePropertyId, date: weekdayDate("Friday"), time: "09:00", title: "Nick and Steve Meeting", area: "House & Maintenance", categoryLabel: "Meeting", allDay: false, repeat: "Weekly", reminder: "1 hour before", notes: "Weekly Friday operations meeting.", linkedType: "None", linkedId: "", linkedName: "", source: "manual", status: "Scheduled" }),
+        normalizeCalendar({ id: "weekly-owner-update", propertyId: activePropertyId, date: weekdayDate("Friday"), time: "15:30", title: "Review Weekly Owner Update", area: "House & Maintenance", categoryLabel: "Owner Update", allDay: false, repeat: "Weekly", reminder: "1 hour before", notes: "Atlas prepares the draft after the final walkthrough. Review, edit and approve before sending.", linkedType: "None", linkedId: "", linkedName: "", source: "manual", status: "Scheduled" }),
+      );
+      for (const record of calendarRecords) {
+        const recordIndex = nextCalendar.findIndex((item) => item.id === record.id);
+        if (recordIndex >= 0) nextCalendar[recordIndex] = record;
+        else nextCalendar.push(record);
+      }
+      setWorkPlanTasks(nextTasks);
+      setTaskMeta(nextTaskMeta);
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(calendarRecords.map((record) => postAtlasRecord("calendar", record)));
+      if (results.some((saved) => !saved)) throw new Error("Some routine calendar records did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast("Weekly operations routines are ready.");
+    } catch (error) {
+      console.error("Atlas weekly operations setup failed", error);
+      showSaveToast("Weekly operations setup will retry.", "warning");
+    } finally {
+      weeklyOperationsSetupRunningRef.current = false;
+    }
+  }
+
   function createSeasonalTask(item: AtlasSeasonalItem) {
     const task: WorkPlanTask = { id: uid("plan-task"), title: item.title, minutes: 60, priority: "Medium", category: "Maintenance", locationId: "general", preferredDay: "Auto", locked: false, recurring: item.frequency !== "One-time", fixedTime: "", notes: item.notes };
     setWorkPlanTasks((current) => [task, ...current]);
@@ -15522,6 +15687,7 @@ ${notes.trim()}` : notes.trim(),
     const inProgressCount = todayAssigned.filter((task) => taskDetails(task.id).status === "In Progress").length;
     const problemCount = todayAssigned.filter((task) => taskDetails(task.id).status === "Blocked" || Boolean(taskDetails(task.id).problemFlag)).length;
     const completedToday = workPlanTasks.filter((task) => taskDetails(task.id).assignee === "Addison" && taskDetails(task.id).status === "Completed" && String(taskDetails(task.id).completedAt || "").slice(0, 10) === today);
+    const delegatedReview = workPlanTasks.filter((task) => taskDetails(task.id).needsReview && ["Addison", "Pat"].includes(taskDetails(task.id).assignee));
     const addAddisonPhoto = async (task: WorkPlanTask, files: FileList | null) => {
       if (!files?.length) return;
       try {
@@ -15551,7 +15717,7 @@ ${notes.trim()}` : notes.trim(),
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => updateTaskDetails(task.id, { status: "In Progress" })} style={meta.status === "In Progress" ? goldButtonStyle : secondaryButtonStyle}>{meta.status === "In Progress" ? "Working" : "Start"}</button><button type="button" onClick={() => completeAtlasTask(task)} style={goldButtonStyle}>Complete</button><button type="button" onClick={() => flagAddisonProblem(task)} style={{ ...secondaryButtonStyle, color: colors.red }}>{meta.problemFlag ? "Update Problem" : "Problem"}</button><label style={{ ...secondaryButtonStyle, width: "auto", cursor: "pointer" }}>Add Photo<input type="file" accept="image/*" capture="environment" multiple onChange={(event) => { void addAddisonPhoto(task, event.currentTarget.files); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label>{!isAddisonUser ? <button type="button" onClick={() => updateTaskDetails(task.id, { assignee: "Nick" })} style={secondaryButtonStyle}>Return to Nick</button> : null}</div>
       </div>;
     };
-    return <div style={{ display: "grid", gap: 12 }}><section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Addison Work Manager</div><h2 style={{ margin: "3px 0 4px", color: "#FFFFFF" }}>Today’s assigned work</h2><p style={{ margin: 0, opacity: .84 }}>Assignments, instructions, progress, photos, completion notes, and problems update your dashboard automatically.</p></div><div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 25 }}>{minutesLabel(assignedMinutes)}</strong><small style={{ opacity: .82 }}>{todayAssigned.length} assigned today</small></div></div></section><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>{[["Assigned",todayAssigned.length],["Working",inProgressCount],["Problems",problemCount],["Completed",completedToday.length]].map(([label,value]) => <div key={String(label)} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{String(label).toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: label === "Problems" && Number(value) ? colors.red : colors.navy }}>{value}</strong></div>)}</div><section style={cardStyle}><div style={fieldLabelStyle}>TODAY</div><div style={{ display: "grid", gap: 9, marginTop: 8 }}>{todayAssigned.map(taskCard)}{!todayAssigned.length ? <div style={noticeStyle}>No work is assigned to Addison for today.</div> : null}</div></section>{completedToday.length ? <details style={cardStyle}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.green }}>Completed today · {completedToday.length}</summary><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{completedToday.map((task) => <button key={`addison-complete-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "space-between" }}><span>{task.title}</span><span>{minutesLabel(task.minutes)}</span></button>)}</div></details> : null}<details style={cardStyle}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.navy }}>Upcoming · {upcomingAssigned.length}</summary><div style={{ display: "grid", gap: 8, marginTop: 10 }}>{upcomingAssigned.map(taskCard)}{!upcomingAssigned.length ? <div style={noticeStyle}>No upcoming Addison tasks.</div> : null}</div></details></div>;
+    return <div style={{ display: "grid", gap: 12 }}><section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Addison Work Manager</div><h2 style={{ margin: "3px 0 4px", color: "#FFFFFF" }}>Today’s assigned work</h2><p style={{ margin: 0, opacity: .84 }}>Assignments, instructions, progress, photos, completion notes, and problems update your dashboard automatically.</p></div><div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 25 }}>{minutesLabel(assignedMinutes)}</strong><small style={{ opacity: .82 }}>{todayAssigned.length} assigned today</small></div></div></section><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>{[["Assigned",todayAssigned.length],["Working",inProgressCount],["Problems",problemCount],["Review",delegatedReview.length]].map(([label,value]) => <div key={String(label)} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{String(label).toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: label === "Problems" && Number(value) ? colors.red : colors.navy }}>{value}</strong></div>)}</div><section style={cardStyle}><div style={fieldLabelStyle}>TODAY</div><div style={{ display: "grid", gap: 9, marginTop: 8 }}>{todayAssigned.map(taskCard)}{!todayAssigned.length ? <div style={noticeStyle}>No work is assigned to Addison for today.</div> : null}</div></section>{delegatedReview.length ? <section style={cardStyle}><div style={eyebrowStyle}>Review Delegated Work</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{delegatedReview.map((task) => <div key={`review-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9 }}><button type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0 }}><strong>{task.title}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{taskDetails(task.id).assignee} · completed for review</small></button><button type="button" onClick={() => updateTaskDetails(task.id, { needsReview: false })} style={goldButtonStyle}>Approve</button></div>)}</div></section> : null}{completedToday.length ? <details style={cardStyle}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.green }}>Completed today · {completedToday.length}</summary><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{completedToday.map((task) => <button key={`addison-complete-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "space-between" }}><span>{task.title}</span><span>{minutesLabel(task.minutes)}</span></button>)}</div></details> : null}<details style={cardStyle}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.navy }}>Upcoming · {upcomingAssigned.length}</summary><div style={{ display: "grid", gap: 8, marginTop: 10 }}>{upcomingAssigned.map(taskCard)}{!upcomingAssigned.length ? <div style={noticeStyle}>No upcoming Addison tasks.</div> : null}</div></details></div>;
   }
 
   function renderBuildMyDay() {
@@ -15921,7 +16087,8 @@ ${notes.trim()}` : notes.trim(),
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                         {meta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(task)} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Done</button> : null}
                         {meta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(task)} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Tomorrow</button> : null}
-                        {meta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => updateTaskDetails(task.id, { assignee: "Addison", status: "Open" })} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Addison</button> : null}
+                        {meta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Addison")} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Addison</button> : null}
+                        {meta.assignee !== "Pat" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Pat")} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Pat</button> : null}
                         <button type="button" onClick={() => addQuickTaskNote(task)} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Note</button>
                       </div>
                     </div>;
@@ -15949,7 +16116,7 @@ ${notes.trim()}` : notes.trim(),
                       <Field label="Due date" type="date" value={selectedMeta.dueDate} onChange={(value) => updateTaskDetails(selectedTask.id, { dueDate: value })} />
                       <SelectField label="Status" value={selectedMeta.status} onChange={(value) => updateTaskDetails(selectedTask.id, { status: value as AtlasTaskMeta["status"], completedAt: value === "Completed" ? new Date().toISOString() : undefined })} options={["Open","In Progress","Waiting","Blocked","Completed"]} />
                       <SelectField label="Priority" value={selectedTask.priority} onChange={(value) => updateWorkPlanTask(selectedTask.id, { priority: value as WorkOrderPriority })} options={["High","Medium","Low"]} />
-                      <SelectField label="Assigned to" value={selectedMeta.assignee} onChange={(value) => updateTaskDetails(selectedTask.id, { assignee: value as AtlasTaskMeta["assignee"] })} options={["Nick","Addison","Other","Unassigned"]} />
+                      <SelectField label="Assigned to" value={selectedMeta.assignee} onChange={(value) => updateTaskDetails(selectedTask.id, { assignee: value as AtlasTaskMeta["assignee"] })} options={["Nick","Addison","Pat","Other","Unassigned"]} />
                       <Field label="Estimated minutes" type="number" value={String(selectedTask.minutes)} onChange={(value) => updateWorkPlanTask(selectedTask.id, { minutes: Math.max(5, Number(value) || 5) })} />
                       <SelectField label="Category" value={selectedTask.category} onChange={(value) => updateWorkPlanTask(selectedTask.id, { category: value })} options={["General","Cleanup / Prep","Landscaping","Maintenance","Administration","Planning","Inspection","Garage","Pool & Spa","Vehicle Care","Boat / Dock"]} />
                       <SelectField label="Preferred day" value={selectedTask.preferredDay || "Auto"} onChange={(value) => updateWorkPlanTask(selectedTask.id, { preferredDay: value as WorkPlanDay | "Auto" })} options={["Auto", ...workPlanDays]} />
@@ -15991,7 +16158,8 @@ ${notes.trim()}` : notes.trim(),
                     <Field label="Instructions for assigned worker" value={selectedMeta.instructions || ""} onChange={(value) => updateTaskDetails(selectedTask.id, { instructions: value })} multiline />
                     <Field label="Notes" value={selectedMeta.notes || selectedTask.notes || ""} onChange={(value) => updateTaskDetails(selectedTask.id, { notes: value })} multiline />
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {selectedMeta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { assignee: "Addison", status: "Open" })} style={goldButtonStyle}>Give to Addison</button> : null}
+                      {!isAddisonUser ? selectedMeta.assignee !== "Addison" ? <button type="button" onClick={() => assignTaskTo(selectedTask, "Addison")} style={goldButtonStyle}>Add to Addison</button> : <span style={badgeStyle("Scheduled")}>Assigned to Addison</span> : null}
+                      {selectedMeta.assignee !== "Pat" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(selectedTask, "Pat")} style={secondaryButtonStyle}>Add to Pat</button> : selectedMeta.assignee === "Pat" ? <span style={badgeStyle("Scheduled")}>Assigned to Pat</span> : null}
                       {selectedTask.recurring && selectedMeta.status !== "Completed" && selectedMeta.skippable !== false ? <button type="button" onClick={() => skipRecurringTask(selectedTask)} style={secondaryButtonStyle}>Skip occurrence</button> : null}
                       {!isAddisonUser ? <button type="button" onClick={() => deleteAtlasTask(selectedTask.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button> : null}
                     </div>
@@ -17742,7 +17910,7 @@ ${notes.trim()}` : notes.trim(),
       if (id === "recent-activity") return <section style={{ ...cardStyle, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
           <div>{!isMobile ? <div style={eyebrowStyle}>Live Operations Feed</div> : null}<h3 style={{ margin: 0, color: colors.navy }}>{isMobile ? "Activity" : `What is happening across ${activeProperty?.name || activePropertyId}`}</h3>{!isMobile ? <p style={{ ...mutedSmallStyle, margin: "5px 0 0" }}>Work, requests, vendors, photos, and alerts.</p> : null}</div>
-          {!isMobile ? <button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>View history</button> : null}
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={prepareWeeklyOwnerUpdate} style={secondaryButtonStyle}>Weekly Update</button>{!isMobile ? <button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>View history</button> : null}</div>
         </div>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 0 8px", scrollbarWidth: "none" }}>{(["All","Work","Requests","Vendors","Photos","Alerts"] as const).map((filter) => <button key={filter} type="button" onClick={() => setDashboardFeedFilter(filter)} style={{ ...(dashboardFeedFilter === filter ? goldButtonStyle : secondaryButtonStyle), flex: "0 0 auto", minWidth: "max-content", minHeight: 32, padding: "5px 10px", whiteSpace: "nowrap", wordBreak: "normal", overflowWrap: "normal", fontSize: 12 }}>{filter} <span style={{ opacity: .75 }}>({dashboardFeedCounts[filter]})</span></button>)}</div>
         <div style={{ display: "grid", gap: 7 }}>{filteredDashboardFeed.map((item) => {
@@ -36152,40 +36320,43 @@ ${notes.trim()}` : notes.trim(),
     );
   }
 
-  function renderDepartmentCenter(kind: "landscaping" | "marine") {
+  function renderDepartmentCenter(kind: DepartmentKind) {
+    const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; matcher: RegExp; detail: string; people: string[] }> = {
+      house: { title: "House & Maintenance", short: "House", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
+      garage: { title: "Garage", short: "Garage", icon: "🚗", matcher: /garage|vehicle|car|mercedes|rivian|porsche|lucid|ford|kia|honda|subaru|charging|tire|fuel/i, detail: "Cars, weekly cleaning, inspections, charging, service, documents, photos, and connected work.", people: ["Nick", "Addison"] },
+      pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", matcher: /pool|spa|hot tub|sundance|fountain|filter|backwash|oxy|phosphate|vacuum/i, detail: "Pool, Spa, Fountain, water treatment, cleaning rotation, filter readings, equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
+      landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", matcher: /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i, detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
+      marine: { title: "Dock & Waterfront", short: "Dock", icon: "⚓", matcher: /marine|dock|boat|cobalt|sea.?doo|lift|water trampoline|pwc|shoreline|waterfront/i, detail: "Dock, waterfront, boats, lifts, recreation equipment, service, procedures, documents, and photos.", people: ["Nick", "Vendors"] },
+    };
+    const config = departmentConfig[kind];
     const isLandscape = kind === "landscaping";
-    const title = isLandscape ? "Landscaping Center" : "Marine Center";
-    const icon = isLandscape ? "🌿" : "⚓";
-    const matcher = isLandscape
-      ? /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i
-      : /marine|dock|boat|cobalt|sea.?doo|lift|water trampoline|pwc|sean/i;
+    const isMarine = kind === "marine";
+    const title = config.title;
+    const icon = config.icon;
+    const matcher = config.matcher;
     const matches = (value: unknown) => matcher.test(recordSearchText(value));
     const departmentWork = serviceRecords.filter((record) =>
-      isLandscape ? matches(record) && !isMarineServiceRecord(record) : isMarineServiceRecord(record),
+      isMarine ? isMarineServiceRecord(record) : isLandscape ? matches(record) && !isMarineServiceRecord(record) : matches(record),
     );
     const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
     const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
-    const departmentAssets = isLandscape
-      ? assetRecords.filter((asset) => matches(asset) && !isMarineAssetRecord(asset))
-      : assetRecords.filter((asset) => marineAssetIds.has(asset.id));
-    const departmentLocations = isLandscape
-      ? locations.filter((location) => matches(location) && !marineLocationIds.has(location.id))
-      : locations.filter((location) => marineLocationIds.has(location.id));
+    const departmentAssets = isMarine ? assetRecords.filter((asset) => marineAssetIds.has(asset.id)) : assetRecords.filter((asset) => matches(asset) && (!isLandscape || !isMarineAssetRecord(asset)));
+    const departmentLocations = isMarine ? locations.filter((location) => marineLocationIds.has(location.id)) : locations.filter((location) => matches(location) && (!isLandscape || !marineLocationIds.has(location.id)));
     const departmentVendors = vendorRecords.filter(matches);
     const departmentDocuments = mergeDocuments(documents, intakeDocs).filter((document) =>
-      isLandscape ? matches(document) && !isMarineDocumentRecord(document) : isMarineDocumentRecord(document),
+      isMarine ? isMarineDocumentRecord(document) : matches(document) && (!isLandscape || !isMarineDocumentRecord(document)),
     );
     const departmentProcedures = procedureRecords.filter((procedure) =>
-      isLandscape
-        ? matches(procedure) && !marineDepartmentPattern.test(recordSearchText(procedure))
-        : marineDepartmentPattern.test(recordSearchText(procedure)) ||
+      isMarine
+        ? marineDepartmentPattern.test(recordSearchText(procedure)) ||
           (procedure.linkedAssetIds || []).some((id) => marineAssetIds.has(id)) ||
-          (procedure.linkedLocationIds || []).some((id) => marineLocationIds.has(id)),
+          (procedure.linkedLocationIds || []).some((id) => marineLocationIds.has(id))
+        : matches(procedure) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(procedure))),
     );
     const departmentRequests = requestRecords.filter((request) =>
-      isLandscape ? matches(request) && !marineDepartmentPattern.test(recordSearchText(request)) : matches(request),
+      isMarine ? matches(request) : matches(request) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(request))),
     );
-    const assignedNames = isLandscape ? ["Pat's Crew", "Addison"] : ["Sean"];
+    const assignedNames = config.people;
 
     const openCenter = (next: AtlasScreen) => {
       setDepartmentCenter("");
@@ -36210,19 +36381,19 @@ ${notes.trim()}` : notes.trim(),
     };
     const drilldownTitle =
       departmentDrilldown === "open"
-        ? `Open ${isLandscape ? "Landscaping" : "Marine"} Work`
+        ? `Open ${config.short} Work`
         : departmentDrilldown === "completed"
-          ? `${isLandscape ? "Landscaping" : "Marine"} History`
+          ? `${config.short} History`
           : departmentDrilldown === "assets"
-            ? isLandscape ? "Landscaping Areas & Assets" : "Boats, Dock & Lifts"
+            ? `${config.short} Areas & Assets`
             : departmentDrilldown === "requests"
-              ? `${isLandscape ? "Landscaping" : "Marine"} Requests`
+              ? `${config.short} Requests`
               : departmentDrilldown === "vendors"
-                ? `${isLandscape ? "Landscaping" : "Marine"} Vendors`
+                ? `${config.short} Vendors`
                 : departmentDrilldown === "documents"
-                  ? `${isLandscape ? "Landscaping" : "Marine"} Documents & Photos`
+                  ? `${config.short} Documents & Photos`
                   : departmentDrilldown === "procedures"
-                    ? `${isLandscape ? "Landscaping" : "Marine"} Procedures`
+                    ? `${config.short} Procedures`
                     : "";
     const metricStyle: React.CSSProperties = {
       border: `1px solid ${colors.line}`,
@@ -36252,14 +36423,10 @@ ${notes.trim()}` : notes.trim(),
               <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase", color: "#E8C86A" }}>{icon} Department Center</div>
               <h2 style={{ margin: "6px 0 8px", fontSize: isMobile ? 27 : 34 }}>{title}</h2>
               <p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.78)", lineHeight: 1.55 }}>
-                {isLandscape
-                  ? "One place for landscaping crews, areas, work orders, requests, vendors, procedures, documents, photos, and property map records."
-                  : "One place for Sean, boats, dock systems, lifts, marine service, requests, vendors, manuals, procedures, documents, and photos."}
+                {config.detail}
               </p>
             </div>
-            <button type="button" onClick={() => addDashboardWorkOrder(isLandscape ? "Landscaping" : "Dock & Marine")} style={{ ...goldButtonStyle, color: colors.navy }}>
-              + New {isLandscape ? "Landscaping" : "Marine"} Work Order
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => { setQuickCaptureMode("create"); setQuickCaptureOpen(true); }} style={{ ...goldButtonStyle, color: colors.navy }}>+ Add</button><button type="button" onClick={() => addDashboardWorkOrder(config.title)} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.35)" }}>New Work Order</button></div>
           </div>
         </div>
 
@@ -36356,7 +36523,7 @@ ${notes.trim()}` : notes.trim(),
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.35fr .65fr", gap: 16, alignItems: "start" }}>
           <div style={centerCardStyle}>
-            <SectionHeader eyebrow="Current operations" title={isLandscape ? "Landscaping Work" : "Marine Work"} detail={`${openWork.length} open department items for ${atlasProperties.find((item) => item.id === activePropertyId)?.name || activePropertyId}.`} />
+            <SectionHeader eyebrow="Current operations" title={`${config.short} Work`} detail={`${openWork.length} open item${openWork.length === 1 ? "" : "s"}.`} />
             <div style={{ display: "grid", gap: 10 }}>
               {openWork.slice(0, 8).map((item) => (
                 <button key={item.id} type="button" onClick={() => { setDepartmentCenter(""); setDepartmentDrilldown(""); openWorkOrderById(item.id); }} style={{ width: "100%", border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", cursor: "pointer" }}>
@@ -36367,14 +36534,14 @@ ${notes.trim()}` : notes.trim(),
                   <span style={{ whiteSpace: "nowrap", borderRadius: 999, padding: "5px 9px", background: colors.panel, color: colors.navy, fontSize: 11, fontWeight: 900 }}>{item.status || "Open"}</span>
                 </button>
               ))}
-              {!openWork.length ? <div style={noticeStyle}>No open {isLandscape ? "landscaping" : "marine"} work is currently recorded for this property.</div> : null}
+              {!openWork.length ? <div style={noticeStyle}>No open {config.short.toLowerCase()} work.</div> : null}
             </div>
             <button type="button" onClick={() => openDepartmentDrilldown("open")} style={secondaryButtonStyle}>Open All Work Orders</button>
           </div>
 
           <div style={{ display: "grid", gap: 16 }}>
             <div style={centerCardStyle}>
-              <SectionHeader eyebrow="People" title={isLandscape ? "Crews" : "Marine Team"} detail="Open the Team Center for assignments and daily progress." />
+              <SectionHeader eyebrow="People" title="Assigned Work" detail="Open Team for assignments and progress." />
               {assignedNames.map((name) => <div key={name} style={{ padding: 12, borderRadius: 12, background: colors.panel, fontWeight: 900, color: colors.navy }}>{name}</div>)}
               <button type="button" onClick={() => openCenter("team")} style={secondaryButtonStyle}>Open Team Center</button>
             </div>
@@ -36392,7 +36559,7 @@ ${notes.trim()}` : notes.trim(),
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 16 }}>
           {[
-            { title: isLandscape ? "Areas & Assets" : "Boats, Dock & Lifts", count: departmentAssets.length + departmentLocations.length, target: "assets" as const, detail: isLandscape ? "Landscaping areas, grounds assets, and linked locations." : "Marine assets and their linked dock locations." },
+            { title: "Areas & Assets", count: departmentAssets.length + departmentLocations.length, target: "assets" as const, detail: `Linked ${config.short.toLowerCase()} assets and locations.` },
             { title: "Requests & Follow-up", count: departmentRequests.length, target: "requests" as const, detail: "Submitted requests and department follow-up work." },
             { title: "History & Records", count: completedWork.length, target: "completed" as const, detail: "Completed work and service history already stored in Atlas." },
           ].map((card) => (
@@ -36403,6 +36570,7 @@ ${notes.trim()}` : notes.trim(),
             </button>
           ))}
         </div>
+        {isLandscape ? <section style={centerCardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}><div><div style={eyebrowStyle}>Tuesday Crew Visit</div><h3 style={{ margin: "4px 0", color: colors.navy }}>Lanken Landscaping · Half Day</h3><small style={mutedSmallStyle}>Coordinated by Pat · one recurring visit with related jobs kept underneath it</small></div><span style={badgeStyle("Scheduled")}>Weekly</span></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}><div style={recordInfoItemStyle}><small style={fieldLabelStyle}>CURRENT AREA</small><strong>Waterside bed</strong></div><div style={recordInfoItemStyle}><small style={fieldLabelStyle}>PROGRESS</small><strong>Grass removed · cleaned</strong></div><div style={recordInfoItemStyle}><small style={fieldLabelStyle}>NOW</small><strong>Mulching</strong></div></div><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => openCenter("calendar")} style={secondaryButtonStyle}>Open Crew Visit</button><button type="button" onClick={() => addDashboardWorkOrder("Landscaping & Irrigation")} style={goldButtonStyle}>Create Follow-up</button><button type="button" onClick={() => { resetIntakeDraft(); applyFastIntakeKind("General Photo"); setScreen("intake"); }} style={secondaryButtonStyle}>Add Before / After Photos</button></div></section> : null}
       </section>
     );
   }
@@ -36476,12 +36644,19 @@ ${notes.trim()}` : notes.trim(),
               </div>
               <button type="button" onClick={() => setQuickCaptureOpen(false)} style={mapIconButtonStyle}>{closeSymbol}</button>
             </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: 4, borderRadius: 12, background: "#EEF3F7" }}>
+              <button type="button" onClick={() => setQuickCaptureMode("create")} style={{ ...(quickCaptureMode === "create" ? goldButtonStyle : secondaryButtonStyle), minHeight: 38 }}>Create New</button>
+              <button type="button" onClick={() => setQuickCaptureMode("existing")} style={{ ...(quickCaptureMode === "existing" ? goldButtonStyle : secondaryButtonStyle), minHeight: 38 }}>Add Existing</button>
+            </div>
             <div className="atlas-quick-capture-actions">
-              <button type="button" onClick={() => openQuickCapture("photo")}><span>📷</span>Photo</button>
-              <button type="button" onClick={() => openQuickCapture("document")}><span>📄</span>Document</button>
-              <button type="button" onClick={() => openQuickCapture("task")}><span>✓</span>Task</button>
-              <button type="button" onClick={() => openQuickCapture("work-order")}><span>🔧</span>Work Order</button>
-              <button type="button" onClick={() => openQuickCapture("project")}><span>▣</span>Project</button>
+              <button type="button" onClick={() => openQuickCapture("photo")}><span>📷</span>{quickCaptureMode === "create" ? "New Photo" : "Existing Photo"}</button>
+              <button type="button" onClick={() => openQuickCapture("document")}><span>📄</span>{quickCaptureMode === "create" ? "New Document" : "Existing Document"}</button>
+              <button type="button" onClick={() => openQuickCapture("task")}><span>✓</span>{quickCaptureMode === "create" ? "New Task" : "Existing Task"}</button>
+              <button type="button" onClick={() => openQuickCapture("work-order")}><span>🔧</span>{quickCaptureMode === "create" ? "New Work Order" : "Existing Work Order"}</button>
+              <button type="button" onClick={() => openQuickCapture("project")}><span>▣</span>{quickCaptureMode === "create" ? "New Project" : "Existing Project"}</button>
+              <button type="button" onClick={() => openQuickCapture("asset")}><span>◇</span>{quickCaptureMode === "create" ? "New Asset" : "Existing Asset"}</button>
+              <button type="button" onClick={() => openQuickCapture("vendor")}><span>V</span>{quickCaptureMode === "create" ? "New Vendor" : "Existing Vendor"}</button>
+              <button type="button" onClick={() => openQuickCapture("procedure")}><span>☷</span>{quickCaptureMode === "create" ? "New Procedure" : "Existing Procedure"}</button>
               <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Talk to Atlas</button>
             </div>
             <label className="atlas-quick-note-box">
@@ -36489,6 +36664,15 @@ ${notes.trim()}` : notes.trim(),
               <textarea value={quickCaptureNote} onChange={(event) => setQuickCaptureNote(event.currentTarget.value)} placeholder="What happened or what should not be forgotten?" />
             </label>
             <button type="button" onClick={saveQuickCaptureNote} disabled={!quickCaptureNote.trim()} style={goldButtonStyle}>Save Note</button>
+          </section>
+        </div>
+      ) : null}
+      {ownerUpdateOpen ? (
+        <div className="atlas-quick-capture-backdrop" onMouseDown={() => setOwnerUpdateOpen(false)}>
+          <section className="atlas-quick-capture-panel" style={{ width: "min(760px,100%)", maxHeight: "88vh" }} onMouseDown={(event) => event.stopPropagation()} aria-label="Weekly Owner Update">
+            <div className="atlas-quick-capture-header"><div><strong>Weekly Owner Update</strong><small>Generated from this week’s Atlas records. Routine clutter is excluded.</small></div><button type="button" onClick={() => setOwnerUpdateOpen(false)} style={mapIconButtonStyle}>{closeSymbol}</button></div>
+            <textarea value={ownerUpdateDraft} onChange={(event) => setOwnerUpdateDraft(event.currentTarget.value)} style={{ ...inputStyle, minHeight: isMobile ? 430 : 520, maxHeight: "65vh", resize: "vertical", whiteSpace: "pre-wrap", lineHeight: 1.5 }} />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => setOwnerUpdateOpen(false)} style={secondaryButtonStyle}>Cancel</button><button type="button" onClick={approveWeeklyOwnerUpdate} style={goldButtonStyle}>Approve & Save</button></div>
           </section>
         </div>
       ) : null}
@@ -38355,8 +38539,7 @@ ${notes.trim()}` : notes.trim(),
               </select>
               {!isRestrictedStaffUser ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <button type="button" onClick={() => { setDepartmentDrilldown(""); setDepartmentCenter("landscaping"); }} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === "landscaping" ? colors.gold : colors.line }}>🌿 Landscaping</button>
-                  <button type="button" onClick={() => { setDepartmentDrilldown(""); setDepartmentCenter("marine"); }} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === "marine" ? colors.gold : colors.line }}>⚓ Marine</button>
+                  {([['house','⌂ House'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping'],['marine','⚓ Dock']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => { setDepartmentDrilldown(""); setDepartmentCenter(id); }} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === id ? colors.gold : colors.line }}>{label}</button>)}
                 </div>
               ) : null}
             </div>
@@ -38462,13 +38645,7 @@ ${notes.trim()}` : notes.trim(),
                   <div style={sidebarNavSectionStyle}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>Departments</div>
                     <div style={sidebarNavItemsStyle}>
-                      {([[
-                        "landscaping",
-                        "🌿 Landscaping",
-                      ], [
-                        "marine",
-                        "⚓ Marine",
-                      ]] as const).map(([id, label]) => (
+                      {([['house','⌂ House & Maintenance'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping & Irrigation'],['marine','⚓ Dock & Waterfront']] as const).map(([id, label]) => (
                         <button
                           key={id}
                           type="button"
@@ -38593,7 +38770,7 @@ ${notes.trim()}` : notes.trim(),
                   {screen === "dashboard" ? <AtlasMiniMark size={34} /> : null}
                   <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>
                     {departmentCenter
-                      ? departmentCenter === "landscaping" ? "Landscaping Center" : "Marine Center"
+                      ? departmentCenter === "house" ? "House & Maintenance" : departmentCenter === "garage" ? "Garage" : departmentCenter === "pool" ? "Pool & Spa" : departmentCenter === "landscaping" ? "Landscaping & Irrigation" : "Dock & Waterfront"
                       : screen === "dashboard"
                         ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
                         : screen === "timeline"
