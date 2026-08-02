@@ -4080,6 +4080,8 @@ export default function AtlasPage() {
   const [showPropertyLoading, setShowPropertyLoading] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
+  const [quickCaptureNote, setQuickCaptureNote] = useState("");
   const [departmentCenter, setDepartmentCenter] = useState<"landscaping" | "marine" | "">("");
   const [departmentDrilldown, setDepartmentDrilldown] = useState<
     "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures" | ""
@@ -8120,6 +8122,52 @@ export default function AtlasPage() {
       setQuery(doc.targetName);
       setScreen("locations");
     }
+  }
+
+  function openQuickCapture(kind: "photo" | "document" | "task" | "work-order" | "project") {
+    setQuickCaptureOpen(false);
+    if (kind === "photo") {
+      resetIntakeDraft();
+      applyFastIntakeKind("General Photo");
+      setScreen("intake");
+      return;
+    }
+    if (kind === "document") {
+      resetIntakeDraft();
+      applyFastIntakeKind("Document");
+      setScreen("intake");
+      return;
+    }
+    if (kind === "task") {
+      setTasksView("tasks");
+      setSelectedTaskId("");
+      setNewTaskTitle("");
+      setScreen("planner");
+      return;
+    }
+    if (kind === "work-order") {
+      setSelectedServiceId("");
+      setScreen("history");
+      return;
+    }
+    setPhotoTimelineView("projects");
+    setSelectedPhotoTimelineProjectId("");
+    setScreen("timeline");
+  }
+
+  function saveQuickCaptureNote() {
+    const text = quickCaptureNote.trim();
+    if (!text) return;
+    setTodayLogEntries((current) => [{
+      id: uid("today-note"),
+      propertyId: activePropertyId,
+      date: todayISO(),
+      category: "Note",
+      text,
+      createdAt: new Date().toISOString(),
+    }, ...current]);
+    setQuickCaptureNote("");
+    setQuickCaptureOpen(false);
   }
 
   function resetIntakeDraft() {
@@ -34296,7 +34344,41 @@ export default function AtlasPage() {
   }
 
   return (
-    <main style={isMobile ? appStyle : desktopAppStyle}>
+    <main className="atlas-app-shell" style={isMobile ? appStyle : desktopAppStyle}>
+      <button
+        type="button"
+        aria-label="Quick capture"
+        title="Quick Capture"
+        onClick={() => setQuickCaptureOpen(true)}
+        className="atlas-quick-capture-button"
+      >
+        +
+      </button>
+      {quickCaptureOpen ? (
+        <div className="atlas-quick-capture-backdrop" onMouseDown={() => setQuickCaptureOpen(false)}>
+          <section className="atlas-quick-capture-panel" onMouseDown={(event) => event.stopPropagation()} aria-label="Quick Capture">
+            <div className="atlas-quick-capture-header">
+              <div>
+                <strong>Quick Capture</strong>
+                <small>Save it now. Organize it where it belongs.</small>
+              </div>
+              <button type="button" onClick={() => setQuickCaptureOpen(false)} style={iconButtonStyle}>{closeSymbol}</button>
+            </div>
+            <div className="atlas-quick-capture-actions">
+              <button type="button" onClick={() => openQuickCapture("photo")}><span>📷</span>Photo</button>
+              <button type="button" onClick={() => openQuickCapture("document")}><span>📄</span>Document</button>
+              <button type="button" onClick={() => openQuickCapture("task")}><span>✓</span>Task</button>
+              <button type="button" onClick={() => openQuickCapture("work-order")}><span>🔧</span>Work Order</button>
+              <button type="button" onClick={() => openQuickCapture("project")}><span>▣</span>Project</button>
+            </div>
+            <label className="atlas-quick-note-box">
+              <span>Quick note</span>
+              <textarea value={quickCaptureNote} onChange={(event) => setQuickCaptureNote(event.currentTarget.value)} placeholder="What happened or what should not be forgotten?" />
+            </label>
+            <button type="button" onClick={saveQuickCaptureNote} disabled={!quickCaptureNote.trim()} style={goldButtonStyle}>Save Note</button>
+          </section>
+        </div>
+      ) : null}
       {showPropertyLoading && syncState === "loading" ? (
         <div
           role="status"
@@ -34484,6 +34566,94 @@ export default function AtlasPage() {
           .atlas-app-shell button {
             min-height: 40px;
           }
+        }
+        .atlas-app-shell [data-atlas-record-list] {
+          gap: 6px !important;
+        }
+        .atlas-app-shell [data-atlas-record-list] > * {
+          padding-top: 9px !important;
+          padding-bottom: 9px !important;
+        }
+        .atlas-app-shell .atlas-record-detail,
+        .atlas-app-shell [data-atlas-detail-panel] {
+          position: sticky;
+          top: 10px;
+          align-self: start;
+          max-height: calc(100vh - 22px);
+          overflow: auto;
+        }
+        .atlas-quick-capture-button {
+          position: fixed;
+          right: 22px;
+          bottom: 22px;
+          z-index: 9000;
+          width: 48px;
+          height: 48px;
+          border-radius: 999px;
+          border: 1px solid #B88A2E;
+          background: #C99A3D;
+          color: #07172F;
+          font-size: 30px;
+          line-height: 1;
+          font-weight: 700;
+          box-shadow: 0 12px 30px rgba(8,29,55,.24);
+          cursor: pointer;
+        }
+        .atlas-quick-capture-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 9500;
+          display: grid;
+          place-items: end center;
+          padding: 18px;
+          background: rgba(7,23,47,.44);
+          backdrop-filter: blur(3px);
+        }
+        .atlas-quick-capture-panel {
+          width: min(560px, 100%);
+          display: grid;
+          gap: 12px;
+          padding: 16px;
+          border: 1px solid #D7DEE5;
+          border-radius: 18px;
+          background: #fff;
+          box-shadow: 0 22px 70px rgba(7,23,47,.28);
+        }
+        .atlas-quick-capture-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .atlas-quick-capture-header strong { display:block; color:#07172F; font-size:18px; }
+        .atlas-quick-capture-header small { display:block; margin-top:2px; color:#66788A; }
+        .atlas-quick-capture-actions {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0,1fr));
+          gap: 7px;
+        }
+        .atlas-quick-capture-actions button {
+          min-width: 0;
+          display: grid;
+          place-items: center;
+          gap: 4px;
+          padding: 9px 5px;
+          border: 1px solid #D7DEE5;
+          border-radius: 11px;
+          background: #F8FAFC;
+          color: #17354D;
+          font-size: 11px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .atlas-quick-capture-actions button span { font-size: 18px; }
+        .atlas-quick-note-box { display:grid; gap:5px; color:#17354D; font-size:12px; font-weight:800; }
+        .atlas-quick-note-box textarea { width:100%; min-height:76px !important; resize:vertical; border:1px solid #D7DEE5; border-radius:11px; padding:10px; }
+        @media (max-width: 760px) {
+          .atlas-quick-capture-button { right: 14px; bottom: 74px; width: 46px; height: 46px; }
+          .atlas-quick-capture-backdrop { padding: 10px; }
+          .atlas-quick-capture-actions { grid-template-columns: repeat(3, minmax(0,1fr)); }
+          .atlas-quick-capture-panel { border-radius: 16px; }
         }
         .atlas-procedure-print {
           display: none;
