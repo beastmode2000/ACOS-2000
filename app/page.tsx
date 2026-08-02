@@ -224,6 +224,12 @@ type AtlasTaskMeta = {
   completedAt?: string;
   createdAt: string;
   projectId?: string;
+  workOrderId?: string;
+  assetId?: string;
+  vehicleId?: string;
+  vendorId?: string;
+  procedureId?: string;
+  contactId?: string;
   notes?: string;
   recurrenceInterval?: number;
   recurrenceUnit?: WorkOrderRecurrenceUnit;
@@ -14598,7 +14604,30 @@ ${notes.trim()}` : notes.trim(),
                       <SelectField label="Season" value={selectedMeta.season || "Year-Round"} onChange={(value) => updateTaskDetails(selectedTask.id, { season: value as WorkSeason })} options={["Year-Round","Spring","Summer","Fall","Winter"]} />
                       <SelectField label="Weather" value={selectedMeta.weatherDependency || "None"} onChange={(value) => updateTaskDetails(selectedTask.id, { weatherDependency: value as AtlasTaskMeta["weatherDependency"] })} options={["None","Dry","No rain","Warm","Cool","Low wind"]} />
                     </div>
-                    {!isAddisonUser && photoTimelineProjects.length ? <label style={fieldLabelStyle}>Project<select value={selectedMeta.projectId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { projectId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No project</option>{photoTimelineProjects.filter((project) => !project.archived).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label> : null}
+                    <details style={{ ...noticeStyle, padding: 10 }} open>
+                      <summary style={{ cursor: "pointer", fontWeight: 900, color: colors.navy }}>Related Records</summary>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9, marginBottom: 9 }}>
+                        {selectedMeta.projectId ? <span style={badgeStyle("Monitor")}>Project · {photoTimelineProjects.find((item) => item.id === selectedMeta.projectId)?.title || "Linked"}</span> : null}
+                        {selectedMeta.workOrderId ? <span style={badgeStyle("Scheduled")}>Work Order · {serviceRecords.find((item) => item.id === selectedMeta.workOrderId)?.title || "Linked"}</span> : null}
+                        {selectedMeta.assetId ? <span style={badgeStyle("Online")}>Asset · {assetRecords.find((item) => item.id === selectedMeta.assetId)?.name || "Linked"}</span> : null}
+                        {selectedTask.locationId ? <span style={badgeStyle("Normal")}>Location · {locations.find((item) => item.id === selectedTask.locationId)?.name || "General"}</span> : null}
+                        {selectedMeta.vehicleId ? <span style={badgeStyle("Normal")}>Vehicle · {vehicleCare.find((item) => item.id === selectedMeta.vehicleId)?.name || "Linked"}</span> : null}
+                        {selectedMeta.vendorId ? <span style={badgeStyle("Normal")}>Vendor · {vendorRecords.find((item) => item.id === selectedMeta.vendorId)?.name || "Linked"}</span> : null}
+                        {selectedMeta.procedureId ? <span style={badgeStyle("Normal")}>Procedure · {procedureRecords.find((item) => item.id === selectedMeta.procedureId)?.title || "Linked"}</span> : null}
+                        {selectedMeta.contactId ? <span style={badgeStyle("Normal")}>Contact · {contactRecords.find((item) => item.id === selectedMeta.contactId)?.name || "Linked"}</span> : null}
+                        {!selectedMeta.projectId && !selectedMeta.workOrderId && !selectedMeta.assetId && !selectedTask.locationId && !selectedMeta.vehicleId && !selectedMeta.vendorId && !selectedMeta.procedureId && !selectedMeta.contactId ? <span style={mutedSmallStyle}>No related records yet.</span> : null}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9 }}>
+                        <label style={fieldLabelStyle}>Project<select value={selectedMeta.projectId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { projectId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No project</option>{photoTimelineProjects.filter((project) => !project.archived).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
+                        <label style={fieldLabelStyle}>Work Order<select value={selectedMeta.workOrderId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { workOrderId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No work order</option>{serviceRecords.filter((record) => record.status !== "Completed").map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
+                        <label style={fieldLabelStyle}>Asset<select value={selectedMeta.assetId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { assetId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No asset</option>{assetRecords.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
+                        <label style={fieldLabelStyle}>Location<select value={selectedTask.locationId || ""} onChange={(event) => updateWorkPlanTask(selectedTask.id, { locationId: event.currentTarget.value })} style={inputStyle}><option value="">General</option>{locations.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
+                        <label style={fieldLabelStyle}>Vehicle / Equipment<select value={selectedMeta.vehicleId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { vehicleId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No vehicle</option>{vehicleCare.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
+                        <label style={fieldLabelStyle}>Vendor<select value={selectedMeta.vendorId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { vendorId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No vendor</option>{vendorRecords.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
+                        <label style={fieldLabelStyle}>Procedure<select value={selectedMeta.procedureId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { procedureId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No procedure</option>{procedureRecords.map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
+                        <label style={fieldLabelStyle}>Contact<select value={selectedMeta.contactId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { contactId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No contact</option>{contactRecords.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
+                      </div>
+                    </details>
                     <details style={{ ...noticeStyle, padding: 10 }} open={Boolean(selectedTask.recurring)}>
                       <summary style={{ cursor: "pointer", fontWeight: 900 }}>Recurring schedule</summary>
                       <div style={{ display: "grid", gap: 9, marginTop: 9 }}>
