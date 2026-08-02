@@ -5223,7 +5223,7 @@ export default function AtlasPage() {
       return {};
     }
   });
-  const [tasksView, setTasksView] = useState<"tasks" | "build" | "route" | "addison" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
+  const [tasksView, setTasksView] = useState<"tasks" | "build" | "route" | "addison" | "analytics" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>("today");
@@ -15063,6 +15063,62 @@ ${notes.trim()}` : notes.trim(),
     </div>;
   }
 
+  function renderOperationsAnalytics() {
+    const today = todayISO();
+    const completedTasks = workPlanTasks.filter((task) => taskDetails(task.id).status === "Completed");
+    const openTasks = workPlanTasks.filter((task) => taskDetails(task.id).status !== "Completed");
+    const postponedTasks = openTasks.filter((task) => {
+      const due = taskDetails(task.id).dueDate;
+      return Boolean(due && due < addDays(today, -7));
+    });
+    const completionDurations = completedTasks.map((task) => {
+      const meta = taskDetails(task.id);
+      const start = new Date(meta.createdAt || "").getTime();
+      const end = new Date(meta.completedAt || "").getTime();
+      return start && end && end >= start ? (end - start) / 86400000 : 0;
+    }).filter((value) => value > 0);
+    const averageCompletionDays = completionDurations.length ? completionDurations.reduce((sum, value) => sum + value, 0) / completionDurations.length : 0;
+    const categoryMinutes = new Map<string, number>();
+    completedTasks.forEach((task) => categoryMinutes.set(task.category || "General", (categoryMinutes.get(task.category || "General") || 0) + Math.max(5, Number(task.minutes || 0))));
+    const categoryRows = [...categoryMinutes.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+    const locationCounts = new Map<string, number>();
+    completedTasks.forEach((task) => { const label = locationName(task.locationId) || "General"; locationCounts.set(label, (locationCounts.get(label) || 0) + 1); });
+    serviceRecords.forEach((record) => { const completedCount = (record.serviceHistory || []).length || (record.status === "Completed" ? 1 : 0); if (!completedCount) return; const label = locationName(record.locationId) || assetName(record.assetId) || "General"; locationCounts.set(label, (locationCounts.get(label) || 0) + completedCount); });
+    const locationRows = [...locationCounts.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+    const addisonTasks = workPlanTasks.filter((task) => taskDetails(task.id).assignee === "Addison");
+    const addisonCompleted = addisonTasks.filter((task) => taskDetails(task.id).status === "Completed");
+    const addisonMinutes = addisonTasks.filter((task) => taskDetails(task.id).status !== "Completed").reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0);
+    const recurringTasks = workPlanTasks.filter((task) => task.recurring);
+    const recurringCompliant = recurringTasks.filter((task) => taskDetails(task.id).status === "Completed" || !taskDetails(task.id).dueDate || taskDetails(task.id).dueDate >= today).length;
+    const recurringRate = recurringTasks.length ? Math.round((recurringCompliant / recurringTasks.length) * 100) : 100;
+    const vendorRows = vendorRecords.map((vendor) => {
+      const records = serviceRecords.filter((record) => record.vendorId === vendor.id || (record.assignedVendorIds || []).includes(vendor.id));
+      const completed = records.filter((record) => record.status === "Completed" || (record.serviceHistory || []).length);
+      const turnaround = completed.flatMap((record) => (record.serviceHistory || []).map((entry) => {
+        const start = new Date(`${record.date || String(entry.completedAt).slice(0, 10)}T12:00:00`).getTime();
+        const end = new Date(entry.completedAt).getTime();
+        return end >= start ? (end - start) / 86400000 : 0;
+      })).filter((days) => days >= 0);
+      return { vendor, jobs: records.length, open: records.filter((record) => record.status !== "Completed").length, averageDays: turnaround.length ? turnaround.reduce((sum, days) => sum + days, 0) / turnaround.length : 0 };
+    }).filter((row) => row.jobs).sort((a, b) => b.jobs - a.jobs).slice(0, 8);
+    const inactiveProjects = photoTimelineProjects.filter((project) => !project.archived && project.status !== "Completed").map((project) => {
+      const dates = [project.createdAt, project.startDate, ...projectTimelineEntries.filter((entry) => entry.projectId === project.id).map((entry) => entry.date || entry.createdAt), ...serviceRecords.filter((record) => record.projectId === project.id).flatMap((record) => [record.date || "", ...(record.serviceHistory || []).map((entry) => entry.completedAt)])].filter(Boolean).sort((a, b) => String(b).localeCompare(String(a)));
+      return { project, lastActivity: String(dates[0] || project.createdAt || ""), inactiveDays: daysSince(String(dates[0] || project.createdAt || "").slice(0, 10)) };
+    }).filter((row) => row.inactiveDays >= 14).sort((a, b) => b.inactiveDays - a.inactiveDays);
+    const barList = (rows: Array<{ label: string; value: number }>, formatter: (value: number) => string) => {
+      const max = Math.max(1, ...rows.map((row) => row.value));
+      return <div style={{ display: "grid", gap: 9, marginTop: 10 }}>{rows.map((row) => <div key={row.label}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 4 }}><strong style={{ fontSize: 12, color: colors.navy3 }}>{row.label}</strong><small style={mutedSmallStyle}>{formatter(row.value)}</small></div><div style={{ height: 8, borderRadius: 999, background: "#E8EEF4", overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.max(4, (row.value / max) * 100)}%`, borderRadius: 999, background: colors.gold }} /></div></div>)}{!rows.length ? <div style={noticeStyle}>Complete more work to build this analysis.</div> : null}</div>;
+    };
+    return <div style={{ display: "grid", gap: 12 }}>
+      <section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Operations Analytics</div><h2 style={{ margin: "4px 0", color: "#FFFFFF" }}>What Atlas history is showing</h2><p style={{ margin: 0, opacity: .84 }}>Every metric comes from the records already stored in this property.</p></div><div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 25 }}>{completedTasks.length}</strong><small style={{ opacity: .82 }}>completed Tasks recorded</small></div></div></section>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>{[["Avg completion",averageCompletionDays ? `${averageCompletionDays.toFixed(1)}d` : "—"],["Postponed",postponedTasks.length],["Recurring compliance",`${recurringRate}%`],["Inactive projects",inactiveProjects.length]].map(([label,value]) => <div key={String(label)} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{String(label).toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: label === "Postponed" && Number(value) ? colors.red : colors.navy }}>{value}</strong></div>)}</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}><section style={cardStyle}><div style={eyebrowStyle}>Where time goes</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Completed time by category</h3>{barList(categoryRows, minutesLabel)}</section><section style={cardStyle}><div style={eyebrowStyle}>Property activity</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Completed work by location</h3>{barList(locationRows, (value) => `${value} record${value === 1 ? "" : "s"}`)}</section></div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}><section style={cardStyle}><div style={eyebrowStyle}>Addison</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Workload and completion</h3><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 10 }}>{[["Assigned",addisonTasks.length],["Completed",addisonCompleted.length],["Open time",minutesLabel(addisonMinutes)]].map(([label,value]) => <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9 }}><small style={fieldLabelStyle}>{String(label).toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, color: colors.navy }}>{value}</strong></div>)}</div><small style={{ ...mutedSmallStyle, display: "block", marginTop: 9 }}>Completion rate: {addisonTasks.length ? Math.round((addisonCompleted.length / addisonTasks.length) * 100) : 0}%</small></section><section style={cardStyle}><div style={eyebrowStyle}>Recurring work</div><h3 style={{ margin: "3px 0", color: colors.navy }}>{recurringRate}% currently compliant</h3><p style={mutedSmallStyle}>{recurringCompliant} of {recurringTasks.length} recurring Tasks are completed or not overdue.</p><button type="button" onClick={() => { setTaskListFilter("recurring"); setTasksView("tasks"); }} style={secondaryButtonStyle}>Review Recurring Tasks</button></section></div>
+      {postponedTasks.length ? <section style={{ ...cardStyle, borderColor: "#F1A7A7" }}><div style={eyebrowStyle}>Repeatedly delayed signal</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Tasks overdue more than seven days</h3><div style={{ display: "grid", gap: 7, marginTop: 9 }}>{postponedTasks.map((task) => <button key={task.id} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "space-between" }}><span>{task.title}</span><small>{formatDate(taskDetails(task.id).dueDate)}</small></button>)}</div></section> : null}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}><section style={cardStyle}><div style={eyebrowStyle}>Vendor performance</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Jobs and recorded turnaround</h3><div style={{ display: "grid", gap: 7, marginTop: 9 }}>{vendorRows.map((row) => <button key={row.vendor.id} type="button" onClick={() => { setSelectedVendorId(row.vendor.id); setScreen("vendors"); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "space-between" }}><span><strong style={{ display: "block" }}>{row.vendor.name}</strong><small style={mutedSmallStyle}>{row.jobs} jobs · {row.open} open</small></span><small>{row.averageDays ? `${row.averageDays.toFixed(1)}d avg` : "No cycle time"}</small></button>)}{!vendorRows.length ? <div style={noticeStyle}>Vendor analytics will appear after work is linked to vendors.</div> : null}</div></section><section style={cardStyle}><div style={eyebrowStyle}>Project momentum</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Inactive or delayed projects</h3><div style={{ display: "grid", gap: 7, marginTop: 9 }}>{inactiveProjects.map((row) => <button key={row.project.id} type="button" onClick={() => { setSelectedPhotoProjectId(row.project.id); setPhotoTimelineView("projects"); setProjectDetailTab("overview"); setScreen("timeline"); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "space-between" }}><span>{row.project.title}</span><small>{row.inactiveDays}d inactive</small></button>)}{!inactiveProjects.length ? <div style={noticeStyle}>No active project has been inactive for 14 days.</div> : null}</div></section></div>
+    </div>;
+  }
+
   function renderWorkPlanner() {
     const today = todayISO();
     const weekEnd = addDays(today, 7);
@@ -15123,9 +15179,9 @@ ${notes.trim()}` : notes.trim(),
     return (
       <div style={{ display: "grid", gap: 14 }}>
         <SectionHeader
-          eyebrow={tasksView === "addison" ? "Team Operations" : tasksView === "route" ? "Property Route" : tasksView === "build" ? "Estate Brain" : tasksView === "vehicles" ? "Operations" : tasksView === "planner" ? "Planning" : "Work"}
-          title={isAddisonUser ? "My Tasks" : tasksView === "addison" ? "Addison Work Manager" : tasksView === "route" ? "Smart Route" : tasksView === "build" ? "Build My Day" : tasksView === "vehicles" ? "Vehicle Care" : tasksView === "planner" ? "Plan Week" : "Tasks"}
-          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : tasksView === "addison" ? "Assign, explain, track, and review Addison’s daily work from one dedicated view." : tasksView === "route" ? "Complete nearby work together to reduce walking and context switching across the property." : tasksView === "build" ? "Atlas combines current work, routine, project, vehicle, weather, duration, and priority signals into one realistic day." : tasksView === "vehicles" ? "Track onsite status, cleaning history, and create only the vehicle work that is needed." : tasksView === "planner" ? "Balance existing work across the week. Tasks remain managed in Tasks." : "Your main daily work area for one-time and recurring tasks."}
+          eyebrow={tasksView === "analytics" ? "Performance" : tasksView === "addison" ? "Team Operations" : tasksView === "route" ? "Property Route" : tasksView === "build" ? "Estate Brain" : tasksView === "vehicles" ? "Operations" : tasksView === "planner" ? "Planning" : "Work"}
+          title={isAddisonUser ? "My Tasks" : tasksView === "analytics" ? "Operations Analytics" : tasksView === "addison" ? "Addison Work Manager" : tasksView === "route" ? "Smart Route" : tasksView === "build" ? "Build My Day" : tasksView === "vehicles" ? "Vehicle Care" : tasksView === "planner" ? "Plan Week" : "Tasks"}
+          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : tasksView === "analytics" ? "Use completed work history to see workload, delays, compliance, vendor performance, and project momentum." : tasksView === "addison" ? "Assign, explain, track, and review Addison’s daily work from one dedicated view." : tasksView === "route" ? "Complete nearby work together to reduce walking and context switching across the property." : tasksView === "build" ? "Atlas combines current work, routine, project, vehicle, weather, duration, and priority signals into one realistic day." : tasksView === "vehicles" ? "Track onsite status, cleaning history, and create only the vehicle work that is needed." : tasksView === "planner" ? "Balance existing work across the week. Tasks remain managed in Tasks." : "Your main daily work area for one-time and recurring tasks."}
           right={tasksView === "tasks" && !isAddisonUser ? <button type="button" onClick={() => setTaskFocusMode(true)} disabled={!focusTasks.length} style={goldButtonStyle}>Start Working</button> : undefined}
         />
         {!isAddisonUser && tasksView !== "vehicles" && tasksView !== "planner" ? (
@@ -15133,6 +15189,7 @@ ${notes.trim()}` : notes.trim(),
             <button type="button" onClick={() => setTasksView("build")} style={tasksView === "build" ? goldButtonStyle : secondaryButtonStyle}>Build My Day</button>
             <button type="button" onClick={() => setTasksView("route")} style={tasksView === "route" ? goldButtonStyle : secondaryButtonStyle}>Smart Route</button>
             <button type="button" onClick={() => setTasksView("addison")} style={tasksView === "addison" ? goldButtonStyle : secondaryButtonStyle}>Addison Today</button>
+            <button type="button" onClick={() => setTasksView("analytics")} style={tasksView === "analytics" ? goldButtonStyle : secondaryButtonStyle}>Analytics</button>
             <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog · {backlogItems.length}</button>
             <button type="button" onClick={() => setTasksView("seasonal")} style={tasksView === "seasonal" ? goldButtonStyle : secondaryButtonStyle}>Seasonal</button>
             <button type="button" onClick={() => setTasksView("templates")} style={tasksView === "templates" ? goldButtonStyle : secondaryButtonStyle}>Templates</button>
@@ -15140,7 +15197,7 @@ ${notes.trim()}` : notes.trim(),
           </div>
         ) : null}
 
-        {tasksView === "route" && !isAddisonUser ? renderSmartRoutePlanning() : tasksView === "build" && !isAddisonUser ? renderBuildMyDay() : tasksView === "addison" && !isAddisonUser ? renderAddisonToday() : tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
+        {tasksView === "analytics" && !isAddisonUser ? renderOperationsAnalytics() : tasksView === "route" && !isAddisonUser ? renderSmartRoutePlanning() : tasksView === "build" && !isAddisonUser ? renderBuildMyDay() : tasksView === "addison" && !isAddisonUser ? renderAddisonToday() : tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
           <>
             {!isAddisonUser ? (
               <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
@@ -37475,6 +37532,8 @@ ${notes.trim()}` : notes.trim(),
                         ? "planner:route"
                       : tasksView === "addison"
                         ? "planner:addison"
+                      : tasksView === "analytics"
+                        ? "planner:analytics"
                       : tasksView === "vehicles"
                       ? "planner:vehicles"
                       : tasksView === "planner"
@@ -37504,6 +37563,11 @@ ${notes.trim()}` : notes.trim(),
                     setScreen("planner");
                     return;
                   }
+                  if (nextValue === "planner:analytics") {
+                    setTasksView("analytics");
+                    setScreen("planner");
+                    return;
+                  }
                   if (nextValue === "planner:vehicles") {
                     setTasksView("vehicles");
                     setScreen("planner");
@@ -37528,6 +37592,7 @@ ${notes.trim()}` : notes.trim(),
                   <option value="planner:build">Build My Day</option>
                   <option value="planner:route">Smart Route</option>
                   <option value="planner:addison">Addison Manager</option>
+                  <option value="planner:analytics">Operations Analytics</option>
                   <option value="planner:tasks">Tasks</option>
                   <option value="planner:vehicles">Vehicle Care</option>
                   <option value="planner:week">Plan Week</option>
@@ -37589,6 +37654,7 @@ ${notes.trim()}` : notes.trim(),
                             { id: "build", label: "Build My Day", view: "build" as const },
                             { id: "route", label: "Smart Route", view: "route" as const },
                             { id: "addison", label: "Addison Manager", view: "addison" as const },
+                            { id: "analytics", label: "Operations Analytics", view: "analytics" as const },
                             { id: "tasks", label: "Tasks", view: "tasks" as const },
                             { id: "vehicles", label: "Vehicle Care", view: "vehicles" as const },
                             { id: "week", label: "Plan Week", view: "planner" as const },
