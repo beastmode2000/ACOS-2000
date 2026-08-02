@@ -17319,13 +17319,14 @@ ${notes.trim()}` : notes.trim(),
     const visibleRoutineItems: DashboardRoutineItem[] = dashboardRoutineItems.length ? dashboardRoutineItems : scheduledRoutineEvents.map((item) => ({ id: String(item.instanceId || item.id), title: item.title, detail: item.categoryLabel || item.area || "Recurring routine", time: item.time || "" }));
     const completedRoutineCount = visibleRoutineItems.filter((item) => completedDashboardRoutineIds.includes(item.id)).length;
     const routineProgress = visibleRoutineItems.length ? Math.round((completedRoutineCount / visibleRoutineItems.length) * 100) : 0;
+    const scheduledCount = dueToday.length + nonRoutineTodayEvents.length + todaysRequests.length;
     const briefLines = [
-      visibleRoutineItems.length ? `${visibleRoutineItems.length} routine checklist item${visibleRoutineItems.length === 1 ? " is" : "s are"} available.` : "No routine checklist items are available yet.",
-      `${dueToday.length + nonRoutineTodayEvents.length + todaysRequests.length} scheduled item${dueToday.length + nonRoutineTodayEvents.length + todaysRequests.length === 1 ? " is" : "s are"} on today’s plan.`,
-      overdueWork.length ? `${overdueWork.length} item${overdueWork.length === 1 ? " is" : "s are"} overdue.` : "No work orders are overdue.",
-      vendorEvents.length ? `${vendorEvents.length} vendor visit${vendorEvents.length === 1 ? " is" : "s are"} on the visible schedule.` : "No vendor visits are currently scheduled.",
-      todaysWeather ? `${weatherText(Number(todaysWeather.code || 0))}; ${irrigationAdvice(todaysWeather)}` : "Weather intelligence is loading.",
-    ];
+      visibleRoutineItems.length ? `${visibleRoutineItems.length} routine item${visibleRoutineItems.length === 1 ? "" : "s"}` : "",
+      scheduledCount ? `${scheduledCount} scheduled today` : "",
+      overdueWork.length ? `${overdueWork.length} overdue` : "",
+      vendorEvents.length ? `${vendorEvents.length} vendor visit${vendorEvents.length === 1 ? "" : "s"}` : "",
+      todaysWeather ? weatherText(Number(todaysWeather.code || 0)) : "",
+    ].filter(Boolean);
 
     type DailyFocusPlan = {
       title: string;
@@ -17645,7 +17646,7 @@ ${notes.trim()}` : notes.trim(),
                   <span style={{ fontSize: 21 }}>{item.icon}</span>
                   <strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong>
                   <small style={mutedSmallStyle}>{item.count} open work order{item.count === 1 ? "" : "s"}</small>
-                  <small style={{ ...mutedSmallStyle, display: "block", marginTop: 6, minHeight: 30 }}>{item.count ? item.reason : "No open work in this area."}</small>
+                  {!isMobile ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 6, minHeight: 30 }}>{item.count ? item.reason : "No open work in this area."}</small> : null}
                 </button>
                 <button type="button" onClick={() => addDashboardWorkOrder(item.label)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 30, marginTop: 8, padding: "4px 7px", fontSize: 11 }}>+ Work Order</button>
               </div>
@@ -17654,17 +17655,17 @@ ${notes.trim()}` : notes.trim(),
         </section>
       );
       if (id === "routine") return null;
-      if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "11px 13px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ flex: 1, minWidth: 0, overflowX: "auto", whiteSpace: "nowrap", fontSize: 13, color: colors.text }}>{briefLines.map((line, index) => <span key={index} style={{ marginRight: 18 }}><span style={{ color: index === 2 && overdueWork.length ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div></div></section>;
+      if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "10px 12px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 4 : 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "3px 12px" : "3px 18px", minWidth: 0, fontSize: 13, lineHeight: 1.35, color: colors.text }}>{(briefLines.length ? briefLines : ["All clear"]).slice(0, isMobile ? 3 : 5).map((line, index) => <span key={index} style={{ whiteSpace: "normal" }}><span style={{ color: String(line).includes("overdue") ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div></div></section>;
       if (id === "recent-activity") return <section style={{ ...cardStyle, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-          <div><div style={eyebrowStyle}>Live Operations Feed</div><h3 style={{ margin: "3px 0 0", color: colors.navy }}>What is happening across {activeProperty?.name || activePropertyId}</h3><p style={{ ...mutedSmallStyle, margin: "5px 0 0" }}>Work, requests, vendors, photos, and operational alerts in one place.</p></div>
-          <button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>View history</button>
+          <div>{!isMobile ? <div style={eyebrowStyle}>Live Operations Feed</div> : null}<h3 style={{ margin: 0, color: colors.navy }}>{isMobile ? "Activity" : `What is happening across ${activeProperty?.name || activePropertyId}`}</h3>{!isMobile ? <p style={{ ...mutedSmallStyle, margin: "5px 0 0" }}>Work, requests, vendors, photos, and alerts.</p> : null}</div>
+          {!isMobile ? <button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>View history</button> : null}
         </div>
-        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "12px 0 9px" }}>{(["All","Work","Requests","Vendors","Photos","Alerts"] as const).map((filter) => <button key={filter} type="button" onClick={() => setDashboardFeedFilter(filter)} style={{ ...(dashboardFeedFilter === filter ? goldButtonStyle : secondaryButtonStyle), minHeight: 32, padding: "5px 9px", whiteSpace: "nowrap", fontSize: 12 }}>{filter} <span style={{ opacity: .75 }}>({dashboardFeedCounts[filter]})</span></button>)}</div>
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 0 8px", scrollbarWidth: "none" }}>{(["All","Work","Requests","Vendors","Photos","Alerts"] as const).map((filter) => <button key={filter} type="button" onClick={() => setDashboardFeedFilter(filter)} style={{ ...(dashboardFeedFilter === filter ? goldButtonStyle : secondaryButtonStyle), flex: "0 0 auto", minWidth: "max-content", minHeight: 32, padding: "5px 10px", whiteSpace: "nowrap", wordBreak: "normal", overflowWrap: "normal", fontSize: 12 }}>{filter} <span style={{ opacity: .75 }}>({dashboardFeedCounts[filter]})</span></button>)}</div>
         <div style={{ display: "grid", gap: 7 }}>{filteredDashboardFeed.map((item) => {
           const tone = item.tone === "red" ? { bg: "#FEF2F2", fg: "#B42318" } : item.tone === "gold" ? { bg: "#FFF7E5", fg: "#8A5A00" } : item.tone === "green" ? { bg: "#EAF7F1", fg: colors.green } : { bg: "#EEF4FF", fg: colors.navy2 };
           const time = new Date(item.at); const timeLabel = Number.isNaN(time.getTime()) ? "Recently" : time.toDateString() === new Date().toDateString() ? time.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}) : time.toLocaleDateString(undefined,{month:"short",day:"numeric"});
-          return <div key={item.id} style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", alignItems: "center", gap: 9, border: `1px solid ${colors.line}`, borderRadius: 11, background: "#FFFFFF", padding: "9px 10px" }}><span style={{ width: 30, height: 30, borderRadius: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tone.bg, color: tone.fg, fontWeight: 950 }}>{item.icon}</span><button type="button" onClick={item.action} style={{ minWidth: 0, border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colors.navy }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail} · {timeLabel}</small></button><div style={{ display: "flex", gap: 5, alignItems: "center" }}><button type="button" onClick={item.action} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>{item.actionLabel}</button><button type="button" title="Dismiss from feed" onClick={() => setDismissedDashboardFeedIds((current) => [...current, item.id])} style={{ width: 28, minHeight: 28, borderRadius: 8, border: `1px solid ${colors.line}`, background: "#FFFFFF", color: colors.muted, cursor: "pointer" }}>×</button></div></div>;
+          return <div key={item.id} style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", alignItems: "center", gap: isMobile ? 7 : 9, border: `1px solid ${colors.line}`, borderRadius: 11, background: "#FFFFFF", padding: isMobile ? "8px" : "9px 10px" }}><span style={{ width: 30, height: 30, borderRadius: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tone.bg, color: tone.fg, fontWeight: 950 }}>{item.icon}</span><button type="button" onClick={item.action} style={{ minWidth: 0, border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colors.navy }}>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.detail} · {timeLabel}</small></button><div style={{ display: "flex", gap: 5, alignItems: "center" }}><button type="button" aria-label={item.actionLabel} onClick={item.action} style={{ ...secondaryButtonStyle, minWidth: isMobile ? 30 : undefined, minHeight: 30, padding: isMobile ? "3px 7px" : "4px 8px", fontSize: isMobile ? 18 : 11 }}>{isMobile ? "›" : item.actionLabel}</button><button type="button" title="Dismiss from feed" onClick={() => setDismissedDashboardFeedIds((current) => [...current, item.id])} style={{ width: 28, minHeight: 28, borderRadius: 8, border: `1px solid ${colors.line}`, background: "#FFFFFF", color: colors.muted, cursor: "pointer" }}>×</button></div></div>;
         })}{!filteredDashboardFeed.length ? <div style={noticeStyle}>No {dashboardFeedFilter === "All" ? "operations" : dashboardFeedFilter.toLowerCase()} activity is available for this property.</div> : null}</div>
       </section>;
       const dashboardWeatherDetail = weatherDays.find((day) => day.date === dashboardWeatherDetailDate);
@@ -36594,6 +36595,8 @@ ${notes.trim()}` : notes.trim(),
           }
           .atlas-app-shell button {
             min-height: 40px;
+            word-break: keep-all !important;
+            overflow-wrap: normal !important;
           }
         }
         .atlas-app-shell [data-atlas-record-list] {
