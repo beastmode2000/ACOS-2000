@@ -4427,7 +4427,7 @@ export default function AtlasPage() {
   const [photoTimelinePaintingOnly, setPhotoTimelinePaintingOnly] = useState(false);
   const [photoTimelineHideLogos, setPhotoTimelineHideLogos] = useState(true);
   const [selectedPhotoTimelineId, setSelectedPhotoTimelineId] = useState("");
-  const [photoTimelineView, setPhotoTimelineView] = useState<"timeline" | "projects">("projects");
+  const [photoTimelineView, setPhotoTimelineView] = useState<"timeline" | "projects" | "activity">("projects");
   const [photoTimelineProjectCategory, setPhotoTimelineProjectCategory] = useState<PhotoTimelineProjectCategory | "All">("All");
   const [photoTimelineTagFilter, setPhotoTimelineTagFilter] = useState<PhotoTimelineTag | "All">("All");
   const [photoTimelineVendorFilter, setPhotoTimelineVendorFilter] = useState("all");
@@ -17194,6 +17194,119 @@ export default function AtlasPage() {
       });
     };
 
+    type UniversalActivityItem = {
+      id: string;
+      type: "Project" | "Work Order" | "Photo" | "Document" | "Calendar" | "Task" | "Note";
+      title: string;
+      detail: string;
+      date: string;
+      icon: string;
+      action?: () => void;
+    };
+
+    const universalActivityItems: UniversalActivityItem[] = [
+      ...projectTimelineEntries.map((entry) => {
+        const project = photoTimelineProjects.find((item) => item.id === entry.projectId);
+        return {
+          id: `activity-project-${entry.id}`,
+          type: "Project" as const,
+          title: entry.title || entry.type,
+          detail: `${project?.title || "Project"}${entry.notes ? ` · ${entry.notes}` : ""}`,
+          date: entry.date || entry.createdAt || "",
+          icon: entry.type === "Completed" ? "✓" : entry.type === "Vendor Visit" ? "👷" : "◆",
+          action: () => { setSelectedPhotoProjectId(entry.projectId); setProjectDetailTab("timeline"); setPhotoTimelineView("projects"); },
+        };
+      }),
+      ...serviceRecords.flatMap((record) => {
+        const history = Array.isArray((record as AtlasServiceRecord).serviceHistory) ? (record as AtlasServiceRecord).serviceHistory! : [];
+        if (history.length) {
+          return history.map((entry) => ({
+            id: `activity-work-${record.id}-${entry.id}`,
+            type: "Work Order" as const,
+            title: record.title,
+            detail: `Completed${record.assetId ? ` · ${assetName(record.assetId) || "Asset"}` : ""}`,
+            date: entry.completedAt || record.lastCompletedDate || record.date || "",
+            icon: "✓",
+            action: () => { setSelectedServiceId(record.id); setScreen("history"); },
+          }));
+        }
+        return [{
+          id: `activity-work-${record.id}`,
+          type: "Work Order" as const,
+          title: record.title,
+          detail: `${record.status || "Open"}${record.assetId ? ` · ${assetName(record.assetId) || "Asset"}` : ""}`,
+          date: record.date || "",
+          icon: "🔧",
+          action: () => { setSelectedServiceId(record.id); setScreen("history"); },
+        }];
+      }),
+      ...allPhotoTimelineItems.map((item) => {
+        const meta = photoTimelineMeta[item.id] || { tag: "Unlabeled" as PhotoTimelineTag, notes: "" };
+        return {
+          id: `activity-photo-${item.id}`,
+          type: "Photo" as const,
+          title: meta.milestoneTitle?.trim() || meta.notes?.trim() || item.name || "Photo added",
+          detail: `${meta.tag || "Photo"} · ${item.assetName || item.area || "General property"}`,
+          date: meta.milestoneDate || meta.dateTaken || item.createdAt || "",
+          icon: "📷",
+          action: () => setSelectedPhotoTimelineId(item.id),
+        };
+      }),
+      ...allDocuments.map((document) => ({
+        id: `activity-document-${document.id}`,
+        type: "Document" as const,
+        title: document.title || "Document added",
+        detail: `${document.type || "Document"} · ${document.area || document.targetName || "General"}`,
+        date: document.createdAt || "",
+        icon: "📄",
+        action: () => { setSelectedDocumentId(document.id); setScreen("documents"); },
+      })),
+      ...calendarItems.map((item) => ({
+        id: `activity-calendar-${item.id}`,
+        type: "Calendar" as const,
+        title: item.title || "Calendar item",
+        detail: `${item.completed ? "Completed" : item.eventType || item.categoryLabel || item.area || "Scheduled"}${item.time ? ` · ${item.time}` : ""}`,
+        date: item.date || "",
+        icon: item.completed ? "✓" : "📅",
+        action: () => { setSelectedCalendarId(item.id); setScreen("calendar"); },
+      })),
+      ...workPlanTasks.filter((task) => taskDetails(task.id).status === "Completed").map((task) => ({
+        id: `activity-task-${task.id}`,
+        type: "Task" as const,
+        title: task.title,
+        detail: `${task.category || "Task"}${taskDetails(task.id).assignee ? ` · ${taskDetails(task.id).assignee}` : ""}`,
+        date: taskDetails(task.id).completedAt || task.scheduledDate || "",
+        icon: "✓",
+        action: () => { setSelectedWorkPlanTaskId(task.id); setPlannerMode("tasks"); setScreen("planner"); },
+      })),
+      ...todayLogEntries.map((entry) => ({
+        id: `activity-note-${entry.id}`,
+        type: "Note" as const,
+        title: entry.text,
+        detail: entry.category,
+        date: entry.createdAt || entry.date || "",
+        icon: "📝",
+      })),
+    ];
+
+    const activitySearch = photoTimelineSearch.trim().toLowerCase();
+    const visibleActivityItems = universalActivityItems
+      .filter((item) => {
+        const dateKey = String(item.date || "").slice(0, 10);
+        if (photoTimelineYear !== "all" && dateKey.slice(0, 4) !== photoTimelineYear) return false;
+        if (photoTimelineMonthFilter !== "all" && dateKey.slice(5, 7) !== photoTimelineMonthFilter) return false;
+        if (activitySearch && !`${item.title} ${item.detail} ${item.type}`.toLowerCase().includes(activitySearch)) return false;
+        return true;
+      })
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+    const activityGroups = visibleActivityItems.reduce<Record<string, UniversalActivityItem[]>>((groups, item) => {
+      const dateKey = String(item.date || "").slice(0, 10) || "No date";
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(item);
+      return groups;
+    }, {});
+
     return (
       <>
         {mode === "timeline" ? (
@@ -17208,7 +17321,7 @@ export default function AtlasPage() {
               <div style={{ display: "inline-flex", border: "1px solid #CBD5E1", borderRadius: 10, padding: 3, background: "#F8FAFC" }}>
                 {([[
                   "projects", "Projects",
-                ], ["timeline", "Visual Timeline"]] as const).map(([value, label]) => (
+                ], ["activity", "Activity"], ["timeline", "Photo Timeline"]] as const).map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setPhotoTimelineView(value)} style={{ border: 0, borderRadius: 7, padding: "8px 12px", background: photoTimelineView === value ? "#175CD3" : "transparent", color: photoTimelineView === value ? "white" : colors.navy3, fontWeight: 900, cursor: "pointer" }}>{label}</button>
                 ))}
               </div>
@@ -17218,7 +17331,7 @@ export default function AtlasPage() {
               </div>
             </div>
 
-            {!isMobile || photoTimelineView !== "projects" ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+            {photoTimelineView !== "activity" && (!isMobile || photoTimelineView !== "projects") ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
               {[
                 ["Visible photos", photoTimelineItems.length],
                 ["Visible projects", visiblePhotoProjects.length],
@@ -17232,7 +17345,7 @@ export default function AtlasPage() {
               ))}
             </div> : null}
 
-            {!isMobile || photoTimelineView !== "projects" ? <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
+            {photoTimelineView !== "activity" && (!isMobile || photoTimelineView !== "projects") ? <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
                 <strong style={{ color: colors.navy3 }}>Timeline scrubber</strong>
                 <span style={{ color: colors.muted, fontWeight: 800 }}>{photoTimelineScrubber >= 100 ? "All dates" : `${photoTimelineScrubber}% of history`}</span>
@@ -17246,11 +17359,11 @@ export default function AtlasPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1.5fr) repeat(5, minmax(120px, .7fr))", gap: 9, marginBottom: 16 }}>
               <input value={photoTimelineSearch} onChange={(event) => setPhotoTimelineSearch(event.target.value)} placeholder="Search projects, photos, notes, assets..." style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }} />
-              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineTagFilter} onChange={(event) => setPhotoTimelineTagFilter(event.target.value as PhotoTimelineTag | "All")} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="All">All phases</option>{([...PHOTO_TIMELINE_TAGS.filter((tag) => tag !== "Unlabeled"), "Unlabeled"] as PhotoTimelineTag[]).map((tag) => <option key={tag}>{tag}</option>)}</select> : null}
-              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineAssetId} onChange={(event) => setPhotoTimelineAssetId(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All assets</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select> : null}
-              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineVendorFilter} onChange={(event) => setPhotoTimelineVendorFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All vendors</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select> : null}
-              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineYear} onChange={(event) => setPhotoTimelineYear(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All years</option>{photoTimelineYears.map((year) => <option key={year}>{year}</option>)}</select> : null}
-              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineMonthFilter} onChange={(event) => setPhotoTimelineMonthFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index} value={String(index + 1).padStart(2, "0")}>{new Date(2026, index, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}</select> : null}
+              {photoTimelineView === "timeline" ? <select value={photoTimelineTagFilter} onChange={(event) => setPhotoTimelineTagFilter(event.target.value as PhotoTimelineTag | "All")} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="All">All phases</option>{([...PHOTO_TIMELINE_TAGS.filter((tag) => tag !== "Unlabeled"), "Unlabeled"] as PhotoTimelineTag[]).map((tag) => <option key={tag}>{tag}</option>)}</select> : null}
+              {photoTimelineView === "timeline" ? <select value={photoTimelineAssetId} onChange={(event) => setPhotoTimelineAssetId(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All assets</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select> : null}
+              {photoTimelineView === "timeline" ? <select value={photoTimelineVendorFilter} onChange={(event) => setPhotoTimelineVendorFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All vendors</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select> : null}
+              {photoTimelineView !== "projects" ? <select value={photoTimelineYear} onChange={(event) => setPhotoTimelineYear(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All years</option>{photoTimelineYears.map((year) => <option key={year}>{year}</option>)}</select> : null}
+              {photoTimelineView !== "projects" ? <select value={photoTimelineMonthFilter} onChange={(event) => setPhotoTimelineMonthFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index} value={String(index + 1).padStart(2, "0")}>{new Date(2026, index, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}</select> : null}
             </div>
 
             {photoTimelineView === "projects" ? (
@@ -17339,6 +17452,30 @@ export default function AtlasPage() {
                     </>
                   ) : <div style={{ minHeight: 540, display: "grid", placeItems: "center", padding: 30, textAlign: "center" }}><div><div style={{ fontSize: 38 }}>📋</div><h3 style={{ color: colors.navy3, marginBottom: 6 }}>Select a project</h3><p style={{ color: colors.muted, margin: 0 }}>Choose a project from the list to view its timeline, notes, photos, documents, work orders, people, and current status.</p></div></div>}
                 </section>
+              </div>
+            ) : photoTimelineView === "activity" ? (
+              <div id="atlas-activity-results" style={{ display: "grid", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
+                  {[
+                    ["All activity", visibleActivityItems.length],
+                    ["Work completed", visibleActivityItems.filter((item) => item.type === "Work Order" || item.type === "Task").length],
+                    ["Photos", visibleActivityItems.filter((item) => item.type === "Photo").length],
+                    ["Project updates", visibleActivityItems.filter((item) => item.type === "Project").length],
+                  ].map(([label, value]) => <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10, background: "white" }}><small style={mutedSmallStyle}>{label}</small><strong style={{ display: "block", color: colors.navy3, fontSize: 20, marginTop: 2 }}>{value}</strong></div>)}
+                </div>
+                {Object.keys(activityGroups).length ? Object.entries(activityGroups).sort(([a], [b]) => b.localeCompare(a)).map(([dateKey, items]) => (
+                  <section key={dateKey}>
+                    <div style={{ position: "sticky", top: 0, zIndex: 2, padding: "7px 0", background: "rgba(247,250,252,.96)", backdropFilter: "blur(8px)", color: colors.navy3, fontWeight: 950 }}>{dateKey === "No date" ? "No date" : new Date(`${dateKey}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", year: "numeric" })}</div>
+                    <div style={{ display: "grid", gap: 7, borderLeft: `2px solid ${colors.line}`, marginLeft: 10, paddingLeft: 14 }}>
+                      {items.map((item) => <button key={item.id} type="button" onClick={item.action} disabled={!item.action} style={{ position: "relative", width: "100%", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 11, padding: "9px 10px", background: "white", textAlign: "left", cursor: item.action ? "pointer" : "default" }}>
+                        <span aria-hidden="true" style={{ position: "absolute", left: -21, width: 10, height: 10, borderRadius: 999, background: item.type === "Project" ? colors.gold : item.type === "Photo" ? "#175CD3" : item.type === "Work Order" ? "#087443" : "#7C3AED", border: "2px solid white" }} />
+                        <span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", background: "#F2F6FA", fontSize: 16 }}>{item.icon}</span>
+                        <span style={{ minWidth: 0 }}><strong style={{ display: "block", color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.detail}</small></span>
+                        <span style={{ ...badgeStyle("Monitor"), fontSize: 10, padding: "3px 7px" }}>{item.type}</span>
+                      </button>)}
+                    </div>
+                  </section>
+                )) : <div style={emptyStateStyle}>No activity matches the current search and date filters.</div>}
               </div>
             ) : (
               photoTimelineItems.length ? (
