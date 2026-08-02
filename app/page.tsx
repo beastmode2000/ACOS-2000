@@ -4795,6 +4795,7 @@ export default function AtlasPage() {
     "comfortable",
   );
   const [assetListSearch, setAssetListSearch] = useState("");
+  const [assetFiltersOpen, setAssetFiltersOpen] = useState(false);
   const [assetBulkMode, setAssetBulkMode] = useState(false);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [favoriteAssetIds, setFavoriteAssetIds] = useState<string[]>([]);
@@ -20269,108 +20270,192 @@ export default function AtlasPage() {
           <div style={{ display: "grid", gap: 10 }}>
             <section
               style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 14,
-                background: "#FFFFFF",
-                padding: 12,
-                display: "grid",
-                gap: 10,
                 position: isMobile ? "relative" : "sticky",
                 top: isMobile ? "auto" : 8,
-                zIndex: isMobile ? "auto" : 4,
-                boxShadow: isMobile ? "none" : "0 8px 22px rgba(24, 43, 77, 0.06)",
+                zIndex: 8,
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: "#FFFFFF",
+                padding: 8,
+                boxShadow: isMobile ? "none" : "0 5px 16px rgba(24, 43, 77, 0.05)",
               }}
             >
-              <input
-                value={assetListSearch}
-                onChange={(event) => setAssetListSearch(event.currentTarget.value)}
-                placeholder="Search by asset, model, serial number, location, or vendor..."
-                style={inputStyle}
-                aria-label="Search assets"
-              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  minWidth: 0,
+                  flexWrap: isMobile ? "wrap" : "nowrap",
+                }}
+              >
+                <input
+                  value={assetListSearch}
+                  onChange={(event) => setAssetListSearch(event.currentTarget.value)}
+                  placeholder="Search assets..."
+                  style={{
+                    ...inputStyle,
+                    flex: "1 1 220px",
+                    minWidth: 0,
+                    height: 36,
+                    padding: "7px 10px",
+                  }}
+                  aria-label="Search assets"
+                />
 
-              <div style={{ display: "grid", gap: 7 }}>
-                <span style={assetInfoLabelStyle}>Asset Status</span>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {(["Online", "Monitor", "Offline", "Seasonal"] as Status[]).map((status) => {
-                    const enabled = !excludedAssetStatuses.includes(status);
-                    return (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() =>
-                          setExcludedAssetStatuses((current) =>
-                            current.includes(status)
-                              ? current.filter((item) => item !== status)
-                              : [...current, status],
-                          )
-                        }
+                <div style={{ position: "relative", flex: "0 0 auto" }}>
+                  <button
+                    type="button"
+                    onClick={() => setAssetFiltersOpen((current) => !current)}
+                    aria-expanded={assetFiltersOpen}
+                    aria-haspopup="menu"
+                    style={{
+                      ...assetEditButtonStyle,
+                      height: 36,
+                      padding: "7px 10px",
+                      background:
+                        excludedAssetStatuses.length || excludedAssetCategories.length
+                          ? "#FFF3CF"
+                          : "#FFFFFF",
+                      borderColor:
+                        excludedAssetStatuses.length || excludedAssetCategories.length
+                          ? colors.gold
+                          : colors.line,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Filters
+                    {excludedAssetStatuses.length + excludedAssetCategories.length
+                      ? ` (${excludedAssetStatuses.length + excludedAssetCategories.length})`
+                      : ""}
+                    {assetFiltersOpen ? " ▲" : " ▼"}
+                  </button>
+
+                  {assetFiltersOpen ? (
+                    <div
+                      role="menu"
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        top: "calc(100% + 6px)",
+                        width: isMobile ? "min(320px, calc(100vw - 34px))" : 310,
+                        maxHeight: "min(420px, 70vh)",
+                        overflowY: "auto",
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 12,
+                        background: "#FFFFFF",
+                        padding: 10,
+                        boxShadow: "0 16px 38px rgba(24, 43, 77, 0.18)",
+                        display: "grid",
+                        gap: 10,
+                        zIndex: 30,
+                      }}
+                    >
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <span style={assetInfoLabelStyle}>Status</span>
+                        <select
+                          defaultValue=""
+                          onChange={(event) => {
+                            const status = event.currentTarget.value as Status;
+                            if (!status) return;
+                            setExcludedAssetStatuses((current) =>
+                              current.includes(status)
+                                ? current.filter((item) => item !== status)
+                                : [...current, status],
+                            );
+                            event.currentTarget.value = "";
+                            setAssetFiltersOpen(false);
+                          }}
+                          style={{ ...assetSortSelectStyle, width: "100%", height: 36 }}
+                          aria-label="Filter assets by status"
+                        >
+                          <option value="">Choose status...</option>
+                          {(["Online", "Monitor", "Offline", "Seasonal"] as Status[]).map(
+                            (status) => (
+                              <option key={status} value={status}>
+                                {excludedAssetStatuses.includes(status) ? "Show" : "Hide"}{" "}
+                                {status === "Online"
+                                  ? "Operational"
+                                  : status === "Offline"
+                                    ? "Out of Service"
+                                    : status === "Monitor"
+                                      ? "Not Assessed"
+                                      : status}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                      </div>
+
+                      {assetCategories.length ? (
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <span style={assetInfoLabelStyle}>Category</span>
+                          <select
+                            defaultValue=""
+                            onChange={(event) => {
+                              const category = event.currentTarget.value;
+                              if (!category) return;
+                              setExcludedAssetCategories((current) =>
+                                current.includes(category)
+                                  ? current.filter((item) => item !== category)
+                                  : [...current, category],
+                              );
+                              event.currentTarget.value = "";
+                              setAssetFiltersOpen(false);
+                            }}
+                            style={{ ...assetSortSelectStyle, width: "100%", height: 36 }}
+                            aria-label="Filter assets by category"
+                          >
+                            <option value="">Choose category...</option>
+                            {assetCategories.map((category) => (
+                              <option key={category} value={category}>
+                                {excludedAssetCategories.includes(category) ? "Show" : "Hide"}{" "}
+                                {category}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : null}
+
+                      <div
                         style={{
-                          border: `1px solid ${enabled ? colors.gold : colors.line}`,
-                          borderRadius: 999,
-                          background: enabled ? "#FFF8E5" : "#FFFFFF",
-                          color: enabled ? colors.navy : colors.muted,
-                          padding: "6px 9px",
-                          fontSize: 11,
-                          fontWeight: 900,
-                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          paddingTop: 4,
+                          borderTop: `1px solid ${colors.line}`,
                         }}
                       >
-                        {enabled ? "✓ " : ""}
-                        {status === "Online"
-                          ? "Operational"
-                          : status === "Offline"
-                            ? "Out of Service"
-                            : status === "Monitor"
-                              ? "Not Assessed"
-                              : status}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {assetCategories.length ? (
-                <div style={{ display: "grid", gap: 7 }}>
-                  <span style={assetInfoLabelStyle}>Asset Categories</span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {assetCategories.map((category) => {
-                      const enabled = !excludedAssetCategories.includes(category);
-                      return (
+                        <span style={mutedSmallStyle}>
+                          {displayedAssets.length} of {assetSourceRecords.length} assets
+                        </span>
                         <button
-                          key={category}
                           type="button"
-                          onClick={() =>
-                            setExcludedAssetCategories((current) =>
-                              current.includes(category)
-                                ? current.filter((item) => item !== category)
-                                : [...current, category],
-                            )
-                          }
-                          style={{
-                            border: `1px solid ${enabled ? colors.gold : colors.line}`,
-                            borderRadius: 999,
-                            background: enabled ? "#FFF8E5" : "#FFFFFF",
-                            color: enabled ? colors.navy : colors.muted,
-                            padding: "6px 9px",
-                            fontSize: 11,
-                            fontWeight: 900,
-                            cursor: "pointer",
+                          onClick={() => {
+                            setExcludedAssetStatuses([]);
+                            setExcludedAssetCategories([]);
+                            setAssetFiltersOpen(false);
                           }}
+                          style={assetTinyButtonStyle}
                         >
-                          {enabled ? "✓ " : ""}{category}
+                          Clear filters
                         </button>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
 
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                <span style={mutedSmallStyle}>
-                  Showing {displayedAssets.length} of {assetSourceRecords.length} assets ·{" "}
-                  {assetListDensity === "compact" ? "Compact view" : "Comfortable view"}
+                <span
+                  style={{
+                    ...mutedSmallStyle,
+                    flex: "0 0 auto",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {displayedAssets.length} results
                 </span>
+
                 {(assetListSearch || excludedAssetStatuses.length || excludedAssetCategories.length) ? (
                   <button
                     type="button"
@@ -20378,13 +20463,67 @@ export default function AtlasPage() {
                       setAssetListSearch("");
                       setExcludedAssetStatuses([]);
                       setExcludedAssetCategories([]);
+                      setAssetFiltersOpen(false);
                     }}
-                    style={assetTinyButtonStyle}
+                    style={{ ...assetTinyButtonStyle, height: 34 }}
                   >
-                    Clear Filters
+                    Clear
                   </button>
                 ) : null}
               </div>
+
+              {excludedAssetStatuses.length || excludedAssetCategories.length ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 5,
+                    marginTop: 7,
+                  }}
+                >
+                  {excludedAssetStatuses.map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() =>
+                        setExcludedAssetStatuses((current) =>
+                          current.filter((item) => item !== status),
+                        )
+                      }
+                      style={{
+                        ...assetTinyButtonStyle,
+                        padding: "4px 7px",
+                        borderRadius: 999,
+                        background: "#FFF8E5",
+                        borderColor: colors.gold,
+                      }}
+                    >
+                      Hidden: {status} {closeSymbol}
+                    </button>
+                  ))}
+                  {excludedAssetCategories.map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() =>
+                        setExcludedAssetCategories((current) =>
+                          current.filter((item) => item !== category),
+                        )
+                      }
+                      style={{
+                        ...assetTinyButtonStyle,
+                        padding: "4px 7px",
+                        borderRadius: 999,
+                        background: "#FFF8E5",
+                        borderColor: colors.gold,
+                      }}
+                    >
+                      Hidden: {category} {closeSymbol}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </section>
 
             <section
