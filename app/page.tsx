@@ -614,7 +614,6 @@ const atlasNavigationSections: {
 ];
 
 const atlasMoreToolsScreens: AtlasScreen[] = [
-  "planner",
   "insights",
   "manuals",
   "procedures",
@@ -14187,20 +14186,33 @@ export default function AtlasPage() {
     return (
       <div style={{ display: "grid", gap: 14 }}>
         <SectionHeader
-          eyebrow="Work"
-          title={isAddisonUser ? "My Tasks" : "Tasks"}
-          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : "Track small one-time work here. Repairs stay in Work Orders; repeating work stays in Routines."}
+          eyebrow={tasksView === "vehicles" ? "Operations" : tasksView === "planner" ? "Planning" : "Work"}
+          title={
+            isAddisonUser
+              ? "My Tasks"
+              : tasksView === "vehicles"
+                ? "Vehicle Care"
+                : tasksView === "planner"
+                  ? "Plan Week"
+                  : "Tasks"
+          }
+          detail={
+            isAddisonUser
+              ? "Work assigned to Addison for today and upcoming days."
+              : tasksView === "vehicles"
+                ? "Track which vehicles are onsite, when each was last cleaned, and create only the cleaning work that is actually needed."
+                : tasksView === "planner"
+                  ? "Balance existing Tasks, Work Orders, Routines, and project work across the week. Task records remain managed in Tasks."
+                  : "Track one-time and recurring tasks here. Repairs and service history stay in Work Orders."
+          }
         />
-        {!isAddisonUser ? (
+        {!isAddisonUser && tasksView !== "vehicles" && tasksView !== "planner" ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => setTasksView("tasks")} style={tasksView === "tasks" ? goldButtonStyle : secondaryButtonStyle}>Tasks</button>
             <button type="button" onClick={() => setTasksView("addison")} style={tasksView === "addison" ? goldButtonStyle : secondaryButtonStyle}>Addison Today</button>
             <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog</button>
-            <button type="button" onClick={() => setTasksView("vehicles")} style={tasksView === "vehicles" ? goldButtonStyle : secondaryButtonStyle}>Vehicle Rotation</button>
             <button type="button" onClick={() => setTasksView("seasonal")} style={tasksView === "seasonal" ? goldButtonStyle : secondaryButtonStyle}>Seasonal</button>
             <button type="button" onClick={() => setTasksView("templates")} style={tasksView === "templates" ? goldButtonStyle : secondaryButtonStyle}>Templates</button>
             <button type="button" onClick={() => setTasksView("intelligence")} style={tasksView === "intelligence" ? goldButtonStyle : secondaryButtonStyle}>Atlas Manager</button>
-            <button type="button" onClick={() => setTasksView("planner")} style={tasksView === "planner" ? goldButtonStyle : secondaryButtonStyle}>Plan Week</button>
           </div>
         ) : null}
 
@@ -36672,9 +36684,33 @@ export default function AtlasPage() {
           {isMobile ? (
             <div style={mobileMenuRowStyle}>
               <select
-                value={screen}
+                value={
+                  screen === "planner"
+                    ? tasksView === "vehicles"
+                      ? "planner:vehicles"
+                      : tasksView === "planner"
+                        ? "planner:week"
+                        : "planner:tasks"
+                    : screen
+                }
                 onChange={(event) => {
-                  const nextScreen = event.currentTarget.value as Screen;
+                  const nextValue = event.currentTarget.value;
+                  if (nextValue === "planner:tasks") {
+                    setTasksView("tasks");
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:vehicles") {
+                    setTasksView("vehicles");
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:week") {
+                    setTasksView("planner");
+                    setScreen("planner");
+                    return;
+                  }
+                  const nextScreen = nextValue as Screen;
                   if (nextScreen === "history") {
                     setSelectedServiceId("");
                     setWorkOrdersOpenKey((current) => current + 1);
@@ -36684,11 +36720,17 @@ export default function AtlasPage() {
                 style={mobileMenuSelectStyle}
                 aria-label="Open Atlas section"
               >
+                <optgroup label="Work & Planning">
+                  <option value="planner:tasks">Tasks</option>
+                  <option value="planner:vehicles">Vehicle Care</option>
+                  <option value="planner:week">Plan Week</option>
+                </optgroup>
                 <optgroup label="Main">
                   {visibleAtlasScreens
                     .filter(
                       (item) =>
                         item.id !== "intake" &&
+                        item.id !== "planner" &&
                         !atlasMoreToolsScreens.includes(item.id),
                     )
                     .map((item) => (
@@ -36735,6 +36777,41 @@ export default function AtlasPage() {
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>{section.label}</div>
                     <div style={sidebarNavItemsStyle}>
                       {section.items.map((screenId) => {
+                        if (screenId === "planner") {
+                          const workNavigation = [
+                            { id: "tasks", label: "Tasks", view: "tasks" as const },
+                            { id: "vehicles", label: "Vehicle Care", view: "vehicles" as const },
+                            { id: "week", label: "Plan Week", view: "planner" as const },
+                          ];
+                          return (
+                            <React.Fragment key="work-navigation">
+                              {workNavigation.map((entry) => {
+                                const active = screen === "planner" && tasksView === entry.view;
+                                return (
+                                  <button
+                                    key={entry.id}
+                                    type="button"
+                                    className="atlas-sidebar-nav-button"
+                                    title={sidebarCollapsed ? entry.label : undefined}
+                                    onClick={() => {
+                                      setTasksView(entry.view);
+                                      setScreen("planner");
+                                    }}
+                                    style={{
+                                      ...navButtonStyle,
+                                      borderColor: active ? colors.gold : "transparent",
+                                      background: active ? colors.gold : "transparent",
+                                      color: active ? colors.navy : "#FFFFFF",
+                                    }}
+                                  >
+                                    <span className="atlas-sidebar-nav-label">{entry.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </React.Fragment>
+                          );
+                        }
+
                         const item = screens.find(
                           (candidate) => candidate.id === screenId,
                         );
@@ -36913,7 +36990,15 @@ export default function AtlasPage() {
                       ? departmentCenter === "landscaping" ? "Landscaping Center" : "Marine Center"
                       : screen === "dashboard"
                         ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
-                        : screen === "timeline" ? "Projects" : screen === "planner" ? "Tasks" : screens.find((item) => item.id === screen)?.label}
+                        : screen === "timeline"
+                          ? "Projects"
+                          : screen === "planner"
+                            ? tasksView === "vehicles"
+                              ? "Vehicle Care"
+                              : tasksView === "planner"
+                                ? "Plan Week"
+                                : "Tasks"
+                            : screens.find((item) => item.id === screen)?.label}
                   </h1>
                   <div
                     role="status"
