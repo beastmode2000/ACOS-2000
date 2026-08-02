@@ -4427,7 +4427,7 @@ export default function AtlasPage() {
   const [photoTimelinePaintingOnly, setPhotoTimelinePaintingOnly] = useState(false);
   const [photoTimelineHideLogos, setPhotoTimelineHideLogos] = useState(true);
   const [selectedPhotoTimelineId, setSelectedPhotoTimelineId] = useState("");
-  const [photoTimelineView, setPhotoTimelineView] = useState<"timeline" | "projects" | "activity">("projects");
+  const [photoTimelineView, setPhotoTimelineView] = useState<"timeline" | "projects" | "activity" | "history">("projects");
   const [photoTimelineProjectCategory, setPhotoTimelineProjectCategory] = useState<PhotoTimelineProjectCategory | "All">("All");
   const [photoTimelineTagFilter, setPhotoTimelineTagFilter] = useState<PhotoTimelineTag | "All">("All");
   const [photoTimelineVendorFilter, setPhotoTimelineVendorFilter] = useState("all");
@@ -17307,6 +17307,28 @@ export default function AtlasPage() {
       return groups;
     }, {});
 
+    const estateHistoryItems = visibleActivityItems.filter((item) => {
+      const text = `${item.title} ${item.detail}`.toLowerCase();
+      if (item.type === "Project") return true;
+      if (item.type === "Work Order") return text.includes("completed") || text.includes("replacement") || text.includes("repair") || text.includes("installation");
+      if (item.type === "Photo") return ["after", "final", "problem", "repair", "inspection", "before"].some((term) => text.includes(term));
+      if (item.type === "Document") return ["invoice", "permit", "warranty", "inspection", "contract", "estimate"].some((term) => text.includes(term));
+      if (item.type === "Calendar") return text.includes("completed") || text.includes("inspection") || text.includes("service");
+      return false;
+    });
+
+    const estateHistoryByYear = estateHistoryItems.reduce<Record<string, UniversalActivityItem[]>>((groups, item) => {
+      const year = String(item.date || "").slice(0, 4) || "No date";
+      if (!groups[year]) groups[year] = [];
+      groups[year].push(item);
+      return groups;
+    }, {});
+
+    const estateHistoryYears = Object.keys(estateHistoryByYear).filter((year) => year !== "No date").sort((a, b) => b.localeCompare(a));
+    const estateHistoryProjectCount = estateHistoryItems.filter((item) => item.type === "Project").length;
+    const estateHistoryPhotoCount = estateHistoryItems.filter((item) => item.type === "Photo").length;
+    const estateHistoryWorkCount = estateHistoryItems.filter((item) => item.type === "Work Order").length;
+
     return (
       <>
         {mode === "timeline" ? (
@@ -17321,7 +17343,7 @@ export default function AtlasPage() {
               <div style={{ display: "inline-flex", border: "1px solid #CBD5E1", borderRadius: 10, padding: 3, background: "#F8FAFC" }}>
                 {([[
                   "projects", "Projects",
-                ], ["activity", "Activity"], ["timeline", "Photo Timeline"]] as const).map(([value, label]) => (
+                ], ["activity", "Activity"], ["history", "Estate History"], ["timeline", "Photo Timeline"]] as const).map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setPhotoTimelineView(value)} style={{ border: 0, borderRadius: 7, padding: "8px 12px", background: photoTimelineView === value ? "#175CD3" : "transparent", color: photoTimelineView === value ? "white" : colors.navy3, fontWeight: 900, cursor: "pointer" }}>{label}</button>
                 ))}
               </div>
@@ -17331,7 +17353,7 @@ export default function AtlasPage() {
               </div>
             </div>
 
-            {photoTimelineView !== "activity" && (!isMobile || photoTimelineView !== "projects") ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+            {!(["activity", "history"] as const).includes(photoTimelineView) && (!isMobile || photoTimelineView !== "projects") ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
               {[
                 ["Visible photos", photoTimelineItems.length],
                 ["Visible projects", visiblePhotoProjects.length],
@@ -17345,7 +17367,7 @@ export default function AtlasPage() {
               ))}
             </div> : null}
 
-            {photoTimelineView !== "activity" && (!isMobile || photoTimelineView !== "projects") ? <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
+            {!(["activity", "history"] as const).includes(photoTimelineView) && (!isMobile || photoTimelineView !== "projects") ? <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
                 <strong style={{ color: colors.navy3 }}>Timeline scrubber</strong>
                 <span style={{ color: colors.muted, fontWeight: 800 }}>{photoTimelineScrubber >= 100 ? "All dates" : `${photoTimelineScrubber}% of history`}</span>
@@ -17452,6 +17474,41 @@ export default function AtlasPage() {
                     </>
                   ) : <div style={{ minHeight: 540, display: "grid", placeItems: "center", padding: 30, textAlign: "center" }}><div><div style={{ fontSize: 38 }}>📋</div><h3 style={{ color: colors.navy3, marginBottom: 6 }}>Select a project</h3><p style={{ color: colors.muted, margin: 0 }}>Choose a project from the list to view its timeline, notes, photos, documents, work orders, people, and current status.</p></div></div>}
                 </section>
+              </div>
+            ) : photoTimelineView === "history" ? (
+              <div id="atlas-estate-history" style={{ display: "grid", gap: 18 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
+                  {[
+                    ["Years recorded", estateHistoryYears.length],
+                    ["Project milestones", estateHistoryProjectCount],
+                    ["Major work", estateHistoryWorkCount],
+                    ["Historical photos", estateHistoryPhotoCount],
+                  ].map(([label, value]) => <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10, background: "white" }}><small style={mutedSmallStyle}>{label}</small><strong style={{ display: "block", color: colors.navy3, fontSize: 20, marginTop: 2 }}>{value}</strong></div>)}
+                </div>
+
+                <div style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: isMobile ? 12 : 16, background: "white" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+                    <div><strong style={{ color: colors.navy3, fontSize: 18 }}>Estate History</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 3 }}>Major projects, repairs, inspections, documents, and before/after records organized by year.</small></div>
+                    <span style={badgeStyle("Monitor")}>{estateHistoryItems.length} milestones</span>
+                  </div>
+
+                  {estateHistoryYears.length ? <div style={{ display: "grid", gap: 20 }}>
+                    {estateHistoryYears.map((year) => {
+                      const items = [...estateHistoryByYear[year]].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+                      return <section key={year} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "92px minmax(0,1fr)", gap: isMobile ? 8 : 18 }}>
+                        <div style={{ position: isMobile ? "static" : "sticky", top: 48, alignSelf: "start" }}><strong style={{ color: colors.navy3, fontSize: isMobile ? 22 : 26 }}>{year}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{items.length} milestone{items.length === 1 ? "" : "s"}</small></div>
+                        <div style={{ borderLeft: `2px solid ${colors.line}`, marginLeft: isMobile ? 8 : 0, paddingLeft: 16, display: "grid", gap: 8 }}>
+                          {items.map((item) => <button key={item.id} type="button" onClick={item.action} disabled={!item.action} style={{ position: "relative", width: "100%", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 11, padding: "9px 10px", background: "white", textAlign: "left", cursor: item.action ? "pointer" : "default" }}>
+                            <span aria-hidden="true" style={{ position: "absolute", left: -22, width: 10, height: 10, borderRadius: 999, background: item.type === "Project" ? colors.gold : item.type === "Photo" ? "#175CD3" : item.type === "Work Order" ? "#087443" : "#7C3AED", border: "2px solid white" }} />
+                            <span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", background: "#F2F6FA", fontSize: 16 }}>{item.icon}</span>
+                            <span style={{ minWidth: 0 }}><strong style={{ display: "block", color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.detail}</small></span>
+                            <span style={{ textAlign: "right" }}><small style={{ ...mutedSmallStyle, display: "block" }}>{item.date ? formatDate(String(item.date).slice(0,10)) : "No date"}</small><span style={{ ...badgeStyle("Monitor"), fontSize: 10, padding: "3px 7px", marginTop: 3 }}>{item.type}</span></span>
+                          </button>)}
+                        </div>
+                      </section>;
+                    })}
+                  </div> : <div style={emptyStateStyle}>No major milestones match the current search and date filters.</div>}
+                </div>
               </div>
             ) : photoTimelineView === "activity" ? (
               <div id="atlas-activity-results" style={{ display: "grid", gap: 16 }}>
