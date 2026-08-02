@@ -440,6 +440,7 @@ export type CalendarReminder =
 
 export type CalendarLinkType =
   | "None"
+  | "Task"
   | "Asset"
   | "Location"
   | "Vendor"
@@ -447,6 +448,7 @@ export type CalendarLinkType =
 
 export type CalendarSource =
   | "manual"
+  | "task"
   | "us-holiday"
   | "jewish-holiday"
   | "work-order";
