@@ -4382,7 +4382,7 @@ export default function AtlasPage() {
   const operationsSyncTimerRef = useRef<number | null>(null);
   const operationsSyncRunningRef = useRef(false);
   const fleetSetupRunningRef = useRef(false);
-  const voiceRecognitionRef = useRef<{ stop: () => void } | null>(null);
+  const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
   const [databaseStatus, setDatabaseStatus] = useState(
@@ -5460,17 +5460,23 @@ export default function AtlasPage() {
     setSyncState("loading");
   }
 
-  function openSavedAsset(assetId: string) {
+  function openSavedAsset(
+    assetId: string,
+    options: { edit?: boolean; focusName?: string } = {},
+  ) {
     if (!assetId) return;
     setInboxReviewOpen(false);
     setScreen("assets", { replace: true });
     setSelectedAssetId(assetId);
-
-    window.requestAnimationFrame(() => {
-      setSelectedAssetId(assetId);
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    });
-    window.setTimeout(() => setSelectedAssetId(assetId), 80);
+    setAssetPanelSection("overview");
+    setAssetEditorOpen(Boolean(options.edit));
+    if (options.focusName) {
+      setAssetListSearch(options.focusName);
+      setExcludedAssetStatuses([]);
+      setExcludedAssetCategories([]);
+      setAssetFiltersOpen(false);
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }
 
   function openCalendarLinkedRecord(event: CalendarItem) {
@@ -8416,7 +8422,8 @@ export default function AtlasPage() {
   }, [commandCenterOpen]);
 
   function startVoiceAssistant() {
-    type RecognitionInstance = { continuous: boolean; interimResults: boolean; lang: string; start: () => void; stop: () => void; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
+    type RecognitionResult = { 0: { transcript: string }; isFinal?: boolean };
+    type RecognitionInstance = { continuous: boolean; interimResults: boolean; lang: string; start: () => void; stop: () => void; abort: () => void; onresult: ((event: { results: ArrayLike<RecognitionResult> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
     type RecognitionConstructor = new () => RecognitionInstance;
     const speechWindow = window as unknown as { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
@@ -8440,6 +8447,7 @@ export default function AtlasPage() {
     }
     const recognition = new Recognition();
     let latestTranscript = "";
+    let finalResultHandled = false;
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = "en-US";
@@ -8448,6 +8456,12 @@ export default function AtlasPage() {
       setVoiceAssistantTranscript(latestTranscript);
       setQuery(latestTranscript);
       setSearchActiveIndex(0);
+      const heardFinalResult = Array.from({ length: event.results.length }, (_, index) => Boolean(event.results[index]?.isFinal)).some(Boolean);
+      if (heardFinalResult && !finalResultHandled) {
+        finalResultHandled = true;
+        setVoiceAssistantListening(false);
+        recognition.stop();
+      }
     };
     recognition.onerror = () => showSaveToast("Atlas could not hear that request. Tap Talk to Atlas and try again.", "warning");
     recognition.onend = () => {
@@ -8487,7 +8501,7 @@ export default function AtlasPage() {
 
   function cancelVoiceAssistant() {
     voiceAssistantCancelledRef.current = true;
-    voiceRecognitionRef.current?.stop();
+    voiceRecognitionRef.current?.abort();
     voiceRecognitionRef.current = null;
     setVoiceAssistantListening(false);
     setVoiceAssistantReviewReady(false);
@@ -8605,7 +8619,7 @@ export default function AtlasPage() {
 
   function closeCommandCenter() {
     voiceAssistantCancelledRef.current = true;
-    voiceRecognitionRef.current?.stop();
+    voiceRecognitionRef.current?.abort();
     voiceRecognitionRef.current = null;
     setVoiceAssistantListening(false);
     setVoiceAssistantReviewReady(false);
@@ -10334,7 +10348,10 @@ export default function AtlasPage() {
       setScreen("documents");
       if (finalTargetKind === "Asset" && finalTargetId) {
         showSaveToast(`${title} was saved to ${finalTargetName}.`);
-        openSavedAsset(finalTargetId);
+        openSavedAsset(finalTargetId, {
+          edit: true,
+          focusName: finalTargetName,
+        });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Fast Intake save failed.";
@@ -38901,7 +38918,7 @@ ${notes.trim()}` : notes.trim(),
                   </div>
                 ) : null}
 
-                <div style={{ overflowY: "auto", overscrollBehavior: "contain", display: voiceAssistantReviewReady && voiceAssistantDraft ? "none" : "block" }}>
+                <div style={{ overflowY: "auto", overscrollBehavior: "contain", display: voiceAssistantListening || voiceAssistantReviewReady ? "none" : "block" }}>
                   {query.trim() ? (
                     <>
                       {navigationCommand(query) ? <button type="button" onClick={() => runNavigationCommand()} style={{ ...searchResultStyle, padding: "13px 16px", background: "#EEF6FF", borderBottom: `1px solid ${colors.line}` }}><span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><strong>Open {navigationCommand(query)!.label}</strong><span style={searchTypeBadgeStyle}>GO</span></span><span style={mutedSmallStyle}>Context-aware Atlas command</span></button> : null}
