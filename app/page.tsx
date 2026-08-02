@@ -4259,6 +4259,7 @@ export default function AtlasPage() {
   const [query, setQuery] = useState("");
   const [dashboardWorkFilter, setDashboardWorkFilter] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [isMobile, setIsMobile] = useState(false);
@@ -7846,6 +7847,10 @@ export default function AtlasPage() {
     allManualRecords,
     workLinks,
     photos,
+    workPlanTasks,
+    taskMeta,
+    photoTimelineProjects,
+    projectTimelineEntries,
   ]);
 
   const monthCells = useMemo(() => {
@@ -8098,6 +8103,42 @@ export default function AtlasPage() {
           item.linkedAssetId ? `asset:${item.linkedAssetId}` : "",
         ].filter(Boolean),
       })),
+      ...workPlanTasks.map((item) => ({
+        id: `task-${item.id}`,
+        type: "Task",
+        title: item.title,
+        subtitle: `${taskDetails(item.id).status} · ${item.priority} · ${taskDetails(item.id).assignee}`,
+        detail: `${item.category} ${item.notes || ""} ${taskDetails(item.id).notes || ""} ${locationName(item.locationId)}`,
+        screen: "planner" as Screen,
+        relatedIds: [
+          `task:${item.id}`,
+          taskDetails(item.id).projectId ? `project:${taskDetails(item.id).projectId}` : "",
+          item.locationId && item.locationId !== "general" ? `location:${item.locationId}` : "",
+        ].filter(Boolean),
+      })),
+      ...photoTimelineProjects.filter((item) => !item.archived).map((item) => ({
+        id: `project-${item.id}`,
+        type: "Project",
+        title: item.title,
+        subtitle: `${item.status || "Planning"} · ${item.category} · ${item.progress || 0}%`,
+        detail: `${item.phase || ""} ${item.notes || ""} ${locationName(item.locationId)} ${vendorName(item.vendorId)}`,
+        screen: "timeline" as Screen,
+        relatedIds: [
+          `project:${item.id}`,
+          item.assetId ? `asset:${item.assetId}` : "",
+          item.locationId ? `location:${item.locationId}` : "",
+          item.vendorId ? `vendor:${item.vendorId}` : "",
+        ].filter(Boolean),
+      })),
+      ...projectTimelineEntries.map((item) => ({
+        id: `timeline-${item.id}`,
+        type: "Timeline",
+        title: item.title,
+        subtitle: `${formatDate(item.date)} · ${item.type}`,
+        detail: item.notes,
+        screen: "timeline" as Screen,
+        relatedIds: [`timeline:${item.id}`, `project:${item.projectId}`],
+      })),
       ...workLinks.map((item) => ({
         id: `link-${item.id}`,
         type: "Work Link",
@@ -8112,6 +8153,121 @@ export default function AtlasPage() {
   useEffect(() => {
     setSearchActiveIndex(0);
   }, [q, searchResults.length]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const openCommandCenter = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandCenterOpen(true);
+        setSearchOpen(true);
+        setSearchActiveIndex(0);
+      }
+      if (event.key === "Escape" && commandCenterOpen) {
+        setCommandCenterOpen(false);
+        setSearchOpen(false);
+        setQuery("");
+      }
+    };
+    window.addEventListener("keydown", openCommandCenter);
+    return () => window.removeEventListener("keydown", openCommandCenter);
+  }, [commandCenterOpen]);
+
+  function commandCreation(value = query) {
+    const clean = value.trim();
+    const match = clean.match(/^(task|work\s*order|project)\s+(.+)$/i);
+    if (!match) return null;
+    return {
+      kind: match[1].toLowerCase().replace(/\s+/g, " ") as "task" | "work order" | "project",
+      title: match[2].trim(),
+    };
+  }
+
+  function newRecordCommand(value = query): "task" | "work order" | "project" | null {
+    const clean = value.trim().toLowerCase().replace(/\s+/g, " ");
+    if (clean === "new task") return "task";
+    if (clean === "new work order") return "work order";
+    if (clean === "new project") return "project";
+    return null;
+  }
+
+  function closeCommandCenter() {
+    setCommandCenterOpen(false);
+    setSearchOpen(false);
+    setSearchActiveIndex(0);
+    setQuery("");
+  }
+
+  function createProjectFromCommand(title: string) {
+    const id = uid("project");
+    const project: PhotoTimelineProject = {
+      propertyId: activePropertyId,
+      id,
+      title,
+      category: "General",
+      scale: "Standard",
+      status: "Planning",
+      assetId: "",
+      locationId: "",
+      vendorId: "",
+      workOrderId: "",
+      workOrderIds: [],
+      vendorIds: [],
+      documentIds: [],
+      assigneeIds: [],
+      notes: "",
+      coverPhotoId: "",
+      createdAt: new Date().toISOString(),
+      progress: 0,
+      phase: "Planning",
+      startDate: todayISO(),
+      archived: false,
+    };
+    setPhotoTimelineProjects((current) => [project, ...current]);
+    setSelectedPhotoProjectId(id);
+    setPhotoTimelineView("projects");
+    setProjectDetailTab("overview");
+    setScreen("timeline");
+    void postAtlasRecord("projects", { ...project, timelineEntries: [], photoMeta: {} });
+    showSaveToast("Project created.");
+  }
+
+  function runCommandCreation(value = query) {
+    const command = commandCreation(value);
+    if (!command?.title) return false;
+    rememberSearch(value);
+    closeCommandCenter();
+    if (command.kind === "task") {
+      addAtlasTask(command.title);
+      setTasksView("tasks");
+      setScreen("planner");
+      return true;
+    }
+    if (command.kind === "work order") {
+      addWorkOrder({ title: command.title });
+      showSaveToast("Work order created.");
+      return true;
+    }
+    createProjectFromCommand(command.title);
+    return true;
+  }
+
+  function openNewRecordFromCommand(kind: "task" | "work order" | "project") {
+    closeCommandCenter();
+    if (kind === "task") {
+      setSelectedTaskId("");
+      setTasksView("tasks");
+      setScreen("planner");
+      return;
+    }
+    if (kind === "work order") {
+      addWorkOrder();
+      return;
+    }
+    setSelectedPhotoProjectId("");
+    setPhotoTimelineView("projects");
+    setScreen("timeline");
+  }
 
   function rememberSearch(value: string) {
     const clean = value.trim();
@@ -8234,9 +8390,25 @@ export default function AtlasPage() {
         setWorkLinkEditorOpen(true);
       }
     }
+    if (result.id.startsWith("task-")) {
+      setSelectedTaskId(result.id.slice("task-".length));
+      setTasksView("tasks");
+    }
+    if (result.id.startsWith("project-")) {
+      setSelectedPhotoProjectId(result.id.slice("project-".length));
+      setPhotoTimelineView("projects");
+      setProjectDetailTab("overview");
+    }
+    if (result.id.startsWith("timeline-")) {
+      const entry = projectTimelineEntries.find((item) => `timeline-${item.id}` === result.id);
+      if (entry) setSelectedPhotoProjectId(entry.projectId);
+      setPhotoTimelineView("projects");
+      setProjectDetailTab("timeline");
+    }
     setScreen(result.screen);
     setQuery("");
     setSearchOpen(false);
+    setCommandCenterOpen(false);
   }
 
   function linkedDocumentsFor(kind: IntakeTargetKind, id?: string) {
@@ -37364,7 +37536,10 @@ ${notes.trim()}` : notes.trim(),
                   >
                     <input
                       value={query}
-                      onFocus={() => setSearchOpen(true)}
+                      onFocus={() => {
+                        setCommandCenterOpen(true);
+                        setSearchOpen(true);
+                      }}
                       onChange={(event) => {
                         setQuery(event.currentTarget.value);
                         setSearchOpen(true);
@@ -37394,7 +37569,7 @@ ${notes.trim()}` : notes.trim(),
                           else if (query.trim()) askAtlasFromGlobalSearch();
                         }
                       }}
-                      placeholder="Search all Atlas records or ask a question…"
+                      placeholder={isMobile ? "⌕  Find or create" : "Find or create anything…   Ctrl + K"}
                       aria-label="Global Atlas search"
                       style={{
                         ...inputStyle,
@@ -37440,6 +37615,141 @@ ${notes.trim()}` : notes.trim(),
 
       {true ? (
         <>
+
+          {commandCenterOpen ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Atlas Universal Command Center"
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 10050,
+                background: "rgba(7,27,47,.58)",
+                display: "grid",
+                alignItems: isMobile ? "start" : "start",
+                justifyItems: "center",
+                padding: isMobile ? "max(10px, env(safe-area-inset-top)) 10px" : "11vh 20px 20px",
+              }}
+              onMouseDown={(event) => {
+                if (event.currentTarget === event.target) closeCommandCenter();
+              }}
+            >
+              <section
+                style={{
+                  width: "min(760px, 100%)",
+                  maxHeight: isMobile ? "calc(100dvh - 20px)" : "76vh",
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  borderRadius: 18,
+                  background: "#FFFFFF",
+                  border: `1px solid ${colors.line}`,
+                  boxShadow: "0 30px 90px rgba(7,27,47,.36)",
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 14, borderBottom: `1px solid ${colors.line}` }}>
+                  <span aria-hidden="true" style={{ fontSize: 22, color: colors.gold, lineHeight: 1 }}>⌕</span>
+                  <input
+                    autoFocus
+                    value={query}
+                    onChange={(event) => {
+                      setQuery(event.currentTarget.value);
+                      setSearchActiveIndex(0);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        closeCommandCenter();
+                        return;
+                      }
+                      if (event.key === "ArrowDown" && searchResults.length) {
+                        event.preventDefault();
+                        setSearchActiveIndex((current) => Math.min(current + 1, searchResults.length - 1));
+                        return;
+                      }
+                      if (event.key === "ArrowUp" && searchResults.length) {
+                        event.preventDefault();
+                        setSearchActiveIndex((current) => Math.max(current - 1, 0));
+                        return;
+                      }
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        const newRecordKind = newRecordCommand();
+                        if (newRecordKind) {
+                          openNewRecordFromCommand(newRecordKind);
+                          return;
+                        }
+                        if (runCommandCreation()) return;
+                        if (searchResults[searchActiveIndex]) openSearchResult(searchResults[searchActiveIndex]);
+                      }
+                    }}
+                    placeholder="Search Atlas or type: task Clean dock"
+                    aria-label="Find or create anything in Atlas"
+                    style={{ border: 0, outline: 0, background: "transparent", flex: 1, minWidth: 0, fontSize: isMobile ? 17 : 19, color: colors.navy, fontWeight: 750 }}
+                  />
+                  {!isMobile ? <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 7, padding: "4px 7px" }}>ESC</span> : null}
+                  <button type="button" onClick={closeCommandCenter} aria-label="Close command center" style={{ ...secondaryButtonStyle, width: 38, minWidth: 38, height: 38, padding: 0, borderRadius: 999, fontSize: 20 }}>{closeSymbol}</button>
+                </div>
+
+                <div style={{ overflowY: "auto", overscrollBehavior: "contain" }}>
+                  {query.trim() ? (
+                    <>
+                      {newRecordCommand(query) ? (
+                        <button type="button" onClick={() => openNewRecordFromCommand(newRecordCommand(query)!)} style={{ ...searchResultStyle, padding: "13px 16px", background: "#FFF9E8", borderBottom: `1px solid ${colors.line}` }}>
+                          <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                            <strong>Open New {newRecordCommand(query) === "task" ? "Task" : newRecordCommand(query) === "work order" ? "Work Order" : "Project"}</strong>
+                            <span style={searchTypeBadgeStyle}>NEW</span>
+                          </span>
+                        </button>
+                      ) : null}
+                      {commandCreation(query) ? (
+                        <button type="button" onClick={() => runCommandCreation()} style={{ ...searchResultStyle, padding: "13px 16px", background: "#FFF9E8", borderBottom: `1px solid ${colors.line}` }}>
+                          <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                            <strong>Create {commandCreation(query)!.kind}: {commandCreation(query)!.title}</strong>
+                            <span style={searchTypeBadgeStyle}>CREATE</span>
+                          </span>
+                          <span style={mutedSmallStyle}>Press Enter to create and open it.</span>
+                        </button>
+                      ) : null}
+                      {searchResults.length ? (
+                        <AtlasGroupedSearchResults results={searchResults} activeIndex={searchActiveIndex} query={query} onHover={setSearchActiveIndex} onOpen={openSearchResult} highlight={highlightedSearchText} />
+                      ) : !commandCreation(query) && !newRecordCommand(query) ? (
+                        <div style={searchEmptyStyle}>No Atlas records match “{query.trim()}”. Try a record name or a creation command.</div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div style={{ padding: 14, display: "grid", gap: 14 }}>
+                      <div>
+                        <div style={{ ...eyebrowStyle, marginBottom: 8 }}>Create anything</div>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                          {([[
+                            "task", "New Task", "task Clean dock",
+                          ], [
+                            "work order", "New Work Order", "work order Replace pump",
+                          ], [
+                            "project", "New Project", "project Patio Renovation",
+                          ]] as const).map(([kind, label, example]) => (
+                            <button key={kind} type="button" onClick={() => openNewRecordFromCommand(kind)} style={{ ...secondaryButtonStyle, minHeight: 66, textAlign: "left", justifyContent: "flex-start" }}>
+                              <span><strong style={{ display: "block" }}>{label}</strong><small style={mutedSmallStyle}>{example}</small></span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {recentSearches.length ? (
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 6 }}><div style={eyebrowStyle}>Recent</div><button type="button" onClick={clearRecentSearches} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer" }}>Clear</button></div>
+                          {recentSearches.slice(0, 4).map((item) => <button key={item} type="button" onClick={() => setQuery(item)} style={searchResultStyle}><strong>{item}</strong></button>)}
+                        </div>
+                      ) : null}
+                      <div style={{ ...mutedSmallStyle, padding: "2px 3px 4px" }}>Searches Tasks, Work Orders, Projects, Assets, Locations, Vendors, Contacts, Documents, Manuals, Photos, Timeline, and Calendar.</div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          ) : null}
 
 
           {dashboardAssistantOpen ? (
