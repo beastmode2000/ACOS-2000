@@ -17277,7 +17277,7 @@ export default function AtlasPage() {
         detail: `${task.category || "Task"}${taskDetails(task.id).assignee ? ` · ${taskDetails(task.id).assignee}` : ""}`,
         date: taskDetails(task.id).completedAt || task.scheduledDate || "",
         icon: "✓",
-        action: () => { setSelectedWorkPlanTaskId(task.id); setPlannerMode("tasks"); setScreen("planner"); },
+        action: () => { setSelectedTaskId(task.id); setPlannerMode("tasks"); setScreen("planner"); },
       })),
       ...todayLogEntries.map((entry) => ({
         id: `activity-note-${entry.id}`,
