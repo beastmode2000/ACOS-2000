@@ -20892,19 +20892,6 @@ ${notes.trim()}` : notes.trim(),
       ...selectedAssetPhotos.map((photo) => photo.createdAt?.slice(0, 10) || ""),
       ...linkedAssetDocuments.map((document) => document.createdAt?.slice(0, 10) || ""),
     ].filter(Boolean).sort().reverse()[0] || "";
-    const assetAttentionItems = [
-      ...overdueAssetWorkOrders.map((record) => `Overdue work order: ${record.title}`),
-      ...highPriorityAssetWorkOrders.map((record) => `High priority: ${record.title}`),
-      ...openAssetTasks
-        .filter((task) => Boolean(taskDetails(task.id).dueDate) && taskDetails(task.id).dueDate < todayISO())
-        .map((task) => `Overdue task: ${task.title}`),
-      ...(selectedAsset.status === "Offline" ? ["Asset is marked out of service"] : []),
-    ];
-    const assetRecommendedAction = assetAttentionItems[0]
-      || openAssetTasks[0]?.title
-      || openAssetWorkOrders[0]?.title
-      || activeAssetProjects[0]?.title
-      || (!linkedAssetProcedures.length ? "Link a maintenance procedure" : "No immediate action required");
     const openAssetWorkOrders = relatedWorkOrders
       .filter((record) => record.status !== "Completed")
       .sort((a, b) =>
@@ -20924,6 +20911,19 @@ ${notes.trim()}` : notes.trim(),
     const highPriorityAssetWorkOrders = openAssetWorkOrders.filter(
       (record) => record.priority === "High",
     );
+    const assetAttentionItems = [
+      ...overdueAssetWorkOrders.map((record) => `Overdue work order: ${record.title}`),
+      ...highPriorityAssetWorkOrders.map((record) => `High priority: ${record.title}`),
+      ...openAssetTasks
+        .filter((task) => Boolean(taskDetails(task.id).dueDate) && taskDetails(task.id).dueDate < todayISO())
+        .map((task) => `Overdue task: ${task.title}`),
+      ...(selectedAsset.status === "Offline" ? ["Asset is marked out of service"] : []),
+    ];
+    const assetRecommendedAction = assetAttentionItems[0]
+      || openAssetTasks[0]?.title
+      || openAssetWorkOrders[0]?.title
+      || activeAssetProjects[0]?.title
+      || (!linkedAssetProcedures.length ? "Link a maintenance procedure" : "No immediate action required");
     const assetActualCost = relatedWorkOrders.reduce(
       (total, record) => total + Math.max(0, Number(record.actualCost || 0)),
       0,
