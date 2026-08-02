@@ -5868,7 +5868,7 @@ export default function AtlasPage() {
         };
 
         let sharedProjects = apiProjects.map(normalizeProject).filter((project) => project.id);
-        if (sharedProjects.length === 0 && typeof window !== "undefined") {
+        if (typeof window !== "undefined") {
           const localProjects = readStoredArray<PhotoTimelineProject>(["atlas-photo-timeline-projects-v1"], [])
             .filter((project) => activePropertyId === "2000" || project.propertyId === activePropertyId);
           const localEntries = readStoredArray<ProjectTimelineEntry>(["atlas-project-timeline-entries-v1"], []);
@@ -5879,9 +5879,18 @@ export default function AtlasPage() {
               return parsed && typeof parsed === "object" ? parsed as Record<string, PhotoTimelineMeta> : {};
             } catch { return {} as Record<string, PhotoTimelineMeta>; }
           })();
-          if (localProjects.length) {
+
+          const sharedIds = new Set(sharedProjects.map((project) => project.id));
+          const sharedTitles = new Set(sharedProjects.map((project) => project.title.trim().toLowerCase()));
+          const missingLocalProjects = localProjects.filter((project) =>
+            project.id &&
+            !sharedIds.has(project.id) &&
+            !sharedTitles.has(String(project.title || "").trim().toLowerCase()),
+          );
+
+          if (missingLocalProjects.length) {
             const uploaded: typeof sharedProjects = [];
-            for (const project of localProjects) {
+            for (const project of missingLocalProjects) {
               const record = {
                 ...project,
                 propertyId: activePropertyId,
@@ -5890,8 +5899,11 @@ export default function AtlasPage() {
               };
               if (await postAtlasRecord("projects", record)) uploaded.push(normalizeProject(record));
             }
-            sharedProjects = uploaded;
-            if (uploaded.length) window.localStorage.setItem(`atlas-project-migration-v1-${activePropertyId}`, "done");
+            sharedProjects = [...sharedProjects, ...uploaded];
+            if (uploaded.length) {
+              window.localStorage.setItem(`atlas-project-migration-v2-${activePropertyId}`, "done");
+              setDatabaseStatus(`${uploaded.length} local project${uploaded.length === 1 ? "" : "s"} moved into shared Atlas.`);
+            }
           }
         }
 
@@ -16851,11 +16863,56 @@ export default function AtlasPage() {
       }
     };
 
+    const addProjectDocuments = async (files: FileList | null) => {
+      if (!selectedPhotoProject || !files?.length) return;
+      try {
+        const uploadedFiles = await Promise.all(Array.from(files).map(fileToUploadedRecord));
+        const documentId = uid("project-document");
+        const document = normalizeDocument({
+          id: documentId,
+          propertyId: activePropertyId,
+          title: uploadedFiles.length === 1 ? uploadedFiles[0].name : `${selectedPhotoProject.title} documents`,
+          area: selectedPhotoProject.title,
+          type: "Project Document",
+          targetType: "General",
+          targetId: selectedPhotoProject.id,
+          targetName: selectedPhotoProject.title,
+          notes: "",
+          files: uploadedFiles,
+          createdAt: new Date().toISOString(),
+        });
+        setIntakeDocs((current) => {
+          const next = mergeDocuments([document], current);
+          saveStoredArray(storageKeys.intakeDocs[0], next);
+          return next;
+        });
+        setPhotoTimelineProjects((current) => current.map((project) =>
+          project.id === selectedPhotoProject.id
+            ? { ...project, documentIds: Array.from(new Set([...(project.documentIds || []), documentId])) }
+            : project,
+        ));
+        await postDocumentToAtlasVault(document);
+        showSaveToast(`${uploadedFiles.length} document${uploadedFiles.length === 1 ? "" : "s"} added.`);
+      } catch {
+        showSaveToast("Atlas could not add those documents.", "warning");
+      }
+    };
+
     const createPhotoProject = () => {
+      const suggestedTitle = selectedPhotoTimelineItem?.assetName
+        ? `${selectedPhotoTimelineItem.assetName} Project`
+        : "";
+      const enteredTitle = window.prompt("Project name", suggestedTitle);
+      if (enteredTitle === null) return;
+      const title = enteredTitle.trim();
+      if (!title) {
+        showSaveToast("Enter a project name first.", "warning");
+        return;
+      }
       const id = uid("photo-project");
       const project: PhotoTimelineProject = {
         id,
-        title: selectedPhotoTimelineItem?.assetName ? `${selectedPhotoTimelineItem.assetName} Project` : "Untitled Project",
+        title,
         category: /(paint|stain|elliott|coat|trim|siding)/i.test(selectedPhotoTimelineItem?.name || "") ? "Painting" : "General",
         scale: "Standard",
         status: "Planning",
@@ -16983,12 +17040,12 @@ export default function AtlasPage() {
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" onClick={() => openComparison(selectedPhotoProjectId || undefined)} style={secondaryButtonStyle}>Compare Before / After</button>
-                <button type="button" onClick={createPhotoProject} style={goldButtonStyle}>+ Create Project</button>
+                {!isMobile ? <button type="button" onClick={() => openComparison(selectedPhotoProjectId || undefined)} style={secondaryButtonStyle}>Compare Before / After</button> : null}
+                <button type="button" onClick={createPhotoProject} style={{ ...goldButtonStyle, width: "auto", padding: "8px 11px" }}>+ Project</button>
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+            {!isMobile || photoTimelineView !== "projects" ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
               {[
                 ["Visible photos", photoTimelineItems.length],
                 ["Visible projects", visiblePhotoProjects.length],
@@ -17000,9 +17057,9 @@ export default function AtlasPage() {
                   <div style={{ fontSize: 24, color: colors.navy3, fontWeight: 950, marginTop: 3 }}>{value}</div>
                 </div>
               ))}
-            </div>
+            </div> : null}
 
-            <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
+            {!isMobile || photoTimelineView !== "projects" ? <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
                 <strong style={{ color: colors.navy3 }}>Timeline scrubber</strong>
                 <span style={{ color: colors.muted, fontWeight: 800 }}>{photoTimelineScrubber >= 100 ? "All dates" : `${photoTimelineScrubber}% of history`}</span>
@@ -17012,15 +17069,15 @@ export default function AtlasPage() {
                 <span>{earliestPhotoTime ? new Date(earliestPhotoTime).getFullYear() : "Start"}</span>
                 <span>{latestPhotoTime ? new Date(latestPhotoTime).getFullYear() : "Current"}</span>
               </div>
-            </div>
+            </div> : null}
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1.5fr) repeat(5, minmax(120px, .7fr))", gap: 9, marginBottom: 16 }}>
               <input value={photoTimelineSearch} onChange={(event) => setPhotoTimelineSearch(event.target.value)} placeholder="Search projects, photos, notes, assets..." style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }} />
-              <select value={photoTimelineTagFilter} onChange={(event) => setPhotoTimelineTagFilter(event.target.value as PhotoTimelineTag | "All")} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="All">All phases</option>{(["Before", "During", "After", "Unlabeled"] as PhotoTimelineTag[]).map((tag) => <option key={tag}>{tag}</option>)}</select>
-              <select value={photoTimelineAssetId} onChange={(event) => setPhotoTimelineAssetId(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All assets</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select>
-              <select value={photoTimelineVendorFilter} onChange={(event) => setPhotoTimelineVendorFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All vendors</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select>
-              <select value={photoTimelineYear} onChange={(event) => setPhotoTimelineYear(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All years</option>{photoTimelineYears.map((year) => <option key={year}>{year}</option>)}</select>
-              <select value={photoTimelineMonthFilter} onChange={(event) => setPhotoTimelineMonthFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index} value={String(index + 1).padStart(2, "0")}>{new Date(2026, index, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}</select>
+              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineTagFilter} onChange={(event) => setPhotoTimelineTagFilter(event.target.value as PhotoTimelineTag | "All")} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="All">All phases</option>{(["Before", "During", "After", "Unlabeled"] as PhotoTimelineTag[]).map((tag) => <option key={tag}>{tag}</option>)}</select> : null}
+              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineAssetId} onChange={(event) => setPhotoTimelineAssetId(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All assets</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select> : null}
+              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineVendorFilter} onChange={(event) => setPhotoTimelineVendorFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All vendors</option>{vendorRecords.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select> : null}
+              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineYear} onChange={(event) => setPhotoTimelineYear(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All years</option>{photoTimelineYears.map((year) => <option key={year}>{year}</option>)}</select> : null}
+              {!isMobile || photoTimelineView !== "projects" ? <select value={photoTimelineMonthFilter} onChange={(event) => setPhotoTimelineMonthFilter(event.target.value)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index} value={String(index + 1).padStart(2, "0")}>{new Date(2026, index, 1).toLocaleDateString(undefined, { month: "long" })}</option>)}</select> : null}
             </div>
 
             {photoTimelineView === "projects" ? (
@@ -17072,11 +17129,19 @@ export default function AtlasPage() {
                               </div>
                               <aside style={{ display: "grid", gap: 10, alignContent: "start" }}>
                                 <Field label="Project title" value={selectedPhotoProject.title} onChange={(value) => updateSelectedPhotoProject({ title: value })} />
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                  <label style={{ display: "grid", gap: 5, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Asset<select value={selectedPhotoProject.assetId || ""} onChange={(event) => updateSelectedPhotoProject({ assetId: event.target.value })} style={{ border: "1px solid #CBD5E1", borderRadius: 9, padding: 9, background: "white", minWidth: 0 }}><option value="">None</option>{assetRecords.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                                  <label style={{ display: "grid", gap: 5, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Location<select value={selectedPhotoProject.locationId || ""} onChange={(event) => updateSelectedPhotoProject({ locationId: event.target.value })} style={{ border: "1px solid #CBD5E1", borderRadius: 9, padding: 9, background: "white", minWidth: 0 }}><option value="">None</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                                </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><SelectField label="Status" value={selectedPhotoProject.status || "Planning"} options={["Planning", "Active", "Waiting", "Completed"]} onChange={(value) => updateSelectedPhotoProject({ status: value as PhotoTimelineProject["status"] })} /><SelectField label="Size" value={selectedPhotoProject.scale || "Standard"} options={["Quick", "Standard", "Major"]} onChange={(value) => updateSelectedPhotoProject({ scale: value as PhotoTimelineProject["scale"] })} /></div>
                                 <Field label="Current phase / next action" value={selectedPhotoProject.phase || ""} onChange={(value) => updateSelectedPhotoProject({ phase: value })} />
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><Field label="Start date" type="date" value={selectedPhotoProject.startDate || ""} onChange={(value) => updateSelectedPhotoProject({ startDate: value })} /><Field label="Completed" type="date" value={selectedPhotoProject.completedAt || ""} onChange={(value) => updateSelectedPhotoProject({ completedAt: value })} /></div>
                                 <label style={{ fontSize: 12, fontWeight: 900, color: colors.navy3 }}>Progress <span style={{ color: colors.muted }}>({Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))}%)</span><input type="range" min="0" max="100" value={Math.max(0, Math.min(100, Number(selectedPhotoProject.progress || 0)))} onChange={(event) => updateSelectedPhotoProject({ progress: Number(event.target.value) })} style={{ width: "100%", accentColor: "#175CD3", marginTop: 5 }} /></label>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button type="button" onClick={() => openComparison(selectedPhotoProject.id)} style={secondaryButtonStyle}>Compare Photos</button><label style={{ ...secondaryButtonStyle, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", margin: 0 }}>Add Photos<input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(event) => { void addDatedProjectPhotos(event.currentTarget.files); event.currentTarget.value = ""; }} /></label></div>
+                                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                                  {!isMobile ? <button type="button" onClick={() => openComparison(selectedPhotoProject.id)} style={{ ...secondaryButtonStyle, width: "auto" }}>Compare</button> : null}
+                                  <label style={{ ...secondaryButtonStyle, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", margin: 0, width: "auto" }}>Add Photos<input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(event) => { void addDatedProjectPhotos(event.currentTarget.files); event.currentTarget.value = ""; }} /></label>
+                                  <label style={{ ...secondaryButtonStyle, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", margin: 0, width: "auto" }}>Add Docs<input type="file" multiple style={{ display: "none" }} onChange={(event) => { void addProjectDocuments(event.currentTarget.files); event.currentTarget.value = ""; }} /></label>
+                                </div>
                               </aside>
                             </div>
                             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 9 }}>{[["Photos",selectedPhotoProjectItems.length],["Documents",selectedProjectDocuments.length],["Work orders",selectedProjectWorkOrders.length],["People / vendors",selectedProjectPeople.length + selectedProjectVendors.length]].map(([label,value]) => <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 11, background: "#F8FAFC" }}><small style={mutedSmallStyle}>{label}</small><strong style={{ display: "block", fontSize: 20, color: colors.navy3 }}>{value}</strong></div>)}</div>
@@ -17084,7 +17149,16 @@ export default function AtlasPage() {
                         ) : null}
 
                         {projectDetailTab === "timeline" ? <div style={{ display: "grid", gap: 10 }}>{selectedProjectTimelineEntries.length ? selectedProjectTimelineEntries.map((entry) => <div key={entry.id} style={{ borderLeft: "3px solid #175CD3", padding: "4px 0 4px 12px" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><strong style={{ color: colors.navy3 }}>{entry.title}</strong><small style={{ color: colors.muted }}>{formatDate(entry.date)}</small></div><small style={{ color: "#175CD3", fontWeight: 900 }}>{entry.type}</small>{entry.notes ? <p style={{ margin: "5px 0 0", whiteSpace: "pre-wrap", color: colors.text }}>{entry.notes}</p> : null}</div>) : <div style={emptyStateStyle}>No project timeline entries yet. Add a quick note from Overview.</div>}</div> : null}
-                        {projectDetailTab === "photos" ? <><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}><strong style={{ color: colors.navy3 }}>Project photos</strong><label style={{ ...goldButtonStyle, display: "inline-flex", width: "auto", cursor: "pointer" }}>+ Add Photos<input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(event) => { void addDatedProjectPhotos(event.currentTarget.files); event.currentTarget.value = ""; }} /></label></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 10 }}>{selectedPhotoProjectItems.map((item) => <button key={item.id} type="button" onClick={() => openLightbox(item.id, selectedPhotoProjectItems.map((record) => record.id))} style={{ border: `2px solid ${selectedPhotoProject.coverPhotoId === item.id ? "#C99A3D" : "#D7E0EA"}`, borderRadius: 12, padding: 0, overflow: "hidden", background: "white", cursor: "pointer" }}><img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /><span style={{ display: "block", padding: 8, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>{photoTimelineMeta[item.id]?.tag || "Unlabeled"}</span></button>)}</div>{!selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>No photos are attached to this project.</div> : null}</> : null}
+                        {projectDetailTab === "photos" ? <><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}><strong style={{ color: colors.navy3 }}>Project photos</strong><label style={{ ...goldButtonStyle, display: "inline-flex", width: "auto", cursor: "pointer" }}>+ Add Photos<input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(event) => { void addDatedProjectPhotos(event.currentTarget.files); event.currentTarget.value = ""; }} /></label></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 10 }}>{selectedPhotoProjectItems.map((item) => {
+                          const meta = photoTimelineMeta[item.id] || { tag: "Unlabeled" as PhotoTimelineTag, notes: "" };
+                          return <div key={item.id} style={{ border: `2px solid ${selectedPhotoProject.coverPhotoId === item.id ? "#C99A3D" : "#D7E0EA"}`, borderRadius: 12, overflow: "hidden", background: "white" }}>
+                            <button type="button" onClick={() => isMobile ? setSelectedPhotoTimelineId(item.id) : openLightbox(item.id, selectedPhotoProjectItems.map((record) => record.id))} style={{ border: 0, padding: 0, width: "100%", background: "white", cursor: "pointer" }}><img src={item.source} alt={item.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /></button>
+                            {isMobile ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 7 }}>
+                              <select value={meta.tag || "Unlabeled"} onChange={(event) => setPhotoTimelineMeta((current) => ({ ...current, [item.id]: { tag: "Unlabeled", notes: "", ...current[item.id], tag: event.target.value as PhotoTimelineTag } }))} style={{ minWidth: 0, border: "1px solid #CBD5E1", borderRadius: 8, padding: 7, background: "white", fontSize: 12, fontWeight: 800 }}>{(["Unlabeled","Before","During","After"] as PhotoTimelineTag[]).map((tag) => <option key={tag}>{tag}</option>)}</select>
+                              <input type="date" value={meta.dateTaken || String(item.createdAt || "").slice(0,10)} onChange={(event) => setPhotoTimelineMeta((current) => ({ ...current, [item.id]: { tag: "Unlabeled", notes: "", ...current[item.id], dateTaken: event.target.value, milestoneDate: event.target.value } }))} style={{ minWidth: 0, border: "1px solid #CBD5E1", borderRadius: 8, padding: 7, fontSize: 12 }} />
+                            </div> : <span style={{ display: "block", padding: 8, fontSize: 12, fontWeight: 900, color: colors.navy3 }}>{meta.tag || "Unlabeled"}</span>}
+                          </div>;
+                        })}</div>{!selectedPhotoProjectItems.length ? <div style={emptyStateStyle}>No photos are attached to this project.</div> : null}</> : null}
                         {projectDetailTab === "documents" ? <div style={{ display: "grid", gap: 9 }}>{selectedProjectDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); setScreen("documents"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"} · {document.files?.length || 0} file(s)</small></button>)}{!selectedProjectDocuments.length ? <div style={emptyStateStyle}>No documents are linked to this project yet.</div> : null}</div> : null}
                         {projectDetailTab === "work" ? <div style={{ display: "grid", gap: 9 }}>{selectedProjectWorkOrders.map((record) => <button key={record.id} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.status} · {record.date ? formatDate(record.date) : "No due date"}</small></button>)}{!selectedProjectWorkOrders.length ? <div style={emptyStateStyle}>No work orders are linked to this project yet.</div> : null}<button type="button" onClick={() => addWorkOrder({ projectId: selectedPhotoProject.id, vendorId: selectedPhotoProject.vendorId || "", assignedVendorIds: selectedPhotoProject.vendorIds || [], assetId: selectedPhotoProject.assetId || "", locationId: selectedPhotoProject.locationId || "", responsibilityArea: `Project · ${selectedPhotoProject.title}` })} style={goldButtonStyle}>+ Add Project Work Order</button></div> : null}
                         {projectDetailTab === "people" ? <div style={{ display: "grid", gap: 14 }}><section><strong style={{ color: colors.navy3 }}>Vendors</strong><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectVendors.map((vendor) => <button key={vendor.id} type="button" onClick={() => { setSelectedVendorId(vendor.id); setScreen("vendors"); }} style={{ ...rowButtonStyle, textAlign: "left" }}><strong>{vendor.name}</strong><small style={mutedSmallStyle}>{vendor.category || "Vendor"}</small></button>)}{!selectedProjectVendors.length ? <div style={emptyStateStyle}>No vendors assigned.</div> : null}</div></section><section><strong style={{ color: colors.navy3 }}>People</strong><div style={{ display: "grid", gap: 8, marginTop: 8 }}>{selectedProjectPeople.map((contact) => <div key={contact.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10 }}><strong>{contact.name}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{contact.role || contact.organization || "Contact"}</small></div>)}{!selectedProjectPeople.length ? <div style={emptyStateStyle}>No people assigned.</div> : null}</div></section></div> : null}
