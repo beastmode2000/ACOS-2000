@@ -14391,16 +14391,16 @@ ${notes.trim()}` : notes.trim(),
             />
             <SelectField
               label="Location"
-              value={locationRecords.find((location) => location.id === selectedVehicle.locationId)?.name || "Not linked"}
+              value={locations.find((location) => location.id === selectedVehicle.locationId)?.name || "Not linked"}
               onChange={(value) =>
                 updateVehicleCareRecord(selectedVehicle.id, {
                   locationId:
                     value === "Not linked"
                       ? ""
-                      : locationRecords.find((location) => location.name === value)?.id || "",
+                      : locations.find((location) => location.name === value)?.id || "",
                 })
               }
-              options={["Not linked", ...locationRecords.map((location) => location.name)]}
+              options={["Not linked", ...locations.map((location) => location.name)]}
             />
           </div>
 
