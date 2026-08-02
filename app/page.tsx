@@ -4274,6 +4274,7 @@ export default function AtlasPage() {
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [savedCommands, setSavedCommands] = useState<string[]>([]);
   const [commandPinnedIds, setCommandPinnedIds] = useState<string[]>([]);
   const [commandOpenCounts, setCommandOpenCounts] = useState<Record<string, number>>({});
   const [isMobile, setIsMobile] = useState(false);
@@ -4879,12 +4880,15 @@ export default function AtlasPage() {
       }
       const pinned = JSON.parse(window.localStorage.getItem("atlas_command_pins_v1") || "[]");
       const counts = JSON.parse(window.localStorage.getItem("atlas_command_open_counts_v1") || "{}");
+      const commands = JSON.parse(window.localStorage.getItem("atlas_saved_commands_v1") || "[]");
       setCommandPinnedIds(Array.isArray(pinned) ? pinned.map(String).slice(0, 20) : []);
       setCommandOpenCounts(counts && typeof counts === "object" && !Array.isArray(counts) ? counts : {});
+      setSavedCommands(Array.isArray(commands) ? commands.map(String).filter(Boolean).slice(0, 12) : []);
     } catch {
       setRecentSearches([]);
       setCommandPinnedIds([]);
       setCommandOpenCounts({});
+      setSavedCommands([]);
     }
   }, []);
 
@@ -7975,8 +7979,11 @@ export default function AtlasPage() {
     if (intent === "documents") matches = matches.filter((item) => item.id.startsWith("document-") || item.id.startsWith("manual-"));
 
     if (!matches.length && searchText.length >= 3) {
-      const needle = searchText.toLowerCase();
-      matches = index.filter((item) => item.title.toLowerCase().split(/\s+/).some((word) => commandWordDistance(word, needle) <= (needle.length > 6 ? 2 : 1)));
+      const needles = searchText.toLowerCase().split(/\s+/).filter(Boolean);
+      matches = index.filter((item) => {
+        const candidateWords = `${item.title} ${item.subtitle} ${item.detail}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+        return needles.every((needle) => candidateWords.some((word) => word.includes(needle) || commandWordDistance(word, needle) <= (needle.length > 6 ? 2 : 1)));
+      });
     }
 
     const screenAffinity: Partial<Record<AtlasScreen, string[]>> = {
@@ -7994,8 +8001,11 @@ export default function AtlasPage() {
         const score = (item: SearchResult) =>
           (commandPinnedIds.includes(item.id) ? 1000 : 0) +
           Math.min(100, Number(commandOpenCounts[item.id] || 0) * 10) +
+          (recentSearches.some((recent) => recent.toLowerCase() === item.title.toLowerCase()) ? 60 : 0) +
           (screenAffinity[screen]?.some((prefix) => item.id.startsWith(prefix)) ? 25 : 0) +
-          (item.title.toLowerCase().startsWith(searchText.toLowerCase()) ? 20 : 0);
+          (item.title.toLowerCase() === searchText.toLowerCase() ? 100 : 0) +
+          (item.title.toLowerCase().startsWith(searchText.toLowerCase()) ? 40 : 0) +
+          (searchText.toLowerCase().split(/\s+/).every((token) => `${item.title} ${item.subtitle}`.toLowerCase().includes(token)) ? 20 : 0);
         return score(b) - score(a);
       })
       .slice(0, 30);
@@ -8021,8 +8031,27 @@ export default function AtlasPage() {
     vehicleCare,
     commandPinnedIds,
     commandOpenCounts,
+    recentSearches,
     screen,
   ]);
+
+  const commandContextSuggestions = useMemo(() => {
+    const propertyName = atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId;
+    const common = [
+      { query: "show overdue", label: "Overdue work", detail: `${propertyName} attention list` },
+      { query: "tasks today", label: "Tasks due today", detail: `${propertyName} daily work` },
+    ];
+    if (screen === "planner") return [
+      { query: "build my day", label: "Build My Day", detail: "Create today’s realistic plan" },
+      { query: "smart route", label: "Smart Route", detail: "Group nearby property work" },
+      { query: "walk mode", label: "Walk Mode", detail: "Start the simplified field view" },
+      ...common,
+    ];
+    if (screen === "vendors") return [{ query: "vendor", label: "Search vendors", detail: `${propertyName} vendor records` }, ...common];
+    if (screen === "assets") return [{ query: "boiler", label: "Find equipment", detail: `${propertyName} assets and manuals` }, ...common];
+    if (screen === "timeline") return [{ query: "new project", label: "New Project", detail: "Open a blank Project record" }, ...common];
+    return [...common, { query: "operations analytics", label: "Operations Analytics", detail: "Review workload and performance" }, { query: "new task", label: "New Task", detail: `Add work for ${propertyName}` }];
+  }, [activePropertyId, screen]);
 
   const monthCells = useMemo(() => {
     const year = calendarCursor.getFullYear();
@@ -8374,6 +8403,43 @@ export default function AtlasPage() {
     if (clean === "new work order") return "work order";
     if (clean === "new project") return "project";
     return null;
+  }
+
+  function navigationCommand(value = query): { label: string; view: "build" | "walk" | "route" | "addison" | "analytics" | "seasonal" | "planner" } | null {
+    const clean = value.trim().toLowerCase().replace(/\s+/g, " ");
+    const commands: Record<string, { label: string; view: "build" | "walk" | "route" | "addison" | "analytics" | "seasonal" | "planner" }> = {
+      "build my day": { label: "Build My Day", view: "build" },
+      "walk mode": { label: "Walk Mode", view: "walk" },
+      "smart route": { label: "Smart Route", view: "route" },
+      "addison manager": { label: "Addison Work Manager", view: "addison" },
+      "addison today": { label: "Addison Work Manager", view: "addison" },
+      "operations analytics": { label: "Operations Analytics", view: "analytics" },
+      "analytics": { label: "Operations Analytics", view: "analytics" },
+      "seasonal intelligence": { label: "Seasonal Intelligence", view: "seasonal" },
+      "plan week": { label: "Plan Week", view: "planner" },
+    };
+    return commands[clean] || null;
+  }
+
+  function runNavigationCommand(value = query) {
+    const command = navigationCommand(value);
+    if (!command) return false;
+    rememberSearch(value);
+    closeCommandCenter();
+    setTasksView(command.view);
+    setScreen("planner");
+    return true;
+  }
+
+  function toggleSavedCommand(value = query) {
+    const clean = value.trim();
+    if (!clean) return;
+    setSavedCommands((current) => {
+      const exists = current.some((item) => item.toLowerCase() === clean.toLowerCase());
+      const next = exists ? current.filter((item) => item.toLowerCase() !== clean.toLowerCase()) : [clean, ...current].slice(0, 12);
+      try { window.localStorage.setItem("atlas_saved_commands_v1", JSON.stringify(next)); } catch { /* Saved commands remain available for this session. */ }
+      return next;
+    });
   }
 
   function closeCommandCenter() {
@@ -38443,6 +38509,7 @@ ${notes.trim()}` : notes.trim(),
                           openNewRecordFromCommand(newRecordKind);
                           return;
                         }
+                        if (runNavigationCommand()) return;
                         if (runCommandCreation()) return;
                         if (searchResults[searchActiveIndex]) openSearchResult(searchResults[searchActiveIndex]);
                       }
@@ -38451,6 +38518,7 @@ ${notes.trim()}` : notes.trim(),
                     aria-label="Find or create anything in Atlas"
                     style={{ border: 0, outline: 0, background: "transparent", flex: 1, minWidth: 0, fontSize: isMobile ? 17 : 19, color: colors.navy, fontWeight: 750 }}
                   />
+                  {query.trim() ? <button type="button" onClick={() => toggleSavedCommand()} title={savedCommands.some((item) => item.toLowerCase() === query.trim().toLowerCase()) ? "Remove saved command" : "Save this command"} aria-label="Save command" style={{ border: 0, background: "transparent", color: savedCommands.some((item) => item.toLowerCase() === query.trim().toLowerCase()) ? colors.gold2 : colors.muted, fontSize: 21, cursor: "pointer", padding: 4 }}>★</button> : null}
                   {!isMobile ? <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 7, padding: "4px 7px" }}>ESC</span> : null}
                   <button type="button" onClick={closeCommandCenter} aria-label="Close command center" style={{ ...secondaryButtonStyle, width: 38, minWidth: 38, height: 38, padding: 0, borderRadius: 999, fontSize: 20 }}>{closeSymbol}</button>
                 </div>
@@ -38458,6 +38526,7 @@ ${notes.trim()}` : notes.trim(),
                 <div style={{ overflowY: "auto", overscrollBehavior: "contain" }}>
                   {query.trim() ? (
                     <>
+                      {navigationCommand(query) ? <button type="button" onClick={() => runNavigationCommand()} style={{ ...searchResultStyle, padding: "13px 16px", background: "#EEF6FF", borderBottom: `1px solid ${colors.line}` }}><span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><strong>Open {navigationCommand(query)!.label}</strong><span style={searchTypeBadgeStyle}>GO</span></span><span style={mutedSmallStyle}>Context-aware Atlas command</span></button> : null}
                       {newRecordCommand(query) ? (
                         <button type="button" onClick={() => openNewRecordFromCommand(newRecordCommand(query)!)} style={{ ...searchResultStyle, padding: "13px 16px", background: "#FFF9E8", borderBottom: `1px solid ${colors.line}` }}>
                           <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -38505,7 +38574,7 @@ ${notes.trim()}` : notes.trim(),
                             );
                           })}
                         </div>
-                      ) : !commandCreation(query) && !newRecordCommand(query) ? (
+                      ) : !navigationCommand(query) && !commandCreation(query) && !newRecordCommand(query) ? (
                         <div style={searchEmptyStyle}>No Atlas records match “{query.trim()}”. Try a record name or a creation command.</div>
                       ) : null}
                     </>
@@ -38527,6 +38596,11 @@ ${notes.trim()}` : notes.trim(),
                           ))}
                         </div>
                       </div>
+                      <div>
+                        <div style={{ ...eyebrowStyle, marginBottom: 8 }}>Suggested here</div>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>{commandContextSuggestions.slice(0, 4).map((suggestion) => <button key={suggestion.query} type="button" onClick={() => setQuery(suggestion.query)} style={{ ...secondaryButtonStyle, minHeight: 58, textAlign: "left", justifyContent: "flex-start" }}><span><strong style={{ display: "block" }}>{suggestion.label}</strong><small style={mutedSmallStyle}>{suggestion.detail}</small></span></button>)}</div>
+                      </div>
+                      {savedCommands.length ? <div><div style={{ ...eyebrowStyle, marginBottom: 6 }}>Saved Commands</div>{savedCommands.slice(0, 6).map((item) => <div key={`saved-command-${item}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 6, borderBottom: `1px solid ${colors.line}` }}><button type="button" onClick={() => setQuery(item)} style={{ ...searchResultStyle, borderBottom: 0 }}><strong>{item}</strong></button><button type="button" onClick={() => toggleSavedCommand(item)} title="Remove saved command" style={{ border: 0, background: "transparent", color: colors.gold2, fontSize: 18, cursor: "pointer" }}>★</button></div>)}</div> : null}
                       {recentSearches.length ? (
                         <div>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 6 }}><div style={eyebrowStyle}>Recent</div><button type="button" onClick={clearRecentSearches} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer" }}>Clear</button></div>
