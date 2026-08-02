@@ -506,6 +506,37 @@ export type WorkPlanTask = {
   notes?: string;
 };
 
+export type SharedTaskRecord = WorkPlanTask & {
+  propertyId?: string;
+  status?: "Open" | "In Progress" | "Completed" | "Waiting" | "Blocked";
+  dueDate?: string;
+  assignee?: "Nick" | "Addison" | "Other" | "Unassigned";
+  taskMeta?: Record<string, unknown>;
+  updatedAt?: string;
+};
+
+export type VehicleCareRecord = {
+  propertyId?: string;
+  id: string;
+  name: string;
+  onsite: boolean;
+  lastCleaned: string;
+  priority: "Normal" | "High" | "Skip";
+  notes: string;
+  kind?: "Vehicle" | "Boat" | "Watercraft" | "Equipment";
+  locationId?: string;
+  assetId?: string;
+  assignedTo?: "Nick" | "Addison" | "Other" | "Unassigned";
+  updatedAt?: string;
+  [key: string]: unknown;
+};
+
+export type DaySessionRecord = {
+  propertyId?: string;
+  id: string;
+  [key: string]: unknown;
+};
+
 export type PhotoRecord = {
   propertyId?: string;
   id: string;
@@ -550,6 +581,11 @@ export type AtlasApiPayload = {
   assetPhotos?: PhotoRecord[];
   projects?: ProjectRecord[];
   projectRecords?: ProjectRecord[];
+  tasks?: SharedTaskRecord[];
+  taskRecords?: SharedTaskRecord[];
+  vehicleCare?: VehicleCareRecord[];
+  vehicleCareRecords?: VehicleCareRecord[];
+  daySessions?: DaySessionRecord[];
 };
 
 export type AtlasTable =
@@ -563,7 +599,11 @@ export type AtlasTable =
   | "calendar"
   | "parts"
   | "asset_photos"
-  | "projects";
+  | "projects"
+  | "documents"
+  | "tasks"
+  | "vehicle_care"
+  | "day_sessions";
 
 export type SearchResult = {
   id: string;
