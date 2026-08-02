@@ -244,6 +244,7 @@ type AtlasTaskMeta = {
   weatherDependency?: "None" | "Dry" | "No rain" | "Warm" | "Cool" | "Low wind";
   flexibleTime?: boolean;
   skippable?: boolean;
+  updatedAt?: string;
 };
 
 type TaskListFilter = "today" | "overdue" | "week" | "recurring" | "completed";
@@ -277,6 +278,7 @@ type AtlasVehicleCare = {
     date: string;
     notes?: string;
   }>;
+  updatedAt?: string;
 };
 
 type AtlasSeasonalItem = {
@@ -4132,6 +4134,9 @@ export default function AtlasPage() {
   const [syncState, setSyncState] = useState<
     "loading" | "synced" | "offline"
   >("loading");
+  const [operationsSyncState, setOperationsSyncState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
+  const [operationsSyncMessage, setOperationsSyncMessage] = useState("No pending changes");
+  const [operationsHydrated, setOperationsHydrated] = useState(false);
   const [showPropertyLoading, setShowPropertyLoading] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
@@ -4362,6 +4367,8 @@ export default function AtlasPage() {
   const atlasLastSaveRef = useRef<Map<string, string>>(new Map());
   const atlasSaveAttemptRef = useRef(0);
   const atlasActionLocksRef = useRef<Set<string>>(new Set());
+  const operationsSyncTimerRef = useRef<number | null>(null);
+  const operationsSyncRunningRef = useRef(false);
 
   const [databaseStatus, setDatabaseStatus] = useState(
     "Loading Atlas records...",
@@ -5266,20 +5273,25 @@ export default function AtlasPage() {
   );
 
   useEffect(() => {
-    saveStoredArray("atlas-tasks-v1", workPlanTasks);
-  }, [workPlanTasks]);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, workPlanTasks);
+    if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", workPlanTasks);
+  }, [activePropertyId, workPlanTasks]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(taskMeta));
+      window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(taskMeta));
+      if (activePropertyId === "2000") window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(taskMeta));
     } catch (error) {
       console.warn("Atlas could not save task details.", error);
     }
-  }, [taskMeta]);
+  }, [activePropertyId, taskMeta]);
 
   useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
-  useEffect(() => { saveStoredArray("atlas-vehicle-care-v1", vehicleCare); }, [vehicleCare]);
+  useEffect(() => {
+    saveStoredArray(`atlas-vehicle-care-v1-${activePropertyId}`, vehicleCare);
+    if (activePropertyId === "2000") saveStoredArray("atlas-vehicle-care-v1", vehicleCare);
+  }, [activePropertyId, vehicleCare]);
   useEffect(() => { saveStoredArray("atlas-seasonal-work-v1", seasonalItems); }, [seasonalItems]);
 
   function updateVehicleCareRecord(
@@ -5288,15 +5300,31 @@ export default function AtlasPage() {
   ) {
     setVehicleCare((current) => {
       const next = current.map((item) =>
-        item.id === vehicleId ? { ...item, ...patch } : item,
+        item.id === vehicleId ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item,
       );
       // Save the exact edited value immediately. This prevents a first edit
       // made just after opening Atlas from being replaced by delayed startup work.
-      saveStoredArray("atlas-vehicle-care-v1", next);
+      saveStoredArray(`atlas-vehicle-care-v1-${activePropertyId}`, next);
+      if (activePropertyId === "2000") saveStoredArray("atlas-vehicle-care-v1", next);
       return next;
     });
   }
-  useEffect(() => { saveStoredArray("atlas-day-sessions-v1", daySessions); }, [daySessions]);
+  useEffect(() => {
+    if (!operationsHydrated || !ready) return;
+    setOperationsSyncState("saving");
+    setOperationsSyncMessage("Saving Tasks, Plan Week, and Vehicle Care…");
+    if (operationsSyncTimerRef.current) window.clearTimeout(operationsSyncTimerRef.current);
+    operationsSyncTimerRef.current = window.setTimeout(() => { void syncOperationalData(); }, 700);
+    return () => { if (operationsSyncTimerRef.current) window.clearTimeout(operationsSyncTimerRef.current); };
+  }, [operationsHydrated, ready, activePropertyId, workPlanTasks, taskMeta, vehicleCare, daySessions]);
+
+  useEffect(() => {
+    const retry = () => { if (operationsSyncState === "failed") void syncOperationalData(); };
+    window.addEventListener("online", retry);
+    window.addEventListener("focus", retry);
+    return () => { window.removeEventListener("online", retry); window.removeEventListener("focus", retry); };
+  }, [operationsSyncState, activePropertyId, workPlanTasks, taskMeta, vehicleCare, daySessions]);
+  useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
@@ -5369,7 +5397,18 @@ export default function AtlasPage() {
     if (propertyId === activePropertyId) return;
 
     setShowPropertyLoading(true);
+    setOperationsHydrated(false);
+    setOperationsSyncState("idle");
     setActivePropertyId(propertyId);
+
+    const scopedTasks = readStoredArray<WorkPlanTask>([`atlas-tasks-v1-${propertyId}`], propertyId === "2000" ? readStoredArray<WorkPlanTask>(["atlas-tasks-v1"], []) : []);
+    setWorkPlanTasks(scopedTasks);
+    try {
+      const scopedMeta = window.localStorage.getItem(`atlas-task-meta-v1-${propertyId}`) || (propertyId === "2000" ? window.localStorage.getItem("atlas-task-meta-v1") : null);
+      setTaskMeta(scopedMeta ? JSON.parse(scopedMeta) : {});
+    } catch { setTaskMeta({}); }
+    setVehicleCare(readStoredArray<AtlasVehicleCare>([`atlas-vehicle-care-v1-${propertyId}`], propertyId === "2000" ? readStoredArray<AtlasVehicleCare>(["atlas-vehicle-care-v1"], []) : []));
+    setDaySessions(readStoredArray<AtlasDaySession>([`atlas-day-sessions-v1-${propertyId}`], []));
 
     setSelectedLocationId("");
     setSelectedAssetId("");
@@ -5787,6 +5826,16 @@ export default function AtlasPage() {
           : Array.isArray(payload.projects)
             ? payload.projects
             : [];
+        const operationsPayload = payload as AtlasApiPayload & {
+          tasks?: Array<WorkPlanTask & AtlasTaskMeta & { taskMeta?: AtlasTaskMeta }>;
+          taskRecords?: Array<WorkPlanTask & AtlasTaskMeta & { taskMeta?: AtlasTaskMeta }>;
+          vehicleCare?: AtlasVehicleCare[];
+          vehicleCareRecords?: AtlasVehicleCare[];
+          daySessions?: AtlasDaySession[];
+        };
+        const apiTasks = Array.isArray(operationsPayload.taskRecords) ? operationsPayload.taskRecords : Array.isArray(operationsPayload.tasks) ? operationsPayload.tasks : [];
+        const apiVehicles = Array.isArray(operationsPayload.vehicleCareRecords) ? operationsPayload.vehicleCareRecords : Array.isArray(operationsPayload.vehicleCare) ? operationsPayload.vehicleCare : [];
+        const apiDaySessions = Array.isArray(operationsPayload.daySessions) ? operationsPayload.daySessions : [];
         const apiPhotos = (
           Array.isArray(payload.photos)
             ? payload.photos
@@ -5847,6 +5896,23 @@ export default function AtlasPage() {
         setServiceRecords(nextServices);
         setProcedureRecords(nextProcedures);
         setPartRecords(nextParts);
+        if (apiTasks.length) {
+          setWorkPlanTasks((localTasks) => apiTasks.map((record) => {
+            const local = localTasks.find((task) => task.id === record.id);
+            const localUpdated = taskMeta[record.id]?.updatedAt || "";
+            const remoteUpdated = record.updatedAt || record.taskMeta?.updatedAt || "";
+            const source = local && localUpdated > remoteUpdated ? local : record;
+            return { id: source.id, title: source.title, minutes: source.minutes, priority: source.priority, category: source.category, locationId: source.locationId, preferredDay: source.preferredDay, locked: source.locked, recurring: source.recurring, fixedTime: source.fixedTime, notes: source.notes } as WorkPlanTask;
+          }));
+          setTaskMeta((localMeta) => Object.fromEntries(apiTasks.map((record) => {
+            const remoteMeta = record.taskMeta || record;
+            const local = localMeta[record.id];
+            return [record.id, local?.updatedAt && local.updatedAt > String(remoteMeta.updatedAt || "") ? local : remoteMeta as AtlasTaskMeta];
+          })));
+        }
+        if (apiVehicles.length) setVehicleCare((localVehicles) => apiVehicles.map((remote) => { const local = localVehicles.find((vehicle) => vehicle.id === remote.id); return local?.updatedAt && local.updatedAt > String(remote.updatedAt || "") ? local : remote; }));
+        if (apiDaySessions.length) setDaySessions(apiDaySessions);
+        setOperationsHydrated(true);
 
         setSelectedLocationId((current) =>
           nextLocations.some((item) => item.id === current) ? current : "",
@@ -6109,6 +6175,9 @@ export default function AtlasPage() {
         );
       } catch {
         if (!cancelled) {
+          setOperationsHydrated(true);
+          setOperationsSyncState("failed");
+          setOperationsSyncMessage("Offline — changes are safe and will retry automatically.");
           setSyncState("offline");
           setShowPropertyLoading(false);
           setDatabaseStatus(
@@ -10368,6 +10437,42 @@ export default function AtlasPage() {
     }
   }
 
+  async function syncOperationalData() {
+    if (operationsSyncRunningRef.current) return;
+    operationsSyncRunningRef.current = true;
+    const pendingKey = `atlas-operations-pending-v1-${activePropertyId}`;
+    const snapshot = {
+      propertyId: activePropertyId,
+      savedAt: new Date().toISOString(),
+      tasks: workPlanTasks.map((task) => ({ ...task, ...taskDetails(task.id), taskMeta: taskDetails(task.id), propertyId: activePropertyId, updatedAt: taskDetails(task.id).updatedAt || new Date().toISOString() })),
+      vehicles: vehicleCare.map((vehicle) => ({ ...vehicle, propertyId: activePropertyId, updatedAt: vehicle.updatedAt || new Date().toISOString() })),
+      daySessions: daySessions.map((session) => ({ ...session, propertyId: activePropertyId })),
+    };
+    try {
+      window.localStorage.setItem(pendingKey, JSON.stringify(snapshot));
+      setOperationsSyncState("saving");
+      const results = await Promise.all([
+        ...snapshot.tasks.map((record) => postAtlasRecord("tasks" as AtlasTable, record)),
+        ...snapshot.vehicles.map((record) => postAtlasRecord("vehicle_care" as AtlasTable, record)),
+        ...snapshot.daySessions.map((record) => postAtlasRecord("day_sessions" as AtlasTable, record)),
+      ]);
+      if (results.some((saved) => !saved)) throw new Error("One or more shared records were not confirmed.");
+      window.localStorage.removeItem(pendingKey);
+      setOperationsSyncState("saved");
+      setOperationsSyncMessage(`Saved ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date())}`);
+      setSyncState("synced");
+      setLastSyncedAt(new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date()));
+    } catch (error) {
+      setOperationsSyncState("failed");
+      setOperationsSyncMessage("Failed — saved safely on this device. Atlas will retry automatically.");
+      setSyncState("offline");
+      console.error("Atlas operational sync failed", error);
+      if (navigator.onLine) window.setTimeout(() => { void syncOperationalData(); }, 8000);
+    } finally {
+      operationsSyncRunningRef.current = false;
+    }
+  }
+
   async function deleteSelectedLocation() {
     const location = locations.find((item) => item.id === selectedLocationId);
     if (!location) return;
@@ -14299,7 +14404,7 @@ export default function AtlasPage() {
   function updateTaskDetails(taskId: string, patch: Partial<AtlasTaskMeta>) {
     setTaskMeta((current) => ({
       ...current,
-      [taskId]: { ...taskDetails(taskId), ...patch },
+      [taskId]: { ...taskDetails(taskId), ...patch, updatedAt: new Date().toISOString() },
     }));
   }
 
@@ -14406,6 +14511,7 @@ export default function AtlasPage() {
       return next;
     });
     setSelectedTaskId("");
+    void deleteAtlasRecord("tasks" as AtlasTable, taskId);
     showSaveToast("Task deleted.");
   }
 
@@ -14787,7 +14893,7 @@ ${notes.trim()}` : notes.trim(),
         {selectedVehicle ? <section style={{ ...cardStyle, position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)", overflowY: isMobile ? "visible" : "auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
             <div><div style={eyebrowStyle}>Fleet record</div><h3 style={{ margin: "3px 0 0", color: colors.navy }}>{selectedVehicle.name}</h3><small style={mutedSmallStyle}>{selectedVehicle.kind || "Vehicle"} · {selectedVehicle.onsite ? "Onsite" : "Away"}</small></div>
-            <button type="button" onClick={() => { if (window.confirm(`Delete ${selectedVehicle.name}?`)) { setVehicleCare((current) => current.filter((item) => item.id !== selectedVehicle.id)); setSelectedVehicleId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+            <button type="button" onClick={() => { if (window.confirm(`Delete ${selectedVehicle.name}?`)) { setVehicleCare((current) => current.filter((item) => item.id !== selectedVehicle.id)); void deleteAtlasRecord("vehicle_care" as AtlasTable, selectedVehicle.id); setSelectedVehicleId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
@@ -38041,6 +38147,7 @@ ${notes.trim()}` : notes.trim(),
                         ? "Saved offline"
                         : "Syncing..."}
                   </div>
+                  <button type="button" onClick={() => { if (operationsSyncState === "failed") void syncOperationalData(); }} title={operationsSyncMessage} style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 26, padding: "4px 9px", borderRadius: 999, border: `1px solid ${operationsSyncState === "failed" ? "#E8A2A2" : operationsSyncState === "saving" ? "#E7C46A" : "#9FD6B8"}`, background: operationsSyncState === "failed" ? "#FFF2F2" : operationsSyncState === "saving" ? "#FFF8E8" : "#F0FBF5", color: operationsSyncState === "failed" ? "#A51E1E" : operationsSyncState === "saving" ? "#8A5A00" : "#176B3A", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap", cursor: operationsSyncState === "failed" ? "pointer" : "default" }}><span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: operationsSyncState === "failed" ? "#D83737" : operationsSyncState === "saving" ? colors.gold : "#2BA568" }} />{operationsSyncState === "saving" ? "Saving" : operationsSyncState === "failed" ? "Failed · Retry" : operationsSyncState === "saved" ? "Saved" : "Ready"}</button>
                 </div>
                 {screen === "dashboard" && !isMobile ? (
                   <p style={headerSubStyle}>{databaseStatus}</p>
