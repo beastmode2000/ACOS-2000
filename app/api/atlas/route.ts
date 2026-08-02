@@ -45,7 +45,10 @@ type AtlasTable =
   | "parts"
   | "documents"
   | "asset_photos"
-  | "projects";
+  | "projects"
+  | "tasks"
+  | "vehicle_care"
+  | "day_sessions";
 
 function getSql() {
   const connectionString =
@@ -167,6 +170,9 @@ function cleanTable(value: unknown): AtlasTable | "" {
   if (table === "documents") return "documents";
   if (table === "asset_photos") return "asset_photos";
   if (table === "projects") return "projects";
+  if (table === "tasks") return "tasks";
+  if (table === "vehicle_care") return "vehicle_care";
+  if (table === "day_sessions") return "day_sessions";
 
   return "";
 }
@@ -379,6 +385,20 @@ async function ensureProjectsTable(sql: ReturnType<typeof neon>) {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS atlas_projects_property_idx ON atlas_projects(property_id)`;
+}
+
+async function ensureOperationalRecordsTable(sql: ReturnType<typeof neon>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_operational_records (
+      record_type text NOT NULL,
+      id text NOT NULL,
+      property_id text NOT NULL DEFAULT '2000',
+      record jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (record_type, id)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS atlas_operational_records_property_idx ON atlas_operational_records(property_id, record_type)`;
 }
 
 async function ensurePartsTable(sql: ReturnType<typeof neon>) {
@@ -782,6 +802,7 @@ export async function GET(request: NextRequest) {
     await ensureContactsTable(sql);
     await ensurePartsTable(sql);
     await ensureProjectsTable(sql);
+    await ensureOperationalRecordsTable(sql);
     await ensurePropertyColumns(sql);
     if (request.nextUrl.searchParams.get("portfolio") === "1") {
       const propertyIds = ["2000", "6855", "3661", "hangar"];
@@ -1096,6 +1117,13 @@ export async function GET(request: NextRequest) {
       ORDER BY lower(title) ASC
     `) as unknown as JsonRecord[];
 
+    const operationalRows = (await sql`
+      SELECT record_type, record
+      FROM atlas_operational_records
+      WHERE property_id = ${propertyId}
+      ORDER BY updated_at DESC
+    `) as unknown as JsonRecord[];
+
     const access = await getAtlasAccessContext(sql, request);
     const mappedAssets = assetRows.map(mapAsset);
     const allowedAssets = access.restricted
@@ -1135,6 +1163,10 @@ export async function GET(request: NextRequest) {
     const allowedCalendarRows = access.restricted
       ? calendarRows.filter((row) => allowedAssetIds.has(String(row.linked_id || "")) || profileAllowsRecord(access.accessProfiles, row))
       : calendarRows;
+    const allowedOperationalRows = access.restricted
+      ? operationalRows.filter((row) => profileAllowsRecord(access.accessProfiles, (row.record || {}) as JsonRecord))
+      : operationalRows;
+    const operationalRecords = (recordType: string) => allowedOperationalRows.filter((row) => String(row.record_type) === recordType).map((row) => row.record || {});
 
     return NextResponse.json({
       ok: true,
@@ -1153,6 +1185,11 @@ export async function GET(request: NextRequest) {
       partRecords: allowedPartRows.map(mapPart),
       projects: projectRows.map((row) => row.record || {}),
       projectRecords: projectRows.map((row) => row.record || {}),
+      tasks: operationalRecords("tasks"),
+      taskRecords: operationalRecords("tasks"),
+      vehicleCare: operationalRecords("vehicle_care"),
+      vehicleCareRecords: operationalRecords("vehicle_care"),
+      daySessions: operationalRecords("day_sessions"),
     });
   } catch (error) {
     return NextResponse.json(
@@ -1183,6 +1220,7 @@ export async function POST(request: NextRequest) {
     const sql = getSql();
     await ensurePartsTable(sql);
     await ensureProjectsTable(sql);
+    await ensureOperationalRecordsTable(sql);
     await ensurePropertyColumns(sql);
 
     let body: JsonRecord;
@@ -1299,7 +1337,7 @@ export async function POST(request: NextRequest) {
     }
 
     const access = await getAtlasAccessContext(sql, request);
-    if (access.restricted && ["assets", "vendors", "procedures", "work_orders", "parts", "documents", "asset_photos"].includes(table)) {
+    if (access.restricted && ["assets", "vendors", "procedures", "work_orders", "parts", "documents", "asset_photos", "tasks", "vehicle_care", "day_sessions"].includes(table)) {
       let allowed = profileAllowsRecord(access.accessProfiles, record);
       if (!allowed && asString(record.assetId)) {
         const assetRows = await sql`SELECT id, name, category, notes FROM atlas_assets WHERE id=${asString(record.assetId)} AND property_id=${propertyId} LIMIT 1`;
@@ -1793,6 +1831,23 @@ if (table === "assets") {
       return NextResponse.json({ ok: true, id });
     }
 
+    if (table === "tasks" || table === "vehicle_care" || table === "day_sessions") {
+      await ensureOperationalRecordsTable(sql);
+      const id = getId(record, table === "tasks" ? "task" : table === "vehicle_care" ? "vehicle" : "day-session");
+      const savedRecord = { ...record, id, propertyId, updatedAt: new Date().toISOString() };
+
+      await sql`
+        INSERT INTO atlas_operational_records (record_type, id, property_id, record, updated_at)
+        VALUES (${table}, ${id}, ${propertyId}, ${JSON.stringify(savedRecord)}::jsonb, NOW())
+        ON CONFLICT (record_type, id) DO UPDATE SET
+          property_id = EXCLUDED.property_id,
+          record = EXCLUDED.record,
+          updated_at = NOW()
+      `;
+
+      return NextResponse.json({ ok: true, id });
+    }
+
     if (table === "calendar") {
       await ensureCalendarColumns(sql);
       const id = getId(record, "calendar");
@@ -2068,6 +2123,7 @@ export async function DELETE(request: NextRequest) {
     await ensureContactsTable(sql);
     await ensurePartsTable(sql);
     await ensureProjectsTable(sql);
+    await ensureOperationalRecordsTable(sql);
     await ensurePropertyColumns(sql);
 
     let body: JsonRecord;
@@ -2374,6 +2430,14 @@ export async function DELETE(request: NextRequest) {
       deletedRows = (await sql`
         DELETE FROM atlas_projects
         WHERE id = ${id}
+          AND property_id = ${propertyId}
+        RETURNING id
+      `) as unknown as JsonRecord[];
+    } else if (table === "tasks" || table === "vehicle_care" || table === "day_sessions") {
+      deletedRows = (await sql`
+        DELETE FROM atlas_operational_records
+        WHERE record_type = ${table}
+          AND id = ${id}
           AND property_id = ${propertyId}
         RETURNING id
       `) as unknown as JsonRecord[];
