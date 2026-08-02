@@ -17265,7 +17265,7 @@ export default function AtlasPage() {
         id: `activity-calendar-${item.id}`,
         type: "Calendar" as const,
         title: item.title || "Calendar item",
-        detail: `${item.completed ? "Completed" : item.eventType || item.categoryLabel || item.area || "Scheduled"}${item.time ? ` · ${item.time}` : ""}`,
+        detail: `${item.completed ? "Completed" : item.categoryLabel || item.area || "Scheduled"}${item.time ? ` · ${item.time}` : ""}`,
         date: item.date || "",
         icon: item.completed ? "✓" : "📅",
         action: () => { setSelectedCalendarId(item.id); setScreen("calendar"); },
