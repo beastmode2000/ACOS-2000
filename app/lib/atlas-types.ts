@@ -353,6 +353,44 @@ export type PartRecord = {
   notes: string;
 };
 
+
+export type ProjectTimelineEntryRecord = {
+  id: string;
+  projectId: string;
+  title: string;
+  notes: string;
+  date: string;
+  type: "Note" | "Milestone" | "Vendor Visit" | "Delivery" | "Inspection" | "Decision" | "Completed";
+  createdAt: string;
+};
+
+export type ProjectRecord = {
+  propertyId?: string;
+  id: string;
+  title: string;
+  category: "Painting" | "Landscaping" | "Dock" | "Pool" | "Mechanical" | "General";
+  scale?: "Quick" | "Standard" | "Major";
+  status?: "Planning" | "Active" | "Waiting" | "Completed";
+  assetId: string;
+  locationId: string;
+  vendorId: string;
+  workOrderId: string;
+  workOrderIds?: string[];
+  vendorIds?: string[];
+  documentIds?: string[];
+  assigneeIds?: string[];
+  notes: string;
+  coverPhotoId: string;
+  createdAt: string;
+  progress?: number;
+  phase?: string;
+  completedAt?: string;
+  startDate?: string;
+  archived?: boolean;
+  timelineEntries?: ProjectTimelineEntryRecord[];
+  photoMeta?: Record<string, unknown>;
+};
+
 export type WorkLinkRecord = {
   id: string;
   name: string;
@@ -510,6 +548,8 @@ export type AtlasApiPayload = {
   partRecords?: PartRecord[];
   photos?: PhotoRecord[];
   assetPhotos?: PhotoRecord[];
+  projects?: ProjectRecord[];
+  projectRecords?: ProjectRecord[];
 };
 
 export type AtlasTable =
@@ -522,7 +562,8 @@ export type AtlasTable =
   | "routines"
   | "calendar"
   | "parts"
-  | "asset_photos";
+  | "asset_photos"
+  | "projects";
 
 export type SearchResult = {
   id: string;
