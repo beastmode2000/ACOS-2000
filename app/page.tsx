@@ -253,6 +253,20 @@ type AtlasVehicleCare = {
   lastCleaned: string;
   priority: "Normal" | "High" | "Skip";
   notes: string;
+  kind?: "Vehicle" | "Boat" | "Watercraft" | "Equipment";
+  locationId?: string;
+  assetId?: string;
+  assignedTo?: "Nick" | "Addison" | "Other" | "Unassigned";
+  cleaningIntervalDays?: number;
+  lastServiced?: string;
+  nextServiceDate?: string;
+  serviceIntervalDays?: number;
+  history?: Array<{
+    id: string;
+    type: "Cleaned" | "Serviced" | "Issue" | "Note";
+    date: string;
+    notes?: string;
+  }>;
 };
 
 type AtlasSeasonalItem = {
@@ -5197,8 +5211,24 @@ export default function AtlasPage() {
     Object.fromEntries(atlasOperationsTemplates.map((template) => [template.id, addDays(todayISO(), 7)])),
   );
   const [vehicleCare, setVehicleCare] = useState<AtlasVehicleCare[]>(() => readStoredArray<AtlasVehicleCare>(["atlas-vehicle-care-v1"], [
-    "Mercedes", "Rivian", "Porsche", "Lucid", "Ford", "Kia", "Honda", "Subaru"
-  ].map((name) => ({ id: slugify(`vehicle-${name}`), name, onsite: true, lastCleaned: "", priority: "Normal" as const, notes: "" }))));
+    "Mercedes", "Rivian", "Porsche", "Lucid", "Ford", "Kia", "Honda", "Subaru", "Cobalt", "Sea-Doo"
+  ].map((name) => ({
+    id: slugify(`vehicle-${name}`),
+    name,
+    onsite: true,
+    lastCleaned: "",
+    priority: "Normal" as const,
+    notes: "",
+    kind: name === "Cobalt" ? "Boat" as const : name === "Sea-Doo" ? "Watercraft" as const : "Vehicle" as const,
+    assignedTo: "Nick" as const,
+    cleaningIntervalDays: name === "Cobalt" || name === "Sea-Doo" ? 7 : 14,
+    lastServiced: "",
+    nextServiceDate: "",
+    serviceIntervalDays: 180,
+    history: [],
+  }))));
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
+  const [newVehicleName, setNewVehicleName] = useState("");
   const [seasonalItems, setSeasonalItems] = useState<AtlasSeasonalItem[]>(() => readStoredArray<AtlasSeasonalItem>(["atlas-seasonal-work-v1"], [
     { id: "annual-appliance-service", title: "Annual appliance service", season: "Fall", windowStart: `${new Date().getFullYear()}-10-01`, targetDate: `${new Date().getFullYear()}-11-15`, deadline: `${new Date().getFullYear()}-12-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Complete during the colder months and before year end." },
     { id: "winter-tires", title: "Install winter tires", season: "Fall", windowStart: `${new Date().getFullYear()}-10-15`, targetDate: `${new Date().getFullYear()}-11-01`, deadline: `${new Date().getFullYear()}-11-30`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Activate only for vehicles onsite and needing winter tires." }
@@ -14040,12 +14070,109 @@ export default function AtlasPage() {
   }
 
   function createVehicleCleaningTask(vehicle: AtlasVehicleCare) {
-    const task: WorkPlanTask = { id: uid("plan-task"), title: `Clean ${vehicle.name}`, minutes: 60, priority: vehicle.priority === "High" ? "High" : "Medium", category: "Cleanup / Prep", locationId: "general", preferredDay: "Thursday", locked: false, recurring: false, fixedTime: "", notes: "Created from Vehicle Care Rotation." };
+    const task: WorkPlanTask = {
+      id: uid("plan-task"),
+      title: `Clean ${vehicle.name}`,
+      minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45,
+      priority: vehicle.priority === "High" ? "High" : "Medium",
+      category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Vehicle Care",
+      locationId: vehicle.locationId || "general",
+      preferredDay: "Thursday",
+      locked: false,
+      recurring: false,
+      fixedTime: "",
+      notes: `Created from Fleet Manager.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
+    };
     setWorkPlanTasks((current) => [task, ...current]);
-    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: todayISO(), assignee: "Nick", createdAt: new Date().toISOString() } }));
+    setTaskMeta((current) => ({
+      ...current,
+      [task.id]: {
+        status: "Open",
+        dueDate: todayISO(),
+        assignee: vehicle.assignedTo === "Addison" ? "Addison" : "Nick",
+        createdAt: new Date().toISOString(),
+      },
+    }));
     setSelectedTaskId(task.id);
     setTasksView("tasks");
     showSaveToast(`${vehicle.name} cleaning added to Tasks.`);
+  }
+
+  function markVehicleCleaned(vehicle: AtlasVehicleCare) {
+    const now = new Date().toISOString();
+    updateVehicleCareRecord(vehicle.id, {
+      lastCleaned: todayISO(),
+      history: [
+        { id: uid("fleet-history"), type: "Cleaned", date: now },
+        ...(vehicle.history || []),
+      ],
+    });
+    showSaveToast(`${vehicle.name} marked cleaned.`);
+  }
+
+  function markVehicleServiced(vehicle: AtlasVehicleCare) {
+    const now = new Date().toISOString();
+    const interval = Math.max(1, Number(vehicle.serviceIntervalDays || 180));
+    updateVehicleCareRecord(vehicle.id, {
+      lastServiced: todayISO(),
+      nextServiceDate: addDays(todayISO(), interval),
+      history: [
+        { id: uid("fleet-history"), type: "Serviced", date: now },
+        ...(vehicle.history || []),
+      ],
+    });
+    showSaveToast(`${vehicle.name} service recorded.`);
+  }
+
+  function addVehicleIssue(vehicle: AtlasVehicleCare) {
+    const notes = window.prompt(`Describe the issue for ${vehicle.name}:`, "");
+    if (!notes?.trim()) return;
+    updateVehicleCareRecord(vehicle.id, {
+      history: [
+        { id: uid("fleet-history"), type: "Issue", date: new Date().toISOString(), notes: notes.trim() },
+        ...(vehicle.history || []),
+      ],
+      notes: vehicle.notes ? `${vehicle.notes}
+${notes.trim()}` : notes.trim(),
+      priority: "High",
+    });
+    showSaveToast(`Issue added for ${vehicle.name}.`);
+  }
+
+  function createVehicleWorkOrder(vehicle: AtlasVehicleCare) {
+    addWorkOrder({
+      title: `${vehicle.name} service / repair`,
+      assetId: vehicle.assetId || "",
+      locationId: vehicle.locationId || "",
+      responsibilityArea: `Fleet · ${vehicle.name}`,
+      workCategory: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Vehicle Care",
+      priority: vehicle.priority === "High" ? "High" : "Medium",
+      notes: vehicle.notes || "Created from Fleet Manager.",
+    });
+  }
+
+  function addFleetVehicle() {
+    const name = newVehicleName.trim();
+    if (!name) return;
+    const vehicle: AtlasVehicleCare = {
+      id: uid("fleet"),
+      name,
+      onsite: true,
+      lastCleaned: "",
+      priority: "Normal",
+      notes: "",
+      kind: "Vehicle",
+      assignedTo: "Nick",
+      cleaningIntervalDays: 14,
+      lastServiced: "",
+      nextServiceDate: "",
+      serviceIntervalDays: 180,
+      history: [],
+    };
+    setVehicleCare((current) => [vehicle, ...current]);
+    setSelectedVehicleId(vehicle.id);
+    setNewVehicleName("");
+    showSaveToast(`${name} added to Fleet Manager.`);
   }
 
   function createSeasonalTask(item: AtlasSeasonalItem) {
@@ -14193,8 +14320,86 @@ export default function AtlasPage() {
   }
 
   function renderVehicleCare() {
-    const sorted = [...vehicleCare].sort((a,b) => vehicleDueScore(b) - vehicleDueScore(a));
-    return <div style={{ display: "grid", gap: 12 }}><div style={noticeStyle}>Mark which vehicles are onsite. Atlas prioritizes the onsite vehicle that has gone longest without cleaning instead of creating eight overdue weekly tasks.</div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>{sorted.map((vehicle) => <div key={vehicle.id} style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{vehicle.name}</strong><span style={badgeStyle(vehicle.onsite ? "Online" : "Offline")}>{vehicle.onsite ? "Onsite" : "Away"}</span></div><small style={{ ...mutedSmallStyle, display: "block", margin: "6px 0 10px" }}>{vehicle.lastCleaned ? `Last cleaned ${formatDate(vehicle.lastCleaned)} · ${daysSince(vehicle.lastCleaned)} days ago` : "No cleaning date recorded"}</small><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><label style={fieldLabelStyle}>Onsite<select value={vehicle.onsite ? "Yes" : "No"} onChange={(e) => updateVehicleCareRecord(vehicle.id, { onsite: e.currentTarget.value === "Yes" })} style={inputStyle}><option>Yes</option><option>No</option></select></label><label style={fieldLabelStyle}>Last cleaned<input type="date" value={vehicle.lastCleaned} onChange={(e) => updateVehicleCareRecord(vehicle.id, { lastCleaned: e.currentTarget.value })} style={inputStyle}/></label></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><button type="button" disabled={!vehicle.onsite} onClick={() => createVehicleCleaningTask(vehicle)} style={goldButtonStyle}>Add Cleaning Task</button><button type="button" onClick={() => updateVehicleCareRecord(vehicle.id, { lastCleaned: todayISO() })} style={secondaryButtonStyle}>Mark Cleaned</button></div></div>)}</div></div>;
+    const sorted = [...vehicleCare].sort((a, b) => vehicleDueScore(b) - vehicleDueScore(a));
+    const selectedVehicle = vehicleCare.find((item) => item.id === selectedVehicleId) || sorted[0];
+    const dueCount = vehicleCare.filter((item) => vehicleDueScore(item) >= Math.max(1, Number(item.cleaningIntervalDays || 14))).length;
+    const onsiteCount = vehicleCare.filter((item) => item.onsite).length;
+    const serviceDueCount = vehicleCare.filter((item) => item.nextServiceDate && item.nextServiceDate <= todayISO()).length;
+
+    const cleanStatus = (vehicle: AtlasVehicleCare) => {
+      if (!vehicle.onsite) return { label: "Away", tone: "Offline" };
+      if (!vehicle.lastCleaned) return { label: "No record", tone: "Open" };
+      const interval = Math.max(1, Number(vehicle.cleaningIntervalDays || 14));
+      const age = daysSince(vehicle.lastCleaned);
+      if (age >= interval) return { label: `Due · ${age}d`, tone: "Open" };
+      return { label: `Clean · ${age}d`, tone: "Completed" };
+    };
+
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
+        {[{ label: "Fleet", value: vehicleCare.length }, { label: "Onsite", value: onsiteCount }, { label: "Cleaning due", value: dueCount }, { label: "Service due", value: serviceDueCount }].map((item) => <div key={item.label} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 23, color: colors.navy }}>{item.value}</strong></div>)}
+      </div>
+
+      <div style={{ ...cardStyle, padding: 10, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
+        <input value={newVehicleName} onChange={(event) => setNewVehicleName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addFleetVehicle(); }} placeholder="Add vehicle, boat, or equipment…" style={inputStyle} />
+        <button type="button" onClick={addFleetVehicle} style={goldButtonStyle}>Add</button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(280px,36%) minmax(0,1fr)", gap: 12, alignItems: "start" }}>
+        <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "10px 12px", borderBottom: `1px solid ${colors.line}` }}><strong>Fleet</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Select a record to manage cleaning, service, issues, and history.</small></div>
+          <div style={{ maxHeight: isMobile ? 460 : "72vh", overflowY: "auto" }}>
+            {sorted.map((vehicle) => {
+              const status = cleanStatus(vehicle);
+              const selected = selectedVehicle?.id === vehicle.id;
+              return <button key={vehicle.id} type="button" onClick={() => setSelectedVehicleId(vehicle.id)} style={{ width: "100%", border: 0, borderBottom: `1px solid ${colors.line}`, background: selected ? "#F3F7FC" : "#FFFFFF", padding: "10px 11px", textAlign: "left", cursor: "pointer", display: "grid", gap: 5 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: colors.navy3 }}>{vehicle.name}</strong><span style={badgeStyle(status.tone)}>{status.label}</span></div>
+                <small style={mutedSmallStyle}>{vehicle.kind || "Vehicle"} · {vehicle.onsite ? "Onsite" : "Away"}{vehicle.nextServiceDate ? ` · Service ${formatDate(vehicle.nextServiceDate)}` : ""}</small>
+              </button>;
+            })}
+          </div>
+        </section>
+
+        {selectedVehicle ? <section style={{ ...cardStyle, position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)", overflowY: isMobile ? "visible" : "auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+            <div><div style={eyebrowStyle}>Fleet record</div><h3 style={{ margin: "3px 0 0", color: colors.navy }}>{selectedVehicle.name}</h3><small style={mutedSmallStyle}>{selectedVehicle.kind || "Vehicle"} · {selectedVehicle.onsite ? "Onsite" : "Away"}</small></div>
+            <button type="button" onClick={() => { if (window.confirm(`Delete ${selectedVehicle.name}?`)) { setVehicleCare((current) => current.filter((item) => item.id !== selectedVehicle.id)); setSelectedVehicleId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
+            <Field label="Name" value={selectedVehicle.name} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { name: value })} />
+            <SelectField label="Type" value={selectedVehicle.kind || "Vehicle"} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { kind: value as AtlasVehicleCare["kind"] })} options={["Vehicle", "Boat", "Watercraft", "Equipment"]} />
+            <SelectField label="Onsite" value={selectedVehicle.onsite ? "Yes" : "No"} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { onsite: value === "Yes" })} options={["Yes", "No"]} />
+            <SelectField label="Priority" value={selectedVehicle.priority} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { priority: value as AtlasVehicleCare["priority"] })} options={["Normal", "High", "Skip"]} />
+            <Field label="Last cleaned" type="date" value={selectedVehicle.lastCleaned} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { lastCleaned: value })} />
+            <Field label="Clean every (days)" type="number" value={String(selectedVehicle.cleaningIntervalDays || 14)} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { cleaningIntervalDays: Math.max(1, Number(value || 14)) })} />
+            <Field label="Last serviced" type="date" value={selectedVehicle.lastServiced || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { lastServiced: value })} />
+            <Field label="Next service" type="date" value={selectedVehicle.nextServiceDate || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { nextServiceDate: value })} />
+            <SelectField label="Assigned" value={selectedVehicle.assignedTo || "Nick"} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { assignedTo: value as AtlasVehicleCare["assignedTo"] })} options={["Nick", "Addison", "Other", "Unassigned"]} />
+            <SelectField label="Asset" value={selectedVehicle.assetId || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { assetId: value })} options={[{ label: "Not linked", value: "" }, ...assetRecords.map((asset) => ({ label: asset.name, value: asset.id }))]} />
+            <SelectField label="Location" value={selectedVehicle.locationId || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { locationId: value })} options={[{ label: "Not linked", value: "" }, ...locationRecords.map((location) => ({ label: location.name, value: location.id }))]} />
+          </div>
+
+          <div style={{ marginTop: 8 }}><Field label="Notes" multiline value={selectedVehicle.notes} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { notes: value })} /></div>
+
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+            <button type="button" disabled={!selectedVehicle.onsite} onClick={() => createVehicleCleaningTask(selectedVehicle)} style={goldButtonStyle}>Cleaning Task</button>
+            <button type="button" onClick={() => markVehicleCleaned(selectedVehicle)} style={secondaryButtonStyle}>Mark Cleaned</button>
+            <button type="button" onClick={() => markVehicleServiced(selectedVehicle)} style={secondaryButtonStyle}>Mark Serviced</button>
+            <button type="button" onClick={() => addVehicleIssue(selectedVehicle)} style={secondaryButtonStyle}>Add Issue</button>
+            <button type="button" onClick={() => createVehicleWorkOrder(selectedVehicle)} style={secondaryButtonStyle}>Work Order</button>
+          </div>
+
+          <section style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${colors.line}` }}>
+            <div style={eyebrowStyle}>History</div>
+            <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+              {(selectedVehicle.history || []).slice(0, 12).map((entry) => <div key={entry.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 8, alignItems: "start" }}><span style={badgeStyle(entry.type === "Issue" ? "High" : entry.type === "Serviced" ? "Scheduled" : "Completed")}>{entry.type}</span><span><small style={{ display: "block", color: colors.text }}>{new Date(entry.date).toLocaleString()}</small>{entry.notes ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{entry.notes}</small> : null}</span></div>)}
+              {!(selectedVehicle.history || []).length ? <div style={emptyStateStyle}>No fleet history recorded yet.</div> : null}
+            </div>
+          </section>
+        </section> : <div style={emptyStateStyle}>Select a fleet record.</div>}
+      </div>
+    </div>;
   }
 
   function renderSeasonalWork() {
