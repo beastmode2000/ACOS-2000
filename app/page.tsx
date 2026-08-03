@@ -5581,6 +5581,9 @@ export default function AtlasPage() {
   const exteriorGlassCareSetupRunningRef = useRef(false);
   const roofDrainageCareSetupRunningRef = useRef(false);
   const holidayTreeSetupRunningRef = useRef(false);
+  const marineRegistrationTabsSetupRunningRef = useRef(false);
+  const winterTruckBallastSetupRunningRef = useRef(false);
+  const winterTruckBallastTimerRef = useRef<number | null>(null);
   const workOrderDateReconciliationRunningRef = useRef(false);
   const workOrderDateReconciliationTimerRef = useRef<number | null>(null);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
@@ -6580,6 +6583,16 @@ export default function AtlasPage() {
     if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
     void setupHolidayTreeSchedule();
   }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
+    void setupMarineRegistrationTabs();
+  }, [ready, syncState, activePropertyId, assetRecords.length]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
+    if (winterTruckBallastTimerRef.current) window.clearTimeout(winterTruckBallastTimerRef.current);
+    winterTruckBallastTimerRef.current = window.setTimeout(() => { void setupWinterTruckBallast(); }, 2200);
+    return () => { if (winterTruckBallastTimerRef.current) window.clearTimeout(winterTruckBallastTimerRef.current); };
+  }, [ready, syncState, activePropertyId, assetRecords.length, serviceRecords.length]);
   useEffect(() => {
     if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
     if (workOrderDateReconciliationTimerRef.current) window.clearTimeout(workOrderDateReconciliationTimerRef.current);
@@ -16836,6 +16849,122 @@ ${notes.trim()}` : notes.trim(),
       showSaveToast("Work Order date scheduling will retry.", "warning");
     } finally {
       workOrderDateReconciliationRunningRef.current = false;
+    }
+  }
+
+  async function setupWinterTruckBallast() {
+    if (winterTruckBallastSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
+    const setupKey = "atlas-winter-truck-ballast-v1-2000";
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    const truckAsset = assetRecords.find((asset) => /ford|truck|pickup|f-?150/i.test(`${asset.name} ${asset.make || ""} ${asset.model || ""} ${asset.category || ""}`));
+    if (!truckAsset) return;
+    winterTruckBallastSetupRunningRef.current = true;
+    try {
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
+      const dueYear = todayISO() <= `${currentYear}-11-01` ? currentYear : currentYear + 1;
+      const dueDate = `${dueYear}-11-01`;
+      const workOrderId = "wo-annual-winter-truck-sandbags";
+      const title = `Add winter traction sandbags — ${truckAsset.name}`;
+      const notes = `Add and secure sandbags in the truck bed each November for improved cold-weather traction. Place the weight low and centered over or just ahead of the rear axle, keep the total load within the vehicle's payload rating, and secure every bag so it cannot slide, leak, obstruct equipment, or damage the bed. Due ${formatDate(dueDate)}.`;
+      const checklist: WorkChecklistItem[] = [
+        "Check the truck payload rating and determine an appropriate ballast weight",
+        "Inspect the bed, liner, tie-downs, and sandbags",
+        "Position the sandbags low and centered over or just ahead of the rear axle",
+        "Secure the load against forward, rearward, and side-to-side movement",
+        "Confirm visibility, bed access, handling, tire pressure, and safe payload",
+        "Photograph the secured setup and record the total ballast weight",
+      ].map((text, index) => ({ id: `${workOrderId}-${index + 1}`, text, completed: false }));
+      const existingIndex = nextWorkOrders.findIndex((record) => record.id === workOrderId || (record.assetId === truckAsset.id && /sandbag|winter traction|ballast/i.test(record.title)));
+      let workOrder: AtlasServiceRecord;
+      if (existingIndex >= 0) {
+        const existing = nextWorkOrders[existingIndex];
+        workOrder = normalizeService({ ...existing, date: dueDate, status: existing.status === "Completed" ? "Open" : existing.status, priority: "Medium", assignedTo: existing.assignedTo || "Nick", assetId: truckAsset.id, locationId: existing.locationId || truckAsset.locationId || "general", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", recurrenceEndDate: "", season: "Fall", workType: "Preventive Maintenance", workCategory: "Vehicles", responsibilityArea: "Garage", notes: existing.notes?.includes("Add and secure sandbags in the truck bed each November") ? existing.notes.replace(/Add and secure sandbags in the truck bed each November[^\n]*/, notes) : [existing.notes, notes].filter(Boolean).join("\n\n"), checklist: existing.checklist?.length ? existing.checklist : checklist });
+        nextWorkOrders[existingIndex] = workOrder;
+      } else {
+        workOrder = normalizeService({ id: workOrderId, title, date: dueDate, status: "Open", priority: "Medium", assignedTo: "Nick", assetId: truckAsset.id, locationId: truckAsset.locationId || "general", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", season: "Fall", workType: "Preventive Maintenance", workCategory: "Vehicles", responsibilityArea: "Garage", notes, checklist });
+        nextWorkOrders.push(workOrder);
+      }
+      const calendarRecord = normalizeCalendar({ id: "calendar-annual-winter-truck-sandbags", propertyId: activePropertyId, date: dueDate, title, area: "Garage", categoryLabel: "Winter Vehicle Preparation", allDay: true, repeat: "Yearly", reminder: "Week before", notes, linkedType: "Work Order", linkedId: workOrder.id, linkedName: workOrder.title, source: "work-order", status: "Scheduled" });
+      const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id || (item.linkedType === "Work Order" && item.linkedId === workOrder.id));
+      if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
+      else nextCalendar.push(calendarRecord);
+      setServiceRecords(byTitle(nextWorkOrders));
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all([
+        postAtlasRecord("work_orders", { ...workOrder, propertyId: activePropertyId }),
+        postAtlasRecord("calendar", calendarRecord),
+      ]);
+      if (results.some((saved) => !saved)) throw new Error("The winter truck-ballast records did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast(`Winter truck sandbags are due ${formatDate(dueDate)}.`);
+    } catch (error) {
+      console.error("Atlas winter truck-ballast setup failed", error);
+      showSaveToast("Winter truck-ballast scheduling will retry.", "warning");
+    } finally {
+      winterTruckBallastSetupRunningRef.current = false;
+    }
+  }
+
+  async function setupMarineRegistrationTabs() {
+    if (marineRegistrationTabsSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
+    const setupKey = "atlas-marine-registration-tabs-v1-2000";
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    const cobaltAsset = assetRecords.find((asset) => /cobalt/i.test(`${asset.name} ${asset.make || ""} ${asset.model || ""}`));
+    const seaDooAsset = assetRecords.find((asset) => /sea[ -]?doo|gti\s*(se\s*)?170/i.test(`${asset.name} ${asset.make || ""} ${asset.model || ""}`));
+    if (!cobaltAsset || !seaDooAsset) return;
+    marineRegistrationTabsSetupRunningRef.current = true;
+    try {
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
+      const dueYear = todayISO() <= `${currentYear}-05-15` ? currentYear : currentYear + 1;
+      const dueDate = `${dueYear}-05-15`;
+      const definitions = [
+        { id: "wo-annual-cobalt-registration-tabs", calendarId: "calendar-annual-cobalt-registration-tabs", title: "Replace annual registration tabs — Cobalt", asset: cobaltAsset },
+        { id: "wo-annual-2024-seadoo-registration-tabs", calendarId: "calendar-annual-2024-seadoo-registration-tabs", title: "Replace annual registration tabs — 2024 Sea-Doo", asset: seaDooAsset },
+      ];
+      for (const definition of definitions) {
+        const notes = `Replace the annual registration tabs each May. Due ${formatDate(dueDate)}. Confirm the renewal and registration information match ${definition.asset.name}; apply the current tabs in the correct locations and retain a photo or copy of the updated registration record.`;
+        const checklist: WorkChecklistItem[] = [
+          "Confirm current registration renewal and vessel information",
+          "Verify the new tabs match the vessel and registration year",
+          "Remove expired tabs and clean and dry the application areas",
+          "Apply the new tabs in the required locations",
+          "Photograph the installed tabs and save the updated registration record",
+        ].map((text, index) => ({ id: `${definition.id}-${index + 1}`, text, completed: false }));
+        const existingIndex = nextWorkOrders.findIndex((record) => record.id === definition.id || (record.assetId === definition.asset.id && /registration tabs|replace tabs/i.test(record.title)));
+        let workOrder: AtlasServiceRecord;
+        if (existingIndex >= 0) {
+          const existing = nextWorkOrders[existingIndex];
+          workOrder = normalizeService({ ...existing, date: dueDate, status: existing.status === "Completed" ? "Open" : existing.status, priority: "Medium", assignedTo: existing.assignedTo || "Nick", assetId: definition.asset.id, locationId: existing.locationId || definition.asset.locationId || "general", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", recurrenceEndDate: "", season: "Spring", workType: "Preventive Maintenance", workCategory: "Registration", responsibilityArea: "Dock & Waterfront", notes: existing.notes?.includes("Replace the annual registration tabs each May") ? existing.notes.replace(/Replace the annual registration tabs each May[^\n]*/, notes) : [existing.notes, notes].filter(Boolean).join("\n\n"), checklist: existing.checklist?.length ? existing.checklist : checklist });
+          nextWorkOrders[existingIndex] = workOrder;
+        } else {
+          workOrder = normalizeService({ id: definition.id, title: definition.title, date: dueDate, status: "Open", priority: "Medium", assignedTo: "Nick", assetId: definition.asset.id, locationId: definition.asset.locationId || "general", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", season: "Spring", workType: "Preventive Maintenance", workCategory: "Registration", responsibilityArea: "Dock & Waterfront", notes, checklist });
+          nextWorkOrders.push(workOrder);
+        }
+        recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
+        const calendarRecord = normalizeCalendar({ id: definition.calendarId, propertyId: activePropertyId, date: dueDate, title: definition.title, area: "Dock & Waterfront", categoryLabel: "Marine Registration", allDay: true, repeat: "Yearly", reminder: "Week before", notes, linkedType: "Work Order", linkedId: workOrder.id, linkedName: workOrder.title, source: "work-order", status: "Scheduled" });
+        const calendarIndex = nextCalendar.findIndex((item) => item.id === definition.calendarId || (item.linkedType === "Work Order" && item.linkedId === workOrder.id));
+        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
+        else nextCalendar.push(calendarRecord);
+        recordsToSave.push({ table: "calendar", record: calendarRecord });
+      }
+      setServiceRecords(byTitle(nextWorkOrders));
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some marine registration-tab records did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast(`Cobalt and Sea-Doo registration tabs are due ${formatDate(dueDate)}.`);
+    } catch (error) {
+      console.error("Atlas marine registration-tab setup failed", error);
+      showSaveToast("Marine registration-tab scheduling will retry.", "warning");
+    } finally {
+      marineRegistrationTabsSetupRunningRef.current = false;
     }
   }
 
