@@ -670,7 +670,7 @@ const atlasNavigationSections: {
     items: ["history", "calendar", "planner", "routines", "team"],
   },
   { label: "Intake", items: ["inbox", "requests", "qr"] },
-  { label: "Analytics", items: ["insights", "reports"] },
+  { label: "Reports & Access", items: ["reports"] },
   { label: "Property", items: ["assets", "locations", "timeline", "map"] },
   { label: "People", items: ["vendors", "contacts"] },
   {
@@ -41479,7 +41479,7 @@ ${notes.trim()}` : notes.trim(),
               </button>
               <nav style={sidebarNavStyle} aria-label="Atlas sections">
                 {visiblePrimaryNavigationSections.map((section) => (
-                  <div key={section.label} style={sidebarNavSectionStyle}>
+                  <div key={section.label} style={{ ...sidebarNavSectionStyle, order: section.label === "Overview" ? 10 : section.label === "Work" ? 20 : section.label === "Property" ? 30 : section.label === "Reports & Access" ? 50 : section.label === "Intake" ? 60 : section.label === "People" ? 70 : section.label === "Knowledge" ? 80 : 90 }}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>{section.label}</div>
                     <div style={sidebarNavItemsStyle}>
                       {section.items.map((screenId) => {
@@ -41559,7 +41559,7 @@ ${notes.trim()}` : notes.trim(),
                 ))}
 
                 {!isRestrictedStaffUser ? (
-                  <div style={sidebarNavSectionStyle}>
+                  <div style={{ ...sidebarNavSectionStyle, order: 40 }}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>Departments</div>
                     <div style={sidebarNavItemsStyle}>
                       {([['house','⌂ House & Maintenance'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping & Irrigation'],['marine','⚓ Dock & Waterfront']] as const).map(([id, label]) => (
@@ -41584,7 +41584,7 @@ ${notes.trim()}` : notes.trim(),
                 ) : null}
 
                 {!isRestrictedStaffUser ? (
-                <div style={sidebarNavSectionStyle}>
+                <div style={{ ...sidebarNavSectionStyle, order: 95 }}>
                   <button type="button" className="atlas-sidebar-nav-button" onClick={() => setPlanningToolsOpen((current) => !current)} aria-expanded={planningToolsOpen} title={sidebarCollapsed ? "Planning Tools" : undefined} style={{ ...navButtonStyle, justifyContent: sidebarCollapsed ? "center" : "space-between", borderColor: screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView) ? colors.gold : "rgba(255,255,255,0.18)", background: screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView) ? colors.gold : "rgba(255,255,255,0.06)", color: screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView) ? colors.navy : "#FFFFFF" }}>
                     <span className="atlas-sidebar-nav-label">Planning Tools</span>{!sidebarCollapsed ? <span aria-hidden="true" style={{ fontSize: 12 }}>{planningToolsOpen ? "▴" : "▾"}</span> : null}
                   </button>
@@ -41599,7 +41599,7 @@ ${notes.trim()}` : notes.trim(),
                 ) : null}
 
                 {!isRestrictedStaffUser ? (
-                <div style={sidebarNavSectionStyle}>
+                <div style={{ ...sidebarNavSectionStyle, order: 100 }}>
                   <button
                     type="button"
                     className="atlas-sidebar-nav-button"
