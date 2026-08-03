@@ -93,7 +93,7 @@ function normalizeTasks(value: unknown): RoutineTask[] {
         ...(typeof record.deferredFrom === "string" && record.deferredFrom ? { deferredFrom: record.deferredFrom } : {}),
       };
     })
-    .filter((task): task is RoutineTask => Boolean(task));
+    .filter(Boolean) as RoutineTask[];
 }
 
 function asTemplateTask(task: RoutineTask): RoutineTask {
