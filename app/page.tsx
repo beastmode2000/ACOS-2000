@@ -18594,12 +18594,12 @@ ${notes.trim()}` : notes.trim(),
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: colors.navy3 }}>{task.title}</strong><span style={badgeStyle(task.priority)}>{task.priority}</span></div>
                         <small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {minutesLabel(task.minutes)} · {meta.assignee}{task.recurring ? " · Recurring" : ""}</small>
                       </button>
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                        {meta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(task)} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Done</button> : null}
-                        {meta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(task)} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Tomorrow</button> : null}
-                        {meta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Addison")} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Addison</button> : null}
-                        {meta.assignee !== "Pat" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Pat")} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Pat</button> : null}
-                        <button type="button" onClick={() => addQuickTaskNote(task)} style={{ ...secondaryButtonStyle, padding: "5px 8px" }}>Note</button>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                        {meta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(task)} style={compactUtilityButtonStyle}>Done</button> : null}
+                        {meta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(task)} style={compactUtilityButtonStyle}>Tomorrow</button> : null}
+                        {meta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Addison")} style={compactUtilityButtonStyle}>Addison</button> : null}
+                        {meta.assignee !== "Pat" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Pat")} style={compactUtilityButtonStyle}>Pat</button> : null}
+                        <button type="button" onClick={() => addQuickTaskNote(task)} style={compactUtilityButtonStyle}>Note</button>
                       </div>
                     </div>;
                   })}
@@ -43308,10 +43308,26 @@ const secondaryButtonStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
   background: "#FFFFFF",
   color: colors.navy,
-  borderRadius: 13,
-  padding: "10px 13px",
-  fontWeight: 950,
+  borderRadius: 10,
+  padding: "7px 10px",
+  fontSize: 12,
+  lineHeight: 1.15,
+  fontWeight: 800,
   cursor: "pointer",
+};
+
+const compactUtilityButtonStyle: React.CSSProperties = {
+  ...secondaryButtonStyle,
+  width: "auto",
+  minWidth: 0,
+  minHeight: 26,
+  borderRadius: 8,
+  padding: "3px 7px",
+  fontSize: 10,
+  lineHeight: 1,
+  fontWeight: 750,
+  color: colors.navy3,
+  boxShadow: "none",
 };
 
 const dangerButtonStyle: React.CSSProperties = {
