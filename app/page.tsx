@@ -17444,7 +17444,7 @@ ${notes.trim()}` : notes.trim(),
 
   async function setupHousePreventiveMaintenance() {
     if (preventiveMaintenanceSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const setupKey = `atlas-house-preventive-maintenance-v2-${activePropertyId}`;
+    const setupKey = `atlas-house-preventive-maintenance-v3-${activePropertyId}`;
     if (window.localStorage.getItem(setupKey) === "ready") return;
     preventiveMaintenanceSetupRunningRef.current = true;
     try {
@@ -17485,12 +17485,27 @@ ${notes.trim()}` : notes.trim(),
           title: "Replace both Sundance 880 spa filters",
           asset: spaAsset,
           locationId: spaAsset.locationId || "general",
+          date: "2027-03-15",
           interval: 12,
           unit: "Months" as WorkOrderRecurrenceUnit,
           area: "Pool & Spa",
           category: "Pool & Spa",
           reminder: "Week before" as CalendarReminder,
-          notes: "Replace both interlocking filter cartridges in the Sundance 880. Sundance recommends full replacement every 12–24 months depending on use; Atlas uses the conservative 12-month interval. Inspect seating and seals, confirm proper installation and flow, and record the filter part numbers.",
+          notes: "Last replaced March 2026. Replace both interlocking filter cartridges in the Sundance 880 every March. Inspect seating and seals, confirm proper installation and flow, photograph the installed filters, and record the filter part numbers.",
+        },
+        {
+          id: "wo-monthly-sundance-880-filter-cleaning",
+          calendarId: "maintenance-monthly-sundance-880-filter-cleaning",
+          title: "Clean both Sundance 880 spa filters",
+          asset: spaAsset,
+          locationId: spaAsset.locationId || "general",
+          date: "2026-08-07",
+          interval: 1,
+          unit: "Months" as WorkOrderRecurrenceUnit,
+          area: "Pool & Spa",
+          category: "Pool & Spa",
+          reminder: "Day before" as CalendarReminder,
+          notes: "Monthly deep cleaning for both Sundance 880 interlocking filter cartridges. Shut off spa power before removal. Rinse carefully between pleats with a garden hose, soak with an approved spa-filter cleaner as directed, rinse thoroughly, inspect for tears, collapse, scale, or damaged end caps, reinstall correctly, restore power, and confirm normal circulation. Do not use a pressure washer, bleach, or household detergent.",
         },
         {
           id: "wo-weekly-pool-chlorine-tabs",
@@ -17546,14 +17561,15 @@ ${notes.trim()}` : notes.trim(),
         },
       ];
       for (const definition of definitions) {
-        let workOrder = nextWorkOrders.find((record) => record.id === definition.id || normalizeLocationName(record.title) === normalizeLocationName(definition.title));
+        const isSpaFilterWork = definition.id === "wo-annual-sundance-880-filters" || definition.id === "wo-monthly-sundance-880-filter-cleaning";
+        let workOrder = nextWorkOrders.find((record) => record.id === definition.id || normalizeLocationName(record.title) === normalizeLocationName(definition.title) || (definition.id === "wo-annual-sundance-880-filters" && /replace.*sundance.*filter|replace.*spa.*filter/i.test(record.title)) || (definition.id === "wo-monthly-sundance-880-filter-cleaning" && /clean.*sundance.*filter|clean.*spa.*filter/i.test(record.title)));
         if (!workOrder) {
           workOrder = normalizeService({
             id: definition.id,
             title: definition.title,
             assetId: definition.asset?.id || "",
             locationId: definition.locationId,
-            date: todayISO(),
+            date: definition.date || todayISO(),
             status: "Open",
             priority: "Medium",
             assignedTo: definition.id === "wo-monthly-pest-control-service" ? "Vendor" : "Nick",
@@ -17561,18 +17577,66 @@ ${notes.trim()}` : notes.trim(),
             recurring: true,
             recurrenceInterval: definition.interval,
             recurrenceUnit: definition.unit,
-            season: "Year-Round",
+            season: definition.id === "wo-annual-sundance-880-filters" ? "Spring" : "Year-Round",
             workType: "Preventive Maintenance",
             workCategory: definition.category,
             responsibilityArea: definition.area,
+            checklist: definition.id === "wo-annual-sundance-880-filters" ? [
+              { id: `${definition.id}-power`, text: "Shut off spa power and remove both filter cartridges", completed: false },
+              { id: `${definition.id}-inspect`, text: "Inspect filter housing, seals, and seating surfaces", completed: false },
+              { id: `${definition.id}-replace`, text: "Install both new Sundance 880 filter cartridges correctly", completed: false },
+              { id: `${definition.id}-verify`, text: "Restore power and confirm normal circulation and flow", completed: false },
+              { id: `${definition.id}-record`, text: "Photograph installation and record filter part numbers", completed: false },
+            ] : definition.id === "wo-monthly-sundance-880-filter-cleaning" ? [
+              { id: `${definition.id}-power`, text: "Shut off spa power and remove both filter cartridges", completed: false },
+              { id: `${definition.id}-rinse`, text: "Rinse carefully between every pleat with a garden hose", completed: false },
+              { id: `${definition.id}-soak`, text: "Soak with approved spa-filter cleaner according to its directions", completed: false },
+              { id: `${definition.id}-inspect`, text: "Rinse thoroughly and inspect for damage, scale, or wear", completed: false },
+              { id: `${definition.id}-verify`, text: "Reinstall, restore power, and confirm normal circulation", completed: false },
+            ] : undefined,
           });
           nextWorkOrders.push(workOrder);
+          recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
+        } else if (isSpaFilterWork) {
+          workOrder = normalizeService({
+            ...workOrder,
+            title: definition.title,
+            assetId: definition.asset?.id || workOrder.assetId || "",
+            locationId: definition.locationId,
+            date: definition.date,
+            status: workOrder.status === "Completed" ? "Open" : workOrder.status,
+            priority: workOrder.priority || "Medium",
+            assignedTo: workOrder.assignedTo || "Nick",
+            notes: definition.notes,
+            recurring: true,
+            recurrenceInterval: definition.interval,
+            recurrenceUnit: definition.unit,
+            season: definition.id === "wo-annual-sundance-880-filters" ? "Spring" : "Year-Round",
+            workType: "Preventive Maintenance",
+            workCategory: definition.category,
+            responsibilityArea: definition.area,
+            checklist: definition.id === "wo-annual-sundance-880-filters" ? [
+              { id: `${definition.id}-power`, text: "Shut off spa power and remove both filter cartridges", completed: false },
+              { id: `${definition.id}-inspect`, text: "Inspect filter housing, seals, and seating surfaces", completed: false },
+              { id: `${definition.id}-replace`, text: "Install both new Sundance 880 filter cartridges correctly", completed: false },
+              { id: `${definition.id}-verify`, text: "Restore power and confirm normal circulation and flow", completed: false },
+              { id: `${definition.id}-record`, text: "Photograph installation and record filter part numbers", completed: false },
+            ] : [
+              { id: `${definition.id}-power`, text: "Shut off spa power and remove both filter cartridges", completed: false },
+              { id: `${definition.id}-rinse`, text: "Rinse carefully between every pleat with a garden hose", completed: false },
+              { id: `${definition.id}-soak`, text: "Soak with approved spa-filter cleaner according to its directions", completed: false },
+              { id: `${definition.id}-inspect`, text: "Rinse thoroughly and inspect for damage, scale, or wear", completed: false },
+              { id: `${definition.id}-verify`, text: "Reinstall, restore power, and confirm normal circulation", completed: false },
+            ],
+          });
+          const workOrderIndex = nextWorkOrders.findIndex((record) => record.id === workOrder!.id);
+          if (workOrderIndex >= 0) nextWorkOrders[workOrderIndex] = workOrder;
           recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
         }
         const calendarRecord = normalizeCalendar({
           id: definition.calendarId,
           propertyId: activePropertyId,
-          date: workOrder.date || todayISO(),
+          date: definition.date || workOrder.date || todayISO(),
           title: definition.title,
           area: definition.area,
           categoryLabel: "Preventive Maintenance",
@@ -17598,7 +17662,7 @@ ${notes.trim()}` : notes.trim(),
       const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
       if (results.some((saved) => !saved)) throw new Error("Some preventive-maintenance records did not sync.");
       window.localStorage.setItem(setupKey, "ready");
-      showSaveToast("Quarterly HVAC filters and annual spa filters are scheduled.");
+      showSaveToast("Spa filter cleaning and replacement dates are scheduled.");
     } catch (error) {
       console.error("Atlas preventive maintenance setup failed", error);
       showSaveToast("Preventive maintenance setup will retry.", "warning");
