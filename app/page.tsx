@@ -16516,7 +16516,7 @@ ${notes.trim()}` : notes.trim(),
 
   async function setupConfirmedAssetCatalog() {
     if (confirmedAssetCatalogSetupRunningRef.current || typeof window === "undefined" || !["2000", "hangar"].includes(activePropertyId)) return;
-    const setupKey = `atlas-confirmed-asset-catalog-v1-${activePropertyId}`;
+    const setupKey = `atlas-confirmed-asset-catalog-v2-${activePropertyId}`;
     if (window.localStorage.getItem(setupKey) === "ready") return;
     confirmedAssetCatalogSetupRunningRef.current = true;
     try {
@@ -16567,8 +16567,6 @@ ${notes.trim()}` : notes.trim(),
         if (existingIndex < 0 && ["Vehicle", "Pool & Spa", "Aircraft"].includes(definition.category) && definition.manufacturer && definition.model) {
           existingIndex = nextAssets.findIndex((asset) => normalizeLocationName(asset.make || asset.manufacturer || "") === normalizeLocationName(definition.manufacturer) && normalizeLocationName(asset.model || "") === normalizeLocationName(definition.model));
         }
-        const mayCreate = activePropertyId === "hangar" && definition.category === "Aircraft";
-        if (existingIndex < 0 && !mayCreate) continue;
         const locationId = resolveLocationId(definition.location);
         const importedNotes = [definition.description, definition.vendors ? `Vendors: ${definition.vendors}.` : "", definition.criticality ? `Criticality: ${definition.criticality}.` : "", "Confirmed from the property asset catalog."].filter(Boolean).join(" ");
         if (existingIndex >= 0) {
@@ -16600,7 +16598,7 @@ ${notes.trim()}` : notes.trim(),
       const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
       if (results.some((saved) => !saved)) throw new Error("Some confirmed asset records did not sync.");
       window.localStorage.setItem(setupKey, "ready");
-      if (recordsToSave.length) showSaveToast(activePropertyId === "hangar" ? "Four confirmed Hangar aircraft are ready." : "Existing 2000 assets were enriched without creating duplicates.");
+      if (recordsToSave.length) showSaveToast(activePropertyId === "hangar" ? "Four confirmed Hangar aircraft are ready." : "The complete confirmed 2000 asset catalog is ready.");
     } catch (error) {
       console.error("Atlas confirmed asset catalog setup failed", error);
       showSaveToast("Confirmed asset setup will retry.", "warning");
