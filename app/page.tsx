@@ -3084,6 +3084,1164 @@ const fallbackVendors: VendorRecord[] = [
   },
 ];
 
+const confirmedAssetCatalog = [
+  {
+    "sourceId": "4955454",
+    "propertyId": "2000",
+    "name": "Pool Dehumidifier",
+    "status": "Online",
+    "location": "Mechanical Room",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Desert Aire",
+    "model": "LC05R2WBDTDLAED",
+    "serial": "4217D25175",
+    "description": "",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Important"
+  },
+  {
+    "sourceId": "4955473",
+    "propertyId": "2000",
+    "name": "HVAC AH-4 (Indoor)",
+    "status": "Online",
+    "location": "Mechanical Room 2",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Trane",
+    "model": "4TXCB036BC3HCBA",
+    "serial": "15301R2L5G",
+    "description": "West Bedroom (Elyse) Lower floor",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "4955484",
+    "propertyId": "2000",
+    "name": "HVAC AH-3 (Indoor)",
+    "status": "Online",
+    "location": "Mechanical Room 2",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "York/Trane",
+    "model": "4PXCDU48BS3HAAA",
+    "serial": "162944H5CG",
+    "description": "Twinned with AH-2 Great Room",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "4955500",
+    "propertyId": "2000",
+    "name": "Hot Water Storage Tank WHT-2",
+    "status": "Online",
+    "location": "Mechanical Room",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Viessman",
+    "model": "Vitocell 300",
+    "serial": "763704480045219",
+    "description": "",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5003953",
+    "propertyId": "2000",
+    "name": "HVAC AH-1 (Indoor)",
+    "status": "Online",
+    "location": "Mechanical Room 2",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Trane",
+    "model": "4TXCC049BC3HCBA",
+    "serial": "153332BABG",
+    "description": "Outside Theater Room Hallway Theatre Room Also goes to Micah's room but is blocked because he is on him own mini split",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5003986",
+    "propertyId": "2000",
+    "name": "HVAC AH-2 (Indoor)",
+    "status": "Online",
+    "location": "Mechanical Room 2",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Trane",
+    "model": "GAM5B036M31SBA",
+    "serial": "16035SHYAV",
+    "description": "Twinned with AH-3 Great room",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004012",
+    "propertyId": "2000",
+    "name": "HVAC AH-5 (Indoor)",
+    "status": "Online",
+    "location": "Mechanical Room",
+    "category": "HVAC / Mechanical",
+    "year": "2018",
+    "manufacturer": "Carrier",
+    "model": "CNPVP3617ALAAAAA",
+    "serial": "3118X76316",
+    "description": "Zone 1- Nanny (New Gym) Zone 2-Bonus Zone 3-Kitchen Zone 4-Exercise",
+    "vendors": "Amazon,P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004033",
+    "propertyId": "2000",
+    "name": "Hot Water Storage Tank WHT-1",
+    "status": "Online",
+    "location": "Mechanical Room",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Viessman",
+    "model": "Vitocell 300",
+    "serial": "767044800454103",
+    "description": "",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004054",
+    "propertyId": "2000",
+    "name": "Boiler B-2",
+    "status": "Online",
+    "location": "Mechanical Room",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Viessman",
+    "model": "Vitodens 200",
+    "serial": "",
+    "description": "",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004074",
+    "propertyId": "2000",
+    "name": "Boiler B-1",
+    "status": "Online",
+    "location": "General",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Viessman",
+    "model": "Vitodens 200",
+    "serial": "",
+    "description": "",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004097",
+    "propertyId": "2000",
+    "name": "HVAC HP-123 (Outdoor)",
+    "status": "Online",
+    "location": "Outdoor Generator Area",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Mitsubishi",
+    "model": "MXZ-8C48NA",
+    "serial": "7YU02384A",
+    "description": "",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004102",
+    "propertyId": "2000",
+    "name": "HVAC CU-1 (Outdoor)",
+    "status": "Online",
+    "location": "Outdoor Condenser Area",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Trane",
+    "model": "4TTX6048H1000AA",
+    "serial": "15284N3E2F",
+    "description": "Outdoor Unit controls AH-1 Theater Hallway Micah's (blocked because he is on his own mini split)",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004108",
+    "propertyId": "2000",
+    "name": "HVAC CU-3 (Outdoor)",
+    "status": "Online",
+    "location": "Outdoor Condenser Area",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Trane",
+    "model": "4TTX6048H1000AA",
+    "serial": "16112MRE2F",
+    "description": "Outdoor unit controls AH-3 Twinned with AH-2 and CU-2 Great Room",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004114",
+    "propertyId": "2000",
+    "name": "HVAC CU-2 (Outdoor)",
+    "status": "Online",
+    "location": "Outdoor Condenser Area",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Trane",
+    "model": "4TTX6048H1000AA",
+    "serial": "16112MR52F",
+    "description": "Outdoor unit controls AH-2 Twinned with AH-3 and CU-3 Great Room",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004115",
+    "propertyId": "2000",
+    "name": "HVAC CU-4 (Outdoor)",
+    "status": "Online",
+    "location": "Outdoor Condenser Area",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Trane",
+    "model": "4TTX6036H1000AA",
+    "serial": "15255T5Y2F",
+    "description": "",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004121",
+    "propertyId": "2000",
+    "name": "HVAC CU-5 (Outdoor)",
+    "status": "Online",
+    "location": "Outdoor Condenser Area",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Carrier",
+    "model": "24VNA936A300",
+    "serial": "3417E25728",
+    "description": "",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004125",
+    "propertyId": "2000",
+    "name": "Outdoor Dehumidifier",
+    "status": "Online",
+    "location": "Outdoor Condenser Area",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Luvata",
+    "model": "LCS5411-024-3C",
+    "serial": "J1740000021",
+    "description": "",
+    "vendors": "P.S.F",
+    "criticality": "Important"
+  },
+  {
+    "sourceId": "5004129",
+    "propertyId": "2000",
+    "name": "Steam Generator Attic",
+    "status": "Online",
+    "location": "General",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Amerec",
+    "model": "AK11",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": "Important"
+  },
+  {
+    "sourceId": "5004131",
+    "propertyId": "2000",
+    "name": "HVAC HP-2 (Indoor)",
+    "status": "Online",
+    "location": "Attic 2",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Mitsubishi",
+    "model": "MVZ-A18AA7",
+    "serial": "78G00811",
+    "description": "Master Bedroom Controlled by Mitsubishi mini split on roof (2024)",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004132",
+    "propertyId": "2000",
+    "name": "HVAC HP-1 (Indoor)",
+    "status": "Online",
+    "location": "Attic",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Mitsubishi",
+    "model": "MVZ-A12AA7",
+    "serial": "77G00385",
+    "description": "Elliot Room Elans Room Boys Bathroom",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004135",
+    "propertyId": "2000",
+    "name": "HVAC HP-3 (Indoor)",
+    "status": "Online",
+    "location": "Upstairs Laundry Closet",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Mitsubishi",
+    "model": "MVZ-A18AA7",
+    "serial": "78G00803",
+    "description": "Evi's Room Upstairs Play Hallway",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5004136",
+    "propertyId": "2000",
+    "name": "Wine Room Cooler 1",
+    "status": "Online",
+    "location": "Wine Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Euro Cave",
+    "model": "V-PURE-L",
+    "serial": "1290880",
+    "description": "",
+    "vendors": "Electromatic Refrigeration",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004137",
+    "propertyId": "2000",
+    "name": "Wine Room Cooler 2",
+    "status": "Online",
+    "location": "Wine Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Euro Cave",
+    "model": "V-PURE-L",
+    "serial": "1288614",
+    "description": "",
+    "vendors": "Electromatic Refrigeration",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004141",
+    "propertyId": "2000",
+    "name": "Wine Room Cooler 3",
+    "status": "Online",
+    "location": "Wine Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Euro Cave",
+    "model": "V-PURE-L",
+    "serial": "1290879",
+    "description": "",
+    "vendors": "Electromatic Refrigeration",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004142",
+    "propertyId": "2000",
+    "name": "Wine Room Cooler 4",
+    "status": "Online",
+    "location": "Wine Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Euro Cave",
+    "model": "V-PURE-L",
+    "serial": "1288605",
+    "description": "",
+    "vendors": "Electromatic Refrigeration",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004153",
+    "propertyId": "2000",
+    "name": "Wine Chiller",
+    "status": "Online",
+    "location": "Formal Dining Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "zyphyr",
+    "model": "uwn24c02bg",
+    "serial": "1163025JUU",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004159",
+    "propertyId": "2000",
+    "name": "Freezer FR-4",
+    "status": "Online",
+    "location": "Kitchen",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Sub Zero",
+    "model": "ID-30FI",
+    "serial": "G5701862",
+    "description": "",
+    "vendors": "Appliance Service Station",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004333",
+    "propertyId": "2000",
+    "name": "Freezer FR-3",
+    "status": "Online",
+    "location": "Pool",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "FISHER & PAYKEL",
+    "model": "RB36S",
+    "serial": "AAG868334",
+    "description": "",
+    "vendors": "Appliance Service Station",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004336",
+    "propertyId": "2000",
+    "name": "Freezer FR-2",
+    "status": "Online",
+    "location": "Pool",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "FISHER & PAYKEL",
+    "model": "RB36S",
+    "serial": "AAG871957",
+    "description": "",
+    "vendors": "Appliance Service Station",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004338",
+    "propertyId": "2000",
+    "name": "Freezer FR-1",
+    "status": "Online",
+    "location": "Pantry",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Frigidaire",
+    "model": "FPFU19F8RFE",
+    "serial": "WB84468136",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004342",
+    "propertyId": "2000",
+    "name": "Refrigerator (Left)",
+    "status": "Online",
+    "location": "Kitchen",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Sub Zero",
+    "model": "IC-36R",
+    "serial": "G5726874",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004349",
+    "propertyId": "2000",
+    "name": "Refrigerator",
+    "status": "Online",
+    "location": "Fitness Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Marvel",
+    "model": "ML24RAS1RS",
+    "serial": "20180417053H",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004353",
+    "propertyId": "2000",
+    "name": "Generator (Upper)",
+    "status": "Online",
+    "location": "Outdoor Generator Area",
+    "category": "Generator",
+    "year": "",
+    "manufacturer": "Kohler",
+    "model": "20RESC",
+    "serial": "339TGVFN0070",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004355",
+    "propertyId": "2000",
+    "name": "Generator (Lower)",
+    "status": "Online",
+    "location": "Outdoor Generator Area",
+    "category": "Generator",
+    "year": "",
+    "manufacturer": "Kohler",
+    "model": "20RESA",
+    "serial": "SGM3263PC",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004356",
+    "propertyId": "2000",
+    "name": "Dryer DR-3",
+    "status": "Online",
+    "location": "House Managers Office",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Electolux",
+    "model": "",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004360",
+    "propertyId": "2000",
+    "name": "Dryer DR-2",
+    "status": "Online",
+    "location": "Pool Changing Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Electolux",
+    "model": "Efme617stto",
+    "serial": "4D81008923",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004365",
+    "propertyId": "2000",
+    "name": "Dryer DR-1",
+    "status": "Online",
+    "location": "Upstairs Laundry Closet",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Electolux",
+    "model": "Efme617stto",
+    "serial": "4d80932379",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004377",
+    "propertyId": "2000",
+    "name": "Washer WM-3",
+    "status": "Online",
+    "location": "House Managers Office",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Electolux",
+    "model": "",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004382",
+    "propertyId": "2000",
+    "name": "Washer WM-2",
+    "status": "Online",
+    "location": "Pool Changing Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Electolux",
+    "model": "",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004389",
+    "propertyId": "2000",
+    "name": "Washer WM-1",
+    "status": "Online",
+    "location": "Upstairs Laundry Closet",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Electolux",
+    "model": "",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004397",
+    "propertyId": "2000",
+    "name": "Dishwasher DW-4 (Left)",
+    "status": "Online",
+    "location": "Kitchen",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Bosch",
+    "model": "SHV88PW53N/10",
+    "serial": "FD980500530",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004399",
+    "propertyId": "2000",
+    "name": "Dishwasher DW-3 (Right)",
+    "status": "Online",
+    "location": "Kitchen",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Bosch",
+    "model": "SHV88PW53N/11",
+    "serial": "FD981100351",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004400",
+    "propertyId": "2000",
+    "name": "Dishwasher DW-2",
+    "status": "Online",
+    "location": "House Managers Office",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Bosch",
+    "model": "SHE55M15UC/64",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5004402",
+    "propertyId": "2000",
+    "name": "Dishwasher DW-1",
+    "status": "Online",
+    "location": "Fitness Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Bosch",
+    "model": "SPV68U53UC/42",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5088482",
+    "propertyId": "2000",
+    "name": "Hottub",
+    "status": "Online",
+    "location": "Back Patio (water side)",
+    "category": "Pool & Spa",
+    "year": "2014",
+    "manufacturer": "Sundance",
+    "model": "880",
+    "serial": "",
+    "description": "Sundance spa 880 series",
+    "vendors": "Aqua Quip",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5226122",
+    "propertyId": "2000",
+    "name": "Craft-Cobalt R-7",
+    "status": "Online",
+    "location": "Dock",
+    "category": "Marine / Watercraft",
+    "year": "2020",
+    "manufacturer": "Cobalt",
+    "model": "R-7",
+    "serial": "FGE7S0561920",
+    "description": "d394265",
+    "vendors": "O'Ryan Marine,Seattle Boat",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5247036",
+    "propertyId": "2000",
+    "name": "West Steam Generator",
+    "status": "Online",
+    "location": "West side of House",
+    "category": "HVAC / Mechanical",
+    "year": "8-28-2014",
+    "manufacturer": "Amerec",
+    "model": "AK-14",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": "Important"
+  },
+  {
+    "sourceId": "5249519",
+    "propertyId": "2000",
+    "name": "Irrigation Lake Water Meter",
+    "status": "Online",
+    "location": "2000",
+    "category": "Irrigation",
+    "year": "2019",
+    "manufacturer": "SENSUS",
+    "model": "SR-11",
+    "serial": "69154206",
+    "description": "We need to write down on the Maintenance Log the Meter reading for each Friday regardless if it has changed or not",
+    "vendors": "",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "5287144",
+    "propertyId": "2000",
+    "name": "Invisible Fence",
+    "status": "Online",
+    "location": "Vegetable Garden",
+    "category": "Grounds Equipment",
+    "year": "2024",
+    "manufacturer": "Invisible Fence",
+    "model": "",
+    "serial": "",
+    "description": "Change batteries for fake rock in veggie garden and nw lawn",
+    "vendors": "Invisible Fence",
+    "criticality": ""
+  },
+  {
+    "sourceId": "5508668",
+    "propertyId": "2000",
+    "name": "Vehicle Ford 1-50",
+    "status": "Online",
+    "location": "Garage (new)",
+    "category": "Vehicle",
+    "year": "2023",
+    "manufacturer": "Ford",
+    "model": "F-150",
+    "serial": "1FTFW1RG0PFA87887",
+    "description": "Jeremies Raptor",
+    "vendors": "AutoNation Ford Bellevue",
+    "criticality": "Normal"
+  },
+  {
+    "sourceId": "5508670",
+    "propertyId": "2000",
+    "name": "Vehicle Mercedes GL",
+    "status": "Online",
+    "location": "General",
+    "category": "Vehicle",
+    "year": "2015",
+    "manufacturer": "Mercedes Benz",
+    "model": "GL",
+    "serial": "4JGDF7DE8FA469902",
+    "description": "Family SUV",
+    "vendors": "",
+    "criticality": "Normal"
+  },
+  {
+    "sourceId": "5508672",
+    "propertyId": "2000",
+    "name": "Vehicle Audi E-Tron GT",
+    "status": "Online",
+    "location": "Garage (old)",
+    "category": "Vehicle",
+    "year": "",
+    "manufacturer": "Audi",
+    "model": "E-Tron GT",
+    "serial": "",
+    "description": "Jeremies Car",
+    "vendors": "",
+    "criticality": "Normal"
+  },
+  {
+    "sourceId": "5508693",
+    "propertyId": "2000",
+    "name": "HVAC HP-4 (outdoor) MR",
+    "status": "Online",
+    "location": "Roof",
+    "category": "HVAC / Mechanical",
+    "year": "",
+    "manufacturer": "Mitsubishi",
+    "model": "MUZ-FS12NA",
+    "serial": "33c30899",
+    "description": "Micah's Room installed 24",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Normal"
+  },
+  {
+    "sourceId": "5508694",
+    "propertyId": "2000",
+    "name": "HVAC HP-5 (outdoor)",
+    "status": "Online",
+    "location": "Roof",
+    "category": "HVAC / Mechanical",
+    "year": "06/23",
+    "manufacturer": "Mitsubishi",
+    "model": "MUZ-FS18NA",
+    "serial": "3010164 T",
+    "description": "Master bedroom",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Normal"
+  },
+  {
+    "sourceId": "6042825",
+    "propertyId": "2000",
+    "name": "Craft-SeaDoo 2024",
+    "status": "Online",
+    "location": "Dock",
+    "category": "Marine / Watercraft",
+    "year": "2024",
+    "manufacturer": "SeeDoo",
+    "model": "GTI SE 170",
+    "serial": "YDV81960E424",
+    "description": "2024 SeaDoo GTI 170 IBR",
+    "vendors": "I90 Motorsports,O'Ryan Marine",
+    "criticality": "Important"
+  },
+  {
+    "sourceId": "7609221",
+    "propertyId": "2000",
+    "name": "Pool",
+    "status": "Offline",
+    "location": "Pool",
+    "category": "Pool & Spa",
+    "year": "2018",
+    "manufacturer": "Krisco",
+    "model": "",
+    "serial": "",
+    "description": "Indoor Swimming Pool Krisco Pools",
+    "vendors": "Amazon,Aqua Quip,Krisco Pool and Spas",
+    "criticality": "Important"
+  },
+  {
+    "sourceId": "8002871",
+    "propertyId": "2000",
+    "name": "Marantec WKE",
+    "status": "Online",
+    "location": "2000",
+    "category": "Garage Systems",
+    "year": "",
+    "manufacturer": "Marantec",
+    "model": "M13-631",
+    "serial": "",
+    "description": "Wireless keypad Entry for both garages.",
+    "vendors": "",
+    "criticality": "Normal"
+  },
+  {
+    "sourceId": "8388626",
+    "propertyId": "2000",
+    "name": "Vehicle Rivian",
+    "status": "Online",
+    "location": "2000",
+    "category": "Vehicle",
+    "year": "2025",
+    "manufacturer": "Rivian",
+    "model": "R1S",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": "Normal"
+  },
+  {
+    "sourceId": "9572201",
+    "propertyId": "2000",
+    "name": "Freezer FR-5",
+    "status": "Online",
+    "location": "Wine Room",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "FISHER & PAYKEL",
+    "model": "RB36S",
+    "serial": "AAG871948",
+    "description": "Inspect the gaskets. Check the freezer temperature. Clean the condenser coil",
+    "vendors": "Appliance Service Station",
+    "criticality": "Important"
+  },
+  {
+    "sourceId": "10121102",
+    "propertyId": "2000",
+    "name": "Lynx Grill",
+    "status": "Online",
+    "location": "Back Patio (water side)",
+    "category": "Outdoor Kitchen",
+    "year": "",
+    "manufacturer": "Lynx",
+    "model": "L36PSFR-2-NG",
+    "serial": "L36PSFR-2-NG",
+    "description": "BBQ",
+    "vendors": "LUWA",
+    "criticality": ""
+  },
+  {
+    "sourceId": "14981184",
+    "propertyId": "2000",
+    "name": "Wine Frige",
+    "status": "Online",
+    "location": "Mechanical Room 2",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Lanbo",
+    "model": "LW",
+    "serial": "",
+    "description": "wine overflow fridge",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "14982391",
+    "propertyId": "2000",
+    "name": "FloLogic",
+    "status": "Online",
+    "location": "General",
+    "category": "Plumbing / Water",
+    "year": "2020",
+    "manufacturer": "FloLogic",
+    "model": "ACT3003",
+    "serial": "SP 7424F",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "14983783",
+    "propertyId": "2000",
+    "name": "Home Water Filter",
+    "status": "Online",
+    "location": "General",
+    "category": "Plumbing / Water",
+    "year": "",
+    "manufacturer": "Environmental Water Systmes",
+    "model": "CWL-1354-7000",
+    "serial": "22764",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "15019911",
+    "propertyId": "hangar",
+    "name": "Plane Pilatus PC12 N126AI",
+    "status": "Online",
+    "location": "Hangar",
+    "category": "Aircraft",
+    "year": "",
+    "manufacturer": "Pilatus",
+    "model": "PC12",
+    "serial": "N126AI",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "15020020",
+    "propertyId": "hangar",
+    "name": "Plane Gulfstream G280 N28CC",
+    "status": "Online",
+    "location": "Hangar",
+    "category": "Aircraft",
+    "year": "2012",
+    "manufacturer": "Gulfstream",
+    "model": "G280",
+    "serial": "N28CC",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "15020252",
+    "propertyId": "hangar",
+    "name": "Plane Gulfstream G280 N755PA",
+    "status": "Online",
+    "location": "Hangar",
+    "category": "Aircraft",
+    "year": "2012",
+    "manufacturer": "Gulfstream",
+    "model": "G280",
+    "serial": "N755PA",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "15020267",
+    "propertyId": "hangar",
+    "name": "Plane Gulfstream G600 N23PA",
+    "status": "Online",
+    "location": "Hangar",
+    "category": "Aircraft",
+    "year": "",
+    "manufacturer": "Gulfstream",
+    "model": "G600",
+    "serial": "N23PA",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "15021066",
+    "propertyId": "2000",
+    "name": "Blinds Lutron",
+    "status": "Online",
+    "location": "General",
+    "category": "Window Treatments",
+    "year": "",
+    "manufacturer": "Lutron",
+    "model": "Sivoia QS",
+    "serial": "",
+    "description": "video to fix high and low limit- https://youtu.be/j_eVnCgQ0Ug",
+    "vendors": "Andersen Installation inc.",
+    "criticality": ""
+  },
+  {
+    "sourceId": "15097000",
+    "propertyId": "2000",
+    "name": "Garage Door Openers",
+    "status": "Online",
+    "location": "General",
+    "category": "Garage Systems",
+    "year": "",
+    "manufacturer": "Marantec",
+    "model": "Synergy 370",
+    "serial": "",
+    "description": "Synergy 370",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "15131638",
+    "propertyId": "2000",
+    "name": "Blinds Hunter Douglas",
+    "status": "Online",
+    "location": "Elyse's Room",
+    "category": "Window Treatments",
+    "year": "",
+    "manufacturer": "hunter douglas",
+    "model": "Deuett",
+    "serial": "",
+    "description": "Video to fix blinds: https://youtu.be/zQTkBF4hmCw",
+    "vendors": "A All Pro Blinds,Andersen Installation inc.",
+    "criticality": ""
+  },
+  {
+    "sourceId": "15314047",
+    "propertyId": "2000",
+    "name": "wolfe range",
+    "status": "Online",
+    "location": "Kitchen",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "",
+    "model": "",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  },
+  {
+    "sourceId": "15349974",
+    "propertyId": "2000",
+    "name": "Range-Wolf",
+    "status": "Online",
+    "location": "Kitchen",
+    "category": "Appliance",
+    "year": "",
+    "manufacturer": "Wolf",
+    "model": "SRT-486G",
+    "serial": "18370250",
+    "description": "Wolf Stove Top",
+    "vendors": "LUWA",
+    "criticality": "Normal"
+  },
+  {
+    "sourceId": "15910478",
+    "propertyId": "2000",
+    "name": "Boiler B-2 New",
+    "status": "Online",
+    "location": "Mechanical Room",
+    "category": "HVAC / Mechanical",
+    "year": "2025",
+    "manufacturer": "Viessman",
+    "model": "Vitodens 200",
+    "serial": "758960507593",
+    "description": "",
+    "vendors": "P.S.F,Supply House",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "15912110",
+    "propertyId": "2000",
+    "name": "Golf Simulator",
+    "status": "Online",
+    "location": "Garage (new)",
+    "category": "Recreation",
+    "year": "",
+    "manufacturer": "Skytrak",
+    "model": "ST-Max",
+    "serial": "",
+    "description": "Golf Simulator",
+    "vendors": "",
+    "criticality": "Critical"
+  },
+  {
+    "sourceId": "16616596",
+    "propertyId": "2000",
+    "name": "Hunter Irrigation Controller",
+    "status": "Online",
+    "location": "2000",
+    "category": "Irrigation",
+    "year": "",
+    "manufacturer": "Hunter",
+    "model": "HCC 24 Zones",
+    "serial": "06d050377d",
+    "description": "New Irrigation Controller",
+    "vendors": "Advanced Irrigation",
+    "criticality": ""
+  },
+  {
+    "sourceId": "16616782",
+    "propertyId": "2000",
+    "name": "Hunter Irrigation Controller",
+    "status": "Online",
+    "location": "General",
+    "category": "Irrigation",
+    "year": "",
+    "manufacturer": "Hunter",
+    "model": "HCC 24one",
+    "serial": "06d050377d",
+    "description": "",
+    "vendors": "Advanced Irrigation",
+    "criticality": ""
+  },
+  {
+    "sourceId": "18482385",
+    "propertyId": "2000",
+    "name": "Landscaping",
+    "status": "Online",
+    "location": "2000",
+    "category": "General",
+    "year": "",
+    "manufacturer": "",
+    "model": "",
+    "serial": "",
+    "description": "",
+    "vendors": "",
+    "criticality": ""
+  }
+] as const;
+
 const fallbackAssets: AssetRecord[] = [
   {
     id: "boiler-1",
@@ -4411,6 +5569,7 @@ export default function AtlasPage() {
   const waterCareSetupRunningRef = useRef(false);
   const weeklyOperationsSetupRunningRef = useRef(false);
   const preventiveMaintenanceSetupRunningRef = useRef(false);
+  const confirmedAssetCatalogSetupRunningRef = useRef(false);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
@@ -5384,6 +6543,10 @@ export default function AtlasPage() {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
     void setupHousePreventiveMaintenance();
   }, [ready, operationsHydrated, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || !["2000", "hangar"].includes(activePropertyId)) return;
+    void setupConfirmedAssetCatalog();
+  }, [ready, syncState, activePropertyId]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -15349,6 +16512,101 @@ ${notes.trim()}` : notes.trim(),
   async function setupGarageAndWaterCare() {
     await setupFleetAssetsAndSchedules();
     await setupPoolSpaCare();
+  }
+
+  async function setupConfirmedAssetCatalog() {
+    if (confirmedAssetCatalogSetupRunningRef.current || typeof window === "undefined" || !["2000", "hangar"].includes(activePropertyId)) return;
+    const setupKey = `atlas-confirmed-asset-catalog-v1-${activePropertyId}`;
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    confirmedAssetCatalogSetupRunningRef.current = true;
+    try {
+      const nextLocations = [...locations];
+      const nextAssets = [...assetRecords];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const catalog = confirmedAssetCatalog.filter((item) => item.propertyId === activePropertyId);
+      const locationAliases: Record<string, string> = {
+        "": "general",
+        "2000": "general",
+        general: "general",
+        "mechanical room": "mechanical-room",
+        "garage (new)": "new-garage",
+        "garage (old)": "old-garage",
+        dock: "dock",
+        pool: "pool-equipment",
+        "pool changing room": "pool-changing-room",
+        "house managers office": "house-managers-office",
+        pantry: "pantry",
+        "upstairs laundry closet": "upstairs-laundry",
+        "vegetable garden": "veggie-boxes",
+        "wine room": "wine-room",
+        hangar: "location-hangar",
+      };
+      const resolveLocationId = (rawLocation: string) => {
+        const normalized = normalizeLocationName(rawLocation);
+        const aliasId = locationAliases[normalized];
+        if (aliasId) {
+          if (aliasId === "location-hangar" && !nextLocations.some((location) => location.id === aliasId)) {
+            const location: AtlasLocationRecord = { id: aliasId, name: "Hangar", type: "Aircraft Hangar", zone: "Hangar", notes: "Primary location for aircraft assets and connected service history.", parentId: "", customDetails: [], vendorIds: [] };
+            nextLocations.push(location);
+            recordsToSave.push({ table: "locations", record: { ...location, propertyId: activePropertyId } });
+          }
+          return aliasId;
+        }
+        const existing = nextLocations.find((location) => normalizeLocationName(location.name) === normalized);
+        if (existing) return existing.id;
+        const location: AtlasLocationRecord = { id: `catalog-location-${slugify(rawLocation)}`, name: rawLocation, type: "Room / Area", zone: activePropertyId === "hangar" ? "Hangar" : "2000", notes: "Confirmed asset location imported from the property asset catalog.", parentId: "", customDetails: [], vendorIds: [] };
+        nextLocations.push(location);
+        recordsToSave.push({ table: "locations", record: { ...location, propertyId: activePropertyId } });
+        return location.id;
+      };
+      const normalizedIdentifier = (value: string) => String(value || "").toLowerCase().replace(/^hin\s*/i, "").replace(/[^a-z0-9]/g, "");
+      for (const definition of catalog) {
+        const serialKey = normalizedIdentifier(definition.serial);
+        let existingIndex = nextAssets.findIndex((asset) => Boolean(serialKey) && normalizedIdentifier(asset.serial) === serialKey);
+        if (existingIndex < 0) existingIndex = nextAssets.findIndex((asset) => normalizeLocationName(asset.name) === normalizeLocationName(definition.name));
+        if (existingIndex < 0 && ["Vehicle", "Pool & Spa", "Aircraft"].includes(definition.category) && definition.manufacturer && definition.model) {
+          existingIndex = nextAssets.findIndex((asset) => normalizeLocationName(asset.make || asset.manufacturer || "") === normalizeLocationName(definition.manufacturer) && normalizeLocationName(asset.model || "") === normalizeLocationName(definition.model));
+        }
+        const mayCreate = activePropertyId === "hangar" && definition.category === "Aircraft";
+        if (existingIndex < 0 && !mayCreate) continue;
+        const locationId = resolveLocationId(definition.location);
+        const importedNotes = [definition.description, definition.vendors ? `Vendors: ${definition.vendors}.` : "", definition.criticality ? `Criticality: ${definition.criticality}.` : "", "Confirmed from the property asset catalog."].filter(Boolean).join(" ");
+        if (existingIndex >= 0) {
+          const existing = nextAssets[existingIndex];
+          const next = normalizeAsset({
+            ...existing,
+            locationId: !existing.locationId || existing.locationId === "general" ? locationId : existing.locationId,
+            locationIds: Array.from(new Set([...(existing.locationIds || []), locationId].filter(Boolean))),
+            category: existing.category && existing.category !== "General" ? existing.category : definition.category,
+            make: existing.make || definition.manufacturer,
+            manufacturer: existing.manufacturer || definition.manufacturer,
+            model: existing.model || definition.model,
+            year: existing.year || definition.year,
+            serial: existing.serial || definition.serial,
+            notes: existing.notes.includes("Confirmed from the property asset catalog") ? existing.notes : [existing.notes, importedNotes].filter(Boolean).join(" ").trim(),
+          });
+          if (JSON.stringify(existing) !== JSON.stringify(next)) {
+            nextAssets[existingIndex] = next;
+            recordsToSave.push({ table: "assets", record: { ...next, propertyId: activePropertyId } });
+          }
+          continue;
+        }
+        const asset = normalizeAsset({ id: `catalog-asset-${definition.sourceId}`, name: definition.name, category: definition.category, status: definition.status as AtlasAssetRecord["status"], locationId, locationIds: [locationId], make: definition.manufacturer, manufacturer: definition.manufacturer, model: definition.model, year: definition.year, serial: definition.serial, notes: importedNotes, vendorIds: [] });
+        nextAssets.push(asset);
+        recordsToSave.push({ table: "assets", record: { ...asset, propertyId: activePropertyId } });
+      }
+      setLocations(byName(nextLocations));
+      setAssetRecords(byName(nextAssets));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some confirmed asset records did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      if (recordsToSave.length) showSaveToast(activePropertyId === "hangar" ? "Four confirmed Hangar aircraft are ready." : "Existing 2000 assets were enriched without creating duplicates.");
+    } catch (error) {
+      console.error("Atlas confirmed asset catalog setup failed", error);
+      showSaveToast("Confirmed asset setup will retry.", "warning");
+    } finally {
+      confirmedAssetCatalogSetupRunningRef.current = false;
+    }
   }
 
   async function setupHousePreventiveMaintenance() {
