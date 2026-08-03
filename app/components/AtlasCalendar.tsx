@@ -1042,33 +1042,6 @@ export default function AtlasCalendar(
                                   · {type.label}
                                 </span>
 
-                                {event.repeat && event.repeat !== "None" ? (
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 5,
-                                      marginTop: 6,
-                                      padding: "3px 7px",
-                                      borderRadius: 999,
-                                      background: "rgba(7,27,47,0.07)",
-                                      color: colors.navy,
-                                      fontSize: 11,
-                                      fontWeight: 900,
-                                    }}
-                                  >
-                                    ↻ Repeats {event.repeat}
-                                  </span>
-                                ) : null}
-
-                                {event.linkedType &&
-                                event.linkedType !== "None" &&
-                                event.linkedName ? (
-                                  <span style={{ display: "block", marginTop: 3 }}>
-                                    {event.linkedType}: {event.linkedName}
-                                  </span>
-                                ) : null}
-
                                 {event.notes ? (
                                   <span
                                     style={{
@@ -1093,52 +1066,24 @@ export default function AtlasCalendar(
                           </div>
                         </button>
 
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => togglePinnedEvent(event)}
-                            style={secondaryButtonStyle}
-                          >
-                            {pinnedEventIds.includes(String(event.id || "")) ? "Unpin" : "Pin"}
-                          </button>
-
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
                             onClick={() => editEvent(event)}
                             style={secondaryButtonStyle}
                           >
-                            Quick Edit
+                            Edit
                           </button>
-
-                          {event.linkedId &&
-                          event.linkedType &&
-                          event.linkedType !== "None" ? (
-                            <button
-                              type="button"
-                              onClick={() => openEvent(event)}
-                              style={secondaryButtonStyle}
-                            >
-                              Open {event.linkedType}
-                            </button>
-                          ) : null}
-
-                          {canConvertEvent(event) ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void convertToWorkOrder(event);
-                              }}
-                              style={secondaryButtonStyle}
-                            >
-                              Convert to Work Order
-                            </button>
-                          ) : null}
+                          <details style={{ minWidth: 120 }}>
+                            <summary style={{ cursor: "pointer", color: colors.muted, fontSize: 12, fontWeight: 800 }}>More details</summary>
+                            <div style={{ display: "grid", gap: 7, marginTop: 8, padding: 9, border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF" }}>
+                              {event.repeat && event.repeat !== "None" ? <span style={mutedSmallStyle}>Repeats {event.repeat}</span> : null}
+                              {event.linkedType && event.linkedType !== "None" && event.linkedName ? <span style={mutedSmallStyle}>{event.linkedType}: {event.linkedName}</span> : null}
+                              <button type="button" onClick={() => togglePinnedEvent(event)} style={secondaryButtonStyle}>{pinnedEventIds.includes(String(event.id || "")) ? "Unpin" : "Pin"}</button>
+                              {event.linkedId && event.linkedType && event.linkedType !== "None" ? <button type="button" onClick={() => openEvent(event)} style={secondaryButtonStyle}>Open {event.linkedType}</button> : null}
+                              {canConvertEvent(event) ? <button type="button" onClick={() => { void convertToWorkOrder(event); }} style={secondaryButtonStyle}>Convert to Work Order</button> : null}
+                            </div>
+                          </details>
                         </div>
                       </div>
                     );
