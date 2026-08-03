@@ -2203,7 +2203,7 @@ export default function AtlasInsightsTimeline({
                   )}
                 </div>
 
-                <div
+                {selectedEntry && (selectedEntry.beforePhoto || selectedEntry.afterPhoto || selectedEntry.photo) ? <div
                   style={{
                     ...card,
                     minHeight: 0,
@@ -2224,7 +2224,7 @@ export default function AtlasInsightsTimeline({
                     Before / After
                   </div>
 
-                  {selectedEntry?.beforePhoto || selectedEntry?.afterPhoto ? (
+                  {selectedEntry.beforePhoto || selectedEntry.afterPhoto ? (
                     <div
                       style={{
                         display: "grid",
@@ -2277,7 +2277,7 @@ export default function AtlasInsightsTimeline({
                         </figure>
                       ) : null}
                     </div>
-                  ) : selectedEntry?.photo ? (
+                  ) : selectedEntry.photo ? (
                     <img
                       src={selectedEntry.photo}
                       alt=""
@@ -2289,20 +2289,8 @@ export default function AtlasInsightsTimeline({
                         border: `1px solid ${colors.line}`,
                       }}
                     />
-                  ) : (
-                    <div
-                      style={{
-                        ...noticeStyle,
-                        height: 260,
-                        display: "grid",
-                        placeItems: "center",
-                        textAlign: "center",
-                      }}
-                    >
-                      No visual media is attached to this timeline event.
-                    </div>
-                  )}
-                </div>
+                  ) : null}
+                </div> : null}
               </div>
             </div>
           </>
