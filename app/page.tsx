@@ -667,11 +667,11 @@ const atlasNavigationSections: {
   { label: "Overview", items: ["dashboard", "portfolio"] },
   {
     label: "Work",
-    items: ["history", "calendar", "planner", "routines", "team", "timeline"],
+    items: ["history", "calendar", "planner", "routines", "team"],
   },
   { label: "Intake", items: ["inbox", "requests", "qr"] },
   { label: "Analytics", items: ["insights", "reports"] },
-  { label: "Property", items: ["locations", "assets", "map"] },
+  { label: "Property", items: ["assets", "locations", "timeline", "map"] },
   { label: "People", items: ["vendors", "contacts"] },
   {
     label: "Knowledge",
@@ -5372,6 +5372,7 @@ export default function AtlasPage() {
   >("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
+  const [planningToolsOpen, setPlanningToolsOpen] = useState(false);
 
   useEffect(() => {
     const closeOpenDropdowns = (event: PointerEvent) => {
@@ -41420,14 +41421,15 @@ ${notes.trim()}` : notes.trim(),
                 style={mobileMenuSelectStyle}
                 aria-label="Open Atlas section"
               >
-                <optgroup label="Work & Planning">
+                <optgroup label="Daily Work">
+                  <option value="planner:tasks">Tasks</option>
+                  <option value="planner:lists">Lists</option>
+                </optgroup>
+                <optgroup label="Planning Tools">
                   <option value="planner:walk">Walk Mode</option>
                   <option value="planner:build">Build My Day</option>
                   <option value="planner:route">Smart Route</option>
                   <option value="planner:analytics">Operations Analytics</option>
-                  <option value="planner:tasks">Tasks</option>
-                  <option value="planner:vehicles">Garage</option>
-                  <option value="planner:lists">Lists</option>
                   <option value="planner:week">Plan Week</option>
                 </optgroup>
                 <optgroup label="Main">
@@ -41483,14 +41485,8 @@ ${notes.trim()}` : notes.trim(),
                       {section.items.map((screenId) => {
                         if (screenId === "planner") {
                           const workNavigation = [
-                            { id: "walk", label: "Walk Mode", view: "walk" as const },
-                            { id: "build", label: "Build My Day", view: "build" as const },
-                            { id: "route", label: "Smart Route", view: "route" as const },
-                            { id: "analytics", label: "Operations Analytics", view: "analytics" as const },
                             { id: "tasks", label: "Tasks", view: "tasks" as const },
-                            { id: "vehicles", label: "Garage", view: "vehicles" as const },
                             { id: "lists", label: "Lists", view: "lists" as const },
-                            { id: "week", label: "Plan Week", view: "planner" as const },
                           ];
                           return (
                             <React.Fragment key="work-navigation">
@@ -41585,6 +41581,21 @@ ${notes.trim()}` : notes.trim(),
                       ))}
                     </div>
                   </div>
+                ) : null}
+
+                {!isRestrictedStaffUser ? (
+                <div style={sidebarNavSectionStyle}>
+                  <button type="button" className="atlas-sidebar-nav-button" onClick={() => setPlanningToolsOpen((current) => !current)} aria-expanded={planningToolsOpen} title={sidebarCollapsed ? "Planning Tools" : undefined} style={{ ...navButtonStyle, justifyContent: sidebarCollapsed ? "center" : "space-between", borderColor: screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView) ? colors.gold : "rgba(255,255,255,0.18)", background: screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView) ? colors.gold : "rgba(255,255,255,0.06)", color: screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView) ? colors.navy : "#FFFFFF" }}>
+                    <span className="atlas-sidebar-nav-label">Planning Tools</span>{!sidebarCollapsed ? <span aria-hidden="true" style={{ fontSize: 12 }}>{planningToolsOpen ? "▴" : "▾"}</span> : null}
+                  </button>
+                  {planningToolsOpen || (screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView)) ? <div style={{ ...sidebarNavItemsStyle, marginTop: 6, paddingLeft: sidebarCollapsed ? 0 : 8 }}>{[
+                    { id: "walk", label: "Walk Mode", view: "walk" as const },
+                    { id: "build", label: "Build My Day", view: "build" as const },
+                    { id: "route", label: "Smart Route", view: "route" as const },
+                    { id: "analytics", label: "Operations Analytics", view: "analytics" as const },
+                    { id: "week", label: "Plan Week", view: "planner" as const },
+                  ].map((entry) => { const active = screen === "planner" && tasksView === entry.view; return <button key={entry.id} type="button" className="atlas-sidebar-nav-button" title={sidebarCollapsed ? entry.label : undefined} onClick={() => { setTasksView(entry.view); setScreen("planner"); }} style={{ ...navButtonStyle, borderColor: active ? colors.gold : "transparent", background: active ? colors.gold : "transparent", color: active ? colors.navy : "#FFFFFF", fontSize: 12 }}><span className="atlas-sidebar-nav-label">{entry.label}</span></button>; })}</div> : null}
+                </div>
                 ) : null}
 
                 {!isRestrictedStaffUser ? (
