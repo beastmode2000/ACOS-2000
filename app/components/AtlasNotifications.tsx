@@ -319,11 +319,25 @@ export default function AtlasNotifications(props: Props) {
   }
 
   return (
-    <div ref={notificationRootRef} style={{ position:"relative", marginBottom:8 }}>
+    <div ref={notificationRootRef} className="atlas-notifications-root" style={{ position:"relative", marginBottom:8 }}>
+      <style>{`
+        .atlas-page-header .atlas-notifications-root > button,
+        .atlas-page-header .atlas-notifications-root > button span,
+        .atlas-page-header .atlas-notifications-panel,
+        .atlas-page-header .atlas-notifications-panel button,
+        .atlas-page-header .atlas-notifications-panel label,
+        .atlas-page-header .atlas-notifications-panel strong,
+        .atlas-page-header .atlas-notifications-panel span {
+          color: ${props.colors.navy} !important;
+        }
+        .atlas-page-header .atlas-notifications-panel .atlas-notification-detail {
+          color: ${props.colors.muted} !important;
+        }
+      `}</style>
       <button type="button" onClick={()=>setOpen((value)=>!value)} style={{width:"100%",minHeight:42,border:`1px solid ${props.colors.line}`,borderRadius:10,background:"#fff",color:props.colors.navy,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 11px"}}>
         <span>Notifications</span><span style={{minWidth:24,height:24,borderRadius:999,background:unread.length?props.colors.gold:props.colors.panel,display:"inline-grid",placeItems:"center",fontSize:12}}>{unread.length}</span>
       </button>
-      {open ? <div role="dialog" aria-modal={props.isMobile} aria-label="Atlas notifications" style={{
+      {open ? <div className="atlas-notifications-panel" role="dialog" aria-modal={props.isMobile} aria-label="Atlas notifications" style={{
         position:props.isMobile?"fixed":"absolute",
         top:props.isMobile?12:48,
         right:props.isMobile?10:0,
@@ -373,7 +387,7 @@ export default function AtlasNotifications(props: Props) {
             </label>
           ))}
         </div>
-        {alerts.length ? alerts.map((alert)=><button key={alert.id} type="button" onClick={()=>{setOpen(false);alert.open();}} style={{textAlign:"left",color:props.colors.navy,border:`1px solid ${props.colors.line}`,borderLeft:`4px solid ${alert.tone==="urgent"?"#B42318":alert.tone==="attention"?props.colors.gold:"#3B82F6"}`,borderRadius:9,background:readIds.includes(alert.id)?props.colors.panel:"#fff",padding:10,cursor:"pointer"}}><strong style={{display:"block",color:props.colors.navy}}>{alert.title}</strong><span style={{display:"block",marginTop:2,fontSize:12,color:props.colors.muted}}>{alert.detail}</span></button>) : <div style={{padding:14,color:props.colors.muted}}>No active notifications.</div>}
+        {alerts.length ? alerts.map((alert)=><button key={alert.id} type="button" onClick={()=>{setOpen(false);alert.open();}} style={{textAlign:"left",color:props.colors.navy,border:`1px solid ${props.colors.line}`,borderLeft:`4px solid ${alert.tone==="urgent"?"#B42318":alert.tone==="attention"?props.colors.gold:"#3B82F6"}`,borderRadius:9,background:readIds.includes(alert.id)?props.colors.panel:"#fff",padding:10,cursor:"pointer"}}><strong style={{display:"block",color:props.colors.navy}}>{alert.title}</strong><span className="atlas-notification-detail" style={{display:"block",marginTop:2,fontSize:12,color:props.colors.muted}}>{alert.detail}</span></button>) : <div style={{padding:14,color:props.colors.muted}}>No active notifications.</div>}
       </div> : null}
     </div>
   );
