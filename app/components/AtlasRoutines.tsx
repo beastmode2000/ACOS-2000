@@ -751,9 +751,6 @@ export default function AtlasRoutines({
             Routines
           </h1>
 
-          <div style={{ color: "rgba(255,255,255,.78)", fontSize: 13 }}>
-            Edit the recurring checklist shown in Mission Control.
-          </div>
         </div>
 
         {!editing ? (
@@ -898,7 +895,7 @@ export default function AtlasRoutines({
                       }}
                     />
                   ) : (
-                    <span><strong style={{ display: "block" }}>{task.title}</strong><small style={{ color: colors.muted }}>Default: {task.assignedTo || "Nick"}</small></span>
+                    <span><strong style={{ display: "block" }}>{task.title}</strong>{task.assignedTo && task.assignedTo !== "Nick" ? <small style={{ color: colors.muted }}>{task.assignedTo}</small> : null}</span>
                   )}
 
                   {editing ? (
