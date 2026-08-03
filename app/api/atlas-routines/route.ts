@@ -103,7 +103,7 @@ function asTemplateTask(task: RoutineTask): RoutineTask {
 
 function weekdayFromDate(dateKey: string) {
   const day = new Date(`${dateKey}T12:00:00`).getDay();
-  return day >= 1 && day <= 5 ? day : 0;
+  return day === 0 ? 7 : day;
 }
 
 function seedTemplates(): RoutineTemplate[] {
@@ -185,6 +185,16 @@ function seedTemplates(): RoutineTemplate[] {
         },
       ],
     },
+    {
+      day: 6,
+      name: "Saturday Routine",
+      tasks: [],
+    },
+    {
+      day: 7,
+      name: "Sunday Routine",
+      tasks: [],
+    },
   ];
 }
 
@@ -192,7 +202,7 @@ async function ensureTables(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_routine_templates (
       property_id text NOT NULL DEFAULT '2000',
-      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 5),
+      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
       name text NOT NULL,
       tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
       updated_at timestamptz NOT NULL DEFAULT NOW()
@@ -203,7 +213,7 @@ async function ensureTables(sql: ReturnType<typeof neon>) {
     CREATE TABLE IF NOT EXISTS atlas_routine_occurrences (
       property_id text NOT NULL DEFAULT '2000',
       occurrence_date date NOT NULL,
-      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 5),
+      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
       routine_name text NOT NULL,
       tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
       updated_at timestamptz NOT NULL DEFAULT NOW()
@@ -218,6 +228,38 @@ async function ensureTables(sql: ReturnType<typeof neon>) {
   await sql`
     ALTER TABLE atlas_routine_occurrences
     ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'
+  `;
+
+  await sql`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'atlas_routine_templates_day_of_week_check'
+          AND pg_get_constraintdef(oid) NOT LIKE '%7%'
+      ) THEN
+        ALTER TABLE atlas_routine_templates DROP CONSTRAINT atlas_routine_templates_day_of_week_check;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'atlas_routine_templates_day_of_week_check') THEN
+        ALTER TABLE atlas_routine_templates ADD CONSTRAINT atlas_routine_templates_day_of_week_check CHECK (day_of_week BETWEEN 1 AND 7);
+      END IF;
+    END $$
+  `;
+
+  await sql`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'atlas_routine_occurrences_day_of_week_check'
+          AND pg_get_constraintdef(oid) NOT LIKE '%7%'
+      ) THEN
+        ALTER TABLE atlas_routine_occurrences DROP CONSTRAINT atlas_routine_occurrences_day_of_week_check;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'atlas_routine_occurrences_day_of_week_check') THEN
+        ALTER TABLE atlas_routine_occurrences ADD CONSTRAINT atlas_routine_occurrences_day_of_week_check CHECK (day_of_week BETWEEN 1 AND 7);
+      END IF;
+    END $$
   `;
 
   // The original tables used global primary keys. Remove those so the same
@@ -493,7 +535,7 @@ export async function POST(request: NextRequest) {
     if (action === "save-template") {
       const day = Number(body.day);
 
-      if (!Number.isInteger(day) || day < 1 || day > 5) {
+      if (!Number.isInteger(day) || day < 1 || day > 7) {
         return NextResponse.json(
           {
             ok: false,
