@@ -4410,6 +4410,7 @@ export default function AtlasPage() {
   const fleetSetupRunningRef = useRef(false);
   const waterCareSetupRunningRef = useRef(false);
   const weeklyOperationsSetupRunningRef = useRef(false);
+  const preventiveMaintenanceSetupRunningRef = useRef(false);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
@@ -5378,6 +5379,10 @@ export default function AtlasPage() {
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced") return;
     void setupWeeklyOperations();
+  }, [ready, operationsHydrated, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupHousePreventiveMaintenance();
   }, [ready, operationsHydrated, syncState, activePropertyId]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
@@ -15346,9 +15351,174 @@ ${notes.trim()}` : notes.trim(),
     await setupPoolSpaCare();
   }
 
+  async function setupHousePreventiveMaintenance() {
+    if (preventiveMaintenanceSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
+    const setupKey = `atlas-house-preventive-maintenance-v2-${activePropertyId}`;
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    preventiveMaintenanceSetupRunningRef.current = true;
+    try {
+      const nextAssets = [...assetRecords];
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const findLocationId = (terms: string[]) => locations.find((location) => terms.some((term) => location.name.toLowerCase().includes(term)))?.id || "general";
+      const ensureAsset = (id: string, name: string, category: string, locationId: string, terms: string[]) => {
+        let asset = nextAssets.find((item) => terms.some((term) => term === "pool" ? normalizeLocationName(item.name) === "pool" : `${item.name} ${item.category} ${item.make || ""} ${item.model || ""}`.toLowerCase().includes(term)));
+        if (!asset) {
+          asset = normalizeAsset({ id, name, category, status: "Online", locationId, locationIds: [locationId], notes: `${name} preventive-maintenance history.`, vendorIds: [] });
+          nextAssets.push(asset);
+          recordsToSave.push({ table: "assets", record: { ...asset, propertyId: activePropertyId } });
+        }
+        return asset;
+      };
+      const hvacAsset = ensureAsset("asset-house-hvac-system", "House HVAC System", "HVAC", findLocationId(["mechanical", "house"]), ["house hvac", "hvac system"]);
+      const spaAsset = ensureAsset("asset-sundance-880-spa", "Sundance 880 Spa", "Pool & Spa", findLocationId(["spa", "hot tub", "sundance"]), ["sundance 880", "sundance", "hot tub"]);
+      const poolAsset = ensureAsset("asset-main-pool", "Pool", "Pool & Spa", findLocationId(["pool"]), ["main pool", "pool"]);
+      const definitions = [
+        {
+          id: "wo-quarterly-house-hvac-filters",
+          calendarId: "maintenance-quarterly-house-hvac-filters",
+          title: "Replace all 14 house HVAC filters",
+          asset: hvacAsset,
+          locationId: hvacAsset.locationId || "general",
+          interval: 3,
+          unit: "Months" as WorkOrderRecurrenceUnit,
+          area: "House & Maintenance",
+          category: "HVAC",
+          reminder: "Week before" as CalendarReminder,
+          notes: "Quarterly replacement of all 14 HVAC filters throughout the house. Checklist: Mechanical Room 1 — 2 × Filterbuy 1\" × 16\" × 16\"; Mechanical Room 1 — 4 × Filterbuy 4\" × 16\" × 20\"; Mechanical Room 1 — 1 × Aprilaire #210, 4\" × 20\" × 25\"; Mechanical Room 2 — 4 × Filterbuy 4\" × 20\" × 25\"; Laundry Room, 2nd Floor — 1 × Filterbuy 1\" × 16\" × 20\"; Attic Space — 2 × Filterbuy 1\" × 16\" × 20\". Confirm all 14 were replaced and record damaged grilles, airflow concerns, or any filter that could not be changed.",
+        },
+        {
+          id: "wo-annual-sundance-880-filters",
+          calendarId: "maintenance-annual-sundance-880-filters",
+          title: "Replace both Sundance 880 spa filters",
+          asset: spaAsset,
+          locationId: spaAsset.locationId || "general",
+          interval: 12,
+          unit: "Months" as WorkOrderRecurrenceUnit,
+          area: "Pool & Spa",
+          category: "Pool & Spa",
+          reminder: "Week before" as CalendarReminder,
+          notes: "Replace both interlocking filter cartridges in the Sundance 880. Sundance recommends full replacement every 12–24 months depending on use; Atlas uses the conservative 12-month interval. Inspect seating and seals, confirm proper installation and flow, and record the filter part numbers.",
+        },
+        {
+          id: "wo-weekly-pool-chlorine-tabs",
+          calendarId: "maintenance-weekly-pool-chlorine-tabs",
+          title: "Test pool chlorine and refill chlorine tabs",
+          asset: poolAsset,
+          locationId: poolAsset.locationId || "general",
+          interval: 1,
+          unit: "Weeks" as WorkOrderRecurrenceUnit,
+          area: "Pool & Spa",
+          category: "Pool & Spa",
+          reminder: "Morning of" as CalendarReminder,
+          notes: "Test and record the pool chlorine reading. Inspect the chlorine tablet feeder and refill with the amount needed for the established pool target. Record the number of tabs added, feeder setting, unusual consumption, low inventory, and any water-quality concern.",
+        },
+        {
+          id: "wo-monthly-vehicle-tires-fluids",
+          calendarId: "maintenance-monthly-vehicle-tires-fluids",
+          title: "Check tire pressure and fluids on all onsite cars",
+          asset: undefined,
+          locationId: findLocationId(["new garage", "garage"]),
+          interval: 1,
+          unit: "Months" as WorkOrderRecurrenceUnit,
+          area: "Garage",
+          category: "Vehicles",
+          reminder: "Day before" as CalendarReminder,
+          notes: "Inspect every onsite car. Check and record all tire pressures, including any accessible spare; adjust to each vehicle's specified cold pressure. Check applicable engine oil, coolant, brake fluid, washer fluid and other owner-serviceable fluids. Record low levels, leaks, warning lights, tire damage, uneven wear, and required service. Electric vehicles: check only applicable fluids and tire items.",
+        },
+        {
+          id: "wo-monthly-aqua-quip-water-test",
+          calendarId: "maintenance-monthly-aqua-quip-water-test",
+          title: "Aqua Quip pool and spa water testing",
+          asset: poolAsset,
+          locationId: poolAsset.locationId || "general",
+          interval: 1,
+          unit: "Months" as WorkOrderRecurrenceUnit,
+          area: "Pool & Spa",
+          category: "Pool & Spa",
+          reminder: "Day before" as CalendarReminder,
+          notes: "Take separate fresh water samples from the pool and spa to Aqua Quip for monthly testing. Save or photograph the results, record recommended adjustments, add any required follow-up work, and update the chemical shopping list.",
+        },
+        {
+          id: "wo-monthly-pest-control-service",
+          calendarId: "maintenance-monthly-pest-control-service",
+          title: "Monthly pest-control service",
+          asset: undefined,
+          locationId: "general",
+          interval: 1,
+          unit: "Months" as WorkOrderRecurrenceUnit,
+          area: "House & Maintenance",
+          category: "Pest Control",
+          reminder: "Week before" as CalendarReminder,
+          notes: "Monthly pest-control visit. The vendor date may move by a few days each month; confirm the actual appointment, provide access, note current pest activity and problem areas, and record treatment performed and any follow-up recommendation.",
+        },
+      ];
+      for (const definition of definitions) {
+        let workOrder = nextWorkOrders.find((record) => record.id === definition.id || normalizeLocationName(record.title) === normalizeLocationName(definition.title));
+        if (!workOrder) {
+          workOrder = normalizeService({
+            id: definition.id,
+            title: definition.title,
+            assetId: definition.asset?.id || "",
+            locationId: definition.locationId,
+            date: todayISO(),
+            status: "Open",
+            priority: "Medium",
+            assignedTo: definition.id === "wo-monthly-pest-control-service" ? "Vendor" : "Nick",
+            notes: definition.notes,
+            recurring: true,
+            recurrenceInterval: definition.interval,
+            recurrenceUnit: definition.unit,
+            season: "Year-Round",
+            workType: "Preventive Maintenance",
+            workCategory: definition.category,
+            responsibilityArea: definition.area,
+          });
+          nextWorkOrders.push(workOrder);
+          recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
+        }
+        const calendarRecord = normalizeCalendar({
+          id: definition.calendarId,
+          propertyId: activePropertyId,
+          date: workOrder.date || todayISO(),
+          title: definition.title,
+          area: definition.area,
+          categoryLabel: "Preventive Maintenance",
+          allDay: true,
+          repeat: definition.interval === 1 && definition.unit === "Weeks" ? "Weekly" : "Custom",
+          reminder: definition.reminder,
+          notes: `${definition.notes} Repeats every ${definition.interval} ${definition.unit.toLowerCase()}.`,
+          linkedType: "Work Order",
+          linkedId: workOrder.id,
+          linkedName: workOrder.title,
+          source: "work-order",
+          status: "Scheduled",
+        });
+        const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
+        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
+        else nextCalendar.push(calendarRecord);
+        recordsToSave.push({ table: "calendar", record: calendarRecord });
+      }
+      setAssetRecords(byName(nextAssets));
+      setServiceRecords(byTitle(nextWorkOrders));
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some preventive-maintenance records did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast("Quarterly HVAC filters and annual spa filters are scheduled.");
+    } catch (error) {
+      console.error("Atlas preventive maintenance setup failed", error);
+      showSaveToast("Preventive maintenance setup will retry.", "warning");
+    } finally {
+      preventiveMaintenanceSetupRunningRef.current = false;
+    }
+  }
+
   async function setupWeeklyOperations() {
     if (weeklyOperationsSetupRunningRef.current || typeof window === "undefined") return;
-    const setupKey = `atlas-weekly-operations-v1-${activePropertyId}`;
+    const setupKey = `atlas-weekly-operations-v2-${activePropertyId}`;
     if (window.localStorage.getItem(setupKey) === "ready") return;
     weeklyOperationsSetupRunningRef.current = true;
     try {
@@ -15363,11 +15533,11 @@ ${notes.trim()}` : notes.trim(),
         return addDays(todayISO(), ((target - current + 7) % 7) + weeksAhead * 7);
       };
       const routines = [
-        { key: "monday-reset", day: "Monday", title: "Monday — Property Reset & Garage", minutes: 240, category: "House & Maintenance", notes: "Trash cans to street; weekend cleanup; interior/exterior walkthrough; owner requests; urgent and overdue work; geese and dog-area cleanup; scheduled vehicles; fuel/charging/tires/fluids/warning lights; deliveries; supplies; plan week; delegate appropriate work. Water pots and address dry spots." },
-        { key: "tuesday-dock", day: "Tuesday", title: "Tuesday — Dock, Waterfront & Recreation", minutes: 210, category: "Dock & Waterfront", notes: "Clean dock and shoreline geese debris; inspect boards, cleats, bumpers, dock boxes and lighting; inspect Cobalt, Sea-Doo, lifts, covers and rollers; inspect sport court, trampoline and recreation equipment; clean BBQ. Water pots and address dry spots." },
+        { key: "monday-reset", day: "Monday", title: "Monday — Property Reset & Garage", minutes: 240, category: "House & Maintenance", notes: "Trash cans to street; weekend cleanup; interior/exterior walkthrough; owner requests; urgent and overdue work; geese and dog-area cleanup; scheduled vehicles; fuel/charging/tires/fluids/warning lights; clean the Golf Simulator Room and restock its refrigerator; deliveries; supplies; plan week; delegate appropriate work. Water pots and address dry spots." },
+        { key: "tuesday-dock", day: "Tuesday", title: "Tuesday — Dock, Waterfront & Recreation", minutes: 210, category: "Dock & Waterfront", notes: "Clean dock and shoreline geese debris; clean and organize the dock storage box; inspect boards, cleats, bumpers, dock boxes and lighting; inspect Cobalt, Sea-Doo, lifts, covers and rollers; inspect sport court, trampoline and recreation equipment; clean BBQ. Water pots and address dry spots." },
         { key: "wednesday-landscape", day: "Wednesday", title: "Wednesday — Landscaping & Irrigation", minutes: 300, category: "Landscaping & Irrigation", notes: "Inspect lawns, beds, gardens, trees, pots and specialty plantings; review crew work; check irrigation zones, heads, pressure and dry spots; weed, prune and hand-water; inspect veggie boxes; photograph progress; record issues and create repair work orders when needed." },
         { key: "thursday-outdoor", day: "Thursday", title: "Thursday — Pool, Spa & Outdoor Cleaning", minutes: 180, category: "Pool & Spa", notes: "Complete linked Pool & Spa treatment and cleaning tasks; inspect equipment and fountain; clean patio furniture, covers, outdoor heaters, BBQ exterior and skylights; complete the scheduled window zone; finish vehicle cleaning when needed; water pots and address dry spots." },
-        { key: "friday-ready", day: "Friday", title: "Friday — Maintenance & Weekend Readiness", minutes: 300, category: "House & Maintenance", notes: "Mow and edge; inspect boilers, pumps, HVAC, mechanical rooms, leaks, alarms, temperatures and unusual noises; test important lights, doors, gates and appliances; follow up vendors; update tasks, work orders, projects, photos and service history; restock; final walkthrough; prepare weekend and next week; review owner update." },
+        { key: "friday-ready", day: "Friday", title: "Friday — Maintenance & Weekend Readiness", minutes: 300, category: "House & Maintenance", notes: "Mow and edge; inspect boilers, pumps, HVAC, mechanical rooms, leaks, alarms, temperatures and unusual noises; test important lights, doors, gates and appliances; follow up vendors; update tasks, work orders, projects, photos and service history; review bottled water, toilet paper, paper towels, cleaning supplies, tools and maintenance materials, then complete a Home Depot supply run when needed; final walkthrough; prepare weekend and next week; review owner update." },
         { key: "friday-spiders", day: "Friday", title: "Friday — Seasonal Spider Control", minutes: 75, category: "House & Maintenance", notes: "April through October: remove webs; inspect exterior walls, eaves, doors, windows, garages, dock structures and outdoor furniture; treat recurring problem areas when appropriate." },
       ];
       const windowZones = [
@@ -15382,6 +15552,10 @@ ${notes.trim()}` : notes.trim(),
         if (!task) {
           task = { id: uid("routine-task"), title: definition.title, minutes: definition.minutes, priority: "Medium", category: definition.category, locationId: "general", preferredDay: definition.day as WorkPlanDay, locked: false, recurring: true, fixedTime: "", notes: definition.notes };
           nextTasks.push(task);
+        } else {
+          const taskIndex = nextTasks.findIndex((item) => item.id === task!.id);
+          nextTasks[taskIndex] = { ...task, minutes: definition.minutes, category: definition.category, preferredDay: definition.day as WorkPlanDay, recurring: true, notes: definition.notes };
+          task = nextTasks[taskIndex];
         }
         const meta = taskDetails(task.id);
         const dueDate = meta.dueDate || weekdayDate(definition.day, "weeksAhead" in definition ? Number(definition.weeksAhead) : 0);
