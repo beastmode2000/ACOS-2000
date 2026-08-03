@@ -29302,7 +29302,7 @@ ${notes.trim()}` : notes.trim(),
             box-shadow: none !important;
           }
         `}</style>
-        {selectedService?.id ? (
+        {false && selectedService?.id ? (
           <div style={{ marginBottom: 12, padding: 14, border: `2px solid ${colors.gold}`, borderRadius: 12, background: "#FFFBEB" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
               <div><div style={eyebrowStyle}>Schedule & estimate</div><strong style={{ color: colors.navy }}>Edit when this work is due and how long it should take</strong></div>
@@ -29475,6 +29475,7 @@ ${notes.trim()}` : notes.trim(),
         vendorRecords={vendorRecords}
         locationRecords={locations}
         contactRecords={contactRecords}
+        projectRecords={photoTimelineProjects}
         procedureRecords={procedureRecords}
         documentRecords={intakeDocs}
         calendarItems={calendarItems}
@@ -38779,7 +38780,7 @@ ${notes.trim()}` : notes.trim(),
       );
     }
 
-    if (screen === "history") {
+    if (false && screen === "history") {
       const today = todayISO();
       const weekAgo = addDays(today, -7);
 
@@ -39077,6 +39078,16 @@ ${notes.trim()}` : notes.trim(),
     const summaryByScreen: Partial<
       Record<Screen, { title: string; detail: string; cards: Array<{ label: string; value: string | number; note: string }> }>
     > = {
+      history: {
+        title: "Work orders",
+        detail: "Current workload and service history for this property.",
+        cards: [
+          { label: "Open", value: serviceRecords.filter((record) => record.status !== "Completed").length, note: "Active work" },
+          { label: "Due Today", value: serviceRecords.filter((record) => record.status !== "Completed" && record.date === todayISO()).length, note: "Scheduled today" },
+          { label: "Overdue", value: serviceRecords.filter((record) => record.status !== "Completed" && Boolean(record.date) && record.date < todayISO()).length, note: "Needs attention" },
+          { label: "Recurring", value: serviceRecords.filter((record) => record.recurring).length, note: "Maintenance schedules" },
+        ],
+      },
       locations: {
         title: "Property at a glance",
         detail: "A visual snapshot of spaces, assigned equipment, and current work across this property.",
