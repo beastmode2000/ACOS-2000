@@ -5341,6 +5341,28 @@ export default function AtlasPage() {
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
   useEffect(() => {
+    const closeOpenDropdowns = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      document.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => {
+        if (!target || !details.contains(target)) details.open = false;
+      });
+    };
+    const closeDropdownsOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      document.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => {
+        details.open = false;
+      });
+    };
+
+    document.addEventListener("pointerdown", closeOpenDropdowns);
+    window.addEventListener("keydown", closeDropdownsOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOpenDropdowns);
+      window.removeEventListener("keydown", closeDropdownsOnEscape);
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     const sectionNames = new Set([
