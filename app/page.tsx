@@ -4162,6 +4162,7 @@ export default function AtlasPage() {
   const [quickCaptureMode, setQuickCaptureMode] = useState<"create" | "existing">("create");
   const [ownerUpdateOpen, setOwnerUpdateOpen] = useState(false);
   const [ownerUpdateDraft, setOwnerUpdateDraft] = useState("");
+  const [morningBriefOpen, setMorningBriefOpen] = useState(false);
   type DepartmentKind = "house" | "garage" | "pool" | "landscaping" | "marine";
   const [departmentCenter, setDepartmentCenter] = useState<DepartmentKind | "">("");
   const [departmentDrilldown, setDepartmentDrilldown] = useState<
@@ -11281,6 +11282,29 @@ export default function AtlasPage() {
     addWorkOrder(contextByArea[areaLabel] || { responsibilityArea: `Operations Dashboard · ${areaLabel}` });
   }
 
+  function addRoutinePhoto(task: { id: string; title: string }) {
+    resetIntakeDraft();
+    applyFastIntakeKind("General Photo");
+    setIntakeTitle(task.title);
+    setIntakeNotes(`Routine item: ${task.title}`);
+    setScreen("intake");
+  }
+
+  function addRoutineNote(task: { id: string; title: string }) {
+    const note = window.prompt(`Add a note for “${task.title}”:`)?.trim();
+    if (!note) return;
+    setTodayLogEntries((current) => [{ id: uid("routine-note"), propertyId: activePropertyId, date: todayISO(), category: "Note", text: `${task.title}: ${note}`, createdAt: new Date().toISOString() }, ...current]);
+    showSaveToast("Routine note added to today’s log.");
+  }
+
+  function flagRoutineProblem(task: { id: string; title: string }) {
+    const details = window.prompt(`Describe the problem found during “${task.title}”:`)?.trim();
+    if (!details) return;
+    addWorkOrder({ title: `Routine problem — ${task.title}`, date: todayISO(), priority: "High", status: "Open", notes: `Created from today’s Routine checklist.\n\n${details}`, responsibilityArea: "Mission Control · Routine Problem", workCategory: "🔧 Maintenance" });
+    setTodayLogEntries((current) => [{ id: uid("routine-problem"), propertyId: activePropertyId, date: todayISO(), category: "Repair", text: `Problem flagged: ${task.title}`, createdAt: new Date().toISOString() }, ...current]);
+    showSaveToast("Problem saved as a linked Work Order.");
+  }
+
   function addWorkOrder(initial: Partial<AtlasServiceRecord> = {}) {
     const linkedAssetPhoto = initial.assetId
       ? [...photos]
@@ -17793,13 +17817,29 @@ ${notes.trim()}` : notes.trim(),
       const work = dueToday.filter((record) => String((record as AtlasServiceRecord & { assignedTo?: string }).assignedTo || "").toLowerCase() === person.toLowerCase());
       return { person, tasks, work, count: tasks.length + work.length };
     });
+    const morningBriefText = [
+      `Good morning. Your ${dayName} routine checklist is ready.`,
+      foremanSchedule.length ? `${foremanSchedule.length} scheduled item${foremanSchedule.length === 1 ? " is" : "s are"} on today’s calendar: ${foremanSchedule.slice(0, 4).map((event) => `${event.time || "all day"}, ${event.title}`).join("; ")}.` : "There are no meetings, vendors, crew visits, or deliveries scheduled today.",
+      todaysWeather ? `Weather: ${weatherText(Number(todaysWeather.code || 0))}, high ${Math.round(Number(todaysWeather.high || 0))} degrees, with ${Number(todaysWeather.precipChance || 0)} percent precipitation.` : "Weather is still loading.",
+      foremanAssignments.some((lane) => lane.count) ? `Assigned work: ${foremanAssignments.filter((lane) => lane.count).map((lane) => `${lane.person}, ${lane.count}`).join("; ")}.` : "No separate team assignments are due today.",
+      foremanProblems.length ? `${foremanProblems.length} item${foremanProblems.length === 1 ? " needs" : "s need"} attention.` : "Nothing is blocked or overdue.",
+      ifTimeTasks.length ? `${ifTimeTasks.length} optional item${ifTimeTasks.length === 1 ? " is" : "s are"} available if time allows.` : "No optional work is currently suggested.",
+    ].join(" ");
+    const readMorningBrief = () => {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        showSaveToast("Read aloud is not supported by this browser.", "warning");
+        return;
+      }
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(morningBriefText));
+    };
     const dailyForemanPanel = (
       <div style={{ display: "grid", gap: 12 }}>
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, background: `linear-gradient(135deg, ${colors.navy}, #173E68)`, color: "#FFFFFF", border: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Mission Control</div><h1 style={{ margin: "3px 0", fontSize: isMobile ? 24 : 29 }}>Your day at {activeProperty.name}</h1><small style={{ opacity: .82 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Calendar</button><button type="button" onClick={() => setScreen("routines")} style={teamGoldButtonStyle}>Edit Routine</button></div></div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Mission Control</div><h1 style={{ margin: "3px 0", fontSize: isMobile ? 24 : 29 }}>Your day at {activeProperty.name}</h1><small style={{ opacity: .82 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setMorningBriefOpen(true)} style={teamGoldButtonStyle}>Morning Brief</button><button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Calendar</button><button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Edit Routine</button></div></div>
         </section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
-          <section style={cardStyle}><div style={{ ...eyebrowStyle, marginBottom: 7 }}>Today’s Checklist</div><AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} /></section>
+          <section style={cardStyle}><div style={{ ...eyebrowStyle, marginBottom: 7 }}>Today’s Checklist</div><AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} /></section>
           <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => setScreen("calendar")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
         </div>
         <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Assigned Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Who is handling what</h2></div><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 10 }}>{foremanAssignments.map((lane) => <button key={lane.person} type="button" onClick={() => lane.person === "Addison" ? (setTasksView("addison"), setScreen("planner")) : setScreen("team")} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10, textAlign: "left", cursor: "pointer" }}><small style={fieldLabelStyle}>{lane.person.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: colors.navy }}>{lane.count}</strong><span style={mutedSmallStyle}>assigned today</span></button>)}</div></section>
@@ -17808,6 +17848,7 @@ ${notes.trim()}` : notes.trim(),
           <section style={cardStyle}><div style={eyebrowStyle}>If Time Allows</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{ifTimeTasks.slice(0, 5).map((task) => <button key={task.id} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {taskDetails(task.id).assignee}</small></button>)}{!ifTimeTasks.length ? <div style={noticeStyle}>No optional work is suggested right now.</div> : null}</div></section>
         </div>
         <details style={{ ...cardStyle, padding: 0, overflow: "hidden" }}><summary style={{ cursor: "pointer", padding: 12, fontWeight: 950, color: colors.navy }}>Planning Tools · suggestions and essential checks</summary><div style={{ borderTop: `1px solid ${colors.line}`, padding: 12, display: "grid", gap: 8 }}>{smartDaySuggestions.slice(0, 5).map((suggestion) => <div key={suggestion.title} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}><span><strong style={{ display: "block" }}>{suggestion.title}</strong><small style={mutedSmallStyle}>{suggestion.detail}</small></span><button type="button" onClick={suggestion.action} style={secondaryButtonStyle}>{suggestion.label}</button></div>)}<button type="button" onClick={() => { setTasksView("build"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Build My Day</button></div></details>
+        {morningBriefOpen ? <div role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setMorningBriefOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 10050, background: "rgba(4,18,31,.68)", display: "grid", placeItems: "center", padding: 16 }}><section role="dialog" aria-modal="true" aria-label="Morning Brief" style={{ ...cardStyle, width: "min(620px,100%)", maxHeight: "86vh", overflowY: "auto", padding: isMobile ? 16 : 20 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}><div><div style={eyebrowStyle}>Atlas Morning Brief</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{dayName} at {activeProperty.name}</h2></div><button type="button" onClick={() => setMorningBriefOpen(false)} style={mapIconButtonStyle}>×</button></div><p style={{ lineHeight: 1.65, color: colors.text }}>{morningBriefText}</p><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={readMorningBrief} style={goldButtonStyle}>Read Aloud</button><button type="button" onClick={() => setMorningBriefOpen(false)} style={secondaryButtonStyle}>Start Checklist</button></div></section></div> : null}
       </div>
     );
 
@@ -17875,7 +17916,7 @@ ${notes.trim()}` : notes.trim(),
 
           <details style={{ marginTop: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: "9px 11px" }}>
             <summary style={{ cursor: "pointer", fontWeight: 950, color: colors.navy3 }}>Today’s Routine <span style={{ color: colors.muted, fontWeight: 800 }}>· click to open checklist</span></summary>
-            <div style={{ marginTop: 10, paddingLeft: isMobile ? 0 : 14 }}><AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} /></div>
+            <div style={{ marginTop: 10, paddingLeft: isMobile ? 0 : 14 }}><AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} /></div>
           </details>
 
           {overdueWork.length ? <>
