@@ -272,6 +272,21 @@ export default function AtlasPortfolioCenter({
                 </span>
               </div>
 
+              <button
+                type="button"
+                onClick={() => onOpenProperty(property.id, "dashboard")}
+                style={{
+                  ...smallButtonStyle,
+                  background: active ? colors.gold : colors.navy,
+                  color: active ? colors.navy : "#fff",
+                  borderColor: active ? colors.gold : colors.navy,
+                }}
+              >
+                Open {property.name}
+              </button>
+
+              <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 9 }}>
+                <summary style={{ cursor: "pointer", color: colors.muted, fontSize: 12, fontWeight: 850 }}>Property details</summary>
               <div
                 style={{
                   display: "grid",
@@ -316,19 +331,6 @@ export default function AtlasPortfolioCenter({
               >
                 <button
                   type="button"
-                  onClick={() => onOpenProperty(property.id, "dashboard")}
-                  style={{
-                    ...smallButtonStyle,
-                    gridColumn: "1 / -1",
-                    background: active ? colors.gold : colors.navy,
-                    color: active ? colors.navy : "#fff",
-                    borderColor: active ? colors.gold : colors.navy,
-                  }}
-                >
-                  Open {property.name}
-                </button>
-                <button
-                  type="button"
                   onClick={() => onOpenProperty(property.id, "history")}
                   style={smallButtonStyle}
                 >
@@ -356,6 +358,7 @@ export default function AtlasPortfolioCenter({
                   Parts
                 </button>
               </div>
+              </details>
             </article>
           );
         })}
@@ -363,4 +366,3 @@ export default function AtlasPortfolioCenter({
     </div>
   );
 }
-
