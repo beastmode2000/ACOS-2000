@@ -5581,6 +5581,8 @@ export default function AtlasPage() {
   const exteriorGlassCareSetupRunningRef = useRef(false);
   const roofDrainageCareSetupRunningRef = useRef(false);
   const holidayTreeSetupRunningRef = useRef(false);
+  const workOrderDateReconciliationRunningRef = useRef(false);
+  const workOrderDateReconciliationTimerRef = useRef<number | null>(null);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
@@ -6578,6 +6580,14 @@ export default function AtlasPage() {
     if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
     void setupHolidayTreeSchedule();
   }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    if (workOrderDateReconciliationTimerRef.current) window.clearTimeout(workOrderDateReconciliationTimerRef.current);
+    workOrderDateReconciliationTimerRef.current = window.setTimeout(() => { void reconcileApplianceAndPressureWashingDates(); }, 1800);
+    return () => {
+      if (workOrderDateReconciliationTimerRef.current) window.clearTimeout(workOrderDateReconciliationTimerRef.current);
+    };
+  }, [ready, syncState, activePropertyId, serviceRecords.length, assetRecords.length, calendarItems.length]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -16706,6 +16716,126 @@ ${notes.trim()}` : notes.trim(),
       showSaveToast("Cold-season appliance scheduling will retry.", "warning");
     } finally {
       applianceColdSeasonSetupRunningRef.current = false;
+    }
+  }
+
+  async function reconcileApplianceAndPressureWashingDates() {
+    if (workOrderDateReconciliationRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
+    const setupKey = "atlas-work-order-date-reconciliation-v2-2000";
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    workOrderDateReconciliationRunningRef.current = true;
+    try {
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
+      const applianceSeasonYear = todayISO() <= `${currentYear}-12-20` ? currentYear : currentYear + 1;
+      const pressureFallYear = todayISO() <= `${currentYear}-12-15` ? currentYear : currentYear + 1;
+      const appliancePattern = /appliance|refrigerator|fridge|frige|freezer|dishwasher|washing machine|washer|dryer|range|oven|microwave|ice maker|wine cooler|wine chiller/i;
+      const pressurePattern = /pressure wash|power wash/i;
+      const applianceAssetIds = new Set(assetRecords.filter((asset) => appliancePattern.test(`${asset.name} ${asset.category} ${asset.make || ""} ${asset.model || ""}`)).map((asset) => asset.id));
+      const activeRecords = nextWorkOrders.filter((record) => record.status !== "Completed" || record.recurring);
+      const applianceRecords = activeRecords.filter((record) => applianceAssetIds.has(record.assetId) || appliancePattern.test(`${record.title} ${record.workCategory || ""} ${record.notes || ""}`)).sort((a, b) => a.title.localeCompare(b.title));
+      const pressureRecords = activeRecords.filter((record) => pressurePattern.test(`${record.title} ${record.workCategory || ""} ${record.notes || ""}`)).sort((a, b) => a.title.localeCompare(b.title));
+      const workOrderIdsUpdated = new Set<string>();
+      const upsertCalendar = (workOrder: AtlasServiceRecord, categoryLabel: string, repeat: CalendarRepeat, notes: string) => {
+        const existingIndex = nextCalendar.findIndex((item) => item.linkedType === "Work Order" && item.linkedId === workOrder.id);
+        const existing = existingIndex >= 0 ? nextCalendar[existingIndex] : undefined;
+        const calendarRecord = normalizeCalendar({
+          ...existing,
+          id: existing?.id || `calendar-scheduled-${workOrder.id}`,
+          propertyId: activePropertyId,
+          date: workOrder.date,
+          title: workOrder.title,
+          area: workOrder.responsibilityArea || "House & Maintenance",
+          categoryLabel,
+          allDay: true,
+          repeat,
+          reminder: "Week before",
+          notes,
+          linkedType: "Work Order",
+          linkedId: workOrder.id,
+          linkedName: workOrder.title,
+          source: "work-order",
+          status: "Scheduled",
+        });
+        if (existingIndex >= 0) nextCalendar[existingIndex] = calendarRecord;
+        else nextCalendar.push(calendarRecord);
+        recordsToSave.push({ table: "calendar", record: calendarRecord });
+      };
+      const applianceStart = `${applianceSeasonYear}-11-05`;
+      const applianceSpreadDays = 44;
+      applianceRecords.forEach((record, index) => {
+        const offset = applianceRecords.length <= 1 ? 0 : Math.round((index * applianceSpreadDays) / (applianceRecords.length - 1));
+        const dueDate = addDays(applianceStart, offset);
+        const recordIndex = nextWorkOrders.findIndex((item) => item.id === record.id);
+        const schedulingNote = `Cold-season appliance work scheduled for ${formatDate(dueDate)}. Atlas distributes appliance work from November 5 through December 19 when estate operations are slower.`;
+        const updated = normalizeService({
+          ...record,
+          date: dueDate,
+          status: record.status === "Completed" ? "Open" : record.status,
+          recurring: true,
+          recurrenceInterval: 1,
+          recurrenceUnit: "Years",
+          recurrenceEndDate: "",
+          season: "Winter",
+          workType: record.workType || "Preventive Maintenance",
+          workCategory: record.workCategory || "Appliances",
+          responsibilityArea: record.responsibilityArea || "House & Maintenance",
+          notes: record.notes?.includes("Cold-season appliance work scheduled") ? record.notes.replace(/Cold-season appliance work scheduled[^\n]*/, schedulingNote) : [record.notes, schedulingNote].filter(Boolean).join("\n\n"),
+        });
+        nextWorkOrders[recordIndex] = updated;
+        workOrderIdsUpdated.add(updated.id);
+        recordsToSave.push({ table: "work_orders", record: { ...updated, propertyId: activePropertyId } });
+        upsertCalendar(updated, "Appliance Service", "Yearly", schedulingNote);
+      });
+      const genericPressureRecords = pressureRecords.filter((record) => !/post-pollen|post-leaf/i.test(record.title));
+      pressureRecords.forEach((record) => {
+        if (workOrderIdsUpdated.has(record.id)) return;
+        const genericIndex = genericPressureRecords.findIndex((item) => item.id === record.id);
+        const isPollenRecord = /post-pollen|spring|pollen/i.test(`${record.title} ${record.notes}`);
+        const isLeafRecord = /post-leaf|fall|leaf/i.test(`${record.title} ${record.notes}`);
+        const dueDate = isPollenRecord
+          ? (todayISO() <= `${currentYear}-06-05` ? `${currentYear}-06-05` : `${currentYear + 1}-06-05`)
+          : isLeafRecord
+            ? `${pressureFallYear}-12-05`
+            : addDays(`${pressureFallYear}-12-05`, Math.max(0, genericIndex));
+        const everySixMonths = !isPollenRecord && !isLeafRecord;
+        const recordIndex = nextWorkOrders.findIndex((item) => item.id === record.id);
+        const schedulingNote = everySixMonths
+          ? `Pressure washing is due ${formatDate(dueDate)} after the main leaf drop, then every six months for the post-pollen and post-leaf cleaning cycles.`
+          : `Seasonal pressure washing is due ${formatDate(dueDate)} during its recommended weather-flexible cleaning window.`;
+        const updated = normalizeService({
+          ...record,
+          date: dueDate,
+          status: record.status === "Completed" ? "Open" : record.status,
+          recurring: true,
+          recurrenceInterval: everySixMonths ? 6 : 1,
+          recurrenceUnit: everySixMonths ? "Months" : "Years",
+          recurrenceEndDate: "",
+          season: isPollenRecord ? "Spring" : "Fall",
+          workType: record.workType || "Preventive Maintenance",
+          workCategory: record.workCategory === "Maintenance" || !record.workCategory ? "Exterior Cleaning" : record.workCategory,
+          responsibilityArea: record.responsibilityArea || "House & Maintenance",
+          notes: record.notes?.includes("Pressure washing is due") || record.notes?.includes("Seasonal pressure washing is due") ? record.notes.replace(/(?:Pressure washing|Seasonal pressure washing) is due[^\n]*/, schedulingNote) : [record.notes, schedulingNote].filter(Boolean).join("\n\n"),
+        });
+        nextWorkOrders[recordIndex] = updated;
+        recordsToSave.push({ table: "work_orders", record: { ...updated, propertyId: activePropertyId } });
+        upsertCalendar(updated, "Seasonal Exterior Cleaning", everySixMonths ? "Custom" : "Yearly", schedulingNote);
+      });
+      if (!applianceRecords.length && !pressureRecords.length) throw new Error("No appliance or pressure-washing Work Orders were available to reconcile.");
+      setServiceRecords(byTitle(nextWorkOrders));
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some Work Order due dates did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast(`${applianceRecords.length} appliance and ${pressureRecords.length} pressure-washing Work Orders now have due dates.`);
+    } catch (error) {
+      console.error("Atlas Work Order date reconciliation failed", error);
+      showSaveToast("Work Order date scheduling will retry.", "warning");
+    } finally {
+      workOrderDateReconciliationRunningRef.current = false;
     }
   }
 
