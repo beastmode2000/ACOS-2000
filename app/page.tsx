@@ -318,6 +318,7 @@ type AtlasOperationsTemplateItem = {
   priority: "Low" | "Medium" | "High";
   category: string;
   addisonReady?: boolean;
+  assignedTo?: "Nick" | "Addison" | "Pat" | "Other" | "Unassigned";
 };
 
 type AtlasOperationsTemplate = {
@@ -338,13 +339,23 @@ const atlasOperationsTemplates: AtlasOperationsTemplate[] = [
     createsProject: true,
     items: [
       { title: "Confirm party timing, guest areas, and owner priorities", daysBefore: 7, minutes: 30, priority: "High", category: "Planning" },
-      { title: "Landscape appearance walkthrough and punch list", daysBefore: 6, minutes: 60, priority: "High", category: "Landscaping" },
-      { title: "Weed beds, water pots, and clean courtyard", daysBefore: 4, minutes: 120, priority: "Medium", category: "Landscaping", addisonReady: true },
-      { title: "Mow and edge for graduation party", daysBefore: 2, minutes: 180, priority: "High", category: "Landscaping" },
-      { title: "Clean walkways, staircases, and outdoor furniture", daysBefore: 1, minutes: 120, priority: "High", category: "Cleanup / Prep", addisonReady: true },
-      { title: "Pool, spa, dock, lighting, and restroom readiness check", daysBefore: 1, minutes: 90, priority: "High", category: "Inspection" },
+      { title: "Landscape appearance walkthrough and punch list", daysBefore: 7, minutes: 45, priority: "High", category: "Landscaping", assignedTo: "Pat" },
+      { title: "Weed and remove dead leaves from patio and guest-area beds", daysBefore: 5, minutes: 120, priority: "High", category: "Landscaping", assignedTo: "Pat" },
+      { title: "Refresh mulch in visible beds and party areas", daysBefore: 4, minutes: 120, priority: "Medium", category: "Landscaping", assignedTo: "Pat" },
+      { title: "Mow, edge, and blow lawns and hardscape", daysBefore: 2, minutes: 180, priority: "High", category: "Landscaping", assignedTo: "Pat" },
+      { title: "Clean exterior windows in party and guest areas", daysBefore: 3, minutes: 180, priority: "High", category: "Cleanup / Prep", assignedTo: "Nick" },
+      { title: "Clean skylights and remove visible debris", daysBefore: 2, minutes: 90, priority: "Medium", category: "Cleanup / Prep", assignedTo: "Nick" },
+      { title: "Remove exterior webs around entrances, patios, and gathering areas", daysBefore: 2, minutes: 60, priority: "Medium", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
+      { title: "Clean outdoor heaters and confirm operation", daysBefore: 2, minutes: 60, priority: "High", category: "Cleanup / Prep", assignedTo: "Nick" },
+      { title: "Clean outdoor furniture, cushions, and furniture covers", daysBefore: 2, minutes: 120, priority: "High", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
+      { title: "Clean sliding-door tracks and verify smooth operation", daysBefore: 1, minutes: 60, priority: "High", category: "Cleanup / Prep", assignedTo: "Nick" },
+      { title: "Deep-clean BBQ inside and outside and confirm fuel", daysBefore: 1, minutes: 90, priority: "High", category: "Cleanup / Prep", assignedTo: "Nick" },
+      { title: "Clean walkways, staircases, patios, and obvious exterior messes", daysBefore: 1, minutes: 120, priority: "High", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
+      { title: "Pool, spa, dock, lighting, and restroom readiness check", daysBefore: 1, minutes: 90, priority: "High", category: "Inspection", assignedTo: "Nick" },
+      { title: "Help vendors unload and set up party equipment", daysBefore: 0, minutes: 120, priority: "High", category: "Vendor / Event", addisonReady: true, assignedTo: "Addison" },
+      { title: "Remove any obvious mess before guests arrive", daysBefore: 0, minutes: 45, priority: "High", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
       { title: "Final party walkthrough", daysBefore: 0, minutes: 45, priority: "High", category: "Inspection" },
-      { title: "Post-party cleanup and reset", daysBefore: -1, minutes: 180, priority: "Medium", category: "Cleanup / Prep", addisonReady: true },
+      { title: "Post-party cleanup, furniture-cover reset, and vendor pickup check", daysBefore: -1, minutes: 180, priority: "Medium", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
     ],
   },
   {
@@ -17942,7 +17953,7 @@ ${notes.trim()}` : notes.trim(),
         next[task.id] = {
           status: "Open",
           dueDate: addDays(targetDate, -item.daysBefore),
-          assignee: item.addisonReady ? "Addison" : "Nick",
+          assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"),
           createdAt,
           projectId: projectId || undefined,
           notes: `Created from ${template.title}.`,
@@ -20020,6 +20031,7 @@ ${notes.trim()}` : notes.trim(),
     const todaysLogEntries = todayLogEntries.filter((entry) => entry.date === today && entry.propertyId === activePropertyId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     const scheduledRoutineEvents = todayEvents.filter((item) => Boolean((item as CalendarItem & { recurring?: boolean }).recurring));
     const nonRoutineTodayEvents = todayEvents.filter((item) => !Boolean((item as CalendarItem & { recurring?: boolean }).recurring));
+    const visibleRoutineItems: DashboardRoutineItem[] = dashboardRoutineItems.length ? dashboardRoutineItems : scheduledRoutineEvents.map((item) => ({ id: String(item.instanceId || item.id), title: item.title, detail: item.categoryLabel || item.area || "Recurring routine", time: item.time || "" }));
 
     const addTodayLogEntry = () => {
       const text = todayLogText.trim();
@@ -20050,6 +20062,8 @@ ${notes.trim()}` : notes.trim(),
     const recentFeedFutureLimit = Date.now() + 24 * 60 * 60 * 1000;
     const dashboardFeedItems: DashboardFeedItem[] = [
       ...completedWork.filter((record) => completionTime(record as AtlasServiceRecord) > 0).map((record) => ({ id: `feed-complete-${record.id}`, type: "Work" as const, title: record.title || "Work completed", detail: `${(record as AtlasServiceRecord).workCategory || "Work order"} completed`, at: new Date(completionTime(record as AtlasServiceRecord)).toISOString(), icon: "✓", tone: "green" as const, action: () => { setSelectedServiceId(record.id); setScreen("history"); }, actionLabel: "Open" })),
+      ...workPlanTasks.filter((task) => { const meta = taskDetails(task.id); return meta.completedAt?.slice(0,10) === today || meta.completionHistory?.includes(today); }).map((task) => { const meta = taskDetails(task.id); return ({ id: `feed-task-complete-${task.id}-${today}`, type: "Work" as const, title: task.title || "Task completed", detail: `Checklist completed${meta.assignee && meta.assignee !== "Unassigned" ? ` · ${meta.assignee}` : ""}`, at: meta.completedAt?.slice(0,10) === today ? meta.completedAt : `${today}T12:00:00`, icon: "✓", tone: "green" as const, action: () => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }, actionLabel: "Open" }); }),
+      ...visibleRoutineItems.filter((item) => completedDashboardRoutineIds.includes(item.id)).map((item, index) => ({ id: `feed-routine-complete-${item.id}-${today}`, type: "Work" as const, title: item.title || "Routine item completed", detail: "Routine checklist completed", at: `${today}T12:${String(index).padStart(2,"0")}:00`, icon: "✓", tone: "green" as const, action: () => setScreen("routines"), actionLabel: "Routine" })),
       ...openWork.filter((record) => Boolean(record.date) && String(record.date) < today).map((record) => ({ id: `feed-overdue-${record.id}`, type: "Alerts" as const, title: record.title || "Overdue work", detail: `Overdue since ${new Date(`${record.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}`, at: `${record.date || today}T12:00:00`, icon: "!", tone: "red" as const, action: () => { setSelectedServiceId(record.id); setScreen("history"); }, actionLabel: "Review" })),
       ...activeRequests.filter((request) => Boolean(request.submittedAt)).map((request) => ({ id: `feed-request-${request.id}`, type: "Requests" as const, title: request.title || "New request", detail: `${request.requesterName || "Property request"} · ${request.status || "Open"}`, at: String(request.submittedAt), icon: "↗", tone: "gold" as const, action: () => setScreen("requests"), actionLabel: "Open" })),
       ...vendorEvents.filter((item) => Boolean(item.date) && String(item.date) <= today).map((item) => ({ id: `feed-vendor-${item.instanceId || item.id}`, type: "Vendors" as const, title: item.title || "Vendor activity", detail: `${item.date === today ? "Today" : new Date(`${item.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}${item.time ? ` · ${item.time}` : ""}`, at: `${item.date}T${item.time || "12:00"}:00`, icon: "V", tone: "blue" as const, action: () => setScreen("calendar"), actionLabel: "Calendar" })),
@@ -20106,7 +20120,6 @@ ${notes.trim()}` : notes.trim(),
         return aOverdue - bOverdue || priorityRank(a.record) - priorityRank(b.record) || String(a.record.date || "9999-12-31").localeCompare(String(b.record.date || "9999-12-31"));
       })
       .slice(0, 4);
-    const visibleRoutineItems: DashboardRoutineItem[] = dashboardRoutineItems.length ? dashboardRoutineItems : scheduledRoutineEvents.map((item) => ({ id: String(item.instanceId || item.id), title: item.title, detail: item.categoryLabel || item.area || "Recurring routine", time: item.time || "" }));
     const completedRoutineCount = visibleRoutineItems.filter((item) => completedDashboardRoutineIds.includes(item.id)).length;
     const routineProgress = visibleRoutineItems.length ? Math.round((completedRoutineCount / visibleRoutineItems.length) * 100) : 0;
     const scheduledCount = dueToday.length + nonRoutineTodayEvents.length + todaysRequests.length;
