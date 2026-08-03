@@ -11912,6 +11912,11 @@ export default function AtlasPage() {
           );
         }
 
+        const deleteAlreadyFinished = method === "DELETE" && response.status === 404 && /not found|already(?:\s+been)?\s+deleted|does not exist/i.test(String(payload?.error || payload?.message || ""));
+        if (deleteAlreadyFinished) {
+          return { ok: true, id: String(body.id || ""), alreadyDeleted: true };
+        }
+
         if (!response.ok || payload?.ok !== true) {
           const message =
             payload?.error ||
@@ -11919,8 +11924,7 @@ export default function AtlasPage() {
 
           const retryable =
             attempt === 1 &&
-            (response.status === 404 ||
-              response.status === 408 ||
+            (response.status === 408 ||
               response.status === 429 ||
               response.status >= 500);
 
@@ -16425,12 +16429,18 @@ ${notes.trim()}` : notes.trim(),
           nextTasks[taskIndex] = { ...cleaningTask, recurring: true, locationId: vehicle.locationId || asset.locationId || "general" };
           cleaningTask = nextTasks[taskIndex];
         }
+        const existingCleaningMeta = nextTaskMeta[cleaningTask.id] || taskDetails(cleaningTask.id);
+        const cleaningAssignee = /mercedes/i.test(vehicle.name)
+          ? "Addison"
+          : existingCleaningMeta.assignee && existingCleaningMeta.assignee !== "Unassigned"
+            ? existingCleaningMeta.assignee
+            : vehicle.assignedTo === "Addison" ? "Addison" : "Nick";
         nextTaskMeta[cleaningTask.id] = {
-          ...taskDetails(cleaningTask.id),
-          status: taskDetails(cleaningTask.id).status === "Completed" ? "Open" : taskDetails(cleaningTask.id).status,
-          dueDate: taskDetails(cleaningTask.id).dueDate || cleaningDueDate,
-          assignee: vehicle.assignedTo === "Addison" ? "Addison" : "Nick",
-          createdAt: taskDetails(cleaningTask.id).createdAt || new Date().toISOString(),
+          ...existingCleaningMeta,
+          status: existingCleaningMeta.status === "Completed" ? "Open" : existingCleaningMeta.status,
+          dueDate: existingCleaningMeta.dueDate || cleaningDueDate,
+          assignee: cleaningAssignee,
+          createdAt: existingCleaningMeta.createdAt || new Date().toISOString(),
           assetId: asset.id,
           vehicleId: vehicle.id,
           recurrenceInterval: cleaningInterval,
