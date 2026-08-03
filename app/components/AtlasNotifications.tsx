@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
   propertyId: string;
@@ -63,6 +63,7 @@ function recordDateKey(value: unknown) {
 }
 
 export default function AtlasNotifications(props: Props) {
+  const notificationRootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [readIds, setReadIds] = useState<string[]>([]);
   const [browserEnabled, setBrowserEnabled] = useState(false);
@@ -71,6 +72,25 @@ export default function AtlasNotifications(props: Props) {
     useState("all");
   const [preferences, setPreferences] =
     useState<NotificationPreferences>(DEFAULT_PREFERENCES);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && !notificationRootRef.current?.contains(target)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeOutside);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
 
   useEffect(() => {
     try {
@@ -299,11 +319,11 @@ export default function AtlasNotifications(props: Props) {
   }
 
   return (
-    <div style={{ position:"relative", marginBottom:8 }}>
+    <div ref={notificationRootRef} style={{ position:"relative", marginBottom:8 }}>
       <button type="button" onClick={()=>setOpen((value)=>!value)} style={{width:"100%",minHeight:42,border:`1px solid ${props.colors.line}`,borderRadius:10,background:"#fff",color:props.colors.navy,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 11px"}}>
         <span>Notifications</span><span style={{minWidth:24,height:24,borderRadius:999,background:unread.length?props.colors.gold:props.colors.panel,display:"inline-grid",placeItems:"center",fontSize:12}}>{unread.length}</span>
       </button>
-      {open ? <div style={{
+      {open ? <div role="dialog" aria-modal={props.isMobile} aria-label="Atlas notifications" style={{
         position:props.isMobile?"fixed":"absolute",
         top:props.isMobile?12:48,
         right:props.isMobile?10:0,
@@ -318,16 +338,17 @@ export default function AtlasNotifications(props: Props) {
         border:`1px solid ${props.colors.line}`,
         borderRadius:14,
         background:"#fff",
+        color:props.colors.navy,
         boxShadow:"0 18px 45px rgba(7,27,47,.2)",
         padding:12,
         display:"grid",
         alignContent:"start",
         gap:8
       }}>
-        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",paddingRight:props.isMobile?42:0}}><strong>Atlas Notifications</strong><button type="button" onClick={markAllRead} style={{border:0,background:"transparent",fontWeight:800,cursor:"pointer"}}>Mark all read</button></div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",paddingRight:props.isMobile?42:0,color:props.colors.navy}}><strong>Atlas Notifications</strong><button type="button" onClick={markAllRead} style={{border:0,background:"transparent",color:props.colors.navy,fontWeight:800,cursor:"pointer"}}>Mark all read</button></div>
         {props.isMobile ? <button type="button" onClick={()=>setOpen(false)} aria-label="Close notifications" style={{position:"absolute",top:8,right:8,width:36,height:36,border:`1px solid ${props.colors.line}`,borderRadius:9,background:"#fff",fontSize:20,fontWeight:900,cursor:"pointer"}}>×</button> : null}
-        <label style={{display:"flex",gap:8,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={browserEnabled} onChange={()=>void toggleBrowserAlerts()}/>Phone / browser alerts on this device</label>
-        <label style={{display:"grid",gap:4,fontSize:11,fontWeight:800}}>
+        <label style={{display:"flex",gap:8,alignItems:"center",color:props.colors.navy,fontSize:12,fontWeight:800}}><input type="checkbox" checked={browserEnabled} onChange={()=>void toggleBrowserAlerts()}/>Phone / browser alerts on this device</label>
+        <label style={{display:"grid",gap:4,color:props.colors.navy,fontSize:11,fontWeight:800}}>
           Phone alert property
           <select value={notificationPropertyId} onChange={(event)=>void updateNotificationProperty(event.currentTarget.value)} style={{minHeight:38,border:`1px solid ${props.colors.line}`,borderRadius:8,background:"#fff",padding:"7px 9px",fontWeight:800}}>
             <option value="all">All properties</option>
@@ -346,13 +367,13 @@ export default function AtlasNotifications(props: Props) {
             ["requests", "New owner requests"],
             ["inbox", "New Inbox items"],
           ] as const).map(([key, label]) => (
-            <label key={key} style={{display:"flex",gap:7,alignItems:"flex-start",fontSize:11,fontWeight:750,border:`1px solid ${props.colors.line}`,borderRadius:8,padding:7}}>
+            <label key={key} style={{display:"flex",gap:7,alignItems:"flex-start",color:props.colors.navy,fontSize:11,fontWeight:750,border:`1px solid ${props.colors.line}`,borderRadius:8,padding:7}}>
               <input type="checkbox" checked={preferences[key]} onChange={(event)=>void updateNotificationPreference(key,event.currentTarget.checked)}/>
               <span>{label}</span>
             </label>
           ))}
         </div>
-        {alerts.length ? alerts.map((alert)=><button key={alert.id} type="button" onClick={()=>{setOpen(false);alert.open();}} style={{textAlign:"left",border:`1px solid ${props.colors.line}`,borderLeft:`4px solid ${alert.tone==="urgent"?"#B42318":alert.tone==="attention"?props.colors.gold:"#3B82F6"}`,borderRadius:9,background:readIds.includes(alert.id)?props.colors.panel:"#fff",padding:10,cursor:"pointer"}}><strong style={{display:"block",color:props.colors.navy}}>{alert.title}</strong><span style={{fontSize:12,color:props.colors.muted}}>{alert.detail}</span></button>) : <div style={{padding:14,color:props.colors.muted}}>No active notifications.</div>}
+        {alerts.length ? alerts.map((alert)=><button key={alert.id} type="button" onClick={()=>{setOpen(false);alert.open();}} style={{textAlign:"left",color:props.colors.navy,border:`1px solid ${props.colors.line}`,borderLeft:`4px solid ${alert.tone==="urgent"?"#B42318":alert.tone==="attention"?props.colors.gold:"#3B82F6"}`,borderRadius:9,background:readIds.includes(alert.id)?props.colors.panel:"#fff",padding:10,cursor:"pointer"}}><strong style={{display:"block",color:props.colors.navy}}>{alert.title}</strong><span style={{display:"block",marginTop:2,fontSize:12,color:props.colors.muted}}>{alert.detail}</span></button>) : <div style={{padding:14,color:props.colors.muted}}>No active notifications.</div>}
       </div> : null}
     </div>
   );
