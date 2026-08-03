@@ -9,6 +9,10 @@ type RoutineTask = {
   title: string;
   enabled: boolean;
   completed?: boolean;
+  status?: "open" | "completed" | "skipped" | "deferred";
+  assignedTo?: "Nick" | "Addison" | "Pat" | "Crew";
+  deferredTo?: string;
+  deferredFrom?: string;
 };
 
 type RoutineTemplate = {
@@ -72,6 +76,9 @@ function normalizeTasks(value: unknown): RoutineTask[] {
         return null;
       }
 
+      const completed = record.completed === true;
+      const status = cleanTaskStatus(record.status, completed);
+
       return {
         id:
           typeof record.id === "string" && record.id.trim()
@@ -79,12 +86,19 @@ function normalizeTasks(value: unknown): RoutineTask[] {
             : `routine-task-${Date.now()}-${index}`,
         title,
         enabled: record.enabled !== false,
-        ...(typeof record.completed === "boolean"
-          ? { completed: record.completed }
-          : {}),
+        completed: status === "completed",
+        status,
+        assignedTo: cleanAssignee(record.assignedTo),
+        ...(typeof record.deferredTo === "string" && record.deferredTo ? { deferredTo: record.deferredTo } : {}),
+        ...(typeof record.deferredFrom === "string" && record.deferredFrom ? { deferredFrom: record.deferredFrom } : {}),
       };
     })
     .filter((task): task is RoutineTask => Boolean(task));
+}
+
+function asTemplateTask(task: RoutineTask): RoutineTask {
+  const { completed: _completed, status: _status, deferredTo: _deferredTo, deferredFrom: _deferredFrom, ...templateTask } = task;
+  return templateTask;
 }
 
 function weekdayFromDate(dateKey: string) {
@@ -269,9 +283,7 @@ async function loadTemplates(
   return rows.map((row) => ({
     day: Number(row.day_of_week),
     name: String(row.name || "Routine"),
-    tasks: normalizeTasks(row.tasks).map(
-      ({ completed: _completed, ...task }) => task,
-    ),
+    tasks: normalizeTasks(row.tasks).map(asTemplateTask),
   }));
 }
 
@@ -321,12 +333,7 @@ async function getOrCreateOccurrence(
   `) as unknown as Array<Record<string, unknown>>;
 
   if (!occurrenceRows.length) {
-    const occurrenceTasks = templateTasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      enabled: task.enabled,
-      completed: false,
-    }));
+    const occurrenceTasks = synchronizeOccurrenceTasks(templateTasks);
 
     await sql`
       INSERT INTO atlas_routine_occurrences (
@@ -359,23 +366,8 @@ async function getOrCreateOccurrence(
 
   const occurrence = occurrenceRows[0];
   const existingTasks = normalizeTasks(occurrence.tasks);
-  const completedById = new Map(
-    existingTasks.map((task) => [task.id, Boolean(task.completed)]),
-  );
-
-  const synchronizedTasks = templateTasks.map((task) => ({
-    id: task.id,
-    title: task.title,
-    enabled: task.enabled,
-    completed: completedById.get(task.id) || false,
-  }));
-
-  const existingComparable = existingTasks.map((task) => ({
-    id: task.id,
-    title: task.title,
-    enabled: task.enabled,
-    completed: Boolean(task.completed),
-  }));
+  const synchronizedTasks = synchronizeOccurrenceTasks(templateTasks, existingTasks);
+  const existingComparable = existingTasks;
 
   const needsSynchronization =
     String(occurrence.routine_name || "") !== templateName ||
@@ -428,18 +420,7 @@ async function refreshOccurrenceForDate(
   }
 
   const existingTasks = normalizeTasks(rows[0].tasks);
-  const completedById = new Map(
-    existingTasks.map((task) => [task.id, Boolean(task.completed)]),
-  );
-
-  const refreshedTasks = templateTasks
-    .filter((task) => task.enabled)
-    .map((task) => ({
-      id: task.id,
-      title: task.title,
-      enabled: task.enabled,
-      completed: completedById.get(task.id) || false,
-    }));
+  const refreshedTasks = synchronizeOccurrenceTasks(templateTasks, existingTasks);
 
   await sql`
     UPDATE atlas_routine_occurrences
@@ -523,9 +504,7 @@ export async function POST(request: NextRequest) {
       }
 
       const name = String(body.name || "Routine").trim() || "Routine";
-      const tasks = normalizeTasks(body.tasks).map(
-        ({ completed: _completed, ...task }) => task,
-      );
+      const tasks = normalizeTasks(body.tasks).map(asTemplateTask);
 
       await sql`
         INSERT INTO atlas_routine_templates (
@@ -613,7 +592,9 @@ export async function POST(request: NextRequest) {
         item.id === taskId
           ? {
               ...item,
-              completed: !Boolean(item.completed),
+              completed: item.status !== "completed",
+              status: item.status === "completed" ? "open" : "completed",
+              deferredTo: undefined,
             }
           : item,
       );
@@ -637,6 +618,65 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (action === "assign-task" || action === "skip-task" || action === "defer-task") {
+      const dateKey = asDateKey(body.date);
+      const taskId = String(body.taskId || "");
+      const occurrence = await getOrCreateOccurrence(sql, propertyId, dateKey);
+      const selectedTask = occurrence?.tasks.find((item) => item.id === taskId);
+      if (!occurrence || !selectedTask) {
+        return NextResponse.json({ ok: false, error: "Routine item was not found" }, { status: 404 });
+      }
+
+      if (action === "assign-task") {
+        const assignedTo = cleanAssignee(body.assignedTo);
+        const tasks = occurrence.tasks.map((item) => item.id === taskId ? { ...item, assignedTo } : item);
+        await sql`
+          UPDATE atlas_routine_occurrences
+          SET tasks = ${JSON.stringify(tasks)}::jsonb, updated_at = NOW()
+          WHERE property_id = ${propertyId} AND occurrence_date = ${dateKey}::date
+        `;
+        return NextResponse.json({ ok: true, propertyId, occurrence: { ...occurrence, tasks } });
+      }
+
+      if (action === "skip-task") {
+        const tasks = occurrence.tasks.map((item) => item.id === taskId ? { ...item, completed: false, status: "skipped" as const, deferredTo: undefined } : item);
+        await sql`
+          UPDATE atlas_routine_occurrences
+          SET tasks = ${JSON.stringify(tasks)}::jsonb, updated_at = NOW()
+          WHERE property_id = ${propertyId} AND occurrence_date = ${dateKey}::date
+        `;
+        return NextResponse.json({ ok: true, propertyId, occurrence: { ...occurrence, tasks } });
+      }
+
+      const targetDate = nextWorkdayDate(dateKey);
+      const targetOccurrence = await getOrCreateOccurrence(sql, propertyId, targetDate);
+      if (!targetOccurrence) {
+        return NextResponse.json({ ok: false, error: "The next workday routine could not be created" }, { status: 400 });
+      }
+      const arrivalId = `${selectedTask.id}--from-${dateKey}`;
+      const arrival: RoutineTask = {
+        ...selectedTask,
+        id: arrivalId,
+        completed: false,
+        status: "open",
+        deferredFrom: dateKey,
+        deferredTo: undefined,
+      };
+      const targetTasks = targetOccurrence.tasks.some((item) => item.id === arrivalId) ? targetOccurrence.tasks : [...targetOccurrence.tasks, arrival];
+      const sourceTasks = occurrence.tasks.map((item) => item.id === taskId ? { ...item, completed: false, status: "deferred" as const, deferredTo: targetDate } : item);
+      await sql`
+        UPDATE atlas_routine_occurrences
+        SET tasks = ${JSON.stringify(targetTasks)}::jsonb, updated_at = NOW()
+        WHERE property_id = ${propertyId} AND occurrence_date = ${targetDate}::date
+      `;
+      await sql`
+        UPDATE atlas_routine_occurrences
+        SET tasks = ${JSON.stringify(sourceTasks)}::jsonb, updated_at = NOW()
+        WHERE property_id = ${propertyId} AND occurrence_date = ${dateKey}::date
+      `;
+      return NextResponse.json({ ok: true, propertyId, movedTo: targetDate, occurrence: { ...occurrence, tasks: sourceTasks } });
+    }
+
     return NextResponse.json(
       {
         ok: false,
@@ -654,4 +694,40 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+function synchronizeOccurrenceTasks(templateTasks: RoutineTask[], existingTasks: RoutineTask[] = []) {
+  const existingById = new Map(existingTasks.map((task) => [task.id, task]));
+  const templateIds = new Set(templateTasks.map((task) => task.id));
+  const scheduled = templateTasks.filter((task) => task.enabled).map((task) => {
+    const existing = existingById.get(task.id);
+    const status = existing?.status || (existing?.completed ? "completed" : "open");
+    return {
+      id: task.id,
+      title: task.title,
+      enabled: task.enabled,
+      completed: status === "completed",
+      status,
+      assignedTo: existing?.assignedTo || task.assignedTo || "Nick",
+      ...(existing?.deferredTo ? { deferredTo: existing.deferredTo } : {}),
+    } as RoutineTask;
+  });
+  const deferredArrivals = existingTasks.filter((task) => task.deferredFrom && !templateIds.has(task.id));
+  return [...scheduled, ...deferredArrivals];
+}
+
+function nextWorkdayDate(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  do {
+    date.setUTCDate(date.getUTCDate() + 1);
+  } while (date.getUTCDay() === 0 || date.getUTCDay() === 6);
+  return date.toISOString().slice(0, 10);
+}
+
+function cleanAssignee(value: unknown): RoutineTask["assignedTo"] {
+  return value === "Addison" || value === "Pat" || value === "Crew" ? value : "Nick";
+}
+
+function cleanTaskStatus(value: unknown, completed = false): RoutineTask["status"] {
+  return value === "skipped" || value === "deferred" ? value : completed || value === "completed" ? "completed" : "open";
 }
