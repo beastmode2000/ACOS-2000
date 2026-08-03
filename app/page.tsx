@@ -486,7 +486,7 @@ const dashboardWidgetDefinitions: Record<DashboardWidgetId, { title: string; def
   "property-status": { title: "Property Status", defaultSize: "large" },
   routine: { title: "Routine", defaultSize: "medium" },
   "atlas-brief": { title: "Atlas Brief", defaultSize: "medium" },
-  "recent-activity": { title: "Live Operations Feed", defaultSize: "large" },
+  "recent-activity": { title: "Recent Activity", defaultSize: "large" },
   weather: { title: "Weather", defaultSize: "full" },
 };
 
@@ -17556,14 +17556,21 @@ ${notes.trim()}` : notes.trim(),
       .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())
       .slice(0, 20);
     type DashboardFeedItem = { id: string; type: "Work" | "Requests" | "Vendors" | "Photos" | "Alerts"; title: string; detail: string; at: string; icon: string; tone: "green" | "gold" | "red" | "blue"; action: () => void; actionLabel: string };
+    const recentFeedCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recentFeedFutureLimit = Date.now() + 24 * 60 * 60 * 1000;
     const dashboardFeedItems: DashboardFeedItem[] = [
-      ...completedWork.map((record) => ({ id: `feed-complete-${record.id}`, type: "Work" as const, title: record.title || "Work completed", detail: `${(record as AtlasServiceRecord).workCategory || "Work order"} completed`, at: new Date(completionTime(record as AtlasServiceRecord) || Date.now()).toISOString(), icon: "✓", tone: "green" as const, action: () => { setSelectedServiceId(record.id); setScreen("history"); }, actionLabel: "Open" })),
+      ...completedWork.filter((record) => completionTime(record as AtlasServiceRecord) > 0).map((record) => ({ id: `feed-complete-${record.id}`, type: "Work" as const, title: record.title || "Work completed", detail: `${(record as AtlasServiceRecord).workCategory || "Work order"} completed`, at: new Date(completionTime(record as AtlasServiceRecord)).toISOString(), icon: "✓", tone: "green" as const, action: () => { setSelectedServiceId(record.id); setScreen("history"); }, actionLabel: "Open" })),
       ...openWork.filter((record) => Boolean(record.date) && String(record.date) < today).map((record) => ({ id: `feed-overdue-${record.id}`, type: "Alerts" as const, title: record.title || "Overdue work", detail: `Overdue since ${new Date(`${record.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}`, at: `${record.date || today}T12:00:00`, icon: "!", tone: "red" as const, action: () => { setSelectedServiceId(record.id); setScreen("history"); }, actionLabel: "Review" })),
-      ...activeRequests.map((request) => ({ id: `feed-request-${request.id}`, type: "Requests" as const, title: request.title || "New request", detail: `${request.requesterName || "Property request"} · ${request.status || "Open"}`, at: String(request.submittedAt || new Date().toISOString()), icon: "↗", tone: "gold" as const, action: () => setScreen("requests"), actionLabel: "Open" })),
-      ...vendorEvents.map((item) => ({ id: `feed-vendor-${item.instanceId || item.id}`, type: "Vendors" as const, title: item.title || "Vendor scheduled", detail: `${item.date === today ? "Today" : new Date(`${item.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}${item.time ? ` · ${item.time}` : ""}`, at: `${item.date || today}T${item.time || "12:00"}:00`, icon: "V", tone: "blue" as const, action: () => setScreen("calendar"), actionLabel: "Calendar" })),
+      ...activeRequests.filter((request) => Boolean(request.submittedAt)).map((request) => ({ id: `feed-request-${request.id}`, type: "Requests" as const, title: request.title || "New request", detail: `${request.requesterName || "Property request"} · ${request.status || "Open"}`, at: String(request.submittedAt), icon: "↗", tone: "gold" as const, action: () => setScreen("requests"), actionLabel: "Open" })),
+      ...vendorEvents.filter((item) => Boolean(item.date) && String(item.date) <= today).map((item) => ({ id: `feed-vendor-${item.instanceId || item.id}`, type: "Vendors" as const, title: item.title || "Vendor activity", detail: `${item.date === today ? "Today" : new Date(`${item.date}T12:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric"})}${item.time ? ` · ${item.time}` : ""}`, at: `${item.date}T${item.time || "12:00"}:00`, icon: "V", tone: "blue" as const, action: () => setScreen("calendar"), actionLabel: "Calendar" })),
       ...todaysLogEntries.map((entry) => ({ id: `feed-log-${entry.id}`, type: entry.category === "Vendor" ? "Vendors" as const : "Work" as const, title: entry.text, detail: `Today’s log · ${entry.category}`, at: entry.createdAt, icon: entry.category === "Vendor" ? "V" : "•", tone: "blue" as const, action: () => setScreen("dashboard"), actionLabel: "View" })),
-      ...photos.slice().sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))).slice(0,4).map((photo) => ({ id: `feed-photo-${photo.id}`, type: "Photos" as const, title: photo.name || "Photo added", detail: `${assetName(photo.assetId || "") || "General property"} · Photo added`, at: String(photo.createdAt || new Date().toISOString()), icon: "▧", tone: "blue" as const, action: () => setScreen("timeline"), actionLabel: "Timeline" })),
-    ].filter((item) => !dismissedDashboardFeedIds.includes(item.id)).sort((a,b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+      ...photos.filter((photo) => Boolean(photo.createdAt)).slice().sort((a,b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0,12).map((photo) => ({ id: `feed-photo-${photo.id}`, type: "Photos" as const, title: photo.name || "Photo added", detail: `${assetName(photo.assetId || "") || "General property"} · Photo added`, at: String(photo.createdAt), icon: "▧", tone: "blue" as const, action: () => setScreen("timeline"), actionLabel: "Timeline" })),
+    ].filter((item) => {
+      if (dismissedDashboardFeedIds.includes(item.id)) return false;
+      const timestamp = new Date(item.at).getTime();
+      if (!Number.isFinite(timestamp)) return false;
+      return item.type === "Alerts" || (timestamp >= recentFeedCutoff && timestamp <= recentFeedFutureLimit);
+    }).sort((a,b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     const filteredDashboardFeed = dashboardFeedItems.filter((item) => dashboardFeedFilter === "All" || item.type === dashboardFeedFilter).slice(0, 10);
     const dashboardFeedCounts = (["All","Work","Requests","Vendors","Photos","Alerts"] as const).reduce((counts,key) => ({ ...counts, [key]: key === "All" ? dashboardFeedItems.length : dashboardFeedItems.filter((item) => item.type === key).length }), {} as Record<"All" | "Work" | "Requests" | "Vendors" | "Photos" | "Alerts", number>);
     const statusDefinitions = [
@@ -17839,7 +17846,7 @@ ${notes.trim()}` : notes.trim(),
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Mission Control</div><h1 style={{ margin: "3px 0", fontSize: isMobile ? 24 : 29 }}>Your day at {activeProperty.name}</h1><small style={{ opacity: .82 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setMorningBriefOpen(true)} style={teamGoldButtonStyle}>Morning Brief</button><button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Calendar</button><button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Edit Routine</button></div></div>
         </section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
-          <section style={cardStyle}><div style={{ ...eyebrowStyle, marginBottom: 7 }}>Today’s Checklist</div><AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} /></section>
+          <AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} />
           <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => setScreen("calendar")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
         </div>
         <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Assigned Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Who is handling what</h2></div><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 10 }}>{foremanAssignments.map((lane) => <button key={lane.person} type="button" onClick={() => lane.person === "Addison" ? (setTasksView("addison"), setScreen("planner")) : setScreen("team")} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10, textAlign: "left", cursor: "pointer" }}><small style={fieldLabelStyle}>{lane.person.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: colors.navy }}>{lane.count}</strong><span style={mutedSmallStyle}>assigned today</span></button>)}</div></section>
@@ -17996,7 +18003,7 @@ ${notes.trim()}` : notes.trim(),
       if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "10px 12px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 4 : 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "3px 12px" : "3px 18px", minWidth: 0, fontSize: 13, lineHeight: 1.35, color: colors.text }}>{(briefLines.length ? briefLines : ["All clear"]).slice(0, isMobile ? 3 : 5).map((line, index) => <span key={index} style={{ whiteSpace: "normal" }}><span style={{ color: String(line).includes("overdue") ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div></div></section>;
       if (id === "recent-activity") return <section style={{ ...cardStyle, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-          <div>{!isMobile ? <div style={eyebrowStyle}>Live Operations Feed</div> : null}<h3 style={{ margin: 0, color: colors.navy }}>{isMobile ? "Activity" : `What is happening across ${activeProperty?.name || activePropertyId}`}</h3>{!isMobile ? <p style={{ ...mutedSmallStyle, margin: "5px 0 0" }}>Work, requests, vendors, photos, and alerts.</p> : null}</div>
+          <div><div style={eyebrowStyle}>Recent Activity</div><h3 style={{ margin: 0, color: colors.navy }}>Dated updates from the last 7 days</h3>{!isMobile ? <p style={{ ...mutedSmallStyle, margin: "5px 0 0" }}>Completed work, requests, vendor activity, photos, and active alerts with verified dates.</p> : null}</div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={prepareWeeklyOwnerUpdate} style={secondaryButtonStyle}>Weekly Update</button>{!isMobile ? <button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>View history</button> : null}</div>
         </div>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 0 8px", scrollbarWidth: "none" }}>{(["All","Work","Requests","Vendors","Photos","Alerts"] as const).map((filter) => <button key={filter} type="button" onClick={() => setDashboardFeedFilter(filter)} style={{ ...(dashboardFeedFilter === filter ? goldButtonStyle : secondaryButtonStyle), flex: "0 0 auto", minWidth: "max-content", minHeight: 32, padding: "5px 10px", whiteSpace: "nowrap", wordBreak: "normal", overflowWrap: "normal", fontSize: 12 }}>{filter} <span style={{ opacity: .75 }}>({dashboardFeedCounts[filter]})</span></button>)}</div>
@@ -36423,26 +36430,39 @@ ${notes.trim()}` : notes.trim(),
     const icon = config.icon;
     const matcher = config.matcher;
     const matches = (value: unknown) => matcher.test(recordSearchText(value));
+    const conventionalAppliancePattern = /\b(appliance|refrigerator|freezer|dishwasher|washing machine|washer|clothes dryer|tumble dryer|range|oven|microwave|ice maker)\b/i;
+    const isConventionalApplianceRecord = (value: unknown) => {
+      const record = (value || {}) as Record<string, unknown>;
+      const classificationText = [record.category, record.type, record.assetType, record.workCategory]
+        .filter(Boolean)
+        .join(" ");
+      const identityText = [record.title, record.name, record.description, record.notes]
+        .filter(Boolean)
+        .join(" ");
+      return /\bappliances?\b/i.test(classificationText) || conventionalAppliancePattern.test(identityText);
+    };
+    const matchesDepartmentRecord = (value: unknown) =>
+      matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
     const departmentWork = serviceRecords.filter((record) =>
-      isMarine ? isMarineServiceRecord(record) : isLandscape ? matches(record) && !isMarineServiceRecord(record) : matches(record),
+      isMarine ? isMarineServiceRecord(record) : isLandscape ? matches(record) && !isMarineServiceRecord(record) : matchesDepartmentRecord(record),
     );
     const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
     const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
-    const departmentAssets = isMarine ? assetRecords.filter((asset) => marineAssetIds.has(asset.id)) : assetRecords.filter((asset) => matches(asset) && (!isLandscape || !isMarineAssetRecord(asset)));
+    const departmentAssets = isMarine ? assetRecords.filter((asset) => marineAssetIds.has(asset.id)) : assetRecords.filter((asset) => matchesDepartmentRecord(asset) && (!isLandscape || !isMarineAssetRecord(asset)));
     const departmentLocations = isMarine ? locations.filter((location) => marineLocationIds.has(location.id)) : locations.filter((location) => matches(location) && (!isLandscape || !marineLocationIds.has(location.id)));
     const departmentVendors = vendorRecords.filter(matches);
     const departmentDocuments = mergeDocuments(documents, intakeDocs).filter((document) =>
-      isMarine ? isMarineDocumentRecord(document) : matches(document) && (!isLandscape || !isMarineDocumentRecord(document)),
+      isMarine ? isMarineDocumentRecord(document) : matchesDepartmentRecord(document) && (!isLandscape || !isMarineDocumentRecord(document)),
     );
     const departmentProcedures = procedureRecords.filter((procedure) =>
       isMarine
         ? marineDepartmentPattern.test(recordSearchText(procedure)) ||
           (procedure.linkedAssetIds || []).some((id) => marineAssetIds.has(id)) ||
           (procedure.linkedLocationIds || []).some((id) => marineLocationIds.has(id))
-        : matches(procedure) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(procedure))),
+        : matchesDepartmentRecord(procedure) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(procedure))),
     );
     const departmentRequests = requestRecords.filter((request) =>
-      isMarine ? matches(request) : matches(request) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(request))),
+      isMarine ? matches(request) : matchesDepartmentRecord(request) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(request))),
     );
     const assignedNames = config.people;
 
