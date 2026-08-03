@@ -5324,6 +5324,9 @@ export default function AtlasPage() {
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
   const [quickCaptureNote, setQuickCaptureNote] = useState("");
   const [quickCaptureMode, setQuickCaptureMode] = useState<"create" | "existing">("create");
+  type QuickCreateKind = "photo" | "document" | "task" | "work-order" | "project" | "asset" | "vendor" | "procedure";
+  const [quickCreateKind, setQuickCreateKind] = useState<QuickCreateKind | "">("");
+  const [quickCreateName, setQuickCreateName] = useState("");
   const [ownerUpdateOpen, setOwnerUpdateOpen] = useState(false);
   const [ownerUpdateDraft, setOwnerUpdateDraft] = useState("");
   const [morningBriefOpen, setMorningBriefOpen] = useState(false);
@@ -10283,9 +10286,9 @@ export default function AtlasPage() {
     }
   }
 
-  function openQuickCapture(kind: "photo" | "document" | "task" | "work-order" | "project" | "asset" | "vendor" | "procedure") {
-    setQuickCaptureOpen(false);
+  function openQuickCapture(kind: QuickCreateKind) {
     if (quickCaptureMode === "existing") {
+      setQuickCaptureOpen(false);
       if (kind === "photo" || kind === "document") setScreen("documents");
       if (kind === "task") { setTasksView("tasks"); setScreen("planner"); }
       if (kind === "work-order") setScreen("history");
@@ -10296,47 +10299,60 @@ export default function AtlasPage() {
       showSaveToast("Choose the existing record to link.");
       return;
     }
+    setQuickCreateKind(kind);
+    setQuickCreateName("");
+  }
+
+  function quickCreateLabel(kind: QuickCreateKind | "") {
+    return ({ photo: "Photo", document: "Document", task: "Task", "work-order": "Work Order", project: "Project", asset: "Asset", vendor: "Vendor", procedure: "Procedure" } as Record<string, string>)[kind] || "Record";
+  }
+
+  function saveQuickCreate() {
+    const name = quickCreateName.trim();
+    const kind = quickCreateKind;
+    if (!kind || !name) return;
+    setQuickCaptureOpen(false);
+    setQuickCreateKind("");
+    setQuickCreateName("");
     if (kind === "photo") {
       resetIntakeDraft();
       applyFastIntakeKind("General Photo");
+      setIntakeTitle(name);
       setScreen("intake");
       return;
     }
     if (kind === "document") {
       resetIntakeDraft();
       applyFastIntakeKind("Document");
+      setIntakeTitle(name);
       setScreen("intake");
       return;
     }
     if (kind === "task") {
+      const taskId = addAtlasTask(name);
       setTasksView("tasks");
-      setSelectedTaskId("");
-      setNewTaskTitle("");
+      setSelectedTaskId(taskId);
       setScreen("planner");
       return;
     }
     if (kind === "work-order") {
-      setSelectedServiceId("");
-      setScreen("history");
+      addWorkOrder({ title: name });
       return;
     }
     if (kind === "asset") {
-      addAsset();
+      addAsset(name);
       return;
     }
     if (kind === "vendor") {
-      setSelectedVendorId("");
-      setScreen("vendors");
+      addVendor(name);
       return;
     }
     if (kind === "procedure") {
-      setSelectedProcedureId("");
+      createProcedureRecord(name);
       setScreen("procedures");
       return;
     }
-    setPhotoTimelineView("projects");
-    setSelectedPhotoProjectId("");
-    setScreen("timeline");
+    createProjectFromCommand(name);
   }
 
   function saveQuickCaptureNote() {
@@ -12311,10 +12327,10 @@ export default function AtlasPage() {
     );
   }
 
-  function addAsset() {
+  function addAsset(name = "") {
     const record = normalizeAsset({
       id: uid("asset"),
-      name: "",
+      name,
       locationId: "",
       category: "",
       status: "Monitor",
@@ -12365,10 +12381,10 @@ export default function AtlasPage() {
     );
   }
 
-  function addVendor() {
+  function addVendor(name = "") {
     const record = normalizeVendor({
       id: uid("vendor"),
-      name: "",
+      name,
       category: "",
       phone: "",
       email: "",
@@ -13700,10 +13716,10 @@ export default function AtlasPage() {
     );
   }
 
-  function createProcedureRecord() {
+  function createProcedureRecord(title = "") {
     const record = normalizeProcedure({
       id: uid("procedure"),
-      title: "",
+      title,
       area: "2000",
       category: "Maintenance",
       priority: "Normal",
@@ -25146,7 +25162,7 @@ ${notes.trim()}` : notes.trim(),
               <option value="az">Name: A–Z</option>
               <option value="za">Name: Z–A</option>
             </select>
-            <button type="button" onClick={addAsset} style={goldButtonStyle}>
+            <button type="button" onClick={() => addAsset()} style={goldButtonStyle}>
               Add Asset
             </button>
           </div>
@@ -28472,7 +28488,7 @@ ${notes.trim()}` : notes.trim(),
         isMobile={isMobile}
         drawerResetKey={selectedVendorId || "vendor-new"}
         right={
-          <button type="button" onClick={addVendor} style={goldButtonStyle}>
+          <button type="button" onClick={() => addVendor()} style={goldButtonStyle}>
             Add Vendor
           </button>
         }
@@ -36071,7 +36087,7 @@ ${notes.trim()}` : notes.trim(),
           right={
             <button
               type="button"
-              onClick={createProcedureRecord}
+              onClick={() => createProcedureRecord()}
               style={goldButtonStyle}
             >
               Add Procedure
@@ -39145,41 +39161,48 @@ ${notes.trim()}` : notes.trim(),
         type="button"
         aria-label="Quick capture"
         title="Quick Capture"
-        onClick={() => setQuickCaptureOpen(true)}
+        onClick={() => { setQuickCreateKind(""); setQuickCreateName(""); setQuickCaptureOpen(true); }}
         className="atlas-quick-capture-button"
       >
         +
       </button>
       {quickCaptureOpen ? (
-        <div className="atlas-quick-capture-backdrop" onMouseDown={() => setQuickCaptureOpen(false)}>
+        <div className="atlas-quick-capture-backdrop" onMouseDown={() => { setQuickCaptureOpen(false); setQuickCreateKind(""); setQuickCreateName(""); }}>
           <section className="atlas-quick-capture-panel" onMouseDown={(event) => event.stopPropagation()} aria-label="Quick Capture">
             <div className="atlas-quick-capture-header">
               <div>
-                <strong>Quick Capture</strong>
-                <small>Save it now. Organize it where it belongs.</small>
+                <strong>{quickCreateKind ? `New ${quickCreateLabel(quickCreateKind)}` : "Quick Capture"}</strong>
+                <small>{quickCreateKind ? "Name it first. The full editor opens after saving." : "Save it now. Organize it where it belongs."}</small>
               </div>
-              <button type="button" onClick={() => setQuickCaptureOpen(false)} style={mapIconButtonStyle}>{closeSymbol}</button>
+              <button type="button" onClick={() => { setQuickCaptureOpen(false); setQuickCreateKind(""); setQuickCreateName(""); }} style={mapIconButtonStyle}>{closeSymbol}</button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: 4, borderRadius: 12, background: "#EEF3F7" }}>
-              <button type="button" onClick={() => setQuickCaptureMode("create")} style={{ ...(quickCaptureMode === "create" ? goldButtonStyle : secondaryButtonStyle), minHeight: 38 }}>Create New</button>
-              <button type="button" onClick={() => setQuickCaptureMode("existing")} style={{ ...(quickCaptureMode === "existing" ? goldButtonStyle : secondaryButtonStyle), minHeight: 38 }}>Add Existing</button>
-            </div>
-            <div className="atlas-quick-capture-actions">
-              <button type="button" onClick={() => openQuickCapture("photo")}><span>📷</span>{quickCaptureMode === "create" ? "New Photo" : "Existing Photo"}</button>
-              <button type="button" onClick={() => openQuickCapture("document")}><span>📄</span>{quickCaptureMode === "create" ? "New Document" : "Existing Document"}</button>
-              <button type="button" onClick={() => openQuickCapture("task")}><span>✓</span>{quickCaptureMode === "create" ? "New Task" : "Existing Task"}</button>
-              <button type="button" onClick={() => openQuickCapture("work-order")}><span>🔧</span>{quickCaptureMode === "create" ? "New Work Order" : "Existing Work Order"}</button>
-              <button type="button" onClick={() => openQuickCapture("project")}><span>▣</span>{quickCaptureMode === "create" ? "New Project" : "Existing Project"}</button>
-              <button type="button" onClick={() => openQuickCapture("asset")}><span>◇</span>{quickCaptureMode === "create" ? "New Asset" : "Existing Asset"}</button>
-              <button type="button" onClick={() => openQuickCapture("vendor")}><span>V</span>{quickCaptureMode === "create" ? "New Vendor" : "Existing Vendor"}</button>
-              <button type="button" onClick={() => openQuickCapture("procedure")}><span>☷</span>{quickCaptureMode === "create" ? "New Procedure" : "Existing Procedure"}</button>
-              <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Talk to Atlas</button>
-            </div>
-            <label className="atlas-quick-note-box">
-              <span>Quick note</span>
-              <textarea value={quickCaptureNote} onChange={(event) => setQuickCaptureNote(event.currentTarget.value)} placeholder="What happened or what should not be forgotten?" />
-            </label>
-            <button type="button" onClick={saveQuickCaptureNote} disabled={!quickCaptureNote.trim()} style={goldButtonStyle}>Save Note</button>
+            {quickCreateKind ? (
+              <form onSubmit={(event) => { event.preventDefault(); saveQuickCreate(); }} style={{ display: "grid", gap: 12 }}>
+                <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>NAME</span><input autoFocus value={quickCreateName} onChange={(event) => setQuickCreateName(event.currentTarget.value)} placeholder={`${quickCreateLabel(quickCreateKind)} name`} style={{ ...inputStyle, minHeight: 48, fontSize: 16 }} /></label>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => { setQuickCreateKind(""); setQuickCreateName(""); }} style={secondaryButtonStyle}>Back</button><button type="submit" disabled={!quickCreateName.trim()} style={goldButtonStyle}>Save & Continue</button></div>
+              </form>
+            ) : <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: 4, borderRadius: 12, background: "#EEF3F7" }}>
+                <button type="button" onClick={() => setQuickCaptureMode("create")} style={{ ...(quickCaptureMode === "create" ? goldButtonStyle : secondaryButtonStyle), minHeight: 38 }}>Create New</button>
+                <button type="button" onClick={() => setQuickCaptureMode("existing")} style={{ ...(quickCaptureMode === "existing" ? goldButtonStyle : secondaryButtonStyle), minHeight: 38 }}>Add Existing</button>
+              </div>
+              <div className="atlas-quick-capture-actions">
+                <button type="button" onClick={() => openQuickCapture("photo")}><span>📷</span>{quickCaptureMode === "create" ? "New Photo" : "Existing Photo"}</button>
+                <button type="button" onClick={() => openQuickCapture("document")}><span>📄</span>{quickCaptureMode === "create" ? "New Document" : "Existing Document"}</button>
+                <button type="button" onClick={() => openQuickCapture("task")}><span>✓</span>{quickCaptureMode === "create" ? "New Task" : "Existing Task"}</button>
+                <button type="button" onClick={() => openQuickCapture("work-order")}><span>🔧</span>{quickCaptureMode === "create" ? "New Work Order" : "Existing Work Order"}</button>
+                <button type="button" onClick={() => openQuickCapture("project")}><span>▣</span>{quickCaptureMode === "create" ? "New Project" : "Existing Project"}</button>
+                <button type="button" onClick={() => openQuickCapture("asset")}><span>◇</span>{quickCaptureMode === "create" ? "New Asset" : "Existing Asset"}</button>
+                <button type="button" onClick={() => openQuickCapture("vendor")}><span>V</span>{quickCaptureMode === "create" ? "New Vendor" : "Existing Vendor"}</button>
+                <button type="button" onClick={() => openQuickCapture("procedure")}><span>☷</span>{quickCaptureMode === "create" ? "New Procedure" : "Existing Procedure"}</button>
+                <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Talk to Atlas</button>
+              </div>
+              <label className="atlas-quick-note-box">
+                <span>Quick note</span>
+                <textarea value={quickCaptureNote} onChange={(event) => setQuickCaptureNote(event.currentTarget.value)} placeholder="What happened or what should not be forgotten?" />
+              </label>
+              <button type="button" onClick={saveQuickCaptureNote} disabled={!quickCaptureNote.trim()} style={goldButtonStyle}>Save Note</button>
+            </>}
           </section>
         </div>
       ) : null}
