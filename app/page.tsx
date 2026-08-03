@@ -2,6 +2,7 @@
 
 import React, {
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -5323,6 +5324,23 @@ function ListDrawerLayout(props: {
       ) : null}
     </section>
   );
+}
+
+type CreatableRelationshipOption = { id: string; label: string };
+
+function CreatableRelationshipField({ label, value, options, emptyLabel, onChange, onCreate, compact = false }: { label: string; value: string; options: CreatableRelationshipOption[]; emptyLabel: string; onChange: (id: string) => void; onCreate: (name: string) => string; compact?: boolean }) {
+  const selectedLabel = options.find((option) => option.id === value)?.label || "";
+  const [text, setText] = useState(selectedLabel);
+  useEffect(() => setText(selectedLabel), [selectedLabel]);
+  const clean = text.trim();
+  const exact = options.find((option) => option.label.trim().toLowerCase() === clean.toLowerCase());
+  const listId = `atlas-rel-${useId().replace(/:/g, "")}`;
+  const create = () => {
+    if (!clean || exact) return;
+    const id = onCreate(clean);
+    if (id) onChange(id);
+  };
+  return <label style={{ ...fieldLabelStyle, display: "grid", gap: 5 }}><span>{label}</span><div style={{ display: "grid", gridTemplateColumns: clean && !exact ? "minmax(0,1fr) auto" : "1fr", gap: 6 }}><input list={listId} value={text} placeholder={emptyLabel} onChange={(event) => { const next = event.currentTarget.value; setText(next); const match = options.find((option) => option.label.trim().toLowerCase() === next.trim().toLowerCase()); onChange(match?.id || ""); }} onBlur={() => { if (exact) { setText(exact.label); onChange(exact.id); } }} onKeyDown={(event) => { if (event.key === "Enter" && clean && !exact) { event.preventDefault(); create(); } }} style={{ ...inputStyle, minHeight: compact ? 34 : undefined, padding: compact ? "5px 8px" : undefined, fontSize: compact ? 11 : undefined }}/><datalist id={listId}>{options.map((option) => <option key={option.id} value={option.label}/>)}</datalist>{clean && !exact ? <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={create} style={{ ...goldButtonStyle, width: "auto", minHeight: compact ? 34 : undefined, padding: compact ? "5px 9px" : undefined, fontSize: compact ? 11 : undefined, whiteSpace: "nowrap" }}>+ Add</button> : null}</div></label>;
 }
 
 export default function AtlasPage() {
@@ -12481,6 +12499,47 @@ export default function AtlasPage() {
     setScreen("vendors");
   }
 
+  function quickCreateVendor(name: string) {
+    const record = normalizeVendor({ id: uid("vendor"), name: name.trim(), category: "", phone: "", email: "", website: "", notes: "" });
+    setVendorRecords((current) => byName([record, ...current]));
+    markRecordDirty("vendor", record.id);
+    showSaveToast(`${record.name} added and selected.`);
+    return record.id;
+  }
+
+  function quickCreateAsset(name: string) {
+    const record = normalizeAsset({ id: uid("asset"), name: name.trim(), locationId: "", category: "", status: "Monitor", make: "", model: "", serial: "", notes: "", vendorIds: [] });
+    setAssetRecords((current) => byName([record, ...current]));
+    markRecordDirty("asset", record.id);
+    showSaveToast(`${record.name} added and selected.`);
+    return record.id;
+  }
+
+  function quickCreateLocation(name: string) {
+    const record: AtlasLocationRecord = { id: uid("location"), name: name.trim(), type: "", zone: "", notes: "" };
+    setLocations((current) => byName([record, ...current]));
+    markRecordDirty("location", record.id);
+    showSaveToast(`${record.name} added and selected.`);
+    return record.id;
+  }
+
+  function quickCreateContact(name: string) {
+    const record = normalizeContact({ ...blankContact(), id: uid("contact"), name: name.trim() });
+    setContactRecords((current) => byName([record, ...current]));
+    markRecordDirty("contact", record.id);
+    showSaveToast(`${record.name} added and selected.`);
+    return record.id;
+  }
+
+  function quickCreateProject(name: string) {
+    const id = uid("project");
+    const project: PhotoTimelineProject = { propertyId: activePropertyId, id, title: name.trim(), category: "General", scale: "Standard", status: "Planning", assetId: "", locationId: "", vendorId: "", workOrderId: "", workOrderIds: [], vendorIds: [], documentIds: [], assigneeIds: [], notes: "", coverPhotoId: "", createdAt: new Date().toISOString(), progress: 0, phase: "Planning", startDate: todayISO(), archived: false };
+    setPhotoTimelineProjects((current) => [project, ...current]);
+    void postAtlasRecord("projects", { ...project, timelineEntries: [], photoMeta: {} });
+    showSaveToast(`${project.title} added and selected.`);
+    return id;
+  }
+
   function updateVendor(patch: Partial<VendorRecord>) {
     markRecordDirty("vendor", selectedVendor.id);
     setVendorRecords((current) =>
@@ -18798,14 +18857,14 @@ ${notes.trim()}` : notes.trim(),
                         {!selectedMeta.projectId && !selectedMeta.workOrderId && !selectedMeta.assetId && !selectedTask.locationId && !selectedMeta.vehicleId && !selectedMeta.vendorId && !selectedMeta.procedureId && !selectedMeta.contactId ? <span style={mutedSmallStyle}>No related records yet.</span> : null}
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9 }}>
-                        <label style={fieldLabelStyle}>Project<select value={selectedMeta.projectId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { projectId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No project</option>{photoTimelineProjects.filter((project) => !project.archived).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
+                        <CreatableRelationshipField label="Project" value={selectedMeta.projectId || ""} emptyLabel="No project" options={photoTimelineProjects.filter((project) => !project.archived).map((project) => ({ id: project.id, label: project.title }))} onChange={(id) => updateTaskDetails(selectedTask.id, { projectId: id || undefined })} onCreate={quickCreateProject}/>
                         <label style={fieldLabelStyle}>Work Order<select value={selectedMeta.workOrderId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { workOrderId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No work order</option>{serviceRecords.filter((record) => record.status !== "Completed").map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
-                        <label style={fieldLabelStyle}>Asset<select value={selectedMeta.assetId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { assetId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No asset</option>{assetRecords.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
-                        <label style={fieldLabelStyle}>Location<select value={selectedTask.locationId || ""} onChange={(event) => updateWorkPlanTask(selectedTask.id, { locationId: event.currentTarget.value })} style={inputStyle}><option value="">General</option>{locations.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
+                        <CreatableRelationshipField label="Asset" value={selectedMeta.assetId || ""} emptyLabel="No asset" options={assetRecords.map((record) => ({ id: record.id, label: record.name }))} onChange={(id) => updateTaskDetails(selectedTask.id, { assetId: id || undefined })} onCreate={quickCreateAsset}/>
+                        <CreatableRelationshipField label="Location" value={selectedTask.locationId || ""} emptyLabel="General" options={locations.map((record) => ({ id: record.id, label: record.name }))} onChange={(id) => updateWorkPlanTask(selectedTask.id, { locationId: id })} onCreate={quickCreateLocation}/>
                         <label style={fieldLabelStyle}>Vehicle / Equipment<select value={selectedMeta.vehicleId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { vehicleId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No vehicle</option>{vehicleCare.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
-                        <label style={fieldLabelStyle}>Vendor<select value={selectedMeta.vendorId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { vendorId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No vendor</option>{vendorRecords.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
+                        <CreatableRelationshipField label="Vendor" value={selectedMeta.vendorId || ""} emptyLabel="No vendor" options={vendorRecords.map((record) => ({ id: record.id, label: record.name }))} onChange={(id) => updateTaskDetails(selectedTask.id, { vendorId: id || undefined })} onCreate={quickCreateVendor}/>
                         <label style={fieldLabelStyle}>Procedure<select value={selectedMeta.procedureId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { procedureId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No procedure</option>{procedureRecords.map((record) => <option key={record.id} value={record.id}>{record.title}</option>)}</select></label>
-                        <label style={fieldLabelStyle}>Contact<select value={selectedMeta.contactId || ""} onChange={(event) => updateTaskDetails(selectedTask.id, { contactId: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No contact</option>{contactRecords.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}</select></label>
+                        <CreatableRelationshipField label="Contact" value={selectedMeta.contactId || ""} emptyLabel="No contact" options={contactRecords.map((record) => ({ id: record.id, label: record.name }))} onChange={(id) => updateTaskDetails(selectedTask.id, { contactId: id || undefined })} onCreate={quickCreateContact}/>
                       </div>
                     </details>
                     <details style={{ ...noticeStyle, padding: 10 }} open={Boolean(selectedTask.recurring)}>
@@ -20528,7 +20587,7 @@ ${notes.trim()}` : notes.trim(),
             <section style={{ ...cardStyle, padding: 11 }}>
               <div><div style={eyebrowStyle}>Quick Log</div><h3 style={{ margin: "2px 0", color: colors.navy }}>Vendor Visit</h3></div>
               <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-                <select value={dashboardVendorVisitId} onChange={(event) => setDashboardVendorVisitId(event.currentTarget.value)} style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}><option value="">Choose vendor</option>{vendorRecords.slice().sort((a,b) => a.name.localeCompare(b.name)).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select>
+                <CreatableRelationshipField label="Vendor" value={dashboardVendorVisitId} emptyLabel="Choose or type vendor" options={vendorRecords.slice().sort((a,b) => a.name.localeCompare(b.name)).map((vendor) => ({ id: vendor.id, label: vendor.name }))} onChange={setDashboardVendorVisitId} onCreate={quickCreateVendor} compact/>
                 <input value={dashboardVendorVisitNote} onChange={(event) => setDashboardVendorVisitNote(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") logDashboardVendorVisit(); }} placeholder="Work completed or visit note" style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}/>
                 <button type="button" onClick={logDashboardVendorVisit} disabled={!dashboardVendorVisitId && !dashboardVendorVisitNote.trim()} style={{ ...goldButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11, opacity: !dashboardVendorVisitId && !dashboardVendorVisitNote.trim() ? .55 : 1 }}>Log Visit</button>
               </div>
