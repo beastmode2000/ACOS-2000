@@ -527,6 +527,19 @@ function makeDashboardWidgets(overrides: Partial<Record<DashboardWidgetId, Parti
   }));
 }
 
+function makeDailyForemanWidgets(): DashboardWidgetSetting[] {
+  const order: DashboardWidgetId[] = ["property-status", "recent-activity", "weather", "hero", "today-upcoming", "atlas-brief"];
+  const settings = makeDashboardWidgets({
+    hero: { visible: false },
+    "today-upcoming": { visible: false },
+    "atlas-brief": { visible: false },
+    "property-status": { visible: true, size: "full", colSpan: 12 },
+    "recent-activity": { visible: true, size: "full", colSpan: 12 },
+    weather: { visible: true, size: "full", colSpan: 12 },
+  });
+  return order.map((id) => settings.find((widget) => widget.id === id)).filter((widget): widget is DashboardWidgetSetting => Boolean(widget));
+}
+
 function normalizeDashboardWidgets(widgets: DashboardWidgetSetting[]): DashboardWidgetSetting[] {
   const withoutStandaloneHealth = widgets.filter((widget) => widget.id !== "estate-health" && widget.id !== "routine");
   const seen = new Set<DashboardWidgetId>();
@@ -555,6 +568,7 @@ function normalizeDashboardWidgets(widgets: DashboardWidgetSetting[]): Dashboard
 }
 
 const builtInDashboardLayouts: DashboardSavedLayout[] = [
+  { id: "daily-foreman", name: "Daily Foreman", widgets: makeDailyForemanWidgets() },
   { id: "operations", name: "Operations", widgets: makeDashboardWidgets() },
   { id: "management", name: "Management", widgets: makeDashboardWidgets({ routine: { visible: false }, weather: { size: "large" }, "property-status": { size: "full" } }) },
   { id: "dock", name: "Dock", widgets: makeDashboardWidgets({ routine: { visible: false }, "atlas-brief": { size: "large" }, "property-status": { size: "full" } }) },
@@ -4300,9 +4314,9 @@ export default function AtlasPage() {
   const [dashboardCenterView, setDashboardCenterView] = useState<
     "command" | "operations" | "intelligence"
   >("command");
-  const [dashboardLayoutId, setDashboardLayoutId] = useState("operations");
+  const [dashboardLayoutId, setDashboardLayoutId] = useState("daily-foreman");
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetSetting[]>(
-    () => makeDashboardWidgets(),
+    () => makeDailyForemanWidgets(),
   );
   const [customDashboardLayouts, setCustomDashboardLayouts] = useState<DashboardSavedLayout[]>([]);
   const [draggedDashboardWidgetId, setDraggedDashboardWidgetId] = useState<DashboardWidgetId | null>(null);
@@ -4315,9 +4329,10 @@ export default function AtlasPage() {
     try {
       const raw = window.localStorage.getItem(`atlas-command-center-layouts-v2:${activePropertyId}`);
       if (!raw) {
-        setDashboardLayoutId(isMobile ? "mobile" : "operations");
-        setDashboardWidgets(makeDashboardWidgets());
+        setDashboardLayoutId("daily-foreman");
+        setDashboardWidgets(makeDailyForemanWidgets());
         setCustomDashboardLayouts([]);
+        window.localStorage.setItem(`atlas-daily-foreman-default-v1:${activePropertyId}`, "ready");
         return;
       }
       const parsed = JSON.parse(raw) as {
@@ -4325,13 +4340,17 @@ export default function AtlasPage() {
         widgets?: DashboardWidgetSetting[];
         customLayouts?: DashboardSavedLayout[];
       };
-      if (Array.isArray(parsed.widgets) && parsed.widgets.length) {
-        setDashboardWidgets(normalizeDashboardWidgets(parsed.widgets));
-      }
-      setDashboardLayoutId(String(parsed.activeLayoutId || "operations"));
       setCustomDashboardLayouts(Array.isArray(parsed.customLayouts) ? parsed.customLayouts.map((layout) => ({ ...layout, widgets: normalizeDashboardWidgets(layout.widgets || []) })) : []);
+      if (window.localStorage.getItem(`atlas-daily-foreman-default-v1:${activePropertyId}`) !== "ready") {
+        setDashboardLayoutId("daily-foreman");
+        setDashboardWidgets(makeDailyForemanWidgets());
+        window.localStorage.setItem(`atlas-daily-foreman-default-v1:${activePropertyId}`, "ready");
+      } else {
+        if (Array.isArray(parsed.widgets) && parsed.widgets.length) setDashboardWidgets(normalizeDashboardWidgets(parsed.widgets));
+        setDashboardLayoutId(String(parsed.activeLayoutId || "daily-foreman"));
+      }
     } catch {
-      setDashboardWidgets(makeDashboardWidgets());
+      setDashboardWidgets(makeDailyForemanWidgets());
       setCustomDashboardLayouts([]);
     }
   }, [activePropertyId]);
@@ -17764,6 +17783,34 @@ ${notes.trim()}` : notes.trim(),
     const resetWidgetGrid = (id: DashboardWidgetId) => updateWidget(id, { ...dashboardDefaultGrid[id], locked: false });
     const cardStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, borderRadius: 14, background: "#FFFFFF", padding: isMobile ? 13 : 15, boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)", minWidth: 0 };
 
+    const foremanSchedule = nonRoutineTodayEvents.slice().sort((a, b) => String(a.time || "99:99").localeCompare(String(b.time || "99:99")));
+    const foremanProblems = [
+      ...dashboardOpenTasks.filter((task) => taskDetails(task.id).status === "Blocked").map((task) => ({ id: `task-${task.id}`, title: task.title, detail: "Blocked task", action: () => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); } })),
+      ...overdueWork.map((record) => ({ id: `work-${record.id}`, title: record.title, detail: record.date ? `Overdue since ${formatDate(record.date)}` : "Overdue work", action: () => openWorkOrderById(record.id) })),
+    ].slice(0, 5);
+    const foremanAssignments = (["Nick", "Addison", "Pat", "Sean"] as const).map((person) => {
+      const tasks = dashboardTodayTasks.filter((task) => String(taskDetails(task.id).assignee || "Nick") === person);
+      const work = dueToday.filter((record) => String((record as AtlasServiceRecord & { assignedTo?: string }).assignedTo || "").toLowerCase() === person.toLowerCase());
+      return { person, tasks, work, count: tasks.length + work.length };
+    });
+    const dailyForemanPanel = (
+      <div style={{ display: "grid", gap: 12 }}>
+        <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, background: `linear-gradient(135deg, ${colors.navy}, #173E68)`, color: "#FFFFFF", border: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Mission Control</div><h1 style={{ margin: "3px 0", fontSize: isMobile ? 24 : 29 }}>Your day at {activeProperty.name}</h1><small style={{ opacity: .82 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Calendar</button><button type="button" onClick={() => setScreen("routines")} style={teamGoldButtonStyle}>Edit Routine</button></div></div>
+        </section>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
+          <section style={cardStyle}><div style={{ ...eyebrowStyle, marginBottom: 7 }}>Today’s Checklist</div><AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} /></section>
+          <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => setScreen("calendar")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
+        </div>
+        <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Assigned Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Who is handling what</h2></div><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 10 }}>{foremanAssignments.map((lane) => <button key={lane.person} type="button" onClick={() => lane.person === "Addison" ? (setTasksView("addison"), setScreen("planner")) : setScreen("team")} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10, textAlign: "left", cursor: "pointer" }}><small style={fieldLabelStyle}>{lane.person.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: colors.navy }}>{lane.count}</strong><span style={mutedSmallStyle}>assigned today</span></button>)}</div></section>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
+          <section style={cardStyle}><div style={eyebrowStyle}>Problems / Waiting</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{foremanProblems.map((item) => <button key={item.id} type="button" onClick={item.action} style={{ border: `1px solid #F4C7C7`, borderRadius: 10, background: "#FFF8F8", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail}</small></button>)}{!foremanProblems.length ? <div style={noticeStyle}>Nothing is blocked or overdue.</div> : null}</div></section>
+          <section style={cardStyle}><div style={eyebrowStyle}>If Time Allows</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{ifTimeTasks.slice(0, 5).map((task) => <button key={task.id} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {taskDetails(task.id).assignee}</small></button>)}{!ifTimeTasks.length ? <div style={noticeStyle}>No optional work is suggested right now.</div> : null}</div></section>
+        </div>
+        <details style={{ ...cardStyle, padding: 0, overflow: "hidden" }}><summary style={{ cursor: "pointer", padding: 12, fontWeight: 950, color: colors.navy }}>Planning Tools · suggestions and essential checks</summary><div style={{ borderTop: `1px solid ${colors.line}`, padding: 12, display: "grid", gap: 8 }}>{smartDaySuggestions.slice(0, 5).map((suggestion) => <div key={suggestion.title} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}><span><strong style={{ display: "block" }}>{suggestion.title}</strong><small style={mutedSmallStyle}>{suggestion.detail}</small></span><button type="button" onClick={suggestion.action} style={secondaryButtonStyle}>{suggestion.label}</button></div>)}<button type="button" onClick={() => { setTasksView("build"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Build My Day</button></div></details>
+      </div>
+    );
+
     const renderWidgetContent = (id: DashboardWidgetId) => {
       if (id === "hero") return (
         <div className="atlas-dashboard-hero atlas-visual-hero" style={{ ...cardStyle, padding: isMobile ? "14px" : "17px 20px", background: `linear-gradient(135deg, ${colors.navy} 0%, #173B59 72%, #244E6E 100%)`, color: "#FFFFFF", border: 0 }}>
@@ -18228,6 +18275,7 @@ ${notes.trim()}` : notes.trim(),
 
     return <div className="atlas-command-dashboard" style={{ display: "grid", gap: 12 }}>
       {dashboardCenterSelector}
+      {dailyForemanPanel}
       <section style={{ ...cardStyle, padding: isMobile ? 9 : "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", background: "#F8FAFC", borderRadius: 14 }}>
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: colors.navy, fontSize: 13 }}>Dashboard View</strong><select value={dashboardLayoutId} onChange={(event) => applyLayout(event.target.value)} style={{ ...selectStyle, minWidth: 138, minHeight: 34, padding: "5px 9px", fontSize: 12 }}>{allLayouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardEditMode((current) => !current)} style={{ ...(dashboardEditMode ? goldButtonStyle : secondaryButtonStyle), minHeight: 34, padding: "6px 10px", fontSize: 12 }}>{dashboardEditMode ? "Done" : "Customize"}</button><button type="button" onClick={saveLayoutAs} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Save As</button><button type="button" onClick={() => applyLayout(isMobile ? "mobile" : "operations")} style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 10px", fontSize: 12 }}>Reset</button></div>
