@@ -40,6 +40,8 @@ const dayNames = [
   "Wednesday",
   "Thursday",
   "Friday",
+  "Saturday",
+  "Sunday",
 ];
 
 const atlasWeeklyOperations: RoutineTemplate[] = [
@@ -154,7 +156,7 @@ export default function AtlasRoutines({
 
   const [selectedDay, setSelectedDay] = useState(() => {
     const today = new Date().getDay();
-    return today >= 1 && today <= 5 ? today : 1;
+    return today === 0 ? 7 : today;
   });
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
@@ -200,7 +202,9 @@ export default function AtlasRoutines({
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload.ok === false) throw new Error(payload.error || `${dayNames[template.day]} routine did not save`);
       }
-      return mergedTemplates.map(({ changed: _changed, ...template }) => template);
+      const operationsDays = new Set(atlasWeeklyOperations.map((template) => template.day));
+      const untouchedTemplates = currentTemplates.filter((template) => !operationsDays.has(template.day));
+      return [...mergedTemplates.map(({ changed: _changed, ...template }) => template), ...untouchedTemplates].sort((a, b) => a.day - b.day);
     } finally {
       weeklySetupRunningRef.current = false;
     }
@@ -760,12 +764,12 @@ export default function AtlasRoutines({
         style={{
           display: "grid",
           gridTemplateColumns: isMobile
-            ? "1fr"
-            : "repeat(5, minmax(0, 1fr))",
+            ? "repeat(2, minmax(0, 1fr))"
+            : "repeat(7, minmax(0, 1fr))",
           gap: 8,
         }}
       >
-        {[1, 2, 3, 4, 5].map((day) => (
+        {[1, 2, 3, 4, 5, 6, 7].map((day) => (
           <button
             key={day}
             type="button"
@@ -926,7 +930,7 @@ export default function AtlasRoutines({
                           fontWeight: 700,
                         }}
                       >
-                        {[1, 2, 3, 4, 5].map((day) => (
+                        {[1, 2, 3, 4, 5, 6, 7].map((day) => (
                           <option key={day} value={day}>
                             {day === selectedDay
                               ? "Move to..."
