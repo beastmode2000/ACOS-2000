@@ -237,6 +237,8 @@ type AtlasTaskMeta = {
   addisonNote?: string;
   problemFlag?: string;
   listId?: string;
+  listName?: string;
+  listNotes?: string;
   dashboardListPinned?: boolean;
   photos?: UploadedFileRecord[];
   recurrenceInterval?: number;
@@ -6498,6 +6500,7 @@ export default function AtlasPage() {
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newPartyChecklistItem, setNewPartyChecklistItem] = useState("");
+  const [selectedListId, setSelectedListId] = useState("graduation-party");
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>("today");
   const [taskSearch, setTaskSearch] = useState("");
   const [taskFocusMode, setTaskFocusMode] = useState(false);
@@ -18049,7 +18052,7 @@ ${notes.trim()}` : notes.trim(),
     setTaskMeta((current) => {
       const next = { ...current };
       missing.forEach(({ item, id }) => {
-        next[id] = { status: "Open", dueDate: "", assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"), createdAt, completionHistory: [], flexibleTime: true, skippable: true, listId: "graduation-party", dashboardListPinned: false };
+        next[id] = { status: "Open", dueDate: "", assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"), createdAt, completionHistory: [], flexibleTime: true, skippable: true, listId: "graduation-party", listName: "Graduation Party", dashboardListPinned: false };
       });
       return next;
     });
@@ -18057,36 +18060,76 @@ ${notes.trim()}` : notes.trim(),
 
   function openGraduationPartyChecklist() {
     ensureGraduationPartyChecklist();
+    setSelectedListId("graduation-party");
     setTasksView("lists");
+  }
+
+  function checklistDefinitions() {
+    const custom = workPlanTasks.filter((task) => task.category === "Atlas List Definition").map((task) => ({ id: taskDetails(task.id).listId || task.id, name: taskDetails(task.id).listName || task.title }));
+    return [{ id: "graduation-party", name: "Graduation Party" }, ...custom.filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index)];
+  }
+
+  function checklistItems(listId: string) {
+    return workPlanTasks.filter((task) => task.category !== "Atlas List Definition" && (taskDetails(task.id).listId === listId || (listId === "graduation-party" && task.category === "Graduation Party Checklist")));
+  }
+
+  function createChecklist() {
+    const name = window.prompt("Name this checklist:", "")?.trim();
+    if (!name) return;
+    const listId = `list-${slugify(name)}-${Date.now()}`;
+    const marker: WorkPlanTask = { id: `atlas-list-definition-${listId}`, title: name, minutes: 5, priority: "Low", category: "Atlas List Definition", locationId: "general", preferredDay: "Auto", locked: true, recurring: false, fixedTime: "", notes: "Atlas checklist definition" };
+    setWorkPlanTasks((current) => [...current, marker]);
+    setTaskMeta((current) => ({ ...current, [marker.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), completionHistory: [], flexibleTime: true, skippable: true, listId, listName: name, dashboardListPinned: false } }));
+    setSelectedListId(listId);
+    setTasksView("lists");
+    showSaveToast(`${name} list created.`);
   }
 
   function addGraduationPartyChecklistItem() {
     const title = newPartyChecklistItem.trim();
     if (!title) return;
-    const dashboardListPinned = workPlanTasks.some((item) => item.category === "Graduation Party Checklist" && taskDetails(item.id).dashboardListPinned);
-    const task: WorkPlanTask = { id: uid("grad-party"), title, minutes: 30, priority: "Medium", category: "Graduation Party Checklist", locationId: "general", preferredDay: "Auto", locked: false, recurring: false, fixedTime: "", notes: "Graduation Party Checklist" };
+    const definition = checklistDefinitions().find((item) => item.id === selectedListId) || { id: "graduation-party", name: "Graduation Party" };
+    const dashboardListPinned = workPlanTasks.some((item) => taskDetails(item.id).listId === definition.id && taskDetails(item.id).dashboardListPinned);
+    const task: WorkPlanTask = { id: uid("checklist-item"), title, minutes: 30, priority: "Medium", category: definition.id === "graduation-party" ? "Graduation Party Checklist" : "Atlas Checklist Item", locationId: "general", preferredDay: "Auto", locked: false, recurring: false, fixedTime: "", notes: `${definition.name} Checklist` };
     setWorkPlanTasks((current) => [...current, task]);
-    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), completionHistory: [], flexibleTime: true, skippable: true, listId: "graduation-party", dashboardListPinned } }));
+    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), completionHistory: [], flexibleTime: true, skippable: true, listId: definition.id, listName: definition.name, dashboardListPinned } }));
     setNewPartyChecklistItem("");
     showSaveToast("Checklist item added.");
   }
 
   function renderGraduationPartyChecklist() {
-    const items = workPlanTasks.filter((task) => task.category === "Graduation Party Checklist");
+    const definitions = checklistDefinitions();
+    const selectedDefinition = definitions.find((item) => item.id === selectedListId) || definitions[0];
+    const items = checklistItems(selectedDefinition.id);
     const completed = items.filter((task) => taskDetails(task.id).status === "Completed").length;
-    const pinned = items.some((task) => taskDetails(task.id).dashboardListPinned);
+    const listRecords = workPlanTasks.filter((task) => taskDetails(task.id).listId === selectedDefinition.id || (selectedDefinition.id === "graduation-party" && task.category === "Graduation Party Checklist"));
+    const pinned = listRecords.some((task) => taskDetails(task.id).dashboardListPinned);
+    const listNotes = listRecords.map((task) => taskDetails(task.id).listNotes || "").find(Boolean) || "";
     const setDashboardPinned = (nextPinned: boolean) => {
-      const itemIds = new Set(items.map((task) => task.id));
+      const itemIds = new Set(listRecords.map((task) => task.id));
       setTaskMeta((current) => {
         const next = { ...current };
-        itemIds.forEach((id) => { next[id] = { ...taskDetails(id), listId: "graduation-party", dashboardListPinned: nextPinned, updatedAt: new Date().toISOString() }; });
+        itemIds.forEach((id) => { next[id] = { ...taskDetails(id), listId: selectedDefinition.id, listName: selectedDefinition.name, dashboardListPinned: nextPinned, updatedAt: new Date().toISOString() }; });
         return next;
       });
-      showSaveToast(nextPinned ? "Graduation Party added to Dashboard." : "Graduation Party removed from Dashboard.");
+      showSaveToast(nextPinned ? `${selectedDefinition.name} added to Dashboard.` : `${selectedDefinition.name} removed from Dashboard.`);
+    };
+    const updateListNotes = (value: string) => {
+      const recordIds = new Set(listRecords.map((task) => task.id));
+      setTaskMeta((current) => {
+        const next = { ...current };
+        recordIds.forEach((id) => { next[id] = { ...taskDetails(id), listId: selectedDefinition.id, listName: selectedDefinition.name, listNotes: value, updatedAt: new Date().toISOString() }; });
+        return next;
+      });
     };
     return <div style={{ display: "grid", gap: 12 }}>
       <section style={{ ...cardStyle, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Event Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>Graduation Party</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button><button type="button" onClick={ensureGraduationPartyChecklist} style={secondaryButtonStyle}>Restore standard items</button></div></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Reusable Checklists</div><h2 style={{ margin: "3px 0", color: colors.navy }}>Lists</h2></div><button type="button" onClick={createChecklist} style={goldButtonStyle}>+ New List</button></div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{definitions.map((definition) => <button key={definition.id} type="button" onClick={() => { if (definition.id === "graduation-party") ensureGraduationPartyChecklist(); setSelectedListId(definition.id); }} style={selectedDefinition.id === definition.id ? goldButtonStyle : secondaryButtonStyle}>{definition.name}</button>)}</div>
+      </section>
+      <section style={{ ...cardStyle, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button>{selectedDefinition.id === "graduation-party" ? <button type="button" onClick={ensureGraduationPartyChecklist} style={secondaryButtonStyle}>Restore standard items</button> : null}</div></div>
+        <label style={{ display: "grid", gap: 5, marginTop: 12 }}><span style={fieldLabelStyle}>LIST NOTES</span><textarea value={listNotes} onChange={(event) => updateListNotes(event.currentTarget.value)} placeholder="Add instructions, reminders, vendor details, or notes for this list…" rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}/></label>
       </section>
       <section style={{ ...cardStyle, padding: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginBottom: 9 }}><input value={newPartyChecklistItem} onChange={(event) => setNewPartyChecklistItem(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addGraduationPartyChecklistItem(); }} placeholder="Add checklist item" style={inputStyle}/><button type="button" onClick={addGraduationPartyChecklistItem} style={goldButtonStyle}>Add</button></div>
@@ -18531,6 +18574,9 @@ ${notes.trim()}` : notes.trim(),
     const priorityOrder = { High: 0, Medium: 1, Low: 2 } as const;
     const allTaskRows = workPlanTasks.filter((task) => {
       const meta = taskDetails(task.id);
+      if (task.category === "Atlas List Definition") return false;
+      if (meta.listId && !isAddisonUser) return false;
+      if (meta.listId && isAddisonUser && !meta.dashboardListPinned) return false;
       if (isAddisonUser) return meta.assignee === "Addison" && meta.status !== "Completed";
       return true;
     });
@@ -20260,7 +20306,7 @@ ${notes.trim()}` : notes.trim(),
     const workSearchText = (record: AtlasServiceRecord) => `${record.title || ""} ${record.workCategory || ""} ${record.responsibilityArea || ""} ${record.notes || ""}`.toLowerCase();
     const themeMatchScore = (record: AtlasServiceRecord) => todayFocus.keywords.reduce((score, keyword) => score + (workSearchText(record).includes(keyword) ? 1 : 0), 0);
     const guidedTodaysWork = [...todaysWork].sort((a, b) => themeMatchScore(b as AtlasServiceRecord) - themeMatchScore(a as AtlasServiceRecord) || priorityRank(a) - priorityRank(b) || String(a.title || "").localeCompare(String(b.title || "")));
-    const dashboardOpenTasks = workPlanTasks.filter((task) => taskDetails(task.id).status !== "Completed");
+    const dashboardOpenTasks = workPlanTasks.filter((task) => task.category !== "Atlas List Definition" && !taskDetails(task.id).listId && taskDetails(task.id).status !== "Completed");
     const dashboardTodayTasks = dashboardOpenTasks.filter((task) => {
       const meta = taskDetails(task.id);
       return !meta.dueDate || meta.dueDate <= today;
@@ -20411,6 +20457,8 @@ ${notes.trim()}` : notes.trim(),
     });
     const addisonDashboardTasks = workPlanTasks.filter((task) => {
       const meta = taskDetails(task.id);
+      if (task.category === "Atlas List Definition") return false;
+      if (meta.listId && !meta.dashboardListPinned) return false;
       if (meta.assignee !== "Addison") return false;
       const completedToday = meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
       const dueNow = meta.status !== "Completed" && (!meta.dueDate || meta.dueDate <= today);
@@ -20424,16 +20472,20 @@ ${notes.trim()}` : notes.trim(),
       const meta = taskDetails(task.id);
       return meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
     });
-    const partyDashboardItems = workPlanTasks.filter((task) => task.category === "Graduation Party Checklist" && taskDetails(task.id).dashboardListPinned);
-    const partyDashboardCompleted = partyDashboardItems.filter((task) => taskDetails(task.id).status === "Completed").length;
-    const removePartyListFromDashboard = () => {
-      const itemIds = new Set(partyDashboardItems.map((task) => task.id));
+    const activeDashboardLists = checklistDefinitions().map((definition) => {
+      const records = workPlanTasks.filter((task) => taskDetails(task.id).listId === definition.id || (definition.id === "graduation-party" && task.category === "Graduation Party Checklist"));
+      const items = records.filter((task) => task.category !== "Atlas List Definition");
+      return { ...definition, records, items, completed: items.filter((task) => taskDetails(task.id).status === "Completed").length, pinned: records.some((task) => taskDetails(task.id).dashboardListPinned) };
+    }).filter((list) => list.pinned);
+    const removeListFromDashboard = (listId: string) => {
+      const list = activeDashboardLists.find((item) => item.id === listId);
+      const itemIds = new Set((list?.records || []).map((task) => task.id));
       setTaskMeta((current) => {
         const next = { ...current };
         itemIds.forEach((id) => { next[id] = { ...taskDetails(id), dashboardListPinned: false, updatedAt: new Date().toISOString() }; });
         return next;
       });
-      showSaveToast("Graduation Party removed from Dashboard.");
+      showSaveToast(`${list?.name || "List"} removed from Dashboard.`);
     };
     const assignAddisonFromDashboard = () => {
       const title = window.prompt("What should Addison handle today?")?.trim();
@@ -20488,10 +20540,10 @@ ${notes.trim()}` : notes.trim(),
             </section>
           </div>
         </div>
-        {partyDashboardItems.length ? <section style={{ ...cardStyle, padding: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 9, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Active List</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Graduation Party</h2><small style={mutedSmallStyle}>{partyDashboardCompleted} of {partyDashboardItems.length} complete</small></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => { openGraduationPartyChecklist(); setScreen("planner"); }} style={secondaryButtonStyle}>Open List</button><button type="button" onClick={removePartyListFromDashboard} style={compactUtilityButtonStyle}>Remove</button></div></div>
-          <div style={{ display: "grid", gap: 5, maxHeight: 330, overflowY: "auto", marginTop: 9, paddingRight: 3 }}>{partyDashboardItems.map((task) => { const meta = taskDetails(task.id); const done = meta.status === "Completed"; return <label key={`dashboard-party-${task.id}`} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: "7px 8px", border: `1px solid ${done ? "#B8E0CD" : colors.line}`, borderRadius: 9, background: done ? "#EFFAF4" : "#FFFFFF", cursor: "pointer" }}><input type="checkbox" checked={done} onChange={(event) => event.currentTarget.checked ? completeAtlasTask(task) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined })}/><span style={{ color: colors.navy, fontSize: 12, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span><small style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>{meta.assignee}</small></label>; })}</div>
-        </section> : null}
+        {activeDashboardLists.map((list) => <section key={`dashboard-list-${list.id}`} style={{ ...cardStyle, padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 9, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Active List</div><h2 style={{ margin: "2px 0", color: colors.navy }}>{list.name}</h2><small style={mutedSmallStyle}>{list.completed} of {list.items.length} complete</small></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => { setSelectedListId(list.id); setTasksView("lists"); setScreen("planner"); }} style={secondaryButtonStyle}>Open List</button><button type="button" onClick={() => removeListFromDashboard(list.id)} style={compactUtilityButtonStyle}>Remove</button></div></div>
+          <div style={{ display: "grid", gap: 5, maxHeight: 330, overflowY: "auto", marginTop: 9, paddingRight: 3 }}>{list.items.map((task) => { const meta = taskDetails(task.id); const done = meta.status === "Completed"; return <label key={`dashboard-list-item-${task.id}`} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: "7px 8px", border: `1px solid ${done ? "#B8E0CD" : colors.line}`, borderRadius: 9, background: done ? "#EFFAF4" : "#FFFFFF", cursor: "pointer" }}><input type="checkbox" checked={done} onChange={(event) => event.currentTarget.checked ? completeAtlasTask(task) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined })}/><span style={{ color: colors.navy, fontSize: 12, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span><small style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>{meta.assignee}</small></label>; })}{!list.items.length ? <div style={noticeStyle}>No checklist items yet. Open the list to add the first item.</div> : null}</div>
+        </section>)}
         <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Assigned Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Who is handling what</h2></div><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 10 }}>{foremanAssignments.map((lane) => <button key={lane.person} type="button" onClick={() => setScreen("team")} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10, textAlign: "left", cursor: "pointer" }}><small style={fieldLabelStyle}>{lane.person.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: colors.navy }}>{lane.count}</strong><span style={mutedSmallStyle}>assigned today</span></button>)}</div></section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
           <section style={cardStyle}><div style={eyebrowStyle}>Problems / Waiting</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{foremanProblems.map((item) => <button key={item.id} type="button" onClick={item.action} style={{ border: `1px solid #F4C7C7`, borderRadius: 10, background: "#FFF8F8", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail}</small></button>)}{!foremanProblems.length ? <div style={noticeStyle}>Nothing is blocked or overdue.</div> : null}</div></section>
