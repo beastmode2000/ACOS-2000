@@ -7,6 +7,10 @@ type RoutineTask = {
   title: string;
   enabled: boolean;
   completed?: boolean;
+  status?: "open" | "completed" | "skipped" | "deferred";
+  assignedTo?: "Nick" | "Addison" | "Pat" | "Crew";
+  deferredTo?: string;
+  deferredFrom?: string;
 };
 
 type RoutineTemplate = {
@@ -148,7 +152,10 @@ export default function AtlasRoutines({
   const [occurrence, setOccurrence] =
     useState<RoutineOccurrence | null>(null);
 
-  const [selectedDay, setSelectedDay] = useState(1);
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const today = new Date().getDay();
+    return today >= 1 && today <= 5 ? today : 1;
+  });
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftTasks, setDraftTasks] = useState<RoutineTask[]>([]);
@@ -314,6 +321,29 @@ export default function AtlasRoutines({
     }
   }
 
+  async function updateTodayTask(action: "skip-task" | "defer-task" | "assign-task", taskId: string, assignedTo?: RoutineTask["assignedTo"]) {
+    if (!occurrence || busy) return;
+    const previous = occurrence;
+    setBusy(true);
+    setStatus(action === "defer-task" ? "Moving…" : "Saving…");
+    try {
+      const response = await fetch("/api/atlas-routines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, propertyId: activePropertyId, date: occurrence.date, taskId, assignedTo }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Routine item did not save");
+      if (payload.occurrence) setOccurrence(payload.occurrence);
+      setStatus(action === "defer-task" && payload.movedTo ? `Moved to ${new Date(`${payload.movedTo}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}.` : "Saved.");
+    } catch (error) {
+      setOccurrence(previous);
+      setStatus(error instanceof Error ? error.message : "Routine item did not save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function beginEdit() {
     if (!selected) {
       return;
@@ -344,6 +374,7 @@ export default function AtlasRoutines({
         id: createTaskId(),
         title,
         enabled: true,
+        assignedTo: "Nick",
       },
     ]);
 
@@ -516,6 +547,8 @@ export default function AtlasRoutines({
     const completed =
       occurrence?.tasks.filter((task) => task.completed).length || 0;
 
+    const resolved = occurrence?.tasks.filter((task) => task.completed || task.status === "skipped" || task.status === "deferred").length || 0;
+
     const total = occurrence?.tasks.length || 0;
 
     return (
@@ -596,47 +629,28 @@ export default function AtlasRoutines({
               }}
             >
               {occurrence.tasks.map((task) => (
-                <label
+                <div
                   key={task.id}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 11,
+                    display: "grid",
+                    gap: 8,
                     padding: "10px 11px",
                     border: `1px solid ${colors.line}`,
                     borderRadius: 11,
-                    cursor: "pointer",
-                    background: task.completed
-                      ? "#F2FBF6"
-                      : "#FFFFFF",
+                    background: task.completed ? "#F2FBF6" : task.status === "skipped" || task.status === "deferred" ? "#F8FAFC" : "#FFFFFF",
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={Boolean(task.completed)}
-                    disabled={busy}
-                    onChange={() => void toggleTask(task.id)}
-                    style={{
-                      width: 19,
-                      height: 19,
-                      accentColor: colors.green,
-                    }}
-                  />
-
-                  <span
-                    style={{
-                      textDecoration: task.completed
-                        ? "line-through"
-                        : "none",
-                      color: task.completed
-                        ? colors.muted
-                        : colors.text,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {task.title}
-                  </span>
-                </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
+                    <input type="checkbox" checked={Boolean(task.completed)} disabled={busy || task.status === "skipped" || task.status === "deferred"} onChange={() => void toggleTask(task.id)} style={{ width: 19, height: 19, accentColor: colors.green }} />
+                    <span style={{ flex: 1, textDecoration: task.completed || task.status === "skipped" || task.status === "deferred" ? "line-through" : "none", color: task.completed || task.status === "skipped" || task.status === "deferred" ? colors.muted : colors.text, fontWeight: 700 }}>{task.title}</span>
+                    {task.status === "skipped" ? <small style={{ color: colors.muted, fontWeight: 900 }}>Skipped</small> : task.status === "deferred" ? <small style={{ color: colors.gold, fontWeight: 900 }}>Moved</small> : null}
+                  </label>
+                  {!task.completed && task.status !== "skipped" && task.status !== "deferred" ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingLeft: isMobile ? 0 : 30 }}>
+                    <select aria-label={`Assign ${task.title}`} value={task.assignedTo || "Nick"} disabled={busy} onChange={(event) => void updateTodayTask("assign-task", task.id, event.currentTarget.value as RoutineTask["assignedTo"])} style={{ ...button, minHeight: 30, padding: "4px 7px", fontSize: 12 }}><option>Nick</option><option>Addison</option><option>Pat</option><option>Crew</option></select>
+                    <button type="button" disabled={busy} onClick={() => void updateTodayTask("skip-task", task.id)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Skip Today</button>
+                    <button type="button" disabled={busy} onClick={() => void updateTodayTask("defer-task", task.id)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Next Workday</button>
+                  </div> : null}
+                </div>
               ))}
             </div>
 
@@ -650,7 +664,7 @@ export default function AtlasRoutines({
               }}
             >
               <strong>
-                {completed} of {total} complete
+                {completed} complete · {resolved} of {total} handled
               </strong>
 
               <div
@@ -666,7 +680,7 @@ export default function AtlasRoutines({
                   style={{
                     width: `${
                       total
-                        ? (completed / total) * 100
+                        ? (resolved / total) * 100
                         : 0
                     }%`,
                     height: "100%",
@@ -834,7 +848,7 @@ export default function AtlasRoutines({
                     gridTemplateColumns: editing
                       ? isMobile
                         ? "1fr"
-                        : "minmax(0, 1fr) auto auto auto"
+                        : "minmax(0, 1fr) auto auto auto auto"
                       : "1fr",
                     gap: 8,
                     alignItems: "center",
@@ -868,11 +882,12 @@ export default function AtlasRoutines({
                       }}
                     />
                   ) : (
-                    <strong>{task.title}</strong>
+                    <span><strong style={{ display: "block" }}>{task.title}</strong><small style={{ color: colors.muted }}>Default: {task.assignedTo || "Nick"}</small></span>
                   )}
 
                   {editing ? (
                     <>
+                      <select value={task.assignedTo || "Nick"} onChange={(event) => setDraftTasks((current) => current.map((item, taskIndex) => taskIndex === index ? { ...item, assignedTo: event.currentTarget.value as RoutineTask["assignedTo"] } : item))} style={{ ...button, fontWeight: 700 }}><option>Nick</option><option>Addison</option><option>Pat</option><option>Crew</option></select>
                       <div
                         style={{
                           display: "flex",
