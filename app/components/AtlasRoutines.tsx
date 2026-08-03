@@ -31,6 +31,9 @@ type Props = {
   isMobile?: boolean;
   onOpenManager?: () => void;
   activePropertyId?: string;
+  onAddPhoto?: (task: { id: string; title: string }) => void;
+  onAddNote?: (task: { id: string; title: string }) => void;
+  onFlagProblem?: (task: { id: string; title: string }) => void;
 };
 
 const dayNames = [
@@ -149,6 +152,9 @@ export default function AtlasRoutines({
   isMobile = false,
   onOpenManager,
   activePropertyId = "2000",
+  onAddPhoto,
+  onAddNote,
+  onFlagProblem,
 }: Props) {
   const [templates, setTemplates] = useState<RoutineTemplate[]>([]);
   const [occurrence, setOccurrence] =
@@ -653,6 +659,9 @@ export default function AtlasRoutines({
                     <select aria-label={`Assign ${task.title}`} value={task.assignedTo || "Nick"} disabled={busy} onChange={(event) => void updateTodayTask("assign-task", task.id, event.currentTarget.value as RoutineTask["assignedTo"])} style={{ ...button, minHeight: 30, padding: "4px 7px", fontSize: 12 }}><option>Nick</option><option>Addison</option><option>Pat</option><option>Crew</option></select>
                     <button type="button" disabled={busy} onClick={() => void updateTodayTask("skip-task", task.id)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Skip Today</button>
                     <button type="button" disabled={busy} onClick={() => void updateTodayTask("defer-task", task.id)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Next Workday</button>
+                    {onAddPhoto ? <button type="button" disabled={busy} onClick={() => onAddPhoto(task)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Photo</button> : null}
+                    {onAddNote ? <button type="button" disabled={busy} onClick={() => onAddNote(task)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Note</button> : null}
+                    {onFlagProblem ? <button type="button" disabled={busy} onClick={() => onFlagProblem(task)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12, color: colors.red }}>Problem</button> : null}
                   </div> : null}
                 </div>
               ))}
