@@ -227,6 +227,8 @@ type AtlasTaskMeta = {
   workOrderId?: string;
   assetId?: string;
   vehicleId?: string;
+  routineTaskId?: string;
+  routineDate?: string;
   vendorId?: string;
   procedureId?: string;
   contactId?: string;
@@ -6551,6 +6553,43 @@ export default function AtlasPage() {
   }, [operationsSyncState, activePropertyId, workPlanTasks, taskMeta, vehicleCare, daySessions]);
 
   useEffect(() => {
+    if (!ready || !operationsHydrated) return;
+    let cancelled = false;
+    const refreshRoutineAssignments = async () => {
+      try {
+        const response = await fetch(`/api/atlas?routineAssignments=${Date.now()}&propertyId=${encodeURIComponent(activePropertyId)}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (cancelled || payload?.propertyId && String(payload.propertyId) !== activePropertyId) return;
+        const operationsPayload = payload?.operations && typeof payload.operations === "object" ? payload.operations : payload;
+        const apiTasks = Array.isArray(operationsPayload.taskRecords) ? operationsPayload.taskRecords : Array.isArray(operationsPayload.tasks) ? operationsPayload.tasks : [];
+        const remoteRoutineTasks = apiTasks.filter((record: { id?: unknown }) => String(record.id || "").startsWith(`routine-assignment-${activePropertyId}-`));
+        setWorkPlanTasks((current) => {
+          const nonRoutine = current.filter((item) => !item.id.startsWith(`routine-assignment-${activePropertyId}-`));
+          const remote = remoteRoutineTasks.map((record: Record<string, unknown>) => ({ id: String(record.id || ""), title: String(record.title || "Routine assignment"), minutes: Math.max(5, Number(record.minutes || 30)), priority: (record.priority || "Medium") as WorkPlanTask["priority"], category: String(record.category || "Routine"), locationId: String(record.locationId || "general"), preferredDay: (record.preferredDay || "Auto") as WorkPlanTask["preferredDay"], locked: Boolean(record.locked), recurring: Boolean(record.recurring), fixedTime: String(record.fixedTime || ""), notes: String(record.notes || "") }));
+          const next = [...remote, ...nonRoutine];
+          return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+        });
+        setTaskMeta((current) => {
+          const next = Object.fromEntries(Object.entries(current).filter(([id]) => !id.startsWith(`routine-assignment-${activePropertyId}-`))) as Record<string, AtlasTaskMeta>;
+          remoteRoutineTasks.forEach((record: Record<string, unknown>) => {
+            const remoteMeta = record.taskMeta && typeof record.taskMeta === "object" ? record.taskMeta as AtlasTaskMeta : record as unknown as AtlasTaskMeta;
+            next[String(record.id)] = remoteMeta;
+          });
+          return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+        });
+      } catch {
+        // Shared assignment refresh retries automatically while Atlas remains open.
+      }
+    };
+    const handleFocus = () => { void refreshRoutineAssignments(); };
+    void refreshRoutineAssignments();
+    const timer = window.setInterval(() => { void refreshRoutineAssignments(); }, 12000);
+    window.addEventListener("focus", handleFocus);
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener("focus", handleFocus); };
+  }, [ready, operationsHydrated, activePropertyId]);
+
+  useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || !vehicleCare.length) return;
     void setupFleetAssetsAndSchedules();
   }, [ready, operationsHydrated, syncState, activePropertyId, vehicleCare.length, assetRecords.length, workPlanTasks.length, serviceRecords.length, calendarItems.length]);
@@ -12551,6 +12590,62 @@ export default function AtlasPage() {
     showSaveToast("Problem saved as a linked Work Order.");
   }
 
+  function syncRoutineAssignment(task: { id: string; title: string; assignedTo?: "Nick" | "Addison" | "Pat" | "Crew"; date: string }) {
+    const linkedTaskId = `routine-assignment-${activePropertyId}-${task.date}-${task.id}`;
+    if (task.assignedTo !== "Addison") {
+      setWorkPlanTasks((current) => current.filter((item) => item.id !== linkedTaskId));
+      setTaskMeta((current) => {
+        if (!current[linkedTaskId]) return current;
+        const next = { ...current };
+        delete next[linkedTaskId];
+        return next;
+      });
+      void deleteOperationalRecord("tasks" as AtlasTable, linkedTaskId);
+      showSaveToast(`${task.title} removed from Addison’s list.`);
+      return;
+    }
+    const existingTask = workPlanTasks.find((item) => item.id === linkedTaskId);
+    const now = new Date().toISOString();
+    const assignmentTask: WorkPlanTask = existingTask ? { ...existingTask, title: task.title } : {
+      id: linkedTaskId,
+      title: task.title,
+      minutes: 30,
+      priority: "Medium",
+      category: inferTaskCategory(task.title),
+      locationId: "general",
+      preferredDay: "Auto",
+      locked: false,
+      recurring: false,
+      fixedTime: "",
+      notes: "Assigned from today’s Routine checklist.",
+    };
+    const existingMeta = taskMeta[linkedTaskId];
+    const assignmentMeta: AtlasTaskMeta = {
+      ...(existingMeta || {}),
+      status: existingMeta?.status === "Completed" ? "Completed" : "Open",
+      dueDate: task.date,
+      assignee: "Addison",
+      createdAt: existingMeta?.createdAt || now,
+      updatedAt: now,
+      notes: existingMeta?.notes || "Assigned from today’s Routine checklist.",
+      routineTaskId: task.id,
+      routineDate: task.date,
+      assignmentScope: "This occurrence",
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      completionHistory: existingMeta?.completionHistory || [],
+      season: "Year-Round",
+      weatherDependency: existingMeta?.weatherDependency || "None",
+      flexibleTime: true,
+      skippable: true,
+    };
+    setWorkPlanTasks((current) => current.some((item) => item.id === linkedTaskId) ? current.map((item) => item.id === linkedTaskId ? assignmentTask : item) : [assignmentTask, ...current]);
+    setTaskMeta((current) => ({ ...current, [linkedTaskId]: assignmentMeta }));
+    void postAtlasRecord("tasks" as AtlasTable, { ...assignmentTask, ...assignmentMeta, taskMeta: assignmentMeta, propertyId: activePropertyId, updatedAt: now });
+    showSaveToast(`${task.title} added to Addison’s list.`);
+  }
+
   function addWorkOrder(initial: Partial<AtlasServiceRecord> = {}) {
     const linkedAssetPhoto = initial.assetId
       ? [...photos]
@@ -16108,7 +16203,21 @@ export default function AtlasPage() {
       completionHistory: Array.from(new Set([...(meta.completionHistory || []), todayISO()])).sort(),
       needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
     });
+    if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
     showSaveToast(`${task.title} completed.`);
+  }
+
+  async function toggleLinkedRoutineCompletion(meta: AtlasTaskMeta) {
+    if (!meta.routineTaskId || !meta.routineDate) return;
+    try {
+      await fetch("/api/atlas-routines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle-task", propertyId: activePropertyId, date: meta.routineDate, taskId: meta.routineTaskId }),
+      });
+    } catch {
+      showSaveToast("Task saved; routine checkoff will retry when Atlas reconnects.", "warning");
+    }
   }
 
   function skipRecurringTask(task: WorkPlanTask) {
@@ -20233,12 +20342,12 @@ ${notes.trim()}` : notes.trim(),
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Mission Control</div><h1 style={{ margin: "3px 0", fontSize: isMobile ? 24 : 29 }}>Your day at {activeProperty.name}</h1><small style={{ opacity: .82 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setMorningBriefOpen(true)} style={teamGoldButtonStyle}>Morning Brief</button><button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Calendar</button><button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Edit Routine</button></div></div>
         </section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
-          <AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} />
+          <AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} onAssignmentChange={syncRoutineAssignment} />
           <div style={{ display: "grid", gap: 12 }}>
             <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => setScreen("calendar")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
             <section style={cardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Addison Today</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Live checklist</h2></div><span style={badgeStyle(addisonDashboardCompleted.length === addisonDashboardTasks.length && addisonDashboardTasks.length ? "Completed" : "Scheduled")}>{addisonDashboardCompleted.length}/{addisonDashboardTasks.length}</span></div>
-              <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{addisonDashboardTasks.map((task) => { const meta = taskDetails(task.id); const checked = Boolean(meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today); return <div key={`dashboard-addison-${task.id}`} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${checked ? "#B8E0CD" : colors.line}`, borderRadius: 10, background: checked ? "#EFFAF4" : "#FFFFFF", padding: 9 }}><input type="checkbox" checked={checked} aria-label={`Complete ${task.title}`} onChange={() => checked ? updateTaskDetails(task.id, { status: "Open", completedAt: undefined, completionHistory: (meta.completionHistory || []).filter((date) => date !== today), needsReview: false, dueDate: today }) : completeAtlasTask(task)} style={{ width: 18, height: 18, accentColor: colors.green, cursor: "pointer" }} /><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, textDecoration: checked ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis" }}>{task.title}</strong>{meta.notes || meta.instructions ? <small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.instructions || meta.notes}</small> : null}</button><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Edit</button></div>; })}{!addisonDashboardTasks.length ? <div style={noticeStyle}>Nothing assigned to Addison today.</div> : null}</div>
+              <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{addisonDashboardTasks.map((task) => { const meta = taskDetails(task.id); const checked = Boolean(meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today); return <div key={`dashboard-addison-${task.id}`} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${checked ? "#B8E0CD" : colors.line}`, borderRadius: 10, background: checked ? "#EFFAF4" : "#FFFFFF", padding: 9 }}><input type="checkbox" checked={checked} aria-label={`Complete ${task.title}`} onChange={() => { if (checked) { updateTaskDetails(task.id, { status: "Open", completedAt: undefined, completionHistory: (meta.completionHistory || []).filter((date) => date !== today), needsReview: false, dueDate: today }); if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta); } else completeAtlasTask(task); }} style={{ width: 18, height: 18, accentColor: colors.green, cursor: "pointer" }} /><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, textDecoration: checked ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis" }}>{task.title}</strong>{meta.notes || meta.instructions ? <small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.instructions || meta.notes}</small> : null}</button><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Edit</button></div>; })}{!addisonDashboardTasks.length ? <div style={noticeStyle}>Nothing assigned to Addison today.</div> : null}</div>
               <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}><button type="button" onClick={assignAddisonFromDashboard} style={goldButtonStyle}>+ Assign</button><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div>
             </section>
           </div>
