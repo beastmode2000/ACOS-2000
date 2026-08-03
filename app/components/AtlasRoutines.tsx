@@ -723,12 +723,16 @@ export default function AtlasRoutines({
           alignItems: isMobile ? "stretch" : "center",
           flexDirection: isMobile ? "column" : "row",
           gap: 12,
+          background: `linear-gradient(135deg, ${colors.navy}, #173E68)`,
+          color: "#FFFFFF",
+          borderRadius: 14,
+          padding: isMobile ? 14 : "15px 17px",
         }}
       >
         <div>
           <div
             style={{
-              color: colors.gold,
+              color: "#E8C778",
               fontSize: 12,
               fontWeight: 900,
               letterSpacing: ".08em",
@@ -741,15 +745,14 @@ export default function AtlasRoutines({
           <h1
             style={{
               margin: "4px 0 3px",
-              color: colors.navy,
+              color: "#FFFFFF",
             }}
           >
             Routines
           </h1>
 
-          <div style={{ color: colors.muted }}>
-            Build the recurring checklists that appear on
-            the Dashboard.
+          <div style={{ color: "rgba(255,255,255,.78)", fontSize: 13 }}>
+            Edit the recurring checklist shown in Mission Control.
           </div>
         </div>
 
