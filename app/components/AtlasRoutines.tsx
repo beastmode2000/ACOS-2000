@@ -34,6 +34,7 @@ type Props = {
   onAddPhoto?: (task: { id: string; title: string }) => void;
   onAddNote?: (task: { id: string; title: string }) => void;
   onFlagProblem?: (task: { id: string; title: string }) => void;
+  onAssignmentChange?: (task: { id: string; title: string; assignedTo: RoutineTask["assignedTo"]; date: string }) => void | Promise<void>;
 };
 
 const dayNames = [
@@ -155,6 +156,7 @@ export default function AtlasRoutines({
   onAddPhoto,
   onAddNote,
   onFlagProblem,
+  onAssignmentChange,
 }: Props) {
   const [templates, setTemplates] = useState<RoutineTemplate[]>([]);
   const [occurrence, setOccurrence] =
@@ -345,6 +347,10 @@ export default function AtlasRoutines({
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Routine item did not save");
       if (payload.occurrence) setOccurrence(payload.occurrence);
+      if (action === "assign-task" && assignedTo) {
+        const savedTask = (payload.occurrence?.tasks || occurrence.tasks).find((task: RoutineTask) => task.id === taskId);
+        if (savedTask) await onAssignmentChange?.({ id: savedTask.id, title: savedTask.title, assignedTo, date: occurrence.date });
+      }
       setStatus(action === "defer-task" && payload.movedTo ? `Moved to ${new Date(`${payload.movedTo}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}.` : "Saved.");
     } catch (error) {
       setOccurrence(previous);
