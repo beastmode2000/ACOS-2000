@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type RoutineTask = {
   id: string;
@@ -26,6 +26,7 @@ type Props = {
   mode: "dashboard" | "manager";
   isMobile?: boolean;
   onOpenManager?: () => void;
+  activePropertyId?: string;
 };
 
 const dayNames = [
@@ -36,6 +37,80 @@ const dayNames = [
   "Thursday",
   "Friday",
 ];
+
+const atlasWeeklyOperations: RoutineTemplate[] = [
+  {
+    day: 1,
+    name: "Monday · Property Reset & Garage",
+    tasks: [
+      { id: "atlas-ops-mon-trash", title: "Move trash, recycling, and yard-waste cans to the street; clean cans after collection", enabled: true },
+      { id: "atlas-ops-mon-reset", title: "Complete weekend cleanup and the interior/exterior walkthrough", enabled: true },
+      { id: "atlas-ops-mon-review", title: "Review owner requests, urgent work, and overdue work", enabled: true },
+      { id: "atlas-ops-mon-cleanup", title: "Clean geese debris and the dog area", enabled: true },
+      { id: "atlas-ops-mon-garage", title: "Clean scheduled vehicles and check fuel or charge, tires, fluids, and warning lights", enabled: true },
+      { id: "atlas-ops-mon-plan", title: "Process deliveries, restock supplies, plan the week, and delegate appropriate work", enabled: true },
+      { id: "atlas-ops-mon-water", title: "Water pots and address lawn or planting dry spots", enabled: true },
+    ],
+  },
+  {
+    day: 2,
+    name: "Tuesday · Dock, Waterfront & Recreation",
+    tasks: [
+      { id: "atlas-ops-tue-geese", title: "Clean geese debris from the dock and shoreline", enabled: true },
+      { id: "atlas-ops-tue-dock", title: "Inspect dock boards, cleats, bumpers, dock boxes, and lighting", enabled: true },
+      { id: "atlas-ops-tue-marine", title: "Inspect the Cobalt, Sea-Doo, lifts, covers, and rollers", enabled: true },
+      { id: "atlas-ops-tue-recreation", title: "Inspect the sport court, trampoline, and recreation equipment", enabled: true },
+      { id: "atlas-ops-tue-bbq", title: "Clean the BBQ and nearby outdoor work areas", enabled: true },
+      { id: "atlas-ops-tue-lanken", title: "Review the Lanken half-day crew visit with Pat and record progress photos", enabled: true },
+      { id: "atlas-ops-tue-meeting", title: "Attend the 10:00 AM weekly property meeting", enabled: true },
+      { id: "atlas-ops-tue-water", title: "Water pots and address lawn or planting dry spots", enabled: true },
+    ],
+  },
+  {
+    day: 3,
+    name: "Wednesday · Landscaping & Irrigation",
+    tasks: [
+      { id: "atlas-ops-wed-inspect", title: "Inspect lawns, beds, gardens, trees, pots, and specialty plantings", enabled: true },
+      { id: "atlas-ops-wed-crew", title: "Review landscaping crew work and unfinished items", enabled: true },
+      { id: "atlas-ops-wed-irrigation", title: "Check irrigation zones, heads, pressure, coverage, and dry spots", enabled: true },
+      { id: "atlas-ops-wed-care", title: "Weed, prune, and hand-water where needed", enabled: true },
+      { id: "atlas-ops-wed-veggie", title: "Inspect and maintain the veggie boxes", enabled: true },
+      { id: "atlas-ops-wed-photos", title: "Photograph progress and record issues", enabled: true },
+      { id: "atlas-ops-wed-repairs", title: "Create repair work orders for irrigation or landscape problems", enabled: true },
+    ],
+  },
+  {
+    day: 4,
+    name: "Thursday · Pool, Spa & Outdoor Cleaning",
+    tasks: [
+      { id: "atlas-ops-thu-treatment", title: "Complete the linked Pool and Spa treatment and cleaning tasks", enabled: true },
+      { id: "atlas-ops-thu-equipment", title: "Inspect Pool, Spa, filter pressure, equipment, and fountain", enabled: true },
+      { id: "atlas-ops-thu-method", title: "Use the scheduled cleaning method: brush, hand vac, suction vac, or robot vac", enabled: true },
+      { id: "atlas-ops-thu-outdoor", title: "Clean patio furniture, covers, outdoor heaters, BBQ exterior, and skylights", enabled: true },
+      { id: "atlas-ops-thu-windows", title: "Complete this week’s rotating window zone", enabled: true },
+      { id: "atlas-ops-thu-vehicles", title: "Finish vehicle cleaning when needed", enabled: true },
+      { id: "atlas-ops-thu-water", title: "Water pots and address lawn or planting dry spots", enabled: true },
+    ],
+  },
+  {
+    day: 5,
+    name: "Friday · Maintenance & Weekend Readiness",
+    tasks: [
+      { id: "atlas-ops-fri-grounds", title: "Mow, edge, blow, and complete final grounds presentation", enabled: true },
+      { id: "atlas-ops-fri-mechanical", title: "Inspect boilers, pumps, HVAC, mechanical rooms, leaks, alarms, and temperatures", enabled: true },
+      { id: "atlas-ops-fri-test", title: "Test important lights, doors, gates, and appliances", enabled: true },
+      { id: "atlas-ops-fri-records", title: "Follow up with vendors and update Tasks, Work Orders, Projects, photos, and service history", enabled: true },
+      { id: "atlas-ops-fri-walk", title: "Restock supplies and complete the final property walkthrough", enabled: true },
+      { id: "atlas-ops-fri-meeting", title: "Attend the 9:00 AM Nick and Steve meeting", enabled: true },
+      { id: "atlas-ops-fri-update", title: "Prepare the weekend, next week, and Friday owner-update draft", enabled: true },
+      { id: "atlas-ops-fri-spiders", title: "April–October: remove spider webs and treat recurring exterior problem areas when appropriate", enabled: true },
+    ],
+  },
+];
+
+function normalizedRoutineText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
 
 const colors = {
   navy: "#071B2F",
@@ -67,6 +142,7 @@ export default function AtlasRoutines({
   mode,
   isMobile = false,
   onOpenManager,
+  activePropertyId = "2000",
 }: Props) {
   const [templates, setTemplates] = useState<RoutineTemplate[]>([]);
   const [occurrence, setOccurrence] =
@@ -79,13 +155,56 @@ export default function AtlasRoutines({
   const [newTask, setNewTask] = useState("");
   const [status, setStatus] = useState("Loading routines…");
   const [busy, setBusy] = useState(false);
+  const weeklySetupRunningRef = useRef(false);
+
+  async function mergeWeeklyOperations(currentTemplates: RoutineTemplate[]) {
+    if (weeklySetupRunningRef.current) return currentTemplates;
+    weeklySetupRunningRef.current = true;
+    try {
+      const mergedTemplates = atlasWeeklyOperations.map((operationsTemplate) => {
+        const current = currentTemplates.find((template) => template.day === operationsTemplate.day) || {
+          day: operationsTemplate.day,
+          name: operationsTemplate.name,
+          tasks: [],
+        };
+        const existingIds = new Set(current.tasks.map((task) => task.id));
+        const existingTitles = new Set(current.tasks.map((task) => normalizedRoutineText(task.title)));
+        const missing = operationsTemplate.tasks.filter((task) => !existingIds.has(task.id) && !existingTitles.has(normalizedRoutineText(task.title)));
+        return {
+          ...current,
+          name: current.name?.trim() || operationsTemplate.name,
+          tasks: [...current.tasks, ...missing],
+          changed: missing.length > 0,
+        };
+      });
+      const changed = mergedTemplates.filter((template) => template.changed);
+      for (const template of changed) {
+        const response = await fetch("/api/atlas-routines", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save-template",
+            propertyId: activePropertyId,
+            day: template.day,
+            name: template.name,
+            tasks: template.tasks,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.ok === false) throw new Error(payload.error || `${dayNames[template.day]} routine did not save`);
+      }
+      return mergedTemplates.map(({ changed: _changed, ...template }) => template);
+    } finally {
+      weeklySetupRunningRef.current = false;
+    }
+  }
 
   async function load() {
     setStatus("Loading routines…");
 
     try {
       const response = await fetch(
-        `/api/atlas-routines?date=${todayKey()}`,
+        `/api/atlas-routines?date=${todayKey()}&propertyId=${encodeURIComponent(activePropertyId)}`,
         {
           cache: "no-store",
         }
@@ -97,9 +216,9 @@ export default function AtlasRoutines({
         throw new Error(payload.error || "Could not load routines");
       }
 
-      setTemplates(
-        Array.isArray(payload.templates) ? payload.templates : []
-      );
+      const loadedTemplates = Array.isArray(payload.templates) ? payload.templates : [];
+      const mergedTemplates = await mergeWeeklyOperations(loadedTemplates);
+      setTemplates(mergedTemplates);
 
       setOccurrence(payload.occurrence || null);
       setStatus("");
@@ -114,7 +233,7 @@ export default function AtlasRoutines({
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [activePropertyId]);
 
   const selected = useMemo(
     () =>
@@ -167,6 +286,7 @@ export default function AtlasRoutines({
         },
         body: JSON.stringify({
           action: "toggle-task",
+          propertyId: activePropertyId,
           date: occurrence.date,
           taskId,
         }),
@@ -284,6 +404,7 @@ export default function AtlasRoutines({
           },
           body: JSON.stringify({
             action: "save-template",
+            propertyId: activePropertyId,
             day: selectedDay,
             name: draftName,
             tasks: sourceTasks,
@@ -296,6 +417,7 @@ export default function AtlasRoutines({
           },
           body: JSON.stringify({
             action: "save-template",
+            propertyId: activePropertyId,
             day: nextDay,
             name: target.name,
             tasks: targetTasks,
@@ -339,6 +461,7 @@ export default function AtlasRoutines({
         },
         body: JSON.stringify({
           action: "save-template",
+          propertyId: activePropertyId,
           day: selectedDay,
           name:
             draftName.trim() ||
