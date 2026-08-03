@@ -397,6 +397,9 @@ type PropertyProfile = {
 
 type AtlasAssetRecord = AssetRecord & {
   locationIds?: string[];
+  serialRequirement?: "Required" | "Not Required";
+  manualRequirement?: "Required" | "Not Required";
+  procedureRequirement?: "Required" | "Not Required";
 };
 
 type LocationCustomDetail = {
@@ -1496,6 +1499,9 @@ function normalizeAsset(record: Partial<AtlasAssetRecord>): AtlasAssetRecord {
     year: record.year || "",
     manufacturer: record.manufacturer || "",
     serial: record.serial || "",
+    serialRequirement: record.serialRequirement === "Not Required" ? "Not Required" : "Required",
+    manualRequirement: record.manualRequirement === "Not Required" ? "Not Required" : "Required",
+    procedureRequirement: record.procedureRequirement === "Not Required" ? "Not Required" : "Required",
     notes: String(record.notes || ""),
     vendorIds: Array.isArray(record.vendorIds)
       ? record.vendorIds.map(String)
@@ -5573,6 +5579,8 @@ export default function AtlasPage() {
   const applianceColdSeasonSetupRunningRef = useRef(false);
   const seasonalPressureWashingSetupRunningRef = useRef(false);
   const exteriorGlassCareSetupRunningRef = useRef(false);
+  const roofDrainageCareSetupRunningRef = useRef(false);
+  const holidayTreeSetupRunningRef = useRef(false);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
@@ -6561,6 +6569,14 @@ export default function AtlasPage() {
   useEffect(() => {
     if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
     void setupExteriorGlassCare();
+  }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupRoofDrainageCare();
+  }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupHolidayTreeSchedule();
   }, [ready, syncState, activePropertyId]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
@@ -12287,7 +12303,7 @@ export default function AtlasPage() {
     setScreen("assets");
   }
 
-  function updateAsset(patch: Partial<AssetRecord>) {
+  function updateAsset(patch: Partial<AtlasAssetRecord>) {
     markRecordDirty("asset", selectedAsset.id);
     setAssetRecords((current) =>
       byName(
@@ -16693,6 +16709,208 @@ ${notes.trim()}` : notes.trim(),
     }
   }
 
+  async function setupHolidayTreeSchedule() {
+    if (holidayTreeSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
+    const hebrewDateFormatter = new Intl.DateTimeFormat("en-u-ca-hebrew", { month: "long", day: "numeric" });
+    const hanukkahStartForYear = (year: number) => {
+      for (let offset = 0; offset < 80; offset += 1) {
+        const date = new Date(year, 9, 15 + offset, 12, 0, 0);
+        const parts = hebrewDateFormatter.formatToParts(date);
+        const month = parts.find((part) => part.type === "month")?.value || "";
+        const day = Number(parts.find((part) => part.type === "day")?.value || 0);
+        if (/kislev/i.test(month) && day === 25) return addDays(localISODate(date), -1);
+      }
+      return `${year}-12-01`;
+    };
+    const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
+    const currentHanukkahStart = hanukkahStartForYear(currentYear);
+    const holidayYear = todayISO() <= currentHanukkahStart ? currentYear : currentYear + 1;
+    const hanukkahStart = hanukkahStartForYear(holidayYear);
+    const targetDate = addDays(hanukkahStart, -7);
+    const dueDate = todayISO() > targetDate && todayISO() <= hanukkahStart ? todayISO() : targetDate;
+    const setupKey = `atlas-holiday-tree-v1-2000-${holidayYear}`;
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    holidayTreeSetupRunningRef.current = true;
+    try {
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const workOrderId = `wo-holiday-tree-${holidayYear}`;
+      const title = `Set up Holiday Tree for Hanukkah — ${holidayYear}`;
+      const notes = `Bring out and set up the Holiday Tree seven days before Hanukkah begins. Hanukkah begins at sunset on ${formatDate(hanukkahStart)}; target setup date is ${formatDate(targetDate)}. Atlas calculates this from 25 Kislev each year because the Gregorian date changes. Use “Holiday Tree,” not “Christmas Tree.”`;
+      const checklist: WorkChecklistItem[] = [
+        "Retrieve the Holiday Tree, decorations, lights, extension cords, and storage bins",
+        "Inspect the tree, stand, lights, cords, plugs, and decorations for damage",
+        "Move and protect nearby furniture and finishes",
+        "Set up, stabilize, and decorate the Holiday Tree",
+        "Test lighting, confirm safe cord routing, and photograph the completed setup",
+        "Return empty containers and unused materials to organized storage",
+      ].map((text, index) => ({ id: `${workOrderId}-${index + 1}`, text, completed: false }));
+      const existingIndex = nextWorkOrders.findIndex((record) => record.id === workOrderId || normalizeLocationName(record.title) === normalizeLocationName(title));
+      let workOrder: AtlasServiceRecord;
+      if (existingIndex >= 0) {
+        const existing = nextWorkOrders[existingIndex];
+        workOrder = normalizeService({ ...existing, date: dueDate, status: existing.status === "Completed" ? "Open" : existing.status, priority: "Medium", assignedTo: existing.assignedTo || "Nick", recurring: false, recurrenceEndDate: "", season: "Winter", workType: "Work Order", workCategory: "Seasonal Setup", responsibilityArea: "House & Maintenance", notes: existing.notes?.includes(notes) ? existing.notes : [existing.notes, notes].filter(Boolean).join("\n\n"), checklist: existing.checklist?.length ? existing.checklist : checklist });
+        nextWorkOrders[existingIndex] = workOrder;
+      } else {
+        workOrder = normalizeService({ id: workOrderId, title, date: dueDate, status: "Open", priority: "Medium", assignedTo: "Nick", recurring: false, season: "Winter", workType: "Work Order", workCategory: "Seasonal Setup", responsibilityArea: "House & Maintenance", notes, checklist });
+        nextWorkOrders.push(workOrder);
+      }
+      recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
+      const calendarRecord = normalizeCalendar({ id: `calendar-holiday-tree-${holidayYear}`, propertyId: activePropertyId, date: dueDate, title, area: "House & Maintenance", categoryLabel: "Seasonal Setup", allDay: true, repeat: "None", reminder: "Week before", notes, linkedType: "Work Order", linkedId: workOrder.id, linkedName: workOrder.title, source: "work-order", status: "Scheduled" });
+      const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
+      if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
+      else nextCalendar.push(calendarRecord);
+      recordsToSave.push({ table: "calendar", record: calendarRecord });
+      setServiceRecords(byTitle(nextWorkOrders));
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("The Holiday Tree schedule did not fully sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast(`Holiday Tree setup is scheduled for ${formatDate(dueDate)}.`);
+    } catch (error) {
+      console.error("Atlas Holiday Tree setup failed", error);
+      showSaveToast("Holiday Tree scheduling will retry.", "warning");
+    } finally {
+      holidayTreeSetupRunningRef.current = false;
+    }
+  }
+
+  async function setupRoofDrainageCare() {
+    if (roofDrainageCareSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
+    const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
+    const leafSeasonYear = todayISO() <= `${currentYear}-12-15` ? currentYear : currentYear + 1;
+    const setupKey = `atlas-roof-drainage-care-v1-2000-${leafSeasonYear}`;
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    roofDrainageCareSetupRunningRef.current = true;
+    try {
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const courtyardLocationId = locations.find((location) => /courtyard/i.test(location.name))?.id || "general";
+      const weeklyDate = addDays(todayISO(), (1 - new Date(`${todayISO()}T12:00:00`).getDay() + 7) % 7);
+      const definitions = [
+        {
+          id: "wo-weekly-courtyard-gutters-flat-roof",
+          calendarId: "calendar-weekly-courtyard-gutters-flat-roof",
+          title: "Clean courtyard gutters and flat roof",
+          date: weeklyDate,
+          endDate: "",
+          interval: 1,
+          unit: "Weeks" as WorkOrderRecurrenceUnit,
+          season: "Year-Round" as WorkSeason,
+          repeat: "Weekly" as CalendarRepeat,
+          priority: "High" as WorkOrderPriority,
+          notes: "Weekly year-round roof-drainage route. Prioritize the courtyard gutters, then remove leaves, needles, branches, moss clumps, and loose debris from the flat roof, gutters, drains, scuppers, and visible downspout openings. Add an extra inspection after major wind or heavy rain. Work only from approved safe access points; do not work on wet, icy, or unstable roof surfaces.",
+        },
+        {
+          id: `wo-daily-leaf-season-roof-${leafSeasonYear}`,
+          calendarId: `calendar-daily-leaf-season-roof-${leafSeasonYear}`,
+          title: `Daily leaf-season courtyard gutter and flat-roof check — ${leafSeasonYear}`,
+          date: todayISO() > `${leafSeasonYear}-10-01` ? todayISO() : `${leafSeasonYear}-10-01`,
+          endDate: `${leafSeasonYear}-12-15`,
+          interval: 1,
+          unit: "Days" as WorkOrderRecurrenceUnit,
+          season: "Fall" as WorkSeason,
+          repeat: "Custom" as CalendarRepeat,
+          priority: "High" as WorkOrderPriority,
+          notes: `Daily active-leaf-season route from October 1 through December 15, ${leafSeasonYear}. Check the courtyard gutters first, then the flat roof, drains, scuppers, and downspout openings. Remove fresh leaf buildup before it blocks drainage. Skip only when roof access is unsafe; inspect from a safe position and reschedule promptly. This daily schedule ends automatically on December 15 and the weekly route continues year-round.`,
+        },
+      ];
+      const checklistText = [
+        "Confirm safe, dry roof-access conditions",
+        "Clean courtyard gutters and visible downspout openings first",
+        "Remove loose debris from the flat roof without damaging the membrane",
+        "Clear and inspect roof drains, strainers, scuppers, and drainage paths",
+        "Confirm water can flow and note ponding, leaks, membrane damage, loose flashing, or needed repair",
+        "Bag and remove debris; photograph and flag any problem",
+      ];
+      for (const definition of definitions) {
+        const existingIndex = nextWorkOrders.findIndex((record) => record.id === definition.id || normalizeLocationName(record.title) === normalizeLocationName(definition.title));
+        const defaultChecklist: WorkChecklistItem[] = checklistText.map((text, index) => ({ id: `${definition.id}-${index + 1}`, text, completed: false }));
+        let workOrder: AtlasServiceRecord;
+        if (existingIndex >= 0) {
+          const existing = nextWorkOrders[existingIndex];
+          workOrder = normalizeService({
+            ...existing,
+            date: definition.date,
+            status: existing.status === "Completed" ? "Open" : existing.status,
+            priority: definition.priority,
+            recurring: true,
+            recurrenceInterval: definition.interval,
+            recurrenceUnit: definition.unit,
+            recurrenceEndDate: definition.endDate,
+            season: definition.season,
+            workType: "Preventive Maintenance",
+            workCategory: "Roof & Drainage",
+            responsibilityArea: "House & Maintenance",
+            locationId: existing.locationId || courtyardLocationId,
+            assignedTo: existing.assignedTo || "Nick",
+            notes: existing.notes?.includes(definition.notes) ? existing.notes : [existing.notes, definition.notes].filter(Boolean).join("\n\n"),
+            checklist: existing.checklist?.length ? existing.checklist : defaultChecklist,
+          });
+          nextWorkOrders[existingIndex] = workOrder;
+        } else {
+          workOrder = normalizeService({
+            id: definition.id,
+            title: definition.title,
+            date: definition.date,
+            status: "Open",
+            priority: definition.priority,
+            assignedTo: "Nick",
+            recurring: true,
+            recurrenceInterval: definition.interval,
+            recurrenceUnit: definition.unit,
+            recurrenceEndDate: definition.endDate,
+            season: definition.season,
+            workType: "Preventive Maintenance",
+            workCategory: "Roof & Drainage",
+            responsibilityArea: "House & Maintenance",
+            locationId: courtyardLocationId,
+            notes: definition.notes,
+            checklist: defaultChecklist,
+          });
+          nextWorkOrders.push(workOrder);
+        }
+        recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
+        const calendarRecord = normalizeCalendar({
+          id: definition.calendarId,
+          propertyId: activePropertyId,
+          date: definition.date,
+          title: definition.title,
+          area: "House & Maintenance",
+          categoryLabel: "Roof & Drainage",
+          allDay: true,
+          repeat: definition.repeat,
+          reminder: "Morning of",
+          notes: definition.notes,
+          linkedType: "Work Order",
+          linkedId: workOrder.id,
+          linkedName: workOrder.title,
+          source: "work-order",
+          status: "Scheduled",
+        });
+        const calendarIndex = nextCalendar.findIndex((item) => item.id === definition.calendarId);
+        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
+        else nextCalendar.push(calendarRecord);
+        recordsToSave.push({ table: "calendar", record: calendarRecord });
+      }
+      setServiceRecords(byTitle(nextWorkOrders));
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some roof-drainage records did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast("Courtyard gutter and flat-roof care are scheduled.");
+    } catch (error) {
+      console.error("Atlas roof-drainage setup failed", error);
+      showSaveToast("Roof-drainage scheduling will retry.", "warning");
+    } finally {
+      roofDrainageCareSetupRunningRef.current = false;
+    }
+  }
+
   async function setupExteriorGlassCare() {
     if (exteriorGlassCareSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
     const setupKey = "atlas-exterior-glass-care-v1-2000";
@@ -17128,7 +17346,7 @@ ${notes.trim()}` : notes.trim(),
 
   async function setupWeeklyOperations() {
     if (weeklyOperationsSetupRunningRef.current || typeof window === "undefined") return;
-    const setupKey = `atlas-weekly-operations-v2-${activePropertyId}`;
+    const setupKey = `atlas-weekly-operations-v3-${activePropertyId}`;
     if (window.localStorage.getItem(setupKey) === "ready") return;
     weeklyOperationsSetupRunningRef.current = true;
     try {
@@ -17149,6 +17367,11 @@ ${notes.trim()}` : notes.trim(),
         { key: "thursday-outdoor", day: "Thursday", title: "Thursday — Pool, Spa & Outdoor Cleaning", minutes: 180, category: "Pool & Spa", notes: "Complete linked Pool & Spa treatment and cleaning tasks; inspect equipment and fountain; clean patio furniture, covers, outdoor heaters, BBQ exterior and skylights; complete the scheduled window zone; finish vehicle cleaning when needed; water pots and address dry spots." },
         { key: "friday-ready", day: "Friday", title: "Friday — Maintenance & Weekend Readiness", minutes: 300, category: "House & Maintenance", notes: "Mow and edge; inspect boilers, pumps, HVAC, mechanical rooms, leaks, alarms, temperatures and unusual noises; test important lights, doors, gates and appliances; follow up vendors; update tasks, work orders, projects, photos and service history; review bottled water, toilet paper, paper towels, cleaning supplies, tools and maintenance materials, then complete a Home Depot supply run when needed; final walkthrough; prepare weekend and next week; review owner update." },
         { key: "friday-spiders", day: "Friday", title: "Friday — Seasonal Spider Control", minutes: 75, category: "House & Maintenance", notes: "April through October: remove webs; inspect exterior walls, eaves, doors, windows, garages, dock structures and outdoor furniture; treat recurring problem areas when appropriate." },
+        { key: "monday-admin", day: "Monday", title: "Monday — Computer Work & Admin", minutes: 45, category: "Administration", notes: "Review email and messages; process pending Ramp expenses and receipts; review Meter Viewer invoices awaiting approval; update Atlas tasks, work orders, calendar and vendor follow-ups; identify administrative items that need action this week." },
+        { key: "tuesday-admin", day: "Tuesday", title: "Tuesday — Computer Work & Admin", minutes: 45, category: "Administration", notes: "Review email and messages; process pending Ramp expenses and receipts; review Meter Viewer invoices awaiting approval; update Atlas with meeting decisions, vendor updates, photos, documents and new follow-up work." },
+        { key: "wednesday-admin", day: "Wednesday", title: "Wednesday — Computer Work & Admin", minutes: 45, category: "Administration", notes: "Review email and messages; process pending Ramp expenses and receipts; review Meter Viewer invoices awaiting approval; update project, landscaping, irrigation, invoice and vendor records in Atlas." },
+        { key: "thursday-admin", day: "Thursday", title: "Thursday — Computer Work & Admin", minutes: 45, category: "Administration", notes: "Review email and messages; process pending Ramp expenses and receipts; review Meter Viewer invoices awaiting approval; update completed work, service history, photos, documents and Friday follow-ups in Atlas." },
+        { key: "friday-admin", day: "Friday", title: "Friday — Computer Work & Weekly Closeout", minutes: 60, category: "Administration", notes: "Clear priority email; finish pending Ramp expenses and receipts; complete Meter Viewer invoice review and approvals; update Atlas records; reconcile open follow-ups; prepare the weekly owner update and next week's administrative priorities." },
       ];
       const windowZones = [
         { key: "windows-waterside", title: "Clean windows — Waterside & Great Room", notes: "Waterside elevation, Great Room glass and adjacent exterior doors. Add notes and photos for access or condition issues." },
@@ -24372,7 +24595,7 @@ ${notes.trim()}` : notes.trim(),
       || openAssetTasks[0]?.title
       || openAssetWorkOrders[0]?.title
       || activeAssetProjects[0]?.title
-      || (!linkedAssetProcedures.length ? "Link a maintenance procedure" : "No immediate action required");
+      || (!linkedAssetProcedures.length && selectedAsset.procedureRequirement !== "Not Required" ? "Link a maintenance procedure" : "No immediate action required");
     const assetActualCost = relatedWorkOrders.reduce(
       (total, record) => total + Math.max(0, Number(record.actualCost || 0)),
       0,
@@ -24403,10 +24626,10 @@ ${notes.trim()}` : notes.trim(),
       !selectedAsset.locationId || selectedAsset.locationId === "general"
         ? "Assign a primary location"
         : "",
-      !selectedAsset.serial ? "Add serial / VIN / HIN" : "",
+      !selectedAsset.serial && selectedAsset.serialRequirement !== "Not Required" ? "Add serial / VIN / HIN" : "",
       !selectedAsset.vendorIds.length ? "Select a preferred vendor" : "",
-      !attachedManuals.length ? "Attach a manual" : "",
-      !linkedAssetProcedures.length ? "Link a procedure" : "",
+      !attachedManuals.length && selectedAsset.manualRequirement !== "Not Required" ? "Attach a manual" : "",
+      !linkedAssetProcedures.length && selectedAsset.procedureRequirement !== "Not Required" ? "Link a procedure" : "",
     ].filter(Boolean);
 
     const assetSetupCompleted = 5 - assetSetupItems.length;
@@ -25829,6 +26052,13 @@ ${notes.trim()}` : notes.trim(),
                   >
                     Customize
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteAssetRecord(selectedAsset)}
+                    style={{ ...dangerButtonStyle, width: "auto" }}
+                  >
+                    Delete Asset
+                  </button>
                 </div>
               </div>
 
@@ -26048,7 +26278,7 @@ ${notes.trim()}` : notes.trim(),
                   },
                   {
                     label: "Serial / ID",
-                    value: selectedAsset.serial || "Not recorded",
+                    value: selectedAsset.serial || (selectedAsset.serialRequirement === "Not Required" ? "Not required" : "Not recorded"),
                   },
                   {
                     label: "Preferred Vendors",
@@ -26885,15 +27115,48 @@ ${notes.trim()}` : notes.trim(),
                     )}
                     {infoValue(
                       "Serial / VIN / HIN",
-                      selectedAsset.serial || "",
-                      <input
-                        value={selectedAsset.serial || ""}
-                        onChange={(event) =>
-                          updateAsset({ serial: event.currentTarget.value })
-                        }
-                        style={assetCompactInputStyle}
-                      />,
+                      selectedAsset.serial || (selectedAsset.serialRequirement === "Not Required" ? "Not required" : ""),
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <select
+                          value={selectedAsset.serialRequirement || "Required"}
+                          onChange={(event) => updateAsset({ serialRequirement: event.currentTarget.value as "Required" | "Not Required" })}
+                          style={assetCompactInputStyle}
+                        >
+                          <option value="Required">Required</option>
+                          <option value="Not Required">Not required</option>
+                        </select>
+                        {selectedAsset.serialRequirement !== "Not Required" ? <input
+                          value={selectedAsset.serial || ""}
+                          onChange={(event) => updateAsset({ serial: event.currentTarget.value })}
+                          placeholder="Serial / VIN / HIN"
+                          style={assetCompactInputStyle}
+                        /> : null}
+                      </div>,
                       () => updateAsset({ serial: "" }),
+                    )}
+                    {infoValue(
+                      "Manual",
+                      selectedAsset.manualRequirement === "Not Required" ? "Not required" : attachedManuals.length ? `${attachedManuals.length} attached` : "Required",
+                      <select
+                        value={selectedAsset.manualRequirement || "Required"}
+                        onChange={(event) => updateAsset({ manualRequirement: event.currentTarget.value as "Required" | "Not Required" })}
+                        style={assetCompactInputStyle}
+                      >
+                        <option value="Required">Required</option>
+                        <option value="Not Required">Not required</option>
+                      </select>,
+                    )}
+                    {infoValue(
+                      "Procedure",
+                      selectedAsset.procedureRequirement === "Not Required" ? "Not required" : linkedAssetProcedures.length ? `${linkedAssetProcedures.length} linked` : "Required",
+                      <select
+                        value={selectedAsset.procedureRequirement || "Required"}
+                        onChange={(event) => updateAsset({ procedureRequirement: event.currentTarget.value as "Required" | "Not Required" })}
+                        style={assetCompactInputStyle}
+                      >
+                        <option value="Required">Required</option>
+                        <option value="Not Required">Not required</option>
+                      </select>,
                     )}
                   </div>
 
