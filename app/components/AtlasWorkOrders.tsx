@@ -438,6 +438,7 @@ type AtlasWorkOrdersProps = {
   vendorRecords: any[];
   locationRecords?: any[];
   contactRecords?: any[];
+  projectRecords?: any[];
   procedureRecords?: any[];
   documentRecords?: any[];
   calendarItems?: any[];
@@ -494,6 +495,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     vendorRecords,
     locationRecords = [],
     contactRecords = [],
+    projectRecords = [],
     procedureRecords = [],
     documentRecords = [],
     calendarItems = [],
@@ -1913,12 +1915,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               </section>
             ) : null}
 
-            {(favoriteRecords.length || recentRecords.length) ? (
-              <section style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                {[
-                  { label: "Pinned", records: favoriteRecords.slice(0, 4) },
-                  { label: "Recently Viewed", records: recentRecords.slice(0, 4) },
-                ].filter((group) => group.records.length).map((group) => (
+            {favoriteRecords.length ? (
+              <section style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                {[{ label: "Pinned", records: favoriteRecords.slice(0, 4) }].map((group) => (
                   <div key={group.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FFFFFF" }}>
                     <div style={{ ...eyebrowStyle, opacity: 0.8 }}>{group.label}</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
@@ -2248,6 +2247,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
               </div>
             )}
+            {recentRecords.length ? <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 8 }}>
+              <summary style={{ cursor: "pointer", color: colors.muted, fontSize: 11, fontWeight: 800 }}>Recently Viewed · {recentRecords.length}</summary>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 7 }}>{recentRecords.slice(0, 6).map((record: any) => <button key={`recent-bottom-${record.id}`} type="button" onClick={() => { setNewWorkOpen(false); setDetailOpen(true); setSelectedServiceId(record.id); }} style={{ ...miniButtonStyle, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</button>)}</div>
+            </details> : null}
           </div>
         }
         drawer={
@@ -2360,12 +2363,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <div style={{ display: "grid", gap: 11 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                       <div style={eyebrowStyle}>Edit Work Order</div>
-                      <button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button>
+                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
                     <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} placeholder="Description" style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} />
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 9 }}>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated Time</span><select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No estimate</option>{["5 minutes","15 minutes","30 minutes","1 hour","Half Day","Full Day","Multi-Day"].map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Status</span><select value={selectedService.status || "Open"} onChange={(event) => safeSelectChange(event, { status: event.currentTarget.value })} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="In Progress">In Progress</option><option value="Waiting">Waiting</option><option value="Monitor">Monitor</option><option value="Completed">Completed</option></select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Priority</span><select value={selectedService.priority || "Medium"} onChange={(event) => safeSelectChange(event, { priority: event.currentTarget.value })} style={inputStyle}><option value="High">High</option><option value="Medium">Normal</option><option value="Low">Low</option></select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Type</span><select value={itemType(selectedService)} onChange={(event) => { const workType = event.currentTarget.value as WorkItemType; safeSelectChange(event, { workType, recurring: workType === "Preventive Maintenance" ? true : selectedService.recurring }); }} style={inputStyle}><option value="Quick Task">Task</option><option value="Work Order">Work Order</option><option value="Preventive Maintenance">Recurring</option><option value="Project">Project</option></select></label>
@@ -2375,6 +2379,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => { const value = event.currentTarget.value; safeSelectChange(event, { workCategory: value, category: value, emoji: categoryEmoji(value) }); }} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => safeSelectChange(event, { assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => safeSelectChange(event, { vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Linked Project</span><select value={selectedService.projectId || ""} onChange={(event) => safeSelectChange(event, { projectId: event.currentTarget.value })} style={inputStyle}><option value="">No project</option>{projectRecords.filter((project: any) => !project.archived || project.id === selectedService.projectId).map((project: any) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9 }}>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned People</span><select value="" onChange={(event) => { const id = event.currentTarget.value; if (!id) return; updateWorkOrder({ assignedPersonIds: Array.from(new Set([...(selectedService.assignedPersonIds || []), id])) }); event.currentTarget.value = ""; }} style={inputStyle}><option value="">Add a person…</option>{byName(contactRecords).filter((contact: any) => !(selectedService.assignedPersonIds || []).includes(contact.id)).map((contact: any) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}</select>{(selectedService.assignedPersonIds || []).length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{(selectedService.assignedPersonIds || []).map((id: string) => <button key={id} type="button" onClick={() => updateWorkOrder({ assignedPersonIds: (selectedService.assignedPersonIds || []).filter((value: string) => value !== id) })} style={{ ...miniButtonStyle, width: "auto" }}>{contactRecords.find((contact: any) => contact.id === id)?.name || "Unknown"} ×</button>)}</div> : null}</label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned Vendors</span><select value="" onChange={(event) => { const id = event.currentTarget.value; if (!id) return; const ids = Array.from(new Set([...(selectedService.assignedVendorIds || []), id])); updateWorkOrder({ assignedVendorIds: ids, vendorId: ids[0] || "" }); event.currentTarget.value = ""; }} style={inputStyle}><option value="">Add a vendor…</option>{byName(vendorRecords).filter((vendor: any) => !(selectedService.assignedVendorIds || []).includes(vendor.id)).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select>{(selectedService.assignedVendorIds || []).length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{(selectedService.assignedVendorIds || []).map((id: string) => <button key={id} type="button" onClick={() => { const ids = (selectedService.assignedVendorIds || []).filter((value: string) => value !== id); updateWorkOrder({ assignedVendorIds: ids, vendorId: ids[0] || "" }); }} style={{ ...miniButtonStyle, width: "auto" }}>{vendorRecords.find((vendor: any) => vendor.id === id)?.name || "Unknown"} ×</button>)}</div> : null}</label>
                     </div>
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
                       <button type="button" onClick={async () => { await saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto" }}>Save</button>
