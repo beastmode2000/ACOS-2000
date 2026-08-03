@@ -6490,9 +6490,10 @@ export default function AtlasPage() {
       return {};
     }
   });
-  const [tasksView, setTasksView] = useState<"tasks" | "walk" | "build" | "route" | "addison" | "analytics" | "backlog" | "vehicles" | "seasonal" | "templates" | "intelligence" | "planner">("tasks");
+  const [tasksView, setTasksView] = useState<"tasks" | "walk" | "build" | "route" | "addison" | "analytics" | "backlog" | "vehicles" | "seasonal" | "templates" | "lists" | "intelligence" | "planner">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newPartyChecklistItem, setNewPartyChecklistItem] = useState("");
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>("today");
   const [taskSearch, setTaskSearch] = useState("");
   const [taskFocusMode, setTaskFocusMode] = useState(false);
@@ -18022,13 +18023,67 @@ ${notes.trim()}` : notes.trim(),
     return <div style={{ display: "grid", gap: 12 }}>
       <div style={noticeStyle}>Templates create a temporary, organized plan only when you approve it. They do not add permanent routines or clutter Atlas automatically.</div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
-        {atlasOperationsTemplates.map((template) => <div key={template.id} style={cardStyle}>
+        {atlasOperationsTemplates.filter((template) => template.id !== "graduation-party").map((template) => <div key={template.id} style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><div><strong style={{ color: colors.navy3 }}>{template.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{template.detail}</small></div><span style={badgeStyle(template.createsProject ? "Scheduled" : "Monitor")}>{template.createsProject ? "Project + tasks" : "Tasks"}</span></div>
           <div style={{ marginTop: 10 }}><Field label="Event or target date" type="date" value={templateDates[template.id] || addDays(todayISO(), 7)} onChange={(value) => setTemplateDates((current) => ({ ...current, [template.id]: value }))}/></div>
           <div style={{ marginTop: 9, padding: "8px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC" }}><small style={mutedSmallStyle}>{template.items.length} suggested actions · {template.items.filter((item) => item.addisonReady).length} automatically assigned to Addison</small></div>
           <button type="button" onClick={() => applyOperationsTemplate(template)} style={{ ...goldButtonStyle, marginTop: 10 }}>Create Plan</button>
         </div>)}
       </div>
+    </div>;
+  }
+
+  function ensureGraduationPartyChecklist() {
+    const template = atlasOperationsTemplates.find((item) => item.id === "graduation-party");
+    if (!template) return;
+    const createdAt = new Date().toISOString();
+    const existingIds = new Set(workPlanTasks.map((task) => task.id));
+    const missing = template.items.map((item) => ({ item, id: `grad-party-${slugify(item.title)}` })).filter(({ id }) => !existingIds.has(id));
+    if (!missing.length) return;
+    const tasks = missing.map(({ item, id }) => ({ id, title: item.title, minutes: item.minutes, priority: item.priority, category: "Graduation Party Checklist", locationId: "general", preferredDay: "Auto" as const, locked: false, recurring: false, fixedTime: "", notes: "Graduation Party Checklist" } satisfies WorkPlanTask));
+    setWorkPlanTasks((current) => [...current, ...tasks]);
+    setTaskMeta((current) => {
+      const next = { ...current };
+      missing.forEach(({ item, id }) => {
+        next[id] = { status: "Open", dueDate: "", assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"), createdAt, completionHistory: [], flexibleTime: true, skippable: true };
+      });
+      return next;
+    });
+  }
+
+  function openGraduationPartyChecklist() {
+    ensureGraduationPartyChecklist();
+    setTasksView("lists");
+  }
+
+  function addGraduationPartyChecklistItem() {
+    const title = newPartyChecklistItem.trim();
+    if (!title) return;
+    const task: WorkPlanTask = { id: uid("grad-party"), title, minutes: 30, priority: "Medium", category: "Graduation Party Checklist", locationId: "general", preferredDay: "Auto", locked: false, recurring: false, fixedTime: "", notes: "Graduation Party Checklist" };
+    setWorkPlanTasks((current) => [...current, task]);
+    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), completionHistory: [], flexibleTime: true, skippable: true } }));
+    setNewPartyChecklistItem("");
+    showSaveToast("Checklist item added.");
+  }
+
+  function renderGraduationPartyChecklist() {
+    const items = workPlanTasks.filter((task) => task.category === "Graduation Party Checklist");
+    const completed = items.filter((task) => taskDetails(task.id).status === "Completed").length;
+    return <div style={{ display: "grid", gap: 12 }}>
+      <section style={{ ...cardStyle, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Event Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>Graduation Party</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><button type="button" onClick={ensureGraduationPartyChecklist} style={secondaryButtonStyle}>Restore standard items</button></div>
+      </section>
+      <section style={{ ...cardStyle, padding: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginBottom: 9 }}><input value={newPartyChecklistItem} onChange={(event) => setNewPartyChecklistItem(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addGraduationPartyChecklistItem(); }} placeholder="Add checklist item" style={inputStyle}/><button type="button" onClick={addGraduationPartyChecklistItem} style={goldButtonStyle}>Add</button></div>
+        <div style={{ display: "grid", gap: 6 }}>
+          {items.map((task) => { const meta = taskDetails(task.id); const done = meta.status === "Completed"; return <div key={task.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(0,1fr) 120px auto", gap: 8, alignItems: "center", padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: done ? "#F0FAF5" : "#FFFFFF" }}>
+            <input type="checkbox" checked={done} aria-label={`Complete ${task.title}`} onChange={(event) => event.currentTarget.checked ? completeAtlasTask(task) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined })}/>
+            <span style={{ color: colors.navy, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span>
+            <select value={meta.assignee || "Unassigned"} onChange={(event) => updateTaskDetails(task.id, { assignee: event.currentTarget.value as AtlasTaskMeta["assignee"] })} style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11, gridColumn: isMobile ? "2" : undefined }}><option>Nick</option><option>Addison</option><option>Pat</option><option>Other</option><option>Unassigned</option></select>
+            <button type="button" aria-label={`Delete ${task.title}`} onClick={() => deleteAtlasTask(task.id)} style={{ ...compactUtilityButtonStyle, color: colors.red, gridColumn: isMobile ? "2" : undefined, justifySelf: "start" }}>Delete</button>
+          </div>; })}
+        </div>
+      </section>
     </div>;
   }
 
@@ -18576,8 +18631,8 @@ ${notes.trim()}` : notes.trim(),
       <div style={{ display: "grid", gap: 14 }}>
         <SectionHeader
           eyebrow={tasksView === "walk" ? "Field Operations" : tasksView === "analytics" ? "Performance" : tasksView === "addison" ? "Team Operations" : tasksView === "route" ? "Property Route" : tasksView === "build" ? "Estate Brain" : tasksView === "vehicles" ? "Operations" : tasksView === "planner" ? "Planning" : "Work"}
-          title={isAddisonUser ? "My Tasks" : tasksView === "walk" ? "Walk Mode" : tasksView === "analytics" ? "Operations Analytics" : tasksView === "addison" ? "Addison Work Manager" : tasksView === "route" ? "Smart Route" : tasksView === "build" ? "Build My Day" : tasksView === "vehicles" ? "Garage" : tasksView === "planner" ? "Plan Week" : "Tasks"}
-          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : tasksView === "walk" ? "A bright, simplified field view for completing work around the property." : tasksView === "analytics" ? "Use completed work history to see workload, delays, compliance, vendor performance, and project momentum." : tasksView === "addison" ? "Assign, explain, track, and review Addison’s daily work from one dedicated view." : tasksView === "route" ? "Complete nearby work together to reduce walking and context switching across the property." : tasksView === "build" ? "Atlas combines current work, routine, project, vehicle, weather, duration, and priority signals into one realistic day." : tasksView === "vehicles" ? "Cars, vehicles, cleaning, service, and connected records." : tasksView === "planner" ? "Balance existing work across the week. Tasks remain managed in Tasks." : "Your main daily work area for one-time and recurring tasks."}
+          title={isAddisonUser ? "My Tasks" : tasksView === "walk" ? "Walk Mode" : tasksView === "analytics" ? "Operations Analytics" : tasksView === "addison" ? "Addison Work Manager" : tasksView === "route" ? "Smart Route" : tasksView === "build" ? "Build My Day" : tasksView === "vehicles" ? "Garage" : tasksView === "planner" ? "Plan Week" : tasksView === "lists" ? "Lists" : "Tasks"}
+          detail={isAddisonUser ? "Work assigned to Addison for today and upcoming days." : tasksView === "walk" ? "A bright, simplified field view for completing work around the property." : tasksView === "analytics" ? "Use completed work history to see workload, delays, compliance, vendor performance, and project momentum." : tasksView === "addison" ? "Assign, explain, track, and review Addison’s daily work from one dedicated view." : tasksView === "route" ? "Complete nearby work together to reduce walking and context switching across the property." : tasksView === "build" ? "Atlas combines current work, routine, project, vehicle, weather, duration, and priority signals into one realistic day." : tasksView === "vehicles" ? "Cars, vehicles, cleaning, service, and connected records." : tasksView === "planner" ? "Balance existing work across the week. Tasks remain managed in Tasks." : tasksView === "lists" ? "Reusable checklists for events, seasons, openings, closings, and special activities." : "Your main daily work area for one-time and recurring tasks."}
           right={tasksView === "tasks" && !isAddisonUser ? <button type="button" onClick={() => { setSelectedTaskId(focusTask?.id || ""); setTasksView("walk"); }} disabled={!focusTasks.length} style={goldButtonStyle}>Start Walk Mode</button> : undefined}
         />
         {!isAddisonUser && tasksView !== "vehicles" && tasksView !== "planner" ? (
@@ -18589,11 +18644,12 @@ ${notes.trim()}` : notes.trim(),
             <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog · {backlogItems.length}</button>
             <button type="button" onClick={() => setTasksView("seasonal")} style={tasksView === "seasonal" ? goldButtonStyle : secondaryButtonStyle}>Seasonal</button>
             <button type="button" onClick={() => setTasksView("templates")} style={tasksView === "templates" ? goldButtonStyle : secondaryButtonStyle}>Templates</button>
+            <button type="button" onClick={openGraduationPartyChecklist} style={tasksView === "lists" ? goldButtonStyle : secondaryButtonStyle}>Lists</button>
             <button type="button" onClick={() => setTasksView("intelligence")} style={tasksView === "intelligence" ? goldButtonStyle : secondaryButtonStyle}>Atlas Manager</button>
           </div>
         ) : null}
 
-        {tasksView === "walk" && !isAddisonUser ? renderWalkMode() : tasksView === "analytics" && !isAddisonUser ? renderOperationsAnalytics() : tasksView === "route" && !isAddisonUser ? renderSmartRoutePlanning() : tasksView === "build" && !isAddisonUser ? renderBuildMyDay() : tasksView === "addison" && !isAddisonUser ? renderAddisonToday() : tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
+        {tasksView === "walk" && !isAddisonUser ? renderWalkMode() : tasksView === "analytics" && !isAddisonUser ? renderOperationsAnalytics() : tasksView === "route" && !isAddisonUser ? renderSmartRoutePlanning() : tasksView === "build" && !isAddisonUser ? renderBuildMyDay() : tasksView === "addison" && !isAddisonUser ? renderAddisonToday() : tasksView === "planner" && !isAddisonUser ? renderWeeklyPlanner() : tasksView === "backlog" && !isAddisonUser ? renderBacklog() : tasksView === "vehicles" && !isAddisonUser ? renderVehicleCare() : tasksView === "seasonal" && !isAddisonUser ? renderSeasonalWork() : tasksView === "templates" && !isAddisonUser ? renderOperationsTemplates() : tasksView === "lists" && !isAddisonUser ? renderGraduationPartyChecklist() : tasksView === "intelligence" && !isAddisonUser ? renderOperationsIntelligence() : (
           <>
             {!isAddisonUser ? (
               <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}>
@@ -41134,6 +41190,8 @@ ${notes.trim()}` : notes.trim(),
                         ? "planner:analytics"
                       : tasksView === "vehicles"
                       ? "planner:vehicles"
+                      : tasksView === "lists"
+                      ? "planner:lists"
                       : tasksView === "planner"
                         ? "planner:week"
                         : "planner:tasks"
@@ -41171,6 +41229,11 @@ ${notes.trim()}` : notes.trim(),
                     setScreen("planner");
                     return;
                   }
+                  if (nextValue === "planner:lists") {
+                    openGraduationPartyChecklist();
+                    setScreen("planner");
+                    return;
+                  }
                   if (nextValue === "planner:week") {
                     setTasksView("planner");
                     setScreen("planner");
@@ -41193,6 +41256,7 @@ ${notes.trim()}` : notes.trim(),
                   <option value="planner:analytics">Operations Analytics</option>
                   <option value="planner:tasks">Tasks</option>
                   <option value="planner:vehicles">Garage</option>
+                  <option value="planner:lists">Lists</option>
                   <option value="planner:week">Plan Week</option>
                 </optgroup>
                 <optgroup label="Main">
@@ -41254,6 +41318,7 @@ ${notes.trim()}` : notes.trim(),
                             { id: "analytics", label: "Operations Analytics", view: "analytics" as const },
                             { id: "tasks", label: "Tasks", view: "tasks" as const },
                             { id: "vehicles", label: "Garage", view: "vehicles" as const },
+                            { id: "lists", label: "Lists", view: "lists" as const },
                             { id: "week", label: "Plan Week", view: "planner" as const },
                           ];
                           return (
@@ -41267,7 +41332,8 @@ ${notes.trim()}` : notes.trim(),
                                     className="atlas-sidebar-nav-button"
                                     title={sidebarCollapsed ? entry.label : undefined}
                                     onClick={() => {
-                                      setTasksView(entry.view);
+                                      if (entry.view === "lists") openGraduationPartyChecklist();
+                                      else setTasksView(entry.view);
                                       setScreen("planner");
                                     }}
                                     style={{
