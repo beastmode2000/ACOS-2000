@@ -236,6 +236,8 @@ type AtlasTaskMeta = {
   instructions?: string;
   addisonNote?: string;
   problemFlag?: string;
+  listId?: string;
+  dashboardListPinned?: boolean;
   photos?: UploadedFileRecord[];
   recurrenceInterval?: number;
   recurrenceUnit?: WorkOrderRecurrenceUnit;
@@ -18047,7 +18049,7 @@ ${notes.trim()}` : notes.trim(),
     setTaskMeta((current) => {
       const next = { ...current };
       missing.forEach(({ item, id }) => {
-        next[id] = { status: "Open", dueDate: "", assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"), createdAt, completionHistory: [], flexibleTime: true, skippable: true };
+        next[id] = { status: "Open", dueDate: "", assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"), createdAt, completionHistory: [], flexibleTime: true, skippable: true, listId: "graduation-party", dashboardListPinned: false };
       });
       return next;
     });
@@ -18061,9 +18063,10 @@ ${notes.trim()}` : notes.trim(),
   function addGraduationPartyChecklistItem() {
     const title = newPartyChecklistItem.trim();
     if (!title) return;
+    const dashboardListPinned = workPlanTasks.some((item) => item.category === "Graduation Party Checklist" && taskDetails(item.id).dashboardListPinned);
     const task: WorkPlanTask = { id: uid("grad-party"), title, minutes: 30, priority: "Medium", category: "Graduation Party Checklist", locationId: "general", preferredDay: "Auto", locked: false, recurring: false, fixedTime: "", notes: "Graduation Party Checklist" };
     setWorkPlanTasks((current) => [...current, task]);
-    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), completionHistory: [], flexibleTime: true, skippable: true } }));
+    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), completionHistory: [], flexibleTime: true, skippable: true, listId: "graduation-party", dashboardListPinned } }));
     setNewPartyChecklistItem("");
     showSaveToast("Checklist item added.");
   }
@@ -18071,9 +18074,19 @@ ${notes.trim()}` : notes.trim(),
   function renderGraduationPartyChecklist() {
     const items = workPlanTasks.filter((task) => task.category === "Graduation Party Checklist");
     const completed = items.filter((task) => taskDetails(task.id).status === "Completed").length;
+    const pinned = items.some((task) => taskDetails(task.id).dashboardListPinned);
+    const setDashboardPinned = (nextPinned: boolean) => {
+      const itemIds = new Set(items.map((task) => task.id));
+      setTaskMeta((current) => {
+        const next = { ...current };
+        itemIds.forEach((id) => { next[id] = { ...taskDetails(id), listId: "graduation-party", dashboardListPinned: nextPinned, updatedAt: new Date().toISOString() }; });
+        return next;
+      });
+      showSaveToast(nextPinned ? "Graduation Party added to Dashboard." : "Graduation Party removed from Dashboard.");
+    };
     return <div style={{ display: "grid", gap: 12 }}>
       <section style={{ ...cardStyle, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Event Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>Graduation Party</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><button type="button" onClick={ensureGraduationPartyChecklist} style={secondaryButtonStyle}>Restore standard items</button></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Event Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>Graduation Party</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button><button type="button" onClick={ensureGraduationPartyChecklist} style={secondaryButtonStyle}>Restore standard items</button></div></div>
       </section>
       <section style={{ ...cardStyle, padding: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginBottom: 9 }}><input value={newPartyChecklistItem} onChange={(event) => setNewPartyChecklistItem(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addGraduationPartyChecklistItem(); }} placeholder="Add checklist item" style={inputStyle}/><button type="button" onClick={addGraduationPartyChecklistItem} style={goldButtonStyle}>Add</button></div>
@@ -20411,6 +20424,17 @@ ${notes.trim()}` : notes.trim(),
       const meta = taskDetails(task.id);
       return meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
     });
+    const partyDashboardItems = workPlanTasks.filter((task) => task.category === "Graduation Party Checklist" && taskDetails(task.id).dashboardListPinned);
+    const partyDashboardCompleted = partyDashboardItems.filter((task) => taskDetails(task.id).status === "Completed").length;
+    const removePartyListFromDashboard = () => {
+      const itemIds = new Set(partyDashboardItems.map((task) => task.id));
+      setTaskMeta((current) => {
+        const next = { ...current };
+        itemIds.forEach((id) => { next[id] = { ...taskDetails(id), dashboardListPinned: false, updatedAt: new Date().toISOString() }; });
+        return next;
+      });
+      showSaveToast("Graduation Party removed from Dashboard.");
+    };
     const assignAddisonFromDashboard = () => {
       const title = window.prompt("What should Addison handle today?")?.trim();
       if (!title) return;
@@ -20464,6 +20488,10 @@ ${notes.trim()}` : notes.trim(),
             </section>
           </div>
         </div>
+        {partyDashboardItems.length ? <section style={{ ...cardStyle, padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 9, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Active List</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Graduation Party</h2><small style={mutedSmallStyle}>{partyDashboardCompleted} of {partyDashboardItems.length} complete</small></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => { openGraduationPartyChecklist(); setScreen("planner"); }} style={secondaryButtonStyle}>Open List</button><button type="button" onClick={removePartyListFromDashboard} style={compactUtilityButtonStyle}>Remove</button></div></div>
+          <div style={{ display: "grid", gap: 5, maxHeight: 330, overflowY: "auto", marginTop: 9, paddingRight: 3 }}>{partyDashboardItems.map((task) => { const meta = taskDetails(task.id); const done = meta.status === "Completed"; return <label key={`dashboard-party-${task.id}`} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: "7px 8px", border: `1px solid ${done ? "#B8E0CD" : colors.line}`, borderRadius: 9, background: done ? "#EFFAF4" : "#FFFFFF", cursor: "pointer" }}><input type="checkbox" checked={done} onChange={(event) => event.currentTarget.checked ? completeAtlasTask(task) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined })}/><span style={{ color: colors.navy, fontSize: 12, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span><small style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>{meta.assignee}</small></label>; })}</div>
+        </section> : null}
         <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Assigned Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Who is handling what</h2></div><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 10 }}>{foremanAssignments.map((lane) => <button key={lane.person} type="button" onClick={() => setScreen("team")} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10, textAlign: "left", cursor: "pointer" }}><small style={fieldLabelStyle}>{lane.person.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: colors.navy }}>{lane.count}</strong><span style={mutedSmallStyle}>assigned today</span></button>)}</div></section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
           <section style={cardStyle}><div style={eyebrowStyle}>Problems / Waiting</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{foremanProblems.map((item) => <button key={item.id} type="button" onClick={item.action} style={{ border: `1px solid #F4C7C7`, borderRadius: 10, background: "#FFF8F8", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail}</small></button>)}{!foremanProblems.length ? <div style={noticeStyle}>Nothing is blocked or overdue.</div> : null}</div></section>
