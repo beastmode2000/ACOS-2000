@@ -5571,6 +5571,7 @@ export default function AtlasPage() {
   const preventiveMaintenanceSetupRunningRef = useRef(false);
   const confirmedAssetCatalogSetupRunningRef = useRef(false);
   const applianceColdSeasonSetupRunningRef = useRef(false);
+  const seasonalPressureWashingSetupRunningRef = useRef(false);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
@@ -6552,6 +6553,10 @@ export default function AtlasPage() {
     if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
     void setupApplianceColdSeasonWorkOrders();
   }, [ready, syncState, activePropertyId, assetRecords.length]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupSeasonalPressureWashing();
+  }, [ready, syncState, activePropertyId]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -16680,6 +16685,136 @@ ${notes.trim()}` : notes.trim(),
       showSaveToast("Cold-season appliance scheduling will retry.", "warning");
     } finally {
       applianceColdSeasonSetupRunningRef.current = false;
+    }
+  }
+
+  async function setupSeasonalPressureWashing() {
+    if (seasonalPressureWashingSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
+    const setupKey = "atlas-seasonal-pressure-washing-v1-2000";
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    seasonalPressureWashingSetupRunningRef.current = true;
+    try {
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
+      const nextAnnualDate = (monthDay: string) => {
+        const thisYear = `${currentYear}-${monthDay}`;
+        return thisYear >= todayISO() ? thisYear : `${currentYear + 1}-${monthDay}`;
+      };
+      const searchableText = (record: AtlasServiceRecord) =>
+        `${record.title || ""} ${record.notes || ""} ${record.workCategory || ""} ${record.responsibilityArea || ""}`.toLowerCase();
+      const pressureWashRecords = nextWorkOrders.filter((record) => /pressure wash|power wash/.test(searchableText(record)));
+      const usedRecordIds = new Set<string>();
+      const seasonalDefinitions = [
+        {
+          id: "seasonal-pressure-wash-spring",
+          calendarId: "calendar-seasonal-pressure-wash-spring",
+          title: "Post-pollen pressure washing",
+          date: nextAnnualDate("06-05"),
+          season: "Spring" as WorkSeason,
+          match: /spring|pollen/,
+          windowText: "Target June 5 after the main spring pollen drop. Move within the surrounding two-week window if pollen is still heavy or the weather is unsuitable.",
+        },
+        {
+          id: "seasonal-pressure-wash-fall",
+          calendarId: "calendar-seasonal-pressure-wash-fall",
+          title: "Post-leaf-fall pressure washing",
+          date: nextAnnualDate("12-01"),
+          season: "Fall" as WorkSeason,
+          match: /fall|leaf|leaves/,
+          windowText: "Target December 1 after the main leaf drop and leaf cleanup. Move within the surrounding two-week window if leaves are still falling or the weather is unsuitable.",
+        },
+      ];
+      for (const definition of seasonalDefinitions) {
+        let existing = nextWorkOrders.find((record) =>
+          !usedRecordIds.has(record.id) &&
+          (record.id === definition.id || (pressureWashRecords.includes(record) && definition.match.test(searchableText(record)))),
+        );
+        if (!existing) existing = pressureWashRecords.find((record) => !usedRecordIds.has(record.id));
+        const operatingNote = `${definition.windowText} Proceed only during a dry, mild forecast window above freezing; avoid heavy rain, frost, freezing temperatures, and high wind. Protect plantings, electrical fixtures, finishes, and delicate surfaces; use soft washing or reduced pressure where appropriate.`;
+        let workOrder: AtlasServiceRecord;
+        if (existing) {
+          usedRecordIds.add(existing.id);
+          const priorSeasonalNotePattern = /(?:Target June 5 after the main spring pollen drop|Target December 1 after the main leaf drop)[\s\S]*?(?=\n\n|$)/g;
+          const preservedNotes = String(existing.notes || "").replace(priorSeasonalNotePattern, "").trim();
+          workOrder = normalizeService({
+            ...existing,
+            date: definition.date,
+            status: existing.status === "Completed" || existing.status === "Closed" ? "Open" : existing.status,
+            recurring: true,
+            recurrenceInterval: 1,
+            recurrenceUnit: "Years",
+            season: definition.season,
+            workType: "Preventive Maintenance",
+            workCategory: existing.workCategory || "Exterior Cleaning",
+            responsibilityArea: existing.responsibilityArea || "House & Maintenance",
+            assignedTo: existing.assignedTo || "Nick",
+            notes: [preservedNotes, operatingNote].filter(Boolean).join("\n\n"),
+          });
+          const index = nextWorkOrders.findIndex((record) => record.id === existing!.id);
+          nextWorkOrders[index] = workOrder;
+        } else {
+          workOrder = normalizeService({
+            id: definition.id,
+            title: definition.title,
+            date: definition.date,
+            status: "Open",
+            priority: "Medium",
+            assignedTo: "Nick",
+            recurring: true,
+            recurrenceInterval: 1,
+            recurrenceUnit: "Years",
+            season: definition.season,
+            workType: "Preventive Maintenance",
+            workCategory: "Exterior Cleaning",
+            responsibilityArea: "House & Maintenance",
+            notes: operatingNote,
+            checklist: [
+              { id: `${definition.id}-prepare`, text: "Confirm suitable weather and prepare/protect the work area", completed: false },
+              { id: `${definition.id}-clean`, text: "Pressure wash or soft wash the approved exterior surfaces", completed: false },
+              { id: `${definition.id}-inspect`, text: "Inspect for damage, staining, drainage issues, and needed repairs", completed: false },
+              { id: `${definition.id}-finish`, text: "Rinse, restore the area, photograph results, and record follow-up", completed: false },
+            ],
+          });
+          nextWorkOrders.push(workOrder);
+          usedRecordIds.add(workOrder.id);
+        }
+        recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
+        const calendarRecord = normalizeCalendar({
+          id: definition.calendarId,
+          propertyId: activePropertyId,
+          date: definition.date,
+          title: workOrder.title || definition.title,
+          area: workOrder.responsibilityArea || "House & Maintenance",
+          categoryLabel: "Seasonal Exterior Cleaning",
+          allDay: true,
+          repeat: "Yearly",
+          reminder: "Week before",
+          notes: operatingNote,
+          linkedType: "Work Order",
+          linkedId: workOrder.id,
+          linkedName: workOrder.title || definition.title,
+          source: "work-order",
+          status: "Scheduled",
+        });
+        const calendarIndex = nextCalendar.findIndex((item) => item.id === definition.calendarId || (item.linkedType === "Work Order" && item.linkedId === workOrder.id && /pressure wash|power wash/i.test(item.title)));
+        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
+        else nextCalendar.push(calendarRecord);
+        recordsToSave.push({ table: "calendar", record: calendarRecord });
+      }
+      setServiceRecords(byTitle(nextWorkOrders));
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some seasonal pressure-washing records did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast("Post-pollen and post-leaf pressure washing are scheduled yearly.");
+    } catch (error) {
+      console.error("Atlas seasonal pressure-washing setup failed", error);
+      showSaveToast("Seasonal pressure-washing scheduling will retry.", "warning");
+    } finally {
+      seasonalPressureWashingSetupRunningRef.current = false;
     }
   }
 
