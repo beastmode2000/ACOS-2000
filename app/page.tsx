@@ -446,105 +446,6 @@ type DashboardRoutineItem = {
   time: string;
 };
 
-type WeeklyOperationsRoutine = {
-  day: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
-  title: string;
-  area: string;
-  minutes: number;
-  items: string[];
-};
-
-const weeklyOperationsRoutines: WeeklyOperationsRoutine[] = [
-  {
-    day: "Monday",
-    title: "Property Reset & Garage",
-    area: "House & Maintenance · Garage",
-    minutes: 240,
-    items: [
-      "Move trash, recycling, and yard-waste cans to the street; clean cans after collection",
-      "Complete the weekend cleanup and interior/exterior walkthrough",
-      "Review owner requests, urgent work, and overdue work",
-      "Clean geese debris and the dog area",
-      "Clean scheduled vehicles; check fuel or charge, tires, fluids, and warning lights",
-      "Process deliveries, restock supplies, plan the week, and delegate appropriate work",
-      "Water pots and address lawn or planting dry spots",
-    ],
-  },
-  {
-    day: "Tuesday",
-    title: "Dock, Waterfront & Recreation",
-    area: "Dock & Waterfront",
-    minutes: 210,
-    items: [
-      "Clean geese debris from the dock and shoreline",
-      "Inspect dock boards, cleats, bumpers, dock boxes, and lighting",
-      "Inspect the Cobalt, Sea-Doo, lifts, covers, and rollers",
-      "Inspect the sport court, trampoline, and recreation equipment",
-      "Clean the BBQ and nearby outdoor work areas",
-      "Review the Lanken half-day crew visit with Pat and record progress photos",
-      "Attend the 10:00 AM weekly property meeting",
-      "Water pots and address lawn or planting dry spots",
-    ],
-  },
-  {
-    day: "Wednesday",
-    title: "Landscaping & Irrigation",
-    area: "Landscaping & Irrigation",
-    minutes: 300,
-    items: [
-      "Inspect lawns, beds, gardens, trees, pots, and specialty plantings",
-      "Review landscaping crew work and unfinished items",
-      "Check irrigation zones, heads, pressure, coverage, and dry spots",
-      "Weed, prune, and hand-water where needed",
-      "Inspect and maintain the veggie boxes",
-      "Photograph progress and record issues",
-      "Create repair work orders for irrigation or landscape problems",
-    ],
-  },
-  {
-    day: "Thursday",
-    title: "Pool, Spa & Outdoor Cleaning",
-    area: "Pool & Spa · Exterior",
-    minutes: 180,
-    items: [
-      "Complete the linked Pool and Spa treatment and cleaning tasks",
-      "Inspect pool, spa, filter pressure, equipment, and fountain",
-      "Use the scheduled pool-cleaning method: brush, hand vac, suction vac, or robot vac",
-      "Clean patio furniture, covers, outdoor heaters, BBQ exterior, and skylights",
-      "Complete this week’s rotating window zone",
-      "Finish vehicle cleaning when needed",
-      "Water pots and address lawn or planting dry spots",
-    ],
-  },
-  {
-    day: "Friday",
-    title: "Maintenance & Weekend Readiness",
-    area: "House & Maintenance",
-    minutes: 300,
-    items: [
-      "Mow, edge, blow, and complete final grounds presentation",
-      "Inspect boilers, pumps, HVAC, mechanical rooms, leaks, alarms, and temperatures",
-      "Test important lights, doors, gates, and appliances",
-      "Follow up with vendors and update Tasks, Work Orders, Projects, photos, and service history",
-      "Restock supplies and complete the final property walkthrough",
-      "Attend the 9:00 AM Nick and Steve meeting",
-      "Prepare the weekend, next week, and the Friday owner-update draft",
-      "April–October: remove spider webs and treat recurring exterior problem areas when appropriate",
-    ],
-  },
-];
-
-function currentWeeklyRoutineMonday() {
-  const current = new Date(`${todayISO()}T12:00:00`);
-  const daysSinceMonday = (current.getDay() + 6) % 7;
-  return addDays(todayISO(), -daysSinceMonday);
-}
-
-function weeklyRoutineChecklistStorageKey(propertyId: string) {
-  return `atlas-weekly-routine-checks-v1-${propertyId}-${currentWeeklyRoutineMonday()}`;
-}
-
-
 type DashboardWidgetId =
   | "hero"
   | "estate-health"
@@ -4247,8 +4148,6 @@ export default function AtlasPage() {
   const [quickCaptureMode, setQuickCaptureMode] = useState<"create" | "existing">("create");
   const [ownerUpdateOpen, setOwnerUpdateOpen] = useState(false);
   const [ownerUpdateDraft, setOwnerUpdateDraft] = useState("");
-  const [weeklyRoutineChecks, setWeeklyRoutineChecks] = useState<Record<string, boolean>>({});
-  const [expandedWeeklyRoutineDay, setExpandedWeeklyRoutineDay] = useState<WeeklyOperationsRoutine["day"] | "">("");
   type DepartmentKind = "house" | "garage" | "pool" | "landscaping" | "marine";
   const [departmentCenter, setDepartmentCenter] = useState<DepartmentKind | "">("");
   const [departmentDrilldown, setDepartmentDrilldown] = useState<
@@ -6669,17 +6568,6 @@ export default function AtlasPage() {
     if (!ready) return;
     saveStoredArray(dashboardRoutineStorageKeys[0], completedDashboardRoutineIds);
   }, [ready, completedDashboardRoutineIds]);
-
-  useEffect(() => {
-    if (!ready || typeof window === "undefined") return;
-    try {
-      const saved = window.localStorage.getItem(weeklyRoutineChecklistStorageKey(activePropertyId));
-      setWeeklyRoutineChecks(saved ? JSON.parse(saved) as Record<string, boolean> : {});
-    } catch {
-      setWeeklyRoutineChecks({});
-    }
-    setExpandedWeeklyRoutineDay("");
-  }, [ready, activePropertyId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -17940,7 +17828,7 @@ ${notes.trim()}` : notes.trim(),
 
           <details style={{ marginTop: 10, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: "9px 11px" }}>
             <summary style={{ cursor: "pointer", fontWeight: 950, color: colors.navy3 }}>Today’s Routine <span style={{ color: colors.muted, fontWeight: 800 }}>· click to open checklist</span></summary>
-            <div style={{ marginTop: 10, paddingLeft: isMobile ? 0 : 14 }}><AtlasRoutines mode="dashboard" isMobile={isMobile} onOpenManager={() => setScreen("routines")} /></div>
+            <div style={{ marginTop: 10, paddingLeft: isMobile ? 0 : 14 }}><AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} /></div>
           </details>
 
           {overdueWork.length ? <>
@@ -18385,50 +18273,7 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderRoutines() {
-    const toggleWeeklyRoutineItem = (day: WeeklyOperationsRoutine["day"], itemIndex: number) => {
-      const itemKey = `${day.toLowerCase()}-${itemIndex}`;
-      setWeeklyRoutineChecks((current) => {
-        const next = { ...current, [itemKey]: !current[itemKey] };
-        if (typeof window !== "undefined") window.localStorage.setItem(weeklyRoutineChecklistStorageKey(activePropertyId), JSON.stringify(next));
-        return next;
-      });
-    };
-    const completedItems = weeklyOperationsRoutines.reduce((count, routine) => count + routine.items.filter((_, index) => weeklyRoutineChecks[`${routine.day.toLowerCase()}-${index}`]).length, 0);
-    const totalItems = weeklyOperationsRoutines.reduce((count, routine) => count + routine.items.length, 0);
-    const weekProgress = totalItems ? Math.round((completedItems / totalItems) * 100) : 0;
-    return <div style={{ display: "grid", gap: 12 }}>
-      <section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-          <div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Weekly Operations</div><h2 style={{ margin: "3px 0 4px", color: "#FFFFFF" }}>Monday–Friday Routine</h2><small style={{ opacity: .82 }}>Week of {formatDate(currentWeeklyRoutineMonday())} · resets automatically each Monday</small></div>
-          <div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 26 }}>{weekProgress}%</strong><small style={{ opacity: .82 }}>{completedItems} of {totalItems} complete</small></div>
-        </div>
-        <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.18)", overflow: "hidden", marginTop: 12 }}><div style={{ width: `${weekProgress}%`, height: "100%", background: colors.gold2, transition: "width .2s ease" }} /></div>
-      </section>
-      <section style={{ ...cardStyle, padding: isMobile ? 10 : 14 }}>
-        <div style={{ display: "grid", gap: 8 }}>
-          {weeklyOperationsRoutines.map((routine) => {
-            const doneCount = routine.items.filter((_, index) => weeklyRoutineChecks[`${routine.day.toLowerCase()}-${index}`]).length;
-            const isExpanded = expandedWeeklyRoutineDay === routine.day;
-            const linkedTask = workPlanTasks.find((task) => normalizeLocationName(task.title) === normalizeLocationName(`${routine.day} — ${routine.title}`));
-            return <div key={routine.day} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", overflow: "hidden" }}>
-              <button type="button" onClick={() => setExpandedWeeklyRoutineDay(isExpanded ? "" : routine.day)} style={{ width: "100%", border: 0, background: isExpanded ? "#F8FAFC" : "#FFFFFF", padding: isMobile ? 10 : 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, textAlign: "left", cursor: "pointer", alignItems: "center" }}>
-                <span><strong style={{ display: "block", color: colors.navy, fontSize: 15 }}>{routine.day} · {routine.title}</strong><small style={mutedSmallStyle}>{routine.area} · {minutesLabel(routine.minutes)}</small></span>
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={badgeStyle(doneCount === routine.items.length ? "Completed" : "Scheduled")}>{doneCount}/{routine.items.length}</span><strong style={{ color: colors.navy }}>{isExpanded ? "−" : "+"}</strong></span>
-              </button>
-              {isExpanded ? <div style={{ borderTop: `1px solid ${colors.line}`, padding: isMobile ? 10 : 12, display: "grid", gap: 8 }}>
-                {routine.items.map((item, index) => {
-                  const itemKey = `${routine.day.toLowerCase()}-${index}`;
-                  const checked = Boolean(weeklyRoutineChecks[itemKey]);
-                  return <label key={itemKey} style={{ display: "grid", gridTemplateColumns: "24px minmax(0,1fr)", gap: 9, alignItems: "start", padding: "7px 0", borderBottom: index === routine.items.length - 1 ? 0 : `1px solid ${colors.line}`, cursor: "pointer" }}><input type="checkbox" checked={checked} onChange={() => toggleWeeklyRoutineItem(routine.day, index)} style={{ width: 19, height: 19, accentColor: colors.gold, marginTop: 1 }} /><span style={{ color: checked ? colors.muted : colors.navy3, textDecoration: checked ? "line-through" : "none", fontWeight: checked ? 700 : 850 }}>{item}</span></label>;
-                })}
-                {linkedTask ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap", paddingTop: 4 }}><button type="button" onClick={() => { setSelectedTaskId(linkedTask.id); setTasksView("tasks"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Linked Task</button>{taskDetails(linkedTask.id).assignee !== "Addison" ? <button type="button" onClick={() => assignTaskTo(linkedTask, "Addison")} style={secondaryButtonStyle}>Add to Addison</button> : <span style={badgeStyle("Scheduled")}>Assigned to Addison</span>}{taskDetails(linkedTask.id).assignee !== "Pat" ? <button type="button" onClick={() => assignTaskTo(linkedTask, "Pat")} style={secondaryButtonStyle}>Add to Pat</button> : <span style={badgeStyle("Scheduled")}>Assigned to Pat</span>}</div> : null}
-              </div> : null}
-            </div>;
-          })}
-        </div>
-      </section>
-      <AtlasRoutines mode="manager" isMobile={isMobile} />
-    </div>;
+    return <AtlasRoutines mode="manager" isMobile={isMobile} activePropertyId={activePropertyId} />;
   }
 
   function renderTeamWork() {
