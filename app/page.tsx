@@ -5572,6 +5572,7 @@ export default function AtlasPage() {
   const confirmedAssetCatalogSetupRunningRef = useRef(false);
   const applianceColdSeasonSetupRunningRef = useRef(false);
   const seasonalPressureWashingSetupRunningRef = useRef(false);
+  const exteriorGlassCareSetupRunningRef = useRef(false);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
@@ -6556,6 +6557,10 @@ export default function AtlasPage() {
   useEffect(() => {
     if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
     void setupSeasonalPressureWashing();
+  }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupExteriorGlassCare();
   }, [ready, syncState, activePropertyId]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
@@ -16685,6 +16690,144 @@ ${notes.trim()}` : notes.trim(),
       showSaveToast("Cold-season appliance scheduling will retry.", "warning");
     } finally {
       applianceColdSeasonSetupRunningRef.current = false;
+    }
+  }
+
+  async function setupExteriorGlassCare() {
+    if (exteriorGlassCareSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
+    const setupKey = "atlas-exterior-glass-care-v1-2000";
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    exteriorGlassCareSetupRunningRef.current = true;
+    try {
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const nextWeekday = (weekdayIndex: number, weeksAhead = 0) => {
+        const current = new Date(`${todayISO()}T12:00:00`).getDay();
+        return addDays(todayISO(), ((weekdayIndex - current + 7) % 7) + weeksAhead * 7);
+      };
+      const findLocationId = (terms: string[]) => locations.find((location) => terms.some((term) => location.name.toLowerCase().includes(term)))?.id || "general";
+      const definitions = [
+        {
+          id: "wo-weekly-ipe-deck-skylights",
+          calendarId: "calendar-weekly-ipe-deck-skylights",
+          title: "Clean skylights above the Ipe deck",
+          date: nextWeekday(4),
+          interval: 1,
+          unit: "Weeks" as WorkOrderRecurrenceUnit,
+          repeat: "Weekly" as CalendarRepeat,
+          locationId: findLocationId(["ipe deck", "deck", "waterside"]),
+          area: "House & Maintenance",
+          notes: "Clean the exterior skylight glass above the Ipe deck weekly; twice monthly is the minimum acceptable frequency. Move or skip the occurrence when surfaces are wet, icy, windy, or access cannot be completed safely. Use an approved extension system from a stable surface—do not step onto skylight glazing.",
+          checklist: ["Confirm safe, dry access conditions", "Remove loose debris without scratching the glass", "Wash skylight glass and frames", "Rinse and inspect seals, flashing, cracks, leaks, and drainage", "Photograph and flag any damage or unsafe access"],
+        },
+        {
+          id: "wo-monthly-addition-exterior-windows",
+          calendarId: "calendar-monthly-addition-exterior-windows",
+          title: "Clean Addition exterior windows",
+          date: nextWeekday(3, 1),
+          interval: 1,
+          unit: "Months" as WorkOrderRecurrenceUnit,
+          repeat: "Custom" as CalendarRepeat,
+          locationId: findLocationId(["addition"]),
+          area: "House & Maintenance",
+          notes: "Monthly exterior window cleaning for the Addition. Allow approximately 2–3 hours. Clean only windows reachable safely from the ground or an approved stable working position. Record damaged screens, seals, hardware, failed glazing, stains, or access issues.",
+          checklist: ["Walk the Addition and confirm safe access", "Remove loose debris from glass, frames, tracks, and sills", "Wash and detail accessible exterior glass", "Clean accessible frames and sills", "Inspect and record damage, leaks, failed seals, and needed follow-up"],
+        },
+        {
+          id: "wo-monthly-original-home-exterior-windows",
+          calendarId: "calendar-monthly-original-home-exterior-windows",
+          title: "Clean Original Home accessible exterior windows",
+          date: nextWeekday(3, 3),
+          interval: 1,
+          unit: "Months" as WorkOrderRecurrenceUnit,
+          repeat: "Custom" as CalendarRepeat,
+          locationId: findLocationId(["original house", "original home"]),
+          area: "House & Maintenance",
+          notes: "Monthly exterior window cleaning for safely accessible Original Home windows. Allow approximately 2–3 hours. EXCLUDE the second- and third-story Great Room windows on both the waterside and courtyard sides. Those elevated windows require a separate access/equipment plan or qualified window-cleaning vendor before work is assigned.",
+          checklist: ["Walk the Original Home and confirm the accessible scope", "Verify the elevated Great Room exclusions", "Remove loose debris from accessible glass, frames, tracks, and sills", "Wash and detail accessible exterior glass", "Inspect and record damage, leaks, failed seals, and needed follow-up"],
+        },
+      ];
+      for (const definition of definitions) {
+        const normalizedTitle = normalizeLocationName(definition.title);
+        const existingIndex = nextWorkOrders.findIndex((record) => record.id === definition.id || normalizeLocationName(record.title) === normalizedTitle);
+        const defaultChecklist: WorkChecklistItem[] = definition.checklist.map((text, index) => ({ id: `${definition.id}-${index + 1}`, text, completed: false }));
+        let workOrder: AtlasServiceRecord;
+        if (existingIndex >= 0) {
+          const existing = nextWorkOrders[existingIndex];
+          workOrder = normalizeService({
+            ...existing,
+            date: definition.date,
+            status: existing.status === "Completed" ? "Open" : existing.status,
+            recurring: true,
+            recurrenceInterval: definition.interval,
+            recurrenceUnit: definition.unit,
+            season: "Year-Round",
+            workType: "Preventive Maintenance",
+            workCategory: "Exterior Cleaning",
+            responsibilityArea: definition.area,
+            locationId: existing.locationId || definition.locationId,
+            assignedTo: existing.assignedTo || "Nick",
+            notes: existing.notes?.includes(definition.notes) ? existing.notes : [existing.notes, definition.notes].filter(Boolean).join("\n\n"),
+            checklist: existing.checklist?.length ? existing.checklist : defaultChecklist,
+          });
+          nextWorkOrders[existingIndex] = workOrder;
+        } else {
+          workOrder = normalizeService({
+            id: definition.id,
+            title: definition.title,
+            date: definition.date,
+            status: "Open",
+            priority: "Medium",
+            assignedTo: "Nick",
+            recurring: true,
+            recurrenceInterval: definition.interval,
+            recurrenceUnit: definition.unit,
+            season: "Year-Round",
+            workType: "Preventive Maintenance",
+            workCategory: "Exterior Cleaning",
+            responsibilityArea: definition.area,
+            locationId: definition.locationId,
+            notes: definition.notes,
+            checklist: defaultChecklist,
+          });
+          nextWorkOrders.push(workOrder);
+        }
+        recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
+        const calendarRecord = normalizeCalendar({
+          id: definition.calendarId,
+          propertyId: activePropertyId,
+          date: workOrder.date || definition.date,
+          title: workOrder.title,
+          area: definition.area,
+          categoryLabel: "Exterior Glass Care",
+          allDay: true,
+          repeat: definition.repeat,
+          reminder: "Day before",
+          notes: `${definition.notes} Repeats every ${definition.interval} ${definition.unit.toLowerCase()}.`,
+          linkedType: "Work Order",
+          linkedId: workOrder.id,
+          linkedName: workOrder.title,
+          source: "work-order",
+          status: "Scheduled",
+        });
+        const calendarIndex = nextCalendar.findIndex((item) => item.id === definition.calendarId);
+        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
+        else nextCalendar.push(calendarRecord);
+        recordsToSave.push({ table: "calendar", record: calendarRecord });
+      }
+      setServiceRecords(byTitle(nextWorkOrders));
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some exterior glass-care records did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast("Skylight and exterior window cleaning are scheduled.");
+    } catch (error) {
+      console.error("Atlas exterior glass-care setup failed", error);
+      showSaveToast("Exterior glass-care scheduling will retry.", "warning");
+    } finally {
+      exteriorGlassCareSetupRunningRef.current = false;
     }
   }
 
