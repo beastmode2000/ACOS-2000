@@ -487,10 +487,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
         <div>
           <div style={eyebrowStyle}>TEAM OPERATIONS</div>
           <h1 style={titleStyle}>Team Work</h1>
-          <p style={heroCopyStyle}>
-            Editable routines, landscaping lists, assignments, and marine work
-            for {activePropertyId}.
-          </p>
+          <p style={heroCopyStyle}>{activePropertyId} assignments and progress.</p>
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -634,7 +631,9 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                 </div>
               </div>
 
-              <div style={settingsGridStyle}>
+              <details style={{ marginTop: 14, border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 850, color: colors.text }}>List details</summary>
+              <div style={{ ...settingsGridStyle, marginTop: 10 }}>
                 <label style={labelStyle}>
                   Default assignee
                   <select
@@ -705,13 +704,11 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                   })}
                 </div>
               </div>
+              </details>
 
               <div style={{ ...editorHeaderStyle, marginTop: 22 }}>
                 <div>
                   <h2 style={{ margin: 0, color: colors.text }}>Tasks</h2>
-                  <p style={{ ...mutedStyle, margin: "4px 0 0" }}>
-                    Every item is editable, reorderable, and assignable.
-                  </p>
                 </div>
 
                 <button type="button" style={goldButtonStyle} onClick={addTask}>
@@ -816,7 +813,11 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                       </div>
                     </div>
 
-                    <div style={taskDetailGridStyle}>
+                    <details style={{ marginTop: 8 }}>
+                      <summary style={{ cursor: "pointer", color: colors.muted, fontSize: 12, fontWeight: 800 }}>
+                        {item.location || item.notes || item.requirePhoto ? "Location & notes" : "Add details"}
+                      </summary>
+                    <div style={{ ...taskDetailGridStyle, marginTop: 8 }}>
                       <input
                         value={item.location}
                         onChange={(event) =>
@@ -852,6 +853,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                         Require photo
                       </label>
                     </div>
+                    </details>
                   </div>
                 ))}
 
