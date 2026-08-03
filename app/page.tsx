@@ -9855,6 +9855,10 @@ export default function AtlasPage() {
     if (!command) return false;
     rememberSearch(value);
     closeCommandCenter();
+    if (command.view === "addison") {
+      setScreen("team");
+      return true;
+    }
     setTasksView(command.view);
     setScreen("planner");
     return true;
@@ -18349,7 +18353,6 @@ ${notes.trim()}` : notes.trim(),
             <button type="button" onClick={() => setTasksView("build")} style={tasksView === "build" ? goldButtonStyle : secondaryButtonStyle}>Build My Day</button>
             <button type="button" onClick={() => { setSelectedTaskId(focusTask?.id || ""); setTasksView("walk"); }} style={tasksView === "walk" ? goldButtonStyle : secondaryButtonStyle}>Walk Mode</button>
             <button type="button" onClick={() => setTasksView("route")} style={tasksView === "route" ? goldButtonStyle : secondaryButtonStyle}>Smart Route</button>
-            <button type="button" onClick={() => setTasksView("addison")} style={tasksView === "addison" ? goldButtonStyle : secondaryButtonStyle}>Addison Today</button>
             <button type="button" onClick={() => setTasksView("analytics")} style={tasksView === "analytics" ? goldButtonStyle : secondaryButtonStyle}>Analytics</button>
             <button type="button" onClick={() => setTasksView("backlog")} style={tasksView === "backlog" ? goldButtonStyle : secondaryButtonStyle}>Backlog · {backlogItems.length}</button>
             <button type="button" onClick={() => setTasksView("seasonal")} style={tasksView === "seasonal" ? goldButtonStyle : secondaryButtonStyle}>Seasonal</button>
@@ -20146,11 +20149,11 @@ ${notes.trim()}` : notes.trim(),
             <section style={cardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Addison Today</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Live checklist</h2></div><span style={badgeStyle(addisonDashboardCompleted.length === addisonDashboardTasks.length && addisonDashboardTasks.length ? "Completed" : "Scheduled")}>{addisonDashboardCompleted.length}/{addisonDashboardTasks.length}</span></div>
               <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{addisonDashboardTasks.map((task) => { const meta = taskDetails(task.id); const checked = Boolean(meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today); return <div key={`dashboard-addison-${task.id}`} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${checked ? "#B8E0CD" : colors.line}`, borderRadius: 10, background: checked ? "#EFFAF4" : "#FFFFFF", padding: 9 }}><input type="checkbox" checked={checked} aria-label={`Complete ${task.title}`} onChange={() => checked ? updateTaskDetails(task.id, { status: "Open", completedAt: undefined, completionHistory: (meta.completionHistory || []).filter((date) => date !== today), needsReview: false, dueDate: today }) : completeAtlasTask(task)} style={{ width: 18, height: 18, accentColor: colors.green, cursor: "pointer" }} /><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, textDecoration: checked ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis" }}>{task.title}</strong>{meta.notes || meta.instructions ? <small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.instructions || meta.notes}</small> : null}</button><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Edit</button></div>; })}{!addisonDashboardTasks.length ? <div style={noticeStyle}>Nothing assigned to Addison today.</div> : null}</div>
-              <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}><button type="button" onClick={assignAddisonFromDashboard} style={goldButtonStyle}>+ Assign</button><button type="button" onClick={() => { setTasksView("addison"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Addison</button></div>
+              <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}><button type="button" onClick={assignAddisonFromDashboard} style={goldButtonStyle}>+ Assign</button><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div>
             </section>
           </div>
         </div>
-        <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Assigned Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Who is handling what</h2></div><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 10 }}>{foremanAssignments.map((lane) => <button key={lane.person} type="button" onClick={() => lane.person === "Addison" ? (setTasksView("addison"), setScreen("planner")) : setScreen("team")} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10, textAlign: "left", cursor: "pointer" }}><small style={fieldLabelStyle}>{lane.person.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: colors.navy }}>{lane.count}</strong><span style={mutedSmallStyle}>assigned today</span></button>)}</div></section>
+        <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Assigned Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Who is handling what</h2></div><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 10 }}>{foremanAssignments.map((lane) => <button key={lane.person} type="button" onClick={() => setScreen("team")} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10, textAlign: "left", cursor: "pointer" }}><small style={fieldLabelStyle}>{lane.person.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: colors.navy }}>{lane.count}</strong><span style={mutedSmallStyle}>assigned today</span></button>)}</div></section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
           <section style={cardStyle}><div style={eyebrowStyle}>Problems / Waiting</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{foremanProblems.map((item) => <button key={item.id} type="button" onClick={item.action} style={{ border: `1px solid #F4C7C7`, borderRadius: 10, background: "#FFF8F8", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail}</small></button>)}{!foremanProblems.length ? <div style={noticeStyle}>Nothing is blocked or overdue.</div> : null}</div></section>
           <section style={cardStyle}><div style={eyebrowStyle}>If Time Allows</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{ifTimeTasks.slice(0, 5).map((task) => <button key={task.id} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {taskDetails(task.id).assignee}</small></button>)}{!ifTimeTasks.length ? <div style={noticeStyle}>No optional work is suggested right now.</div> : null}</div></section>
@@ -20238,7 +20241,7 @@ ${notes.trim()}` : notes.trim(),
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 8 }}>
             {[{ label: "Must Do", tasks: mustDoTasks, note: "Urgent, overdue, blocked, or high priority" }, { label: "Should Do", tasks: shouldDoTasks, note: "Important work planned for today" }, { label: "If Time Allows", tasks: ifTimeTasks, note: "Flexible work that can move" }].map((lane) => <div key={lane.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}><strong style={{ display: "block", color: colors.navy }}>{lane.label} · {lane.tasks.length}</strong><small style={mutedSmallStyle}>{lane.note}</small><div style={{ display: "grid", gap: 6, marginTop: 8 }}>{lane.tasks.slice(0, 3).map((task) => <button key={`${lane.label}-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", fontSize: 13 }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {taskDetails(task.id).assignee}</small></button>)}{!lane.tasks.length ? <small style={{ ...mutedSmallStyle, paddingTop: 5 }}>Nothing here.</small> : null}</div></div>)}
           </div>
-          {(delegatedTodayTasks.length || waitingTodayTasks.length) ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}><button type="button" onClick={() => { setTasksView("addison"); setScreen("planner"); }} style={secondaryButtonStyle}>Delegated · {delegatedTodayTasks.length}</button><button type="button" onClick={() => { setTasksView("intelligence"); setScreen("planner"); }} style={secondaryButtonStyle}>Waiting / Blocked · {waitingTodayTasks.length}</button></div> : null}
+          {(delegatedTodayTasks.length || waitingTodayTasks.length) ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Delegated · {delegatedTodayTasks.length}</button><button type="button" onClick={() => { setTasksView("intelligence"); setScreen("planner"); }} style={secondaryButtonStyle}>Waiting / Blocked · {waitingTodayTasks.length}</button></div> : null}
 
           <div style={{ marginTop: 14 }}><div style={fieldLabelStyle}>Today</div></div>
           <div style={{ display: "grid", gap: 8, marginTop: 7 }}>
@@ -40886,8 +40889,6 @@ ${notes.trim()}` : notes.trim(),
                       ? "planner:build"
                       : tasksView === "route"
                         ? "planner:route"
-                      : tasksView === "addison"
-                        ? "planner:addison"
                       : tasksView === "analytics"
                         ? "planner:analytics"
                       : tasksView === "vehicles"
@@ -40916,11 +40917,6 @@ ${notes.trim()}` : notes.trim(),
                   }
                   if (nextValue === "planner:route") {
                     setTasksView("route");
-                    setScreen("planner");
-                    return;
-                  }
-                  if (nextValue === "planner:addison") {
-                    setTasksView("addison");
                     setScreen("planner");
                     return;
                   }
@@ -40953,7 +40949,6 @@ ${notes.trim()}` : notes.trim(),
                   <option value="planner:walk">Walk Mode</option>
                   <option value="planner:build">Build My Day</option>
                   <option value="planner:route">Smart Route</option>
-                  <option value="planner:addison">Addison Manager</option>
                   <option value="planner:analytics">Operations Analytics</option>
                   <option value="planner:tasks">Tasks</option>
                   <option value="planner:vehicles">Garage</option>
@@ -41015,7 +41010,6 @@ ${notes.trim()}` : notes.trim(),
                             { id: "walk", label: "Walk Mode", view: "walk" as const },
                             { id: "build", label: "Build My Day", view: "build" as const },
                             { id: "route", label: "Smart Route", view: "route" as const },
-                            { id: "addison", label: "Addison Manager", view: "addison" as const },
                             { id: "analytics", label: "Operations Analytics", view: "analytics" as const },
                             { id: "tasks", label: "Tasks", view: "tasks" as const },
                             { id: "vehicles", label: "Garage", view: "vehicles" as const },
