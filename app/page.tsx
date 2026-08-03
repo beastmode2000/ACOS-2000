@@ -5570,6 +5570,7 @@ export default function AtlasPage() {
   const weeklyOperationsSetupRunningRef = useRef(false);
   const preventiveMaintenanceSetupRunningRef = useRef(false);
   const confirmedAssetCatalogSetupRunningRef = useRef(false);
+  const applianceColdSeasonSetupRunningRef = useRef(false);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
 
@@ -6547,6 +6548,10 @@ export default function AtlasPage() {
     if (!ready || syncState !== "synced" || !["2000", "hangar"].includes(activePropertyId)) return;
     void setupConfirmedAssetCatalog();
   }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
+    void setupApplianceColdSeasonWorkOrders();
+  }, [ready, syncState, activePropertyId, assetRecords.length]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -16604,6 +16609,77 @@ ${notes.trim()}` : notes.trim(),
       showSaveToast("Confirmed asset setup will retry.", "warning");
     } finally {
       confirmedAssetCatalogSetupRunningRef.current = false;
+    }
+  }
+
+  async function setupApplianceColdSeasonWorkOrders() {
+    if (applianceColdSeasonSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
+    const setupKey = "atlas-appliance-cold-season-work-v1-2000";
+    if (window.localStorage.getItem(setupKey) === "ready") return;
+    const appliancePattern = /freezer|refrigerator|fridge|frige|wine room cooler|wine chiller|dryer|washer|dishwasher|range|oven|microwave/i;
+    const appliances = byName(assetRecords.filter((asset) => /appliance/i.test(asset.category || "") || appliancePattern.test(asset.name || "")));
+    const confirmedApplianceCount = confirmedAssetCatalog.filter((item) => item.propertyId === "2000" && item.category === "Appliance").length;
+    if (appliances.length < confirmedApplianceCount) return;
+    applianceColdSeasonSetupRunningRef.current = true;
+    try {
+      const nextWorkOrders = [...serviceRecords];
+      const nextCalendar = [...calendarItems];
+      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
+      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
+      const seasonYear = todayISO() <= `${currentYear}-12-20` ? currentYear : currentYear + 1;
+      const firstDueDate = `${seasonYear}-11-05`;
+      const spreadDays = 44;
+      const checklistFor = (asset: AtlasAssetRecord): WorkChecklistItem[] => {
+        const text = `${asset.name} ${asset.category}`.toLowerCase();
+        const items = /freezer|refrigerator|fridge|frige|wine/.test(text)
+          ? ["Verify and record operating temperature", "Inspect door seals and hinges", "Clean accessible condenser area and ventilation", "Check for unusual noise, frost, moisture or alarms"]
+          : /dryer/.test(text)
+            ? ["Clean lint screen and accessible lint areas", "Inspect exhaust connection and airflow", "Check drum, door seal and controls", "Record unusual heat, noise or drying time"]
+            : /washer/.test(text)
+              ? ["Inspect supply hoses, valves and drain", "Check for leaks, vibration and unusual noise", "Clean dispenser, seal and accessible filter", "Run and verify a test cycle"]
+              : /dishwasher/.test(text)
+                ? ["Clean filter and spray-arm openings", "Inspect racks, seals, supply and drain connections", "Check for leaks, odor and drainage problems", "Run and verify a test cycle"]
+                : /range|oven|microwave/.test(text)
+                  ? ["Test burners, elements, ignition and controls", "Inspect seals, knobs and ventilation", "Clean accessible service areas", "Record uneven heat, ignition delay or error codes"]
+                  : ["Inspect and clean the appliance", "Test normal operation and controls", "Check connections, ventilation, leaks and unusual noise", "Record any repair or vendor follow-up needed"];
+        return items.map((item, index) => ({ id: `annual-${asset.id}-${index + 1}`, text: item, completed: false }));
+      };
+      for (const [index, asset] of appliances.entries()) {
+        const offset = appliances.length <= 1 ? 0 : Math.round((index * spreadDays) / (appliances.length - 1));
+        const dueDate = addDays(firstDueDate, offset);
+        const windowStart = addDays(dueDate, -14);
+        const stableId = `annual-appliance-${asset.id}`;
+        const existingIndex = nextWorkOrders.findIndex((record) => record.id === stableId || (record.assetId === asset.id && record.recurring && (record.workType === "Preventive Maintenance" || /annual.*service|appliance.*service/i.test(record.title))));
+        const seasonalNote = `Cold-season appliance maintenance. Service window opens ${formatDate(windowStart)}; due ${formatDate(dueDate)}. Scheduled in November/December when estate operations are slower.`;
+        if (existingIndex >= 0) {
+          const existing = nextWorkOrders[existingIndex];
+          const next = normalizeService({ ...existing, id: existing.id || stableId, date: dueDate, status: existing.status === "Completed" ? "Open" : existing.status, recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", season: "Winter", workType: "Preventive Maintenance", workCategory: "Appliances", responsibilityArea: "House & Maintenance", checklist: existing.checklist?.length ? existing.checklist : checklistFor(asset), notes: existing.notes.includes("Cold-season appliance maintenance") ? existing.notes.replace(/Cold-season appliance maintenance\.[\s\S]*?slower\./, seasonalNote) : [existing.notes, seasonalNote].filter(Boolean).join("\n\n") });
+          nextWorkOrders[existingIndex] = next;
+          recordsToSave.push({ table: "work_orders", record: { ...next, propertyId: activePropertyId } });
+        } else {
+          const workOrder = normalizeService({ id: stableId, title: `Annual service — ${asset.name}`, assetId: asset.id, locationId: asset.locationId || "", date: dueDate, status: "Open", priority: "Medium", assignedTo: "Nick", notes: seasonalNote, recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", season: "Winter", workType: "Preventive Maintenance", workCategory: "Appliances", responsibilityArea: "House & Maintenance", checklist: checklistFor(asset) });
+          nextWorkOrders.push(workOrder);
+          recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
+        }
+        const linkedWorkOrder = nextWorkOrders.find((record) => record.id === stableId) || nextWorkOrders.find((record) => record.assetId === asset.id && record.recurring && record.workCategory === "Appliances")!;
+        const calendarRecord = normalizeCalendar({ id: `calendar-${stableId}`, propertyId: activePropertyId, date: dueDate, title: `Annual service — ${asset.name}`, area: "House & Maintenance", categoryLabel: "Appliance Service", allDay: true, repeat: "Yearly", reminder: "Week before", notes: `${seasonalNote} Linked to ${asset.name}.`, linkedType: "Work Order", linkedId: linkedWorkOrder.id, linkedName: linkedWorkOrder.title, source: "work-order", status: "Scheduled" });
+        const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
+        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
+        else nextCalendar.push(calendarRecord);
+        recordsToSave.push({ table: "calendar", record: calendarRecord });
+      }
+      setServiceRecords(byTitle(nextWorkOrders));
+      setCalendarItems(byTitle(nextCalendar));
+      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
+      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
+      if (results.some((saved) => !saved)) throw new Error("Some cold-season appliance records did not sync.");
+      window.localStorage.setItem(setupKey, "ready");
+      showSaveToast(`${appliances.length} appliance Work Orders were spread across November and December.`);
+    } catch (error) {
+      console.error("Atlas cold-season appliance setup failed", error);
+      showSaveToast("Cold-season appliance scheduling will retry.", "warning");
+    } finally {
+      applianceColdSeasonSetupRunningRef.current = false;
     }
   }
 
