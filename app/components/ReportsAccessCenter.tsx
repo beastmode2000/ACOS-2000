@@ -415,7 +415,9 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
         <div style={{marginTop:10,color:colors.muted,fontSize:13}}>{filteredRows.length} matching record{filteredRows.length===1?"":"s"}</div>
       </section>
 
-      <section style={card}>
+      <details style={card}>
+        <summary style={{cursor:"pointer",fontWeight:900,color:colors.navy}}>Team & Permissions · {team.length}</summary>
+        <div style={{marginTop:14}}>
         <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Team & Permissions</div>
         <h2 style={{ margin: "5px 0", color: colors.navy }}>Access profiles</h2>
         <p style={{ margin: "0 0 16px", color: colors.muted }}>Keep roles simple. Passwords stay controlled by the existing secure Vercel settings.</p>
@@ -497,24 +499,31 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
           <button type="button" onClick={() => void saveAccess()} style={button}>Save Access Settings</button>
           {message ? <span style={{ color: colors.green, fontWeight: 850 }}>{message}</span> : null}
         </div>
-      </section>
+        </div>
+      </details>
 
-      <section style={card}>
+      <details style={card}>
+        <summary style={{cursor:"pointer",fontWeight:900,color:colors.navy}}>Backup & Recovery</summary>
+        <div style={{marginTop:14}}>
         <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Backup & Recovery</div>
         <h2 style={{ margin: "5px 0", color: colors.navy }}>Download complete Atlas backup</h2>
         <p style={{ margin:"0 0 14px", color:colors.muted }}>Creates a dated JSON copy of the records currently loaded in Atlas.</p>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}><button type="button" onClick={()=>void createServerBackup()} style={button}>Create Protected Backup</button><button type="button" onClick={downloadBackup} style={{...button,background:"#fff",border:`1px solid ${colors.line}`}}>Download Current Data</button></div>
         <div style={{display:"grid",gap:7,marginTop:14}}>{backups.slice(0,5).map((backup)=><div key={String(backup.id)} style={{display:"flex",justifyContent:"space-between",gap:10,padding:10,border:`1px solid ${colors.line}`,borderRadius:10}}><span>{new Date(String(backup.created_at)).toLocaleString()} · {String(backup.reason)}</span><button type="button" onClick={()=>void downloadProtectedBackup(String(backup.id))} style={{...button,padding:"7px 10px"}}>Download</button></div>)}</div>
-      </section>
+        </div>
+      </details>
 
-      <section style={card}>
+      <details style={card}>
+        <summary style={{cursor:"pointer",fontWeight:900,color:colors.navy}}>Notifications & History</summary>
+        <div style={{marginTop:14}}>
         <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Notifications & History</div>
         <h2 style={{margin:"5px 0",color:colors.navy}}>Operations alerts</h2>
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10,marginBottom:16}}>{alerts.map((alert)=><button type="button" onClick={()=>openAlert(alert.mode)} key={alert.label} style={{textAlign:"left",padding:14,border:`1px solid ${alertMode===alert.mode?colors.gold:colors.line}`,borderRadius:12,background:colors.panel,cursor:"pointer"}}><strong style={{fontSize:24,color:colors.navy}}>{alert.count}</strong><div style={{color:colors.muted}}>{alert.label}</div><div style={{fontSize:11,fontWeight:900,marginTop:5,color:colors.navy}}>View matching work orders</div></button>)}</div>
         {alertMode ? <div style={{display:"grid",gap:7,marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",gap:10}}><strong style={{color:colors.navy}}>Matching work orders ({filteredRows.length})</strong><button type="button" onClick={clearFilters} style={{...button,padding:"6px 9px",background:"#fff",border:`1px solid ${colors.line}`}}>Close List</button></div>{filteredRows.slice(0,25).map((row)=><div key={String(row.id)} style={{padding:10,border:`1px solid ${colors.line}`,borderRadius:10,display:"flex",justifyContent:"space-between",gap:10}}><strong>{String(row.title || "Untitled work order")}</strong><span style={{color:colors.muted,fontSize:12}}>{String(row.date || "No date")} · {String(row.priority || "Medium")} · {String(row.status || "Open")}</span></div>)}</div> : null}
         <strong style={{color:colors.navy}}>Recent change history</strong>
         <div style={{display:"grid",gap:7,marginTop:8}}>{history.slice(0,10).map((entry)=><div key={String(entry.id)} style={{padding:10,border:`1px solid ${colors.line}`,borderRadius:10,fontSize:13}}><strong>{String(entry.action).toUpperCase()} · {String(entry.table_name)}</strong><div style={{color:colors.muted}}>{String(entry.actor || "Atlas user")} · {new Date(String(entry.created_at)).toLocaleString()}</div></div>)}</div>
-      </section>
+        </div>
+      </details>
     </div>
   );
 }
