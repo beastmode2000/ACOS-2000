@@ -20090,6 +20090,34 @@ ${notes.trim()}` : notes.trim(),
       const work = dueToday.filter((record) => String((record as AtlasServiceRecord & { assignedTo?: string }).assignedTo || "").toLowerCase() === person.toLowerCase());
       return { person, tasks, work, count: tasks.length + work.length };
     });
+    const addisonDashboardTasks = workPlanTasks.filter((task) => {
+      const meta = taskDetails(task.id);
+      if (meta.assignee !== "Addison") return false;
+      const completedToday = meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
+      const dueNow = meta.status !== "Completed" && (!meta.dueDate || meta.dueDate <= today);
+      return Boolean(completedToday || dueNow);
+    }).sort((a, b) => {
+      const aDone = taskDetails(a.id).completionHistory?.includes(today) || taskDetails(a.id).completedAt?.slice(0, 10) === today;
+      const bDone = taskDetails(b.id).completionHistory?.includes(today) || taskDetails(b.id).completedAt?.slice(0, 10) === today;
+      return Number(aDone) - Number(bDone) || ({ High: 0, Medium: 1, Low: 2 }[a.priority] - { High: 0, Medium: 1, Low: 2 }[b.priority]);
+    });
+    const addisonDashboardCompleted = addisonDashboardTasks.filter((task) => {
+      const meta = taskDetails(task.id);
+      return meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
+    });
+    const assignAddisonFromDashboard = () => {
+      const title = window.prompt("What should Addison handle today?")?.trim();
+      if (!title) return;
+      const taskId = addAtlasTask(title);
+      if (!taskId) return;
+      updateTaskDetails(taskId, { assignee: "Addison", dueDate: today, status: "Open", assignmentScope: "This occurrence" });
+      showSaveToast("Added to Addison’s checklist.");
+    };
+    const editAddisonDashboardTask = (task: WorkPlanTask) => {
+      setSelectedTaskId(task.id);
+      setTasksView("tasks");
+      setScreen("planner");
+    };
     const morningBriefText = [
       `Good morning. Your ${dayName} routine checklist is ready.`,
       foremanSchedule.length ? `${foremanSchedule.length} scheduled item${foremanSchedule.length === 1 ? " is" : "s are"} on today’s calendar: ${foremanSchedule.slice(0, 4).map((event) => `${event.time || "all day"}, ${event.title}`).join("; ")}.` : "There are no meetings, vendors, crew visits, or deliveries scheduled today.",
@@ -20113,7 +20141,14 @@ ${notes.trim()}` : notes.trim(),
         </section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
           <AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} />
-          <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => setScreen("calendar")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
+          <div style={{ display: "grid", gap: 12 }}>
+            <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => setScreen("calendar")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
+            <section style={cardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Addison Today</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Live checklist</h2></div><span style={badgeStyle(addisonDashboardCompleted.length === addisonDashboardTasks.length && addisonDashboardTasks.length ? "Completed" : "Scheduled")}>{addisonDashboardCompleted.length}/{addisonDashboardTasks.length}</span></div>
+              <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{addisonDashboardTasks.map((task) => { const meta = taskDetails(task.id); const checked = Boolean(meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today); return <div key={`dashboard-addison-${task.id}`} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${checked ? "#B8E0CD" : colors.line}`, borderRadius: 10, background: checked ? "#EFFAF4" : "#FFFFFF", padding: 9 }}><input type="checkbox" checked={checked} aria-label={`Complete ${task.title}`} onChange={() => checked ? updateTaskDetails(task.id, { status: "Open", completedAt: undefined, completionHistory: (meta.completionHistory || []).filter((date) => date !== today), needsReview: false, dueDate: today }) : completeAtlasTask(task)} style={{ width: 18, height: 18, accentColor: colors.green, cursor: "pointer" }} /><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, textDecoration: checked ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis" }}>{task.title}</strong>{meta.notes || meta.instructions ? <small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.instructions || meta.notes}</small> : null}</button><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Edit</button></div>; })}{!addisonDashboardTasks.length ? <div style={noticeStyle}>Nothing assigned to Addison today.</div> : null}</div>
+              <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}><button type="button" onClick={assignAddisonFromDashboard} style={goldButtonStyle}>+ Assign</button><button type="button" onClick={() => { setTasksView("addison"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Addison</button></div>
+            </section>
+          </div>
         </div>
         <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Assigned Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Who is handling what</h2></div><button type="button" onClick={() => setScreen("team")} style={secondaryButtonStyle}>Open Team Work</button></div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 10 }}>{foremanAssignments.map((lane) => <button key={lane.person} type="button" onClick={() => lane.person === "Addison" ? (setTasksView("addison"), setScreen("planner")) : setScreen("team")} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10, textAlign: "left", cursor: "pointer" }}><small style={fieldLabelStyle}>{lane.person.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: colors.navy }}>{lane.count}</strong><span style={mutedSmallStyle}>assigned today</span></button>)}</div></section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
