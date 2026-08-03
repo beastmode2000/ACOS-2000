@@ -5696,6 +5696,8 @@ export default function AtlasPage() {
   const [todayLogEntries, setTodayLogEntries] = useState<TodayLogEntry[]>([]);
   const [todayLogText, setTodayLogText] = useState("");
   const [todayLogCategory, setTodayLogCategory] = useState<TodayLogEntry["category"]>("Task");
+  const [dashboardVendorVisitId, setDashboardVendorVisitId] = useState("");
+  const [dashboardVendorVisitNote, setDashboardVendorVisitNote] = useState("");
   const [completedDashboardRoutineIds, setCompletedDashboardRoutineIds] = useState<string[]>([]);
   const [dashboardRoutineItems, setDashboardRoutineItems] = useState<DashboardRoutineItem[]>([]);
   const [calendarColors, setCalendarColors] = useState<CalendarColor[]>(
@@ -20097,6 +20099,17 @@ ${notes.trim()}` : notes.trim(),
       showSaveToast("Added to today’s log.");
     };
 
+    const logDashboardVendorVisit = () => {
+      const vendor = vendorRecords.find((item) => item.id === dashboardVendorVisitId);
+      const note = dashboardVendorVisitNote.trim();
+      if (!vendor && !note) return;
+      const text = vendor ? `${vendor.name}${note ? ` — ${note}` : " visited onsite"}` : note;
+      setTodayLogEntries((current) => [{ id: uid("vendor-visit"), propertyId: activePropertyId, date: today, category: "Vendor", text, createdAt: new Date().toISOString() }, ...current]);
+      setDashboardVendorVisitId("");
+      setDashboardVendorVisitNote("");
+      showSaveToast("Vendor visit logged.");
+    };
+
     const completionTime = (record: AtlasServiceRecord) => {
       const values = [record.lastCompletedDate, ...(record.completionHistory || []), ...(record.serviceHistory || []).map((entry) => entry.completedAt)]
         .map((value) => new Date(String(value || "")).getTime()).filter(Number.isFinite);
@@ -20436,6 +20449,14 @@ ${notes.trim()}` : notes.trim(),
           <AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} onAssignmentChange={syncRoutineAssignment} />
           <div style={{ display: "grid", gap: 12 }}>
             <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => setScreen("calendar")} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
+            <section style={{ ...cardStyle, padding: 11 }}>
+              <div><div style={eyebrowStyle}>Quick Log</div><h3 style={{ margin: "2px 0", color: colors.navy }}>Vendor Visit</h3></div>
+              <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                <select value={dashboardVendorVisitId} onChange={(event) => setDashboardVendorVisitId(event.currentTarget.value)} style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}><option value="">Choose vendor</option>{vendorRecords.slice().sort((a,b) => a.name.localeCompare(b.name)).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select>
+                <input value={dashboardVendorVisitNote} onChange={(event) => setDashboardVendorVisitNote(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") logDashboardVendorVisit(); }} placeholder="Work completed or visit note" style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}/>
+                <button type="button" onClick={logDashboardVendorVisit} disabled={!dashboardVendorVisitId && !dashboardVendorVisitNote.trim()} style={{ ...goldButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11, opacity: !dashboardVendorVisitId && !dashboardVendorVisitNote.trim() ? .55 : 1 }}>Log Visit</button>
+              </div>
+            </section>
             <section style={cardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Addison Today</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Live checklist</h2></div><span style={badgeStyle(addisonDashboardCompleted.length === addisonDashboardTasks.length && addisonDashboardTasks.length ? "Completed" : "Scheduled")}>{addisonDashboardCompleted.length}/{addisonDashboardTasks.length}</span></div>
               <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{addisonDashboardTasks.map((task) => { const meta = taskDetails(task.id); const checked = Boolean(meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today); return <div key={`dashboard-addison-${task.id}`} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${checked ? "#B8E0CD" : colors.line}`, borderRadius: 10, background: checked ? "#EFFAF4" : "#FFFFFF", padding: 9 }}><input type="checkbox" checked={checked} aria-label={`Complete ${task.title}`} onChange={() => { if (checked) { updateTaskDetails(task.id, { status: "Open", completedAt: undefined, completionHistory: (meta.completionHistory || []).filter((date) => date !== today), needsReview: false, dueDate: today }); if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta); } else completeAtlasTask(task); }} style={{ width: 18, height: 18, accentColor: colors.green, cursor: "pointer" }} /><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}><strong style={{ display: "block", color: colors.navy, textDecoration: checked ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis" }}>{task.title}</strong>{meta.notes || meta.instructions ? <small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.instructions || meta.notes}</small> : null}</button><button type="button" onClick={() => editAddisonDashboardTask(task)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Edit</button></div>; })}{!addisonDashboardTasks.length ? <div style={noticeStyle}>Nothing assigned to Addison today.</div> : null}</div>
