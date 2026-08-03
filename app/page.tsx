@@ -16741,7 +16741,7 @@ ${notes.trim()}` : notes.trim(),
           workOrder = normalizeService({
             ...existing,
             date: definition.date,
-            status: existing.status === "Completed" || existing.status === "Closed" ? "Open" : existing.status,
+            status: existing.status === "Completed" ? "Open" : existing.status,
             recurring: true,
             recurrenceInterval: 1,
             recurrenceUnit: "Years",
