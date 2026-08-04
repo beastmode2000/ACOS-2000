@@ -39680,6 +39680,40 @@ ${notes.trim()}` : notes.trim(),
         body {
           background: #EEF2F5;
           color: #17354D;
+          font-family: Inter, "Aptos", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 15px;
+          line-height: 1.5;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          text-rendering: optimizeLegibility;
+        }
+        .atlas-app-shell {
+          font-size: 15px;
+          line-height: 1.5;
+        }
+        .atlas-app-shell h1 {
+          font-size: clamp(28px, 3vw, 34px) !important;
+          line-height: 1.12 !important;
+          letter-spacing: -0.035em !important;
+          font-weight: 800 !important;
+        }
+        .atlas-app-shell h2 {
+          font-size: clamp(20px, 2vw, 24px);
+          line-height: 1.2;
+          letter-spacing: -0.02em;
+          font-weight: 800;
+        }
+        .atlas-app-shell h3 {
+          font-size: 18px;
+          line-height: 1.25;
+          font-weight: 750;
+        }
+        .atlas-app-shell p {
+          line-height: 1.55;
+        }
+        .atlas-app-shell small {
+          font-size: 13px;
+          line-height: 1.4;
         }
         button, input, select, textarea {
           font: inherit;
@@ -39774,7 +39808,32 @@ ${notes.trim()}` : notes.trim(),
         .atlas-app-shell select {
           text-overflow: ellipsis;
         }
+        .atlas-app-shell input,
+        .atlas-app-shell select,
+        .atlas-app-shell textarea {
+          font-size: 15px !important;
+          line-height: 1.4 !important;
+          font-weight: 500 !important;
+        }
+        .atlas-app-shell button {
+          font-size: max(13px, 0.82rem);
+          line-height: 1.2;
+        }
+        .atlas-app-shell label {
+          line-height: 1.35;
+        }
         @media (max-width: 760px) {
+          .atlas-app-shell {
+            font-size: 16px;
+          }
+          .atlas-app-shell small {
+            font-size: 13px;
+          }
+          .atlas-app-shell input,
+          .atlas-app-shell select,
+          .atlas-app-shell textarea {
+            font-size: 16px !important;
+          }
           .atlas-page-header {
             border-radius: 0 0 12px 12px;
           }
@@ -42896,7 +42955,7 @@ const mobileTopbarStyle: React.CSSProperties = {
 const mobilePageTitleStyle: React.CSSProperties = {
   margin: 0,
   color: colors.navy,
-  fontSize: 21,
+  fontSize: 24,
   fontWeight: 950,
   letterSpacing: "-0.04em",
 };
@@ -42932,7 +42991,7 @@ const mobileBottomButtonStyle: React.CSSProperties = {
   border: "1px solid transparent",
   borderRadius: 15,
   padding: "10px 4px",
-  fontSize: 11,
+  fontSize: 12,
   fontWeight: 950,
   cursor: "pointer",
   minHeight: 44,
@@ -42946,7 +43005,11 @@ const appStyle: React.CSSProperties = {
   background: colors.bg,
   color: colors.text,
   fontFamily:
-    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Inter, "Aptos", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
+  fontSize: 15,
+  lineHeight: 1.5,
+  WebkitFontSmoothing: "antialiased",
+  MozOsxFontSmoothing: "grayscale",
 };
 
 const desktopAppStyle: React.CSSProperties = {
@@ -43031,7 +43094,7 @@ const sidebarNavSectionStyle: React.CSSProperties = {
 
 const sidebarNavHeaderStyle: React.CSSProperties = {
   color: colors.gold2,
-  fontSize: "clamp(11px, 1.65vh, 14px)",
+  fontSize: "clamp(12px, 1.65vh, 14px)",
   fontWeight: 950,
   letterSpacing: 0.9,
   lineHeight: 1,
@@ -43052,9 +43115,9 @@ const navButtonStyle: React.CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   fontWeight: 850,
-  fontSize: "clamp(10px, 1.55vh, 13px)",
-  lineHeight: 1.05,
-  minHeight: "clamp(20px, 2.9vh, 27px)",
+  fontSize: "clamp(12px, 1.55vh, 14px)",
+  lineHeight: 1.2,
+  minHeight: "clamp(25px, 3.2vh, 31px)",
   display: "flex",
   alignItems: "center",
 };
@@ -43120,8 +43183,8 @@ const tinyDangerButtonStyle: React.CSSProperties = {
   color: colors.red,
   borderRadius: 999,
   padding: "5px 9px",
-  fontSize: 11,
-  fontWeight: 900,
+  fontSize: 12,
+  fontWeight: 850,
   cursor: "pointer",
 };
 
@@ -43139,8 +43202,9 @@ const emptyStateStyle: React.CSSProperties = {
   borderRadius: 14,
   padding: 18,
   color: colors.muted,
-  fontSize: 13,
-  fontWeight: 800,
+  fontSize: 14,
+  lineHeight: 1.5,
+  fontWeight: 700,
   marginTop: 14,
 };
 
@@ -43150,8 +43214,8 @@ const tinyButtonStyle: React.CSSProperties = {
   color: colors.navy3,
   borderRadius: 999,
   padding: "5px 9px",
-  fontSize: 11,
-  fontWeight: 900,
+  fontSize: 12,
+  fontWeight: 850,
   cursor: "pointer",
 };
 
@@ -43303,7 +43367,7 @@ const pageTitleStyle: React.CSSProperties = {
 
 const headerSubStyle: React.CSSProperties = {
   color: colors.muted,
-  fontSize: 13,
+  fontSize: 15,
   margin: "5px 0 0",
   lineHeight: 1.4,
 };
@@ -43427,7 +43491,7 @@ const modernStatStyle: React.CSSProperties = {
 
 const statLabelStyle: React.CSSProperties = {
   color: colors.muted,
-  fontSize: 12,
+  fontSize: 13,
   fontWeight: 950,
   textTransform: "uppercase",
   letterSpacing: 0.8,
@@ -43505,7 +43569,7 @@ const eyebrowStyle: React.CSSProperties = {
 
 const mutedSmallStyle: React.CSSProperties = {
   color: colors.muted,
-  fontSize: 13,
+  fontSize: 14,
   margin: "4px 0 0",
   lineHeight: 1.45,
   wordBreak: "break-word",
@@ -43513,8 +43577,9 @@ const mutedSmallStyle: React.CSSProperties = {
 
 const fieldLabelStyle: React.CSSProperties = {
   color: colors.navy,
-  fontSize: 12,
-  fontWeight: 950,
+  fontSize: 13,
+  fontWeight: 800,
+  letterSpacing: "0.01em",
 };
 
 const inputStyle: React.CSSProperties = {
@@ -43524,13 +43589,14 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
   borderRadius: 14,
   padding: "12px 13px",
-  fontSize: 14,
+  fontSize: 15,
+  lineHeight: 1.4,
   color: colors.text,
   background: "#FFFFFF",
   outline: "none",
   fontFamily: "inherit",
   minWidth: 0,
-  fontWeight: 750,
+  fontWeight: 500,
 };
 
 const selectStyle: React.CSSProperties = {
@@ -43582,8 +43648,10 @@ const goldButtonStyle: React.CSSProperties = {
   background: colors.gold,
   color: colors.navy,
   borderRadius: 13,
-  padding: "10px 13px",
-  fontWeight: 950,
+  padding: "10px 14px",
+  fontSize: 14,
+  lineHeight: 1.2,
+  fontWeight: 800,
   cursor: "pointer",
 };
 
@@ -43592,10 +43660,10 @@ const secondaryButtonStyle: React.CSSProperties = {
   background: "#FFFFFF",
   color: colors.navy,
   borderRadius: 10,
-  padding: "7px 10px",
-  fontSize: 12,
-  lineHeight: 1.15,
-  fontWeight: 800,
+  padding: "8px 11px",
+  fontSize: 13,
+  lineHeight: 1.2,
+  fontWeight: 700,
   cursor: "pointer",
 };
 
