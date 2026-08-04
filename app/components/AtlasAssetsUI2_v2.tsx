@@ -3494,4 +3494,3 @@ export default function AtlasAssetsUI2V2(props: Record<string, any>) {
     );
   
 }
-
