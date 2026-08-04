@@ -1013,22 +1013,25 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   const controlStyle: React.CSSProperties = {
     width: "100%",
-    minHeight: 44,
+    minHeight: 42,
     border: `1px solid ${colors.line}`,
-    borderRadius: 10,
+    borderRadius: 12,
     background: "#FFFFFF",
-    padding: "9px 11px",
+    padding: "9px 12px",
     font: "inherit",
+    fontSize: 14,
     color: colors.text,
+    outline: "none",
   };
 
   const filterPanelStyle: React.CSSProperties = {
     display: "grid",
-    gap: 10,
-    padding: 12,
+    gap: 12,
+    padding: 14,
     border: `1px solid ${colors.line}`,
-    borderRadius: 14,
+    borderRadius: 16,
     background: "#F8FAFC",
+    boxShadow: "0 8px 24px rgba(15,42,67,.05)",
   };
 
   const tabRowStyle: React.CSSProperties = {
@@ -1432,13 +1435,31 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setNewHistoryNote("");
   }
 
+  function workStatusColor(status: string) {
+    if (status === "Completed") return colors.green;
+    if (status === "In Progress") return "#175CD3";
+    if (status === "Waiting" || status === "Monitor") return "#B54708";
+    if (status === "Scheduled") return "#6941C6";
+    return colors.text;
+  }
+
+  function linkedLocationName(record: any) {
+    const id = String(record.locationId || record.subLocationId || "");
+    return locationRecords.find((location: any) => location.id === id)?.name || "";
+  }
+
   function renderWorkRow(record: any) {
     const type = itemType(record);
     const category = categoryLabel(record);
+    const location = linkedLocationName(record);
+    const asset = record.assetId ? assetName(record.assetId) : "";
+    const vendor = record.vendorId ? vendorName(record.vendorId) : "";
     const overdue =
       record.status !== "Completed" &&
       Boolean(record.date) &&
       dayDistance(String(record.date)) < 0;
+    const selected = record.id === selectedService.id;
+    const status = String(record.status || "Open");
 
     return (
       <div
@@ -1465,77 +1486,99 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           }
         }}
         style={{
-          ...rowButtonStyle,
           display: "grid",
           gap: 10,
-          cursor: "pointer",
-          borderColor:
-            record.id === selectedService.id ? colors.gold : colors.line,
+          padding: isMobile ? 12 : 14,
+          border: `1px solid ${selected ? colors.gold : colors.line}`,
           borderLeft: overdue
-            ? `5px solid ${colors.red}`
-            : rowButtonStyle.borderLeft,
+            ? `4px solid ${colors.red}`
+            : selected
+              ? `4px solid ${colors.gold}`
+              : `4px solid transparent`,
+          borderRadius: 14,
+          background: selected ? "#FFF9EB" : "#FFFFFF",
+          boxShadow: selected
+            ? "0 10px 24px rgba(15,42,67,.10)"
+            : "0 3px 12px rgba(15,42,67,.04)",
+          cursor: "pointer",
+          transition: "border-color .16s ease, box-shadow .16s ease, transform .16s ease",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 12,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <strong style={{ display: "block", lineHeight: 1.35 }}>
-              {record.title || "Untitled Work"}
-            </strong>
-            <p style={{ ...mutedSmallStyle, marginTop: 4 }}>
-              {categoryDisplayLabel(category)} · {type}
-            </p>
-            <p style={{ ...mutedSmallStyle, marginTop: 2 }}>
-              {record.date
-                ? `${record.recurring ? "Next due" : "Due"} ${formatDate(record.date)}`
-                : "No due date"}
-              {record.priority ? ` · ${record.priority} priority` : ""}
-            </p>
-            {record.assetId || record.vendorId ? (
-              <p style={{ ...mutedSmallStyle, marginTop: 2 }}>
-                {record.assetId ? assetName(record.assetId) : ""}
-                {record.assetId && record.vendorId ? " · " : ""}
-                {record.vendorId ? vendorName(record.vendorId) : ""}
-              </p>
-            ) : null}
-          </div>
-          <div style={workOrderListBadgesStyle}>
-            <button
-              type="button"
-              onClick={(event) => { event.stopPropagation(); toggleFavorite(String(record.id)); }}
-              aria-label={favoriteIds.includes(String(record.id)) ? "Unpin work order" : "Pin work order"}
-              title={favoriteIds.includes(String(record.id)) ? "Unpin" : "Pin"}
-              style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 2 }}
-            >
-              {favoriteIds.includes(String(record.id)) ? "★" : "☆"}
-            </button>
-            {recordQuality.duplicateIds.has(String(record.id)) ? <span style={badgeStyle("High")}>Possible Duplicate</span> : null}
-            {recordQuality.incomplete.some((item: any) => item.id === record.id) ? <span style={recurringBadgeStyle}>Needs Info</span> : null}
-            {overdue ? <span style={badgeStyle("High")}>Overdue</span> : null}
-            {record.effort ? (
-              <span style={recurringBadgeStyle}>{record.effort}</span>
-            ) : null}
-            {record.assignedTo ? (
-              <span style={recurringBadgeStyle}>{record.assignedTo}</span>
-            ) : null}
-            {record.recurring ? (
-              <span style={recurringBadgeStyle}>Recurring</span>
-            ) : null}
-            {record.priority ? (
-              <span style={badgeStyle(record.priority)}>{record.priority}</span>
-            ) : null}
-            <span style={badgeStyle(record.status || "Open")}>
-              {record.status || "Open"}
-            </span>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 11 }}>
+          <span
+            aria-hidden="true"
+            style={{
+              width: 10,
+              height: 10,
+              marginTop: 5,
+              borderRadius: 999,
+              flex: "0 0 auto",
+              background: overdue ? colors.red : workStatusColor(status),
+              boxShadow: "0 0 0 3px rgba(15,42,67,.06)",
+            }}
+          />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+              <strong
+                style={{
+                  display: "block",
+                  minWidth: 0,
+                  color: colors.text,
+                  fontSize: isMobile ? 15 : 15.5,
+                  lineHeight: 1.35,
+                  fontWeight: 750,
+                }}
+              >
+                {record.title || "Untitled Work"}
+              </strong>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleFavorite(String(record.id));
+                }}
+                aria-label={favoriteIds.includes(String(record.id)) ? "Unpin work order" : "Pin work order"}
+                title={favoriteIds.includes(String(record.id)) ? "Unpin" : "Pin"}
+                style={{
+                  border: 0,
+                  background: "transparent",
+                  color: favoriteIds.includes(String(record.id)) ? colors.gold : colors.muted,
+                  cursor: "pointer",
+                  fontSize: 18,
+                  lineHeight: 1,
+                  padding: 1,
+                  flex: "0 0 auto",
+                }}
+              >
+                {favoriteIds.includes(String(record.id)) ? "★" : "☆"}
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 9px", marginTop: 5, color: colors.muted, fontSize: 12.5, lineHeight: 1.35 }}>
+              <span>{categoryDisplayLabel(category)}</span>
+              {location ? <span>{location}</span> : null}
+              {!location && asset ? <span>{asset}</span> : null}
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9, alignItems: "center" }}>
+              {record.date ? (
+                <span style={{ ...recurringBadgeStyle, background: overdue ? "#FFF1F0" : "#F8FAFC", color: overdue ? colors.red : colors.text }}>
+                  {overdue ? "Overdue · " : record.recurring ? "Next · " : "Due · "}{formatDate(record.date)}
+                </span>
+              ) : null}
+              {record.priority && record.priority !== "Medium" ? (
+                <span style={badgeStyle(record.priority)}>{record.priority}</span>
+              ) : null}
+              {record.assignedTo ? <span style={recurringBadgeStyle}>{record.assignedTo}</span> : null}
+              {record.recurring ? <span style={recurringBadgeStyle}>Recurring</span> : null}
+              {record.effort ? <span style={recurringBadgeStyle}>{record.effort}</span> : null}
+              {recordQuality.incomplete.some((item: any) => item.id === record.id) ? <span style={recurringBadgeStyle}>Needs info</span> : null}
+              {recordQuality.duplicateIds.has(String(record.id)) ? <span style={badgeStyle("High")}>Possible duplicate</span> : null}
+            </div>
+
+            {vendor ? <div style={{ marginTop: 7, color: colors.muted, fontSize: 12.5 }}>Vendor · {vendor}</div> : null}
           </div>
         </div>
-
       </div>
     );
   }
@@ -1641,7 +1684,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             ? isMobile
               ? undefined
               : {
-                  gridTemplateColumns: "minmax(340px, 38%) minmax(0, 62%)",
+                  gridTemplateColumns: "minmax(330px, 36%) minmax(0, 64%)",
                   height: "100%",
                   minHeight: 0,
                   overflow: "hidden",
@@ -1713,7 +1756,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               }}
               aria-label="Work order options"
             >
-              <option value="">Work Options</option>
+              <option value="">More</option>
               <option value="quick-task">New Task</option>
               <option value="plan">Plan My Day</option>
               <option value="sections">Manage Sections</option>
@@ -1729,7 +1772,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               onClick={() => openNewWork("Work Order")}
               style={{ ...goldButtonStyle, minHeight: 38 }}
             >
-              Add Work Order
+              + New Work Order
             </button>
           </>
         }
@@ -2255,7 +2298,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         }
         drawer={
           detailOpen && selectedService.id ? (
-            <div style={{ ...stackStyle, gap: 7 }}>
+            <div style={{ ...stackStyle, gap: 12 }}>
               <div
                 style={{
                   display: "flex",
@@ -2311,51 +2354,89 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
                 </span>
               </div>
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 15 }}>
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16, borderRadius: 16 }}>
                 {!workEditorOpen ? (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={eyebrowStyle}>Work Order</div>
-                        <h2 style={{ margin: "4px 0 7px", color: colors.text, fontSize: isMobile ? 22 : 27, lineHeight: 1.18 }}>
-                          {selectedService.title || "Untitled Work Order"}
-                        </h2>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-                        {selectedService.status !== "Completed" ? (
-                          <button type="button" onClick={() => handleDetailAction("complete")} style={{ ...goldButtonStyle, width: "auto", minHeight: 34, padding: "7px 11px" }}>
-                            Done
+                  <div style={{ display: "grid", gap: 14 }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 12,
+                        padding: isMobile ? 14 : 18,
+                        borderRadius: 16,
+                        border: `1px solid ${colors.line}`,
+                        background: "linear-gradient(145deg, #FFFFFF 0%, #F8FAFC 100%)",
+                        boxShadow: "0 12px 30px rgba(15,42,67,.07)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
+                            <span style={{ ...badgeStyle(selectedService.status || "Open"), fontWeight: 800 }}>
+                              {selectedService.status || "Open"}
+                            </span>
+                            {selectedService.priority && selectedService.priority !== "Medium" ? (
+                              <span style={badgeStyle(selectedService.priority)}>{selectedService.priority}</span>
+                            ) : null}
+                            {selectedService.recurring ? <span style={recurringBadgeStyle}>Recurring</span> : null}
+                          </div>
+                          <h2 style={{ margin: "10px 0 0", color: colors.text, fontSize: isMobile ? 23 : 29, lineHeight: 1.14, letterSpacing: "-.02em" }}>
+                            {selectedService.title || "Untitled Work Order"}
+                          </h2>
+                          {selectedService.notes ? (
+                            <p style={{ margin: "9px 0 0", color: colors.muted, fontSize: 14, lineHeight: 1.55, maxWidth: 760 }}>{selectedService.notes}</p>
+                          ) : null}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          {selectedService.status !== "Completed" ? (
+                            <button type="button" onClick={() => handleDetailAction("complete")} style={{ ...goldButtonStyle, width: "auto", minHeight: 36, padding: "8px 13px" }}>
+                              Complete
+                            </button>
+                          ) : null}
+                          <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 36, padding: "8px 12px" }}>
+                            Edit
                           </button>
-                        ) : null}
-                        <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "7px 10px" }}>
-                          Edit
-                        </button>
+                        </div>
                       </div>
+
+                      {(selectedService.date || selectedService.locationId || selectedService.assetId || selectedService.assignedTo) ? (
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+                          {selectedService.date ? (
+                            <div style={{ padding: 11, borderRadius: 12, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
+                              <span style={fieldLabelStyle}>{selectedService.recurring ? "Next due" : "Due"}</span>
+                              <div style={{ marginTop: 4, fontWeight: 800, color: dayDistance(String(selectedService.date)) < 0 ? colors.red : colors.text }}>{formatDate(selectedService.date)}</div>
+                            </div>
+                          ) : null}
+                          {selectedService.locationId ? (
+                            <div style={{ padding: 11, borderRadius: 12, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
+                              <span style={fieldLabelStyle}>Location</span>
+                              <div style={{ marginTop: 4, fontWeight: 800 }}>{locationRecords.find((location: any) => location.id === selectedService.locationId)?.name || selectedService.locationId}</div>
+                            </div>
+                          ) : null}
+                          {selectedService.assetId ? (
+                            <div style={{ padding: 11, borderRadius: 12, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
+                              <span style={fieldLabelStyle}>Asset</span>
+                              <div style={{ marginTop: 4, fontWeight: 800 }}>{assetRecords.find((asset: any) => asset.id === selectedService.assetId)?.name || selectedService.assetId}</div>
+                            </div>
+                          ) : null}
+                          {selectedService.assignedTo ? (
+                            <div style={{ padding: 11, borderRadius: 12, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
+                              <span style={fieldLabelStyle}>Assigned</span>
+                              <div style={{ marginTop: 4, fontWeight: 800 }}>{selectedService.assignedTo}</div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
 
-                    {selectedService.notes ? (
-                      <p style={{ margin: 0, color: colors.muted, fontSize: 13, lineHeight: 1.5 }}>{selectedService.notes}</p>
-                    ) : null}
-
-                    {selectedService.date || selectedService.locationId ? (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? 16 : 28, paddingTop: 2 }}>
-                        {selectedService.date ? <div><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due"}</span><div style={{ marginTop: 3, fontWeight: 800 }}>{formatDate(selectedService.date)}</div></div> : null}
-                        {selectedService.locationId ? <div><span style={fieldLabelStyle}>Location</span><div style={{ marginTop: 3, fontWeight: 800 }}>{locationRecords.find((location: any) => location.id === selectedService.locationId)?.name || selectedService.locationId}</div></div> : null}
-                      </div>
-                    ) : null}
-
-                    <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 9 }}>
-                      <summary style={{ cursor: "pointer", color: colors.muted, fontSize: 12, fontWeight: 800 }}>More details</summary>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
-                        <div><span style={fieldLabelStyle}>Status</span><div style={{ marginTop: 3, fontWeight: 700 }}>{selectedService.status || "Open"}</div></div>
-                        <div><span style={fieldLabelStyle}>Priority</span><div style={{ marginTop: 3, fontWeight: 700 }}>{selectedService.priority === "Medium" ? "Normal" : selectedService.priority || "Normal"}</div></div>
-                        <div><span style={fieldLabelStyle}>Type</span><div style={{ marginTop: 3, fontWeight: 700 }}>{itemType(selectedService) === "Preventive Maintenance" ? "Recurring" : itemType(selectedService)}</div></div>
-                        {selectedService.assetId ? <div><span style={fieldLabelStyle}>Asset</span><div style={{ marginTop: 3, fontWeight: 700 }}>{assetRecords.find((asset: any) => asset.id === selectedService.assetId)?.name || selectedService.assetId}</div></div> : null}
-                        {selectedService.subLocation ? <div><span style={fieldLabelStyle}>Sub-Location</span><div style={{ marginTop: 3, fontWeight: 700 }}>{selectedService.subLocation}</div></div> : null}
-                        {selectedService.assignedTo ? <div><span style={fieldLabelStyle}>Assigned</span><div style={{ marginTop: 3, fontWeight: 700 }}>{selectedService.assignedTo}</div></div> : null}
-                        {selectedService.vendorId ? <div><span style={fieldLabelStyle}>Vendor</span><div style={{ marginTop: 3, fontWeight: 700 }}>{vendorRecords.find((vendor: any) => vendor.id === selectedService.vendorId)?.name || selectedService.vendorId}</div></div> : null}
-                        {categoryLabel(selectedService) ? <div><span style={fieldLabelStyle}>Category</span><div style={{ marginTop: 3, fontWeight: 700 }}>{categoryDisplayLabel(categoryLabel(selectedService))}</div></div> : null}
-                        {selectedService.recurring ? <div><span style={fieldLabelStyle}>Repeats</span><div style={{ marginTop: 3, fontWeight: 700 }}>{`Every ${selectedService.recurrenceInterval || 1} ${selectedService.recurrenceUnit || "Weeks"}`}</div></div> : null}
+                    <details style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: "11px 13px", background: "#FFFFFF" }}>
+                      <summary style={{ cursor: "pointer", color: colors.text, fontSize: 13, fontWeight: 800 }}>Additional details</summary>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+                        <div><span style={fieldLabelStyle}>Type</span><div style={{ marginTop: 4, fontWeight: 700 }}>{itemType(selectedService) === "Preventive Maintenance" ? "Recurring" : itemType(selectedService)}</div></div>
+                        {selectedService.vendorId ? <div><span style={fieldLabelStyle}>Vendor</span><div style={{ marginTop: 4, fontWeight: 700 }}>{vendorRecords.find((vendor: any) => vendor.id === selectedService.vendorId)?.name || selectedService.vendorId}</div></div> : null}
+                        {categoryLabel(selectedService) ? <div><span style={fieldLabelStyle}>Category</span><div style={{ marginTop: 4, fontWeight: 700 }}>{categoryDisplayLabel(categoryLabel(selectedService))}</div></div> : null}
+                        {selectedService.effort ? <div><span style={fieldLabelStyle}>Estimated time</span><div style={{ marginTop: 4, fontWeight: 700 }}>{selectedService.effort}</div></div> : null}
+                        {selectedService.subLocation ? <div><span style={fieldLabelStyle}>Sub-location</span><div style={{ marginTop: 4, fontWeight: 700 }}>{selectedService.subLocation}</div></div> : null}
+                        {selectedService.recurring ? <div><span style={fieldLabelStyle}>Schedule</span><div style={{ marginTop: 4, fontWeight: 700 }}>{recurrenceLabel(selectedService)}</div></div> : null}
                       </div>
                     </details>
                   </div>
