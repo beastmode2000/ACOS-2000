@@ -1,10 +1,5 @@
 "use client";
 import React from "react";
-import type { AssetRecord, ServiceStatus, VendorRecord } from "../lib/atlas-types";
-
-type AtlasAssetRecord = AssetRecord & {
-  locationIds?: string[];
-};
 import AtlasAssetsShell from "./AtlasAssets";
 export default function AtlasAssetsUI2V2(props: Record<string, any>) {
   const {
