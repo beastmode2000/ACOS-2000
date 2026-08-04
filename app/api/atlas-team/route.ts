@@ -122,6 +122,88 @@ const defaults: Member[] = [
   },
 ];
 
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function sendInviteEmail(input: {
+  to: string;
+  name: string;
+  role: Role;
+  inviteUrl: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.ATLAS_INVITE_FROM;
+
+  if (!apiKey) {
+    throw new Error("Missing RESEND_API_KEY in Vercel environment variables.");
+  }
+
+  if (!from) {
+    throw new Error(
+      "Missing ATLAS_INVITE_FROM in Vercel environment variables, for example Atlas <invites@atlas2000.com>.",
+    );
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": `atlas-invite-${createHash("sha256")
+        .update(`${input.to}|${input.inviteUrl}`)
+        .digest("hex")}`,
+    },
+    body: JSON.stringify({
+      from,
+      to: [input.to],
+      reply_to: process.env.ATLAS_INVITE_REPLY_TO || undefined,
+      subject: "You have been invited to Atlas",
+      html: `
+        <!doctype html>
+        <html>
+          <body style="margin:0;background:#f4f7fb;font-family:Arial,sans-serif;color:#172331;">
+            <div style="max-width:620px;margin:0 auto;padding:32px 18px;">
+              <div style="background:#071b2f;border-radius:16px 16px 0 0;padding:24px;text-align:center;">
+                <div style="font-size:26px;font-weight:800;color:#ffffff;">Atlas</div>
+                <div style="margin-top:5px;color:#e5c06b;font-size:13px;">Estate Operations</div>
+              </div>
+              <div style="background:#ffffff;border:1px solid #dde7f0;border-top:0;border-radius:0 0 16px 16px;padding:28px;">
+                <h1 style="margin:0 0 14px;font-size:24px;color:#071b2f;">Welcome to Atlas</h1>
+                <p style="font-size:16px;line-height:1.55;margin:0 0 14px;">Hello ${escapeHtml(input.name)},</p>
+                <p style="font-size:16px;line-height:1.55;margin:0 0 18px;">You have been invited to join Atlas as <strong>${escapeHtml(input.role)}</strong>.</p>
+                <a href="${escapeHtml(input.inviteUrl)}" style="display:inline-block;background:#c99a3d;color:#071b2f;text-decoration:none;font-weight:800;padding:13px 20px;border-radius:10px;">Accept Atlas Invite</a>
+                <p style="font-size:13px;line-height:1.5;color:#64748b;margin:22px 0 0;">This secure invitation expires in 7 days. If the button does not work, paste this address into your browser:<br><span style="word-break:break-all;">${escapeHtml(input.inviteUrl)}</span></p>
+              </div>
+            </div>
+          </body>
+        </html>
+      `,
+      text: `Hello ${input.name},\n\nYou have been invited to join Atlas as ${input.role}.\n\nAccept your invite: ${input.inviteUrl}\n\nThis secure invitation expires in 7 days.`,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    id?: string;
+    message?: string;
+    error?: { message?: string };
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      payload.message || payload.error?.message || "Resend could not send the invitation email.",
+    );
+  }
+
+  return String(payload.id || "");
+}
+
 function getSql() {
   const url =
     process.env.DATABASE_URL ||
@@ -191,6 +273,27 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
     )
   `;
 
+  await sql`
+    ALTER TABLE atlas_team_invites
+    ADD COLUMN IF NOT EXISTS email_status text
+    NOT NULL DEFAULT 'Not Sent'
+  `;
+
+  await sql`
+    ALTER TABLE atlas_team_invites
+    ADD COLUMN IF NOT EXISTS email_message_id text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_team_invites
+    ADD COLUMN IF NOT EXISTS email_sent_at timestamptz
+  `;
+
+  await sql`
+    ALTER TABLE atlas_team_invites
+    ADD COLUMN IF NOT EXISTS email_error text
+  `;
+
   for (const member of defaults) {
     const propertyIds =
       member.id === "nick"
@@ -252,13 +355,15 @@ export async function GET(request: NextRequest) {
         a.access_profiles,
         CASE
           WHEN a.password_hash IS NOT NULL THEN 'Accepted'
-          WHEN i.expires_at > NOW() AND i.used_at IS NULL THEN 'Invited'
+          WHEN i.email_status = 'Failed' THEN 'Failed'
+          WHEN i.email_status = 'Sent' AND i.expires_at > NOW() AND i.used_at IS NULL THEN 'Sent'
+          WHEN i.expires_at > NOW() AND i.used_at IS NULL THEN 'Created'
           WHEN i.expires_at <= NOW() AND i.used_at IS NULL THEN 'Expired'
           ELSE 'Not Invited'
         END AS invite_status
       FROM atlas_team_access a
       LEFT JOIN LATERAL (
-        SELECT expires_at, used_at
+        SELECT expires_at, used_at, email_status
         FROM atlas_team_invites
         WHERE member_id = a.id
         ORDER BY created_at DESC
@@ -456,19 +561,68 @@ export async function POST(request: NextRequest) {
         INSERT INTO atlas_team_invites (
           token_hash,
           member_id,
-          expires_at
+          expires_at,
+          email_status
         )
         VALUES (
           ${hash},
           ${id},
-          NOW() + INTERVAL '7 days'
+          NOW() + INTERVAL '7 days',
+          'Created'
         )
       `;
 
-      return NextResponse.json({
-        ok: true,
-        invitePath: `/invite?token=${token}`,
-      });
+      const invitePath = `/invite?token=${token}`;
+      const inviteUrl = new URL(invitePath, request.nextUrl.origin).toString();
+
+      try {
+        const emailMessageId = await sendInviteEmail({
+          to: member.email.toLowerCase(),
+          name: member.name,
+          role: memberRole,
+          inviteUrl,
+        });
+
+        await sql`
+          UPDATE atlas_team_invites
+          SET
+            email_status = 'Sent',
+            email_message_id = ${emailMessageId || null},
+            email_sent_at = NOW(),
+            email_error = NULL
+          WHERE token_hash = ${hash}
+        `;
+
+        return NextResponse.json({
+          ok: true,
+          emailSent: true,
+          inviteStatus: "Sent",
+          email: member.email.toLowerCase(),
+        });
+      } catch (emailError) {
+        const emailErrorMessage =
+          emailError instanceof Error
+            ? emailError.message
+            : "Invitation email could not be sent.";
+
+        await sql`
+          UPDATE atlas_team_invites
+          SET
+            email_status = 'Failed',
+            email_error = ${emailErrorMessage}
+          WHERE token_hash = ${hash}
+        `;
+
+        return NextResponse.json(
+          {
+            ok: false,
+            emailSent: false,
+            inviteStatus: "Failed",
+            error: emailErrorMessage,
+          },
+          { status: 502 },
+        );
+      }
     }
 
     if (!Array.isArray(body.members)) {
