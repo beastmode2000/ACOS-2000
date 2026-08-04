@@ -755,4 +755,3 @@ export default function AtlasAccessCenter({ isMobile, colors }: Props) {
     </div>
   );
 }
-
