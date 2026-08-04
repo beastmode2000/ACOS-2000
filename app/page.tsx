@@ -44,8 +44,6 @@ import PhotoIntelligencePanel from "./components/ai/PhotoIntelligencePanel";
 import AtlasGroupedSearchResults from "./components/ai/AtlasGroupedSearchResults";
 import AtlasNotifications from "./components/AtlasNotifications";
 import AtlasPortfolioCenter from "./components/AtlasPortfolioCenter";
-import AtlasAssets from "./components/AtlasAssets";
-import AtlasLocations from "./components/AtlasLocations";
 import { findRelatedRecords } from "./lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -23665,8 +23663,7 @@ ${notes.trim()}` : notes.trim(),
     })();
 
     return (
-      <AtlasLocations isMobile={isMobile}>
-        <ListDrawerLayout
+      <ListDrawerLayout
         eyebrow="Property Areas"
         title="Locations"
         isMobile={isMobile}
@@ -25070,7 +25067,6 @@ ${notes.trim()}` : notes.trim(),
           )
         }
       />
-      </AtlasLocations>
     );
   }
 
@@ -25436,8 +25432,7 @@ ${notes.trim()}` : notes.trim(),
     );
 
     return (
-      <AtlasAssets isMobile={isMobile}>
-        <ListDrawerLayout
+      <ListDrawerLayout
         eyebrow="Property Equipment"
         title="Assets"
         detail="Search, review, and maintain equipment records for the selected property."
@@ -28409,8 +28404,7 @@ ${notes.trim()}` : notes.trim(),
             </div>
           )
         }
-        />
-      </AtlasAssets>
+      />
     );
   }
 
