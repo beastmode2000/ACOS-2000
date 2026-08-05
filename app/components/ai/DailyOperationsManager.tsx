@@ -824,7 +824,75 @@ export default function DailyOperationsManager({
         ? "Good afternoon"
         : "Good evening";
 
-  const visibleSchedule = sortedTodayEvents.slice(0, 7);
+  const isReminderEvent = (item: CalendarItem) => {
+    const text = [
+      item.title,
+      item.area,
+      item.categoryLabel,
+      item.linkedType,
+      item.notes,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return [
+      "reminder",
+      "follow up",
+      "follow-up",
+      "call ",
+      "email ",
+      "order ",
+      "renew ",
+      "confirm ",
+      "check on ",
+    ].some((token) => text.includes(token));
+  };
+
+  const isArrivalEvent = (item: CalendarItem) => {
+    const text = [
+      item.title,
+      item.area,
+      item.categoryLabel,
+      item.linkedType,
+      item.linkedName,
+      item.notes,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    if (isReminderEvent(item)) return false;
+
+    return (
+      item.linkedType === "Vendor" ||
+      item.categoryLabel === "Vendor" ||
+      item.area === "Vendor Visit" ||
+      [
+        "vendor",
+        "delivery",
+        "arrive",
+        "arrival",
+        "contractor",
+        "bartender",
+        "dj ",
+        "guest",
+        "caterer",
+        "fedex",
+        "ups",
+      ].some((token) => text.includes(token))
+    );
+  };
+
+  const arrivalEvents = sortedTodayEvents.filter(isArrivalEvent);
+  const reminderEvents = sortedTodayEvents.filter(isReminderEvent);
+  const scheduleEvents = sortedTodayEvents.filter(
+    (item) => !isArrivalEvent(item) && !isReminderEvent(item),
+  );
+
+  const visibleSchedule = scheduleEvents.slice(0, 5);
+  const visibleArrivals = arrivalEvents.slice(0, 5);
+  const visibleReminders = reminderEvents.slice(0, 5);
   const visiblePriority = [...priorityWork, ...completedToday]
     .filter(
       (item, index, all) =>
@@ -1690,76 +1758,210 @@ export default function DailyOperationsManager({
             )}
           </HeroCard>
 
-          <HeroCard
-            title="Today’s Schedule"
-            eyebrow={`${sortedTodayEvents.length} scheduled`}
-            icon="▣"
-            colors={colors}
-            onClick={onOpenCalendarPage}
+          <div
+            style={{
+              display: "grid",
+              gap: 10,
+              alignContent: "start",
+            }}
           >
-            {visibleSchedule.length ? (
-              visibleSchedule.map((item) => (
-                <RowButton
-                  key={item.instanceId || item.id}
-                  title={item.title}
-                  detail={item.allDay ? "All day" : item.time || "No time"}
-                  badge={item.linkedType || item.categoryLabel || "Event"}
-                  badgeTone="info"
-                  onClick={() => onOpenCalendar(item)}
-                  onDone={
-                    item.completed
-                      ? undefined
-                      : () => void completeCalendarItem(item)
-                  }
-                  doneBusy={
-                    busyAction ===
-                    `calendar:${calendarItemKey(item)}`
-                  }
-                  completed={Boolean(item.completed)}
-                  completedAt={
-                    recentlyCompleted[
-                      `calendar:${calendarItemKey(item)}`
-                    ] || ""
-                  }
-                  notes={item.notes ? [item.notes] : []}
-                  photoCount={0}
-                  onAddNote={(note) => saveQuickCalendarNote(item, note)}
-                  onAddPhoto={() => onOpenCalendar(item)}
-                  colors={colors}
-                  isMobile={isMobile}
-                  preview={{
-                    kind: "Calendar Event",
-                    title: item.title,
-                    status: item.allDay ? "All day" : item.time || "Scheduled",
-                    summary: item.linkedName
-                      ? `Scheduled event linked to ${item.linkedName}.`
-                      : "Scheduled estate calendar event.",
-                    fields: [
-                      { label: "Date", value: shortDateLabel(item.date) },
-                      {
-                        label: "Time",
-                        value: item.allDay ? "All day" : item.time || "No time",
-                      },
-                      {
-                        label: "Type",
-                        value: item.linkedType || item.categoryLabel || "Event",
-                      },
-                      {
-                        label: "Linked",
-                        value: item.linkedName || "Not linked",
-                      },
-                    ],
-                  }}
+            <StandardCard
+              title="Arrivals Today"
+              icon="→"
+              colors={colors}
+              onClick={onOpenCalendarPage}
+            >
+              {visibleArrivals.length ? (
+                visibleArrivals.map((item) => (
+                  <RowButton
+                    key={item.instanceId || item.id}
+                    title={item.linkedName || item.title}
+                    detail={item.allDay ? "Flexible arrival" : item.time || "Time not set"}
+                    badge={item.completed ? "Arrived" : "Arrival"}
+                    badgeTone={item.completed ? "neutral" : "info"}
+                    onClick={() => onOpenCalendar(item)}
+                    onDone={
+                      item.completed
+                        ? undefined
+                        : () => void completeCalendarItem(item)
+                    }
+                    doneBusy={
+                      busyAction === `calendar:${calendarItemKey(item)}`
+                    }
+                    completed={Boolean(item.completed)}
+                    completedAt={
+                      recentlyCompleted[
+                        `calendar:${calendarItemKey(item)}`
+                      ] || ""
+                    }
+                    notes={item.notes ? [item.notes] : []}
+                    onAddNote={(note) => saveQuickCalendarNote(item, note)}
+                    onAddPhoto={() => onOpenCalendar(item)}
+                    colors={colors}
+                    isMobile={isMobile}
+                    preview={{
+                      kind: "Arrival",
+                      title: item.linkedName || item.title,
+                      status: item.allDay ? "Flexible arrival" : item.time || "Time not set",
+                      summary: item.linkedName
+                        ? `Arrival linked to ${item.linkedName}.`
+                        : "Scheduled arrival or onsite visit.",
+                      fields: [
+                        { label: "Date", value: shortDateLabel(item.date) },
+                        {
+                          label: "Arrival",
+                          value: item.allDay ? "Flexible" : item.time || "Not set",
+                        },
+                        {
+                          label: "Type",
+                          value: item.linkedType || item.categoryLabel || "Arrival",
+                        },
+                        {
+                          label: "Area",
+                          value: item.area || "Not specified",
+                        },
+                      ],
+                    }}
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  icon="○"
+                  title="No arrivals"
+                  detail="No vendor, delivery, guest, or event arrivals are identified today."
                 />
-              ))
-            ) : (
-              <EmptyState
-                icon="○"
-                title="Open schedule"
-                detail="No calendar events are scheduled today."
-              />
-            )}
-          </HeroCard>
+              )}
+            </StandardCard>
+
+            <StandardCard
+              title="Reminders"
+              icon="!"
+              colors={colors}
+              onClick={onOpenCalendarPage}
+            >
+              {visibleReminders.length ? (
+                visibleReminders.map((item) => (
+                  <RowButton
+                    key={item.instanceId || item.id}
+                    title={item.title}
+                    detail={item.allDay ? "Anytime today" : item.time || "No time"}
+                    badge="Reminder"
+                    badgeTone="warning"
+                    onClick={() => onOpenCalendar(item)}
+                    onDone={
+                      item.completed
+                        ? undefined
+                        : () => void completeCalendarItem(item)
+                    }
+                    doneBusy={
+                      busyAction === `calendar:${calendarItemKey(item)}`
+                    }
+                    completed={Boolean(item.completed)}
+                    completedAt={
+                      recentlyCompleted[
+                        `calendar:${calendarItemKey(item)}`
+                      ] || ""
+                    }
+                    notes={item.notes ? [item.notes] : []}
+                    onAddNote={(note) => saveQuickCalendarNote(item, note)}
+                    colors={colors}
+                    isMobile={isMobile}
+                    preview={{
+                      kind: "Reminder",
+                      title: item.title,
+                      status: item.allDay ? "Anytime today" : item.time || "No time",
+                      summary: item.notes || "Time-sensitive reminder.",
+                      fields: [
+                        { label: "Date", value: shortDateLabel(item.date) },
+                        {
+                          label: "Time",
+                          value: item.allDay ? "Anytime" : item.time || "Not set",
+                        },
+                        {
+                          label: "Linked",
+                          value: item.linkedName || "Not linked",
+                        },
+                      ],
+                    }}
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  icon="○"
+                  title="No reminders"
+                  detail="Calls, follow-ups, ordering, and deadlines will appear here."
+                />
+              )}
+            </StandardCard>
+
+            <StandardCard
+              title="Schedule"
+              icon="▣"
+              colors={colors}
+              onClick={onOpenCalendarPage}
+            >
+              {visibleSchedule.length ? (
+                visibleSchedule.map((item) => (
+                  <RowButton
+                    key={item.instanceId || item.id}
+                    title={item.title}
+                    detail={item.allDay ? "All day" : item.time || "No time"}
+                    badge={item.linkedType || item.categoryLabel || "Event"}
+                    badgeTone="info"
+                    onClick={() => onOpenCalendar(item)}
+                    onDone={
+                      item.completed
+                        ? undefined
+                        : () => void completeCalendarItem(item)
+                    }
+                    doneBusy={
+                      busyAction === `calendar:${calendarItemKey(item)}`
+                    }
+                    completed={Boolean(item.completed)}
+                    completedAt={
+                      recentlyCompleted[
+                        `calendar:${calendarItemKey(item)}`
+                      ] || ""
+                    }
+                    notes={item.notes ? [item.notes] : []}
+                    onAddNote={(note) => saveQuickCalendarNote(item, note)}
+                    onAddPhoto={() => onOpenCalendar(item)}
+                    colors={colors}
+                    isMobile={isMobile}
+                    preview={{
+                      kind: "Calendar Event",
+                      title: item.title,
+                      status: item.allDay ? "All day" : item.time || "Scheduled",
+                      summary: item.linkedName
+                        ? `Scheduled event linked to ${item.linkedName}.`
+                        : "Scheduled estate calendar event.",
+                      fields: [
+                        { label: "Date", value: shortDateLabel(item.date) },
+                        {
+                          label: "Time",
+                          value: item.allDay ? "All day" : item.time || "No time",
+                        },
+                        {
+                          label: "Type",
+                          value: item.linkedType || item.categoryLabel || "Event",
+                        },
+                        {
+                          label: "Linked",
+                          value: item.linkedName || "Not linked",
+                        },
+                      ],
+                    }}
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  icon="○"
+                  title="Open schedule"
+                  detail="No regular calendar events are scheduled today."
+                />
+              )}
+            </StandardCard>
+          </div>
         </div>
 
         <div
