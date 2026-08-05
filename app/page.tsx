@@ -18790,21 +18790,35 @@ ${notes.trim()}` : notes.trim(),
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(300px, 38%) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
-              <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-                <div style={{ padding: "10px 12px", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}>
-                  <strong>{visibleTasks.length} task{visibleTasks.length === 1 ? "" : "s"}</strong>
-                  <small style={mutedSmallStyle}>{minutesLabel(visibleTasks.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0))}</small>
+              <section style={{ ...cardStyle, padding: 0, overflow: "hidden", background: "#F4F7FB" }}>
+                <div style={{ padding: "11px 13px", borderBottom: `1px solid ${colors.line}`, background: "#FFFFFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <strong style={{ color: colors.navy }}>{visibleTasks.length} task{visibleTasks.length === 1 ? "" : "s"}</strong>
+                  <small style={{ ...mutedSmallStyle, fontWeight: 850 }}>{minutesLabel(visibleTasks.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0))}</small>
                 </div>
-                <div style={{ maxHeight: isMobile ? 480 : "70vh", overflowY: "auto" }}>
+                <div style={{ maxHeight: isMobile ? 480 : "70vh", overflowY: "auto", padding: 8, display: "grid", gap: 8 }}>
                   {visibleTasks.map((task) => {
                     const meta = taskDetails(task.id);
                     const selected = selectedTask?.id === task.id;
-                    return <div key={task.id} style={{ borderBottom: `1px solid ${colors.line}`, background: selected ? "#F3F7FC" : "#FFFFFF", padding: "9px 10px", display: "grid", gap: 7 }}>
-                      <button type="button" onClick={() => setSelectedTaskId(task.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: colors.navy3 }}>{task.title}</strong><span style={badgeStyle(task.priority)}>{task.priority}</span></div>
-                        <small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {minutesLabel(task.minutes)} · {meta.assignee}{task.recurring ? " · Recurring" : ""}</small>
+                    const overdue = meta.status !== "Completed" && Boolean(meta.dueDate && meta.dueDate < today);
+                    const dueToday = meta.status !== "Completed" && (!meta.dueDate || meta.dueDate === today);
+                    const accent = meta.status === "Completed" ? colors.green : overdue ? colors.red : task.priority === "High" ? "#D97706" : task.priority === "Medium" ? colors.gold : "#94A3B8";
+                    const dueLabel = meta.status === "Completed" ? "Completed" : overdue ? `Overdue · ${formatDate(meta.dueDate)}` : dueToday ? "Due today" : meta.dueDate ? formatDate(meta.dueDate) : "No due date";
+                    return <div key={task.id} style={{ position: "relative", overflow: "hidden", border: selected ? `2px solid ${colors.navy3}` : `1px solid ${colors.line}`, borderRadius: 12, background: selected ? "#F5F9FD" : "#FFFFFF", boxShadow: selected ? "0 7px 18px rgba(18,61,99,.12)" : "0 2px 7px rgba(7,27,47,.05)", padding: "10px 10px 9px 14px", display: "grid", gap: 8 }}>
+                      <span aria-hidden="true" style={{ position: "absolute", inset: "0 auto 0 0", width: 5, background: accent }} />
+                      <button type="button" onClick={() => setSelectedTaskId(task.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                          <strong style={{ color: colors.navy3, lineHeight: 1.28, fontSize: 14 }}>{task.title}</strong>
+                          <span style={badgeStyle(task.priority)}>{task.priority}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 7 }}>
+                          <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 900, color: overdue ? colors.red : dueToday ? "#8A5A00" : colors.muted, background: overdue ? "#FFF0F0" : dueToday ? "#FFF7DF" : "#EEF3F8", borderRadius: 999, padding: "5px 7px" }}>{dueLabel}</span>
+                          <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 850, color: colors.navy3, background: "#EEF3F8", borderRadius: 999, padding: "5px 7px" }}>{meta.assignee}</span>
+                          <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 800, color: colors.muted }}>{minutesLabel(task.minutes)}</span>
+                          {task.recurring ? <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 850, color: colors.navy3 }}>↻ Recurring</span> : null}
+                        </div>
+                        <small style={{ ...mutedSmallStyle, display: "block", marginTop: 7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.category}</small>
                       </button>
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", paddingTop: 7, borderTop: `1px solid ${colors.line}` }}>
                         {meta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(task)} style={compactUtilityButtonStyle}>Done</button> : null}
                         {meta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(task)} style={compactUtilityButtonStyle}>Tomorrow</button> : null}
                         {meta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Addison")} style={compactUtilityButtonStyle}>Addison</button> : null}
