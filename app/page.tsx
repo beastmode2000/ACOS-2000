@@ -18791,35 +18791,85 @@ ${notes.trim()}` : notes.trim(),
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(300px, 38%) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
               <section style={{ ...cardStyle, padding: 0, overflow: "hidden", background: "#F4F7FB" }}>
-                <div style={{ padding: "11px 13px", borderBottom: `1px solid ${colors.line}`, background: "#FFFFFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <strong style={{ color: colors.navy }}>{visibleTasks.length} task{visibleTasks.length === 1 ? "" : "s"}</strong>
-                  <small style={{ ...mutedSmallStyle, fontWeight: 850 }}>{minutesLabel(visibleTasks.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0))}</small>
+                {(() => {
+                  const completedCount = visibleTasks.filter((task) => taskDetails(task.id).status === "Completed").length;
+                  const openTasks = visibleTasks.filter((task) => taskDetails(task.id).status !== "Completed");
+                  const totalMinutes = openTasks.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0);
+                  const completionPercent = visibleTasks.length ? Math.round((completedCount / visibleTasks.length) * 100) : 0;
+                  const nextTask = openTasks[0] || null;
+                  return <div style={{ padding: "13px 14px 12px", color: "#FFFFFF", background: `linear-gradient(135deg, ${colors.navy} 0%, ${colors.navy3} 72%, #174F78 100%)`, borderBottom: `3px solid ${colors.gold}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: ".12em", color: "#E9C86B" }}>MY DAY</div>
+                        <div style={{ marginTop: 3, fontSize: 18, fontWeight: 950 }}>{completedCount} of {visibleTasks.length} complete</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 18, fontWeight: 950, color: "#E9C86B" }}>{completionPercent}%</div>
+                        <div style={{ marginTop: 2, fontSize: 11, fontWeight: 800, opacity: .82 }}>{minutesLabel(totalMinutes)} remaining</div>
+                      </div>
+                    </div>
+                    <div style={{ height: 7, marginTop: 10, overflow: "hidden", borderRadius: 999, background: "rgba(255,255,255,.18)" }}>
+                      <div style={{ width: `${completionPercent}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${colors.gold}, #F1D982)`, transition: "width .28s ease" }} />
+                    </div>
+                    {nextTask ? <button type="button" onClick={() => setSelectedTaskId(nextTask.id)} style={{ width: "100%", marginTop: 10, padding: "9px 10px", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, background: "rgba(255,255,255,.09)", color: "#FFFFFF", textAlign: "left", cursor: "pointer", transition: "transform .16s ease, background .16s ease" }}>
+                      <span style={{ display: "block", fontSize: 10, fontWeight: 950, letterSpacing: ".1em", color: "#E9C86B" }}>NEXT TASK</span>
+                      <span style={{ display: "block", marginTop: 3, fontSize: 13, fontWeight: 900 }}>{nextTask.title}</span>
+                      <span style={{ display: "block", marginTop: 2, fontSize: 11, opacity: .78 }}>{minutesLabel(nextTask.minutes)} · {taskDetails(nextTask.id).assignee}</span>
+                    </button> : <div style={{ marginTop: 10, fontSize: 12, fontWeight: 850, color: "#D7F7E0" }}>Today’s checklist is complete.</div>}
+                  </div>;
+                })()}
+                <div style={{ padding: "10px 12px", borderBottom: `1px solid ${colors.line}`, background: "#FFFFFF", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div>
+                    <strong style={{ display: "block", color: colors.navy }}>Today’s Checklist</strong>
+                    <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Select a card to adjust its details. Changes use the existing Atlas save flow.</small>
+                  </div>
+                  <small style={{ ...mutedSmallStyle, flex: "0 0 auto", fontWeight: 900 }}>{visibleTasks.length} items</small>
                 </div>
-                <div style={{ maxHeight: isMobile ? 480 : "70vh", overflowY: "auto", padding: 8, display: "grid", gap: 8 }}>
-                  {visibleTasks.map((task) => {
+                <div style={{ maxHeight: isMobile ? 520 : "70vh", overflowY: "auto", padding: 8, display: "grid", gap: 8 }}>
+                  {visibleTasks.map((task, taskIndex) => {
                     const meta = taskDetails(task.id);
                     const selected = selectedTask?.id === task.id;
                     const overdue = meta.status !== "Completed" && Boolean(meta.dueDate && meta.dueDate < today);
                     const dueToday = meta.status !== "Completed" && (!meta.dueDate || meta.dueDate === today);
                     const accent = meta.status === "Completed" ? colors.green : overdue ? colors.red : task.priority === "High" ? "#D97706" : task.priority === "Medium" ? colors.gold : "#94A3B8";
-                    const dueLabel = meta.status === "Completed" ? "Completed" : overdue ? `Overdue · ${formatDate(meta.dueDate)}` : dueToday ? "Due today" : meta.dueDate ? formatDate(meta.dueDate) : "No due date";
-                    return <div key={task.id} style={{ position: "relative", overflow: "hidden", border: selected ? `2px solid ${colors.navy3}` : `1px solid ${colors.line}`, borderRadius: 12, background: selected ? "#F5F9FD" : "#FFFFFF", boxShadow: selected ? "0 7px 18px rgba(18,61,99,.12)" : "0 2px 7px rgba(7,27,47,.05)", padding: "10px 10px 9px 14px", display: "grid", gap: 8 }}>
+                    const dueLabel = meta.status === "Completed" ? "Completed" : overdue ? `Overdue · ${formatDate(meta.dueDate)}` : dueToday ? "Today" : meta.dueDate ? formatDate(meta.dueDate) : "Flexible";
+                    return <div
+                      key={task.id}
+                      onMouseEnter={(event) => {
+                        if (!selected) {
+                          event.currentTarget.style.transform = "translateY(-2px)";
+                          event.currentTarget.style.boxShadow = "0 8px 20px rgba(7,27,47,.10)";
+                        }
+                      }}
+                      onMouseLeave={(event) => {
+                        if (!selected) {
+                          event.currentTarget.style.transform = "translateY(0)";
+                          event.currentTarget.style.boxShadow = "0 2px 7px rgba(7,27,47,.05)";
+                        }
+                      }}
+                      style={{ position: "relative", overflow: "hidden", border: selected ? `2px solid ${colors.navy3}` : `1px solid ${colors.line}`, borderRadius: 12, background: meta.status === "Completed" ? "#F6FAF7" : selected ? "#F5F9FD" : "#FFFFFF", boxShadow: selected ? "0 8px 22px rgba(18,61,99,.15)" : "0 2px 7px rgba(7,27,47,.05)", padding: "10px 10px 9px 14px", display: "grid", gap: 8, opacity: meta.status === "Completed" ? .72 : 1, transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease" }}>
                       <span aria-hidden="true" style={{ position: "absolute", inset: "0 auto 0 0", width: 5, background: accent }} />
-                      <button type="button" onClick={() => setSelectedTaskId(task.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                          <strong style={{ color: colors.navy3, lineHeight: 1.28, fontSize: 14 }}>{task.title}</strong>
-                          <span style={badgeStyle(task.priority)}>{task.priority}</span>
-                        </div>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 7 }}>
-                          <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 900, color: overdue ? colors.red : dueToday ? "#8A5A00" : colors.muted, background: overdue ? "#FFF0F0" : dueToday ? "#FFF7DF" : "#EEF3F8", borderRadius: 999, padding: "5px 7px" }}>{dueLabel}</span>
-                          <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 850, color: colors.navy3, background: "#EEF3F8", borderRadius: 999, padding: "5px 7px" }}>{meta.assignee}</span>
-                          <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 800, color: colors.muted }}>{minutesLabel(task.minutes)}</span>
-                          {task.recurring ? <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 850, color: colors.navy3 }}>↻ Recurring</span> : null}
-                        </div>
-                        <small style={{ ...mutedSmallStyle, display: "block", marginTop: 7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.category}</small>
-                      </button>
+                      <div style={{ display: "grid", gridTemplateColumns: "28px minmax(0,1fr)", gap: 7, alignItems: "start" }}>
+                        <button type="button" aria-label={meta.status === "Completed" ? `${task.title} completed` : `Complete ${task.title}`} disabled={meta.status === "Completed"} onClick={() => meta.status !== "Completed" && completeAtlasTask(task)} style={{ width: 24, height: 24, marginTop: 1, borderRadius: 7, border: `2px solid ${meta.status === "Completed" ? colors.green : accent}`, background: meta.status === "Completed" ? colors.green : "#FFFFFF", color: "#FFFFFF", fontSize: 14, fontWeight: 950, cursor: meta.status === "Completed" ? "default" : "pointer" }}>{meta.status === "Completed" ? "✓" : ""}</button>
+                        <button type="button" onClick={() => setSelectedTaskId(task.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <span style={{ display: "block", marginBottom: 3, fontSize: 10, fontWeight: 900, color: colors.muted }}>#{taskIndex + 1}</span>
+                              <strong style={{ display: "block", color: colors.navy3, lineHeight: 1.28, fontSize: 14, textDecoration: meta.status === "Completed" ? "line-through" : "none" }}>{task.title}</strong>
+                            </div>
+                            <span style={badgeStyle(task.priority)}>{task.priority}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 7 }}>
+                            <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 900, color: overdue ? colors.red : dueToday ? "#8A5A00" : colors.muted, background: overdue ? "#FFF0F0" : dueToday ? "#FFF7DF" : "#EEF3F8", borderRadius: 999, padding: "5px 7px" }}>{dueLabel}</span>
+                            <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 850, color: colors.navy3, background: "#EEF3F8", borderRadius: 999, padding: "5px 7px" }}>{meta.assignee}</span>
+                            <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 850, color: colors.navy3, background: "#EEF3F8", borderRadius: 999, padding: "5px 7px" }}>{minutesLabel(task.minutes)}</span>
+                            {task.recurring ? <span style={{ fontSize: 11, lineHeight: 1, fontWeight: 850, color: colors.navy3 }}>↻ Recurring</span> : null}
+                          </div>
+                          <small style={{ ...mutedSmallStyle, display: "block", marginTop: 7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.category}</small>
+                        </button>
+                      </div>
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", paddingTop: 7, borderTop: `1px solid ${colors.line}` }}>
-                        {meta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(task)} style={compactUtilityButtonStyle}>Done</button> : null}
+                        <button type="button" onClick={() => setSelectedTaskId(task.id)} style={{ ...compactUtilityButtonStyle, borderColor: colors.gold, color: colors.navy3, fontWeight: 900 }}>Adjust</button>
                         {meta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(task)} style={compactUtilityButtonStyle}>Tomorrow</button> : null}
                         {meta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Addison")} style={compactUtilityButtonStyle}>Addison</button> : null}
                         {meta.assignee !== "Pat" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Pat")} style={compactUtilityButtonStyle}>Pat</button> : null}
@@ -18827,7 +18877,7 @@ ${notes.trim()}` : notes.trim(),
                       </div>
                     </div>;
                   })}
-                  {!visibleTasks.length ? <div style={{ padding: 18, ...mutedSmallStyle }}>No tasks in this view.</div> : null}
+                  {!visibleTasks.length ? <div style={{ padding: 20, textAlign: "center", ...mutedSmallStyle }}>No tasks in this view.</div> : null}
                 </div>
               </section>
 
