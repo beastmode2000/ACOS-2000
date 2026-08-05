@@ -172,6 +172,7 @@ export default function AtlasRoutines({
   const [newTask, setNewTask] = useState("");
   const [status, setStatus] = useState("Loading routines…");
   const [busy, setBusy] = useState(false);
+  const [dashboardChecklistExpanded, setDashboardChecklistExpanded] = useState(false);
   const weeklySetupRunningRef = useRef(false);
 
   async function mergeWeeklyOperations(currentTemplates: RoutineTemplate[]) {
@@ -638,44 +639,396 @@ export default function AtlasRoutines({
 
         {occurrence && total > 0 ? (
           <>
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-              }}
-            >
-              {occurrence.tasks.map((task) => (
-                <div
-                  key={task.id}
-                  style={{
-                    display: "grid",
-                    gap: 8,
-                    padding: "10px 11px",
-                    border: `1px solid ${colors.line}`,
-                    borderRadius: 11,
-                    background: task.completed ? "#F2FBF6" : task.status === "skipped" || task.status === "deferred" ? "#F8FAFC" : "#FFFFFF",
-                  }}
-                >
-                  <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
-                    <input type="checkbox" checked={Boolean(task.completed)} disabled={busy || task.status === "skipped" || task.status === "deferred"} onChange={() => void toggleTask(task.id)} style={{ width: 19, height: 19, accentColor: colors.green }} />
-                    <span style={{ flex: 1, textDecoration: task.completed || task.status === "skipped" || task.status === "deferred" ? "line-through" : "none", color: task.completed || task.status === "skipped" || task.status === "deferred" ? colors.muted : colors.text, fontWeight: 700 }}>{task.title}</span>
-                    {task.status === "skipped" ? <small style={{ color: colors.muted, fontWeight: 900 }}>Skipped</small> : task.status === "deferred" ? <small style={{ color: colors.gold, fontWeight: 900 }}>Moved</small> : null}
-                  </label>
-                  {!task.completed && task.status !== "skipped" && task.status !== "deferred" ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingLeft: isMobile ? 0 : 30 }}>
-                    <select aria-label={`Assign ${task.title}`} value={task.assignedTo || "Nick"} disabled={busy} onChange={(event) => void updateTodayTask("assign-task", task.id, event.currentTarget.value as RoutineTask["assignedTo"])} style={{ ...button, minHeight: 30, padding: "4px 7px", fontSize: 12 }}><option>Nick</option><option>Addison</option><option>Pat</option><option>Crew</option></select>
-                    <button type="button" disabled={busy} onClick={() => void updateTodayTask("skip-task", task.id)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Skip Today</button>
-                    <button type="button" disabled={busy} onClick={() => void updateTodayTask("defer-task", task.id)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Next Workday</button>
-                    {onAddPhoto ? <button type="button" disabled={busy} onClick={() => onAddPhoto(task)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Photo</button> : null}
-                    {onAddNote ? <button type="button" disabled={busy} onClick={() => onAddNote(task)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12 }}>Note</button> : null}
-                    {onFlagProblem ? <button type="button" disabled={busy} onClick={() => onFlagProblem(task)} style={{ ...button, minHeight: 30, padding: "4px 8px", fontSize: 12, color: colors.red }}>Problem</button> : null}
-                  </div> : null}
-                </div>
-              ))}
-            </div>
+            {(() => {
+              const openTasks = occurrence.tasks.filter(
+                (task) =>
+                  !task.completed &&
+                  task.status !== "skipped" &&
+                  task.status !== "deferred",
+              );
+              const nextTask = openTasks[0] || null;
+              const visibleTasks = dashboardChecklistExpanded
+                ? occurrence.tasks
+                : occurrence.tasks.slice(0, 7);
+
+              return (
+                <>
+                  <div
+                    style={{
+                      position: "sticky",
+                      top: 0,
+                      zIndex: 5,
+                      marginBottom: 9,
+                      padding: "10px 11px",
+                      border: `1px solid ${colors.gold}`,
+                      borderRadius: 11,
+                      background:
+                        "linear-gradient(135deg, #FFF8E7 0%, #FFFFFF 78%)",
+                      boxShadow: "0 7px 18px rgba(7,27,47,.08)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            color: colors.gold,
+                            fontSize: 10,
+                            fontWeight: 950,
+                            letterSpacing: ".09em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Next Task
+                        </div>
+                        <strong
+                          style={{
+                            display: "block",
+                            marginTop: 2,
+                            color: colors.navy,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {nextTask?.title || "Routine complete"}
+                        </strong>
+                      </div>
+                      <span
+                        style={{
+                          flex: "0 0 auto",
+                          color: colors.navy,
+                          fontSize: 12,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {resolved}/{total}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        height: 6,
+                        marginTop: 8,
+                        borderRadius: 99,
+                        overflow: "hidden",
+                        background: "#E8EDF3",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${total ? (resolved / total) * 100 : 0}%`,
+                          height: "100%",
+                          borderRadius: 99,
+                          background: colors.gold,
+                          transition: "width 180ms ease",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 7,
+                    }}
+                  >
+                    {visibleTasks.map((task, index) => (
+                      <div
+                        key={task.id}
+                        className="atlas-routine-dashboard-row"
+                        style={{
+                          display: "grid",
+                          gap: 7,
+                          padding: "8px 9px",
+                          border: `1px solid ${
+                            task.completed ? "#B8E0CD" : colors.line
+                          }`,
+                          borderLeft: `4px solid ${
+                            task.completed
+                              ? colors.green
+                              : task.status === "skipped" ||
+                                  task.status === "deferred"
+                                ? "#A8B4C2"
+                                : index === 0
+                                  ? colors.gold
+                                  : colors.line
+                          }`,
+                          borderRadius: 10,
+                          background: task.completed
+                            ? "#F2FBF6"
+                            : task.status === "skipped" ||
+                                task.status === "deferred"
+                              ? "#F8FAFC"
+                              : "#FFFFFF",
+                          boxShadow:
+                            index === 0 &&
+                            !task.completed &&
+                            task.status !== "skipped" &&
+                            task.status !== "deferred"
+                              ? "0 6px 16px rgba(7,27,47,.07)"
+                              : "none",
+                          transition:
+                            "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
+                        }}
+                      >
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 9,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={Boolean(task.completed)}
+                            disabled={
+                              busy ||
+                              task.status === "skipped" ||
+                              task.status === "deferred"
+                            }
+                            onChange={() => void toggleTask(task.id)}
+                            style={{
+                              width: 18,
+                              height: 18,
+                              accentColor: colors.green,
+                            }}
+                          />
+                          <span
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              textDecoration:
+                                task.completed ||
+                                task.status === "skipped" ||
+                                task.status === "deferred"
+                                  ? "line-through"
+                                  : "none",
+                              color:
+                                task.completed ||
+                                task.status === "skipped" ||
+                                task.status === "deferred"
+                                  ? colors.muted
+                                  : colors.text,
+                              fontWeight: 750,
+                              lineHeight: 1.35,
+                            }}
+                          >
+                            {task.title}
+                          </span>
+                          {task.status === "skipped" ? (
+                            <small
+                              style={{ color: colors.muted, fontWeight: 900 }}
+                            >
+                              Skipped
+                            </small>
+                          ) : task.status === "deferred" ? (
+                            <small
+                              style={{ color: colors.gold, fontWeight: 900 }}
+                            >
+                              Moved
+                            </small>
+                          ) : null}
+                        </label>
+
+                        {!task.completed &&
+                        task.status !== "skipped" &&
+                        task.status !== "deferred" ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 5,
+                              flexWrap: "wrap",
+                              alignItems: "center",
+                              paddingLeft: isMobile ? 0 : 27,
+                            }}
+                          >
+                            <select
+                              aria-label={`Assign ${task.title}`}
+                              value={task.assignedTo || "Nick"}
+                              disabled={busy}
+                              onChange={(event) =>
+                                void updateTodayTask(
+                                  "assign-task",
+                                  task.id,
+                                  event.currentTarget
+                                    .value as RoutineTask["assignedTo"],
+                                )
+                              }
+                              style={{
+                                ...button,
+                                minHeight: 28,
+                                padding: "3px 7px",
+                                fontSize: 11,
+                              }}
+                            >
+                              <option>Nick</option>
+                              <option>Addison</option>
+                              <option>Pat</option>
+                              <option>Crew</option>
+                            </select>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void updateTodayTask("skip-task", task.id)
+                              }
+                              style={{
+                                ...button,
+                                minHeight: 28,
+                                padding: "3px 7px",
+                                fontSize: 11,
+                              }}
+                            >
+                              Skip Today
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void updateTodayTask("defer-task", task.id)
+                              }
+                              style={{
+                                ...button,
+                                minHeight: 28,
+                                padding: "3px 7px",
+                                fontSize: 11,
+                              }}
+                            >
+                              Next Workday
+                            </button>
+
+                            {onAddPhoto || onAddNote || onFlagProblem ? (
+                              <details style={{ position: "relative" }}>
+                                <summary
+                                  aria-label={`More actions for ${task.title}`}
+                                  style={{
+                                    listStyle: "none",
+                                    minWidth: 29,
+                                    minHeight: 28,
+                                    display: "grid",
+                                    placeItems: "center",
+                                    border: `1px solid ${colors.line}`,
+                                    borderRadius: 9,
+                                    background: "#FFFFFF",
+                                    color: colors.navy,
+                                    fontSize: 16,
+                                    fontWeight: 950,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  •••
+                                </summary>
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    right: 0,
+                                    top: "calc(100% + 5px)",
+                                    zIndex: 30,
+                                    minWidth: 126,
+                                    display: "grid",
+                                    gap: 4,
+                                    padding: 6,
+                                    border: `1px solid ${colors.line}`,
+                                    borderRadius: 10,
+                                    background: "#FFFFFF",
+                                    boxShadow:
+                                      "0 12px 28px rgba(7,27,47,.16)",
+                                  }}
+                                >
+                                  {onAddPhoto ? (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => onAddPhoto(task)}
+                                      style={{
+                                        ...button,
+                                        minHeight: 29,
+                                        padding: "4px 8px",
+                                        fontSize: 11,
+                                        textAlign: "left",
+                                      }}
+                                    >
+                                      Add Photo
+                                    </button>
+                                  ) : null}
+                                  {onAddNote ? (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => onAddNote(task)}
+                                      style={{
+                                        ...button,
+                                        minHeight: 29,
+                                        padding: "4px 8px",
+                                        fontSize: 11,
+                                        textAlign: "left",
+                                      }}
+                                    >
+                                      Add Note
+                                    </button>
+                                  ) : null}
+                                  {onFlagProblem ? (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => onFlagProblem(task)}
+                                      style={{
+                                        ...button,
+                                        minHeight: 29,
+                                        padding: "4px 8px",
+                                        fontSize: 11,
+                                        color: colors.red,
+                                        textAlign: "left",
+                                      }}
+                                    >
+                                      Flag Problem
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </details>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+
+                  {occurrence.tasks.length > 7 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDashboardChecklistExpanded((current) => !current)
+                      }
+                      style={{
+                        ...button,
+                        width: "100%",
+                        minHeight: 34,
+                        marginTop: 9,
+                        padding: "6px 10px",
+                        borderColor: `${colors.gold}88`,
+                        color: colors.navy,
+                        fontSize: 12,
+                      }}
+                    >
+                      {dashboardChecklistExpanded
+                        ? "Show fewer checklist items"
+                        : `Show all ${occurrence.tasks.length} checklist items`}
+                    </button>
+                  ) : null}
+                </>
+              );
+            })()}
 
             <div
               style={{
-                marginTop: 12,
+                marginTop: 10,
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
@@ -704,10 +1057,27 @@ export default function AtlasRoutines({
                     }%`,
                     height: "100%",
                     background: colors.gold,
+                    transition: "width 180ms ease",
                   }}
                 />
               </div>
             </div>
+
+            <style>{`
+              .atlas-routine-dashboard-row:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 7px 18px rgba(7, 27, 47, 0.09) !important;
+                border-color: rgba(201, 154, 61, 0.52) !important;
+              }
+              .atlas-routine-dashboard-row details > summary::-webkit-details-marker {
+                display: none;
+              }
+              @media (prefers-reduced-motion: reduce) {
+                .atlas-routine-dashboard-row {
+                  transition: none !important;
+                }
+              }
+            `}</style>
           </>
         ) : null}
       </section>
