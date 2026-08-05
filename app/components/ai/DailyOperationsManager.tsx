@@ -893,6 +893,41 @@ export default function DailyOperationsManager({
   const visibleSchedule = scheduleEvents.slice(0, 5);
   const visibleArrivals = arrivalEvents.slice(0, 5);
   const visibleReminders = reminderEvents.slice(0, 5);
+
+  const waitingOnWork = effectiveServiceRecords
+    .filter((item) => {
+      if (isClosedStatus(item.status)) return false;
+      const text = [
+        item.status,
+        (item as any).workStatus,
+        (item as any).waitingOn,
+        (item as any).notes,
+        ...(Array.isArray((item as any).notesHistory)
+          ? (item as any).notesHistory.map((entry: any) => entry?.text)
+          : []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return [
+        "waiting",
+        "awaiting",
+        "pending approval",
+        "owner approval",
+        "vendor response",
+        "vendor quote",
+        "estimate",
+        "parts",
+        "delivery",
+        "permit",
+        "on hold",
+        "blocked",
+      ].some((token) => text.includes(token));
+    })
+    .sort((a, b) => dateTime(a.date) - dateTime(b.date));
+
+  const visibleWaitingOn = waitingOnWork.slice(0, 5);
   const visiblePriority = [...priorityWork, ...completedToday]
     .filter(
       (item, index, all) =>
@@ -2072,13 +2107,87 @@ export default function DailyOperationsManager({
             display: "grid",
             gridTemplateColumns: isMobile
               ? "1fr"
-              : vendorEvents.length
-                ? "repeat(3, minmax(0, 1fr))"
-                : "repeat(2, minmax(0, 1fr))",
+              : "repeat(3, minmax(0, 1fr))",
             gap: 14,
             marginTop: 14,
           }}
         >
+          <StandardCard
+            title="Waiting On"
+            icon="◷"
+            colors={colors}
+            onClick={onOpenWorkOrdersPage}
+          >
+            {visibleWaitingOn.length ? (
+              visibleWaitingOn.map((item) => {
+                const waitingDetail =
+                  String((item as any).waitingOn || "").trim() ||
+                  String((item as any).workStatus || "").trim() ||
+                  String(item.status || "").trim() ||
+                  "Waiting for outside action";
+
+                return (
+                  <RowButton
+                    key={item.id}
+                    title={item.title}
+                    detail={waitingDetail}
+                    badge="Waiting"
+                    badgeTone="warning"
+                    onClick={() => onOpenWorkOrder(item.id)}
+                    notes={
+                      Array.isArray((item as any).notesHistory)
+                        ? (item as any).notesHistory
+                            .slice(-3)
+                            .map((entry: any) => String(entry.text || ""))
+                            .filter(Boolean)
+                        : item.notes
+                          ? [String(item.notes)]
+                          : []
+                    }
+                    photoCount={(item.photos || []).length}
+                    onAddNote={(note) => saveQuickWorkNote(item, note)}
+                    onAddPhoto={() => onOpenWorkOrder(item.id)}
+                    colors={colors}
+                    isMobile={isMobile}
+                    preview={{
+                      kind: "Waiting On",
+                      title: item.title,
+                      status: waitingDetail,
+                      summary:
+                        "This item remains visible without competing with work you can complete right now.",
+                      fields: [
+                        {
+                          label: "Status",
+                          value: item.status || "Waiting",
+                        },
+                        {
+                          label: "Due",
+                          value: item.date
+                            ? shortDateLabel(item.date)
+                            : "No due date",
+                        },
+                        {
+                          label: "Priority",
+                          value: item.priority || "Medium",
+                        },
+                        {
+                          label: "Photos",
+                          value: `${(item.photos || []).length}`,
+                        },
+                      ],
+                    }}
+                  />
+                );
+              })
+            ) : (
+              <EmptyState
+                icon="✓"
+                title="Nothing waiting"
+                detail="Vendor replies, estimates, approvals, parts, deliveries, and permits will appear here."
+              />
+            )}
+          </StandardCard>
+
           {vendorEvents.length > 0 && (
             <StandardCard title="Vendors Today" icon="◆" colors={colors}>
               {vendorEvents.slice(0, 4).map((item) => (
