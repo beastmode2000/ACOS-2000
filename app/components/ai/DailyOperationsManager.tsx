@@ -925,7 +925,16 @@ export default function DailyOperationsManager({
         "blocked",
       ].some((token) => text.includes(token));
     })
-    .sort((a, b) => dateTime(a.date) - dateTime(b.date));
+    .sort((a, b) => {
+      const aTime = a.date
+        ? new Date(`${a.date}T12:00:00`).getTime()
+        : Number.POSITIVE_INFINITY;
+      const bTime = b.date
+        ? new Date(`${b.date}T12:00:00`).getTime()
+        : Number.POSITIVE_INFINITY;
+
+      return aTime - bTime;
+    });
 
   const visibleWaitingOn = waitingOnWork.slice(0, 5);
   const visiblePriority = [...priorityWork, ...completedToday]
