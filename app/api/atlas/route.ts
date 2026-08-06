@@ -2392,12 +2392,48 @@ export async function DELETE(request: NextRequest) {
         RETURNING id
       `) as unknown as JsonRecord[];
     } else if (table === "work_orders") {
+      // Delete against the active property first. Older Atlas records may carry a
+      // stale property_id from before strict property isolation was introduced,
+      // so resolve the record's stored property only when the normal delete finds
+      // nothing. Authorization is checked again for that stored property before
+      // deleting, preserving property isolation while making legacy records
+      // deletable from the work-order screen.
       deletedRows = (await sql`
         DELETE FROM atlas_work_orders
         WHERE id = ${id}
           AND property_id = ${propertyId}
-        RETURNING id
+        RETURNING id, property_id
       `) as unknown as JsonRecord[];
+
+      if (!deletedRows.length) {
+        const legacyRows = (await sql`
+          SELECT id, property_id
+          FROM atlas_work_orders
+          WHERE id = ${id}
+          LIMIT 2
+        `) as unknown as JsonRecord[];
+
+        if (legacyRows.length === 1) {
+          const storedPropertyId = asString(legacyRows[0].property_id) || "2000";
+
+          if (
+            storedPropertyId !== propertyId &&
+            (await authorizeAtlasRequest(
+              sql,
+              request,
+              storedPropertyId,
+              "delete",
+            ))
+          ) {
+            deletedRows = (await sql`
+              DELETE FROM atlas_work_orders
+              WHERE id = ${id}
+                AND property_id = ${storedPropertyId}
+              RETURNING id, property_id
+            `) as unknown as JsonRecord[];
+          }
+        }
+      }
     } else if (table === "calendar") {
       deletedRows = (await sql`
         DELETE FROM atlas_calendar_items
