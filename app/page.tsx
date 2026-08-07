@@ -5507,6 +5507,8 @@ export default function AtlasPage() {
     "hangar",
   ]);
   const [currentAtlasUser, setCurrentAtlasUser] = useState<AtlasCurrentUser | null>(null);
+  const [teamAccessResolved, setTeamAccessResolved] = useState(false);
+  const [teamAccessError, setTeamAccessError] = useState("");
   const [showLandscapeFilters, setShowLandscapeFilters] = useState(false);
   const [landscapeSearch, setLandscapeSearch] = useState("");
   const [landscapeStatusFilter, setLandscapeStatusFilter] = useState<
@@ -6161,14 +6163,21 @@ export default function AtlasPage() {
         if (!allowed.includes(activePropertyId)) {
           selectProperty(allowed[0] || "2000");
         }
+
+        setTeamAccessError("");
+        setTeamAccessResolved(true);
       })
       .catch((error) => {
-        console.warn(
-          "Atlas team access could not load. Keeping master portfolio access.",
-          error,
-        );
+        console.warn("Atlas team access could not load.", error);
 
-        setAllowedPropertyIds(allPropertyIds);
+        // Fail closed. Never expose manager/admin UI when Atlas cannot verify
+        // the signed-in user. A refresh retries the Team Center request.
+        setCurrentAtlasUser(null);
+        setAllowedPropertyIds(["2000"]);
+        setDepartmentCenter("");
+        setScreenState("dashboard");
+        setTeamAccessError("Atlas could not verify this account. Refresh to try again.");
+        setTeamAccessResolved(true);
       });
   }, []);
 
@@ -40047,6 +40056,31 @@ ${notes.trim()}` : notes.trim(),
         {renderPageVisualSummary()}
         {content}
       </div>
+    );
+  }
+
+  if (!teamAccessResolved) {
+    return (
+      <main className="atlas-app-shell" style={isMobile ? appStyle : desktopAppStyle}>
+        <section style={{ maxWidth: 560, margin: "12vh auto", padding: 22, border: `1px solid ${colors.line}`, borderRadius: 18, background: "#FFFFFF" }}>
+          <div style={eyebrowStyle}>Atlas</div>
+          <h2 style={{ margin: "5px 0", color: colors.navy }}>Loading your work view…</h2>
+          <p style={{ margin: 0, color: colors.muted }}>Checking account access before showing property information.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (teamAccessError) {
+    return (
+      <main className="atlas-app-shell" style={isMobile ? appStyle : desktopAppStyle}>
+        <section style={{ maxWidth: 560, margin: "12vh auto", padding: 22, border: `1px solid ${colors.line}`, borderRadius: 18, background: "#FFFFFF" }}>
+          <div style={eyebrowStyle}>Access Check</div>
+          <h2 style={{ margin: "5px 0", color: colors.navy }}>Could not verify this account</h2>
+          <p style={{ color: colors.muted }}>{teamAccessError}</p>
+          <button type="button" onClick={() => window.location.reload()} style={goldButtonStyle}>Refresh</button>
+        </section>
+      </main>
     );
   }
 
