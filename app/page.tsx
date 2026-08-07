@@ -16378,6 +16378,13 @@ export default function AtlasPage() {
       if (continueRapidEntry) focusRapidTaskInput(false);
       return "";
     }
+
+    // Always resolve the date at the exact moment the task is created.
+    // New tasks must never inherit a previously selected task's date or state.
+    const createdNow = new Date();
+    const createdDate = localISODate(createdNow);
+    const createdAt = createdNow.toISOString();
+
     const task: WorkPlanTask = {
       id: uid("task"),
       title: clean,
@@ -16391,32 +16398,50 @@ export default function AtlasPage() {
       fixedTime: "",
       notes: "",
     };
+
+    const cleanMeta: AtlasTaskMeta = {
+      status: "Open",
+      dueDate: createdDate,
+      assignee: "Nick",
+      createdAt,
+      completedAt: undefined,
+      notes: "",
+      instructions: "",
+      addisonNote: "",
+      problemFlag: "",
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      lastCompletedDate: "",
+      completionHistory: [],
+      season: "Year-Round",
+      weatherDependency: "None",
+      flexibleTime: true,
+      skippable: true,
+      assignmentScope: "This occurrence",
+      needsReview: false,
+      updatedAt: createdAt,
+    };
+
     setWorkPlanTasks((current) => [task, ...current]);
     setTaskMeta((current) => ({
       ...current,
-      [task.id]: {
-        status: "Open",
-        dueDate: todayISO(),
-        assignee: "Nick",
-        createdAt: new Date().toISOString(),
-        recurrenceInterval: 1,
-        recurrenceUnit: "Weeks",
-        recurrenceEndDate: "",
-        completionHistory: [],
-        season: "Year-Round",
-        weatherDependency: "None",
-        flexibleTime: true,
-        skippable: true,
-      },
+      [task.id]: cleanMeta,
     }));
+
+    // A newly-created task is today's work by default, regardless of which
+    // dated task was selected before creation.
+    setTaskListFilter("today");
     setSelectedTaskId(task.id);
     setNewTaskTitle("");
-    showSaveToast("Task added.");
+    showSaveToast(`Task added for ${formatDate(createdDate)}.`);
+
     if (continueRapidEntry) {
       requestAnimationFrame(() => {
         rapidTaskInputRef.current?.focus();
       });
     }
+
     return task.id;
   }
 
@@ -20663,7 +20688,8 @@ ${notes.trim()}` : notes.trim(),
       if (!title) return;
       const taskId = addAtlasTask(title);
       if (!taskId) return;
-      updateTaskDetails(taskId, { assignee: person, dueDate: today, status: "Open", assignmentScope: "This occurrence" });
+      const submittedDate = localISODate(new Date());
+      updateTaskDetails(taskId, { assignee: person, dueDate: submittedDate, status: "Open", assignmentScope: "This occurrence", completedAt: undefined, lastCompletedDate: "", completionHistory: [], needsReview: false });
       if (input) {
         input.value = "";
         input.focus();
@@ -20703,7 +20729,8 @@ ${notes.trim()}` : notes.trim(),
       if (kind === "task" || kind === "addison") {
         const taskId = addAtlasTask(text);
         if (!taskId) return;
-        updateTaskDetails(taskId, { assignee: kind === "addison" ? "Addison" : "Nick", dueDate: today, status: "Open", assignmentScope: "This occurrence" });
+        const submittedDate = localISODate(new Date());
+        updateTaskDetails(taskId, { assignee: kind === "addison" ? "Addison" : "Nick", dueDate: submittedDate, status: "Open", assignmentScope: "This occurrence", completedAt: undefined, lastCompletedDate: "", completionHistory: [], needsReview: false });
         setQuickCaptureNote("");
         showSaveToast(kind === "addison" ? "Added to Addison’s list." : "Added to Nick’s list.");
         return;
