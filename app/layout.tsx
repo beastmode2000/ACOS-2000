@@ -1,13 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Atlas 2000",
-  description: "Atlas Estate Systems / 2000 private estate operations",
-  applicationName: "Atlas 2000",
+  title: "Atlas",
+  description: "Atlas Estate Systems for 2000.",
+  applicationName: "Atlas",
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Atlas",
+    statusBarStyle: "black-translucent",
+  },
   icons: {
     icon: "/atlas-logo.png",
+    shortcut: "/atlas-logo.png",
     apple: "/atlas-logo.png",
   },
 };
@@ -16,14 +21,22 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false,
-  viewportFit: "cover",
   themeColor: "#0B1E33",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
+      <head>
+        <link rel="icon" href="/atlas-logo.png" type="image/png" />
+        <link rel="shortcut icon" href="/atlas-logo.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/atlas-logo.png" />
+      </head>
+
       <body>{children}</body>
     </html>
   );
