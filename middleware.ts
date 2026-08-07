@@ -21,6 +21,7 @@ function redirectOldTokenLink(
   url.pathname = basePath;
   url.search = "";
   url.searchParams.set("token", token);
+
   return NextResponse.redirect(url);
 }
 
@@ -28,7 +29,6 @@ function isPublicPath(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (pathname.startsWith("/_next/")) return true;
-  if (pathname === "/favicon.ico") return true;
   if (pathname === "/manifest.json") return true;
   if (pathname === "/robots.txt") return true;
   if (pathname === "/site.webmanifest") return true;
@@ -36,20 +36,15 @@ function isPublicPath(request: NextRequest) {
   if (pathname === "/atlas-icon-192.png") return true;
   if (pathname === "/atlas-icon-512.png") return true;
   if (pathname === "/apple-touch-icon.png") return true;
+  if (pathname === "/atlas-logo.png") return true;
+
   if (pathname === "/login") return true;
   if (pathname === "/api/atlas-login") return true;
-  if (pathname === "/invite") return true;
-  if (pathname === "/api/atlas-invite") return true;
   if (pathname === "/api/atlas-logout") return true;
-  if (
-    pathname === "/api/atlas-push/daily" &&
-    process.env.CRON_SECRET &&
-    request.headers.get("authorization") ===
-      `Bearer ${process.env.CRON_SECRET}`
-  )
-    return true;
 
-  if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(pathname)) {
+  if (
+    /\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(pathname)
+  ) {
     return true;
   }
 
@@ -63,7 +58,11 @@ function isPublicPath(request: NextRequest) {
 
 function base64UrlEncodeBytes(bytes: Uint8Array) {
   let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
   return btoa(binary)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -78,27 +77,38 @@ function base64UrlDecodeText(value: string) {
   const padded =
     value.replace(/-/g, "+").replace(/_/g, "/") +
     "===".slice((value.length + 3) % 4);
+
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
+
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);
   }
+
   return new TextDecoder().decode(bytes);
 }
 
-async function signSessionPayload(payloadBase64: string, secret: string) {
+async function signSessionPayload(
+  payloadBase64: string,
+  secret: string,
+) {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+    },
     false,
     ["sign"],
   );
+
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
     new TextEncoder().encode(payloadBase64),
   );
+
   return base64UrlEncodeBytes(new Uint8Array(signature));
 }
 
@@ -107,38 +117,60 @@ async function verifySessionCookie(
   expectedUsername: string,
   secret: string,
 ) {
-  if (!cookieValue) return null;
-  const [payloadBase64, signature] = cookieValue.split(".");
-  if (!payloadBase64 || !signature) return null;
+  if (!cookieValue) return false;
 
-  const expectedSignature = await signSessionPayload(payloadBase64, secret);
-  if (signature !== expectedSignature) return null;
+  const [payloadBase64, signature] = cookieValue.split(".");
+
+  if (!payloadBase64 || !signature) {
+    return false;
+  }
+
+  const expectedSignature = await signSessionPayload(
+    payloadBase64,
+    secret,
+  );
+
+  if (signature !== expectedSignature) {
+    return false;
+  }
 
   try {
-    const payload = JSON.parse(base64UrlDecodeText(payloadBase64)) as {
+    const payload = JSON.parse(
+      base64UrlDecodeText(payloadBase64),
+    ) as {
       username?: string;
       expiresAt?: number;
-      email?: string;
-      role?: string;
-      propertyIds?: string[];
-      permissions?: Record<string, boolean>;
     };
-    if (payload.username !== expectedUsername) return null;
-    if (!payload.expiresAt || Date.now() > payload.expiresAt) return null;
-    return payload;
+
+    if (payload.username !== expectedUsername) {
+      return false;
+    }
+
+    if (!payload.expiresAt || Date.now() > payload.expiresAt) {
+      return false;
+    }
+
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }
 
 function getBasicAuth(request: NextRequest) {
   const header = request.headers.get("authorization") || "";
-  if (!header.startsWith("Basic ")) return null;
+
+  if (!header.startsWith("Basic ")) {
+    return null;
+  }
 
   try {
     const decoded = atob(header.slice(6));
     const separatorIndex = decoded.indexOf(":");
-    if (separatorIndex === -1) return null;
+
+    if (separatorIndex === -1) {
+      return null;
+    }
+
     return {
       username: decoded.slice(0, separatorIndex),
       password: decoded.slice(separatorIndex + 1),
@@ -148,75 +180,127 @@ function getBasicAuth(request: NextRequest) {
   }
 }
 
-function createBasicAuthHeader(username: string, password: string) {
+function createBasicAuthHeader(
+  username: string,
+  password: string,
+) {
   return `Basic ${btoa(`${username}:${password}`)}`;
 }
 
 function redirectToLogin(request: NextRequest) {
   const loginUrl = request.nextUrl.clone();
+
   loginUrl.pathname = "/login";
   loginUrl.search = "";
   loginUrl.searchParams.set(
     "next",
     `${request.nextUrl.pathname}${request.nextUrl.search}`,
   );
+
   return NextResponse.redirect(loginUrl);
 }
 
 export async function middleware(request: NextRequest) {
-  const redirectedLandscape = redirectOldTokenLink(request, "/landscape-help");
-  if (redirectedLandscape) return redirectedLandscape;
+  /*
+   * Browsers may request /favicon.ico automatically even though
+   * Atlas already uses /atlas-logo.png.
+   *
+   * Serve the existing Atlas logo at that path so the browser
+   * receives a valid response instead of a 404.
+   */
+  if (request.nextUrl.pathname === "/favicon.ico") {
+    const logoUrl = request.nextUrl.clone();
+    logoUrl.pathname = "/atlas-logo.png";
+    logoUrl.search = "";
 
-  const redirectedRequest = redirectOldTokenLink(request, "/request");
-  if (redirectedRequest) return redirectedRequest;
+    return NextResponse.rewrite(logoUrl);
+  }
 
-  if (isPublicPath(request)) return NextResponse.next();
+  const redirectedLandscape = redirectOldTokenLink(
+    request,
+    "/landscape-help",
+  );
 
-  const expectedUsername = process.env.ATLAS_ACCESS_USERNAME || "";
-  const expectedPassword = process.env.ATLAS_ACCESS_PASSWORD || "";
+  if (redirectedLandscape) {
+    return redirectedLandscape;
+  }
+
+  const redirectedRequest = redirectOldTokenLink(
+    request,
+    "/request",
+  );
+
+  if (redirectedRequest) {
+    return redirectedRequest;
+  }
+
+  if (isPublicPath(request)) {
+    return NextResponse.next();
+  }
+
+  const expectedUsername =
+    process.env.ATLAS_ACCESS_USERNAME || "";
+
+  const expectedPassword =
+    process.env.ATLAS_ACCESS_PASSWORD || "";
 
   if (!expectedUsername || !expectedPassword) {
     return new NextResponse(
       "Atlas access is not configured. Add ATLAS_ACCESS_USERNAME and ATLAS_ACCESS_PASSWORD in Vercel environment variables.",
-      { status: 500 },
+      {
+        status: 500,
+      },
     );
   }
 
-  const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
-  const session = await verifySessionCookie(
+  const sessionCookie =
+    request.cookies.get(SESSION_COOKIE)?.value;
+
+  const hasValidSession = await verifySessionCookie(
     sessionCookie,
     expectedUsername,
     expectedPassword,
   );
+
   const basicAuth = getBasicAuth(request);
+
   const hasValidBasicAuth =
     basicAuth?.username === expectedUsername &&
     basicAuth?.password === expectedPassword;
 
-  if (session || hasValidBasicAuth) {
+  if (hasValidSession || hasValidBasicAuth) {
     const requestHeaders = new Headers(request.headers);
+
     requestHeaders.set(
       "authorization",
-      createBasicAuthHeader(expectedUsername, expectedPassword),
+      createBasicAuthHeader(
+        expectedUsername,
+        expectedPassword,
+      ),
     );
-    requestHeaders.set("x-atlas-user-email", session?.email || "");
-    requestHeaders.set("x-atlas-user-role", session?.role || "administrator");
-    requestHeaders.set("x-atlas-property-ids", JSON.stringify(session?.propertyIds || ["2000"]));
-    requestHeaders.set("x-atlas-permissions", JSON.stringify(session?.permissions || {}));
 
     const response = NextResponse.next({
-      request: { headers: requestHeaders },
+      request: {
+        headers: requestHeaders,
+      },
     });
 
-    if (hasValidBasicAuth && !session) {
-      const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
+    if (hasValidBasicAuth && !hasValidSession) {
+      const expiresAt =
+        Date.now() + SESSION_TTL_SECONDS * 1000;
+
       const payloadBase64 = base64UrlEncodeText(
-        JSON.stringify({ username: expectedUsername, expiresAt }),
+        JSON.stringify({
+          username: expectedUsername,
+          expiresAt,
+        }),
       );
+
       const signature = await signSessionPayload(
         payloadBase64,
         expectedPassword,
       );
+
       response.cookies.set(
         SESSION_COOKIE,
         `${payloadBase64}.${signature}`,
@@ -234,7 +318,12 @@ export async function middleware(request: NextRequest) {
   }
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
-    return new NextResponse("Atlas login required.", { status: 401 });
+    return new NextResponse(
+      "Atlas login required.",
+      {
+        status: 401,
+      },
+    );
   }
 
   return redirectToLogin(request);
