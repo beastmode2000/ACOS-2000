@@ -20618,7 +20618,7 @@ ${notes.trim()}` : notes.trim(),
     const dashboardTomorrowTasks = workPlanTasks.filter((task) => {
       const meta = taskDetails(task.id);
       return task.category !== "Atlas List Definition" && !meta.listId && meta.status !== "Completed" && meta.dueDate === dashboardTomorrow;
-    }).sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.priority] - { High: 0, Medium: 1, Low: 2 }[b.priority]);
+    }).sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.priority] - { High: 0, Medium: 1, Low: 2 }[b.priority]));
     const dashboardAttentionTasks = workPlanTasks.filter((task) => {
       const meta = taskDetails(task.id);
       if (task.category === "Atlas List Definition" || meta.listId || meta.status === "Completed") return false;
