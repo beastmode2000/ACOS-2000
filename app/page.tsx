@@ -5553,7 +5553,8 @@ export default function AtlasPage() {
   const [dashboardTaskQuickAdd, setDashboardTaskQuickAdd] = useState<Record<"Nick" | "Addison", string>>({ Nick: "", Addison: "" });
   const [dashboardPersonFocus, setDashboardPersonFocus] = useState<"Both" | "Nick" | "Addison">("Both");
   const [dashboardReminderDraft, setDashboardReminderDraft] = useState("");
-  const [dashboardReminders, setDashboardReminders] = useState<Array<{ id: string; text: string; done: boolean; createdAt: string }>>([]);
+  const [dashboardReminderDate, setDashboardReminderDate] = useState("");
+  const [dashboardReminders, setDashboardReminders] = useState<Array<{ id: string; text: string; done: boolean; createdAt: string; dueDate?: string }>>([]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -5569,6 +5570,17 @@ export default function AtlasPage() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(`atlas-dashboard-reminders-v1:${activePropertyId}`, JSON.stringify(dashboardReminders));
   }, [activePropertyId, dashboardReminders]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(`atlas-dashboard-person-focus-v1:${activePropertyId}`);
+    if (stored === "Nick" || stored === "Addison" || stored === "Both") setDashboardPersonFocus(stored);
+  }, [activePropertyId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(`atlas-dashboard-person-focus-v1:${activePropertyId}`, dashboardPersonFocus);
+  }, [activePropertyId, dashboardPersonFocus]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -20602,6 +20614,19 @@ ${notes.trim()}` : notes.trim(),
       if (task.category === "Atlas List Definition" || meta.listId || assignee !== person || meta.status !== "Completed") return false;
       return meta.completedAt?.slice(0, 10) !== today && !meta.completionHistory?.includes(today);
     }).sort((a, b) => String(taskDetails(b.id).completedAt || "").localeCompare(String(taskDetails(a.id).completedAt || ""))).slice(0, 20);
+    const dashboardTomorrow = addDays(today, 1);
+    const dashboardTomorrowTasks = workPlanTasks.filter((task) => {
+      const meta = taskDetails(task.id);
+      return task.category !== "Atlas List Definition" && !meta.listId && meta.status !== "Completed" && meta.dueDate === dashboardTomorrow;
+    }).sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.priority] - { High: 0, Medium: 1, Low: 2 }[b.priority]);
+    const dashboardAttentionTasks = workPlanTasks.filter((task) => {
+      const meta = taskDetails(task.id);
+      if (task.category === "Atlas List Definition" || meta.listId || meta.status === "Completed") return false;
+      return meta.status === "Blocked" || meta.status === "Waiting" || (Boolean(meta.dueDate) && meta.dueDate < today) || (task.priority === "High" && (!meta.dueDate || meta.dueDate <= today));
+    }).slice(0, 8);
+    const dashboardAttentionNotes = dashboardReminders.filter((note) => !note.done && Boolean(note.dueDate) && String(note.dueDate) <= today);
+    const dashboardAttentionCount = dashboardAttentionTasks.length + dashboardAttentionNotes.length;
+
     const activeDashboardLists = checklistDefinitions().map((definition) => {
       const records = workPlanTasks.filter((task) => taskDetails(task.id).listId === definition.id || (definition.id === "graduation-party" && task.category === "Graduation Party Checklist"));
       const items = records.filter((task) => task.category !== "Atlas List Definition");
@@ -20641,8 +20666,32 @@ ${notes.trim()}` : notes.trim(),
     const addDashboardReminder = () => {
       const text = dashboardReminderDraft.trim();
       if (!text) return;
-      setDashboardReminders((current) => [{ id: uid("dashboard-note"), text, done: false, createdAt: new Date().toISOString() }, ...current]);
+      setDashboardReminders((current) => [{ id: uid("dashboard-note"), text, done: false, createdAt: new Date().toISOString(), dueDate: dashboardReminderDate || undefined }, ...current]);
       setDashboardReminderDraft("");
+      setDashboardReminderDate("");
+    };
+    const dashboardQuickCapture = (kind: "note" | "task" | "addison" | "work-order") => {
+      const text = quickCaptureNote.trim();
+      if (!text) return;
+      if (kind === "note") {
+        setDashboardReminders((current) => [{ id: uid("dashboard-note"), text, done: false, createdAt: new Date().toISOString() }, ...current]);
+        setQuickCaptureNote("");
+        showSaveToast("Saved to Quick Notes.");
+        return;
+      }
+      if (kind === "task" || kind === "addison") {
+        const taskId = addAtlasTask(text);
+        if (!taskId) return;
+        updateTaskDetails(taskId, { assignee: kind === "addison" ? "Addison" : "Nick", dueDate: today, status: "Open", assignmentScope: "This occurrence" });
+        setQuickCaptureNote("");
+        showSaveToast(kind === "addison" ? "Added to Addison’s list." : "Added to Nick’s list.");
+        return;
+      }
+      setQuickCreateKind("work-order");
+      setQuickCreateName(text);
+      setQuickCaptureMode("create");
+      setQuickCaptureOpen(true);
+      setQuickCaptureNote("");
     };
     const morningBriefText = [
       `Good morning. Your ${dayName} routine checklist is ready.`,
@@ -20665,6 +20714,16 @@ ${notes.trim()}` : notes.trim(),
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, background: `linear-gradient(135deg, ${colors.navy}, #173E68)`, color: "#FFFFFF", border: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Mission Control</div><h1 style={{ margin: "3px 0", fontSize: isMobile ? 24 : 29 }}>Your day at {activeProperty.name}</h1><small style={{ opacity: .82 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setMorningBriefOpen(true)} style={teamGoldButtonStyle}>Morning Brief</button><button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Calendar</button><button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Edit Routine</button></div></div>
         </section>
+        <section style={{ ...cardStyle, padding: isMobile ? 11 : 14, borderColor: "#D7C07A", background: "linear-gradient(135deg,#FFFDF6,#FFFFFF)" }}>
+          <div><div style={eyebrowStyle}>Quick Capture</div><h2 style={{ margin: "2px 0", color: colors.navy }}>What’s on your mind?</h2><small style={mutedSmallStyle}>Type it once, then choose where it belongs.</small></div>
+          <input autoComplete="off" value={quickCaptureNote} onChange={(event) => setQuickCaptureNote(event.currentTarget.value)} onKeyDown={(event) => { const key = event.key.toLowerCase(); if (event.key === "Enter") { event.preventDefault(); dashboardQuickCapture("task"); } else if (event.altKey && key === "n") { event.preventDefault(); dashboardQuickCapture("task"); } else if (event.altKey && key === "a") { event.preventDefault(); dashboardQuickCapture("addison"); } else if (event.altKey && key === "r") { event.preventDefault(); dashboardQuickCapture("note"); } else if (event.altKey && key === "w") { event.preventDefault(); dashboardQuickCapture("work-order"); } }} placeholder="Call vendor, buy supplies, remember an issue, give Addison work…" style={{ ...inputStyle, minHeight: 42, marginTop: 10, fontSize: 14 }}/>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 8 }}><button type="button" disabled={!quickCaptureNote.trim()} onClick={() => dashboardQuickCapture("note")} style={secondaryButtonStyle}>Quick Note</button><button type="button" disabled={!quickCaptureNote.trim()} onClick={() => dashboardQuickCapture("task")} style={goldButtonStyle}>Nick Task</button><button type="button" disabled={!quickCaptureNote.trim()} onClick={() => dashboardQuickCapture("addison")} style={secondaryButtonStyle}>Addison Task</button><button type="button" disabled={!quickCaptureNote.trim()} onClick={() => dashboardQuickCapture("work-order")} style={secondaryButtonStyle}>Work Order</button></div>
+          <small style={{ ...mutedSmallStyle, display: "block", marginTop: 7 }}>Keyboard: Enter or Alt+N = Nick · Alt+A = Addison · Alt+R = note · Alt+W = work order</small>
+        </section>
+        <section style={{ ...cardStyle, padding: isMobile ? 11 : 13, borderColor: dashboardAttentionCount ? "#E5B6B6" : "#CFE3D8", background: dashboardAttentionCount ? "#FFF8F8" : "#F7FCF9" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Needs Attention</div><h2 style={{ margin: "2px 0", color: colors.navy }}>{dashboardAttentionCount ? `${dashboardAttentionCount} item${dashboardAttentionCount === 1 ? "" : "s"} need a decision` : "Nothing urgent right now"}</h2><small style={mutedSmallStyle}>Only overdue, blocked, waiting, high-priority, or due reminders appear here.</small></div><span style={badgeStyle(dashboardAttentionCount ? "Blocked" : "Completed")}>{dashboardAttentionCount}</span></div>
+          {dashboardAttentionCount ? <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{dashboardAttentionTasks.map((task) => { const meta = taskDetails(task.id); return <button key={`attention-${task.id}`} type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: "1px solid #E7C8C8", borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{task.title}</strong><small style={mutedSmallStyle}>{meta.status} · {meta.dueDate ? formatDate(meta.dueDate) : task.priority + " priority"} · {meta.assignee || "Nick"}</small></button>; })}{dashboardAttentionNotes.map((note) => <div key={`attention-note-${note.id}`} style={{ border: "1px solid #E7C8C8", borderRadius: 9, background: "#FFFFFF", padding: 8 }}><strong style={{ display: "block", color: colors.navy }}>{note.text}</strong><small style={mutedSmallStyle}>Reminder due {note.dueDate ? formatDate(note.dueDate) : "today"}</small></div>)}</div> : null}
+        </section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
           <AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} onAssignmentChange={syncRoutineAssignment} />
           <div style={{ display: "grid", gap: 12 }}>
@@ -20677,14 +20736,6 @@ ${notes.trim()}` : notes.trim(),
                 <button type="button" onClick={logDashboardVendorVisit} disabled={!dashboardVendorVisitId && !dashboardVendorVisitNote.trim()} style={{ ...goldButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11, opacity: !dashboardVendorVisitId && !dashboardVendorVisitNote.trim() ? .55 : 1 }}>Log Visit</button>
               </div>
             </section>
-            <section style={cardStyle}>
-              <div><div style={eyebrowStyle}>Notes & Reminders</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Dashboard scratchpad</h2></div>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, marginTop: 10 }}>
-                <input value={dashboardReminderDraft} onChange={(event) => setDashboardReminderDraft(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addDashboardReminder(); }} placeholder="Add a note or reminder…" style={inputStyle}/>
-                <button type="button" onClick={addDashboardReminder} style={goldButtonStyle}>Add</button>
-              </div>
-              <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 250, overflowY: "auto" }}>{dashboardReminders.map((note) => <div key={note.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: note.done ? "#F5F7F9" : "#FFFFFF" }}><input type="checkbox" checked={note.done} onChange={() => setDashboardReminders((current) => current.map((item) => item.id === note.id ? { ...item, done: !item.done } : item))}/><button type="button" onClick={() => { const text = window.prompt("Edit note or reminder", note.text)?.trim(); if (text) setDashboardReminders((current) => current.map((item) => item.id === note.id ? { ...item, text } : item)); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}>{note.text}</button><button type="button" onClick={() => setDashboardReminders((current) => current.filter((item) => item.id !== note.id))} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button></div>)}{!dashboardReminders.length ? <div style={noticeStyle}>Add quick notes, reminders, follow-ups, or things to remember.</div> : null}</div>
-            </section>
           </div>
         </div>
         <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
@@ -20692,6 +20743,19 @@ ${notes.trim()}` : notes.trim(),
           <div style={{ display: "grid", gridTemplateColumns: isMobile || dashboardPersonFocus !== "Both" ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 11, marginTop: 12 }}>
             {(["Nick","Addison"] as const).filter((person) => dashboardPersonFocus === "Both" || dashboardPersonFocus === person).map((person) => { const tasks = person === "Nick" ? nickDashboardTasks : addisonDashboardTasks; const completed = tasks.filter((task) => { const meta = taskDetails(task.id); return Boolean(meta.completionHistory?.includes(today) || meta.completedAt?.slice(0,10) === today); }).length; const history = dashboardTaskHistoryFor(person); return <section key={`dashboard-person-${person}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FAFCFE", minWidth: 0 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={fieldLabelStyle}>{person.toUpperCase()}</div><strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{person}’s list</strong></div><span style={badgeStyle(completed === tasks.length && tasks.length ? "Completed" : "Scheduled")}>{completed}/{tasks.length}</span></div><div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}><input value={dashboardTaskQuickAdd[person]} onChange={(event) => setDashboardTaskQuickAdd((current) => ({ ...current, [person]: event.currentTarget.value }))} onKeyDown={(event) => { if (event.key === "Enter") addDashboardTaskFor(person); }} placeholder={`Add to ${person}…`} style={{ ...inputStyle, minHeight: 34 }}/><button type="button" onClick={() => addDashboardTaskFor(person)} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px" }}>Add</button></div><div style={{ display: "grid", gap: 6, marginTop: 9 }}>{tasks.map((task) => { const meta = taskDetails(task.id); const done = Boolean(meta.completionHistory?.includes(today) || meta.completedAt?.slice(0,10) === today); const editing = dashboardTaskEditorId === task.id; return <div key={`dashboard-person-task-${task.id}`} style={{ border: `1px solid ${done ? "#B8E0CD" : colors.line}`, borderRadius: 10, background: done ? "#EFFAF4" : "#FFFFFF", padding: 8 }}><div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><input type="checkbox" checked={done} onChange={() => done ? updateTaskDetails(task.id, { status: "Open", completedAt: undefined, completionHistory: (meta.completionHistory || []).filter((date) => date !== today), needsReview: false, dueDate: today }) : completeAtlasTask(task)}/><button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy, textDecoration: done ? "line-through" : "none", opacity: done ? .62 : 1, overflow: "hidden", textOverflow: "ellipsis" }}>{task.title}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{meta.dueDate ? formatDate(meta.dueDate) : "Today"} · {minutesLabel(task.minutes)}</small></button><button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ ...compactUtilityButtonStyle }}>{editing ? "Close" : "Edit"}</button></div>{editing ? <div style={{ display: "grid", gap: 7, marginTop: 9, paddingTop: 9, borderTop: `1px solid ${colors.line}` }}><input value={task.title} onChange={(event) => updateWorkPlanTask(task.id, { title: event.currentTarget.value })} style={inputStyle}/><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 7 }}><input type="date" value={meta.dueDate || today} onChange={(event) => updateTaskDetails(task.id, { dueDate: event.currentTarget.value })} style={inputStyle}/><select value={meta.assignee === "Addison" ? "Addison" : "Nick"} onChange={(event) => updateTaskDetails(task.id, { assignee: event.currentTarget.value as "Nick" | "Addison" })} style={inputStyle}><option value="Nick">Nick</option><option value="Addison">Addison</option></select><input type="number" min={5} step={5} value={task.minutes} onChange={(event) => updateWorkPlanTask(task.id, { minutes: Math.max(5, Number(event.currentTarget.value) || 5) })} style={inputStyle}/></div><textarea value={meta.notes || task.notes || ""} onChange={(event) => updateTaskDetails(task.id, { notes: event.currentTarget.value })} placeholder="Notes or instructions" rows={2} style={{ ...inputStyle, resize: "vertical" }}/><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => updateTaskDetails(task.id, { dueDate: addDays(today, 1), status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Move Tomorrow</button><button type="button" onClick={() => updateTaskDetails(task.id, { assignee: person === "Nick" ? "Addison" : "Nick", status: "Open" })} style={secondaryButtonStyle}>Move to {person === "Nick" ? "Addison" : "Nick"}</button><button type="button" onClick={() => { if (window.confirm(`Delete ${task.title}?`)) { deleteAtlasTask(task.id); setDashboardTaskEditorId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button></div></div> : null}</div>; })}{!tasks.length ? <div style={noticeStyle}>No work on {person}’s list today.</div> : null}</div>{history.length ? <details style={{ marginTop: 9 }}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.navy }}>Completed history · {history.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 7 }}>{history.map((task) => <div key={`history-${person}-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, padding: 7, borderRadius: 8, background: "#F3F5F7" }}><button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.navy, fontWeight: 800, textDecoration: "line-through", opacity: .58 }}>{task.title}</button><button type="button" onClick={() => updateTaskDetails(task.id, { status: "Open", completedAt: undefined, dueDate: today })} style={compactUtilityButtonStyle}>Reopen</button></div>)}</div></details> : null}</section>; })}
           </div>
+        </section>
+        <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Quick Notes</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Remember it here</h2><small style={mutedSmallStyle}>Notes stay on this property until you complete or delete them.</small></div><span style={badgeStyle("Monitor")}>{dashboardReminders.filter((note) => !note.done).length} open</span></div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 150px auto", gap: 7, marginTop: 10 }}>
+            <input value={dashboardReminderDraft} onChange={(event) => setDashboardReminderDraft(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addDashboardReminder(); }} placeholder="Add a note, reminder, or follow-up…" style={inputStyle}/>
+            <input type="date" value={dashboardReminderDate} onChange={(event) => setDashboardReminderDate(event.currentTarget.value)} aria-label="Reminder date" style={inputStyle}/>
+            <button type="button" onClick={addDashboardReminder} style={goldButtonStyle}>Add</button>
+          </div>
+          <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 280, overflowY: "auto" }}>{dashboardReminders.map((note) => <div key={note.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: note.done ? "#F5F7F9" : "#FFFFFF" }}><input type="checkbox" checked={note.done} onChange={() => setDashboardReminders((current) => current.map((item) => item.id === note.id ? { ...item, done: !item.done } : item))}/><button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) setDashboardReminders((current) => current.map((item) => item.id === note.id ? { ...item, text } : item)); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button><button type="button" onClick={() => setDashboardReminders((current) => current.filter((item) => item.id !== note.id))} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button></div>)}{!dashboardReminders.length ? <div style={noticeStyle}>No notes yet. Add anything you do not want to forget.</div> : null}</div>
+        </section>
+        <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Tomorrow</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Next up</h2><small style={mutedSmallStyle}>A compact preview so you can move work without opening the planner.</small></div><span style={badgeStyle("Scheduled")}>{dashboardTomorrowTasks.length}</span></div>
+          <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{dashboardTomorrowTasks.slice(0, 8).map((task) => { const meta = taskDetails(task.id); return <div key={`tomorrow-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}><button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.navy, cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>{meta.assignee || "Nick"} · {minutesLabel(task.minutes)}</small></button><button type="button" onClick={() => updateTaskDetails(task.id, { dueDate: today, status: "Open", completedAt: undefined })} style={compactUtilityButtonStyle}>Move to Today</button></div>; })}{!dashboardTomorrowTasks.length ? <div style={noticeStyle}>Nothing is scheduled for tomorrow yet.</div> : null}</div>
         </section>
         {activeDashboardLists.map((list) => <section key={`dashboard-list-${list.id}`} style={{ ...cardStyle, padding: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 9, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Active List</div><h2 style={{ margin: "2px 0", color: colors.navy }}>{list.name}</h2><small style={mutedSmallStyle}>{list.completed} of {list.items.length} complete</small></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => { setSelectedListId(list.id); setTasksView("lists"); setScreen("planner"); }} style={secondaryButtonStyle}>Open List</button><button type="button" onClick={() => removeListFromDashboard(list.id)} style={compactUtilityButtonStyle}>Remove</button></div></div>
