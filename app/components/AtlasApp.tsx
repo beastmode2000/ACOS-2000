@@ -3419,7 +3419,7 @@ export default function AtlasApp() {
 
   const restrictedTeamScreenIds = new Set<AtlasScreen>(
     isAddisonUser
-      ? ["dashboard"]
+      ? ["planner", "routines"]
       : isSeanMarineUser
         ? ["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"]
         : ["dashboard", "history", "calendar", "assets", "documents", "procedures"],
@@ -3432,7 +3432,7 @@ export default function AtlasApp() {
         {
           label: isAddisonUser ? "My Day" : isSeanMarineUser ? "Marine Operations" : "My Atlas",
           items: isAddisonUser
-            ? (["dashboard"] as AtlasScreen[])
+            ? (["planner", "routines"] as AtlasScreen[])
             : isSeanMarineUser
               ? (["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"] as AtlasScreen[])
               : (["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[]),
@@ -3444,10 +3444,15 @@ export default function AtlasApp() {
     : atlasMoreToolsScreens;
 
   useEffect(() => {
+    if (isAddisonUser) {
+      if (tasksView !== "tasks") setTasksView("tasks");
+      if (!restrictedTeamScreenIds.has(screen)) setScreen("planner");
+      return;
+    }
     if (isTeamScopedUser && !restrictedTeamScreenIds.has(screen)) {
       setScreen("dashboard");
     }
-  }, [isTeamScopedUser, screen]);
+  }, [isAddisonUser, isTeamScopedUser, screen, tasksView]);
 
   const selectedService =
     serviceRecords.find((service) => service.id === selectedServiceId) ??
@@ -14161,7 +14166,13 @@ ${notes.trim()}` : notes.trim(),
     }} />;
   }
   function renderRoutines() {
-    return <AtlasRoutines mode="manager" isMobile={isMobile} activePropertyId={activePropertyId} />;
+    return (
+      <AtlasRoutines
+        mode={isAddisonUser ? "dashboard" : "manager"}
+        isMobile={isMobile}
+        activePropertyId={activePropertyId}
+      />
+    );
   }
 
   function renderTeamWork() {
@@ -22746,7 +22757,9 @@ ${notes.trim()}` : notes.trim(),
   function renderScreen() {
     let content: React.ReactNode;
 
-    if (departmentCenter) content = renderDepartmentCenter(departmentCenter);
+    if (isAddisonUser) {
+      content = screen === "routines" ? renderRoutines() : renderWorkPlanner();
+    } else if (departmentCenter) content = renderDepartmentCenter(departmentCenter);
     else if (screen === "dashboard") content = renderDashboard();
     else if (screen === "portfolio") content = renderPortfolio();
     else if (screen === "timeline")
@@ -24769,43 +24782,52 @@ ${notes.trim()}` : notes.trim(),
                 style={mobileMenuSelectStyle}
                 aria-label="Open Atlas section"
               >
-                <optgroup label="Daily Work">
-                  <option value="planner:tasks">Tasks</option>
-                  <option value="planner:lists">Lists</option>
-                </optgroup>
-                <optgroup label="Planning Tools">
-                  <option value="planner:walk">Walk Mode</option>
-                  <option value="planner:build">Build My Day</option>
-                  <option value="planner:route">Smart Route</option>
-                  <option value="planner:analytics">Operations Analytics</option>
-                  <option value="planner:week">Plan Week</option>
-                </optgroup>
-                <optgroup label="Main">
-                  {visibleAtlasScreens
-                    .filter(
-                      (item) =>
-                        item.id !== "intake" &&
-                        item.id !== "planner" &&
-                        !atlasMoreToolsScreens.includes(item.id),
-                    )
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
-                      </option>
-                    ))}
-                </optgroup>
-                <optgroup label="More Tools">
-                  {visibleMoreToolsScreens
-                    .map((screenId) =>
-                      screens.find((item) => item.id === screenId),
-                    )
-                    .filter(Boolean)
-                    .map((item) => (
-                      <option key={item!.id} value={item!.id}>
-                        {item!.label}
-                      </option>
-                    ))}
-                </optgroup>
+                {isAddisonUser ? (
+                  <optgroup label="My Day">
+                    <option value="planner:tasks">My Tasks</option>
+                    <option value="routines">My Routine</option>
+                  </optgroup>
+                ) : (
+                  <>
+                    <optgroup label="Daily Work">
+                      <option value="planner:tasks">Tasks</option>
+                      <option value="planner:lists">Lists</option>
+                    </optgroup>
+                    <optgroup label="Planning Tools">
+                      <option value="planner:walk">Walk Mode</option>
+                      <option value="planner:build">Build My Day</option>
+                      <option value="planner:route">Smart Route</option>
+                      <option value="planner:analytics">Operations Analytics</option>
+                      <option value="planner:week">Plan Week</option>
+                    </optgroup>
+                    <optgroup label="Main">
+                      {visibleAtlasScreens
+                        .filter(
+                          (item) =>
+                            item.id !== "intake" &&
+                            item.id !== "planner" &&
+                            !atlasMoreToolsScreens.includes(item.id),
+                        )
+                        .map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="More Tools">
+                      {visibleMoreToolsScreens
+                        .map((screenId) =>
+                          screens.find((item) => item.id === screenId),
+                        )
+                        .filter(Boolean)
+                        .map((item) => (
+                          <option key={item!.id} value={item!.id}>
+                            {item!.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </>
+                )}
               </select>
               {!isTeamScopedUser ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -24832,10 +24854,12 @@ ${notes.trim()}` : notes.trim(),
                     <div style={sidebarNavItemsStyle}>
                       {section.items.map((screenId) => {
                         if (screenId === "planner") {
-                          const workNavigation = [
-                            { id: "tasks", label: "Tasks", view: "tasks" as const },
-                            { id: "lists", label: "Lists", view: "lists" as const },
-                          ];
+                          const workNavigation = isAddisonUser
+                            ? [{ id: "tasks", label: "My Tasks", view: "tasks" as const }]
+                            : [
+                                { id: "tasks", label: "Tasks", view: "tasks" as const },
+                                { id: "lists", label: "Lists", view: "lists" as const },
+                              ];
                           return (
                             <React.Fragment key="work-navigation">
                               {workNavigation.map((entry) => {
@@ -24898,7 +24922,13 @@ ${notes.trim()}` : notes.trim(),
                                 screen === item.id ? colors.navy : "#FFFFFF",
                             }}
                           >
-                            <span className="atlas-sidebar-nav-label">{item.id === "timeline" ? "Projects" : item.label}</span>
+                            <span className="atlas-sidebar-nav-label">
+                              {isAddisonUser && item.id === "routines"
+                                ? "My Routine"
+                                : item.id === "timeline"
+                                  ? "Projects"
+                                  : item.label}
+                            </span>
                           </button>
                         );
                       })}
@@ -25056,7 +25086,9 @@ ${notes.trim()}` : notes.trim(),
                         : screen === "timeline"
                           ? "Projects"
                           : screen === "planner"
-                            ? tasksView === "walk" ? "Walk Mode"
+                            ? isAddisonUser
+                              ? "My Tasks"
+                              : tasksView === "walk" ? "Walk Mode"
                               : tasksView === "build" ? "Build My Day"
                               : tasksView === "route" ? "Smart Route"
                               : tasksView === "addison" ? "Addison Work Manager"
@@ -25065,7 +25097,9 @@ ${notes.trim()}` : notes.trim(),
                               : tasksView === "seasonal" ? "Seasonal Intelligence"
                               : tasksView === "planner" ? "Plan Week"
                               : "Tasks"
-                            : screens.find((item) => item.id === screen)?.label}
+                            : isAddisonUser && screen === "routines"
+                              ? "My Routine"
+                              : screens.find((item) => item.id === screen)?.label}
                   </h1>
                   <div
                     role="status"
