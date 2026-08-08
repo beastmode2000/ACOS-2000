@@ -1903,7 +1903,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   }).filter((list) => list.pinned);
   const removeListFromDashboard = (listId: string) => {
     const list = activeDashboardLists.find((item) => item.id === listId);
-    const itemIds = new Set((list?.records || []).map((task) => task.id));
+    const itemIds = new Set<string>((list?.records || []).map((task: any) => String(task.id)));
     setTaskMeta((current) => {
       const next = { ...current };
       itemIds.forEach((id) => { next[id] = { ...taskDetails(id), dashboardListPinned: false, updatedAt: new Date().toISOString() }; });
@@ -2406,11 +2406,11 @@ export default function AtlasDashboardWorkspace(props: any) {
     ? Math.round((assetRecords.filter((asset) => Boolean(asset.notes || asset.make || asset.model || asset.serial)).length / assetRecords.length) * 100)
     : 100;
   const recurringMissed = openWork.filter((record) => Boolean(record.recurring) && Boolean(record.date) && String(record.date) < today);
-  const duplicateGroups = Object.values(openWork.reduce((groups, record) => {
+  const duplicateGroups = (Object.values(openWork.reduce((groups, record) => {
     const key = String(record.title || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
     if (key) (groups[key] ||= []).push(record);
     return groups;
-  }, {} as Record<string, ServiceRecord[]>)).filter((group) => group.length > 1);
+  }, {} as Record<string, ServiceRecord[]>)) as ServiceRecord[][]).filter((group) => group.length > 1);
   const safetyOpen = openWork.filter((record) => /(safety|alarm|generator|emergency|inspection|fire|leak)/i.test(workText(record)));
   const vendorIssues = waitingVendor.length + openWork.filter((record) => Boolean(record.vendorId) && String(record.date || "") < today).length;
   const estateHealthScore = Math.max(0, Math.min(100, Math.round(
@@ -2469,7 +2469,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     map[category] = (map[category] || 0) + serviceCost(record);
     return map;
   }, {} as Record<string, number>);
-  const topCategoryCosts = Object.entries(categoryCosts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const topCategoryCosts = Object.entries(categoryCosts as Record<string, number>).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const staffAnalytics = staffNames.map((name) => {
     const assigned = openWork.filter((record) => {
       const assignedTo = String((record as AtlasServiceRecord).assignedTo || "").toLowerCase();
