@@ -7917,7 +7917,7 @@ export default function AtlasApp() {
         title: `${input.source} completed: ${input.title}`,
         notes: [`[${marker}]`, input.detail || ""].filter(Boolean).join("\n"),
         date: todayISO(),
-        type: "Completion",
+        type: "Completed",
         createdAt,
       };
       return [entry, ...current];
