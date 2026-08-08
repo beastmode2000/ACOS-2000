@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import type { ContactRecord } from "../lib/atlas-types";
 import { Field } from "./AtlasUiPrimitives";
 import { ListDrawerLayout } from "./AtlasAppFoundation";
 
