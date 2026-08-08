@@ -1470,6 +1470,75 @@ export default function AtlasApp() {
     }
   }, [activePropertyId, taskMeta]);
 
+
+  useEffect(() => {
+    if (!operationsHydrated || typeof window === "undefined") return;
+    const cleanupKey = `atlas-graduation-party-dedupe-v1-${activePropertyId}`;
+    if (window.localStorage.getItem(cleanupKey) === "ready") return;
+
+    const partyItems = workPlanTasks.filter(
+      (task) =>
+        task.category === "Graduation Party Checklist" ||
+        taskDetails(task.id).listId === "graduation-party",
+    );
+    if (!partyItems.length) {
+      window.localStorage.setItem(cleanupKey, "ready");
+      return;
+    }
+
+    const groups = new Map<string, WorkPlanTask[]>();
+    partyItems.forEach((task) => {
+      const key = task.title.trim().toLowerCase();
+      groups.set(key, [...(groups.get(key) || []), task]);
+    });
+
+    const duplicateIds = new Set<string>();
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const ranked = [...group].sort((a, b) => {
+        const aMeta = taskDetails(a.id);
+        const bMeta = taskDetails(b.id);
+        const aCompleted = aMeta.status === "Completed" ? 1 : 0;
+        const bCompleted = bMeta.status === "Completed" ? 1 : 0;
+        if (aCompleted !== bCompleted) return bCompleted - aCompleted;
+        const aUpdated = String(aMeta.updatedAt || aMeta.completedAt || aMeta.createdAt || "");
+        const bUpdated = String(bMeta.updatedAt || bMeta.completedAt || bMeta.createdAt || "");
+        return bUpdated.localeCompare(aUpdated);
+      });
+      ranked.slice(1).forEach((task) => duplicateIds.add(task.id));
+    }
+
+    if (duplicateIds.size) {
+      const nextTasks = workPlanTasks.filter((task) => !duplicateIds.has(task.id));
+      const nextMeta = { ...taskMeta };
+      duplicateIds.forEach((id) => delete nextMeta[id]);
+      setWorkPlanTasks(nextTasks);
+      setTaskMeta(nextMeta);
+      saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, nextTasks);
+      if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", nextTasks);
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(nextMeta),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
+        }
+      } catch {}
+
+      duplicateIds.forEach((id) => {
+        void deleteOperationalRecord("tasks" as AtlasTable, id);
+      });
+      showSaveToast(`Removed ${duplicateIds.size} duplicate Graduation Party task${duplicateIds.size === 1 ? "" : "s"}.`);
+    }
+
+    window.localStorage.setItem(
+      `atlas-graduation-party-list-initialized-v2-${activePropertyId}`,
+      "ready",
+    );
+    window.localStorage.setItem(cleanupKey, "ready");
+  }, [operationsHydrated, activePropertyId]);
+
   useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
   useEffect(() => {
     saveStoredArray(`atlas-vehicle-care-v1-${activePropertyId}`, vehicleCare);
@@ -1518,8 +1587,24 @@ export default function AtlasApp() {
         const payload = await response.json();
         if (cancelled || payload?.propertyId && String(payload.propertyId) !== activePropertyId) return;
         const operationsPayload = payload?.operations && typeof payload.operations === "object" ? payload.operations : payload;
-        const apiTasks = Array.isArray(operationsPayload.taskRecords) ? operationsPayload.taskRecords : Array.isArray(operationsPayload.tasks) ? operationsPayload.tasks : [];
-        const remoteRoutineTasks = apiTasks.filter((record: { id?: unknown }) => String(record.id || "").startsWith(`routine-assignment-${activePropertyId}-`));
+        const pendingTaskDeleteIds = new Set(
+          readStoredArray<{ table: string; id: string }>(
+            [`atlas-operations-deletes-v1-${activePropertyId}`],
+            [],
+          )
+            .filter((item) => item.table === "tasks")
+            .map((item) => String(item.id)),
+        );
+        const apiTasks = Array.isArray(operationsPayload.taskRecords)
+          ? operationsPayload.taskRecords
+          : Array.isArray(operationsPayload.tasks)
+            ? operationsPayload.tasks
+            : [];
+        const remoteRoutineTasks = apiTasks.filter(
+          (record: { id?: unknown }) =>
+            String(record.id || "").startsWith(`routine-assignment-${activePropertyId}-`) &&
+            !pendingTaskDeleteIds.has(String(record.id || "")),
+        );
         setWorkPlanTasks((current) => {
           const nonRoutine = current.filter((item) => !item.id.startsWith(`routine-assignment-${activePropertyId}-`));
           const remote = remoteRoutineTasks.map((record: Record<string, unknown>) => ({ id: String(record.id || ""), title: String(record.title || "Routine assignment"), minutes: Math.max(5, Number(record.minutes || 30)), priority: (record.priority || "Medium") as WorkPlanTask["priority"], category: String(record.category || "Routine"), locationId: String(record.locationId || "general"), preferredDay: (record.preferredDay || "Auto") as WorkPlanTask["preferredDay"], locked: Boolean(record.locked), recurring: Boolean(record.recurring), fixedTime: String(record.fixedTime || ""), notes: String(record.notes || "") }));
@@ -2125,7 +2210,22 @@ export default function AtlasApp() {
           vehicleCareRecords?: AtlasVehicleCare[];
           daySessions?: AtlasDaySession[];
         };
-        const apiTasks = Array.isArray(operationsPayload.taskRecords) ? operationsPayload.taskRecords : Array.isArray(operationsPayload.tasks) ? operationsPayload.tasks : [];
+        const pendingTaskDeleteIds = new Set(
+          readStoredArray<{ table: string; id: string }>(
+            [`atlas-operations-deletes-v1-${activePropertyId}`],
+            [],
+          )
+            .filter((item) => item.table === "tasks")
+            .map((item) => String(item.id)),
+        );
+        const rawApiTasks = Array.isArray(operationsPayload.taskRecords)
+          ? operationsPayload.taskRecords
+          : Array.isArray(operationsPayload.tasks)
+            ? operationsPayload.tasks
+            : [];
+        const apiTasks = rawApiTasks.filter(
+          (record) => !pendingTaskDeleteIds.has(String(record.id)),
+        );
         const apiVehicles = Array.isArray(operationsPayload.vehicleCareRecords) ? operationsPayload.vehicleCareRecords : Array.isArray(operationsPayload.vehicleCare) ? operationsPayload.vehicleCare : [];
         const apiDaySessions = Array.isArray(operationsPayload.daySessions) ? operationsPayload.daySessions : [];
         const apiPhotos = (
@@ -2188,23 +2288,44 @@ export default function AtlasApp() {
         setServiceRecords(nextServices);
         setProcedureRecords(nextProcedures);
         setPartRecords(nextParts);
-        if (apiTasks.length) {
+        if (apiTasks.length || pendingTaskDeleteIds.size) {
           setWorkPlanTasks((localTasks) => {
+            const visibleLocalTasks = localTasks.filter(
+              (task) => !pendingTaskDeleteIds.has(task.id),
+            );
             const remoteIds = new Set(apiTasks.map((record) => record.id));
             const mergedRemote = apiTasks.map((record) => {
-              const local = localTasks.find((task) => task.id === record.id);
+              const local = visibleLocalTasks.find((task) => task.id === record.id);
               const localUpdated = taskMeta[record.id]?.updatedAt || "";
               const remoteUpdated = record.updatedAt || record.taskMeta?.updatedAt || "";
               const source = local && localUpdated > remoteUpdated ? local : record;
               return { id: source.id, title: source.title, minutes: source.minutes, priority: source.priority, category: source.category, locationId: source.locationId, preferredDay: source.preferredDay, locked: source.locked, recurring: source.recurring, fixedTime: source.fixedTime, notes: source.notes } as WorkPlanTask;
             });
-            return [...mergedRemote, ...localTasks.filter((task) => !remoteIds.has(task.id))];
+            return [
+              ...mergedRemote,
+              ...visibleLocalTasks.filter((task) => !remoteIds.has(task.id)),
+            ];
           });
-          setTaskMeta((localMeta) => ({ ...localMeta, ...Object.fromEntries(apiTasks.map((record) => {
-            const remoteMeta = record.taskMeta || record;
-            const local = localMeta[record.id];
-            return [record.id, local?.updatedAt && local.updatedAt > String(remoteMeta.updatedAt || "") ? local : remoteMeta as AtlasTaskMeta];
-          })) }));
+          setTaskMeta((localMeta) => {
+            const visibleLocalMeta = Object.fromEntries(
+              Object.entries(localMeta).filter(
+                ([id]) => !pendingTaskDeleteIds.has(id),
+              ),
+            ) as Record<string, AtlasTaskMeta>;
+            return {
+              ...visibleLocalMeta,
+              ...Object.fromEntries(apiTasks.map((record) => {
+                const remoteMeta = record.taskMeta || record;
+                const local = visibleLocalMeta[record.id];
+                return [
+                  record.id,
+                  local?.updatedAt && local.updatedAt > String(remoteMeta.updatedAt || "")
+                    ? local
+                    : remoteMeta as AtlasTaskMeta,
+                ];
+              })),
+            };
+          });
         }
         if (apiVehicles.length) setVehicleCare((localVehicles) => { const remoteIds = new Set(apiVehicles.map((vehicle) => vehicle.id)); return [...apiVehicles.map((remote) => { const local = localVehicles.find((vehicle) => vehicle.id === remote.id); return local?.updatedAt && local.updatedAt > String(remote.updatedAt || "") ? local : remote; }), ...localVehicles.filter((vehicle) => !remoteIds.has(vehicle.id))]; });
         if (apiDaySessions.length) setDaySessions(apiDaySessions);
@@ -11270,10 +11391,26 @@ export default function AtlasApp() {
   }
 
   function updateTaskDetails(taskId: string, patch: Partial<AtlasTaskMeta>) {
-    setTaskMeta((current) => ({
-      ...current,
-      [taskId]: { ...taskDetails(taskId), ...patch, updatedAt: new Date().toISOString() },
-    }));
+    setTaskMeta((current) => {
+      const updated = {
+        ...(current[taskId] || taskDetails(taskId)),
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      };
+      const next = { ...current, [taskId]: updated };
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        }
+      } catch {
+        // The normal persistence effect will retry when browser storage is available.
+      }
+      return next;
+    });
   }
 
   function assignTaskTo(task: WorkPlanTask, person: "Addison" | "Pat") {
@@ -11486,16 +11623,31 @@ export default function AtlasApp() {
       setTaskUndo(null);
       taskUndoTimerRef.current = null;
     }, 8000);
-    setWorkPlanTasks((current) => current.filter((item) => item.id !== taskId));
-    setTaskMeta((current) => {
-      const next = { ...current };
-      delete next[taskId];
-      return next;
-    });
+
+    const nextTasks = workPlanTasks.filter((item) => item.id !== taskId);
+    const nextMeta = { ...taskMeta };
+    delete nextMeta[taskId];
+
+    setWorkPlanTasks(nextTasks);
+    setTaskMeta(nextMeta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, nextTasks);
+    if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", nextTasks);
+    try {
+      window.localStorage.setItem(
+        `atlas-task-meta-v1-${activePropertyId}`,
+        JSON.stringify(nextMeta),
+      );
+      if (activePropertyId === "2000") {
+        window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
+      }
+    } catch {
+      // The normal persistence effect will retry when browser storage is available.
+    }
+
     setSelectedTaskId("");
     void deleteOperationalRecord("tasks" as AtlasTable, taskId);
     recordAtlasAudit("Task deleted", task.title);
-    showSaveToast("Task deleted — Undo is available for 8 seconds.");
+    showSaveToast("Task deleted — Atlas will keep it deleted even if sync has to retry.");
   }
 
   function moveAtlasTaskToTomorrow(task: WorkPlanTask) {
@@ -13217,19 +13369,114 @@ ${notes.trim()}` : notes.trim(),
   function ensureGraduationPartyChecklist() {
     const template = atlasOperationsTemplates.find((item) => item.id === "graduation-party");
     if (!template) return;
+
+    const setupKey = `atlas-graduation-party-list-initialized-v2-${activePropertyId}`;
+    const existingPartyItems = workPlanTasks.filter(
+      (task) =>
+        task.category === "Graduation Party Checklist" ||
+        taskDetails(task.id).listId === "graduation-party",
+    );
+
+    // Once the list has existed, never silently recreate deleted or completed items.
+    // The explicit "Restore standard items" button can still add missing defaults.
+    if (window.localStorage.getItem(setupKey) === "ready" || existingPartyItems.length) {
+      window.localStorage.setItem(setupKey, "ready");
+      return;
+    }
+
     const createdAt = new Date().toISOString();
-    const existingIds = new Set(workPlanTasks.map((task) => task.id));
-    const missing = template.items.map((item) => ({ item, id: `grad-party-${slugify(item.title)}` })).filter(({ id }) => !existingIds.has(id));
-    if (!missing.length) return;
-    const tasks = missing.map(({ item, id }) => ({ id, title: item.title, minutes: item.minutes, priority: item.priority, category: "Graduation Party Checklist", locationId: "general", preferredDay: "Auto" as const, locked: false, recurring: false, fixedTime: "", notes: "Graduation Party Checklist" } satisfies WorkPlanTask));
+    const tasks = template.items.map((item) => {
+      const id = `grad-party-${slugify(item.title)}`;
+      return {
+        id,
+        title: item.title,
+        minutes: item.minutes,
+        priority: item.priority,
+        category: "Graduation Party Checklist",
+        locationId: "general",
+        preferredDay: "Auto" as const,
+        locked: false,
+        recurring: false,
+        fixedTime: "",
+        notes: "Graduation Party Checklist",
+      } satisfies WorkPlanTask;
+    });
+
     setWorkPlanTasks((current) => [...current, ...tasks]);
     setTaskMeta((current) => {
       const next = { ...current };
-      missing.forEach(({ item, id }) => {
-        next[id] = { status: "Open", dueDate: "", assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"), createdAt, completionHistory: [], flexibleTime: true, skippable: true, listId: "graduation-party", listName: "Graduation Party", dashboardListPinned: false };
+      template.items.forEach((item, index) => {
+        const id = tasks[index].id;
+        next[id] = {
+          status: "Open",
+          dueDate: "",
+          assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"),
+          createdAt,
+          completionHistory: [],
+          flexibleTime: true,
+          skippable: true,
+          listId: "graduation-party",
+          listName: "Graduation Party",
+          dashboardListPinned: false,
+        };
       });
       return next;
     });
+    window.localStorage.setItem(setupKey, "ready");
+  }
+
+  function restoreGraduationPartyStandardItems() {
+    const template = atlasOperationsTemplates.find((item) => item.id === "graduation-party");
+    if (!template) return;
+    const existingTitles = new Set(
+      checklistItems("graduation-party").map((task) =>
+        task.title.trim().toLowerCase(),
+      ),
+    );
+    const missing = template.items.filter(
+      (item) => !existingTitles.has(item.title.trim().toLowerCase()),
+    );
+    if (!missing.length) {
+      showSaveToast("All standard Graduation Party items are already present.");
+      return;
+    }
+
+    const createdAt = new Date().toISOString();
+    const tasks = missing.map((item) => ({
+      id: uid("grad-party-restored"),
+      title: item.title,
+      minutes: item.minutes,
+      priority: item.priority,
+      category: "Graduation Party Checklist",
+      locationId: "general",
+      preferredDay: "Auto" as const,
+      locked: false,
+      recurring: false,
+      fixedTime: "",
+      notes: "Graduation Party Checklist",
+    } satisfies WorkPlanTask));
+
+    setWorkPlanTasks((current) => [...current, ...tasks]);
+    setTaskMeta((current) => {
+      const next = { ...current };
+      tasks.forEach((task, index) => {
+        const item = missing[index];
+        next[task.id] = {
+          status: "Open",
+          dueDate: "",
+          assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"),
+          createdAt,
+          completionHistory: [],
+          flexibleTime: true,
+          skippable: true,
+          listId: "graduation-party",
+          listName: "Graduation Party",
+          dashboardListPinned: false,
+        };
+      });
+      return next;
+    });
+    showSaveToast(`Restored ${missing.length} standard Graduation Party item${missing.length === 1 ? "" : "s"}.`);
   }
 
   function openGraduationPartyChecklist() {
@@ -13302,7 +13549,7 @@ ${notes.trim()}` : notes.trim(),
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{definitions.map((definition) => <button key={definition.id} type="button" onClick={() => { if (definition.id === "graduation-party") ensureGraduationPartyChecklist(); setSelectedListId(definition.id); }} style={selectedDefinition.id === definition.id ? goldButtonStyle : secondaryButtonStyle}>{definition.name}</button>)}</div>
       </section>
       <section style={{ ...cardStyle, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button>{selectedDefinition.id === "graduation-party" ? <button type="button" onClick={ensureGraduationPartyChecklist} style={secondaryButtonStyle}>Restore standard items</button> : null}</div></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button>{selectedDefinition.id === "graduation-party" ? <button type="button" onClick={restoreGraduationPartyStandardItems} style={secondaryButtonStyle}>Restore standard items</button> : null}</div></div>
         <label style={{ display: "grid", gap: 5, marginTop: 12 }}><span style={fieldLabelStyle}>LIST NOTES</span><textarea value={listNotes} onChange={(event) => updateListNotes(event.currentTarget.value)} placeholder="Add instructions, reminders, vendor details, or notes for this list…" rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}/></label>
       </section>
       <section style={{ ...cardStyle, padding: 10 }}>
