@@ -213,9 +213,9 @@ export default function AtlasLocationsWorkspace(props: any) {
     updateLocationCustomDetail,
     workPlanTasks
   } = props;
-  const locationSourceRecords = isSeanMarineUser ? seanVisibleLocationRecords : locations;
-  const locationAssetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
-  const locationWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
+  const locationSourceRecords: AtlasLocationRecord[] = (isSeanMarineUser ? seanVisibleLocationRecords : locations) as AtlasLocationRecord[];
+  const locationAssetSourceRecords: AtlasAssetRecord[] = (isSeanMarineUser ? seanVisibleAssetRecords : assetRecords) as AtlasAssetRecord[];
+  const locationWorkSourceRecords: AtlasServiceRecord[] = (isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords) as AtlasServiceRecord[];
   const locationAssetCount = (locationId: string) =>
     locationAssetSourceRecords.filter((asset) => assetHasLocation(asset, locationId)).length;
   const locationWorkCount = (locationId: string) => {
