@@ -2,8 +2,6 @@
 
 import React, {
   useEffect,
-  useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,7 +11,6 @@ import AtlasCalendar from "./AtlasCalendar";
 import AtlasRoutines from "./AtlasRoutines";
 import AtlasTeamWork from "./AtlasTeamWork";
 import { AtlasWorkOrders } from "./AtlasWorkOrders";
-import AtlasInsightsTimeline from "./AtlasInsightsTimeline";
 import ReportsAccessCenter from "./ReportsAccessCenter";
 import {
   Field,
@@ -39,8 +36,6 @@ import AskAtlasWeeklyMaintenancePlanner, {
   type WeeklyMaintenancePlanItem,
 } from "./ai/AskAtlasWeeklyMaintenancePlanner";
 import AtlasIntelligenceRecommendations from "./ai/AtlasIntelligenceRecommendations";
-import DocumentIntelligencePanel from "./ai/DocumentIntelligencePanel";
-import PhotoIntelligencePanel from "./ai/PhotoIntelligencePanel";
 import AtlasGroupedSearchResults from "./ai/AtlasGroupedSearchResults";
 import AtlasNotifications from "./AtlasNotifications";
 import AtlasPortfolioCenter from "./AtlasPortfolioCenter";
@@ -62,12 +57,10 @@ import {
 
 import type {
   Screen,
-  Status,
   ServiceStatus,
   WorkOrderPriority,
   WorkOrderRecurrenceUnit,
   WorkSeason,
-  Priority,
   PartStatus,
   UploadedFileRecord,
   LocationRecord,
@@ -78,7 +71,6 @@ import type {
   AssetRecord,
   ServiceRecord,
   ProcedureRecord,
-  RequestStatus,
   OwnerRequestRecord,
   IntakeTargetKind,
   FastIntakeKind,
@@ -97,7 +89,6 @@ import type {
   CalendarRepeat,
   CalendarReminder,
   CalendarLinkType,
-  CalendarSource,
   CalendarColor,
   CalendarItem,
   WorkPlanDay,
@@ -110,15 +101,15 @@ import type {
   ManualCandidate,
 } from "../lib/atlas-types";
 import {
-  closeSymbol, PHOTO_TIMELINE_TAGS, atlasOperationsTemplates, atlasProperties, dashboardWidgetDefinitions, dashboardDefaultGrid, legacySizeColumns, makeDailyForemanWidgets,
-  normalizeDashboardWidgets, builtInDashboardLayouts, loadDashboardRoutineItems, todayLogStorageKeys, dashboardRoutineStorageKeys, atlasMoreToolsScreens, atlasPrimaryNavigationSections, localISODate,
+  closeSymbol, atlasOperationsTemplates, atlasProperties, makeDailyForemanWidgets,
+  normalizeDashboardWidgets, loadDashboardRoutineItems, todayLogStorageKeys, dashboardRoutineStorageKeys, atlasMoreToolsScreens, atlasPrimaryNavigationSections, localISODate,
   todayISO, addDays, uid, normalizeMapDetailBoxes, slugify, blankCalendarItem, clampPercent, formatDate,
   monthName, isServiceStatus, isPriority, isWorkOrderRecurrenceUnit, seasonForDate, recurrenceLabel, nextRecurrenceDate, readStoredArray,
   readAllStoredArrays, saveStoredArray, normalizePhotoRecord, photoSource, mergePhotoRecords, cachePhotoRecords, readCachedPhoto, deleteCachedPhoto,
   persistPhotoRecords, readFileDataUrl, fileToUploadedRecord, imageUrlsFromClipboardText, importImageUrlAsFile, normalizeImageFile, mergeUploadedFiles, normalizeAsset,
   assetLocationIds, assetHasLocation, normalizeLocationName, normalizeVendor, normalizeContact, blankContact, normalizeService, normalizeProcedure,
   normalizeCalendar, mergeCalendarItemRecords, normalizePart, normalizeDocument, mergeDocuments, byName, mergeLocationRecords, byTitle,
-  badgeStyle, weatherText, weatherIcon, weatherGlyph, irrigationAdvice, weatherDayPlanning, categoryToColorId, calendarPlainColors,
+  badgeStyle, weatherText, weatherIcon, irrigationAdvice, weatherDayPlanning, categoryToColorId, calendarPlainColors,
   repeatOptions, reminderOptions, linkTypeOptions, standardCalendarCategoryLabels, plainColor, colorNameFromLegacyColorId, defaultCalendarColors, mergeCalendarColors,
   getUsHolidays, getJewishHolidays, calendarDateValue, isRecurringInstanceOnDate, getWeekCells, fallbackLocations, defaultMapLabels, fallbackVendors,
   confirmedAssetCatalog, fallbackAssets, fallbackWorkOrders, fallbackProcedures, fallbackCalendar, fallbackParts, defaultWorkLinks, documents,
@@ -25965,56 +25956,10 @@ ${notes.trim()}` : notes.trim(),
   );
 }
 
-const plannerControlCardStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 5,
-  alignContent: "start",
-  minHeight: 88,
-  padding: 9,
-  borderRadius: 10,
-  border: `1px solid ${colors.line}`,
-  background: colors.panel,
-};
 
-const plannerControlButtonStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 4,
-  alignContent: "start",
-  minHeight: 88,
-  padding: 9,
-  borderRadius: 10,
-  border: `1px solid ${colors.line}`,
-  background: colors.card,
-  color: colors.text,
-  textAlign: "left",
-  cursor: "pointer",
-};
 
-const plannerControlLabelStyle: React.CSSProperties = {
-  color: colors.muted,
-  fontSize: 10,
-  fontWeight: 900,
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-};
 
-const plannerControlButtonsStyle: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 4,
-};
 
-const plannerMiniButtonStyle: React.CSSProperties = {
-  minHeight: 28,
-  padding: "4px 7px",
-  borderRadius: 7,
-  border: `1px solid ${colors.line}`,
-  background: colors.card,
-  color: colors.navy,
-  fontSize: 11,
-  fontWeight: 850,
-  cursor: "pointer",
-};
 
 const quickToolsOverlayStyle: React.CSSProperties = {
   position: "fixed",
@@ -26164,24 +26109,7 @@ const previewFrameStyle: React.CSSProperties = {
   background: "#FFFFFF",
 };
 
-const documentTextPreviewStyle: React.CSSProperties = {
-  margin: "8px 0 0",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-  fontFamily: "inherit",
-  fontSize: 13,
-  lineHeight: 1.55,
-  color: colors.text,
-};
 
-const previewPdfZoomShellStyle: React.CSSProperties = {
-  width: "100%",
-  height: "100%",
-  minHeight: 620,
-  overflow: "auto",
-  background: "#FFFFFF",
-  borderRadius: 14,
-};
 
 const mobileHeaderShellStyle: React.CSSProperties = {
   background: `linear-gradient(180deg, ${colors.navy} 0%, ${colors.navy2} 100%)`,
@@ -26545,110 +26473,16 @@ const scannerSideStyle: React.CSSProperties = {
   gap: 12,
 };
 
-const commandStripStyle: React.CSSProperties = {
-  marginTop: 8,
-  paddingTop: 8,
-  borderTop: "1px solid rgba(255,255,255,0.12)",
-  display: "grid",
-  gap: 6,
-};
 
-const commandSectionStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.055)",
-  border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 12,
-  padding: 6,
-  display: "grid",
-  gap: 5,
-};
 
-const commandEyebrowStyle: React.CSSProperties = {
-  color: colors.gold2,
-  fontSize: 9,
-  fontWeight: 950,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-};
 
-const commandMainButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.06)",
-  color: "#FFFFFF",
-  borderRadius: 10,
-  padding: "6px 7px",
-  display: "grid",
-  gap: 2,
-  textAlign: "left",
-  cursor: "pointer",
-};
 
-const commandMiniGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 6,
-};
 
-const commandMetricStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.05)",
-  color: "#FFFFFF",
-  borderRadius: 9,
-  padding: "5px 6px",
-  display: "grid",
-  gap: 2,
-  textAlign: "left",
-  cursor: "pointer",
-};
 
-const commandActionGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 6,
-};
 
-const commandActionButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.gold}`,
-  background: "rgba(201,154,61,0.13)",
-  color: "#FFFFFF",
-  borderRadius: 9,
-  padding: "6px 6px",
-  fontSize: 10,
-  fontWeight: 900,
-  cursor: "pointer",
-};
 
-const commandPinnedGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 6,
-};
 
-const commandPinnedLinkStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.05)",
-  color: "#FFFFFF",
-  borderRadius: 9,
-  padding: "5px 6px",
-  textDecoration: "none",
-  display: "grid",
-  gridTemplateColumns: "22px 1fr",
-  gap: 5,
-  alignItems: "center",
-  fontSize: 10,
-};
 
-const commandWatchStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.045)",
-  color: "#FFFFFF",
-  borderRadius: 9,
-  padding: "5px 6px",
-  textDecoration: "none",
-  fontSize: 10,
-  fontWeight: 850,
-  textAlign: "left",
-  cursor: "pointer",
-};
 
 const topbarStyle: React.CSSProperties = {
   background: "transparent",
@@ -26670,7 +26504,6 @@ const headerSubStyle: React.CSSProperties = {
   lineHeight: 1.4,
 };
 
-const dashboardStackStyle: React.CSSProperties = { display: "grid", gap: 14 };
 const stackStyle: React.CSSProperties = { display: "grid", gap: 16 };
 const listStyle: React.CSSProperties = { display: "grid", gap: 10 };
 const buttonRowStyle: React.CSSProperties = {
@@ -26723,14 +26556,6 @@ const calendarMonthWhitePanelStyle: React.CSSProperties = {
   maxWidth: "none",
 };
 
-const calendarMonthViewportStyle: React.CSSProperties = {
-  height: "100%",
-  minHeight: 0,
-  display: "grid",
-  gridTemplateRows: "auto auto minmax(0, 1fr)",
-  gap: 7,
-  overflow: "hidden",
-};
 
 const calendarWhiteDrawerStyle: React.CSSProperties = {
   background: "#FFFFFF",
@@ -26753,15 +26578,6 @@ const sectionStyle: React.CSSProperties = {
   boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)",
 };
 
-const sectionHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 14,
-  alignItems: "flex-start",
-  marginBottom: 14,
-  flexWrap: "wrap",
-  minWidth: 0,
-};
 
 const sectionTitleStyle: React.CSSProperties = {
   margin: 0,
@@ -26777,64 +26593,12 @@ const statGridStyle: React.CSSProperties = {
   gap: 14,
 };
 
-const modernStatStyle: React.CSSProperties = {
-  background: colors.card,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 14,
-  padding: 15,
-  textAlign: "left",
-  cursor: "pointer",
-  boxShadow: "0 4px 15px rgba(15,35,55,0.045)",
-};
 
-const statLabelStyle: React.CSSProperties = {
-  color: colors.muted,
-  fontSize: 13,
-  fontWeight: 950,
-  textTransform: "uppercase",
-  letterSpacing: 0.8,
-};
 
-const statValueStyle: React.CSSProperties = {
-  color: colors.navy,
-  fontSize: 31,
-  fontWeight: 950,
-  lineHeight: 1.05,
-  letterSpacing: "-0.04em",
-};
 
-const dashboardTopGridStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 14,
-  alignItems: "start",
-};
 
-const drawerGridStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 16,
-  alignItems: "start",
-  overflow: "visible",
-};
 
-const listPanelStyle: React.CSSProperties = {
-  minWidth: 0,
-};
 
-const drawerStyle: React.CSSProperties = {
-  background: "#FFFFFF",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 14,
-  padding: 0,
-  position: "sticky",
-  top: 12,
-  alignSelf: "start",
-  maxHeight: "calc(100vh - 28px)",
-  overflowY: "auto",
-  overflowX: "hidden",
-  boxShadow: "0 7px 22px rgba(15,35,55,0.065)",
-  minWidth: 0,
-  wordBreak: "break-word",
-};
 
 const detailTitleStyle: React.CSSProperties = {
   margin: "4px 0 14px",
@@ -26930,16 +26694,6 @@ const rowButtonStyle: React.CSSProperties = {
   wordBreak: "break-word",
 };
 
-const rowStaticStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  borderRadius: 12,
-  padding: "12px 13px",
-  color: colors.text,
-  boxShadow: "none",
-  minWidth: 0,
-  wordBreak: "break-word",
-};
 
 const goldButtonStyle: React.CSSProperties = {
   border: `1px solid ${colors.gold}`,
@@ -27000,221 +26754,31 @@ const noticeStyle: React.CSSProperties = {
   wordBreak: "break-word",
 };
 
-const todayEventStyle: React.CSSProperties = {
-  width: "100%",
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  alignItems: "flex-start",
-  border: `1px solid ${colors.line}`,
-  borderLeft: "5px solid",
-  background: "#FFFFFF",
-  borderRadius: 15,
-  padding: 14,
-  textAlign: "left",
-  cursor: "pointer",
-  color: colors.text,
-  minWidth: 0,
-};
 
-const eventColorPillStyle: React.CSSProperties = {
-  border: "1px solid",
-  borderRadius: 999,
-  padding: "4px 8px",
-  fontSize: 11,
-  fontWeight: 950,
-  background: "#FFFFFF",
-  whiteSpace: "nowrap",
-};
 
-const upcomingListStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 10,
-};
 
-const upcomingItemStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  color: colors.text,
-  borderRadius: 15,
-  padding: 13,
-  cursor: "pointer",
-  textAlign: "left",
-  width: "100%",
-  fontFamily: "inherit",
-};
 
-const upcomingDotStyle: React.CSSProperties = {
-  width: 9,
-  height: 9,
-  borderRadius: 999,
-  flex: "0 0 auto",
-};
 
-const upcomingInfoStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 2,
-  minWidth: 0,
-  width: "100%",
-};
 
-const upcomingDayPillStyle: React.CSSProperties = {
-  flex: "0 0 auto",
-  minWidth: 78,
-  padding: "6px 9px",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 999,
-  background: colors.panel,
-  color: colors.navy,
-  fontSize: 11,
-  fontWeight: 950,
-  lineHeight: 1,
-  textAlign: "center",
-  whiteSpace: "nowrap",
-};
 
-const upcomingTodayPillStyle: React.CSSProperties = {
-  borderColor: colors.gold,
-  background: colors.gold,
-  color: colors.navy,
-};
 
-const dashboardWeatherStripStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(7, minmax(145px, 1fr))",
-  gap: 10,
-  overflowX: "auto",
-  maxWidth: "100%",
-  paddingBottom: 4,
-};
 
-const dashboardWeatherDayStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 7,
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  borderRadius: 15,
-  padding: 12,
-  textAlign: "left",
-  cursor: "pointer",
-  color: colors.text,
-  fontFamily: "inherit",
-};
 
-const dashboardWeatherTopStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-};
 
-const dashboardWeatherTempStyle: React.CSSProperties = {
-  fontSize: 18,
-  fontWeight: 950,
-  color: colors.navy,
-};
 
-const dashboardWeatherMiniStyle: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 850,
-  color: colors.muted,
-};
 
-const dashboardAdviceStyle: React.CSSProperties = {
-  fontSize: 11,
-  lineHeight: 1.3,
-  margin: 0,
-  color: colors.text,
-};
 
-const workOrderStripStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(190px, 100%), 1fr))",
-  gap: 12,
-};
 
-const workOrderCardStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  color: colors.text,
-  borderRadius: 15,
-  padding: 14,
-  cursor: "pointer",
-  textAlign: "left",
-  fontFamily: "inherit",
-  display: "grid",
-  gap: 8,
-};
 
-const quickLinksGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
-  gap: 10,
-};
 
-const quickLinkCardStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "42px minmax(0, 1fr)",
-  alignItems: "center",
-  gap: 12,
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  color: colors.text,
-  borderRadius: 16,
-  padding: 12,
-  textDecoration: "none",
-  boxShadow: "0 10px 26px rgba(15,23,42,0.035)",
-  minWidth: 0,
-  maxWidth: "100%",
-  boxSizing: "border-box",
-};
 
-const workLinkLogoStyle: React.CSSProperties = {
-  width: 42,
-  height: 42,
-  borderRadius: 13,
-  display: "grid",
-  placeItems: "center",
-  fontSize: 13,
-  fontWeight: 950,
-  letterSpacing: 0.4,
-  flex: "0 0 auto",
-  overflow: "hidden",
-};
 
 const workLinkLogoFallbackStyle: React.CSSProperties = {
   gridArea: "1 / 1",
 };
 
-const workLinkLogoImageStyle: React.CSSProperties = {
-  gridArea: "1 / 1",
-  width: "100%",
-  height: "100%",
-  objectFit: "contain",
-  background: "transparent",
-  borderRadius: 13,
-};
 
-const workLinkTextStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 3,
-  minWidth: 0,
-  fontSize: 13,
-};
 
-const workLinkOpenStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  borderRadius: 999,
-  padding: "6px 10px",
-  color: colors.navy,
-  background: colors.panel,
-  fontSize: 12,
-  fontWeight: 950,
-  whiteSpace: "nowrap",
-};
 
 const ownerRequestPortalCardStyle: React.CSSProperties = {
   display: "grid",
@@ -27336,26 +26900,7 @@ const qrUrlStyle: React.CSSProperties = {
   wordBreak: "break-all",
 };
 
-const workLinksPageGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))",
-  gap: 12,
-};
 
-const workLinkPageCardStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "48px minmax(0, 1fr)",
-  alignItems: "center",
-  gap: 14,
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  color: colors.text,
-  borderRadius: 18,
-  padding: 15,
-  textDecoration: "none",
-  boxShadow: "0 12px 28px rgba(15,23,42,0.045)",
-  minWidth: 0,
-};
 
 const workLinkLogoLargeStyle: React.CSSProperties = {
   width: 48,
@@ -27378,44 +26923,9 @@ const workLinkLogoImageLargeStyle: React.CSSProperties = {
   borderRadius: 16,
 };
 
-const workLinkPageBodyStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 4,
-  minWidth: 0,
-  fontSize: 14,
-};
 
-const workLinkOpenLargeStyle: React.CSSProperties = {
-  border: `1px solid ${colors.gold}`,
-  borderRadius: 999,
-  padding: "7px 10px",
-  color: colors.navy,
-  background: "#FFFAEB",
-  fontSize: 12,
-  fontWeight: 950,
-  whiteSpace: "nowrap",
-};
 
-const dashboardWeatherBoxStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 14,
-  alignItems: "center",
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  borderRadius: 18,
-  padding: 16,
-};
 
-const dashboardWeatherIconStyle: React.CSSProperties = {
-  fontSize: 42,
-  width: 62,
-  height: 62,
-  borderRadius: 18,
-  background: "#FFFAEB",
-  display: "grid",
-  placeItems: "center",
-  flex: "0 0 auto",
-};
 
 const mapShellStyle: React.CSSProperties = {
   position: "relative",
@@ -27448,49 +26958,11 @@ const mapPinStyle: React.CSSProperties = {
   padding: "7px 9px",
 };
 
-const mapDetailStackStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 14,
-};
 
-const mapDetailCardStyle: React.CSSProperties = {
-  maxWidth: "100%",
-  minWidth: 0,
-  boxSizing: "border-box",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 18,
-  background: "#FFFFFF",
-  padding: 14,
-  display: "grid",
-  gap: 12,
-};
 
-const mapDetailSectionTitleStyle: React.CSSProperties = {
-  color: colors.navy,
-  fontSize: 14,
-  fontWeight: 950,
-};
 
-const mapDetailHeaderRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-};
 
-const mapBoxListStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 10,
-};
 
-const mapCustomBoxStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  borderRadius: 14,
-  background: colors.panel,
-  padding: 10,
-  display: "grid",
-  gap: 8,
-};
 
 const mapBoxHeaderStyle: React.CSSProperties = {
   display: "grid",
@@ -27704,34 +27176,9 @@ const mapAddTabButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const mapSmallPhotoGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(120px, 100%), 1fr))",
-  gap: 10,
-};
 
-const mapSmallPhotoCardStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  borderRadius: 13,
-  background: "#FFFFFF",
-  padding: 8,
-  display: "grid",
-  gap: 8,
-};
 
-const mapSmallPhotoStyle: React.CSSProperties = {
-  width: "100%",
-  height: 92,
-  objectFit: "cover",
-  borderRadius: 10,
-  border: `1px solid ${colors.line}`,
-};
 
-const mapPhotoCardFooterStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 6,
-  flexWrap: "wrap",
-};
 
 const mapEmptyNoteStyle: React.CSSProperties = {
   margin: 0,
@@ -27794,14 +27241,6 @@ const searchEmptyStyle: React.CSSProperties = {
   textAlign: "center",
 };
 
-const photoManageCardStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 6,
-  padding: 7,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 13,
-  background: colors.panel,
-};
 
 const photoDeleteButtonStyle: React.CSSProperties = {
   width: "100%",
@@ -27815,22 +27254,7 @@ const photoDeleteButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const coverPhotoLabelStyle: React.CSSProperties = {
-  color: colors.gold,
-  fontSize: 10,
-  fontWeight: 950,
-  textTransform: "uppercase",
-  letterSpacing: 0.7,
-};
 
-const manualActionRowStyle: React.CSSProperties = {
-  justifySelf: "end",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  gap: 6,
-  flexWrap: "wrap",
-};
 
 const manualDeleteButtonStyle: React.CSSProperties = {
   border: "1px solid #F1B8B4",
@@ -27920,60 +27344,11 @@ const contactDetailHeaderStyle: React.CSSProperties = {
   background: "#FFFFFF",
 };
 
-const seasonPlannerStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 12,
-  padding: 14,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 16,
-  background: "#FFFFFF",
-};
 
-const seasonCardGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
-  gap: 9,
-};
 
-const seasonCardStyle: React.CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gap: 7,
-  padding: 12,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 13,
-  color: colors.navy,
-  textAlign: "left",
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
 
-const seasonCardTitleStyle: React.CSSProperties = {
-  minWidth: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 7,
-  fontSize: 13,
-  fontWeight: 950,
-};
 
-const currentSeasonTagStyle: React.CSSProperties = {
-  flex: "0 0 auto",
-  padding: "3px 6px",
-  borderRadius: 999,
-  background: colors.gold,
-  color: colors.navy,
-  fontSize: 8,
-  fontWeight: 950,
-  textTransform: "uppercase",
-};
 
-const seasonCardDescriptionStyle: React.CSSProperties = {
-  color: colors.muted,
-  fontSize: 10,
-  lineHeight: 1.35,
-};
 
 const workOrderListBadgesStyle: React.CSSProperties = {
   flex: "0 0 auto",
@@ -28091,18 +27466,6 @@ const compactUploadButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const compactPhotoButtonStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 7,
-  padding: 8,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 12,
-  background: "#FFFFFF",
-  color: colors.text,
-  textAlign: "left",
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
 
 const compactLinkedListStyle: React.CSSProperties = {
   display: "grid",
@@ -28144,22 +27507,6 @@ const assetFileListRowStyle: React.CSSProperties = {
   gap: 5,
 };
 
-const assetFileOpenButtonStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  padding: "6px 8px",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 10,
-  background: colors.panel,
-  color: colors.text,
-  textAlign: "left",
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
 
 const assetFileDeleteButtonStyle: React.CSSProperties = {
   border: "1px solid #F1B8B4",
@@ -28202,12 +27549,6 @@ const assetPrimaryActionButtonStyle: React.CSSProperties = {
   background: colors.gold,
 };
 
-const assetDangerActionButtonStyle: React.CSSProperties = {
-  ...assetActionButtonStyle,
-  border: "1px solid #FACACA",
-  background: "#FEECEC",
-  color: colors.red,
-};
 
 const assetListControlsStyle: React.CSSProperties = {
   display: "flex",
@@ -28588,53 +27929,10 @@ const assetTinyUploadStyle: React.CSSProperties = {
   color: colors.navy3,
 };
 
-const assetPhotoGridStyle: React.CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gap: 6,
-};
 
-const assetPhotoTileStyle: React.CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gap: 3,
-};
 
-const assetPhotoPreviewButtonStyle: React.CSSProperties = {
-  width: "100%",
-  height: 52,
-  minWidth: 0,
-  minHeight: 52,
-  display: "grid",
-  placeItems: "center",
-  overflow: "hidden",
-  padding: 0,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 8,
-  background: colors.panel,
-  color: colors.muted,
-  fontSize: 9,
-  cursor: "pointer",
-};
 
-const assetPhotoThumbImageStyle: React.CSSProperties = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-  display: "block",
-};
 
-const assetPhotoLabelRowStyle: React.CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto auto",
-  alignItems: "center",
-  gap: 2,
-  color: colors.navy,
-  fontSize: 9,
-  fontWeight: 850,
-  textAlign: "center",
-};
 
 const assetPhotoLabelButtonStyle: React.CSSProperties = {
   width: 20,
@@ -28680,43 +27978,9 @@ const assetHistoryOrderStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const assetHistoryListStyle: React.CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gap: 2,
-};
 
-const assetHistoryRowStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  display: "grid",
-  gridTemplateColumns: "110px minmax(0, 1fr) auto",
-  alignItems: "center",
-  gap: 8,
-  minHeight: 26,
-  padding: "3px 6px",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 7,
-  background: "#FFFFFF",
-  color: colors.text,
-  textAlign: "left",
-  fontFamily: "inherit",
-  cursor: "pointer",
-};
 
-const assetHistoryDateStyle: React.CSSProperties = {
-  color: colors.muted,
-  fontSize: 9,
-  fontWeight: 800,
-};
 
-const assetHistoryTitleStyle: React.CSSProperties = {
-  minWidth: 0,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  fontSize: 10,
-};
 
 const assetPanelFooterStyle: React.CSSProperties = {
   minWidth: 0,
@@ -28765,149 +28029,16 @@ const assetDeleteBottomButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const assetVisualHeaderStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  boxSizing: "border-box",
-  display: "grid",
-  gap: 3,
-  padding: "2px 1px 5px",
-  borderBottom: `1px solid ${colors.line}`,
-};
 
-const assetPhotoLargeStyle: React.CSSProperties = {
-  width: "100%",
-  height: 88,
-  minWidth: 0,
-  display: "grid",
-  placeItems: "center",
-  overflow: "hidden",
-  borderRadius: 16,
-  border: `1px solid ${colors.line}`,
-  background: colors.panel,
-  color: colors.navy,
-  fontSize: 34,
-  fontWeight: 950,
-};
 
-const assetPhotoLargeImageStyle: React.CSSProperties = {
-  width: "100%",
-  height: "100%",
-  display: "block",
-  objectFit: "contain",
-  background: "#FFFFFF",
-};
 
-const assetHeaderTextStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  display: "grid",
-  gap: 5,
-};
 
-const assetHeaderNameRowStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
-  alignItems: "start",
-  gap: 8,
-};
 
-const assetHeaderNameStyle: React.CSSProperties = {
-  minWidth: 0,
-  margin: 0,
-  color: colors.navy,
-  fontSize: 18,
-  fontWeight: 900,
-  letterSpacing: "-0.02em",
-  lineHeight: 1.15,
-  whiteSpace: "normal",
-  wordBreak: "normal",
-  overflowWrap: "break-word",
-  writingMode: "horizontal-tb",
-  textOrientation: "mixed",
-};
 
-const assetHeaderMetaStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  margin: 0,
-  color: colors.muted,
-  fontSize: 11,
-  lineHeight: 1.25,
-  whiteSpace: "normal",
-  wordBreak: "normal",
-  overflowWrap: "break-word",
-  writingMode: "horizontal-tb",
-  textOrientation: "mixed",
-};
 
-const assetPhotoButtonRowStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 10,
-};
 
-const assetPhotoActionButtonStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  minHeight: 42,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "6px 8px",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 12,
-  background: "#FFFFFF",
-  color: colors.navy,
-  fontFamily: "inherit",
-  fontSize: 13,
-  fontWeight: 950,
-  lineHeight: 1,
-  whiteSpace: "nowrap",
-  wordBreak: "keep-all",
-  writingMode: "horizontal-tb",
-  textOrientation: "mixed",
-  cursor: "pointer",
-  boxSizing: "border-box",
-};
 
-const assetPhotoUploadButtonStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  minHeight: 42,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "6px 8px",
-  border: `1px solid ${colors.gold}`,
-  borderRadius: 12,
-  background: colors.gold,
-  color: colors.navy,
-  fontSize: 13,
-  fontWeight: 950,
-  lineHeight: 1,
-  whiteSpace: "nowrap",
-  wordBreak: "keep-all",
-  writingMode: "horizontal-tb",
-  textOrientation: "mixed",
-  cursor: "pointer",
-  boxSizing: "border-box",
-};
 
-const manualAssetRowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) 64px",
-  alignItems: "center",
-  gap: 12,
-  padding: "6px 8px",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 12,
-  background: colors.panel,
-};
 
 const recordListIdentityStyle: React.CSSProperties = {
   minWidth: 0,
@@ -28916,18 +28047,6 @@ const recordListIdentityStyle: React.CSSProperties = {
   gap: 11,
 };
 
-const recordListThumbStyle: React.CSSProperties = {
-  width: 44,
-  height: 44,
-  flex: "0 0 44px",
-  display: "grid",
-  placeItems: "center",
-  overflow: "hidden",
-  borderRadius: 12,
-  background: colors.navy,
-  color: "#FFFFFF",
-  fontWeight: 950,
-};
 
 const recordListThumbImageStyle: React.CSSProperties = {
   width: "100%",
@@ -28978,61 +28097,11 @@ const vendorDetailHeaderStyle: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
-const manualSimpleTableStyle: React.CSSProperties = {
-  overflow: "hidden",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 16,
-  background: "#FFFFFF",
-};
 
-const manualListHeaderStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 2fr) minmax(180px, 1fr) 150px",
-  gap: 14,
-  padding: "11px 16px",
-  borderBottom: `1px solid ${colors.line}`,
-  background: colors.panel,
-  color: colors.muted,
-  fontSize: 11,
-  fontWeight: 950,
-  letterSpacing: 0.8,
-  textTransform: "uppercase",
-};
 
-const manualCompactListStyle: React.CSSProperties = {
-  display: "grid",
-};
 
-const manualSimpleRowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 2fr) minmax(180px, 1fr) 150px",
-  gap: 14,
-  alignItems: "center",
-  minHeight: 52,
-  padding: "10px 16px",
-  borderBottom: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-};
 
-const manualSimpleTitleStyle: React.CSSProperties = {
-  minWidth: 0,
-  color: colors.text,
-  fontSize: 14,
-  fontWeight: 850,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
 
-const manualCompactAssetStyle: React.CSSProperties = {
-  minWidth: 0,
-  color: colors.navy3,
-  fontSize: 13,
-  fontWeight: 800,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
 
 const manualCompactFileStyle: React.CSSProperties = {
   justifySelf: "end",
@@ -29049,14 +28118,6 @@ const manualCompactFileStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-const manualNoPdfStyle: React.CSSProperties = {
-  justifySelf: "end",
-  minWidth: 56,
-  color: colors.muted,
-  fontSize: 13,
-  fontWeight: 800,
-  textAlign: "center",
-};
 
 const manualInlineFormHeaderStyle: React.CSSProperties = {
   display: "flex",
@@ -29085,26 +28146,7 @@ const calendarCompactControlPanelStyle: React.CSSProperties = {
   borderRadius: 13,
 };
 
-const calendarFilterStripStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-  alignItems: "center",
-};
 
-const calendarToggleStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 7,
-  border: `1px solid ${colors.line}`,
-  background: "#F8FAFC",
-  borderRadius: 999,
-  padding: "7px 10px",
-  color: colors.text,
-  fontSize: 12,
-  fontWeight: 850,
-  whiteSpace: "nowrap",
-};
 
 const calendarFilterDropdownStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
@@ -29341,28 +28383,8 @@ const calendarColorsBoxStyle: React.CSSProperties = {
   padding: 12,
 };
 
-const calendarColorListStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 8,
-  marginTop: 10,
-};
 
-const calendarColorRowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "46px 1fr",
-  gap: 8,
-  alignItems: "center",
-};
 
-const actualColorInputStyle: React.CSSProperties = {
-  width: 46,
-  height: 40,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 12,
-  padding: 3,
-  background: "#FFFFFF",
-  cursor: "pointer",
-};
 
 const weatherStripStyle: React.CSSProperties = {
   display: "grid",
@@ -29449,19 +28471,6 @@ const weatherAdviceSmallStyle: React.CSSProperties = {
   wordBreak: "break-word",
 };
 
-const photoMissingStyle: React.CSSProperties = {
-  width: "100%",
-  minHeight: 120,
-  display: "grid",
-  placeItems: "center",
-  marginBottom: 4,
-  border: `1px dashed ${colors.line}`,
-  borderRadius: 12,
-  background: colors.panel,
-  color: colors.muted,
-  fontSize: 12,
-  fontWeight: 900,
-};
 
 const weatherDetailPanelStyle: React.CSSProperties = {
   display: "grid",
@@ -29541,14 +28550,6 @@ const weatherDetailNoteStyle: React.CSSProperties = {
   lineHeight: 1.45,
 };
 
-const photoGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(120px, 100%), 1fr))",
-  gap: 7,
-  maxHeight: 120,
-  overflowY: "auto",
-  paddingRight: 3,
-};
 
 const photoCardStyle: React.CSSProperties = {
   border: `1px solid ${colors.line}`,
@@ -29566,10 +28567,5 @@ const photoStyle: React.CSSProperties = {
   marginBottom: 4,
 };
 
-const linkStyle: React.CSSProperties = {
-  color: colors.navy,
-  fontWeight: 950,
-  textDecoration: "underline",
-};
 
       
