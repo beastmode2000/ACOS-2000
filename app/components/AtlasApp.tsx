@@ -116,6 +116,7 @@ import {
   CreatableRelationshipField,
 } from "./AtlasAppFoundation";
 import AtlasContacts from "./AtlasContacts";
+import AtlasWeather from "./AtlasWeather";
 import type {
   AtlasCurrentUser, AtlasCalendarItem, AssistantTurn, PhotoTimelineTag, PhotoTimelineProjectCategory, PhotoTimelineMeta, ProjectTimelineEntry, PhotoTimelineProject,
   WorkEffort, AtlasTaskMeta, TaskListFilter, AtlasBacklogItem, AtlasVehicleCare, AtlasSeasonalItem, AtlasDaySession, AtlasOperationsTemplate,
@@ -24806,155 +24807,43 @@ ${notes.trim()}` : notes.trim(),
 
   function renderWeather() {
     return (
-      <section style={sectionStyle}>
-        <SectionHeader
-          eyebrow="7-Day Forecast"
-          title="Weather / Irrigation Planning"
-          detail="Real 7-day forecast with irrigation recommendations."
-          right={
-            <button
-              type="button"
-              onClick={() => void loadWeather()}
-              style={goldButtonStyle}
-            >
-              Refresh Weather
-            </button>
-          }
-        />
-
-        <div style={stackStyle}>
-          <div style={noticeStyle}>
-            <strong>{weatherStatus}</strong>
-            <p style={mutedSmallStyle}>
-              Forecast location is the 2000 area. Uses rain chance, rain amount,
-              wind, and ET0 for irrigation planning.
-            </p>
-          </div>
-
-          <div style={weatherStripStyle}>
-            {weatherDays.map((day) => (
-              <button
-                key={day.date}
-                type="button"
-                onClick={() => setSelectedWeatherDate(day.date)}
-                style={{
-                  ...weatherCardStyle,
-                  borderColor:
-                    day.date === selectedWeather?.date
-                      ? colors.gold
-                      : colors.line,
-                  boxShadow:
-                    day.date === selectedWeather?.date
-                      ? "0 18px 38px rgba(201,154,61,0.24)"
-                      : "0 12px 26px rgba(15,23,42,0.06)",
-                }}
-              >
-                <div style={weatherCardTopStyle}>
-                  <div>
-                    <strong>
-                      {new Date(`${day.date}T12:00:00`).toLocaleDateString(
-                        undefined,
-                        { weekday: "short" },
-                      )}
-                    </strong>
-                    <p style={mutedSmallStyle}>
-                      {new Date(`${day.date}T12:00:00`).toLocaleDateString(
-                        undefined,
-                        { month: "short", day: "numeric" },
-                      )}
-                    </p>
-                  </div>
-                  <div style={weatherIconStyle}>{weatherIcon(day.code)}</div>
-                </div>
-
-                <div style={weatherTempStyle}>{day.high}°</div>
-                <div style={weatherLowStyle}>{day.low}° low</div>
-
-                <div style={weatherBarTrackStyle}>
-                  <div
-                    style={{
-                      ...weatherBarFillStyle,
-                      width: `${Math.max(12, Math.min(100, day.precipChance))}%`,
-                    }}
-                  />
-                </div>
-
-                <div style={weatherMiniGridStyle}>
-                  <span>Rain {day.precipChance}%</span>
-                  <span>{day.precipAmount}"</span>
-                  <span>Wind {day.windMax} mph</span>
-                  <span>ET0 {day.et0}"</span>
-                </div>
-
-                <p style={weatherAdviceSmallStyle}>{irrigationAdvice(day)}</p>
-              </button>
-            ))}
-          </div>
-
-          {selectedWeather ? (
-            <section style={weatherDetailPanelStyle}>
-              <div style={weatherDetailHeaderStyle}>
-                <div>
-                  <div style={eyebrowStyle}>Selected Day</div>
-                  <h3 style={weatherDetailTitleStyle}>
-                    {new Date(
-                      `${selectedWeather.date}T12:00:00`,
-                    ).toLocaleDateString(undefined, {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </h3>
-                  <p style={weatherDetailConditionStyle}>
-                    {weatherText(selectedWeather.code)}
-                  </p>
-                </div>
-                <div style={weatherDetailIconStyle}>
-                  {weatherIcon(selectedWeather.code)}
-                </div>
-              </div>
-
-              <div style={weatherDetailGridStyle}>
-                <div style={weatherDetailMetricStyle}>
-                  <span>High</span>
-                  <strong>{selectedWeather.high}°F</strong>
-                </div>
-                <div style={weatherDetailMetricStyle}>
-                  <span>Low</span>
-                  <strong>{selectedWeather.low}°F</strong>
-                </div>
-                <div style={weatherDetailMetricStyle}>
-                  <span>Rain chance</span>
-                  <strong>{selectedWeather.precipChance}%</strong>
-                </div>
-                <div style={weatherDetailMetricStyle}>
-                  <span>Expected rain</span>
-                  <strong>{selectedWeather.precipAmount}"</strong>
-                </div>
-                <div style={weatherDetailMetricStyle}>
-                  <span>Maximum wind</span>
-                  <strong>{selectedWeather.windMax} mph</strong>
-                </div>
-                <div style={weatherDetailMetricStyle}>
-                  <span>Water loss / ET0</span>
-                  <strong>{selectedWeather.et0}"</strong>
-                </div>
-              </div>
-
-              <div style={weatherDetailNotesGridStyle}>
-                <div style={weatherDetailNoteStyle}>
-                  <strong>Irrigation</strong>
-                  <p>{irrigationAdvice(selectedWeather)}</p>
-                </div>
-                <div style={weatherDetailNoteStyle}>
-                  <strong>Workday planning</strong>
-                  <p>{weatherDayPlanning(selectedWeather)}</p>
-                </div>
-              </div>
-            </section>
-          ) : null}
-        </div>
-      </section>
+      <AtlasWeather
+        sectionStyle={sectionStyle}
+        loadWeather={loadWeather}
+        goldButtonStyle={goldButtonStyle}
+        stackStyle={stackStyle}
+        noticeStyle={noticeStyle}
+        weatherStatus={weatherStatus}
+        mutedSmallStyle={mutedSmallStyle}
+        weatherStripStyle={weatherStripStyle}
+        weatherDays={weatherDays}
+        setSelectedWeatherDate={setSelectedWeatherDate}
+        selectedWeather={selectedWeather}
+        colors={colors}
+        weatherCardStyle={weatherCardStyle}
+        weatherCardTopStyle={weatherCardTopStyle}
+        weatherIcon={weatherIcon}
+        weatherIconStyle={weatherIconStyle}
+        weatherTempStyle={weatherTempStyle}
+        weatherLowStyle={weatherLowStyle}
+        weatherBarTrackStyle={weatherBarTrackStyle}
+        weatherBarFillStyle={weatherBarFillStyle}
+        weatherMiniGridStyle={weatherMiniGridStyle}
+        irrigationAdvice={irrigationAdvice}
+        weatherAdviceSmallStyle={weatherAdviceSmallStyle}
+        weatherDetailPanelStyle={weatherDetailPanelStyle}
+        weatherDetailHeaderStyle={weatherDetailHeaderStyle}
+        eyebrowStyle={eyebrowStyle}
+        weatherDetailTitleStyle={weatherDetailTitleStyle}
+        weatherText={weatherText}
+        weatherDetailConditionStyle={weatherDetailConditionStyle}
+        weatherDetailIconStyle={weatherDetailIconStyle}
+        weatherDetailGridStyle={weatherDetailGridStyle}
+        weatherDetailMetricStyle={weatherDetailMetricStyle}
+        weatherDetailNotesGridStyle={weatherDetailNotesGridStyle}
+        weatherDetailNoteStyle={weatherDetailNoteStyle}
+        weatherDayPlanning={weatherDayPlanning}
+      />
     );
   }
 
