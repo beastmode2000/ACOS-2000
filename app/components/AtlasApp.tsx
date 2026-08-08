@@ -7893,6 +7893,37 @@ export default function AtlasApp() {
     setSelectedServiceId("");
   }
 
+
+  function recordConnectedProjectCompletion(input: {
+    projectId?: string;
+    title: string;
+    source: "Task" | "Work Order";
+    sourceId: string;
+    detail?: string;
+  }) {
+    const projectId = String(input.projectId || "").trim();
+    if (!projectId) return;
+
+    const marker = `${input.source.toLowerCase().replace(/\s+/g, "-")}:${input.sourceId}:completed`;
+    const createdAt = new Date().toISOString();
+    setProjectTimelineEntries((current) => {
+      if (current.some((entry) => String(entry.notes || "").includes(`[${marker}]`))) {
+        return current;
+      }
+      const entry: ProjectTimelineEntry = {
+        propertyId: activePropertyId,
+        id: uid("project-completion"),
+        projectId,
+        title: `${input.source} completed: ${input.title}`,
+        notes: [`[${marker}]`, input.detail || ""].filter(Boolean).join("\n"),
+        date: todayISO(),
+        type: "Completion",
+        createdAt,
+      };
+      return [entry, ...current];
+    });
+  }
+
   async function completeWorkOrder(record: AtlasServiceRecord) {
     const actionKey = `complete-work-order:${record.id}`;
     if (atlasActionLocksRef.current.has(actionKey)) {
@@ -7941,6 +7972,18 @@ export default function AtlasApp() {
         ),
       );
       await postAtlasRecord("work_orders", completed);
+      recordConnectedProjectCompletion({
+        projectId: String(completed.projectId || ""),
+        title: completed.title || "Work order",
+        source: "Work Order",
+        sourceId: completed.id,
+        detail: [
+          completed.assetId ? `Asset: ${assetName(completed.assetId) || completed.assetId}` : "",
+          completed.locationId ? `Location: ${locationName(completed.locationId) || completed.locationId}` : "",
+          completed.vendorId ? `Vendor: ${vendorRecords.find((vendor) => vendor.id === completed.vendorId)?.name || completed.vendorId}` : "",
+        ].filter(Boolean).join(" · "),
+      });
+      recordAtlasAudit("Work order completed", completed.title || completed.id);
       clearRecordDirty("work_order", completed.id);
       setDatabaseStatus(`Completed ${completed.title}.`);
       showSaveToast(`${completed.title || "Work order"} completed.`);
@@ -7979,6 +8022,24 @@ export default function AtlasApp() {
       ),
     );
     await postAtlasRecord("work_orders", advanced);
+    recordConnectedProjectCompletion({
+      projectId: String(advanced.projectId || ""),
+      title: advanced.title || "Work order",
+      source: "Work Order",
+      sourceId: advanced.id,
+      detail: [
+        advanced.assetId ? `Asset: ${assetName(advanced.assetId) || advanced.assetId}` : "",
+        advanced.locationId ? `Location: ${locationName(advanced.locationId) || advanced.locationId}` : "",
+        advanced.vendorId ? `Vendor: ${vendorRecords.find((vendor) => vendor.id === advanced.vendorId)?.name || advanced.vendorId}` : "",
+        scheduleEnded ? "Recurring schedule ended." : `Next due ${formatDate(nextDate)}.`,
+      ].filter(Boolean).join(" · "),
+    });
+    recordAtlasAudit(
+      "Work order completed",
+      scheduleEnded
+        ? `${advanced.title || advanced.id} · recurring schedule ended`
+        : `${advanced.title || advanced.id} · next due ${formatDate(nextDate)}`,
+    );
     clearRecordDirty("work_order", advanced.id);
 
     setDatabaseStatus(
@@ -11239,6 +11300,21 @@ export default function AtlasApp() {
         lastCompletedDate: completedDate,
         completionHistory: history,
       });
+      recordConnectedProjectCompletion({
+        projectId: meta.projectId,
+        title: task.title,
+        source: "Task",
+        sourceId: task.id,
+        detail: [
+          meta.assignee ? `Assigned to ${meta.assignee}.` : "",
+          "Recurring schedule ended.",
+        ].filter(Boolean).join(" "),
+      });
+      if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
+      recordAtlasAudit(
+        "Task completed",
+        `${task.title} · ${meta.assignee || "Unassigned"} · recurring schedule ended`,
+      );
       showSaveToast(`${task.title} completed. Its recurring schedule has ended.`);
       return;
     }
@@ -11253,6 +11329,21 @@ export default function AtlasApp() {
       assignmentScope: meta.assignmentScope === "This occurrence" ? undefined : meta.assignmentScope,
       needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
     });
+    recordConnectedProjectCompletion({
+      projectId: meta.projectId,
+      title: task.title,
+      source: "Task",
+      sourceId: task.id,
+      detail: [
+        meta.assignee ? `Assigned to ${meta.assignee}.` : "",
+        `Next due ${formatDate(nextDate)}.`,
+      ].filter(Boolean).join(" "),
+    });
+    if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
+    recordAtlasAudit(
+      "Task completed",
+      `${task.title} · ${meta.assignee || "Unassigned"} · next due ${formatDate(nextDate)}`,
+    );
     showSaveToast(`${task.title} completed. Next due ${formatDate(nextDate)}.`);
   }
 
@@ -11268,6 +11359,13 @@ export default function AtlasApp() {
       lastCompletedDate: todayISO(),
       completionHistory: Array.from(new Set([...(meta.completionHistory || []), todayISO()])).sort(),
       needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
+    });
+    recordConnectedProjectCompletion({
+      projectId: meta.projectId,
+      title: task.title,
+      source: "Task",
+      sourceId: task.id,
+      detail: meta.assignee ? `Assigned to ${meta.assignee}.` : "",
     });
     if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
     recordAtlasAudit("Task completed", `${task.title} · ${meta.assignee || "Unassigned"}`);
