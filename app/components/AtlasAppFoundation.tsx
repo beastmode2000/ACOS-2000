@@ -5074,7 +5074,9 @@ export function ListDrawerLayout(props: {
     };
   }, [props.drawerResetKey]);
 
-  const isCalendarLayout = props.outerStyle === calendarNavyShellStyle;
+  const isCalendarLayout =
+    props.outerStyle?.background === colors.navy &&
+    props.outerStyle?.borderRadius === 24;
 
   const desktopOuterStyle: React.CSSProperties = props.isMobile
     ? sectionStyle
