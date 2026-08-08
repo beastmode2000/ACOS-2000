@@ -23933,6 +23933,7 @@ ${notes.trim()}` : notes.trim(),
         detailSectionStyle={detailSectionStyle}
         buttonRowStyle={buttonRowStyle}
         secondaryButtonStyle={secondaryButtonStyle}
+        contactMessage={contactMessage}
         setContactMessage={setContactMessage}
         formGridStyle={formGridStyle}
         updateContactDraft={updateContactDraft}

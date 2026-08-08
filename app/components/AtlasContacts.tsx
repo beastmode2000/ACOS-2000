@@ -37,6 +37,7 @@ export default function AtlasContacts(props: any) {
     detailSectionStyle,
     buttonRowStyle,
     secondaryButtonStyle,
+    contactMessage,
     setContactMessage,
     formGridStyle,
     updateContactDraft,
