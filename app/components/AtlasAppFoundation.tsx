@@ -5138,7 +5138,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-function ListDrawerLayout(props: {
+export function ListDrawerLayout(props: {
   eyebrow?: string;
   title?: string;
   detail?: string;
