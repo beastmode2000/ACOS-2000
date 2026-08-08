@@ -193,12 +193,12 @@ export default function AtlasVendorsWorkspace(props: any) {
   const selectedVendorPhotos = selectedVendor.id
     ? linkedImageFilesFor("Vendor", selectedVendor.id)
     : [];
-  const relatedVendorAssets = selectedVendor.id
-    ? byName(
-        assetRecords.filter((asset) =>
+  const relatedVendorAssets: AssetRecord[] = selectedVendor.id
+    ? (byName(
+        (assetRecords as AssetRecord[]).filter((asset) =>
           asset.vendorIds.includes(selectedVendor.id),
         ),
-      )
+      ) as AssetRecord[])
     : [];
   const relatedVendorWorkOrders = selectedVendor.id
     ? [...serviceRecords]
