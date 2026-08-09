@@ -20,6 +20,9 @@ type RoutineTemplate = {
   day: number;
   name: string;
   tasks: RoutineTask[];
+  recurrenceUnit?: "Days" | "Weeks" | "Months";
+  recurrenceInterval?: number;
+  recurrenceAnchorDate?: string;
 };
 
 const DEFAULT_PROPERTY_ID = "2000";
@@ -215,6 +218,9 @@ async function ensureTables(sql: ReturnType<typeof neon>) {
       day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
       name text NOT NULL,
       tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
+      recurrence_unit text NOT NULL DEFAULT 'Weeks',
+      recurrence_interval integer NOT NULL DEFAULT 1,
+      recurrence_anchor_date date,
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
   `;
@@ -233,6 +239,18 @@ async function ensureTables(sql: ReturnType<typeof neon>) {
   await sql`
     ALTER TABLE atlas_routine_templates
     ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'
+  `;
+  await sql`
+    ALTER TABLE atlas_routine_templates
+    ADD COLUMN IF NOT EXISTS recurrence_unit text NOT NULL DEFAULT 'Weeks'
+  `;
+  await sql`
+    ALTER TABLE atlas_routine_templates
+    ADD COLUMN IF NOT EXISTS recurrence_interval integer NOT NULL DEFAULT 1
+  `;
+  await sql`
+    ALTER TABLE atlas_routine_templates
+    ADD COLUMN IF NOT EXISTS recurrence_anchor_date date
   `;
 
   await sql`
@@ -326,7 +344,10 @@ async function loadTemplates(
     SELECT
       day_of_week,
       name,
-      tasks
+      tasks,
+      recurrence_unit,
+      recurrence_interval,
+      recurrence_anchor_date
     FROM atlas_routine_templates
     WHERE property_id = ${propertyId}
     ORDER BY day_of_week ASC
@@ -336,7 +357,100 @@ async function loadTemplates(
     day: Number(row.day_of_week),
     name: String(row.name || "Routine"),
     tasks: normalizeTasks(row.tasks).map(asTemplateTask),
+    recurrenceUnit:
+      row.recurrence_unit === "Days" || row.recurrence_unit === "Months"
+        ? row.recurrence_unit
+        : "Weeks",
+    recurrenceInterval: Math.max(1, Number(row.recurrence_interval || 1)),
+    recurrenceAnchorDate: row.recurrence_anchor_date
+      ? String(row.recurrence_anchor_date).slice(0, 10)
+      : "",
   }));
+}
+
+function dateOnly(value: string) {
+  return new Date(`${value}T12:00:00Z`);
+}
+
+function wholeDaysBetween(a: string, b: string) {
+  return Math.floor(
+    (dateOnly(b).getTime() - dateOnly(a).getTime()) / 86400000,
+  );
+}
+
+function wholeMonthsBetween(a: string, b: string) {
+  const start = dateOnly(a);
+  const end = dateOnly(b);
+  return (
+    (end.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+    (end.getUTCMonth() - start.getUTCMonth())
+  );
+}
+
+function templateDueOnDate(
+  template: Record<string, unknown>,
+  dateKey: string,
+) {
+  const unit =
+    template.recurrence_unit === "Days" ||
+    template.recurrence_unit === "Months"
+      ? String(template.recurrence_unit)
+      : "Weeks";
+  const interval = Math.max(1, Number(template.recurrence_interval || 1));
+  const anchor = template.recurrence_anchor_date
+    ? String(template.recurrence_anchor_date).slice(0, 10)
+    : dateKey;
+
+  if (dateKey < anchor) return false;
+
+  if (unit === "Days") {
+    return wholeDaysBetween(anchor, dateKey) % interval === 0;
+  }
+
+  if (unit === "Months") {
+    const anchorDate = dateOnly(anchor);
+    const date = dateOnly(dateKey);
+    return (
+      date.getUTCDate() === anchorDate.getUTCDate() &&
+      wholeMonthsBetween(anchor, dateKey) % interval === 0
+    );
+  }
+
+  const day = weekdayFromDate(dateKey);
+  if (day !== Number(template.day_of_week)) return false;
+
+  const days = wholeDaysBetween(anchor, dateKey);
+  return Math.floor(Math.max(0, days) / 7) % interval === 0;
+}
+
+async function scheduledTemplateForDate(
+  sql: ReturnType<typeof neon>,
+  propertyId: string,
+  dateKey: string,
+) {
+  const rows = (await sql`
+    SELECT
+      day_of_week,
+      name,
+      tasks,
+      recurrence_unit,
+      recurrence_interval,
+      recurrence_anchor_date
+    FROM atlas_routine_templates
+    WHERE property_id = ${propertyId}
+    ORDER BY day_of_week ASC
+  `) as unknown as Array<Record<string, unknown>>;
+
+  const due = rows.filter((row) => templateDueOnDate(row, dateKey));
+  if (!due.length) return null;
+
+  return {
+    day: weekdayFromDate(dateKey),
+    name: due.map((row) => String(row.name || "Routine")).join(" + "),
+    tasks: due.flatMap((row) =>
+      normalizeTasks(row.tasks).filter((task) => task.enabled),
+    ),
+  };
 }
 
 async function getOrCreateOccurrence(
@@ -350,27 +464,18 @@ async function getOrCreateOccurrence(
     return null;
   }
 
-  const templateRows = (await sql`
-    SELECT
-      day_of_week,
-      name,
-      tasks
-    FROM atlas_routine_templates
-    WHERE property_id = ${propertyId}
-      AND day_of_week = ${day}
-    LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
+  const scheduled = await scheduledTemplateForDate(
+    sql,
+    propertyId,
+    dateKey,
+  );
 
-  const template = templateRows[0];
-
-  if (!template) {
+  if (!scheduled) {
     return null;
   }
 
-  const templateName = String(template.name || "Routine");
-  const templateTasks = normalizeTasks(template.tasks).filter(
-    (task) => task.enabled,
-  );
+  const templateName = scheduled.name;
+  const templateTasks = scheduled.tasks;
 
   const occurrenceRows = (await sql`
     SELECT
@@ -557,6 +662,22 @@ export async function POST(request: NextRequest) {
 
       const name = String(body.name || "Routine").trim() || "Routine";
       const tasks = normalizeTasks(body.tasks).map(asTemplateTask);
+      const recurrenceUnit =
+        body.recurrenceUnit === "Days" || body.recurrenceUnit === "Months"
+          ? String(body.recurrenceUnit)
+          : "Weeks";
+      const recurrenceInterval = Math.max(
+        1,
+        Math.floor(Number(body.recurrenceInterval || 1)),
+      );
+      const recurrenceAnchorDate =
+        typeof body.recurrenceAnchorDate === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(body.recurrenceAnchorDate)
+          ? body.recurrenceAnchorDate
+          : typeof body.date === "string" &&
+              /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+            ? body.date
+            : new Date().toISOString().slice(0, 10);
 
       await sql`
         INSERT INTO atlas_routine_templates (
@@ -564,6 +685,9 @@ export async function POST(request: NextRequest) {
           day_of_week,
           name,
           tasks,
+          recurrence_unit,
+          recurrence_interval,
+          recurrence_anchor_date,
           updated_at
         )
         VALUES (
@@ -571,12 +695,18 @@ export async function POST(request: NextRequest) {
           ${day},
           ${name},
           ${JSON.stringify(tasks)}::jsonb,
+          ${recurrenceUnit},
+          ${recurrenceInterval},
+          ${recurrenceAnchorDate}::date,
           NOW()
         )
         ON CONFLICT (property_id, day_of_week)
         DO UPDATE SET
           name = EXCLUDED.name,
           tasks = EXCLUDED.tasks,
+          recurrence_unit = EXCLUDED.recurrence_unit,
+          recurrence_interval = EXCLUDED.recurrence_interval,
+          recurrence_anchor_date = EXCLUDED.recurrence_anchor_date,
           updated_at = NOW()
       `;
 
@@ -596,14 +726,46 @@ export async function POST(request: NextRequest) {
       );
 
       for (const candidateDate of candidateDates) {
-        await refreshOccurrenceForDate(
+        const scheduled = await scheduledTemplateForDate(
           sql,
           propertyId,
           candidateDate,
-          day,
-          name,
-          tasks,
         );
+
+        if (!scheduled) {
+          await sql`
+            DELETE FROM atlas_routine_occurrences
+            WHERE property_id = ${propertyId}
+              AND occurrence_date = ${candidateDate}::date
+          `;
+          continue;
+        }
+
+        const rows = (await sql`
+          SELECT tasks
+          FROM atlas_routine_occurrences
+          WHERE property_id = ${propertyId}
+            AND occurrence_date = ${candidateDate}::date
+          LIMIT 1
+        `) as unknown as Array<Record<string, unknown>>;
+
+        if (rows.length) {
+          const existingTasks = normalizeTasks(rows[0].tasks);
+          const refreshedTasks = synchronizeOccurrenceTasks(
+            scheduled.tasks,
+            existingTasks,
+          );
+          await sql`
+            UPDATE atlas_routine_occurrences
+            SET
+              day_of_week = ${scheduled.day},
+              routine_name = ${scheduled.name},
+              tasks = ${JSON.stringify(refreshedTasks)}::jsonb,
+              updated_at = NOW()
+            WHERE property_id = ${propertyId}
+              AND occurrence_date = ${candidateDate}::date
+          `;
+        }
       }
 
       const responseDate =
