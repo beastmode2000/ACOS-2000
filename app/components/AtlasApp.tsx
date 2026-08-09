@@ -1746,60 +1746,10 @@ export default function AtlasApp() {
     return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener("focus", handleFocus); };
   }, [ready, operationsHydrated, activePropertyId]);
 
-  useEffect(() => {
-    if (!ready || !operationsHydrated || syncState !== "synced" || !vehicleCare.length) return;
-    void setupFleetAssetsAndSchedules();
-  }, [ready, operationsHydrated, syncState, activePropertyId, vehicleCare.length, assetRecords.length, workPlanTasks.length, serviceRecords.length, calendarItems.length]);
-  useEffect(() => {
-    if (!ready || !operationsHydrated || syncState !== "synced") return;
-    void setupWeeklyOperations();
-  }, [ready, operationsHydrated, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupHousePreventiveMaintenance();
-  }, [ready, operationsHydrated, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || !["2000", "hangar"].includes(activePropertyId)) return;
-    void setupConfirmedAssetCatalog();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
-    void setupApplianceColdSeasonWorkOrders();
-  }, [ready, syncState, activePropertyId, assetRecords.length]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupSeasonalPressureWashing();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupExteriorGlassCare();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupRoofDrainageCare();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupHolidayTreeSchedule();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
-    void setupMarineRegistrationTabs();
-  }, [ready, syncState, activePropertyId, assetRecords.length]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
-    if (winterTruckBallastTimerRef.current) window.clearTimeout(winterTruckBallastTimerRef.current);
-    winterTruckBallastTimerRef.current = window.setTimeout(() => { void setupWinterTruckBallast(); }, 2200);
-    return () => { if (winterTruckBallastTimerRef.current) window.clearTimeout(winterTruckBallastTimerRef.current); };
-  }, [ready, syncState, activePropertyId, assetRecords.length, serviceRecords.length]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    if (workOrderDateReconciliationTimerRef.current) window.clearTimeout(workOrderDateReconciliationTimerRef.current);
-    workOrderDateReconciliationTimerRef.current = window.setTimeout(() => { void reconcileApplianceAndPressureWashingDates(); }, 1800);
-    return () => {
-      if (workOrderDateReconciliationTimerRef.current) window.clearTimeout(workOrderDateReconciliationTimerRef.current);
-    };
-  }, [ready, syncState, activePropertyId, serviceRecords.length, assetRecords.length, calendarItems.length]);
+  // Operational setup must NEVER run automatically on app load or deploy.
+  // These setup functions may only run from explicit user-triggered buttons/actions.
+  // This prevents duplicate Tasks, Work Orders, Calendar records, and event plans.
+
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -14022,6 +13972,98 @@ ${notes.trim()}` : notes.trim(),
     showSaveToast(`${template.title} created with ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`);
   }
 
+  function removeExactDuplicateTasks() {
+    const keepByKey = new Map<string, WorkPlanTask>();
+    const duplicateIds = new Set<string>();
+
+    const keyFor = (task: WorkPlanTask) => {
+      const meta = taskDetails(task.id);
+      return [
+        task.title.trim().toLowerCase(),
+        String(task.category || "").trim().toLowerCase(),
+        String(task.locationId || "").trim().toLowerCase(),
+        String(meta.dueDate || "").slice(0, 10),
+        String(meta.assignee || "").trim().toLowerCase(),
+        task.recurring ? "recurring" : "one-time",
+        String(meta.listId || "").trim().toLowerCase(),
+      ].join("|");
+    };
+
+    const scoreFor = (task: WorkPlanTask) => {
+      const meta = taskDetails(task.id);
+      return (
+        (meta.status === "Completed" ? 100 : 0) +
+        (meta.completionHistory?.length || 0) * 5 +
+        (meta.notes ? 2 : 0) +
+        (meta.completedAt ? 2 : 0)
+      );
+    };
+
+    workPlanTasks.forEach((task) => {
+      if (task.category === "Atlas List Definition") return;
+
+      const key = keyFor(task);
+      const kept = keepByKey.get(key);
+
+      if (!kept) {
+        keepByKey.set(key, task);
+        return;
+      }
+
+      if (scoreFor(task) > scoreFor(kept)) {
+        duplicateIds.add(kept.id);
+        keepByKey.set(key, task);
+      } else {
+        duplicateIds.add(task.id);
+      }
+    });
+
+    if (!duplicateIds.size) {
+      showSaveToast("No exact duplicate tasks found.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove ${duplicateIds.size} exact duplicate task${
+        duplicateIds.size === 1 ? "" : "s"
+      }? Atlas will keep one copy of each task and preserve the stronger history copy.`,
+    );
+    if (!confirmed) return;
+
+    setWorkPlanTasks((current) =>
+      current.filter((task) => !duplicateIds.has(task.id)),
+    );
+
+    setTaskMeta((current) => {
+      const next = { ...current };
+      duplicateIds.forEach((id) => {
+        delete next[id];
+      });
+
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        }
+      } catch {}
+
+      return next;
+    });
+
+    duplicateIds.forEach((id) => {
+      void deleteOperationalRecord("tasks" as AtlasTable, id);
+    });
+
+    showSaveToast(
+      `Removed ${duplicateIds.size} duplicate task${
+        duplicateIds.size === 1 ? "" : "s"
+      }.`,
+    );
+  }
+
   function makeSuggestedTaskRepeating(task: WorkPlanTask) {
     const nextDue = addDays(todayISO(), 7);
     const weekdayLabel = new Date().toLocaleDateString(undefined, {
@@ -15344,6 +15386,7 @@ ${notes.trim()}` : notes.trim(),
           quickCreateVendor,
           quickCreateContact,
           deleteAtlasTask,
+          removeExactDuplicateTasks,
           taskFocusMode,
           setTaskFocusMode,
           mapIconButtonStyle,
