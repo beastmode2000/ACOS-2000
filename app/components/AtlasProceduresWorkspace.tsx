@@ -237,28 +237,88 @@ export default function AtlasProceduresWorkspace(props: any) {
         </div>
       </div>
 
-      <div style={{ ...cardStyle, background: "#F8FAFC" }}>
-        <div style={eyebrowStyle}>Build Draft from Notes</div>
-        <Field
-          label="Paste notes, a manual excerpt, work-order details, or a photo description"
-          value={procedureDraftNotes}
-          onChange={setProcedureDraftNotes}
-          multiline
-        />
-        <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+      <div style={cardStyle}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <div>
+            <div style={eyebrowStyle}>Procedure</div>
+            <strong>{selectedProcedure.steps.length} steps</strong>
+          </div>
           <button
             type="button"
-            onClick={generateProcedureDraft}
-            style={goldButtonStyle}
+            onClick={() =>
+              updateProcedureSteps([...selectedProcedure.steps, "New step"])
+            }
+            style={smallSubtleButtonStyle}
           >
-            Generate Procedure Draft
+            Add Step
           </button>
         </div>
-        {procedureMessage ? (
-          <p style={{ ...mutedSmallStyle, marginTop: 8 }}>
-            {procedureMessage}
-          </p>
-        ) : null}
+        <div style={{ display: "grid", gap: 8 }}>
+          {selectedProcedure.steps.map((step, index) => (
+            <div
+              key={`${selectedProcedure.id}-step-${index}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "32px minmax(0, 1fr) auto",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <strong style={{ textAlign: "center" }}>{index + 1}</strong>
+              <input
+                value={step}
+                onChange={(event) => {
+                  const next = [...selectedProcedure.steps];
+                  next[index] = event.currentTarget.value;
+                  updateProcedureSteps(next);
+                }}
+                style={inputStyle}
+              />
+              <div style={{ display: "flex", gap: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => moveProcedureStep(index, -1)}
+                  disabled={index === 0}
+                  style={smallSubtleButtonStyle}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveProcedureStep(index, 1)}
+                  disabled={index === selectedProcedure.steps.length - 1}
+                  style={smallSubtleButtonStyle}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateProcedureSteps(
+                      selectedProcedure.steps.filter(
+                        (_, itemIndex) => itemIndex !== index,
+                      ),
+                    )
+                  }
+                  style={tinyDangerButtonStyle}
+                >
+                  {closeSymbol}
+                </button>
+              </div>
+            </div>
+          ))}
+          {!selectedProcedure.steps.length ? (
+            <div style={noticeStyle}>No procedure created yet. Add the first step.</div>
+          ) : null}
+        </div>
       </div>
 
       <div style={formGridStyle}>
@@ -389,88 +449,28 @@ export default function AtlasProceduresWorkspace(props: any) {
         />
       </div>
 
-      <div style={cardStyle}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            alignItems: "center",
-            marginBottom: 10,
-          }}
-        >
-          <div>
-            <div style={eyebrowStyle}>Procedure Checklist</div>
-            <strong>{selectedProcedure.steps.length} steps</strong>
-          </div>
+      <div style={{ ...cardStyle, background: "#F8FAFC" }}>
+        <div style={eyebrowStyle}>Build Draft from Notes</div>
+        <Field
+          label="Paste notes, a manual excerpt, work-order details, or a photo description"
+          value={procedureDraftNotes}
+          onChange={setProcedureDraftNotes}
+          multiline
+        />
+        <div style={{ ...buttonRowStyle, marginTop: 10 }}>
           <button
             type="button"
-            onClick={() =>
-              updateProcedureSteps([...selectedProcedure.steps, "New step"])
-            }
-            style={smallSubtleButtonStyle}
+            onClick={generateProcedureDraft}
+            style={goldButtonStyle}
           >
-            Add Step
+            Generate Procedure Draft
           </button>
         </div>
-        <div style={{ display: "grid", gap: 8 }}>
-          {selectedProcedure.steps.map((step, index) => (
-            <div
-              key={`${selectedProcedure.id}-step-${index}`}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "32px minmax(0, 1fr) auto",
-                gap: 8,
-                alignItems: "center",
-              }}
-            >
-              <strong style={{ textAlign: "center" }}>{index + 1}</strong>
-              <input
-                value={step}
-                onChange={(event) => {
-                  const next = [...selectedProcedure.steps];
-                  next[index] = event.currentTarget.value;
-                  updateProcedureSteps(next);
-                }}
-                style={inputStyle}
-              />
-              <div style={{ display: "flex", gap: 4 }}>
-                <button
-                  type="button"
-                  onClick={() => moveProcedureStep(index, -1)}
-                  disabled={index === 0}
-                  style={smallSubtleButtonStyle}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveProcedureStep(index, 1)}
-                  disabled={index === selectedProcedure.steps.length - 1}
-                  style={smallSubtleButtonStyle}
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateProcedureSteps(
-                      selectedProcedure.steps.filter(
-                        (_, itemIndex) => itemIndex !== index,
-                      ),
-                    )
-                  }
-                  style={tinyDangerButtonStyle}
-                >
-                  {closeSymbol}
-                </button>
-              </div>
-            </div>
-          ))}
-          {!selectedProcedure.steps.length ? (
-            <div style={noticeStyle}>Add the first checklist step.</div>
-          ) : null}
-        </div>
+        {procedureMessage ? (
+          <p style={{ ...mutedSmallStyle, marginTop: 8 }}>
+            {procedureMessage}
+          </p>
+        ) : null}
       </div>
 
       <div style={cardStyle}>
@@ -867,7 +867,7 @@ export default function AtlasProceduresWorkspace(props: any) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(250px, 330px) minmax(0, 1fr)",
+              gridTemplateColumns: "minmax(280px, 320px) minmax(0, 1fr)",
               gap: 12,
               alignItems: "start",
             }}
@@ -893,7 +893,7 @@ export default function AtlasProceduresWorkspace(props: any) {
                 aria-label="Search procedures"
                 style={{ ...inputStyle, width: "100%", height: 34, marginBottom: 7 }}
               />
-              <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "grid", gap: 4 }}>
                 {visibleProcedures.map((procedure) => {
                   const active = procedure.id === selectedProcedure.id;
                   return (
