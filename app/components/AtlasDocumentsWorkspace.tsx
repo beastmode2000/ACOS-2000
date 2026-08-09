@@ -1050,7 +1050,7 @@ export default function AtlasDocumentsWorkspace(props: any) {
           !isMobile
             ? selectedDocument
               ? {
-                  gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)",
+                  gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)",
                   alignItems: "start",
                   gap: 14,
                 }
@@ -1062,9 +1062,10 @@ export default function AtlasDocumentsWorkspace(props: any) {
             ? selectedDocument
               ? {
                   width: "100%",
-                  maxWidth: "none",
+                  maxWidth: 340,
                   minWidth: 0,
                   overflowX: "hidden",
+                  padding: 10,
                 }
               : { width: "100%", maxWidth: "none" }
             : undefined
@@ -1106,7 +1107,7 @@ export default function AtlasDocumentsWorkspace(props: any) {
           </>
         }
         list={
-          <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 8 }}>
             {(favoriteDocuments.length > 0 || recentDocuments.length > 0) ? (
               <section
                 style={{
@@ -1713,9 +1714,9 @@ export default function AtlasDocumentsWorkspace(props: any) {
             <div
               style={{
                 ...cardStyle,
-                padding: 14,
+                padding: 10,
                 display: "grid",
-                gap: 12,
+                gap: 8,
                 background:
                   "linear-gradient(180deg, #FFFFFF 0%, #F7FAFC 100%)",
               }}
@@ -1745,8 +1746,8 @@ export default function AtlasDocumentsWorkspace(props: any) {
                     placeholder="Search title, category, property area, vendor, or file name"
                     style={{
                       ...inputStyle,
-                      paddingLeft: 38,
-                      minHeight: 44,
+                      paddingLeft: 36,
+                      minHeight: 38,
                     }}
                     aria-label="Search documents and photos"
                   />
@@ -1769,7 +1770,7 @@ export default function AtlasDocumentsWorkspace(props: any) {
                     onChange={(event) =>
                       setDocumentCategoryFilter(event.currentTarget.value)
                     }
-                    style={inputStyle}
+                    style={{ ...inputStyle, minHeight: 36, padding: "7px 10px" }}
                     aria-label="Filter documents by category"
                   >
                     <option value="All">All categories</option>
@@ -1788,7 +1789,7 @@ export default function AtlasDocumentsWorkspace(props: any) {
                     onChange={(event) =>
                       setDocumentLinkFilter(event.currentTarget.value)
                     }
-                    style={inputStyle}
+                    style={{ ...inputStyle, minHeight: 36, padding: "7px 10px" }}
                     aria-label="Filter documents by linked section"
                   >
                     <option value="All">Everything</option>
