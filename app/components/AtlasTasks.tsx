@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 export default function AtlasTasks({ ctx }: { ctx: any }) {
-  const { todayISO, addDays, workPlanTasks, taskDetails, isAddisonUser, taskSearch, taskListFilter, selectedTaskId, setSelectedTaskId, fileToUploadedRecord, updateTaskDetails, showSaveToast, setWalkVoiceListening, cardStyle, colors, mutedSmallStyle, setTasksView, goldButtonStyle, isMobile, eyebrowStyle, secondaryButtonStyle, minutesLabel, plannerLocationName, noticeStyle, completeAtlasTask, skipRecurringTask, moveAtlasTaskToTomorrow, walkVoiceListening, setPreviewFile, setTaskListFilter, SectionHeader, tasksView, backlogItems, openGraduationPartyChecklist, renderOperationsAnalytics, renderSmartRoutePlanning, renderBuildMyDay, renderAddisonToday, renderWeeklyPlanner, renderBacklog, renderVehicleCare, renderSeasonalWork, renderOperationsTemplates, renderGraduationPartyChecklist, renderOperationsIntelligence, rapidTaskInputRef, newTaskTitle, setNewTaskTitle, addAtlasTask, inputStyle, focusRapidTaskInput, setTaskSearch, badgeStyle, formatDate, compactUtilityButtonStyle, assignTaskTo, addQuickTaskNote, addTaskPhoto, convertTaskToWorkOrder, Field, updateWorkPlanTask, SelectField, workPlanDays, photoTimelineProjects, serviceRecords, assetRecords, locations, vehicleCare, vendorRecords, procedureRecords, contactRecords, CreatableRelationshipField, quickCreateProject, fieldLabelStyle, quickCreateAsset, quickCreateLocation, quickCreateVendor, quickCreateContact, deleteAtlasTask, removeExactDuplicateTasks, taskFocusMode, setTaskFocusMode, mapIconButtonStyle, closeSymbol } = ctx;
+  const { todayISO, addDays, workPlanTasks, taskDetails, isAddisonUser, taskSearch, taskListFilter, selectedTaskId, setSelectedTaskId, fileToUploadedRecord, updateTaskDetails, showSaveToast, setWalkVoiceListening, cardStyle, colors, mutedSmallStyle, setTasksView, goldButtonStyle, isMobile, eyebrowStyle, secondaryButtonStyle, minutesLabel, plannerLocationName, noticeStyle, completeAtlasTask, skipRecurringTask, moveAtlasTaskToToday, moveAtlasTaskToTomorrow, moveAtlasTaskToDate, walkVoiceListening, setPreviewFile, setTaskListFilter, SectionHeader, tasksView, backlogItems, openGraduationPartyChecklist, renderOperationsAnalytics, renderSmartRoutePlanning, renderBuildMyDay, renderAddisonToday, renderWeeklyPlanner, renderBacklog, renderVehicleCare, renderSeasonalWork, renderOperationsTemplates, renderGraduationPartyChecklist, renderOperationsIntelligence, rapidTaskInputRef, newTaskTitle, setNewTaskTitle, addAtlasTask, inputStyle, focusRapidTaskInput, setTaskSearch, badgeStyle, formatDate, compactUtilityButtonStyle, assignTaskTo, addQuickTaskNote, addTaskPhoto, convertTaskToWorkOrder, Field, updateWorkPlanTask, SelectField, workPlanDays, photoTimelineProjects, serviceRecords, assetRecords, locations, vehicleCare, vendorRecords, procedureRecords, contactRecords, CreatableRelationshipField, quickCreateProject, fieldLabelStyle, quickCreateAsset, quickCreateLocation, quickCreateVendor, quickCreateContact, deleteAtlasTask, removeExactDuplicateTasks, taskFocusMode, setTaskFocusMode, mapIconButtonStyle, closeSymbol } = ctx;
     const today = todayISO();
     const weekEnd = addDays(today, 7);
     const priorityOrder = { High: 0, Medium: 1, Low: 2 } as const;
@@ -121,6 +121,10 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
       const dueDate = String(taskDetails(task.id).dueDate || "").slice(0, 10);
       return !dueDate || dueDate <= todayISO();
     };
+    const isFutureTask = (task: any) => {
+      const dueDate = String(taskDetails(task.id).dueDate || "").slice(0, 10);
+      return Boolean(dueDate && dueDate > todayISO());
+    };
 
     const filterButton = (id: any, label: string, count: number) => (
       <button type="button" onClick={() => setTaskListFilter(id)} style={{ ...(taskListFilter === id ? goldButtonStyle : secondaryButtonStyle), padding: "7px 10px" }}>{label} · {count}</button>
@@ -221,6 +225,15 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
                       </button>
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
                         {meta.status !== "Completed" ? <button type="button" disabled={!canCompleteTask(task)} title={!canCompleteTask(task) ? `Due ${formatDate(meta.dueDate)} — cannot complete early` : undefined} onClick={() => completeAtlasTask(task)} style={{ ...compactUtilityButtonStyle, opacity: canCompleteTask(task) ? 1 : .45, cursor: canCompleteTask(task) ? "pointer" : "not-allowed" }}>{canCompleteTask(task) ? "Done" : "Future"}</button> : null}
+                        {meta.status !== "Completed" && isFutureTask(task) ? (
+                          <button
+                            type="button"
+                            onClick={() => moveAtlasTaskToToday(task)}
+                            style={compactUtilityButtonStyle}
+                          >
+                            Move to Today
+                          </button>
+                        ) : null}
                         {meta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(task)} style={compactUtilityButtonStyle}>Tomorrow</button> : null}
                         {meta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Addison")} style={compactUtilityButtonStyle}>Addison</button> : null}
                         {meta.assignee !== "Pat" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Pat")} style={compactUtilityButtonStyle}>Pat</button> : null}
@@ -248,7 +261,12 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
                     </div>
                     <Field label="Task" value={selectedTask.title} onChange={(value) => updateWorkPlanTask(selectedTask.id, { title: value })} />
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9 }}>
-                      <Field label="Due date" type="date" value={selectedMeta.dueDate} onChange={(value) => updateTaskDetails(selectedTask.id, { dueDate: value })} />
+                      <Field
+                      label="Due date"
+                      type="date"
+                      value={selectedMeta.dueDate}
+                      onChange={(value) => moveAtlasTaskToDate(selectedTask, value)}
+                    />
                       <SelectField label="Status" value={selectedMeta.status} onChange={(value) => updateTaskDetails(selectedTask.id, { status: value as any, completedAt: value === "Completed" ? new Date().toISOString() : undefined })} options={canCompleteTask(selectedTask) ? ["Open","In Progress","Waiting","Blocked","Completed"] : ["Open","In Progress","Waiting","Blocked"]} />
                       <SelectField label="Priority" value={selectedTask.priority} onChange={(value) => updateWorkPlanTask(selectedTask.id, { priority: value as any })} options={["High","Medium","Low"]} />
                       <SelectField label="Assigned to" value={selectedMeta.assignee} onChange={(value) => updateTaskDetails(selectedTask.id, { assignee: value as any })} options={["Nick","Addison","Pat","Other","Unassigned"]} />
@@ -295,7 +313,27 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {!isAddisonUser ? selectedMeta.assignee !== "Addison" ? <button type="button" onClick={() => assignTaskTo(selectedTask, "Addison")} style={goldButtonStyle}>Add to Addison</button> : <span style={badgeStyle("Scheduled")}>Assigned to Addison</span> : null}
                       {selectedMeta.assignee !== "Pat" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(selectedTask, "Pat")} style={secondaryButtonStyle}>Add to Pat</button> : selectedMeta.assignee === "Pat" ? <span style={badgeStyle("Scheduled")}>Assigned to Pat</span> : null}
-                      {selectedTask.recurring && selectedMeta.status !== "Completed" && selectedMeta.skippable !== false ? <button type="button" onClick={() => skipRecurringTask(selectedTask)} style={secondaryButtonStyle}>Skip occurrence</button> : null}
+                      {selectedTask.recurring &&
+                      selectedMeta.status !== "Completed" &&
+                      selectedMeta.skippable !== false ? (
+                        <button
+                          type="button"
+                          disabled={isFutureTask(selectedTask)}
+                          title={
+                            isFutureTask(selectedTask)
+                              ? `Due ${formatDate(selectedMeta.dueDate)} — cannot skip early`
+                              : undefined
+                          }
+                          onClick={() => skipRecurringTask(selectedTask)}
+                          style={{
+                            ...secondaryButtonStyle,
+                            opacity: isFutureTask(selectedTask) ? 0.45 : 1,
+                            cursor: isFutureTask(selectedTask) ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          Skip occurrence
+                        </button>
+                      ) : null}
                       {!isAddisonUser ? <button type="button" onClick={() => deleteAtlasTask(selectedTask.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button> : null}
                     </div>
                   </div>
