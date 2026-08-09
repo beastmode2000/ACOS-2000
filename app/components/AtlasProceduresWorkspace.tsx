@@ -930,6 +930,7 @@ export default function AtlasProceduresWorkspace(props: any) {
           detail="Create reusable SOPs, preventive-maintenance instructions, and landscaping procedures."
           isMobile={isMobile}
           drawerResetKey={selectedProcedure.id || "procedure-new"}
+          drawer={undefined}
           right={
             <button
               type="button"
