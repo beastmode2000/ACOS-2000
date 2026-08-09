@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type Row = Record<string, unknown>;
 type Role = "Master" | "Administrator" | "Manager" | "Employee" | "Vendor" | "Viewer";
 type Permissions = { view:boolean; edit:boolean; approve:boolean; delete:boolean; manageUsers:boolean };
-type Member = { id: string; name: string; email: string; role: Role; active: boolean; propertyIds:string[]; permissions:Permissions; accessProfiles:string[]; inviteStatus?:string };
+type Member = { id: string; name: string; email: string; role: Role; active: boolean; propertyIds:string[]; permissions:Permissions; inviteStatus?:string };
 type ReportKey = "workOrders" | "assets" | "vendors" | "contacts" | "procedures" | "calendar" | "documents";
 
 type Props = {
@@ -15,9 +15,9 @@ type Props = {
 };
 
 const defaultTeam: Member[] = [
-  { id: "nick", name: "Nick Thornton", email: "nthornton87@yahoo.com", role: "Master", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, accessProfiles:[] },
-  { id: "steve", name: "Steve", email: "stevem@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, accessProfiles:[] },
-  { id: "kenji", name: "Kenji", email: "kenjij@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, accessProfiles:[] },
+  { id: "nick", name: "Nick Thornton", email: "nthornton87@yahoo.com", role: "Master", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
+  { id: "steve", name: "Steve", email: "stevem@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
+  { id: "kenji", name: "Kenji", email: "kenjij@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
 ];
 const reports: Array<[ReportKey, string]> = [
   ["workOrders", "Work Orders"], ["assets", "Assets"], ["vendors", "Vendors"],
@@ -34,19 +34,6 @@ const descriptions: Record<Role, string> = {
 };
 const properties = [["2000","2000"],["6855","6855"],["3661","3661"],["hangar","Hangar"]] as const;
 const permissionLabels: Array<[keyof Permissions,string]> = [["view","View"],["edit","Edit"],["approve","Approve"],["delete","Delete"],["manageUsers","Manage Users"]];
-
-const accessProfileOptions = [
-  ["marine", "🌊 Marine"],
-  ["landscaping", "🌳 Landscaping"],
-  ["house", "🏠 House"],
-  ["maintenance", "🔧 Maintenance"],
-  ["pool-spa", "🏊 Pool & Spa"],
-  ["vehicles", "🚗 Vehicles"],
-  ["electrical", "⚡ Electrical"],
-  ["plumbing", "🚰 Plumbing"],
-  ["inventory", "📦 Inventory"],
-] as const;
-
 const roleDefaults: Record<Role, Permissions> = {
   Master:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, Administrator:{view:true,edit:true,approve:true,delete:true,manageUsers:true},
   Manager:{view:true,edit:true,approve:true,delete:false,manageUsers:false}, Employee:{view:true,edit:true,approve:false,delete:false,manageUsers:false},
@@ -100,8 +87,6 @@ function printReport(title: string, rows: Row[]) {
           ["assetId", "Asset"],
           ["locationId", "Location"],
           ["vendorId", "Vendor"],
-          ["estimatedCost", "Estimated"],
-          ["actualCost", "Actual"],
           ["invoiceNumber", "Invoice"],
         ]
       : reportKey.includes("asset")
@@ -241,7 +226,6 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<Role>("Employee");
   const [newPropertyIds, setNewPropertyIds] = useState<string[]>(["2000"]);
-  const [newAccessProfiles, setNewAccessProfiles] = useState<string[]>([]);
   const [inviteLink, setInviteLink] = useState("");
   const [backups, setBackups] = useState<Array<Record<string, unknown>>>([]);
   const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
@@ -263,7 +247,6 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
           role: member.role === "master" ? "Master" : member.role === "administrator" ? "Administrator" : member.role === "manager" ? "Manager" : member.role === "employee" || member.role === "operations" ? "Employee" : member.role === "vendor" ? "Vendor" : "Viewer",
           propertyIds: Array.isArray((member as any).propertyIds) ? (member as any).propertyIds : ["2000"],
           permissions: { ...roleDefaults.Viewer, ...((member as any).permissions || {}) },
-          accessProfiles: Array.isArray((member as any).accessProfiles) ? (member as any).accessProfiles.map(String) : [],
         })));
       })
       .catch(() => setMessage("Atlas could not load shared access settings."));
@@ -281,6 +264,27 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
     setMessage("");
   }
 
+  async function deleteMember(member: Member) {
+    if (member.role === "Master" || member.id === "nick") {
+      setMessage("The Master account cannot be deleted.");
+      return;
+    }
+    if (!window.confirm(`Delete ${member.name} from Atlas? This removes their Atlas access.`)) return;
+    setMessage(`Deleting ${member.name}...`);
+    const response = await fetch("/api/atlas-team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", memberId: member.id }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      setMessage(String(payload.error || "Atlas user could not be deleted."));
+      return;
+    }
+    setTeam((current) => current.filter((item) => item.id !== member.id));
+    setMessage(`${member.name} deleted from Atlas.`);
+  }
+
   async function saveAccess() {
     setMessage("Saving shared access settings...");
     const response = await fetch("/api/atlas-team", {
@@ -296,7 +300,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
 
   async function createInvite() {
     if (!newName.trim() || !newEmail.includes("@")) { setMessage("Enter the employee name and email."); return; }
-    const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member:{ id:`team-${Date.now()}`, name:newName.trim(), email:newEmail.trim(), role:newRole.toLowerCase(), active:true, propertyIds:newPropertyIds, permissions:roleDefaults[newRole], accessProfiles:newAccessProfiles } }) });
+    const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member:{ id:`team-${Date.now()}`, name:newName.trim(), email:newEmail.trim(), role:newRole.toLowerCase(), active:true, propertyIds:newPropertyIds, permissions:roleDefaults[newRole] } }) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) { setMessage(String(payload.error || "Invitation could not be created.")); return; }
     const link = `${window.location.origin}${payload.invitePath}`;
@@ -388,14 +392,6 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
         <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Reports & Export</div>
         <h2 style={{ margin: "5px 0", color: colors.navy }}>Download Atlas records</h2>
         <p style={{ margin: "0 0 16px", color: colors.muted }}>Choose a report and download a spreadsheet-ready CSV file.</p>
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(4,minmax(0,1fr))",gap:8,marginBottom:12}}>
-          {[
-            ["Estimated", money(estimatedTotal)],
-            ["Actual", money(actualTotal)],
-            ["Completed", String(completedCount)],
-            ["Missing completed costs", String(missingCostCount)],
-          ].map(([label,value])=><div key={label} style={{border:`1px solid ${colors.line}`,borderRadius:10,background:colors.panel,padding:10}}><span style={{display:"block",fontSize:10,fontWeight:900,color:colors.muted,textTransform:"uppercase"}}>{label}</span><strong style={{fontSize:18,color:colors.navy}}>{value}</strong></div>)}
-        </div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1fr) auto", gap: 10 }}>
           <select value={report} onChange={(event) => { setReport(event.currentTarget.value as ReportKey); clearFilters(); }} style={control}>
             {reports.map(([value, label]) => <option key={value} value={value}>{label} ({data[value].length})</option>)}
@@ -415,9 +411,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
         <div style={{marginTop:10,color:colors.muted,fontSize:13}}>{filteredRows.length} matching record{filteredRows.length===1?"":"s"}</div>
       </section>
 
-      <details style={card}>
-        <summary style={{cursor:"pointer",fontWeight:900,color:colors.navy}}>Team & Permissions · {team.length}</summary>
-        <div style={{marginTop:14}}>
+      <section style={card}>
         <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Team & Permissions</div>
         <h2 style={{ margin: "5px 0", color: colors.navy }}>Access profiles</h2>
         <p style={{ margin: "0 0 16px", color: colors.muted }}>Keep roles simple. Passwords stay controlled by the existing secure Vercel settings.</p>
@@ -438,17 +432,15 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
                 {properties.map(([id,label])=><label key={id} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" disabled={member.role==="Master"} checked={member.propertyIds.includes(id)} onChange={(event)=>updateMember(member.id,{propertyIds:event.currentTarget.checked?[...member.propertyIds,id]:member.propertyIds.filter((value)=>value!==id)})}/>{label}</label>)}
               </div>
               <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",gap:12,flexWrap:"wrap"}}>
-                <strong style={{color:colors.navy,fontSize:12}}>Access profiles:</strong>
-                {member.role === "Master" || member.role === "Administrator" ? (
-                  <span style={{fontSize:12,color:colors.muted,fontWeight:800}}>All Atlas records</span>
-                ) : accessProfileOptions.map(([id,label])=><label key={id} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" checked={member.accessProfiles.includes(id)} onChange={(event)=>updateMember(member.id,{accessProfiles:event.currentTarget.checked?[...member.accessProfiles,id]:member.accessProfiles.filter((value)=>value!==id)})}/>{label}</label>)}
-                {member.role !== "Master" && member.role !== "Administrator" && !member.accessProfiles.length ? <span style={{fontSize:12,color:colors.muted}}>No profile selected = legacy unrestricted access</span> : null}
-              </div>
-              <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",gap:12,flexWrap:"wrap"}}>
                 <strong style={{color:colors.navy,fontSize:12}}>Permissions:</strong>
                 {permissionLabels.map(([key,label])=><label key={key} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" disabled={member.role==="Master"} checked={member.permissions[key]} onChange={(event)=>updateMember(member.id,{permissions:{...member.permissions,[key]:event.currentTarget.checked}})}/>{label}</label>)}
               </div>
               <div style={{gridColumn:isMobile?"1":"1 / -1",fontSize:12,fontWeight:900,color:member.inviteStatus==="Accepted"?colors.green:colors.muted}}>Invitation: {member.inviteStatus || "Existing Access"}</div>
+              {member.role !== "Master" && member.id !== "nick" ? (
+                <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",justifyContent:"flex-end"}}>
+                  <button type="button" onClick={()=>void deleteMember(member)} style={{...button,background:"#FFFFFF",color:"#B42318",border:"1px solid #FDA29B"}}>Delete User</button>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -499,31 +491,24 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
           <button type="button" onClick={() => void saveAccess()} style={button}>Save Access Settings</button>
           {message ? <span style={{ color: colors.green, fontWeight: 850 }}>{message}</span> : null}
         </div>
-        </div>
-      </details>
+      </section>
 
-      <details style={card}>
-        <summary style={{cursor:"pointer",fontWeight:900,color:colors.navy}}>Backup & Recovery</summary>
-        <div style={{marginTop:14}}>
+      <section style={card}>
         <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Backup & Recovery</div>
         <h2 style={{ margin: "5px 0", color: colors.navy }}>Download complete Atlas backup</h2>
         <p style={{ margin:"0 0 14px", color:colors.muted }}>Creates a dated JSON copy of the records currently loaded in Atlas.</p>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}><button type="button" onClick={()=>void createServerBackup()} style={button}>Create Protected Backup</button><button type="button" onClick={downloadBackup} style={{...button,background:"#fff",border:`1px solid ${colors.line}`}}>Download Current Data</button></div>
         <div style={{display:"grid",gap:7,marginTop:14}}>{backups.slice(0,5).map((backup)=><div key={String(backup.id)} style={{display:"flex",justifyContent:"space-between",gap:10,padding:10,border:`1px solid ${colors.line}`,borderRadius:10}}><span>{new Date(String(backup.created_at)).toLocaleString()} · {String(backup.reason)}</span><button type="button" onClick={()=>void downloadProtectedBackup(String(backup.id))} style={{...button,padding:"7px 10px"}}>Download</button></div>)}</div>
-        </div>
-      </details>
+      </section>
 
-      <details style={card}>
-        <summary style={{cursor:"pointer",fontWeight:900,color:colors.navy}}>Notifications & History</summary>
-        <div style={{marginTop:14}}>
+      <section style={card}>
         <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Notifications & History</div>
         <h2 style={{margin:"5px 0",color:colors.navy}}>Operations alerts</h2>
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10,marginBottom:16}}>{alerts.map((alert)=><button type="button" onClick={()=>openAlert(alert.mode)} key={alert.label} style={{textAlign:"left",padding:14,border:`1px solid ${alertMode===alert.mode?colors.gold:colors.line}`,borderRadius:12,background:colors.panel,cursor:"pointer"}}><strong style={{fontSize:24,color:colors.navy}}>{alert.count}</strong><div style={{color:colors.muted}}>{alert.label}</div><div style={{fontSize:11,fontWeight:900,marginTop:5,color:colors.navy}}>View matching work orders</div></button>)}</div>
         {alertMode ? <div style={{display:"grid",gap:7,marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",gap:10}}><strong style={{color:colors.navy}}>Matching work orders ({filteredRows.length})</strong><button type="button" onClick={clearFilters} style={{...button,padding:"6px 9px",background:"#fff",border:`1px solid ${colors.line}`}}>Close List</button></div>{filteredRows.slice(0,25).map((row)=><div key={String(row.id)} style={{padding:10,border:`1px solid ${colors.line}`,borderRadius:10,display:"flex",justifyContent:"space-between",gap:10}}><strong>{String(row.title || "Untitled work order")}</strong><span style={{color:colors.muted,fontSize:12}}>{String(row.date || "No date")} · {String(row.priority || "Medium")} · {String(row.status || "Open")}</span></div>)}</div> : null}
         <strong style={{color:colors.navy}}>Recent change history</strong>
         <div style={{display:"grid",gap:7,marginTop:8}}>{history.slice(0,10).map((entry)=><div key={String(entry.id)} style={{padding:10,border:`1px solid ${colors.line}`,borderRadius:10,fontSize:13}}><strong>{String(entry.action).toUpperCase()} · {String(entry.table_name)}</strong><div style={{color:colors.muted}}>{String(entry.actor || "Atlas user")} · {new Date(String(entry.created_at)).toLocaleString()}</div></div>)}</div>
-        </div>
-      </details>
+      </section>
     </div>
   );
 }
