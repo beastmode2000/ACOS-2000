@@ -2134,6 +2134,85 @@ export default function AtlasDashboardWorkspace(props: any) {
                           <input type="number" min={5} step={5} defaultValue={task.minutes} onBlur={(event) => { const nextMinutes = Math.max(5, Number(event.currentTarget.value) || 5); if (nextMinutes !== task.minutes) updateWorkPlanTask(task.id, { minutes: nextMinutes }); }} style={inputStyle}/>
                         </div>
                         <textarea key={`dashboard-task-note-${task.id}-${dashboardTaskEditorId}`} defaultValue={meta.notes || task.notes || ""} onBlur={(event) => { const nextNote = event.currentTarget.value; if (nextNote !== (meta.notes || task.notes || "")) updateTaskDetails(task.id, { notes: nextNote }); }} placeholder="Notes or instructions" rows={2} style={{ ...inputStyle, resize: "vertical" }}/>
+
+                        <div style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9, background: "#F8FAFC", display: "grid", gap: 8 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 850, color: colors.navy }}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(task.recurring)}
+                              onChange={(event) => {
+                                const recurring = event.currentTarget.checked;
+                                if (recurring) {
+                                  const confirmed = window.confirm(`Make “${task.title}” recurring?`);
+                                  if (!confirmed) return;
+                                  updateWorkPlanTask(task.id, { recurring: true });
+                                  updateTaskDetails(task.id, {
+                                    recurrenceInterval: Math.max(1, Number(meta.recurrenceInterval || 1)),
+                                    recurrenceUnit: meta.recurrenceUnit || "Weeks",
+                                    recurrenceEndDate: meta.recurrenceEndDate || "",
+                                    skippable: true,
+                                  });
+                                } else {
+                                  const confirmed = window.confirm(`Stop “${task.title}” from recurring after this occurrence?`);
+                                  if (!confirmed) return;
+                                  updateWorkPlanTask(task.id, { recurring: false });
+                                }
+                              }}
+                            />
+                            Recurring
+                          </label>
+
+                          {task.recurring ? (
+                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "110px minmax(120px,1fr) minmax(150px,1fr)", gap: 7 }}>
+                              <label style={{ display: "grid", gap: 4 }}>
+                                <span style={{ ...mutedSmallStyle, fontWeight: 850 }}>Every</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={Math.max(1, Number(meta.recurrenceInterval || 1))}
+                                  onChange={(event) =>
+                                    updateTaskDetails(task.id, {
+                                      recurrenceInterval: Math.max(1, Number(event.currentTarget.value) || 1),
+                                    })
+                                  }
+                                  style={inputStyle}
+                                />
+                              </label>
+                              <label style={{ display: "grid", gap: 4 }}>
+                                <span style={{ ...mutedSmallStyle, fontWeight: 850 }}>Unit</span>
+                                <select
+                                  value={meta.recurrenceUnit || "Weeks"}
+                                  onChange={(event) =>
+                                    updateTaskDetails(task.id, {
+                                      recurrenceUnit: event.currentTarget.value as any,
+                                    })
+                                  }
+                                  style={inputStyle}
+                                >
+                                  <option value="Days">Days</option>
+                                  <option value="Weeks">Weeks</option>
+                                  <option value="Months">Months</option>
+                                  <option value="Years">Years</option>
+                                </select>
+                              </label>
+                              <label style={{ display: "grid", gap: 4 }}>
+                                <span style={{ ...mutedSmallStyle, fontWeight: 850 }}>Ends</span>
+                                <input
+                                  type="date"
+                                  value={meta.recurrenceEndDate || ""}
+                                  onChange={(event) =>
+                                    updateTaskDetails(task.id, {
+                                      recurrenceEndDate: event.currentTarget.value,
+                                    })
+                                  }
+                                  style={inputStyle}
+                                />
+                              </label>
+                            </div>
+                          ) : null}
+                        </div>
+
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => updateTaskDetails(task.id, { dueDate: addDays(today, 1), status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Move Tomorrow</button>
                           <button type="button" onClick={() => updateTaskDetails(task.id, { assignee: person === "Nick" ? "Addison" : "Nick", status: "Open" })} style={secondaryButtonStyle}>Move to {person === "Nick" ? "Addison" : "Nick"}</button>
@@ -2165,7 +2244,20 @@ export default function AtlasDashboardWorkspace(props: any) {
       </section>
       <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Coming Up</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Upcoming</h2><small style={mutedSmallStyle}>A compact preview so you can move work without opening the planner.</small></div><span style={badgeStyle("Scheduled")}>{dashboardTomorrowTasks.length}</span></div>
-        <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{dashboardTomorrowTasks.slice(0, 8).map((task) => { const meta = taskDetails(task.id); return <div key={`tomorrow-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}><button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.navy, cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={{ color: "#000000", fontSize: 11, fontWeight: 400, lineHeight: 1.35 }}>{meta.assignee || "Nick"} · {minutesLabel(task.minutes)}</small></button><button type="button" onClick={() => updateTaskDetails(task.id, { dueDate: today, status: "Open", completedAt: undefined })} style={compactUtilityButtonStyle}>Move to Today</button></div>; })}{!dashboardTomorrowTasks.length ? <div style={noticeStyle}>Nothing is scheduled for tomorrow yet.</div> : null}</div>
+        <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{dashboardTomorrowTasks.slice(0, 8).map((task) => { const meta = taskDetails(task.id); return <div key={`tomorrow-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}><button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.navy, cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={{ color: "#000000", fontSize: 11, fontWeight: 400, lineHeight: 1.35 }}>{meta.assignee || "Nick"} · {minutesLabel(task.minutes)}</small></button><button
+  type="button"
+  onClick={() => {
+    const currentDate = String(meta.dueDate || "").slice(0, 10);
+    const confirmed = !currentDate || currentDate <= today
+      ? true
+      : window.confirm(`Pull “${task.title}” forward from ${formatDate(currentDate)} to today?`);
+    if (!confirmed) return;
+    updateTaskDetails(task.id, { dueDate: today, status: "Open", completedAt: undefined });
+  }}
+  style={compactUtilityButtonStyle}
+>
+  Move to Today
+</button></div>; })}{!dashboardTomorrowTasks.length ? <div style={noticeStyle}>Nothing is scheduled for tomorrow yet.</div> : null}</div>
       </section>
       {activeDashboardLists.map((list) => <section key={`dashboard-list-${list.id}`} style={{ ...cardStyle, padding: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 9, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Active List</div><h2 style={{ margin: "2px 0", color: colors.navy }}>{list.name}</h2><small style={mutedSmallStyle}>{list.completed} of {list.items.length} complete</small></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => { setSelectedListId(list.id); setTasksView("lists"); setScreen("planner"); }} style={secondaryButtonStyle}>Open List</button><button type="button" onClick={() => removeListFromDashboard(list.id)} style={compactUtilityButtonStyle}>Remove</button></div></div>
