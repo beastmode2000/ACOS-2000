@@ -3691,8 +3691,8 @@ export default function AtlasApp() {
         if (property) {
           property.items = [
             ...property.items.filter((id) => id !== "portfolio"),
-            "portfolio" as AtlasScreen,
-          ];
+            "portfolio",
+          ] as typeof property.items;
         }
 
         return sections.filter((section) => section.items.length > 0);
