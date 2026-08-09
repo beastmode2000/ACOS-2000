@@ -5074,7 +5074,8 @@ export function ListDrawerLayout(props: {
     };
   }, [props.drawerResetKey]);
 
-  const isCalendarLayout = props.outerStyle === calendarNavyShellStyle;
+  // Calendar-specific shell styling is owned by the calendar workspace, not this shared drawer layout.
+  const isCalendarLayout = false;
 
   const desktopOuterStyle: React.CSSProperties = props.isMobile
     ? sectionStyle
