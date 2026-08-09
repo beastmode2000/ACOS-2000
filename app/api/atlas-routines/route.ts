@@ -1,8 +1,6 @@
-import { neon } from "@neondatabase/serverless";
-import { NextRequest, NextResponse } from "next/server";
+"use client";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type RoutineTask = {
   id: string;
@@ -22,878 +20,1776 @@ type RoutineTemplate = {
   tasks: RoutineTask[];
 };
 
-const DEFAULT_PROPERTY_ID = "2000";
+type RoutineOccurrence = {
+  date: string;
+  day: number;
+  name: string;
+  tasks: RoutineTask[];
+};
 
-function getSql() {
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.NEON_DATABASE_URL;
+type Props = {
+  mode: "dashboard" | "manager";
+  isMobile?: boolean;
+  onOpenManager?: () => void;
+  activePropertyId?: string;
+  onAddPhoto?: (task: { id: string; title: string }) => void;
+  onAddNote?: (task: { id: string; title: string }) => void;
+  onFlagProblem?: (task: { id: string; title: string }) => void;
+  onAssignmentChange?: (task: { id: string; title: string; assignedTo: RoutineTask["assignedTo"]; date: string }) => void | Promise<void>;
+  assigneeFilter?: RoutineTask["assignedTo"];
+  allowTodayEditing?: boolean;
+  defaultTodayAssignee?: RoutineTask["assignedTo"];
+  employeeView?: boolean;
+  teamDirectory?: Array<{
+    id: string;
+    name: string;
+    email?: string;
+    role?: string;
+    active?: boolean;
+    propertyIds?: string[];
+  }>;
+};
 
-  if (!connectionString) {
-    throw new Error("Missing DATABASE_URL");
-  }
+const dayNames = [
+  "",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
 
-  return neon(connectionString);
+const atlasWeeklyOperations: RoutineTemplate[] = [
+  {
+    day: 1,
+    name: "Monday · Property Reset & Garage",
+    tasks: [
+      { id: "atlas-ops-mon-trash", title: "Move trash, recycling, and yard-waste cans to the street; clean cans after collection", enabled: true },
+      { id: "atlas-ops-mon-reset", title: "Complete weekend cleanup and the interior/exterior walkthrough", enabled: true },
+      { id: "atlas-ops-mon-review", title: "Review owner requests, urgent work, and overdue work", enabled: true },
+      { id: "atlas-ops-mon-cleanup", title: "Clean geese debris and the dog area", enabled: true },
+      { id: "atlas-ops-mon-garage", title: "Clean scheduled vehicles and check fuel or charge, tires, fluids, and warning lights", enabled: true },
+      { id: "atlas-ops-mon-plan", title: "Process deliveries, restock supplies, plan the week, and delegate appropriate work", enabled: true },
+      { id: "atlas-ops-mon-water", title: "Water pots and address lawn or planting dry spots", enabled: true },
+    ],
+  },
+  {
+    day: 2,
+    name: "Tuesday · Dock, Waterfront & Recreation",
+    tasks: [
+      { id: "atlas-ops-tue-geese", title: "Clean geese debris from the dock and shoreline", enabled: true },
+      { id: "atlas-ops-tue-dock", title: "Inspect dock boards, cleats, bumpers, dock boxes, and lighting", enabled: true },
+      { id: "atlas-ops-tue-marine", title: "Inspect the Cobalt, Sea-Doo, lifts, covers, and rollers", enabled: true },
+      { id: "atlas-ops-tue-recreation", title: "Inspect the sport court, trampoline, and recreation equipment", enabled: true },
+      { id: "atlas-ops-tue-bbq", title: "Clean the BBQ and nearby outdoor work areas", enabled: true },
+      { id: "atlas-ops-tue-lanken", title: "Review the Lanken half-day crew visit with Pat and record progress photos", enabled: true },
+      { id: "atlas-ops-tue-meeting", title: "Attend the 10:00 AM weekly property meeting", enabled: true },
+      { id: "atlas-ops-tue-water", title: "Water pots and address lawn or planting dry spots", enabled: true },
+    ],
+  },
+  {
+    day: 3,
+    name: "Wednesday · Landscaping & Irrigation",
+    tasks: [
+      { id: "atlas-ops-wed-inspect", title: "Inspect lawns, beds, gardens, trees, pots, and specialty plantings", enabled: true },
+      { id: "atlas-ops-wed-crew", title: "Review landscaping crew work and unfinished items", enabled: true },
+      { id: "atlas-ops-wed-irrigation", title: "Check irrigation zones, heads, pressure, coverage, and dry spots", enabled: true },
+      { id: "atlas-ops-wed-care", title: "Weed, prune, and hand-water where needed", enabled: true },
+      { id: "atlas-ops-wed-veggie", title: "Inspect and maintain the veggie boxes", enabled: true },
+      { id: "atlas-ops-wed-photos", title: "Photograph progress and record issues", enabled: true },
+      { id: "atlas-ops-wed-repairs", title: "Create repair work orders for irrigation or landscape problems", enabled: true },
+    ],
+  },
+  {
+    day: 4,
+    name: "Thursday · Pool, Spa & Outdoor Cleaning",
+    tasks: [
+      { id: "atlas-ops-thu-treatment", title: "Complete the linked Pool and Spa treatment and cleaning tasks", enabled: true },
+      { id: "atlas-ops-thu-equipment", title: "Inspect Pool, Spa, filter pressure, equipment, and fountain", enabled: true },
+      { id: "atlas-ops-thu-method", title: "Use the scheduled cleaning method: brush, hand vac, suction vac, or robot vac", enabled: true },
+      { id: "atlas-ops-thu-outdoor", title: "Clean patio furniture, covers, outdoor heaters, BBQ exterior, and skylights", enabled: true },
+      { id: "atlas-ops-thu-windows", title: "Complete this week’s rotating window zone", enabled: true },
+      { id: "atlas-ops-thu-vehicles", title: "Finish vehicle cleaning when needed", enabled: true },
+      { id: "atlas-ops-thu-water", title: "Water pots and address lawn or planting dry spots", enabled: true },
+    ],
+  },
+  {
+    day: 5,
+    name: "Friday · Maintenance & Weekend Readiness",
+    tasks: [
+      { id: "atlas-ops-fri-grounds", title: "Mow, edge, blow, and complete final grounds presentation", enabled: true },
+      { id: "atlas-ops-fri-mechanical", title: "Inspect boilers, pumps, HVAC, mechanical rooms, leaks, alarms, and temperatures", enabled: true },
+      { id: "atlas-ops-fri-test", title: "Test important lights, doors, gates, and appliances", enabled: true },
+      { id: "atlas-ops-fri-records", title: "Follow up with vendors and update Tasks, Work Orders, Projects, photos, and service history", enabled: true },
+      { id: "atlas-ops-fri-walk", title: "Restock supplies and complete the final property walkthrough", enabled: true },
+      { id: "atlas-ops-fri-meeting", title: "Attend the 9:00 AM Nick and Steve meeting", enabled: true },
+      { id: "atlas-ops-fri-update", title: "Prepare the weekend, next week, and Friday owner-update draft", enabled: true },
+      { id: "atlas-ops-fri-spiders", title: "April–October: remove spider webs and treat recurring exterior problem areas when appropriate", enabled: true },
+    ],
+  },
+];
+
+function normalizedRoutineText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function cleanPropertyId(value: unknown) {
-  const propertyId = typeof value === "string" ? value.trim() : "";
-  return propertyId || DEFAULT_PROPERTY_ID;
+const colors = {
+  navy: "#071B2F",
+  gold: "#C99A3D",
+  bg: "#F4F7FB",
+  line: "#DDE7F0",
+  text: "#172331",
+  muted: "#64748B",
+  green: "#087443",
+  red: "#B42318",
+};
+
+function todayKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
-function propertyIdFromRequest(request: NextRequest) {
-  return cleanPropertyId(
-    request.nextUrl.searchParams.get("propertyId") ||
-      request.nextUrl.searchParams.get("property_id") ||
-      request.headers.get("x-atlas-property-id"),
-  );
+function createTaskId() {
+  return `routine-task-${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
 }
 
-function asDateKey(value: unknown) {
-  const text = typeof value === "string" ? value.trim() : "";
+export default function AtlasRoutines({
+  mode,
+  isMobile = false,
+  onOpenManager,
+  activePropertyId = "2000",
+  onAddPhoto,
+  onAddNote,
+  onFlagProblem,
+  onAssignmentChange,
+  assigneeFilter,
+  allowTodayEditing = false,
+  defaultTodayAssignee,
+  employeeView = false,
+  teamDirectory = [],
+}: Props) {
+  const [templates, setTemplates] = useState<RoutineTemplate[]>([]);
+  const [occurrence, setOccurrence] =
+    useState<RoutineOccurrence | null>(null);
 
-  return /^\d{4}-\d{2}-\d{2}$/.test(text)
-    ? text
-    : new Date().toISOString().slice(0, 10);
-}
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const today = new Date().getDay();
+    return today === 0 ? 7 : today;
+  });
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftTasks, setDraftTasks] = useState<RoutineTask[]>([]);
+  const [selectedPersonId, setSelectedPersonId] = useState("nick");
+  const [newTask, setNewTask] = useState("");
+  const [status, setStatus] = useState("Loading routines…");
+  const [busy, setBusy] = useState(false);
+  const [dashboardChecklistExpanded, setDashboardChecklistExpanded] = useState(false);
+  const weeklySetupRunningRef = useRef(false);
 
-function normalizeTasks(value: unknown): RoutineTask[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+  async function routinePost(body: Record<string, unknown>) {
+    let lastError = "Routine save failed.";
 
-  return value
-    .map((item, index) => {
-      const record =
-        item && typeof item === "object"
-          ? (item as Record<string, unknown>)
-          : {};
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const response = await fetch("/api/atlas-routines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify(body),
+      });
 
-      const title =
-        typeof record.title === "string" ? record.title.trim() : "";
+      const payload = await response.json().catch(() => ({}));
 
-      if (!title) {
-        return null;
+      if (response.ok && payload?.ok !== false) {
+        return payload;
       }
 
-      const completed = record.completed === true;
-      const status = cleanTaskStatus(record.status, completed);
+      lastError =
+        payload?.error ||
+        `Routine save returned HTTP ${response.status}.`;
 
-      return {
-        id:
-          typeof record.id === "string" && record.id.trim()
-            ? record.id.trim()
-            : `routine-task-${Date.now()}-${index}`,
-        title,
-        enabled: record.enabled !== false,
-        completed: status === "completed",
-        status,
-        assignedTo: cleanAssignee(record.assignedTo),
-        assigneeIds: Array.isArray(record.assigneeIds)
-          ? Array.from(
-              new Set(
-                record.assigneeIds
-                  .map((value) => String(value || "").trim())
-                  .filter(Boolean),
-              ),
-            )
-          : [],
-        ...(typeof record.deferredTo === "string" && record.deferredTo ? { deferredTo: record.deferredTo } : {}),
-        ...(typeof record.deferredFrom === "string" && record.deferredFrom ? { deferredFrom: record.deferredFrom } : {}),
-      };
-    })
-    .filter(Boolean) as RoutineTask[];
-}
+      const hydrationRace =
+        response.status === 404 &&
+        /not found|does not exist|missing/i.test(
+          String(payload?.error || payload?.message || ""),
+        );
 
-function asTemplateTask(task: RoutineTask): RoutineTask {
-  const { completed: _completed, status: _status, deferredTo: _deferredTo, deferredFrom: _deferredFrom, ...templateTask } = task;
-  return templateTask;
-}
+      if (hydrationRace && attempt < 3) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, attempt * 450),
+        );
+        continue;
+      }
 
-function weekdayFromDate(dateKey: string) {
-  const day = new Date(`${dateKey}T12:00:00`).getDay();
-  return day === 0 ? 7 : day;
-}
+      throw new Error(lastError);
+    }
 
-function seedTemplates(): RoutineTemplate[] {
-  return [
-    {
-      day: 1,
-      name: "Monday Morning Routine",
-      tasks: [
-        {
-          id: "mon-garbage-cans",
-          title: "Clean garbage cans after they are emptied",
-          enabled: true,
-        },
-        {
-          id: "mon-goose",
-          title: "Clean up after geese",
-          enabled: true,
-        },
-        {
-          id: "mon-dog",
-          title: "Clean up after the dog",
-          enabled: true,
-        },
-        {
-          id: "mon-garages",
-          title: "Check garages",
-          enabled: true,
-        },
-        {
-          id: "mon-front-entry",
-          title: "Check front entry",
-          enabled: true,
-        },
-        {
-          id: "mon-water-pots",
-          title: "Water pots",
-          enabled: true,
-        },
-        {
-          id: "mon-dry-spots",
-          title: "Water dry spots",
-          enabled: true,
-        },
-        {
-          id: "mon-fountain",
-          title: "Clean and treat fountain",
-          enabled: true,
-        },
-      ],
-    },
-    {
-      day: 2,
-      name: "Tuesday Routine",
-      tasks: [],
-    },
-    {
-      day: 3,
-      name: "Wednesday Landscape Routine",
-      tasks: [],
-    },
-    {
-      day: 4,
-      name: "Thursday Routine",
-      tasks: [],
-    },
-    {
-      day: 5,
-      name: "Friday Boat and Cars Routine",
-      tasks: [
-        {
-          id: "fri-clean-boat",
-          title: "Clean boat",
-          enabled: true,
-        },
-        {
-          id: "fri-clean-cars",
-          title: "Clean cars",
-          enabled: true,
-        },
-      ],
-    },
-    {
-      day: 6,
-      name: "Saturday Routine",
-      tasks: [],
-    },
-    {
-      day: 7,
-      name: "Sunday Routine",
-      tasks: [],
-    },
-  ];
-}
-
-async function ensureTables(sql: ReturnType<typeof neon>) {
-  await sql`
-    CREATE TABLE IF NOT EXISTS atlas_routine_templates (
-      property_id text NOT NULL DEFAULT '2000',
-      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
-      name text NOT NULL,
-      tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
-      updated_at timestamptz NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS atlas_routine_occurrences (
-      property_id text NOT NULL DEFAULT '2000',
-      occurrence_date date NOT NULL,
-      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
-      routine_name text NOT NULL,
-      tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
-      updated_at timestamptz NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  await sql`
-    ALTER TABLE atlas_routine_templates
-    ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'
-  `;
-
-  await sql`
-    ALTER TABLE atlas_routine_occurrences
-    ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'
-  `;
-
-  await sql`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'atlas_routine_templates_day_of_week_check'
-          AND pg_get_constraintdef(oid) NOT LIKE '%7%'
-      ) THEN
-        ALTER TABLE atlas_routine_templates DROP CONSTRAINT atlas_routine_templates_day_of_week_check;
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'atlas_routine_templates_day_of_week_check') THEN
-        ALTER TABLE atlas_routine_templates ADD CONSTRAINT atlas_routine_templates_day_of_week_check CHECK (day_of_week BETWEEN 1 AND 7);
-      END IF;
-    END $$
-  `;
-
-  await sql`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'atlas_routine_occurrences_day_of_week_check'
-          AND pg_get_constraintdef(oid) NOT LIKE '%7%'
-      ) THEN
-        ALTER TABLE atlas_routine_occurrences DROP CONSTRAINT atlas_routine_occurrences_day_of_week_check;
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'atlas_routine_occurrences_day_of_week_check') THEN
-        ALTER TABLE atlas_routine_occurrences ADD CONSTRAINT atlas_routine_occurrences_day_of_week_check CHECK (day_of_week BETWEEN 1 AND 7);
-      END IF;
-    END $$
-  `;
-
-  // The original tables used global primary keys. Remove those so the same
-  // weekday/date can exist independently for every property.
-  await sql`
-    ALTER TABLE atlas_routine_templates
-    DROP CONSTRAINT IF EXISTS atlas_routine_templates_pkey
-  `;
-
-  await sql`
-    ALTER TABLE atlas_routine_occurrences
-    DROP CONSTRAINT IF EXISTS atlas_routine_occurrences_pkey
-  `;
-
-  await sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS atlas_routine_templates_property_day_uidx
-    ON atlas_routine_templates (property_id, day_of_week)
-  `;
-
-  await sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS atlas_routine_occurrences_property_date_uidx
-    ON atlas_routine_occurrences (property_id, occurrence_date)
-  `;
-}
-
-async function ensurePropertySeeds(
-  sql: ReturnType<typeof neon>,
-  propertyId: string,
-) {
-  for (const seed of seedTemplates()) {
-    await sql`
-      INSERT INTO atlas_routine_templates (
-        property_id,
-        day_of_week,
-        name,
-        tasks
-      )
-      VALUES (
-        ${propertyId},
-        ${seed.day},
-        ${seed.name},
-        ${JSON.stringify(seed.tasks)}::jsonb
-      )
-      ON CONFLICT (property_id, day_of_week) DO NOTHING
-    `;
-  }
-}
-
-async function loadTemplates(
-  sql: ReturnType<typeof neon>,
-  propertyId: string,
-) {
-  const rows = (await sql`
-    SELECT
-      day_of_week,
-      name,
-      tasks
-    FROM atlas_routine_templates
-    WHERE property_id = ${propertyId}
-    ORDER BY day_of_week ASC
-  `) as unknown as Array<Record<string, unknown>>;
-
-  return rows.map((row) => ({
-    day: Number(row.day_of_week),
-    name: String(row.name || "Routine"),
-    tasks: normalizeTasks(row.tasks).map(asTemplateTask),
-  }));
-}
-
-async function getOrCreateOccurrence(
-  sql: ReturnType<typeof neon>,
-  propertyId: string,
-  dateKey: string,
-) {
-  const day = weekdayFromDate(dateKey);
-
-  if (!day) {
-    return null;
+    throw new Error(lastError);
   }
 
-  const templateRows = (await sql`
-    SELECT
-      day_of_week,
-      name,
-      tasks
-    FROM atlas_routine_templates
-    WHERE property_id = ${propertyId}
-      AND day_of_week = ${day}
-    LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
-
-  const template = templateRows[0];
-
-  if (!template) {
-    return null;
+  async function mergeWeeklyOperations(currentTemplates: RoutineTemplate[]) {
+    if (weeklySetupRunningRef.current) return currentTemplates;
+    weeklySetupRunningRef.current = true;
+    try {
+      const mergedTemplates = atlasWeeklyOperations.map((operationsTemplate) => {
+        const current = currentTemplates.find((template) => template.day === operationsTemplate.day) || {
+          day: operationsTemplate.day,
+          name: operationsTemplate.name,
+          tasks: [],
+        };
+        const existingIds = new Set(current.tasks.map((task) => task.id));
+        const existingTitles = new Set(current.tasks.map((task) => normalizedRoutineText(task.title)));
+        const missing = operationsTemplate.tasks.filter((task) => !existingIds.has(task.id) && !existingTitles.has(normalizedRoutineText(task.title)));
+        return {
+          ...current,
+          name: current.name?.trim() || operationsTemplate.name,
+          tasks: [...current.tasks, ...missing],
+          changed: missing.length > 0,
+        };
+      });
+      const changed = mergedTemplates.filter((template) => template.changed);
+      for (const template of changed) {
+        const response = await fetch("/api/atlas-routines", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save-template",
+            propertyId: activePropertyId,
+            day: template.day,
+            name: template.name,
+            tasks: template.tasks,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.ok === false) throw new Error(payload.error || `${dayNames[template.day]} routine did not save`);
+      }
+      const operationsDays = new Set(atlasWeeklyOperations.map((template) => template.day));
+      const untouchedTemplates = currentTemplates.filter((template) => !operationsDays.has(template.day));
+      return [...mergedTemplates.map(({ changed: _changed, ...template }) => template), ...untouchedTemplates].sort((a, b) => a.day - b.day);
+    } finally {
+      weeklySetupRunningRef.current = false;
+    }
   }
 
-  const templateName = String(template.name || "Routine");
-  const templateTasks = normalizeTasks(template.tasks).filter(
-    (task) => task.enabled,
+  async function load() {
+    setStatus("Loading routines…");
+
+    try {
+      const response = await fetch(
+        `/api/atlas-routines?date=${todayKey()}&propertyId=${encodeURIComponent(activePropertyId)}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Could not load routines");
+      }
+
+      const loadedTemplates = Array.isArray(payload.templates) ? payload.templates : [];
+      const mergedTemplates = await mergeWeeklyOperations(loadedTemplates);
+      setTemplates(mergedTemplates);
+
+      setOccurrence(payload.occurrence || null);
+      setStatus("");
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Could not load routines"
+      );
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [activePropertyId]);
+
+  const selected = useMemo(
+    () =>
+      templates.find(
+        (template) => template.day === selectedDay
+      ) || null,
+    [templates, selectedDay]
   );
 
-  const occurrenceRows = (await sql`
-    SELECT
-      occurrence_date,
-      day_of_week,
-      routine_name,
-      tasks
-    FROM atlas_routine_occurrences
-    WHERE property_id = ${propertyId}
-      AND occurrence_date = ${dateKey}::date
-    LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
+  useEffect(() => {
+    if (!selected || editing) {
+      return;
+    }
 
-  if (!occurrenceRows.length) {
-    const occurrenceTasks = synchronizeOccurrenceTasks(templateTasks);
+    setDraftName(selected.name);
 
-    await sql`
-      INSERT INTO atlas_routine_occurrences (
-        property_id,
-        occurrence_date,
-        day_of_week,
-        routine_name,
-        tasks,
-        updated_at
-      )
-      VALUES (
-        ${propertyId},
-        ${dateKey}::date,
-        ${day},
-        ${templateName},
-        ${JSON.stringify(occurrenceTasks)}::jsonb,
-        NOW()
-      )
-      ON CONFLICT (property_id, occurrence_date) DO NOTHING
-    `;
+    setDraftTasks(
+      selected.tasks.map((task) => ({
+        ...task,
+      }))
+    );
+  }, [selected, editing]);
 
-    return {
-      propertyId,
-      date: dateKey,
-      day,
-      name: templateName,
-      tasks: occurrenceTasks,
-    };
+  async function toggleTask(taskId: string) {
+    if (!occurrence || busy) {
+      return;
+    }
+
+    const previous = occurrence;
+
+    setOccurrence({
+      ...occurrence,
+      tasks: occurrence.tasks.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              completed: !task.completed,
+            }
+          : task
+      ),
+    });
+
+    setBusy(true);
+
+    try {
+      const payload = await routinePost({
+        action: "toggle-task",
+        propertyId: activePropertyId,
+        date: occurrence.date,
+        taskId,
+      });
+
+      if (payload.occurrence) {
+        setOccurrence(payload.occurrence);
+      }
+    } catch (error) {
+      setOccurrence(previous);
+
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Task did not save"
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const occurrence = occurrenceRows[0];
-  const existingTasks = normalizeTasks(occurrence.tasks);
-  const synchronizedTasks = synchronizeOccurrenceTasks(templateTasks, existingTasks);
-  const existingComparable = existingTasks;
-
-  const needsSynchronization =
-    String(occurrence.routine_name || "") !== templateName ||
-    JSON.stringify(existingComparable) !== JSON.stringify(synchronizedTasks);
-
-  if (needsSynchronization) {
-    await sql`
-      UPDATE atlas_routine_occurrences
-      SET
-        day_of_week = ${day},
-        routine_name = ${templateName},
-        tasks = ${JSON.stringify(synchronizedTasks)}::jsonb,
-        updated_at = NOW()
-      WHERE property_id = ${propertyId}
-        AND occurrence_date = ${dateKey}::date
-    `;
+  async function updateTodayTask(action: "skip-task" | "defer-task" | "assign-task", taskId: string, assignedTo?: RoutineTask["assignedTo"]) {
+    if (!occurrence || busy) return;
+    const previous = occurrence;
+    setBusy(true);
+    setStatus(action === "defer-task" ? "Moving…" : "Saving…");
+    try {
+      const payload = await routinePost({
+        action,
+        propertyId: activePropertyId,
+        date: occurrence.date,
+        taskId,
+        assignedTo,
+      });
+      if (payload.occurrence) setOccurrence(payload.occurrence);
+      if (action === "assign-task" && assignedTo) {
+        const savedTask = (payload.occurrence?.tasks || occurrence.tasks).find((task: RoutineTask) => task.id === taskId);
+        if (savedTask) await onAssignmentChange?.({ id: savedTask.id, title: savedTask.title, assignedTo, date: occurrence.date });
+      }
+      setStatus(action === "defer-task" && payload.movedTo ? `Moved to ${new Date(`${payload.movedTo}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}.` : "Saved.");
+    } catch (error) {
+      setOccurrence(previous);
+      setStatus(error instanceof Error ? error.message : "Routine item did not save");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  return {
-    propertyId,
-    date: dateKey,
-    day,
-    name: templateName,
-    tasks: synchronizedTasks,
-  };
-}
 
-async function refreshOccurrenceForDate(
-  sql: ReturnType<typeof neon>,
-  propertyId: string,
-  dateKey: string,
-  day: number,
-  name: string,
-  templateTasks: RoutineTask[],
-) {
-  if (weekdayFromDate(dateKey) !== day) {
-    return;
+  async function mutateTodayOccurrence(
+    action: "add-today-task" | "edit-today-task" | "delete-today-task",
+    payload: Record<string, unknown>,
+  ) {
+    if (!occurrence || busy) return;
+    setBusy(true);
+    setStatus(action === "add-today-task" ? "Adding…" : "Saving…");
+    try {
+      const result = await routinePost({
+        action,
+        propertyId: activePropertyId,
+        date: occurrence.date,
+        ...payload,
+      });
+      if (result.occurrence) setOccurrence(result.occurrence);
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Routine item did not save");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const rows = (await sql`
-    SELECT tasks
-    FROM atlas_routine_occurrences
-    WHERE property_id = ${propertyId}
-      AND occurrence_date = ${dateKey}::date
-    LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
-
-  if (!rows.length) {
-    return;
+  async function addTodayOccurrenceTask() {
+    if (!occurrence) return;
+    const title = window.prompt("Add to today’s routine")?.trim();
+    if (!title) return;
+    await mutateTodayOccurrence("add-today-task", {
+      title,
+      assignedTo: defaultTodayAssignee || assigneeFilter || "Nick",
+    });
   }
 
-  const existingTasks = normalizeTasks(rows[0].tasks);
-  const refreshedTasks = synchronizeOccurrenceTasks(templateTasks, existingTasks);
+  async function editTodayOccurrenceTask(task: RoutineTask) {
+    const title = window.prompt("Edit today’s routine item", task.title)?.trim();
+    if (!title || title === task.title) return;
+    await mutateTodayOccurrence("edit-today-task", { taskId: task.id, title });
+  }
 
-  await sql`
-    UPDATE atlas_routine_occurrences
-    SET
-      day_of_week = ${day},
-      routine_name = ${name},
-      tasks = ${JSON.stringify(refreshedTasks)}::jsonb,
-      updated_at = NOW()
-    WHERE property_id = ${propertyId}
-      AND occurrence_date = ${dateKey}::date
-  `;
-}
+  async function deleteTodayOccurrenceTask(task: RoutineTask) {
+    if (!window.confirm(`Remove “${task.title}” from today only?`)) return;
+    await mutateTodayOccurrence("delete-today-task", { taskId: task.id });
+  }
 
-export async function GET(request: NextRequest) {
-  try {
-    const sql = getSql();
-    const propertyId = propertyIdFromRequest(request);
-    const dateKey = asDateKey(request.nextUrl.searchParams.get("date"));
+  const activeRoutinePeople = teamDirectory.filter(
+    (member) =>
+      member.active !== false &&
+      (!member.propertyIds?.length ||
+        member.propertyIds.includes(activePropertyId)),
+  );
 
-    await ensureTables(sql);
-    await ensurePropertySeeds(sql, propertyId);
+  function routinePersonId(member: { id?: string; email?: string; name?: string }) {
+    return String(member.id || member.email || member.name || "").trim();
+  }
 
-    const [templates, occurrence] = await Promise.all([
-      loadTemplates(sql, propertyId),
-      getOrCreateOccurrence(sql, propertyId, dateKey),
+  function routinePersonName(personId: string) {
+    return (
+      activeRoutinePeople.find(
+        (member) => routinePersonId(member) === personId,
+      )?.name || personId
+    );
+  }
+
+  const nickRoutinePersonId =
+    routinePersonId(
+      activeRoutinePeople.find(
+        (member) => member.name.trim().toLowerCase() === "nick",
+      ) || { id: "nick", name: "Nick" },
+    ) || "nick";
+
+  const effectiveSelectedPersonId =
+    selectedPersonId === "nick" ? nickRoutinePersonId : selectedPersonId;
+
+  function taskAssigneeIds(task: RoutineTask) {
+    if (Array.isArray(task.assigneeIds) && task.assigneeIds.length) {
+      return task.assigneeIds.map(String);
+    }
+
+    // All routine items that predate universal assignments belong to Nick.
+    if (!task.assignedTo || String(task.assignedTo).toLowerCase() === "nick") {
+      return [nickRoutinePersonId];
+    }
+
+    const legacy = activeRoutinePeople.find(
+      (member) =>
+        member.name.toLowerCase() === String(task.assignedTo).toLowerCase(),
+    );
+    return legacy ? [routinePersonId(legacy)] : [];
+  }
+
+  function setTaskPerson(taskIndex: number, personId: string, checked: boolean) {
+    setDraftTasks((current) =>
+      current.map((task, index) => {
+        if (index !== taskIndex) return task;
+        const currentIds = taskAssigneeIds(task);
+        const assigneeIds = checked
+          ? Array.from(new Set([...currentIds, personId]))
+          : currentIds.filter((id) => id !== personId);
+        return {
+          ...task,
+          assigneeIds,
+          assignedTo:
+            assigneeIds.length === 1
+              ? routinePersonName(assigneeIds[0])
+              : assigneeIds.length > 1
+                ? "Multiple"
+                : "",
+        };
+      }),
+    );
+  }
+
+  function assignVisibleRoutineToPerson(personId: string) {
+    if (!personId || personId === "all") return;
+    setDraftTasks((current) =>
+      current.map((task) => ({
+        ...task,
+        assigneeIds: Array.from(
+          new Set([...taskAssigneeIds(task), personId]),
+        ),
+        assignedTo:
+          Array.from(new Set([...taskAssigneeIds(task), personId])).length === 1
+            ? routinePersonName(personId)
+            : "Multiple",
+      })),
+    );
+  }
+
+  function beginEdit() {
+    if (!selected) {
+      return;
+    }
+
+    setDraftName(selected.name);
+
+    setDraftTasks(
+      selected.tasks.map((task) => ({
+        ...task,
+      }))
+    );
+
+    setEditing(true);
+    setStatus("");
+  }
+
+  function addTask() {
+    const title = newTask.trim();
+
+    if (!title) {
+      return;
+    }
+
+    setDraftTasks((current) => [
+      ...current,
+      {
+        id: createTaskId(),
+        title,
+        enabled: true,
+        assignedTo:
+          effectiveSelectedPersonId !== "all"
+            ? routinePersonName(effectiveSelectedPersonId)
+            : "",
+        assigneeIds:
+          effectiveSelectedPersonId !== "all" ? [effectiveSelectedPersonId] : [],
+      },
     ]);
 
-    return NextResponse.json({
-      ok: true,
-      propertyId,
-      templates,
-      occurrence,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          error instanceof Error ? error.message : "Routine read failed",
-      },
-      { status: 500 },
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  if (request.headers.get("x-atlas-user-role") === "viewer") {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Viewer access is read-only.",
-      },
-      { status: 403 },
-    );
+    setNewTask("");
   }
 
-  try {
-    const sql = getSql();
-    const body = (await request.json()) as Record<string, unknown>;
-    const propertyId = cleanPropertyId(
-      body.propertyId ||
-        body.property_id ||
-        request.headers.get("x-atlas-property-id"),
-    );
-    const action = String(body.action || "");
-
-    await ensureTables(sql);
-    await ensurePropertySeeds(sql, propertyId);
-
-    if (action === "save-template") {
-      const day = Number(body.day);
-
-      if (!Number.isInteger(day) || day < 1 || day > 7) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Invalid routine day",
-          },
-          { status: 400 },
-        );
-      }
-
-      const name = String(body.name || "Routine").trim() || "Routine";
-      const tasks = normalizeTasks(body.tasks).map(asTemplateTask);
-
-      await sql`
-        INSERT INTO atlas_routine_templates (
-          property_id,
-          day_of_week,
-          name,
-          tasks,
-          updated_at
-        )
-        VALUES (
-          ${propertyId},
-          ${day},
-          ${name},
-          ${JSON.stringify(tasks)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (property_id, day_of_week)
-        DO UPDATE SET
-          name = EXCLUDED.name,
-          tasks = EXCLUDED.tasks,
-          updated_at = NOW()
-      `;
-
-      const requestedDate =
-        typeof body.date === "string" &&
-        /^\d{4}-\d{2}-\d{2}$/.test(body.date)
-          ? body.date
-          : "";
-
-      const utcToday = new Date().toISOString().slice(0, 10);
-      const utcYesterdayDate = new Date();
-      utcYesterdayDate.setUTCDate(utcYesterdayDate.getUTCDate() - 1);
-      const utcYesterday = utcYesterdayDate.toISOString().slice(0, 10);
-
-      const candidateDates = Array.from(
-        new Set([requestedDate, utcToday, utcYesterday].filter(Boolean)),
-      );
-
-      for (const candidateDate of candidateDates) {
-        await refreshOccurrenceForDate(
-          sql,
-          propertyId,
-          candidateDate,
-          day,
-          name,
-          tasks,
-        );
-      }
-
-      const responseDate =
-        requestedDate ||
-        candidateDates.find(
-          (candidateDate) => weekdayFromDate(candidateDate) === day,
-        );
-
-      return NextResponse.json({
-        ok: true,
-        propertyId,
-        occurrence: responseDate
-          ? await getOrCreateOccurrence(sql, propertyId, responseDate)
-          : null,
-      });
-    }
+  function moveTask(index: number, direction: -1 | 1) {
+    const nextIndex = index + direction;
 
     if (
-      action === "add-today-task" ||
-      action === "edit-today-task" ||
-      action === "delete-today-task"
+      nextIndex < 0 ||
+      nextIndex >= draftTasks.length
     ) {
-      const dateKey = asDateKey(body.date);
-      const occurrence = await getOrCreateOccurrence(sql, propertyId, dateKey);
-
-      if (!occurrence) {
-        return NextResponse.json(
-          { ok: false, error: "No weekday routine" },
-          { status: 400 },
-        );
-      }
-
-      let tasks = [...occurrence.tasks];
-
-      if (action === "add-today-task") {
-        const title = String(body.title || "").trim();
-        if (!title) {
-          return NextResponse.json(
-            { ok: false, error: "Routine item needs a title" },
-            { status: 400 },
-          );
-        }
-        tasks.push({
-          id: `today-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-          title,
-          enabled: true,
-          completed: false,
-          status: "open",
-          assignedTo: cleanAssignee(body.assignedTo),
-        });
-      }
-
-      if (action === "edit-today-task") {
-        const taskId = String(body.taskId || "");
-        const title = String(body.title || "").trim();
-        if (!taskId || !title) {
-          return NextResponse.json(
-            { ok: false, error: "Routine item could not be edited" },
-            { status: 400 },
-          );
-        }
-        tasks = tasks.map((item) =>
-          item.id === taskId ? { ...item, title } : item,
-        );
-      }
-
-      if (action === "delete-today-task") {
-        const taskId = String(body.taskId || "");
-        tasks = tasks.filter((item) => item.id !== taskId);
-      }
-
-      await sql`
-        UPDATE atlas_routine_occurrences
-        SET tasks = ${JSON.stringify(tasks)}::jsonb, updated_at = NOW()
-        WHERE property_id = ${propertyId}
-          AND occurrence_date = ${dateKey}::date
-      `;
-
-      return NextResponse.json({
-        ok: true,
-        propertyId,
-        occurrence: { ...occurrence, tasks },
-      });
+      return;
     }
 
-    if (action === "toggle-task") {
-      const dateKey = asDateKey(body.date);
-      const taskId = String(body.taskId || "");
-      const occurrence = await getOrCreateOccurrence(
-        sql,
-        propertyId,
-        dateKey,
-      );
+    setDraftTasks((current) => {
+      const copy = [...current];
 
-      if (!occurrence) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "No weekday routine",
-          },
-          { status: 400 },
-        );
-      }
+      [copy[index], copy[nextIndex]] = [
+        copy[nextIndex],
+        copy[index],
+      ];
 
-      const tasks = occurrence.tasks.map((item) =>
-        item.id === taskId
-          ? {
-              ...item,
-              completed: item.status !== "completed",
-              status: item.status === "completed" ? "open" : "completed",
-              deferredTo: undefined,
-            }
-          : item,
-      );
+      return copy;
+    });
+  }
 
-      await sql`
-        UPDATE atlas_routine_occurrences
-        SET
-          tasks = ${JSON.stringify(tasks)}::jsonb,
-          updated_at = NOW()
-        WHERE property_id = ${propertyId}
-          AND occurrence_date = ${dateKey}::date
-      `;
-
-      return NextResponse.json({
-        ok: true,
-        propertyId,
-        occurrence: {
-          ...occurrence,
-          tasks,
-        },
-      });
+  async function moveToDay(index: number, nextDay: number) {
+    if (nextDay === selectedDay) {
+      return;
     }
 
-    if (action === "assign-task" || action === "skip-task" || action === "defer-task") {
-      const dateKey = asDateKey(body.date);
-      const taskId = String(body.taskId || "");
-      let occurrence = await getOrCreateOccurrence(sql, propertyId, dateKey);
-      let selectedTask = occurrence?.tasks.find((item) => item.id === taskId);
+    const task = draftTasks[index];
 
-      // A newly saved routine can be followed immediately by an assignment,
-      // skip, or defer action from the dashboard. Re-read/synchronize once
-      // before treating the task as missing so the first action does not 404
-      // against a stale occurrence.
-      if (occurrence && !selectedTask) {
-        const templateRows = (await sql`
-          SELECT name, tasks
-          FROM atlas_routine_templates
-          WHERE property_id = ${propertyId}
-            AND day_of_week = ${occurrence.day}
-          LIMIT 1
-        `) as unknown as Array<Record<string, unknown>>;
-
-        const templateRow = templateRows[0];
-        if (templateRow) {
-          const templateTasks = normalizeTasks(templateRow.tasks).map(asTemplateTask);
-          const synchronizedTasks = synchronizeOccurrenceTasks(templateTasks, occurrence.tasks);
-
-          await sql`
-            UPDATE atlas_routine_occurrences
-            SET
-              routine_name = ${String(templateRow.name || occurrence.name)},
-              tasks = ${JSON.stringify(synchronizedTasks)}::jsonb,
-              updated_at = NOW()
-            WHERE property_id = ${propertyId}
-              AND occurrence_date = ${dateKey}::date
-          `;
-
-          occurrence = {
-            ...occurrence,
-            name: String(templateRow.name || occurrence.name),
-            tasks: synchronizedTasks,
-          };
-          selectedTask = occurrence.tasks.find((item) => item.id === taskId);
-        }
-      }
-
-      if (!occurrence || !selectedTask) {
-        return NextResponse.json(
-          { ok: false, error: "Routine item was not found" },
-          { status: 404 },
-        );
-      }
-
-      if (action === "assign-task") {
-        const assignedTo = cleanAssignee(body.assignedTo);
-        const tasks = occurrence.tasks.map((item) => item.id === taskId ? { ...item, assignedTo } : item);
-        await sql`
-          UPDATE atlas_routine_occurrences
-          SET tasks = ${JSON.stringify(tasks)}::jsonb, updated_at = NOW()
-          WHERE property_id = ${propertyId} AND occurrence_date = ${dateKey}::date
-        `;
-        return NextResponse.json({ ok: true, propertyId, occurrence: { ...occurrence, tasks } });
-      }
-
-      if (action === "skip-task") {
-        const tasks = occurrence.tasks.map((item) => item.id === taskId ? { ...item, completed: false, status: "skipped" as const, deferredTo: undefined } : item);
-        await sql`
-          UPDATE atlas_routine_occurrences
-          SET tasks = ${JSON.stringify(tasks)}::jsonb, updated_at = NOW()
-          WHERE property_id = ${propertyId} AND occurrence_date = ${dateKey}::date
-        `;
-        return NextResponse.json({ ok: true, propertyId, occurrence: { ...occurrence, tasks } });
-      }
-
-      const targetDate = nextWorkdayDate(dateKey);
-      const targetOccurrence = await getOrCreateOccurrence(sql, propertyId, targetDate);
-      if (!targetOccurrence) {
-        return NextResponse.json({ ok: false, error: "The next workday routine could not be created" }, { status: 400 });
-      }
-      const arrivalId = `${selectedTask.id}--from-${dateKey}`;
-      const arrival: RoutineTask = {
-        ...selectedTask,
-        id: arrivalId,
-        completed: false,
-        status: "open",
-        deferredFrom: dateKey,
-        deferredTo: undefined,
-      };
-      const targetTasks = targetOccurrence.tasks.some((item) => item.id === arrivalId) ? targetOccurrence.tasks : [...targetOccurrence.tasks, arrival];
-      const sourceTasks = occurrence.tasks.map((item) => item.id === taskId ? { ...item, completed: false, status: "deferred" as const, deferredTo: targetDate } : item);
-      await sql`
-        UPDATE atlas_routine_occurrences
-        SET tasks = ${JSON.stringify(targetTasks)}::jsonb, updated_at = NOW()
-        WHERE property_id = ${propertyId} AND occurrence_date = ${targetDate}::date
-      `;
-      await sql`
-        UPDATE atlas_routine_occurrences
-        SET tasks = ${JSON.stringify(sourceTasks)}::jsonb, updated_at = NOW()
-        WHERE property_id = ${propertyId} AND occurrence_date = ${dateKey}::date
-      `;
-      return NextResponse.json({ ok: true, propertyId, movedTo: targetDate, occurrence: { ...occurrence, tasks: sourceTasks } });
-    }
-
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Unsupported routine action",
-      },
-      { status: 400 },
+    const target = templates.find(
+      (template) => template.day === nextDay
     );
-  } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          error instanceof Error ? error.message : "Routine save failed",
-      },
-      { status: 500 },
+
+    if (!task || !target) {
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const sourceTasks = draftTasks.filter(
+        (_, taskIndex) => taskIndex !== index
+      );
+
+      const targetTasks = [...target.tasks, task];
+
+      const responses = await Promise.all([
+        fetch("/api/atlas-routines", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "save-template",
+            propertyId: activePropertyId,
+            day: selectedDay,
+            name: draftName,
+            tasks: sourceTasks,
+          }),
+        }),
+        fetch("/api/atlas-routines", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "save-template",
+            propertyId: activePropertyId,
+            day: nextDay,
+            name: target.name,
+            tasks: targetTasks,
+          }),
+        }),
+      ]);
+
+      if (responses.some((response) => !response.ok)) {
+        throw new Error("Task could not be moved");
+      }
+
+      setDraftTasks(sourceTasks);
+
+      await load();
+
+      setStatus(`Moved to ${dayNames[nextDay]}.`);
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Task could not be moved"
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveTemplate() {
+    if (!selected || busy) {
+      return;
+    }
+
+    setBusy(true);
+    setStatus("Saving…");
+
+    try {
+      const payload = await routinePost({
+        action: "save-template",
+        propertyId: activePropertyId,
+        date: todayKey(),
+        day: selectedDay,
+        name:
+          draftName.trim() ||
+          `${dayNames[selectedDay]} Routine`,
+        tasks: draftTasks,
+      });
+
+      // Keep the dashboard occurrence in sync immediately after the save.
+      // This prevents a newly added/edited task from being acted on against
+      // the pre-save occurrence while the follow-up reload is still running.
+      if (payload.occurrence) {
+        setOccurrence(payload.occurrence);
+      }
+
+      setEditing(false);
+
+      await load();
+
+      setStatus("Routine saved.");
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Routine did not save"
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const panel: React.CSSProperties = {
+    background: "#FFFFFF",
+    border: `1px solid ${colors.line}`,
+    borderRadius: 16,
+    padding: isMobile ? 14 : 18,
+    color: colors.text,
+  };
+
+  const button: React.CSSProperties = {
+    border: `1px solid ${colors.line}`,
+    borderRadius: 10,
+    padding: "9px 12px",
+    background: "#FFFFFF",
+    color: colors.text,
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+
+  if (mode === "dashboard") {
+    const dashboardTasks =
+      occurrence?.tasks.filter((task) => {
+        if (!assigneeFilter) return true;
+        if (task.assignedTo === assigneeFilter) return true;
+        const target = activeRoutinePeople.find(
+          (member) =>
+            member.name.toLowerCase() === String(assigneeFilter).toLowerCase(),
+        );
+        return target
+          ? taskAssigneeIds(task).includes(routinePersonId(target))
+          : false;
+      }) || [];
+
+    const completed = dashboardTasks.filter((task) => task.completed).length;
+
+    const resolved = dashboardTasks.filter(
+      (task) =>
+        task.completed ||
+        task.status === "skipped" ||
+        task.status === "deferred",
+    ).length;
+
+    const total = dashboardTasks.length;
+
+    return (
+      <section style={panel}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                color: colors.gold,
+                fontSize: 12,
+                fontWeight: 900,
+                letterSpacing: ".08em",
+                textTransform: "uppercase",
+              }}
+            >
+              Today
+            </div>
+
+            <h2
+              style={{
+                margin: "3px 0 0",
+                color: colors.navy,
+                fontSize: 22,
+              }}
+            >
+              {occurrence?.name || "Daily Routine"}
+            </h2>
+          </div>
+
+          {onOpenManager ? (
+            <button
+              type="button"
+              style={button}
+              onClick={onOpenManager}
+            >
+              Open Routines
+            </button>
+          ) : null}
+        </div>
+
+        {status ? (
+          <div
+            style={{
+              color: colors.muted,
+              fontSize: 14,
+            }}
+          >
+            {status}
+          </div>
+        ) : null}
+
+        {!status && !occurrence ? (
+          <div style={{ color: colors.muted }}>
+            No weekday routine is scheduled today.
+          </div>
+        ) : null}
+
+        {occurrence && total === 0 ? (
+          <div style={{ color: colors.muted }}>
+            {employeeView ? "No routine items are assigned to you today." : "No tasks have been added to today’s routine yet."}
+          </div>
+        ) : null}
+
+        {occurrence && total > 0 ? (
+          <>
+            {(() => {
+              const openTasks = dashboardTasks.filter(
+                (task) =>
+                  !task.completed &&
+                  task.status !== "skipped" &&
+                  task.status !== "deferred",
+              );
+              const nextTask = openTasks[0] || null;
+              const visibleTasks = dashboardChecklistExpanded
+                ? dashboardTasks
+                : dashboardTasks.slice(0, 7);
+
+              return (
+                <>
+                  <div
+                    style={{
+                      position: "sticky",
+                      top: 0,
+                      zIndex: 5,
+                      marginBottom: 9,
+                      padding: "10px 11px",
+                      border: `1px solid ${colors.gold}`,
+                      borderRadius: 11,
+                      background:
+                        "linear-gradient(135deg, #FFF8E7 0%, #FFFFFF 78%)",
+                      boxShadow: "0 7px 18px rgba(7,27,47,.08)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            color: colors.gold,
+                            fontSize: 10,
+                            fontWeight: 950,
+                            letterSpacing: ".09em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Next Task
+                        </div>
+                        <strong
+                          style={{
+                            display: "block",
+                            marginTop: 2,
+                            color: colors.navy,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {nextTask?.title || "Routine complete"}
+                        </strong>
+                      </div>
+                      <span
+                        style={{
+                          flex: "0 0 auto",
+                          color: colors.navy,
+                          fontSize: 12,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {resolved}/{total}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        height: 6,
+                        marginTop: 8,
+                        borderRadius: 99,
+                        overflow: "hidden",
+                        background: "#E8EDF3",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${total ? (resolved / total) * 100 : 0}%`,
+                          height: "100%",
+                          borderRadius: 99,
+                          background: colors.gold,
+                          transition: "width 180ms ease",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 7,
+                    }}
+                  >
+                    {visibleTasks.map((task, index) => (
+                      <div
+                        key={task.id}
+                        className="atlas-routine-dashboard-row"
+                        style={{
+                          display: "grid",
+                          gap: 7,
+                          padding: "8px 9px",
+                          border: `1px solid ${
+                            task.completed ? "#B8E0CD" : colors.line
+                          }`,
+                          borderLeft: `4px solid ${
+                            task.completed
+                              ? colors.green
+                              : task.status === "skipped" ||
+                                  task.status === "deferred"
+                                ? "#A8B4C2"
+                                : index === 0
+                                  ? colors.gold
+                                  : colors.line
+                          }`,
+                          borderRadius: 10,
+                          background: task.completed
+                            ? "#F2FBF6"
+                            : task.status === "skipped" ||
+                                task.status === "deferred"
+                              ? "#F8FAFC"
+                              : "#FFFFFF",
+                          boxShadow:
+                            index === 0 &&
+                            !task.completed &&
+                            task.status !== "skipped" &&
+                            task.status !== "deferred"
+                              ? "0 6px 16px rgba(7,27,47,.07)"
+                              : "none",
+                          transition:
+                            "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
+                        }}
+                      >
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 9,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={Boolean(task.completed)}
+                            disabled={
+                              busy ||
+                              task.status === "skipped" ||
+                              task.status === "deferred"
+                            }
+                            onChange={() => void toggleTask(task.id)}
+                            style={{
+                              width: 18,
+                              height: 18,
+                              accentColor: colors.green,
+                            }}
+                          />
+                          <span
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              textDecoration:
+                                task.completed ||
+                                task.status === "skipped" ||
+                                task.status === "deferred"
+                                  ? "line-through"
+                                  : "none",
+                              color:
+                                task.completed ||
+                                task.status === "skipped" ||
+                                task.status === "deferred"
+                                  ? colors.muted
+                                  : colors.text,
+                              fontWeight: 750,
+                              lineHeight: 1.35,
+                            }}
+                          >
+                            {task.title}
+                          </span>
+                          {task.status === "skipped" ? (
+                            <small
+                              style={{ color: colors.muted, fontWeight: 900 }}
+                            >
+                              Skipped
+                            </small>
+                          ) : task.status === "deferred" ? (
+                            <small
+                              style={{ color: colors.gold, fontWeight: 900 }}
+                            >
+                              Moved
+                            </small>
+                          ) : null}
+                        </label>
+
+                        {!task.completed &&
+                        task.status !== "skipped" &&
+                        task.status !== "deferred" ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 5,
+                              flexWrap: "wrap",
+                              alignItems: "center",
+                              paddingLeft: isMobile ? 0 : 27,
+                            }}
+                          >
+                            {!employeeView ? (
+                            <>
+                            <select
+                              aria-label={`Assign ${task.title}`}
+                              value={task.assignedTo || "Nick"}
+                              disabled={busy}
+                              onChange={(event) =>
+                                void updateTodayTask(
+                                  "assign-task",
+                                  task.id,
+                                  event.currentTarget
+                                    .value as RoutineTask["assignedTo"],
+                                )
+                              }
+                              style={{
+                                ...button,
+                                minHeight: 28,
+                                padding: "3px 7px",
+                                fontSize: 11,
+                              }}
+                            >
+                              <option>Nick</option>
+                              <option>Addison</option>
+                              <option>Pat</option>
+                              <option>Crew</option>
+                            </select>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void updateTodayTask("skip-task", task.id)
+                              }
+                              style={{
+                                ...button,
+                                minHeight: 28,
+                                padding: "3px 7px",
+                                fontSize: 11,
+                              }}
+                            >
+                              Skip Today
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void updateTodayTask("defer-task", task.id)
+                              }
+                              style={{
+                                ...button,
+                                minHeight: 28,
+                                padding: "3px 7px",
+                                fontSize: 11,
+                              }}
+                            >
+                              Next Workday
+                            </button>
+
+                            </>
+                            ) : allowTodayEditing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void editTodayOccurrenceTask(task)}
+                                  style={{ ...button, minHeight: 28, padding: "3px 7px", fontSize: 11 }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void deleteTodayOccurrenceTask(task)}
+                                  style={{ ...button, minHeight: 28, padding: "3px 7px", fontSize: 11, color: colors.red }}
+                                >
+                                  Remove Today
+                                </button>
+                              </>
+                            ) : null}
+
+                            {onAddPhoto || onAddNote || onFlagProblem ? (
+                              <details style={{ position: "relative" }}>
+                                <summary
+                                  aria-label={`More actions for ${task.title}`}
+                                  style={{
+                                    listStyle: "none",
+                                    minWidth: 29,
+                                    minHeight: 28,
+                                    display: "grid",
+                                    placeItems: "center",
+                                    border: `1px solid ${colors.line}`,
+                                    borderRadius: 9,
+                                    background: "#FFFFFF",
+                                    color: colors.navy,
+                                    fontSize: 16,
+                                    fontWeight: 950,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  •••
+                                </summary>
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    right: 0,
+                                    top: "calc(100% + 5px)",
+                                    zIndex: 30,
+                                    minWidth: 126,
+                                    display: "grid",
+                                    gap: 4,
+                                    padding: 6,
+                                    border: `1px solid ${colors.line}`,
+                                    borderRadius: 10,
+                                    background: "#FFFFFF",
+                                    boxShadow:
+                                      "0 12px 28px rgba(7,27,47,.16)",
+                                  }}
+                                >
+                                  {onAddPhoto ? (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => onAddPhoto(task)}
+                                      style={{
+                                        ...button,
+                                        minHeight: 29,
+                                        padding: "4px 8px",
+                                        fontSize: 11,
+                                        textAlign: "left",
+                                      }}
+                                    >
+                                      Add Photo
+                                    </button>
+                                  ) : null}
+                                  {onAddNote ? (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => onAddNote(task)}
+                                      style={{
+                                        ...button,
+                                        minHeight: 29,
+                                        padding: "4px 8px",
+                                        fontSize: 11,
+                                        textAlign: "left",
+                                      }}
+                                    >
+                                      Add Note
+                                    </button>
+                                  ) : null}
+                                  {onFlagProblem ? (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => onFlagProblem(task)}
+                                      style={{
+                                        ...button,
+                                        minHeight: 29,
+                                        padding: "4px 8px",
+                                        fontSize: 11,
+                                        color: colors.red,
+                                        textAlign: "left",
+                                      }}
+                                    >
+                                      Flag Problem
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </details>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+
+                  {dashboardTasks.length > 7 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDashboardChecklistExpanded((current) => !current)
+                      }
+                      style={{
+                        ...button,
+                        width: "100%",
+                        minHeight: 34,
+                        marginTop: 9,
+                        padding: "6px 10px",
+                        borderColor: `${colors.gold}88`,
+                        color: colors.navy,
+                        fontSize: 12,
+                      }}
+                    >
+                      {dashboardChecklistExpanded
+                        ? "Show fewer checklist items"
+                        : `Show all ${dashboardTasks.length} checklist items`}
+                    </button>
+                  ) : null}
+                </>
+              );
+            })()}
+
+            {allowTodayEditing ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void addTodayOccurrenceTask()}
+                style={{ ...button, width: "100%", marginTop: 10, borderColor: colors.gold }}
+              >
+                + Add to Today’s Routine
+              </button>
+            ) : null}
+
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <strong>
+                {completed} complete · {resolved} of {total} handled
+              </strong>
+
+              <div
+                style={{
+                  width: 150,
+                  height: 8,
+                  borderRadius: 99,
+                  background: colors.bg,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${
+                      total
+                        ? (resolved / total) * 100
+                        : 0
+                    }%`,
+                    height: "100%",
+                    background: colors.gold,
+                    transition: "width 180ms ease",
+                  }}
+                />
+              </div>
+            </div>
+
+            <style>{`
+              .atlas-routine-dashboard-row:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 7px 18px rgba(7, 27, 47, 0.09) !important;
+                border-color: rgba(201, 154, 61, 0.52) !important;
+              }
+              .atlas-routine-dashboard-row details > summary::-webkit-details-marker {
+                display: none;
+              }
+              @media (prefers-reduced-motion: reduce) {
+                .atlas-routine-dashboard-row {
+                  transition: none !important;
+                }
+              }
+            `}</style>
+          </>
+        ) : null}
+      </section>
     );
   }
-}
 
-function synchronizeOccurrenceTasks(templateTasks: RoutineTask[], existingTasks: RoutineTask[] = []) {
-  const existingById = new Map(existingTasks.map((task) => [task.id, task]));
-  const templateIds = new Set(templateTasks.map((task) => task.id));
-  const scheduled = templateTasks.filter((task) => task.enabled).map((task) => {
-    const existing = existingById.get(task.id);
-    const status = existing?.status || (existing?.completed ? "completed" : "open");
-    return {
-      id: task.id,
-      title: task.title,
-      enabled: task.enabled,
-      completed: status === "completed",
-      status,
-      assignedTo: existing?.assignedTo || task.assignedTo || "Nick",
-      ...(existing?.deferredTo ? { deferredTo: existing.deferredTo } : {}),
-    } as RoutineTask;
-  });
-  const deferredArrivals = existingTasks.filter((task) => task.deferredFrom && !templateIds.has(task.id));
-  return [...scheduled, ...deferredArrivals];
-}
+  return (
+    <section
+      style={{
+        ...panel,
+        display: "grid",
+        gap: 16,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: isMobile ? "stretch" : "center",
+          flexDirection: isMobile ? "column" : "row",
+          gap: 12,
+          background: `linear-gradient(135deg, ${colors.navy}, #173E68)`,
+          color: "#FFFFFF",
+          borderRadius: 14,
+          padding: isMobile ? 14 : "15px 17px",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              color: "#E8C778",
+              fontSize: 12,
+              fontWeight: 900,
+              letterSpacing: ".08em",
+              textTransform: "uppercase",
+            }}
+          >
+            Weekly Operations
+          </div>
 
-function nextWorkdayDate(dateKey: string) {
-  const date = new Date(`${dateKey}T12:00:00Z`);
-  do {
-    date.setUTCDate(date.getUTCDate() + 1);
-  } while (date.getUTCDay() === 0 || date.getUTCDay() === 6);
-  return date.toISOString().slice(0, 10);
-}
+          <h1
+            style={{
+              margin: "4px 0 3px",
+              color: "#FFFFFF",
+            }}
+          >
+            Routines
+          </h1>
 
-function cleanAssignee(value: unknown): RoutineTask["assignedTo"] {
-  const assignee =
-    typeof value === "string" ? value.trim() : "";
+        </div>
 
-  // Preserve real Atlas user names and the multi-assignee compatibility label.
-  // Legacy records with no assignment still belong to Nick.
-  return assignee || "Nick";
-}
+        {!editing ? (
+          <button
+            type="button"
+            style={{
+              ...button,
+              background: colors.gold,
+              borderColor: colors.gold,
+              color: colors.navy,
+            }}
+            onClick={beginEdit}
+          >
+            Edit Routine
+          </button>
+        ) : null}
+      </div>
 
-function cleanTaskStatus(value: unknown, completed = false): RoutineTask["status"] {
-  return value === "skipped" || value === "deferred" ? value : completed || value === "completed" ? "completed" : "open";
+      <div style={{ display: "grid", gap: 7 }}>
+        <div style={{ fontSize: 11, fontWeight: 900, color: colors.muted, letterSpacing: ".08em", textTransform: "uppercase" }}>
+          Routine For
+        </div>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => { setSelectedPersonId("all"); setEditing(false); }}
+            style={{
+              ...button,
+              background: selectedPersonId === "all" ? colors.navy : "#FFFFFF",
+              color: selectedPersonId === "all" ? "#FFFFFF" : colors.text,
+            }}
+          >
+            All Routines
+          </button>
+          {activeRoutinePeople.map((member) => {
+            const personId = routinePersonId(member);
+            const active = effectiveSelectedPersonId === personId;
+            return (
+              <button
+                key={personId}
+                type="button"
+                onClick={() => { setSelectedPersonId(personId); setEditing(false); }}
+                style={{
+                  ...button,
+                  background: active ? colors.navy : "#FFFFFF",
+                  color: active ? "#FFFFFF" : colors.text,
+                }}
+              >
+                {member.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile
+            ? "repeat(2, minmax(0, 1fr))"
+            : "repeat(7, minmax(0, 1fr))",
+          gap: 8,
+        }}
+      >
+        {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+          <button
+            key={day}
+            type="button"
+            onClick={() => {
+              setSelectedDay(day);
+              setEditing(false);
+              setStatus("");
+            }}
+            style={{
+              ...button,
+              background:
+                selectedDay === day
+                  ? colors.navy
+                  : "#FFFFFF",
+              color:
+                selectedDay === day
+                  ? "#FFFFFF"
+                  : colors.text,
+              borderColor:
+                selectedDay === day
+                  ? colors.navy
+                  : colors.line,
+            }}
+          >
+            {dayNames[day]}
+          </button>
+        ))}
+      </div>
+
+      {selected ? (
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          {editing ? (
+            <>
+              {effectiveSelectedPersonId !== "all" ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    style={button}
+                    onClick={() => assignVisibleRoutineToPerson(effectiveSelectedPersonId)}
+                  >
+                    Assign All to {routinePersonName(effectiveSelectedPersonId)}
+                  </button>
+                </div>
+              ) : null}
+              <input
+              value={draftName}
+              onChange={(event) =>
+                setDraftName(event.currentTarget.value)
+              }
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 10,
+                padding: "11px 12px",
+                fontSize: 18,
+                fontWeight: 800,
+              }}
+            />
+            </>
+          ) : (
+            <h2
+              style={{
+                margin: 0,
+                color: colors.navy,
+              }}
+            >
+              {selected.name}
+            </h2>
+          )}
+
+          {!editing && selected.tasks.length === 0 ? (
+            <div style={{ color: colors.muted }}>
+              No tasks have been added yet.
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            {(editing ? draftTasks : selected.tasks)
+              .map((task, originalIndex) => ({ task, originalIndex }))
+              .filter(({ task }) =>
+                effectiveSelectedPersonId === "all"
+                  ? true
+                  : taskAssigneeIds(task).includes(effectiveSelectedPersonId)
+              )
+              .map(({ task, originalIndex }) => {
+                const index = originalIndex;
+                return (
+                <div
+                  key={task.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: editing
+                      ? isMobile
+                        ? "1fr"
+                        : "minmax(0, 1fr) auto auto auto auto"
+                      : "1fr",
+                    gap: 8,
+                    alignItems: "center",
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 11,
+                    padding: 10,
+                  }}
+                >
+                  {editing ? (
+                    <input
+                      value={task.title}
+                      onChange={(event) =>
+                        setDraftTasks((current) =>
+                          current.map(
+                            (item, taskIndex) =>
+                              taskIndex === index
+                                ? {
+                                    ...item,
+                                    title:
+                                      event.currentTarget.value,
+                                  }
+                                : item
+                          )
+                        )
+                      }
+                      style={{
+                        border: 0,
+                        outline: 0,
+                        fontWeight: 700,
+                        minWidth: 0,
+                      }}
+                    />
+                  ) : (
+                    <span>
+                      <strong style={{ display: "block" }}>{task.title}</strong>
+                      {taskAssigneeIds(task).length ? (
+                        <small style={{ color: colors.muted }}>
+                          {taskAssigneeIds(task).map(routinePersonName).join(", ")}
+                        </small>
+                      ) : null}
+                    </span>
+                  )}
+
+                  {editing ? (
+                    <>
+                      <details style={{ position: "relative" }}>
+                        <summary style={{ ...button, listStyle: "none", cursor: "pointer", whiteSpace: "nowrap" }}>
+                          {taskAssigneeIds(task).length
+                            ? `${taskAssigneeIds(task).length} assigned`
+                            : "Assign"}
+                        </summary>
+                        <div style={{
+                          position: "absolute",
+                          zIndex: 20,
+                          right: 0,
+                          top: "calc(100% + 5px)",
+                          minWidth: 210,
+                          display: "grid",
+                          gap: 6,
+                          padding: 9,
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 10,
+                          background: "#FFFFFF",
+                          boxShadow: "0 10px 28px rgba(15,23,42,.14)",
+                        }}>
+                          {activeRoutinePeople.map((member) => {
+                            const personId = routinePersonId(member);
+                            const checked = taskAssigneeIds(task).includes(personId);
+                            return (
+                              <label key={personId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) =>
+                                    setTaskPerson(index, personId, event.currentTarget.checked)
+                                  }
+                                />
+                                {member.name}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </details>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 5,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          aria-label="Move up"
+                          style={button}
+                          onClick={() => moveTask(index, -1)}
+                        >
+                          Up
+                        </button>
+
+                        <button
+                          type="button"
+                          aria-label="Move down"
+                          style={button}
+                          onClick={() => moveTask(index, 1)}
+                        >
+                          Down
+                        </button>
+                      </div>
+
+                      <select
+                        value={selectedDay}
+                        onChange={(event) =>
+                          void moveToDay(
+                            index,
+                            Number(event.currentTarget.value)
+                          )
+                        }
+                        style={{
+                          ...button,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                          <option key={day} value={day}>
+                            {day === selectedDay
+                              ? "Move to..."
+                              : dayNames[day]}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          style={button}
+                          onClick={() =>
+                            setDraftTasks((current) =>
+                              current.map(
+                                (item, taskIndex) =>
+                                  taskIndex === index
+                                    ? {
+                                        ...item,
+                                        enabled:
+                                          !item.enabled,
+                                      }
+                                    : item
+                              )
+                            )
+                          }
+                        >
+                          {task.enabled ? "On" : "Off"}
+                        </button>
+
+                        <button
+                          type="button"
+                          style={{
+                            ...button,
+                            color: colors.red,
+                          }}
+                          onClick={() =>
+                            setDraftTasks((current) =>
+                              current.filter(
+                                (_, taskIndex) =>
+                                  taskIndex !== index
+                              )
+                            )
+                          }
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              );
+              })}
+          </div>
+
+          {editing ? (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: isMobile ? "column" : "row",
+                  gap: 8,
+                }}
+              >
+                <input
+                  value={newTask}
+                  onChange={(event) =>
+                    setNewTask(event.currentTarget.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addTask();
+                    }
+                  }}
+                  placeholder="Add a task"
+                  style={{
+                    flex: 1,
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 10,
+                    padding: "10px 11px",
+                  }}
+                />
+
+                <button
+                  type="button"
+                  style={button}
+                  onClick={addTask}
+                >
+                  + Add Task
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 8,
+                }}
+              >
+                <button
+                  type="button"
+                  style={button}
+                  onClick={() => setEditing(false)}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  style={{
+                    ...button,
+                    background: colors.gold,
+                    borderColor: colors.gold,
+                    color: colors.navy,
+                  }}
+                  onClick={() => void saveTemplate()}
+                >
+                  Save Routine
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {status ? (
+        <div
+          style={{
+            color:
+              status.includes("failed") ||
+              status.includes("could not")
+                ? colors.red
+                : colors.muted,
+          }}
+        >
+          {status}
+        </div>
+      ) : null}
+    </section>
+  );
 }
