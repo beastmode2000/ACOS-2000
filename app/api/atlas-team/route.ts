@@ -529,12 +529,11 @@ export async function POST(request: NextRequest) {
 
       const existingEmail = String(existing[0].email || "").toLowerCase();
       const existingRole = normalizeRole(existing[0].role);
-      const isProtectedMaster =
+      if (
         memberId === "nick" ||
         existingEmail === "nthornton87@yahoo.com" ||
-        existingRole === "master";
-
-      if (isProtectedMaster) {
+        existingRole === "master"
+      ) {
         return NextResponse.json(
           { ok: false, error: "The Master account cannot be deleted." },
           { status: 400 },
