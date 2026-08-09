@@ -12171,10 +12171,43 @@ export default function AtlasApp() {
   function skipRecurringTask(task: WorkPlanTask) {
     const meta = taskDetails(task.id);
     if (!task.recurring || meta.skippable === false) return;
+
+    const today = todayISO();
+    const dueDate = String(meta.dueDate || today).slice(0, 10);
+
+    if (dueDate > today) {
+      showSaveToast(
+        `This task is due ${formatDate(dueDate)} and cannot be skipped early.`,
+        "warning",
+      );
+      return;
+    }
+
     const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
     const unit = meta.recurrenceUnit || "Weeks";
-    const nextDate = nextRecurrenceDate(meta.dueDate || todayISO(), interval, unit);
-    updateTaskDetails(task.id, { dueDate: nextDate, status: "Open" });
+    let nextDate = nextRecurrenceDate(dueDate, interval, unit);
+
+    while (nextDate <= today) {
+      nextDate = nextRecurrenceDate(nextDate, interval, unit);
+    }
+
+    const skippedHistory = Array.from(
+      new Set([
+        ...(((meta as any).skippedHistory || []) as string[]),
+        dueDate,
+      ]),
+    ).sort();
+
+    updateTaskDetails(task.id, {
+      dueDate: nextDate,
+      status: "Open",
+      skippedHistory,
+    } as any);
+
+    recordAtlasAudit(
+      "Recurring task skipped",
+      `${task.title} · skipped ${formatDate(dueDate)} · next due ${formatDate(nextDate)}`,
+    );
     showSaveToast(`${task.title} skipped. Next due ${formatDate(nextDate)}.`);
   }
 
@@ -12296,10 +12329,35 @@ export default function AtlasApp() {
     showSaveToast("Task deleted — Atlas will keep it deleted even if sync has to retry.");
   }
 
+  function moveAtlasTaskToDate(task: WorkPlanTask, nextDate: string) {
+    const cleanDate = String(nextDate || "").slice(0, 10);
+    if (!cleanDate) return;
+
+    const meta = taskDetails(task.id);
+    const currentDate = String(meta.dueDate || "").slice(0, 10);
+
+    if (currentDate && cleanDate < currentDate) {
+      const confirmed = window.confirm(
+        `Move “${task.title}” forward from ${formatDate(currentDate)} to ${formatDate(cleanDate)}?`,
+      );
+      if (!confirmed) return;
+    }
+
+    updateTaskDetails(task.id, {
+      dueDate: cleanDate,
+      status: "Open",
+      completedAt: undefined,
+    });
+    recordAtlasAudit("Task moved", `${task.title} → ${cleanDate}`);
+    showSaveToast(`${task.title} moved to ${formatDate(cleanDate)}.`);
+  }
+
+  function moveAtlasTaskToToday(task: WorkPlanTask) {
+    moveAtlasTaskToDate(task, todayISO());
+  }
+
   function moveAtlasTaskToTomorrow(task: WorkPlanTask) {
-    updateTaskDetails(task.id, { dueDate: addDays(todayISO(), 1), status: "Open" });
-    recordAtlasAudit("Task moved", `${task.title} → tomorrow`);
-    showSaveToast(`${task.title} moved to tomorrow.`);
+    moveAtlasTaskToDate(task, addDays(todayISO(), 1));
   }
 
   function addQuickTaskNote(task: WorkPlanTask) {
@@ -15333,7 +15391,9 @@ ${notes.trim()}` : notes.trim(),
           noticeStyle,
           completeAtlasTask,
           skipRecurringTask,
+          moveAtlasTaskToToday,
           moveAtlasTaskToTomorrow,
+          moveAtlasTaskToDate,
           walkVoiceListening,
           setPreviewFile,
           setTaskListFilter,
