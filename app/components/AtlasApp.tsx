@@ -14097,7 +14097,12 @@ ${notes.trim()}` : notes.trim(),
 
   function checklistDefinitions() {
     const custom = workPlanTasks.filter((task) => task.category === "Atlas List Definition").map((task) => ({ id: taskDetails(task.id).listId || task.id, name: taskDetails(task.id).listName || task.title }));
-    return [{ id: "graduation-party", name: "Graduation Party" }, ...custom.filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index)];
+    const graduationName =
+      workPlanTasks
+        .filter((task) => taskDetails(task.id).listId === "graduation-party" || task.category === "Graduation Party Checklist")
+        .map((task) => taskDetails(task.id).listName || "")
+        .find(Boolean) || "Graduation Party";
+    return [{ id: "graduation-party", name: graduationName }, ...custom.filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index)];
   }
 
   function checklistItems(listId: string) {
@@ -14114,6 +14119,102 @@ ${notes.trim()}` : notes.trim(),
     setSelectedListId(listId);
     setTasksView("lists");
     showSaveToast(`${name} list created.`);
+  }
+
+  function renameChecklist(listId: string, currentName: string) {
+    const nextName = window.prompt("Rename this list:", currentName)?.trim();
+    if (!nextName || nextName === currentName) return;
+    const recordIds = new Set<string>(
+      workPlanTasks
+        .filter((task) => taskDetails(task.id).listId === listId || (listId === "graduation-party" && task.category === "Graduation Party Checklist"))
+        .map((task) => String(task.id)),
+    );
+    setWorkPlanTasks((current) =>
+      current.map((task) =>
+        recordIds.has(task.id) && task.category === "Atlas List Definition"
+          ? { ...task, title: nextName }
+          : task,
+      ),
+    );
+    setTaskMeta((current) => {
+      const next = { ...current };
+      recordIds.forEach((id) => {
+        next[id] = {
+          ...taskDetails(id),
+          listId,
+          listName: nextName,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      return next;
+    });
+    recordIds.forEach((id) => {
+      const task = workPlanTasks.find((item) => item.id === id);
+      if (!task) return;
+      const meta = taskDetails(id);
+      void postAtlasRecord("tasks" as AtlasTable, {
+        ...task,
+        ...meta,
+        title: task.category === "Atlas List Definition" ? nextName : task.title,
+        listId,
+        listName: nextName,
+        taskMeta: { ...meta, listId, listName: nextName },
+        propertyId: activePropertyId,
+        updatedAt: new Date().toISOString(),
+      });
+    });
+    showSaveToast(`List renamed to ${nextName}.`);
+  }
+
+  function deleteChecklist(listId: string, listName: string) {
+    const records = workPlanTasks.filter(
+      (task) =>
+        taskDetails(task.id).listId === listId ||
+        (listId === "graduation-party" && task.category === "Graduation Party Checklist"),
+    );
+    if (!records.length) return;
+    if (!window.confirm(`Delete "${listName}" and all ${records.length} item${records.length === 1 ? "" : "s"}?`)) return;
+
+    const ids = new Set<string>(records.map((task) => String(task.id)));
+    const nextTasks = workPlanTasks.filter((task) => !ids.has(task.id));
+    const nextMeta = { ...taskMeta };
+    ids.forEach((id) => delete nextMeta[id]);
+
+    setWorkPlanTasks(nextTasks);
+    setTaskMeta(nextMeta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, nextTasks);
+    if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", nextTasks);
+    try {
+      window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(nextMeta));
+      if (activePropertyId === "2000") window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
+      if (listId === "graduation-party") {
+        window.localStorage.setItem(`atlas-graduation-party-list-initialized-v2-${activePropertyId}`, "ready");
+      }
+    } catch {}
+
+    ids.forEach((id) => void deleteOperationalRecord("tasks" as AtlasTable, id));
+
+    const remainingDefinitions = checklistDefinitions().filter((definition) => definition.id !== listId);
+    setSelectedListId(remainingDefinitions[0]?.id || "graduation-party");
+    showSaveToast(`${listName} deleted.`);
+  }
+
+  function editChecklistItem(task: WorkPlanTask) {
+    const title = window.prompt("Edit checklist item:", task.title)?.trim();
+    if (!title || title === task.title) return;
+    const updatedAt = new Date().toISOString();
+    const updatedTask = { ...task, title };
+    const meta = taskDetails(task.id);
+    setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? updatedTask : item));
+    updateTaskDetails(task.id, { updatedAt });
+    void postAtlasRecord("tasks" as AtlasTable, {
+      ...updatedTask,
+      ...meta,
+      taskMeta: { ...meta, updatedAt },
+      propertyId: activePropertyId,
+      updatedAt,
+    });
+    showSaveToast("Checklist item updated.");
   }
 
   function addGraduationPartyChecklistItem() {
@@ -14159,16 +14260,17 @@ ${notes.trim()}` : notes.trim(),
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{definitions.map((definition) => <button key={definition.id} type="button" onClick={() => { if (definition.id === "graduation-party") ensureGraduationPartyChecklist(); setSelectedListId(definition.id); }} style={selectedDefinition.id === definition.id ? goldButtonStyle : secondaryButtonStyle}>{definition.name}</button>)}</div>
       </section>
       <section style={{ ...cardStyle, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button>{selectedDefinition.id === "graduation-party" ? <button type="button" onClick={restoreGraduationPartyStandardItems} style={secondaryButtonStyle}>Restore standard items</button> : null}</div></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => renameChecklist(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Rename</button><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button>{selectedDefinition.id === "graduation-party" ? <button type="button" onClick={restoreGraduationPartyStandardItems} style={secondaryButtonStyle}>Restore standard items</button> : null}<button type="button" onClick={() => deleteChecklist(selectedDefinition.id, selectedDefinition.name)} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete List</button></div></div>
         <label style={{ display: "grid", gap: 5, marginTop: 12 }}><span style={fieldLabelStyle}>LIST NOTES</span><textarea value={listNotes} onChange={(event) => updateListNotes(event.currentTarget.value)} placeholder="Add instructions, reminders, vendor details, or notes for this list…" rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}/></label>
       </section>
       <section style={{ ...cardStyle, padding: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginBottom: 9 }}><input value={newPartyChecklistItem} onChange={(event) => setNewPartyChecklistItem(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addGraduationPartyChecklistItem(); }} placeholder="Add checklist item" style={inputStyle}/><button type="button" onClick={addGraduationPartyChecklistItem} style={goldButtonStyle}>Add</button></div>
         <div style={{ display: "grid", gap: 6 }}>
-          {items.map((task) => { const meta = taskDetails(task.id); const done = meta.status === "Completed"; return <div key={task.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(0,1fr) 120px auto", gap: 8, alignItems: "center", padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: done ? "#F0FAF5" : "#FFFFFF" }}>
+          {items.map((task) => { const meta = taskDetails(task.id); const done = meta.status === "Completed"; return <div key={task.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(0,1fr) 120px auto auto", gap: 8, alignItems: "center", padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: done ? "#F0FAF5" : "#FFFFFF" }}>
             <input type="checkbox" checked={done} aria-label={`Complete ${task.title}`} onChange={(event) => event.currentTarget.checked ? completeAtlasTask(task) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined })}/>
             <span style={{ color: colors.navy, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span>
             <select value={meta.assignee || "Unassigned"} onChange={(event) => updateTaskDetails(task.id, { assignee: event.currentTarget.value as AtlasTaskMeta["assignee"] })} style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11, gridColumn: isMobile ? "2" : undefined }}><option>Nick</option><option>Addison</option><option>Pat</option><option>Other</option><option>Unassigned</option></select>
+            <button type="button" onClick={() => editChecklistItem(task)} style={{ ...compactUtilityButtonStyle, gridColumn: isMobile ? "2" : undefined, justifySelf: "start" }}>Edit</button>
             <button type="button" aria-label={`Delete ${task.title}`} onClick={() => deleteAtlasTask(task.id)} style={{ ...compactUtilityButtonStyle, color: colors.red, gridColumn: isMobile ? "2" : undefined, justifySelf: "start" }}>Delete</button>
           </div>; })}
         </div>
