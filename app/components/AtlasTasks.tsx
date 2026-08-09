@@ -117,6 +117,11 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
       </section>;
     };
 
+    const canCompleteTask = (task: any) => {
+      const dueDate = String(taskDetails(task.id).dueDate || "").slice(0, 10);
+      return !dueDate || dueDate <= todayISO();
+    };
+
     const filterButton = (id: any, label: string, count: number) => (
       <button type="button" onClick={() => setTaskListFilter(id)} style={{ ...(taskListFilter === id ? goldButtonStyle : secondaryButtonStyle), padding: "7px 10px" }}>{label} · {count}</button>
     );
@@ -163,7 +168,7 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
                 <button type="button" onClick={() => focusRapidTaskInput(true)} style={goldButtonStyle}>Add Task</button>
               </div>
             ) : null}
-            <div style={{ ...cardStyle, padding: 10, display: "grid", gap: 8 }}>
+            <div style={{ ...cardStyle, padding: 11, display: "grid", gap: 9, background: "#F8FAFC", borderColor: "#D5E0EA" }}>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                 {filterButton("today", "Today", counts.today)}
                 {filterButton("overdue", "Overdue", counts.overdue)}
@@ -175,22 +180,36 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(300px, 38%) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
-              <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-                <div style={{ padding: "10px 12px", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}>
+              <section style={{ ...cardStyle, padding: 10, overflow: "hidden", background: "#F5F8FB", borderColor: "#D5E0EA" }}>
+                <div style={{ padding: "2px 2px 10px", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <strong>{visibleTasks.length} task{visibleTasks.length === 1 ? "" : "s"}</strong>
                   <small style={mutedSmallStyle}>{minutesLabel(visibleTasks.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0))}</small>
                 </div>
-                <div style={{ maxHeight: isMobile ? 480 : "70vh", overflowY: "auto" }}>
+                <div style={{ maxHeight: isMobile ? 500 : "70vh", overflowY: "auto", display: "grid", gap: 8, paddingTop: 10, paddingRight: 3 }}>
                   {visibleTasks.map((task) => {
                     const meta = taskDetails(task.id);
                     const selected = selectedTask?.id === task.id;
-                    return <div key={task.id} style={{ borderBottom: `1px solid ${colors.line}`, background: selected ? "#F3F7FC" : "#FFFFFF", padding: "9px 10px", display: "grid", gap: 7 }}>
+                    return <div key={task.id} style={{
+                      border: `1px solid ${selected ? "#89A9C8" : meta.status === "Completed" ? "#CFE0D6" : colors.line}`,
+                      borderLeft: `4px solid ${meta.status === "Completed" ? "#3C8A68" : task.priority === "High" ? "#B04A4A" : task.priority === "Medium" ? colors.gold : "#8CA0B3"}`,
+                      borderRadius: 11,
+                      background: selected ? "#EDF5FC" : meta.status === "Completed" ? "#F5FAF7" : "#FFFFFF",
+                      padding: "10px 11px",
+                      display: "grid",
+                      gap: 8,
+                      boxShadow: selected ? "0 5px 14px rgba(19,57,91,.10)" : "0 1px 3px rgba(15,35,55,.05)",
+                    }}>
                       <button type="button" onClick={() => setSelectedTaskId(task.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: colors.navy3 }}>{task.title}</strong><span style={badgeStyle(task.priority)}>{task.priority}</span></div>
-                        <small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {minutesLabel(task.minutes)} · {meta.assignee}{task.recurring ? " · Recurring" : ""}</small>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><strong style={{ color: colors.navy3, fontSize: 14, lineHeight: 1.25 }}>{task.title}</strong><span style={badgeStyle(task.priority)}>{task.priority}</span></div>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
+                          <span style={{ ...mutedSmallStyle, padding: "2px 6px", borderRadius: 999, background: "#EEF3F7" }}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"}</span>
+                          <span style={{ ...mutedSmallStyle, padding: "2px 6px", borderRadius: 999, background: "#EEF3F7" }}>{minutesLabel(task.minutes)}</span>
+                          <span style={{ ...mutedSmallStyle, padding: "2px 6px", borderRadius: 999, background: meta.assignee === "Addison" ? "#FFF5D9" : "#EEF3F7", color: meta.assignee === "Addison" ? colors.navy : undefined }}>{meta.assignee}</span>
+                          {task.recurring ? <span style={{ ...mutedSmallStyle, padding: "2px 6px", borderRadius: 999, background: "#EEF3F7" }}>Recurring</span> : null}
+                        </div>
                       </button>
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-                        {meta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(task)} style={compactUtilityButtonStyle}>Done</button> : null}
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                        {meta.status !== "Completed" ? <button type="button" disabled={!canCompleteTask(task)} title={!canCompleteTask(task) ? `Due ${formatDate(meta.dueDate)} — cannot complete early` : undefined} onClick={() => completeAtlasTask(task)} style={{ ...compactUtilityButtonStyle, opacity: canCompleteTask(task) ? 1 : .45, cursor: canCompleteTask(task) ? "pointer" : "not-allowed" }}>{canCompleteTask(task) ? "Done" : "Future"}</button> : null}
                         {meta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(task)} style={compactUtilityButtonStyle}>Tomorrow</button> : null}
                         {meta.assignee !== "Addison" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Addison")} style={compactUtilityButtonStyle}>Addison</button> : null}
                         {meta.assignee !== "Pat" && !isAddisonUser ? <button type="button" onClick={() => assignTaskTo(task, "Pat")} style={compactUtilityButtonStyle}>Pat</button> : null}
@@ -210,7 +229,7 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
                       <span style={badgeStyle(selectedMeta.status === "Completed" ? "Completed" : selectedTask.priority)}>{selectedMeta.status}</span>
                     </div>
                     <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                      {selectedMeta.status !== "Completed" ? <button type="button" onClick={() => completeAtlasTask(selectedTask)} style={goldButtonStyle}>Complete</button> : <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Reopen</button>}
+                      {selectedMeta.status !== "Completed" ? <button type="button" disabled={!canCompleteTask(selectedTask)} title={!canCompleteTask(selectedTask) ? `Due ${formatDate(selectedMeta.dueDate)} — cannot complete early` : undefined} onClick={() => completeAtlasTask(selectedTask)} style={{ ...goldButtonStyle, opacity: canCompleteTask(selectedTask) ? 1 : .5, cursor: canCompleteTask(selectedTask) ? "pointer" : "not-allowed" }}>{canCompleteTask(selectedTask) ? "Complete" : `Due ${formatDate(selectedMeta.dueDate)}`}</button> : <button type="button" onClick={() => updateTaskDetails(selectedTask.id, { status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Reopen</button>}
                       {selectedMeta.status !== "Completed" ? <button type="button" onClick={() => moveAtlasTaskToTomorrow(selectedTask)} style={secondaryButtonStyle}>Tomorrow</button> : null}
                       <button type="button" onClick={() => addTaskPhoto(selectedTask)} style={secondaryButtonStyle}>Add Photo</button>
                       <button type="button" onClick={() => addQuickTaskNote(selectedTask)} style={secondaryButtonStyle}>Add Note</button>
@@ -219,7 +238,7 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
                     <Field label="Task" value={selectedTask.title} onChange={(value) => updateWorkPlanTask(selectedTask.id, { title: value })} />
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 9 }}>
                       <Field label="Due date" type="date" value={selectedMeta.dueDate} onChange={(value) => updateTaskDetails(selectedTask.id, { dueDate: value })} />
-                      <SelectField label="Status" value={selectedMeta.status} onChange={(value) => updateTaskDetails(selectedTask.id, { status: value as any, completedAt: value === "Completed" ? new Date().toISOString() : undefined })} options={["Open","In Progress","Waiting","Blocked","Completed"]} />
+                      <SelectField label="Status" value={selectedMeta.status} onChange={(value) => updateTaskDetails(selectedTask.id, { status: value as any, completedAt: value === "Completed" ? new Date().toISOString() : undefined })} options={canCompleteTask(selectedTask) ? ["Open","In Progress","Waiting","Blocked","Completed"] : ["Open","In Progress","Waiting","Blocked"]} />
                       <SelectField label="Priority" value={selectedTask.priority} onChange={(value) => updateWorkPlanTask(selectedTask.id, { priority: value as any })} options={["High","Medium","Low"]} />
                       <SelectField label="Assigned to" value={selectedMeta.assignee} onChange={(value) => updateTaskDetails(selectedTask.id, { assignee: value as any })} options={["Nick","Addison","Pat","Other","Unassigned"]} />
                       <Field label="Estimated minutes" type="number" value={String(selectedTask.minutes)} onChange={(value) => updateWorkPlanTask(selectedTask.id, { minutes: Math.max(5, Number(value) || 5) })} />
@@ -275,7 +294,7 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
           </>
         )}
 
-        {taskFocusMode ? <div style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(8,28,51,.62)", display: "grid", placeItems: "center", padding: 18 }} onClick={() => setTaskFocusMode(false)}><section style={{ ...cardStyle, width: "min(560px,100%)", padding: 20 }} onClick={(event) => event.stopPropagation()}>{focusTask && focusMeta ? <div style={{ display: "grid", gap: 14 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={eyebrowStyle}>Focus Mode · {focusIndex + 1} of {focusTasks.length}</div><h2 style={{ margin: "4px 0", color: colors.navy }}>{focusTask.title}</h2><small style={mutedSmallStyle}>{plannerLocationName(focusTask.locationId)} · {minutesLabel(focusTask.minutes)}{focusMeta.dueDate ? ` · ${formatDate(focusMeta.dueDate)}` : ""}</small></div><button type="button" onClick={() => setTaskFocusMode(false)} style={mapIconButtonStyle}>{closeSymbol}</button></div><Field label="Quick note" value={focusMeta.notes || ""} onChange={(value) => updateTaskDetails(focusTask.id, { notes: value })} multiline /><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => { completeAtlasTask(focusTask); const next = focusTasks[focusIndex + 1] || focusTasks[0]; if (next) setSelectedTaskId(next.id); }} style={goldButtonStyle}>Complete & Next</button><button type="button" onClick={() => { moveAtlasTaskToTomorrow(focusTask); const next = focusTasks[focusIndex + 1]; if (next) setSelectedTaskId(next.id); }} style={secondaryButtonStyle}>Tomorrow</button><button type="button" onClick={() => updateTaskDetails(focusTask.id, { status: "Blocked" })} style={{ ...secondaryButtonStyle, color: colors.red }}>Problem</button><button type="button" onClick={() => { const next = focusTasks[(focusIndex + 1) % focusTasks.length]; if (next) setSelectedTaskId(next.id); }} style={secondaryButtonStyle}>Next</button></div></div> : <div style={noticeStyle}>No tasks are due right now.</div>}</section></div> : null}
+        {taskFocusMode ? <div style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(8,28,51,.62)", display: "grid", placeItems: "center", padding: 18 }} onClick={() => setTaskFocusMode(false)}><section style={{ ...cardStyle, width: "min(560px,100%)", padding: 20 }} onClick={(event) => event.stopPropagation()}>{focusTask && focusMeta ? <div style={{ display: "grid", gap: 14 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={eyebrowStyle}>Focus Mode · {focusIndex + 1} of {focusTasks.length}</div><h2 style={{ margin: "4px 0", color: colors.navy }}>{focusTask.title}</h2><small style={mutedSmallStyle}>{plannerLocationName(focusTask.locationId)} · {minutesLabel(focusTask.minutes)}{focusMeta.dueDate ? ` · ${formatDate(focusMeta.dueDate)}` : ""}</small></div><button type="button" onClick={() => setTaskFocusMode(false)} style={mapIconButtonStyle}>{closeSymbol}</button></div><Field label="Quick note" value={focusMeta.notes || ""} onChange={(value) => updateTaskDetails(focusTask.id, { notes: value })} multiline /><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" disabled={!canCompleteTask(focusTask)} onClick={() => { completeAtlasTask(focusTask); const next = focusTasks[focusIndex + 1] || focusTasks[0]; if (next) setSelectedTaskId(next.id); }} style={{ ...goldButtonStyle, opacity: canCompleteTask(focusTask) ? 1 : .5, cursor: canCompleteTask(focusTask) ? "pointer" : "not-allowed" }}>{canCompleteTask(focusTask) ? "Complete & Next" : `Due ${formatDate(focusMeta.dueDate)}`}</button><button type="button" onClick={() => { moveAtlasTaskToTomorrow(focusTask); const next = focusTasks[focusIndex + 1]; if (next) setSelectedTaskId(next.id); }} style={secondaryButtonStyle}>Tomorrow</button><button type="button" onClick={() => updateTaskDetails(focusTask.id, { status: "Blocked" })} style={{ ...secondaryButtonStyle, color: colors.red }}>Problem</button><button type="button" onClick={() => { const next = focusTasks[(focusIndex + 1) % focusTasks.length]; if (next) setSelectedTaskId(next.id); }} style={secondaryButtonStyle}>Next</button></div></div> : <div style={noticeStyle}>No tasks are due right now.</div>}</section></div> : null}
       </div>
     );
   }
