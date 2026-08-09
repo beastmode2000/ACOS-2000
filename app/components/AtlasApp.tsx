@@ -3564,7 +3564,20 @@ export default function AtlasApp() {
               : (["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[]),
         },
       ]
-    : atlasPrimaryNavigationSections;
+    : atlasPrimaryNavigationSections.map((section) =>
+        section.label === "Overview"
+          ? {
+              ...section,
+              items: Array.from(
+                new Set<AtlasScreen>([
+                  "dashboard",
+                  "notes",
+                  ...section.items.filter((item) => item !== "dashboard" && item !== "notes"),
+                ]),
+              ),
+            }
+          : section,
+      );
   const visibleMoreToolsScreens = isTeamScopedUser
     ? ([] as AtlasScreen[])
     : atlasMoreToolsScreens;
