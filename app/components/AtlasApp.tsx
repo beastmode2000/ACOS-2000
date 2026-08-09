@@ -3690,7 +3690,7 @@ export default function AtlasApp() {
         const property = sections.find((section) => section.label === "Property");
         if (property) {
           property.items = [
-            ...property.items.filter((id) => id !== "portfolio"),
+            ...property.items,
             "portfolio",
           ] as typeof property.items;
         }
