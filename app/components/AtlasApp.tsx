@@ -181,6 +181,37 @@ export default function AtlasApp() {
       return {};
     }
   });
+  type NoteAttachmentKind = "Asset" | "Location" | "Vendor" | "Project" | "Work Order" | "Task";
+  type NoteAttachment = { kind: NoteAttachmentKind; id: string };
+  const [pinnedNoteIds, setPinnedNoteIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem("atlas-note-pins-v1") || "[]");
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [noteFollowUpDates, setNoteFollowUpDates] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem("atlas-note-followups-v1") || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const [noteAttachments, setNoteAttachments] = useState<Record<string, NoteAttachment>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem("atlas-note-attachments-v1") || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const [noteAttachKind, setNoteAttachKind] = useState<NoteAttachmentKind>("Asset");
+  const [noteAttachId, setNoteAttachId] = useState("");
   const notesRecognitionRef = useRef<{ stop: () => void } | null>(null);
   const [quickCaptureMode, setQuickCaptureMode] = useState<"create" | "existing">("create");
   type QuickCreateKind = "photo" | "document" | "task" | "work-order" | "project" | "asset" | "vendor" | "procedure";
@@ -546,6 +577,17 @@ export default function AtlasApp() {
       // Notes still work for the current session if browser storage is unavailable.
     }
   }, [notesSectionById]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("atlas-note-pins-v1", JSON.stringify(pinnedNoteIds));
+      window.localStorage.setItem("atlas-note-followups-v1", JSON.stringify(noteFollowUpDates));
+      window.localStorage.setItem("atlas-note-attachments-v1", JSON.stringify(noteAttachments));
+    } catch {
+      // Note metadata still works for the current session if storage is unavailable.
+    }
+  }, [pinnedNoteIds, noteFollowUpDates, noteAttachments]);
 
   const [logoIndex, setLogoIndex] = useState(0);
   const [mapImageOk, setMapImageOk] = useState(true);
@@ -5593,12 +5635,93 @@ export default function AtlasApp() {
       delete next[noteId];
       return next;
     });
+    setPinnedNoteIds((current) => current.filter((id) => id !== noteId));
+    setNoteFollowUpDates((current) => {
+      const next = { ...current };
+      delete next[noteId];
+      return next;
+    });
+    setNoteAttachments((current) => {
+      const next = { ...current };
+      delete next[noteId];
+      return next;
+    });
     showSaveToast("Note deleted.");
   }
 
   function movePermanentNote(noteId: string, section: NoteSection) {
     setNotesSectionById((current) => ({ ...current, [noteId]: section }));
     showSaveToast(`Note moved to ${section}.`);
+  }
+
+  function toggleNotePin(noteId: string) {
+    setPinnedNoteIds((current) =>
+      current.includes(noteId) ? current.filter((id) => id !== noteId) : [noteId, ...current],
+    );
+  }
+
+  function setNoteFollowUp(noteId: string, date: string) {
+    setNoteFollowUpDates((current) => {
+      const next = { ...current };
+      if (date) next[noteId] = date;
+      else delete next[noteId];
+      return next;
+    });
+  }
+
+  function attachmentOptions(kind: NoteAttachmentKind) {
+    if (kind === "Asset") return assetRecords.map((item) => ({ id: item.id, label: item.name || item.id }));
+    if (kind === "Location") return locations.map((item) => ({ id: item.id, label: item.name || item.id }));
+    if (kind === "Vendor") return vendorRecords.map((item) => ({ id: item.id, label: item.name || item.id }));
+    if (kind === "Project") return photoTimelineProjects.map((item) => ({ id: item.id, label: item.title || item.id }));
+    if (kind === "Work Order") return serviceRecords.map((item) => ({ id: item.id, label: item.title || item.id }));
+    return workPlanTasks.map((item) => ({ id: item.id, label: item.title || item.id }));
+  }
+
+  function attachmentLabel(attachment?: NoteAttachment) {
+    if (!attachment) return "";
+    return attachmentOptions(attachment.kind).find((item) => item.id === attachment.id)?.label || attachment.id;
+  }
+
+  function attachNote(noteId: string, kind: NoteAttachmentKind, id: string) {
+    setNoteAttachments((current) => {
+      const next = { ...current };
+      if (id) next[noteId] = { kind, id };
+      else delete next[noteId];
+      return next;
+    });
+  }
+
+  function noteTitle(text: string) {
+    const clean = text.trim().replace(/\s+/g, " ");
+    return clean.length > 72 ? `${clean.slice(0, 69)}…` : clean || "Note";
+  }
+
+  function convertNoteToTask(note: TodayLogEntry) {
+    const taskId = addAtlasTask(noteTitle(note.text));
+    if (!taskId) return;
+    updateTaskDetails(taskId, { notes: note.text });
+    const attachment = noteAttachments[note.id];
+    if (attachment?.kind === "Project") updateTaskDetails(taskId, { projectId: attachment.id });
+    if (attachment?.kind === "Location") {
+      setWorkPlanTasks((current) => current.map((task) => task.id === taskId ? { ...task, locationId: attachment.id } : task));
+    }
+    showSaveToast("Task created from note.");
+  }
+
+  function convertNoteToWorkOrder(note: TodayLogEntry) {
+    const attachment = noteAttachments[note.id];
+    const initial: Partial<AtlasServiceRecord> = {
+      title: noteTitle(note.text),
+      notes: note.text,
+      date: todayISO(),
+    };
+    if (attachment?.kind === "Asset") initial.assetId = attachment.id;
+    if (attachment?.kind === "Location") initial.locationId = attachment.id;
+    if (attachment?.kind === "Vendor") initial.vendorId = attachment.id;
+    if (attachment?.kind === "Project") initial.projectId = attachment.id;
+    addWorkOrder(initial);
+    showSaveToast("Work Order created from note.");
   }
 
   function startPermanentNoteVoice() {
@@ -5668,7 +5791,13 @@ export default function AtlasApp() {
 
     const notes = allPropertyNotes
       .filter((entry) => notesSectionFilter === "All" || sectionFor(entry.id) === notesSectionFilter)
-      .filter((entry) => !query || entry.text.toLowerCase().includes(query));
+      .filter((entry) => !query || entry.text.toLowerCase().includes(query))
+      .sort((a, b) => {
+        const aPinned = pinnedNoteIds.includes(a.id) ? 1 : 0;
+        const bPinned = pinnedNoteIds.includes(b.id) ? 1 : 0;
+        if (aPinned !== bPinned) return bPinned - aPinned;
+        return String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date));
+      });
 
     const sectionGlyph = (section: NoteSection) => {
       if (section === "Property") return "⌂";
@@ -5837,25 +5966,79 @@ export default function AtlasApp() {
             {notes.map((note) => {
               const section = sectionFor(note.id);
               return (
-                <article key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 14, background: "#FFFFFF", padding: 13, boxShadow: "0 4px 14px rgba(7,27,47,.04)" }}>
+                <article key={note.id} style={{ border: `1px solid ${pinnedNoteIds.includes(note.id) ? colors.gold : colors.line}`, borderRadius: 14, background: pinnedNoteIds.includes(note.id) ? "#FFFDF7" : "#FFFFFF", padding: 13, boxShadow: "0 4px 14px rgba(7,27,47,.04)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      {pinnedNoteIds.includes(note.id) ? <span style={{ ...recurringBadgeStyle, background: "#FFF3D6", color: colors.navy, fontWeight: 900 }}>Pinned</span> : null}
                       <span style={{ ...recurringBadgeStyle, fontWeight: 900 }}>{sectionGlyph(section)} {section}</span>
                       <small style={mutedSmallStyle}>{note.createdAt ? new Date(note.createdAt).toLocaleString() : formatDate(note.date)}</small>
                     </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <select
-                        value={section}
-                        onChange={(event) => movePermanentNote(note.id, event.currentTarget.value as NoteSection)}
-                        style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11, width: 150 }}
-                        aria-label={`Move note to section`}
-                      >
-                        {noteSections.map((option) => <option key={option} value={option}>{option}</option>)}
-                      </select>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => toggleNotePin(note.id)} style={compactUtilityButtonStyle}>{pinnedNoteIds.includes(note.id) ? "Unpin" : "Pin"}</button>
                       <button type="button" onClick={() => deletePermanentNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
                     </div>
                   </div>
+
                   <div style={{ marginTop: 9, whiteSpace: "pre-wrap", lineHeight: 1.6, color: colors.text, fontSize: 14 }}>{note.text}</div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+                    <label style={{ display: "grid", gap: 4 }}>
+                      <span style={fieldLabelStyle}>SECTION</span>
+                      <select
+                        value={section}
+                        onChange={(event) => movePermanentNote(note.id, event.currentTarget.value as NoteSection)}
+                        style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 12 }}
+                      >
+                        {noteSections.map((option) => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 4 }}>
+                      <span style={fieldLabelStyle}>FOLLOW UP</span>
+                      <input
+                        type="date"
+                        value={noteFollowUpDates[note.id] || ""}
+                        onChange={(event) => setNoteFollowUp(note.id, event.currentTarget.value)}
+                        style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 12 }}
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ marginTop: 10, padding: 10, border: `1px solid ${colors.line}`, borderRadius: 11, background: colors.panel }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 7, flexWrap: "wrap" }}>
+                      <span style={fieldLabelStyle}>ATTACH TO</span>
+                      {noteAttachments[note.id] ? <small style={mutedSmallStyle}>{noteAttachments[note.id].kind} · {attachmentLabel(noteAttachments[note.id])}</small> : null}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "150px minmax(0,1fr) auto", gap: 7 }}>
+                      <select
+                        value={noteAttachments[note.id]?.kind || noteAttachKind}
+                        onChange={(event) => {
+                          const kind = event.currentTarget.value as NoteAttachmentKind;
+                          setNoteAttachKind(kind);
+                          attachNote(note.id, kind, "");
+                        }}
+                        style={{ ...inputStyle, minHeight: 34, fontSize: 12 }}
+                      >
+                        {(["Asset", "Location", "Vendor", "Project", "Work Order", "Task"] as NoteAttachmentKind[]).map((kind) => <option key={kind}>{kind}</option>)}
+                      </select>
+                      <select
+                        value={noteAttachments[note.id]?.id || ""}
+                        onChange={(event) => {
+                          const kind = noteAttachments[note.id]?.kind || noteAttachKind;
+                          attachNote(note.id, kind, event.currentTarget.value);
+                        }}
+                        style={{ ...inputStyle, minHeight: 34, fontSize: 12 }}
+                      >
+                        <option value="">Not attached</option>
+                        {attachmentOptions(noteAttachments[note.id]?.kind || noteAttachKind).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                      </select>
+                      {noteAttachments[note.id] ? <button type="button" onClick={() => attachNote(note.id, noteAttachments[note.id].kind, "")} style={compactUtilityButtonStyle}>Clear</button> : null}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+                    <button type="button" onClick={() => convertNoteToTask(note)} style={secondaryButtonStyle}>Create Task</button>
+                    <button type="button" onClick={() => convertNoteToWorkOrder(note)} style={secondaryButtonStyle}>Create Work Order</button>
+                  </div>
                 </article>
               );
             })}
