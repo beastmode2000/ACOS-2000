@@ -557,20 +557,9 @@ export default function AtlasApp() {
         } | null;
         const routineDate = String(occurrence?.date || date).slice(0, 10);
         const routineTasks = Array.isArray(occurrence?.tasks)
-          ? occurrence!.tasks!.filter(
-              (task) =>
-                task &&
-                task.enabled !== false &&
-                task.status !== "skipped" &&
-                task.status !== "deferred",
-            )
+          ? occurrence!.tasks!.filter((task) => task && task.enabled !== false && task.status !== "skipped" && task.status !== "deferred")
           : [];
-        const routineIds = new Set(
-          routineTasks.map(
-            (task) =>
-              `routine-task-${activePropertyId}-${routineDate}-${task.id}`,
-          ),
-        );
+        const routineIds = new Set(routineTasks.map((task) => `routine-task-${activePropertyId}-${routineDate}-${task.id}`));
         const now = new Date().toISOString();
 
         setWorkPlanTasks((current) => {
@@ -578,35 +567,26 @@ export default function AtlasApp() {
             current
               .filter((item) => {
                 const meta = taskMeta[item.id];
-                return !(
-                  meta?.routineDate === routineDate &&
-                  meta?.routineTaskId &&
-                  !routineIds.has(item.id)
-                );
+                return !(meta?.routineDate === routineDate && meta?.routineTaskId && !routineIds.has(item.id));
               })
               .map((item) => [item.id, item]),
           );
           routineTasks.forEach((routine) => {
             const id = `routine-task-${activePropertyId}-${routineDate}-${routine.id}`;
             const existing = next.get(id);
-            next.set(
+            next.set(id, existing ? { ...existing, title: routine.title } : {
               id,
-              existing
-                ? { ...existing, title: routine.title }
-                : {
-                    id,
-                    title: routine.title,
-                    minutes: 15,
-                    priority: "Medium",
-                    category: "Routine",
-                    locationId: "general",
-                    preferredDay: "Auto",
-                    locked: false,
-                    recurring: false,
-                    fixedTime: "",
-                    notes: "Linked from today’s Routine checklist.",
-                  },
-            );
+              title: routine.title,
+              minutes: 15,
+              priority: "Medium",
+              category: "Routine",
+              locationId: "general",
+              preferredDay: "Auto",
+              locked: false,
+              recurring: false,
+              fixedTime: "",
+              notes: "Linked from today’s Routine checklist.",
+            });
           });
           return Array.from(next.values());
         });
@@ -615,34 +595,21 @@ export default function AtlasApp() {
           const next = { ...current };
           Object.keys(next).forEach((id) => {
             const meta = next[id];
-            if (
-              meta?.routineDate === routineDate &&
-              meta?.routineTaskId &&
-              !routineIds.has(id)
-            ) {
-              delete next[id];
-            }
+            if (meta?.routineDate === routineDate && meta?.routineTaskId && !routineIds.has(id)) delete next[id];
           });
           routineTasks.forEach((routine) => {
             const id = `routine-task-${activePropertyId}-${routineDate}-${routine.id}`;
             const existing = next[id];
-            const completed =
-              routine.completed === true || routine.status === "completed";
+            const completed = routine.completed === true || routine.status === "completed";
             next[id] = {
               ...(existing || {}),
               status: completed ? "Completed" : "Open",
               dueDate: routineDate,
-              assignee:
-                routine.assignedTo === "Addison" || routine.assignedTo === "Pat"
-                  ? routine.assignedTo
-                  : "Nick",
+              assignee: routine.assignedTo === "Addison" || routine.assignedTo === "Pat" ? routine.assignedTo : "Nick",
               createdAt: existing?.createdAt || now,
               updatedAt: now,
-              completedAt: completed
-                ? existing?.completedAt || now
-                : undefined,
-              notes:
-                existing?.notes || "Linked from today’s Routine checklist.",
+              completedAt: completed ? existing?.completedAt || now : undefined,
+              notes: existing?.notes || "Linked from today’s Routine checklist.",
               routineTaskId: routine.id,
               routineDate,
               assignmentScope: "This occurrence",
@@ -660,7 +627,7 @@ export default function AtlasApp() {
           return next;
         });
       } catch {
-        // The Routine page still works if this cross-reference refresh fails.
+        // Routine remains usable if task cross-reference refresh fails.
       }
     };
 
