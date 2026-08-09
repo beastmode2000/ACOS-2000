@@ -138,7 +138,6 @@ export default function AtlasProceduresWorkspace(props: any) {
   const [procedureSearch, setProcedureSearch] = React.useState("");
   const {
     assetRecords,
-    colors,
     buttonRowStyle,
     cardStyle,
     closeProcedureViewer,
