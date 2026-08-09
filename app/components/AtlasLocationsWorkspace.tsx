@@ -320,7 +320,9 @@ export default function AtlasLocationsWorkspace(props: any) {
   };
   const possibleAssetLocations = locationSourceRecords.filter(locationLooksLikeAsset);
   const childLocationsFor = (parentId: string) =>
-    byName(locationSourceRecords.filter((location) => location.parentId === parentId));
+    [...locationSourceRecords]
+      .filter((location) => location.parentId === parentId)
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
   const normalizedLocationSearch = locationSearch.trim().toLowerCase();
   const locationMatchesSearch = (location: AtlasLocationRecord) =>
     !normalizedLocationSearch ||
@@ -397,11 +399,11 @@ export default function AtlasLocationsWorkspace(props: any) {
     ? linkedImageFilesFor("Location", selectedLocation.id)
     : [];
   const locationAssets = selectedLocation.id
-    ? byName(
-        locationAssetSourceRecords.filter(
-          (asset) => assetHasLocation(asset, selectedLocation.id),
-        ),
-      )
+    ? [...locationAssetSourceRecords]
+        .filter((asset) => assetHasLocation(asset, selectedLocation.id))
+        .sort((a, b) =>
+          String(a.name || "").localeCompare(String(b.name || "")),
+        )
     : [];
   const locationAssetIds = new Set(locationAssets.map((asset) => asset.id));
   const locationWorkOrders = selectedLocation.id
@@ -1782,11 +1784,14 @@ export default function AtlasLocationsWorkspace(props: any) {
                   aria-label="Add an asset to this location"
                 >
                   <option value="">+ Add Asset</option>
-                  {byName(
-                    locationAssetSourceRecords.filter(
+                  {[...locationAssetSourceRecords]
+                    .filter(
                       (asset) => !assetHasLocation(asset, selectedLocation.id),
-                    ),
-                  ).map((asset) => (
+                    )
+                    .sort((a, b) =>
+                      String(a.name || "").localeCompare(String(b.name || "")),
+                    )
+                    .map((asset) => (
                     <option key={asset.id} value={asset.id}>
                       {asset.name}
                     </option>
