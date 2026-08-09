@@ -3682,7 +3682,6 @@ export default function AtlasApp() {
             (item) =>
               item !== "manuals" &&
               item !== "portfolio" &&
-              item !== "team" &&
               item !== "insights",
           ),
         }));
