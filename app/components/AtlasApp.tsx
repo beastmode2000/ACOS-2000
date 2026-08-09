@@ -15786,6 +15786,7 @@ ${notes.trim()}` : notes.trim(),
         mode={isAddisonUser ? "dashboard" : "manager"}
         isMobile={isMobile}
         activePropertyId={activePropertyId}
+        teamDirectory={teamDirectory}
       />
     );
   }
