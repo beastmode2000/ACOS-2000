@@ -127,70 +127,6 @@ export default function AtlasProceduresWorkspace(props: any) {
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-          gap: 10,
-        }}
-      >
-        <label style={{ display: "grid", gap: 5 }}>
-          <span style={mutedSmallStyle}>Title</span>
-          <input
-            value={procedure.title || ""}
-            onChange={(e) =>
-              updateProcedure({ title: e.currentTarget.value, updatedAt: new Date().toISOString() })
-            }
-            style={inputStyle}
-          />
-        </label>
-
-        <label style={{ display: "grid", gap: 5 }}>
-          <span style={mutedSmallStyle}>Area</span>
-          <input
-            value={procedure.area || ""}
-            onChange={(e) =>
-              updateProcedure({ area: e.currentTarget.value, updatedAt: new Date().toISOString() })
-            }
-            style={inputStyle}
-          />
-        </label>
-
-        <label style={{ display: "grid", gap: 5 }}>
-          <span style={mutedSmallStyle}>Category</span>
-          <input
-            value={procedure.category || ""}
-            onChange={(e) =>
-              updateProcedure({ category: e.currentTarget.value, updatedAt: new Date().toISOString() })
-            }
-            style={inputStyle}
-          />
-        </label>
-
-        <label style={{ display: "grid", gap: 5 }}>
-          <span style={mutedSmallStyle}>Estimated Time</span>
-          <input
-            value={procedure.estimatedTime || ""}
-            onChange={(e) =>
-              updateProcedure({ estimatedTime: e.currentTarget.value, updatedAt: new Date().toISOString() })
-            }
-            style={inputStyle}
-          />
-        </label>
-      </div>
-
-      <div style={cardStyle}>
-        <div style={eyebrowStyle}>Notes</div>
-        <textarea
-          value={procedure.purpose || ""}
-          onChange={(e) =>
-            updateProcedure({ purpose: e.currentTarget.value, updatedAt: new Date().toISOString() })
-          }
-          placeholder="Purpose, notes, reminders, or important details…"
-          style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
-        />
-      </div>
-
       <div style={cardStyle}>
         <div
           style={{
@@ -279,9 +215,85 @@ export default function AtlasProceduresWorkspace(props: any) {
           ))}
 
           {!(procedure.steps || []).length ? (
-            <div style={noticeStyle}>Add the first checklist step.</div>
+            <div style={{ ...noticeStyle, padding: 16 }}>
+              <strong style={{ display: "block", color: c.navy }}>
+                No procedure created yet.
+              </strong>
+              <div style={{ ...mutedSmallStyle, marginTop: 4 }}>
+                Add the first step to create this procedure.
+              </div>
+            </div>
           ) : null}
         </div>
+      </div>
+
+
+      <div style={{ marginTop: 2 }}>
+        <div style={eyebrowStyle}>Procedure Details</div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+          gap: 10,
+        }}
+      >
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={mutedSmallStyle}>Title</span>
+          <input
+            value={procedure.title || ""}
+            onChange={(e) =>
+              updateProcedure({ title: e.currentTarget.value, updatedAt: new Date().toISOString() })
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={mutedSmallStyle}>Area</span>
+          <input
+            value={procedure.area || ""}
+            onChange={(e) =>
+              updateProcedure({ area: e.currentTarget.value, updatedAt: new Date().toISOString() })
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={mutedSmallStyle}>Category</span>
+          <input
+            value={procedure.category || ""}
+            onChange={(e) =>
+              updateProcedure({ category: e.currentTarget.value, updatedAt: new Date().toISOString() })
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={mutedSmallStyle}>Estimated Time</span>
+          <input
+            value={procedure.estimatedTime || ""}
+            onChange={(e) =>
+              updateProcedure({ estimatedTime: e.currentTarget.value, updatedAt: new Date().toISOString() })
+            }
+            style={inputStyle}
+          />
+        </label>
+      </div>
+
+      <div style={cardStyle}>
+        <div style={eyebrowStyle}>Notes</div>
+        <textarea
+          value={procedure.purpose || ""}
+          onChange={(e) =>
+            updateProcedure({ purpose: e.currentTarget.value, updatedAt: new Date().toISOString() })
+          }
+          placeholder="Purpose, notes, reminders, or important details…"
+          style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
+        />
       </div>
 
       <details style={cardStyle}>
