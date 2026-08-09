@@ -1066,40 +1066,54 @@ export default function AtlasTimelineWorkspace(props: any) {
       {mode === "timeline" ? (
         <section style={{ ...sectionStyle, marginBottom: 18 }}>
           <SectionHeader
-            eyebrow="Projects"
-            title="Project Center"
-            detail="Create and manage anything from a quick one-day project to a major multi-phase property project. Every project keeps its notes, photos, documents, work orders, people, vendors, and timeline together."
+            eyebrow="Project Operations"
+            title="Projects"
+            detail="Track active property projects, progress, linked work, records, vendors, and visual history."
           />
 
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
-            <div style={{ display: "inline-flex", border: "1px solid #CBD5E1", borderRadius: 10, padding: 3, background: "#F8FAFC" }}>
+            <div style={{ display: "inline-flex", border: "1px solid #D7E0EA", borderRadius: 10, padding: 2, background: "#FFFFFF", flexWrap: "wrap" }}>
               {([[
                 "projects", "Projects",
               ], ["activity", "Estate Timeline"], ["history", "Milestones"], ["timeline", "Photo Timeline"]] as const).map(([value, label]) => (
-                <button key={value} type="button" onClick={() => setPhotoTimelineView(value)} style={{ border: 0, borderRadius: 7, padding: "8px 12px", background: photoTimelineView === value ? "#175CD3" : "transparent", color: photoTimelineView === value ? "white" : colors.navy3, fontWeight: 900, cursor: "pointer" }}>{label}</button>
+                <button key={value} type="button" onClick={() => setPhotoTimelineView(value)} style={{ border: 0, borderRadius: 8, padding: "7px 11px", background: photoTimelineView === value ? "#FFF3CF" : "transparent", color: colors.navy3, fontWeight: 900, cursor: "pointer" }}>{label}</button>
               ))}
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {!isMobile ? <button type="button" onClick={() => openComparison(selectedPhotoProjectId || undefined)} style={secondaryButtonStyle}>Compare Before / After</button> : null}
-              <button type="button" onClick={createPhotoProject} style={{ ...goldButtonStyle, width: "auto", padding: "8px 11px" }}>+ Project</button>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {!isMobile ? <button type="button" onClick={() => openComparison(selectedPhotoProjectId || undefined)} style={{ ...secondaryButtonStyle, width: "auto" }}>Before / After</button> : null}
+              <button type="button" onClick={createPhotoProject} style={{ ...goldButtonStyle, width: "auto", padding: "8px 11px" }}>+ New Project</button>
             </div>
           </div>
 
-          {(photoTimelineView !== "activity" && photoTimelineView !== "history") && (!isMobile || photoTimelineView !== "projects") ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+          {photoTimelineView === "projects" ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+            {[
+              ["Active", photoTimelineProjects.filter((project) => !project.archived && project.status !== "Completed" && !project.completedAt).length],
+              ["Completed", photoTimelineProjects.filter((project) => project.status === "Completed" || Boolean(project.completedAt)).length],
+              ["Archived", photoTimelineProjects.filter((project) => Boolean(project.archived)).length],
+              ["All projects", photoTimelineProjects.length],
+            ].map(([label, value]) => (
+              <div key={String(label)} style={{ border: "1px solid #D7E0EA", borderRadius: 12, padding: "9px 11px", background: "#FFFFFF" }}>
+                <div style={{ fontSize: 10, color: colors.muted, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
+                <div style={{ fontSize: 20, color: colors.navy3, fontWeight: 950, marginTop: 2 }}>{value}</div>
+              </div>
+            ))}
+          </div> : null}
+
+          {photoTimelineView === "timeline" ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
             {[
               ["Visible photos", photoTimelineItems.length],
               ["Visible projects", visiblePhotoProjects.length],
               ["Timeline notes", Object.values(photoTimelineMeta as Record<string, PhotoTimelineMeta>).filter((meta) => Boolean(meta.notes?.trim() || meta.timelineNote)).length],
               ["Before / After", allPhotoTimelineItems.filter((item) => ["Before", "After"].includes(photoTimelineMeta[item.id]?.tag || "")).length],
             ].map(([label, value]) => (
-              <div key={String(label)} style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: "12px 14px", background: "#FFFFFF" }}>
-                <div style={{ fontSize: 12, color: colors.muted, fontWeight: 800 }}>{label}</div>
-                <div style={{ fontSize: 24, color: colors.navy3, fontWeight: 950, marginTop: 3 }}>{value}</div>
+              <div key={String(label)} style={{ border: "1px solid #D7E0EA", borderRadius: 12, padding: "10px 12px", background: "#FFFFFF" }}>
+                <div style={{ fontSize: 10, color: colors.muted, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
+                <div style={{ fontSize: 21, color: colors.navy3, fontWeight: 950, marginTop: 2 }}>{value}</div>
               </div>
             ))}
           </div> : null}
 
-          {(photoTimelineView !== "activity" && photoTimelineView !== "history") && (!isMobile || photoTimelineView !== "projects") ? <div style={{ border: "1px solid #D7E0EA", borderRadius: 14, padding: 14, background: "#F8FAFC", marginBottom: 14 }}>
+          {photoTimelineView === "timeline" ? <div style={{ border: "1px solid #D7E0EA", borderRadius: 12, padding: 11, background: "#F8FAFC", marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
               <strong style={{ color: colors.navy3 }}>Timeline scrubber</strong>
               <span style={{ color: colors.muted, fontWeight: 800 }}>{photoTimelineScrubber >= 100 ? "All dates" : `${photoTimelineScrubber}% of history`}</span>
@@ -1111,8 +1125,8 @@ export default function AtlasTimelineWorkspace(props: any) {
             </div>
           </div> : null}
 
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1.5fr) repeat(5, minmax(120px, .7fr))", gap: 9, marginBottom: 16 }}>
-            <input value={photoTimelineSearch} onChange={(event) => setPhotoTimelineSearch(event.target.value)} placeholder="Search estate history, projects, work, photos, documents..." style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }} />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1.5fr) repeat(5, minmax(120px, .7fr))", gap: 8, marginBottom: 12 }}>
+            <input value={photoTimelineSearch} onChange={(event) => setPhotoTimelineSearch(event.target.value)} placeholder={photoTimelineView === "projects" ? "Search projects..." : "Search estate history, work, photos, documents..."} style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 10, padding: "9px 11px", fontWeight: 700 }} />
             {(photoTimelineView === "activity" || photoTimelineView === "history") ? <select value={estateTimelineTypeFilter} onChange={(event) => setEstateTimelineTypeFilter(event.target.value as typeof estateTimelineTypeFilter)} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="All">All record types</option>{(["Project", "Work Order", "Photo", "Document", "Calendar", "Task", "Note"] as const).map((type) => <option key={type} value={type}>{type}</option>)}</select> : null}
             {(photoTimelineView === "activity" || photoTimelineView === "history") ? <select value={estateTimelineRange} onChange={(event) => { setEstateTimelineRange(event.target.value as typeof estateTimelineRange); if (event.target.value !== "all") { setPhotoTimelineYear("all"); setPhotoTimelineMonthFilter("all"); } }} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="all">All dates</option><option value="today">Today</option><option value="week">Last 7 days</option><option value="month">This month</option><option value="year">This year</option></select> : null}
             {photoTimelineView === "timeline" ? <select value={photoTimelineTagFilter} onChange={(event) => setPhotoTimelineTagFilter(event.target.value as PhotoTimelineTag | "All")} style={{ border: "1px solid #CBD5E1", borderRadius: 10, padding: 10, background: "white", fontWeight: 700 }}><option value="All">All phases</option>{([...PHOTO_TIMELINE_TAGS.filter((tag) => tag !== "Unlabeled"), "Unlabeled"] as PhotoTimelineTag[]).map((tag) => <option key={tag}>{tag}</option>)}</select> : null}
@@ -1124,9 +1138,9 @@ export default function AtlasTimelineWorkspace(props: any) {
           </div>
 
           {photoTimelineView === "projects" ? (
-            <div id="atlas-photo-results" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(280px, 360px) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
-              <aside style={{ border: "1px solid #D7E0EA", borderRadius: 16, background: "white", overflow: "hidden", minHeight: isMobile ? 0 : 620 }}>
-                <div style={{ padding: 12, borderBottom: "1px solid #E4EAF0", background: "#F8FAFC", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div id="atlas-photo-results" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(280px, 340px) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+              <aside style={{ border: "1px solid #D7E0EA", borderRadius: 14, background: "white", overflow: "hidden", minHeight: isMobile ? 0 : 620 }}>
+                <div style={{ padding: 10, borderBottom: "1px solid #E4EAF0", background: "#F8FAFC", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                   <div><strong style={{ color: colors.navy3 }}>Projects</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{visiblePhotoProjects.length} visible</small></div>
                   <button type="button" onClick={createPhotoProject} style={{ ...goldButtonStyle, width: "auto", padding: "8px 10px" }}>+ Add</button>
                 </div>
@@ -1135,21 +1149,21 @@ export default function AtlasTimelineWorkspace(props: any) {
                     const progress = Math.max(0, Math.min(100, Number(project.progress || 0)));
                     const selected = selectedPhotoProjectId === project.id;
                     return (
-                      <button key={project.id} type="button" onClick={() => { setSelectedPhotoProjectId(project.id); setProjectDetailTab("overview"); }} style={{ width: "100%", border: `1px solid ${selected ? "#175CD3" : "#D7E0EA"}`, borderRadius: 12, padding: 12, background: selected ? "#EDF3FF" : "white", textAlign: "left", cursor: "pointer", boxShadow: selected ? "0 0 0 1px #175CD3" : "none" }}>
+                      <button key={project.id} type="button" className="atlas-gold-hover-card" onClick={() => { setSelectedPhotoProjectId(project.id); setProjectDetailTab("overview"); }} style={{ width: "100%", border: `1px solid ${selected ? "#D9B65C" : "#D7E0EA"}`, borderRadius: 11, padding: 10, background: selected ? "#FFF9E8" : "white", textAlign: "left", cursor: "pointer", boxShadow: selected ? "0 0 0 1px rgba(217,182,92,.25)" : "none", position: "relative", overflow: "hidden" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
-                          <div style={{ minWidth: 0 }}><strong style={{ display: "block", color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.title}</strong><small style={{ display: "block", marginTop: 3, color: colors.muted, fontWeight: 800 }}>{project.category} · {project.status || "Planning"}</small></div>
-                          <span style={{ ...badgeStyle(project.status === "Completed" ? "Completed" : project.status === "Waiting" ? "Open" : "Monitor"), flex: "0 0 auto" }}>{project.status || "Planning"}</span>
+                          <div style={{ minWidth: 0 }}><strong style={{ display: "block", color: colors.navy3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13 }}>{project.title}</strong><small style={{ display: "block", marginTop: 2, color: colors.muted, fontWeight: 800, fontSize: 10 }}>{project.category} · {project.phase || "No current phase"}</small></div>
+                          <span style={{ flex: "0 0 auto", border: `1px solid ${project.archived ? "#CBD5E1" : (project.status === "Completed" || project.completedAt) ? "#B7DFC8" : "#E8D18E"}`, borderRadius: 999, padding: "3px 6px", background: project.archived ? "#F8FAFC" : (project.status === "Completed" || project.completedAt) ? "#F0FBF4" : "#FFF9E8", color: colors.navy3, fontSize: 9, fontWeight: 950 }}>{project.archived ? "Archived" : (project.status === "Completed" || project.completedAt) ? "Completed" : "Active"}</span>
                         </div>
-                        <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 8, color: colors.muted, fontSize: 11, fontWeight: 800 }}><span>{project.phase || "No current phase"}</span><span>{progress}%</span></div>
-                        <div style={{ marginTop: 4, height: 3, background: "#E6EBF0", borderRadius: 999, overflow: "hidden" }}><div style={{ width: `${progress}%`, height: "100%", background: "#175CD3", borderRadius: 999 }} /></div>
-                        <small style={{ display: "block", marginTop: 9, color: colors.muted }}>Updated {projectLastUpdated(project.items, project.createdAt)}</small>
+                        <div style={{ marginTop: 7, display: "flex", justifyContent: "space-between", gap: 8, color: colors.muted, fontSize: 10, fontWeight: 800 }}><span>{project.status || "Planning"}</span><span>{progress}%</span></div>
+                        <div style={{ marginTop: 3, height: 2, background: "#E6EBF0", borderRadius: 999, overflow: "hidden" }}><div style={{ width: `${progress}%`, height: "100%", background: selected ? "#D9B65C" : "#175CD3", borderRadius: 999 }} /></div>
+                        <small style={{ display: "block", marginTop: 6, color: colors.muted, fontSize: 10 }}>Updated {projectLastUpdated(project.items, project.createdAt)}</small>
                       </button>
                     );
                   }) : <div style={emptyStateStyle}>No projects match the current filters.</div>}
                 </div>
               </aside>
 
-              <section style={{ border: "1px solid #D7E0EA", borderRadius: 16, background: "white", minWidth: 0, overflow: "hidden", position: isMobile ? "static" : "sticky", top: 14 }}>
+              <section style={{ border: "1px solid #D7E0EA", borderRadius: 14, background: "white", minWidth: 0, overflow: "hidden", position: isMobile ? "static" : "sticky", top: 14 }}>
                 {selectedPhotoProject ? (
                   <>
                     <div style={{ padding: isMobile ? 14 : 18, borderBottom: "1px solid #DDE5ED", background: "linear-gradient(135deg,#0B2940,#123E5A)", color: "white" }}>
@@ -1310,98 +1324,6 @@ export default function AtlasTimelineWorkspace(props: any) {
             ) : <div style={emptyStateStyle}>No photos match the current timeline filters.</div>
           )}
 
-          <section
-            style={{
-              border: `1px solid ${colors.line}`,
-              borderRadius: 18,
-              padding: isMobile ? 14 : 18,
-              background: "linear-gradient(180deg, #FFFFFF 0%, #F7FAFC 100%)",
-              boxShadow: "0 12px 30px rgba(11, 41, 64, 0.07)",
-              marginTop: 18,
-              marginBottom: 18,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <div style={eyebrowStyle}>Photo Intake & Organization</div>
-                <h3 style={{ margin: "4px 0 4px", color: colors.navy, fontSize: isMobile ? 20 : 24 }}>Find, review, and organize property photos</h3>
-                <p style={{ ...mutedSmallStyle, margin: 0 }}>Search every photo record, review incomplete metadata, and move new images into the right project history.</p>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 7,
-                  flexWrap: "wrap",
-                  width: isMobile ? "100%" : "auto",
-                }}
-              >
-                <button type="button" onClick={() => setScreen("inbox")} style={goldButtonStyle}>Upload Photos</button>
-                <button type="button" onClick={() => applyPhotoOrganizationFilter("unassigned")} style={secondaryButtonStyle}>Review Unassigned</button>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <input
-                value={photoTimelineSearch}
-                onChange={(event) => setPhotoTimelineSearch(event.target.value)}
-                placeholder="Search photo names, projects, assets, locations, vendors, work orders, photographers, dates, and notes..."
-                style={{ width: "100%", border: "1px solid #CBD5E1", borderRadius: 12, padding: "13px 14px", fontWeight: 750, fontSize: 14, background: "#FFFFFF" }}
-              />
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                {([
-                  ["all", "All Photos", allPhotoTimelineItems.length],
-                  ["unassigned", "Unassigned", unassignedPhotoCount],
-                  ["missing-tag", "Missing Tags", missingTagPhotoCount],
-                  ["missing-date", "No Date", missingDatePhotoCount],
-                  ["before", "Before", allPhotoTimelineItems.filter((item) => photoTimelineMeta[item.id]?.tag === "Before").length],
-                  ["during", "During", allPhotoTimelineItems.filter((item) => photoTimelineMeta[item.id]?.tag === "During").length],
-                  ["after", "After", allPhotoTimelineItems.filter((item) => photoTimelineMeta[item.id]?.tag === "After").length],
-                ] as const).map(([value, label, count]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => applyPhotoOrganizationFilter(value)}
-                    style={{
-                      border: `1px solid ${photoTimelineOrganizationFilter === value ? "#175CD3" : "#CBD5E1"}`,
-                      borderRadius: 999,
-                      padding: "7px 11px",
-                      background: photoTimelineOrganizationFilter === value ? "#EDF3FF" : "#FFFFFF",
-                      color: photoTimelineOrganizationFilter === value ? "#175CD3" : colors.navy3,
-                      fontWeight: 900,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {label} · {count}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(250px, 1fr))", gap: 14, marginTop: 16 }}>
-              <div style={{ border: `1px solid ${colors.line}`, borderRadius: 15, padding: 14, background: "#FFFFFF" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><strong style={{ color: colors.navy3 }}>Needs attention</strong><span style={badgeStyle(photosNeedingAttention ? "Open" : "Completed")}>{photosNeedingAttention}</span></div>
-                <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                  {[["Without projects", unassignedPhotoCount, "unassigned"], ["Missing timeline tags", missingTagPhotoCount, "missing-tag"], ["Missing dates", missingDatePhotoCount, "missing-date"]] .map(([label, count, filter]) => (
-                    <button key={String(label)} type="button" onClick={() => applyPhotoOrganizationFilter(filter as "unassigned" | "missing-tag" | "missing-date")} style={{ display: "flex", justifyContent: "space-between", gap: 10, border: 0, borderBottom: "1px solid #EEF2F6", padding: "8px 0", background: "transparent", color: colors.navy3, fontWeight: 800, cursor: "pointer", textAlign: "left" }}><span>{label}</span><strong>{count}</strong></button>
-                  ))}
-                </div>
-                <button type="button" onClick={() => applyPhotoOrganizationFilter(unassignedPhotoCount ? "unassigned" : missingTagPhotoCount ? "missing-tag" : "missing-date")} style={{ ...goldButtonStyle, width: "100%", marginTop: 12 }}>Review Photos</button>
-              </div>
-
-              <div style={{ border: `1px solid ${colors.line}`, borderRadius: 15, padding: 14, background: "#FFFFFF" }}>
-                <strong style={{ color: colors.navy3 }}>Photo storage</strong>
-                <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
-                  {[["Total photos", allPhotoTimelineItems.length], ["Synced records", syncedPhotoCount], ["Local-only images", localOnlyPhotoCount], ["Project stories", photoTimelineProjects.filter((project) => !project.archived).length]].map(([label, value]) => (
-                    <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", gap: 10, paddingBottom: 8, borderBottom: "1px solid #EEF2F6" }}><span style={{ color: colors.muted, fontWeight: 800 }}>{label}</span><strong style={{ color: colors.navy3 }}>{value}</strong></div>
-                  ))}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
-                  <button type="button" onClick={() => setScreen("inbox")} style={goldButtonStyle}>Upload</button>
-                  <button type="button" onClick={() => setScreen("documents")} style={secondaryButtonStyle}>Documents</button>
-                </div>
-              </div>
-            </div>
-          </section>
 
           {selectedPhotoTimelineItem && selectedPhotoMeta ? (
             <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(15,23,42,.58)", display: "grid", placeItems: isMobile ? "end stretch" : "center", padding: isMobile ? 0 : 24 }} onClick={() => setSelectedPhotoTimelineId("")}>
