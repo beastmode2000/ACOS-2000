@@ -14090,19 +14090,44 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function openGraduationPartyChecklist() {
-    ensureGraduationPartyChecklist();
+    const exists = checklistItems("graduation-party").length > 0;
+    if (!exists) {
+      setTasksView("lists");
+      return;
+    }
     setSelectedListId("graduation-party");
     setTasksView("lists");
   }
 
   function checklistDefinitions() {
-    const custom = workPlanTasks.filter((task) => task.category === "Atlas List Definition").map((task) => ({ id: taskDetails(task.id).listId || task.id, name: taskDetails(task.id).listName || task.title }));
-    const graduationName =
-      workPlanTasks
-        .filter((task) => taskDetails(task.id).listId === "graduation-party" || task.category === "Graduation Party Checklist")
-        .map((task) => taskDetails(task.id).listName || "")
-        .find(Boolean) || "Graduation Party";
-    return [{ id: "graduation-party", name: graduationName }, ...custom.filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index)];
+    const custom = workPlanTasks
+      .filter((task) => task.category === "Atlas List Definition")
+      .map((task) => ({
+        id: taskDetails(task.id).listId || task.id,
+        name: taskDetails(task.id).listName || task.title,
+      }));
+    const graduationRecords = workPlanTasks.filter(
+      (task) =>
+        taskDetails(task.id).listId === "graduation-party" ||
+        task.category === "Graduation Party Checklist",
+    );
+    const graduationDefinition = graduationRecords.length
+      ? [{
+          id: "graduation-party",
+          name:
+            graduationRecords
+              .map((task) => taskDetails(task.id).listName || "")
+              .find(Boolean) || "Graduation Party",
+        }]
+      : [];
+    return [
+      ...graduationDefinition,
+      ...custom.filter(
+        (item, index, all) =>
+          all.findIndex((candidate) => candidate.id === item.id) === index &&
+          item.id !== "graduation-party",
+      ),
+    ];
   }
 
   function checklistItems(listId: string) {
@@ -14231,10 +14256,15 @@ ${notes.trim()}` : notes.trim(),
 
   function renderGraduationPartyChecklist() {
     const definitions = checklistDefinitions();
-    const selectedDefinition = definitions.find((item) => item.id === selectedListId) || definitions[0];
-    const items = checklistItems(selectedDefinition.id);
+    const selectedDefinition =
+      definitions.find((item) => item.id === selectedListId) ||
+      definitions[0] ||
+      { id: "", name: "Lists" };
+    const items = selectedDefinition.id ? checklistItems(selectedDefinition.id) : [];
     const completed = items.filter((task) => taskDetails(task.id).status === "Completed").length;
-    const listRecords = workPlanTasks.filter((task) => taskDetails(task.id).listId === selectedDefinition.id || (selectedDefinition.id === "graduation-party" && task.category === "Graduation Party Checklist"));
+    const listRecords = selectedDefinition.id
+      ? workPlanTasks.filter((task) => taskDetails(task.id).listId === selectedDefinition.id || (selectedDefinition.id === "graduation-party" && task.category === "Graduation Party Checklist"))
+      : [];
     const pinned = listRecords.some((task) => taskDetails(task.id).dashboardListPinned);
     const listNotes = listRecords.map((task) => taskDetails(task.id).listNotes || "").find(Boolean) || "";
     const setDashboardPinned = (nextPinned: boolean) => {
@@ -14257,10 +14287,10 @@ ${notes.trim()}` : notes.trim(),
     return <div style={{ display: "grid", gap: 12 }}>
       <section style={{ ...cardStyle, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Reusable Checklists</div><h2 style={{ margin: "3px 0", color: colors.navy }}>Lists</h2></div><button type="button" onClick={createChecklist} style={goldButtonStyle}>+ New List</button></div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{definitions.map((definition) => <button key={definition.id} type="button" onClick={() => { if (definition.id === "graduation-party") ensureGraduationPartyChecklist(); setSelectedListId(definition.id); }} style={selectedDefinition.id === definition.id ? goldButtonStyle : secondaryButtonStyle}>{definition.name}</button>)}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{definitions.map((definition) => <button key={definition.id} type="button" onClick={() => { setSelectedListId(definition.id); }} style={selectedDefinition.id === definition.id ? goldButtonStyle : secondaryButtonStyle}>{definition.name}</button>)}</div>
       </section>
-      <section style={{ ...cardStyle, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => renameChecklist(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Rename</button><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button>{selectedDefinition.id === "graduation-party" ? <button type="button" onClick={restoreGraduationPartyStandardItems} style={secondaryButtonStyle}>Restore standard items</button> : null}<button type="button" onClick={() => deleteChecklist(selectedDefinition.id, selectedDefinition.name)} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete List</button></div></div>
+      {selectedDefinition.id ? <><section style={{ ...cardStyle, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => renameChecklist(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Rename</button><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button><button type="button" onClick={() => deleteChecklist(selectedDefinition.id, selectedDefinition.name)} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete List</button></div></div>
         <label style={{ display: "grid", gap: 5, marginTop: 12 }}><span style={fieldLabelStyle}>LIST NOTES</span><textarea value={listNotes} onChange={(event) => updateListNotes(event.currentTarget.value)} placeholder="Add instructions, reminders, vendor details, or notes for this list…" rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}/></label>
       </section>
       <section style={{ ...cardStyle, padding: 10 }}>
@@ -14275,6 +14305,7 @@ ${notes.trim()}` : notes.trim(),
           </div>; })}
         </div>
       </section>
+      </> : null}
     </div>;
   }
 
