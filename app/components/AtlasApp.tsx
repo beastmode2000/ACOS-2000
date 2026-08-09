@@ -32,10 +32,6 @@ import { searchAtlas } from "../lib/atlas-search";
 import AskAtlasWorkspace from "./ai/AskAtlasWorkspace";
 import RelationshipPanel from "./ai/RelationshipPanel";
 import ActionApprovalCard from "./ai/ActionApprovalCard";
-import AskAtlasWeeklyMaintenancePlanner, {
-  type WeeklyMaintenancePlanItem,
-} from "./ai/AskAtlasWeeklyMaintenancePlanner";
-import AtlasIntelligenceRecommendations from "./ai/AtlasIntelligenceRecommendations";
 import AtlasGroupedSearchResults from "./ai/AtlasGroupedSearchResults";
 import AtlasNotifications from "./AtlasNotifications";
 import AtlasPortfolioCenter from "./AtlasPortfolioCenter";
@@ -1517,7 +1513,6 @@ export default function AtlasApp() {
   const [pendingAssistantAction, setPendingAssistantAction] =
     useState<PendingAssistantAction | null>(null);
   const [assistantActionSaving, setAssistantActionSaving] = useState(false);
-  const [weeklyMaintenanceSaving, setWeeklyMaintenanceSaving] = useState(false);
   const [dashboardAssistantOpen, setDashboardAssistantOpen] = useState(false);
   const [workPlanInput, setWorkPlanInput] = useState("");
   const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>(() =>
@@ -10730,42 +10725,6 @@ export default function AtlasApp() {
     }
   }
 
-  async function saveWeeklyMaintenancePlan(items: WeeklyMaintenancePlanItem[]) {
-    if (weeklyMaintenanceSaving || !items.length) return;
-    setWeeklyMaintenanceSaving(true);
-
-    try {
-      const updates: AtlasServiceRecord[] = [];
-      for (const item of items) {
-        const existing = serviceRecords.find((record) => record.id === item.id);
-        if (!existing) continue;
-        const updated = normalizeService({
-          ...existing,
-          priority: item.priority,
-          assignedTo: item.assignedTo.trim(),
-          date: item.date,
-        });
-        const saved = await postAtlasRecord("work_orders", updated);
-        if (!saved) throw new Error(`The plan could not save ${updated.title}.`);
-        updates.push(updated);
-      }
-
-      const updateMap = new Map(updates.map((record) => [record.id, record]));
-      setServiceRecords((current) =>
-        current.map((record) => updateMap.get(record.id) || record),
-      );
-      finishAssistantAnswer(
-        `Saved the weekly maintenance plan for ${updates.length} work order${updates.length === 1 ? "" : "s"}.`,
-      );
-    } catch (error) {
-      finishAssistantAnswer(
-        error instanceof Error ? error.message : "The weekly maintenance plan could not be saved.",
-      );
-    } finally {
-      setWeeklyMaintenanceSaving(false);
-    }
-  }
-
   async function askAtlas(questionOverride?: string) {
     const question = String(questionOverride ?? assistantQuestion).trim();
 
@@ -17205,6 +17164,7 @@ ${notes.trim()}` : notes.trim(),
       addVendor,
       assetName,
       assetRecords,
+      colors,
       buttonRowStyle,
       compactLinkedListStyle,
       compactLinkedRowStyle,
@@ -23130,15 +23090,7 @@ ${notes.trim()}` : notes.trim(),
                 ))}
               </div>
 
-              <AskAtlasWeeklyMaintenancePlanner
-                records={serviceRecords}
-                today={todayISO()}
-                isMobile={isMobile}
-                colors={colors}
-                saving={weeklyMaintenanceSaving}
-                onGenerate={(prompt) => void askAtlas(prompt)}
-                onSave={saveWeeklyMaintenancePlan}
-              />
+
 
               {pendingAssistantAction ? (
                 <ActionApprovalCard
@@ -23253,16 +23205,7 @@ ${notes.trim()}` : notes.trim(),
           }
           sidebar={
             <>
-              <AtlasIntelligenceRecommendations
-                assets={assetRecords}
-                workOrders={serviceRecords}
-                procedures={procedureRecords}
-                parts={partRecords}
-                documents={intakeDocs}
-                today={todayISO()}
-                onOpen={openSearchResult}
-                colors={colors}
-              />
+
               <div style={{ ...cardStyle, padding: 16 }}>
                 <div style={eyebrowStyle}>Matching Atlas Records</div>
                 <h3 style={{ margin: "4px 0 12px", fontSize: 20 }}>
