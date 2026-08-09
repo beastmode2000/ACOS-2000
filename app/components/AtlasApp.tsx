@@ -5723,6 +5723,20 @@ export default function AtlasApp() {
     );
   }
 
+  function savePermanentNoteEdits(noteId: string) {
+    setTodayLogEntries((current) =>
+      current.map((entry) =>
+        entry.id === noteId
+          ? {
+              ...entry,
+              updatedAt: new Date().toISOString(),
+            }
+          : entry,
+      ),
+    );
+    showSaveToast("Note saved.");
+  }
+
   function movePermanentNote(noteId: string, section: NoteSection) {
     setNotesSectionById((current) => ({ ...current, [noteId]: section }));
     showSaveToast(`Note moved to ${section}.`);
@@ -6114,6 +6128,13 @@ export default function AtlasApp() {
                 </div>
 
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => savePermanentNoteEdits(selectedNote.id)}
+                    style={goldButtonStyle}
+                  >
+                    Save Note
+                  </button>
                   <button type="button" onClick={() => toggleNotePin(selectedNote.id)} style={secondaryButtonStyle}>
                     {pinnedNoteIds.includes(selectedNote.id) ? "Unpin" : "Pin"}
                   </button>
