@@ -226,7 +226,6 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<Role>("Employee");
   const [newPropertyIds, setNewPropertyIds] = useState<string[]>(["2000"]);
-  const [inviteLink, setInviteLink] = useState("");
   const [backups, setBackups] = useState<Array<Record<string, unknown>>>([]);
   const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
   const [search, setSearch] = useState("");
@@ -302,14 +301,38 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   }
 
   async function createInvite() {
-    if (!newName.trim() || !newEmail.includes("@")) { setMessage("Enter the employee name and email."); return; }
-    const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member:{ id:`team-${Date.now()}`, name:newName.trim(), email:newEmail.trim(), role:newRole.toLowerCase(), active:true, propertyIds:newPropertyIds, permissions:roleDefaults[newRole] } }) });
+    if (!newName.trim() || !newEmail.includes("@")) {
+      setMessage("Enter the employee name and email.");
+      return;
+    }
+
+    setMessage(`Sending invite to ${newEmail.trim()}...`);
+    const response = await fetch("/api/atlas-team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "invite",
+        member: {
+          id: `team-${Date.now()}`,
+          name: newName.trim(),
+          email: newEmail.trim(),
+          role: newRole.toLowerCase(),
+          active: true,
+          propertyIds: newPropertyIds,
+          permissions: roleDefaults[newRole],
+        },
+      }),
+    });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) { setMessage(String(payload.error || "Invitation could not be created.")); return; }
-    const link = `${window.location.origin}${payload.invitePath}`;
-    setInviteLink(link);
-    await navigator.clipboard?.writeText(link);
-    setMessage("Secure invitation link created and copied.");
+
+    if (!response.ok || !payload.ok || payload.emailSent !== true) {
+      setMessage(String(payload.error || "Atlas could not send the invitation email."));
+      return;
+    }
+
+    setMessage(`Invite sent to ${newEmail.trim()}.`);
+    setNewName("");
+    setNewEmail("");
   }
 
   function downloadBackup() {
@@ -459,7 +482,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
             <input value={newName} onChange={(e)=>setNewName(e.currentTarget.value)} placeholder="Employee name" style={control}/>
             <input value={newEmail} onChange={(e)=>setNewEmail(e.currentTarget.value)} placeholder="Employee email" style={control}/>
             <select value={newRole} onChange={(e)=>setNewRole(e.currentTarget.value as Role)} style={control}><option>Administrator</option><option>Manager</option><option>Employee</option><option>Vendor</option><option>Viewer</option></select>
-            <button type="button" onClick={()=>void createInvite()} style={button}>Create Invite</button>
+            <button type="button" onClick={()=>void createInvite()} style={button}>Send Invite</button>
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <strong style={{ color: colors.navy, fontSize: 12 }}>
@@ -494,7 +517,6 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
               </label>
             ))}
           </div>
-          {inviteLink ? <div style={{display:"grid",gap:6}}><span style={{fontSize:12,color:colors.muted}}>Invitation expires in 7 days. Copy and send this link:</span><input readOnly value={inviteLink} onFocus={(e)=>e.currentTarget.select()} style={control}/></div> : null}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
           <button type="button" onClick={() => void saveAccess()} style={button}>Save Access Settings</button>
