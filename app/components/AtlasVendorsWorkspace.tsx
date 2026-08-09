@@ -133,6 +133,7 @@ import type {
 
 
 export default function AtlasVendorsWorkspace(props: any) {
+  const [vendorSearch, setVendorSearch] = React.useState("");
   const {
     addLinkedPhotoFiles,
     addVendor,
@@ -194,11 +195,11 @@ export default function AtlasVendorsWorkspace(props: any) {
     ? linkedImageFilesFor("Vendor", selectedVendor.id)
     : [];
   const relatedVendorAssets: AssetRecord[] = selectedVendor.id
-    ? (byName(
-        (assetRecords as AssetRecord[]).filter((asset) =>
-          asset.vendorIds.includes(selectedVendor.id),
-        ),
-      ) as AssetRecord[])
+    ? [...(assetRecords as AssetRecord[])]
+        .filter((asset) => asset.vendorIds.includes(selectedVendor.id))
+        .sort((a, b) =>
+          String(a.name || "").localeCompare(String(b.name || "")),
+        )
     : [];
   const relatedVendorWorkOrders = selectedVendor.id
     ? [...serviceRecords]
@@ -226,20 +227,112 @@ export default function AtlasVendorsWorkspace(props: any) {
     relatedVendorWorkOrders.find((record) => record.status === "Completed") ||
     relatedVendorWorkOrders[0];
 
+  const visibleVendors = filteredVendors.filter((vendor: VendorRecord) => {
+    const query = vendorSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      vendor.name,
+      vendor.category,
+      vendor.phone,
+      vendor.email,
+      vendor.website,
+      vendor.notes,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
+  });
+
   return (
     <ListDrawerLayout
       eyebrow="Property Records"
       title="Vendors"
       isMobile={isMobile}
       drawerResetKey={selectedVendorId || "vendor-new"}
+      gridStyleOverride={
+        isMobile
+          ? { minWidth: 0, overflowX: "hidden" }
+          : {
+              gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)",
+              gap: 12,
+              alignItems: "start",
+            }
+      }
+      listPanelStyleOverride={
+        isMobile
+          ? { minWidth: 0, overflowX: "hidden" }
+          : { minWidth: 0, padding: 10 }
+      }
+      drawerStyleOverride={
+        isMobile ? { minWidth: 0, overflowX: "hidden" } : { minWidth: 0 }
+      }
       right={
         <button type="button" onClick={() => addVendor()} style={goldButtonStyle}>
           Add Vendor
         </button>
       }
       list={
-        <div style={listStyle}>
-          {filteredVendors.map((vendor) => {
+        <div style={{ ...listStyle, gap: 6 }}>
+          <div
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 5,
+              display: "grid",
+              gap: 6,
+              paddingBottom: 6,
+              background: colors.panel,
+            }}
+          >
+            <input
+              type="search"
+              value={vendorSearch}
+              onChange={(event) => setVendorSearch(event.currentTarget.value)}
+              placeholder="Search vendors..."
+              aria-label="Search vendors"
+              style={{
+                width: "100%",
+                minWidth: 0,
+                height: 36,
+                boxSizing: "border-box",
+                border: `1px solid ${colors.line}`,
+                borderRadius: 10,
+                padding: "7px 10px",
+                background: "#FFFFFF",
+                color: colors.text,
+                font: "inherit",
+                outline: "none",
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <span style={mutedSmallStyle}>
+                {visibleVendors.length} vendor{visibleVendors.length === 1 ? "" : "s"}
+              </span>
+              {vendorSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setVendorSearch("")}
+                  style={{
+                    ...secondaryButtonStyle,
+                    minHeight: 28,
+                    padding: "4px 7px",
+                    fontSize: 11,
+                  }}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {visibleVendors.map((vendor) => {
             const logo = vendorLogoFor(vendor.id);
             const logoSrc = logo?.dataUrl || logo?.url || "";
             return (
@@ -249,10 +342,16 @@ export default function AtlasVendorsWorkspace(props: any) {
                 onClick={() => setSelectedVendorId(vendor.id)}
                 style={{
                   ...rowButtonStyle,
+                  padding: "8px 9px",
+                  minHeight: 0,
+                  borderRadius: 10,
                   borderColor:
                     vendor.id === selectedVendor.id
                       ? colors.gold
                       : colors.line,
+                  background:
+                    vendor.id === selectedVendor.id ? "#FFF9EC" : "#FFFFFF",
+                  boxShadow: "none",
                 }}
               >
                 <div style={recordListIdentityStyle}>
@@ -280,6 +379,9 @@ export default function AtlasVendorsWorkspace(props: any) {
               </button>
             );
           })}
+          {!visibleVendors.length ? (
+            <div style={noticeStyle}>No vendors match this search.</div>
+          ) : null}
         </div>
       }
       drawer={
