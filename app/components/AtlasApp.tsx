@@ -5709,6 +5709,20 @@ export default function AtlasApp() {
     showSaveToast("Note deleted.");
   }
 
+  function updatePermanentNoteText(noteId: string, value: string) {
+    setTodayLogEntries((current) =>
+      current.map((entry) =>
+        entry.id === noteId
+          ? {
+              ...entry,
+              text: value,
+              updatedAt: new Date().toISOString(),
+            }
+          : entry,
+      ),
+    );
+  }
+
   function movePermanentNote(noteId: string, section: NoteSection) {
     setNotesSectionById((current) => ({ ...current, [noteId]: section }));
     showSaveToast(`Note moved to ${section}.`);
@@ -6028,9 +6042,25 @@ export default function AtlasApp() {
                 <button type="button" onClick={() => setSelectedNoteId("")} style={compactUtilityButtonStyle}>Close</button>
               </div>
 
-              <div style={{ marginTop: 14, whiteSpace: "pre-wrap", lineHeight: 1.65, color: colors.text, fontSize: 15 }}>
-                {selectedNote.text}
-              </div>
+              <textarea
+                value={selectedNote.text}
+                onChange={(event) =>
+                  updatePermanentNoteText(
+                    selectedNote.id,
+                    event.currentTarget.value,
+                  )
+                }
+                placeholder="Write a note…"
+                style={{
+                  ...inputStyle,
+                  width: "100%",
+                  minHeight: 120,
+                  marginTop: 14,
+                  resize: "vertical",
+                  lineHeight: 1.65,
+                  fontSize: 15,
+                }}
+              />
 
               <div style={{ display: "grid", gap: 10, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${colors.line}` }}>
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
@@ -6097,7 +6127,7 @@ export default function AtlasApp() {
                     }}
                     style={{ ...secondaryButtonStyle, color: colors.red, marginLeft: isMobile ? 0 : "auto" }}
                   >
-                    Delete
+                    Delete Note
                   </button>
                 </div>
               </div>
