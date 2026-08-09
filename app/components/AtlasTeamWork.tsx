@@ -13,9 +13,6 @@ type TeamTask = {
   notes: string;
   status: TeamTaskStatus;
   requirePhoto: boolean;
-  completionPhotoUrl?: string;
-  completedAt?: string;
-  completedBy?: string;
 };
 
 type TeamList = {
@@ -29,14 +26,25 @@ type TeamList = {
   tasks: TeamTask[];
 };
 
+type TeamRole = "Master" | "Administrator" | "Manager" | "Employee" | "Vendor" | "Viewer";
+type TeamPermissions = { view:boolean; edit:boolean; approve:boolean; delete:boolean; manageUsers:boolean };
+type TeamMember = { id:string; name:string; email:string; role:TeamRole; active:boolean; propertyIds:string[]; permissions:TeamPermissions; accessProfiles:string[]; inviteStatus?:string };
+
+const ROLE_DEFAULTS: Record<TeamRole, TeamPermissions> = {
+  Master:{view:true,edit:true,approve:true,delete:true,manageUsers:true},
+  Administrator:{view:true,edit:true,approve:true,delete:true,manageUsers:true},
+  Manager:{view:true,edit:true,approve:true,delete:false,manageUsers:false},
+  Employee:{view:true,edit:true,approve:false,delete:false,manageUsers:false},
+  Vendor:{view:true,edit:false,approve:false,delete:false,manageUsers:false},
+  Viewer:{view:true,edit:false,approve:false,delete:false,manageUsers:false},
+};
+const ACCESS_PROFILES = [
+  ["marine","Marine"],["landscaping","Landscaping"],["house","House"],["maintenance","Maintenance"],
+  ["pool-spa","Pool & Spa"],["vehicles","Vehicles"],["electrical","Electrical"],["plumbing","Plumbing"],["inventory","Inventory"],
+] as const;
+
 type Props = {
   activePropertyId: string;
-};
-
-type AtlasCurrentUser = {
-  email: string;
-  role: string;
-  permissions: Record<string, boolean>;
 };
 
 const PEOPLE = ["Addison", "Pat's Crew", "Sean", "Nick", "Unassigned"];
@@ -162,170 +170,52 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
   const [lists, setLists] = useState<TeamList[]>([]);
   const [selectedListId, setSelectedListId] = useState("");
   const [search, setSearch] = useState("");
-  const [currentUser, setCurrentUser] = useState<AtlasCurrentUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState("");
-  const [loadedFromServer, setLoadedFromServer] = useState(false);
-
-  function authHeaders(user = currentUser): HeadersInit {
-    if (!user) return {};
-
-    return {
-      "Content-Type": "application/json",
-      "x-atlas-user-email": user.email || "",
-      "x-atlas-user-role": user.role || "viewer",
-      "x-atlas-permissions": JSON.stringify(user.permissions || {}),
-    };
-  }
+  const [teamView, setTeamView] = useState<"assignments" | "people">("assignments");
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [memberMessage, setMemberMessage] = useState("");
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState<TeamRole>("Employee");
 
   useEffect(() => {
-    let cancelled = false;
+    void fetch("/api/atlas-team")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!payload?.ok || !Array.isArray(payload.members)) return;
+        setMembers(payload.members.map((member: any) => ({
+          ...member,
+          role: member.role === "master" ? "Master" : member.role === "administrator" ? "Administrator" : member.role === "manager" ? "Manager" : member.role === "employee" || member.role === "operations" ? "Employee" : member.role === "vendor" ? "Vendor" : "Viewer",
+          propertyIds: Array.isArray(member.propertyIds) ? member.propertyIds : ["2000"],
+          permissions: { ...ROLE_DEFAULTS.Viewer, ...(member.permissions || {}) },
+          accessProfiles: Array.isArray(member.accessProfiles) ? member.accessProfiles.map(String) : [],
+        })));
+      })
+      .catch(() => setMemberMessage("Atlas could not load team users."));
+  }, []);
 
-    async function loadTeamWork() {
-      setLoading(true);
-      setSaveMessage("");
-
-      try {
-        const teamResponse = await fetch("/api/atlas-team", {
-          cache: "no-store",
-        });
-        const teamPayload = await teamResponse.json();
-
-        if (!teamResponse.ok || !teamPayload?.ok) {
-          throw new Error(
-            teamPayload?.error || "Could not identify the current Atlas user.",
-          );
-        }
-
-        const user: AtlasCurrentUser = {
-          email: String(teamPayload.currentUser?.email || ""),
-          role: String(teamPayload.currentUser?.role || "viewer"),
-          permissions:
-            teamPayload.currentUser?.permissions &&
-            typeof teamPayload.currentUser.permissions === "object"
-              ? teamPayload.currentUser.permissions
-              : {},
-        };
-
-        if (cancelled) return;
-        setCurrentUser(user);
-
-        const response = await fetch("/api/atlas-team-work", {
-          cache: "no-store",
-          headers: authHeaders(user),
-        });
-        const payload = await response.json();
-
-        if (!response.ok || !payload?.ok) {
-          throw new Error(payload?.error || "Could not load Team Work.");
-        }
-
-        let next: TeamList[] =
-          Array.isArray(payload.lists) && payload.lists.length
-            ? payload.lists
-            : [];
-
-        if (!next.length) {
-          try {
-            const raw = window.localStorage.getItem(STORAGE_KEY);
-            const parsed = raw ? (JSON.parse(raw) as TeamList[]) : null;
-            next =
-              Array.isArray(parsed) && parsed.length
-                ? parsed
-                : starterLists();
-          } catch {
-            next = starterLists();
-          }
-        }
-
-        if (cancelled) return;
-
-        setLists(next);
-        setSelectedListId(next[0]?.id || "");
-        setLoadedFromServer(true);
-        setSaveMessage(
-          Array.isArray(payload.lists) && payload.lists.length
-            ? "Shared Team Work loaded."
-            : "Starter Team Work loaded. Save once to publish it for the team.",
-        );
-      } catch (error) {
-        if (cancelled) return;
-
-        let fallback = starterLists();
-
-        try {
-          const raw = window.localStorage.getItem(STORAGE_KEY);
-          const parsed = raw ? (JSON.parse(raw) as TeamList[]) : null;
-          if (Array.isArray(parsed) && parsed.length) fallback = parsed;
-        } catch {
-          // Use starter lists.
-        }
-
-        setLists(fallback);
-        setSelectedListId(fallback[0]?.id || "");
-        setLoadedFromServer(false);
-        setSaveMessage(
-          error instanceof Error
-            ? `${error.message} Showing the browser copy.`
-            : "Could not load shared Team Work. Showing the browser copy.",
-        );
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const parsed = raw ? (JSON.parse(raw) as TeamList[]) : null;
+      const next =
+        Array.isArray(parsed) && parsed.length ? parsed : starterLists();
+      setLists(next);
+      setSelectedListId(next[0]?.id || "");
+    } catch {
+      const next = starterLists();
+      setLists(next);
+      setSelectedListId(next[0]?.id || "");
     }
-
-    void loadTeamWork();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
     if (!lists.length) return;
-
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(lists));
     } catch {
       // Keep the page usable if browser storage is unavailable.
     }
   }, [lists]);
-
-  async function saveSharedTeamWork() {
-    if (!currentUser) {
-      setSaveMessage("Atlas could not identify the current user.");
-      return;
-    }
-
-    setSaving(true);
-    setSaveMessage("");
-
-    try {
-      const response = await fetch("/api/atlas-team-work", {
-        method: "PUT",
-        headers: authHeaders(currentUser),
-        body: JSON.stringify({ lists }),
-      });
-      const payload = await response.json();
-
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || "Could not save Team Work.");
-      }
-
-      setLists(Array.isArray(payload.lists) ? payload.lists : lists);
-      setLoadedFromServer(true);
-      setSaveMessage("Shared Team Work saved.");
-    } catch (error) {
-      setSaveMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not save shared Team Work.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
 
   const visibleLists = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -481,46 +371,63 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
     if (next.length) updateList(selected.id, { propertyIds: next });
   }
 
+  function updateMember(id: string, patch: Partial<TeamMember>) {
+    setMembers((current) => current.map((member) => member.id === id ? { ...member, ...patch } : member));
+    setMemberMessage("");
+  }
+
+  async function saveMembers() {
+    setMemberMessage("Saving users…");
+    try {
+      const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ members }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Could not save users.");
+      setMemberMessage("Users and access saved.");
+    } catch (error) {
+      setMemberMessage(error instanceof Error ? error.message : "Could not save users.");
+    }
+  }
+
+  async function inviteMember() {
+    const name = newMemberName.trim();
+    const email = newMemberEmail.trim().toLowerCase();
+    if (!name || !email) { setMemberMessage("Enter a name and email."); return; }
+    const member: TeamMember = {
+      id: `team-${Date.now()}`, name, email, role:newMemberRole, active:true, propertyIds:[activePropertyId],
+      permissions:{...ROLE_DEFAULTS[newMemberRole]}, accessProfiles:[], inviteStatus:"Invited",
+    };
+    setMemberMessage("Creating invitation…");
+    try {
+      const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Could not create invitation.");
+      setMembers((current) => [...current, member]);
+      setNewMemberName(""); setNewMemberEmail("");
+      setMemberMessage(payload.invitePath ? `Invite created: ${payload.invitePath}` : "Invite created.");
+    } catch (error) { setMemberMessage(error instanceof Error ? error.message : "Could not create invitation."); }
+  }
+
   return (
     <section style={{ display: "grid", gap: 16 }}>
       <div style={heroStyle}>
         <div>
           <div style={eyebrowStyle}>TEAM OPERATIONS</div>
-          <h1 style={titleStyle}>Team Work</h1>
-          <p style={heroCopyStyle}>{activePropertyId} assignments and progress.</p>
+          <h1 style={titleStyle}>Team</h1>
+          <p style={heroCopyStyle}>
+            Manage people, helpers, assignments, roles, and property access for {activePropertyId}.
+          </p>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            style={lightHeroButtonStyle}
-            onClick={() => void saveSharedTeamWork()}
-            disabled={saving || loading}
-          >
-            {saving ? "Saving..." : "Save Shared"}
-          </button>
-          <button
-            type="button"
-            style={goldButtonStyle}
-            onClick={createList}
-            disabled={loading}
-          >
-            + New List
-          </button>
-        </div>
+        {teamView === "assignments" ? <button type="button" style={goldButtonStyle} onClick={createList}>+ New List</button> : null}
       </div>
 
-      {saveMessage && (
-        <div
-          style={{
-            ...noticeStyle,
-            borderColor: loadedFromServer ? colors.line : colors.gold,
-          }}
-        >
-          {saveMessage}
-        </div>
-      )}
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+        {([['assignments','Assignments'],['people','People & Access']] as const).map(([value,label]) => (
+          <button key={value} type="button" onClick={() => setTeamView(value)} style={{...lightButtonStyle, background:teamView===value?colors.navy3:colors.card, color:teamView===value?'#fff':colors.text, borderColor:teamView===value?colors.navy3:colors.line}}>{label}</button>
+        ))}
+      </div>
 
+      {teamView === "assignments" ? <>
       <div style={summaryGridStyle}>
         <Stat label="Active Lists" value={visibleLists.filter((item) => item.active).length} />
         <Stat label="Assigned Tasks" value={propertyTasks.length} />
@@ -536,8 +443,6 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
 
       <div style={workspaceStyle}>
         <aside style={panelStyle}>
-          {loading && <div style={emptyStyle}>Loading shared Team Work...</div>}
-
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -631,9 +536,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                 </div>
               </div>
 
-              <details style={{ marginTop: 14, border: `1px solid ${colors.line}`, borderRadius: 11, padding: 10 }}>
-                <summary style={{ cursor: "pointer", fontWeight: 850, color: colors.text }}>List details</summary>
-              <div style={{ ...settingsGridStyle, marginTop: 10 }}>
+              <div style={settingsGridStyle}>
                 <label style={labelStyle}>
                   Default assignee
                   <select
@@ -704,11 +607,13 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                   })}
                 </div>
               </div>
-              </details>
 
               <div style={{ ...editorHeaderStyle, marginTop: 22 }}>
                 <div>
                   <h2 style={{ margin: 0, color: colors.text }}>Tasks</h2>
+                  <p style={{ ...mutedStyle, margin: "4px 0 0" }}>
+                    Every item is editable, reorderable, and assignable.
+                  </p>
                 </div>
 
                 <button type="button" style={goldButtonStyle} onClick={addTask}>
@@ -728,12 +633,6 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                             status: event.target.checked
                               ? "Completed"
                               : "Open",
-                            completedAt: event.target.checked
-                              ? new Date().toISOString()
-                              : undefined,
-                            completedBy: event.target.checked
-                              ? currentUser?.email || item.assignee
-                              : undefined,
                           })
                         }
                         style={{ width: 20, height: 20 }}
@@ -768,14 +667,6 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                         onChange={(event) =>
                           updateTask(selected.id, item.id, {
                             status: event.target.value as TeamTaskStatus,
-                            completedAt:
-                              event.target.value === "Completed"
-                                ? new Date().toISOString()
-                                : undefined,
-                            completedBy:
-                              event.target.value === "Completed"
-                                ? currentUser?.email || item.assignee
-                                : undefined,
                           })
                         }
                         style={fieldStyle}
@@ -813,11 +704,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                       </div>
                     </div>
 
-                    <details style={{ marginTop: 8 }}>
-                      <summary style={{ cursor: "pointer", color: colors.muted, fontSize: 12, fontWeight: 800 }}>
-                        {item.location || item.notes || item.requirePhoto ? "Location & notes" : "Add details"}
-                      </summary>
-                    <div style={{ ...taskDetailGridStyle, marginTop: 8 }}>
+                    <div style={taskDetailGridStyle}>
                       <input
                         value={item.location}
                         onChange={(event) =>
@@ -853,7 +740,6 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                         Require photo
                       </label>
                     </div>
-                    </details>
                   </div>
                 ))}
 
@@ -867,6 +753,56 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
           )}
         </div>
       </div>
+      </> : (
+        <div style={{ display:"grid", gap:14 }}>
+          <div style={summaryGridStyle}>
+            <Stat label="Users" value={members.length} />
+            <Stat label="Active" value={members.filter((member) => member.active).length} />
+            <Stat label="Admins" value={members.filter((member) => member.role === "Master" || member.role === "Administrator").length} />
+            <Stat label="Property Users" value={members.filter((member) => member.propertyIds.includes(activePropertyId)).length} />
+          </div>
+
+          <div style={panelStyle}>
+            <div style={editorHeaderStyle}>
+              <div><h2 style={{margin:0,color:colors.text}}>People & Access</h2><p style={{...mutedStyle,margin:"4px 0 0"}}>Users, helpers, roles, permissions, properties, and operating areas.</p></div>
+              <button type="button" style={goldButtonStyle} onClick={saveMembers}>Save Access</button>
+            </div>
+            {memberMessage ? <div style={{marginTop:10,padding:"9px 11px",border:`1px solid ${colors.line}`,borderRadius:10,color:colors.text,background:colors.panel,fontWeight:800,fontSize:12}}>{memberMessage}</div> : null}
+
+            <div style={{display:"grid",gap:10,marginTop:14}}>
+              {members.map((member) => (
+                <div key={member.id} style={{border:`1px solid ${colors.line}`,borderRadius:14,padding:13,background:colors.card}}>
+                  <div style={{display:"grid",gridTemplateColumns:"minmax(180px,1.2fr) minmax(190px,1.4fr) minmax(140px,.7fr) auto",gap:8,alignItems:"center"}}>
+                    <input value={member.name} onChange={(e)=>updateMember(member.id,{name:e.target.value})} style={{...fieldStyle,fontWeight:900}} />
+                    <input value={member.email} onChange={(e)=>updateMember(member.id,{email:e.target.value})} style={fieldStyle} />
+                    <select value={member.role} onChange={(e)=>{const role=e.target.value as TeamRole;updateMember(member.id,{role,permissions:{...ROLE_DEFAULTS[role]}})}} style={fieldStyle}>
+                      {Object.keys(ROLE_DEFAULTS).map((role)=><option key={role}>{role}</option>)}
+                    </select>
+                    <label style={{display:"flex",alignItems:"center",gap:6,fontWeight:800,fontSize:12}}><input type="checkbox" checked={member.active} onChange={(e)=>updateMember(member.id,{active:e.target.checked})}/> Active</label>
+                  </div>
+                  <div style={{marginTop:10,display:"grid",gap:8}}>
+                    <div><div style={labelStyle}>Properties</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PROPERTY_IDS.map((propertyId)=>{const on=member.propertyIds.includes(propertyId);return <button key={propertyId} type="button" onClick={()=>updateMember(member.id,{propertyIds:on?member.propertyIds.filter((id)=>id!==propertyId):[...member.propertyIds,propertyId]})} style={{...propertyChipStyle,background:on?colors.navy3:colors.card,color:on?'#fff':colors.text}}>{propertyId==='hangar'?'Hangar':propertyId}</button>})}</div></div>
+                    <div><div style={labelStyle}>Permissions</div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{(['view','edit','approve','delete','manageUsers'] as const).map((permission)=><label key={permission} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:800}}><input type="checkbox" checked={member.permissions[permission]} onChange={(e)=>updateMember(member.id,{permissions:{...member.permissions,[permission]:e.target.checked}})}/>{permission==='manageUsers'?'Manage users':permission[0].toUpperCase()+permission.slice(1)}</label>)}</div></div>
+                    <div><div style={labelStyle}>Operating areas</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ACCESS_PROFILES.map(([id,label])=>{const on=member.accessProfiles.includes(id);return <button key={id} type="button" onClick={()=>updateMember(member.id,{accessProfiles:on?member.accessProfiles.filter((value)=>value!==id):[...member.accessProfiles,id]})} style={{...propertyChipStyle,background:on?'#FFF3CF':colors.card,borderColor:on?colors.gold:colors.line}}>{label}</button>})}</div></div>
+                    <div style={{fontSize:11,color:colors.muted,fontWeight:800}}>Invite status: {member.inviteStatus || '—'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={panelStyle}>
+            <h2 style={{margin:"0 0 4px",color:colors.text}}>Invite Team Member</h2>
+            <p style={{...mutedStyle,margin:"0 0 12px"}}>Create an Atlas user and assign a starting role and property.</p>
+            <div style={{display:"grid",gridTemplateColumns:"minmax(160px,1fr) minmax(220px,1.3fr) minmax(140px,.7fr) auto",gap:8}}>
+              <input value={newMemberName} onChange={(e)=>setNewMemberName(e.target.value)} placeholder="Name" style={fieldStyle}/>
+              <input value={newMemberEmail} onChange={(e)=>setNewMemberEmail(e.target.value)} placeholder="Email" style={fieldStyle}/>
+              <select value={newMemberRole} onChange={(e)=>setNewMemberRole(e.target.value as TeamRole)} style={fieldStyle}>{Object.keys(ROLE_DEFAULTS).map((role)=><option key={role}>{role}</option>)}</select>
+              <button type="button" style={goldButtonStyle} onClick={inviteMember}>Invite</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @media (max-width: 980px) {
@@ -1098,25 +1034,6 @@ const iconButtonStyle: React.CSSProperties = {
   background: colors.card,
   color: colors.text,
   fontWeight: 900,
-};
-
-const lightHeroButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,.35)",
-  borderRadius: 10,
-  padding: "10px 14px",
-  background: "rgba(255,255,255,.10)",
-  color: "#FFFFFF",
-  fontWeight: 900,
-};
-
-const noticeStyle: React.CSSProperties = {
-  padding: "11px 14px",
-  border: "1px solid",
-  borderRadius: 12,
-  background: colors.card,
-  color: colors.text,
-  fontSize: 13,
-  fontWeight: 700,
 };
 
 const emptyStyle: React.CSSProperties = {
