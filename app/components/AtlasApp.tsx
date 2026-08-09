@@ -5828,7 +5828,7 @@ export default function AtlasApp() {
               value={notesDraft}
               onChange={(event) => setNotesDraft(event.currentTarget.value)}
               placeholder="Write a note…"
-              style={{ ...inputStyle, minHeight: 105, resize: "vertical", fontSize: 15, lineHeight: 1.55, padding: 13, borderRadius: 15 }}
+              style={{ ...inputStyle, minHeight: 76, resize: "vertical", fontSize: 15, lineHeight: 1.55, padding: 13, borderRadius: 15 }}
             />
             <button
               type="button"
@@ -5839,8 +5839,8 @@ export default function AtlasApp() {
                 borderRadius: 16,
                 background: notesListening ? colors.navy : "#F8FAFC",
                 color: notesListening ? "#FFFFFF" : colors.navy,
-                minHeight: 105,
-                padding: 12,
+                minHeight: 76,
+                padding: 10,
                 cursor: "pointer",
                 display: "grid",
                 placeItems: "center",
@@ -5947,8 +5947,6 @@ export default function AtlasApp() {
             );
           })}
         </div>
-
-        {!notes.length ? <div style={noticeStyle}>No notes found.</div> : null}
 
         {selectedNote ? (
           <div
