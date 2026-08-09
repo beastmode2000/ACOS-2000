@@ -1903,7 +1903,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   }).filter((list) => list.pinned);
   const removeListFromDashboard = (listId: string) => {
     const list = activeDashboardLists.find((item) => item.id === listId);
-    const itemIds = new Set((list?.records || []).map((task) => task.id));
+    const itemIds = new Set<string>((list?.records || []).map((task: any) => String(task.id)));
     setTaskMeta((current) => {
       const next = { ...current };
       itemIds.forEach((id) => { next[id] = { ...taskDetails(id), dashboardListPinned: false, updatedAt: new Date().toISOString() }; });
@@ -1939,34 +1939,50 @@ export default function AtlasDashboardWorkspace(props: any) {
     }
     showSaveToast(`Added to ${person}’s list.`);
   };
+  const saveDashboardNote = (text: string, dueDate?: string, existingId?: string) => {
+    const clean = text.trim();
+    if (!clean) return "";
+    const id = existingId || uid("dashboard-note");
+    const createdAt = dashboardReminders.find((item) => item.id === id)?.createdAt || new Date().toISOString();
+    setDashboardReminders((current) => {
+      const existing = current.find((item) => item.id === id);
+      const record = { id, text: clean, done: existing?.done || false, createdAt, dueDate: dueDate || existing?.dueDate || undefined };
+      return existing ? current.map((item) => item.id === id ? record : item) : [record, ...current];
+    });
+    setTodayLogEntries((current) => {
+      const noteRecord = { id, propertyId: activePropertyId, date: today, category: "Note", text: clean, createdAt };
+      return [noteRecord, ...current.filter((entry: any) => entry.id !== id)];
+    });
+    return id;
+  };
+  const deleteDashboardNote = (noteId: string) => {
+    setDashboardReminders((current) => current.filter((item) => item.id !== noteId));
+    setTodayLogEntries((current) => current.filter((entry: any) => entry.id !== noteId));
+  };
+  useEffect(() => {
+    if (!dashboardReminders.length) return;
+    setTodayLogEntries((current) => {
+      const existingIds = new Set(current.map((entry: any) => entry.id));
+      const missing = dashboardReminders
+        .filter((note) => !existingIds.has(note.id))
+        .map((note) => ({ id: note.id, propertyId: activePropertyId, date: today, category: "Note", text: note.text, createdAt: note.createdAt }));
+      return missing.length ? [...missing, ...current] : current;
+    });
+  }, [activePropertyId, dashboardReminders, setTodayLogEntries, today]);
   const addDashboardReminder = () => {
     const text = dashboardReminderDraft.trim();
     if (!text) return;
-    setDashboardReminders((current) => [{ id: uid("dashboard-note"), text, done: false, createdAt: new Date().toISOString(), dueDate: dashboardReminderDate || undefined }, ...current]);
+    saveDashboardNote(text, dashboardReminderDate || undefined);
     setDashboardReminderDraft("");
     setDashboardReminderDate("");
-  };
-  const convertDashboardReminderToTask = (noteId: string, person: "Nick" | "Addison") => {
-    const note = dashboardReminders.find((item) => item.id === noteId);
-    if (!note?.text.trim()) return;
-    const taskId = addAtlasTask(note.text.trim());
-    if (!taskId) return;
-    updateTaskDetails(taskId, {
-      assignee: person,
-      dueDate: note.dueDate || today,
-      status: "Open",
-      assignmentScope: "This occurrence",
-    });
-    setDashboardReminders((current) => current.filter((item) => item.id !== noteId));
-    showSaveToast(`Moved note to ${person}’s list.`);
   };
   const dashboardQuickCapture = (kind: "note" | "task" | "addison" | "work-order") => {
     const text = quickCaptureNote.trim();
     if (!text) return;
     if (kind === "note") {
-      setDashboardReminders((current) => [{ id: uid("dashboard-note"), text, done: false, createdAt: new Date().toISOString() }, ...current]);
+      saveDashboardNote(text);
       setQuickCaptureNote("");
-      showSaveToast("Saved to Quick Notes.");
+      showSaveToast("Saved to Quick Notes and Notes.");
       return;
     }
     if (kind === "task" || kind === "addison") {
@@ -2134,10 +2150,11 @@ export default function AtlasDashboardWorkspace(props: any) {
           {dashboardReminders.map((note) => <div key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: note.done ? "#F5F7F9" : "#FFFFFF" }}>
             <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 7, alignItems: "start" }}>
               <input type="checkbox" checked={note.done} onChange={() => setDashboardReminders((current) => current.map((item) => item.id === note.id ? { ...item, done: !item.done } : item))}/>
-              <button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) setDashboardReminders((current) => current.map((item) => item.id === note.id ? { ...item, text } : item)); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button>
+              <button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) saveDashboardNote(text, note.dueDate, note.id); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button>
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 7, paddingLeft: 24 }}>
-              <button type="button" onClick={() => setDashboardReminders((current) => current.filter((item) => item.id !== note.id))} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7, paddingLeft: 24 }}>
+              <button type="button" onClick={() => setDashboardReminders((current) => current.filter((item) => item.id !== note.id))} style={compactUtilityButtonStyle}>Remove from Dashboard</button>
+              <button type="button" onClick={() => deleteDashboardNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
             </div>
           </div>)}
           {!dashboardReminders.length ? <div style={noticeStyle}>No notes yet. Add anything you do not want to forget.</div> : null}
@@ -2405,11 +2422,11 @@ export default function AtlasDashboardWorkspace(props: any) {
     ? Math.round((assetRecords.filter((asset) => Boolean(asset.notes || asset.make || asset.model || asset.serial)).length / assetRecords.length) * 100)
     : 100;
   const recurringMissed = openWork.filter((record) => Boolean(record.recurring) && Boolean(record.date) && String(record.date) < today);
-  const duplicateGroups = Object.values(openWork.reduce((groups, record) => {
+  const duplicateGroups = (Object.values(openWork.reduce((groups, record) => {
     const key = String(record.title || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
     if (key) (groups[key] ||= []).push(record);
     return groups;
-  }, {} as Record<string, ServiceRecord[]>)).filter((group) => group.length > 1);
+  }, {} as Record<string, ServiceRecord[]>)) as ServiceRecord[][]).filter((group) => group.length > 1);
   const safetyOpen = openWork.filter((record) => /(safety|alarm|generator|emergency|inspection|fire|leak)/i.test(workText(record)));
   const vendorIssues = waitingVendor.length + openWork.filter((record) => Boolean(record.vendorId) && String(record.date || "") < today).length;
   const estateHealthScore = Math.max(0, Math.min(100, Math.round(
@@ -2468,7 +2485,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     map[category] = (map[category] || 0) + serviceCost(record);
     return map;
   }, {} as Record<string, number>);
-  const topCategoryCosts = Object.entries(categoryCosts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const topCategoryCosts = Object.entries(categoryCosts as Record<string, number>).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const staffAnalytics = staffNames.map((name) => {
     const assigned = openWork.filter((record) => {
       const assignedTo = String((record as AtlasServiceRecord).assignedTo || "").toLowerCase();
