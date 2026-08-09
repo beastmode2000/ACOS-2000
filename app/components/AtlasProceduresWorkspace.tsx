@@ -1,142 +1,10 @@
 "use client";
 
-import React, {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { upload } from "@vercel/blob/client";
-import AtlasCalendar from "./AtlasCalendar";
-import AtlasRoutines from "./AtlasRoutines";
-import AtlasTeamWork from "./AtlasTeamWork";
-import { AtlasWorkOrders } from "./AtlasWorkOrders";
-import AtlasInsightsTimeline from "./AtlasInsightsTimeline";
-import ReportsAccessCenter from "./ReportsAccessCenter";
-import {
-  Field,
-  SelectField,
-  StatCard,
-  AtlasMiniMark,
-  SectionHeader,
-} from "./AtlasUiPrimitives";
-
-import {
-  WORKLINK_LOGOS,
-  colors,
-  screens,
-  logoCandidates,
-  storageKeys,
-} from "../lib/atlas-page-config";
-import type { AtlasScreen } from "../lib/atlas-page-config";
-import { searchAtlas } from "../lib/atlas-search";
-import AskAtlasWorkspace from "./ai/AskAtlasWorkspace";
-import RelationshipPanel from "./ai/RelationshipPanel";
-import ActionApprovalCard from "./ai/ActionApprovalCard";
-import AskAtlasWeeklyMaintenancePlanner, {
-  type WeeklyMaintenancePlanItem,
-} from "./ai/AskAtlasWeeklyMaintenancePlanner";
-import AtlasIntelligenceRecommendations from "./ai/AtlasIntelligenceRecommendations";
-import DocumentIntelligencePanel from "./ai/DocumentIntelligencePanel";
-import PhotoIntelligencePanel from "./ai/PhotoIntelligencePanel";
-import AtlasGroupedSearchResults from "./ai/AtlasGroupedSearchResults";
-import AtlasNotifications from "./AtlasNotifications";
-import AtlasPortfolioCenter from "./AtlasPortfolioCenter";
-import AtlasParts from "./AtlasParts";
-import AtlasAddisonWork from "./AtlasAddisonWork";
-import AtlasTasks from "./AtlasTasks";
-import AtlasDashboardWorkspace from "./AtlasDashboardWorkspace";
-import AtlasLocationsWorkspace from "./AtlasLocationsWorkspace";
-import AtlasAssetsWorkspace from "./AtlasAssetsWorkspace";
-import AtlasVendorsWorkspace from "./AtlasVendorsWorkspace";
-import AtlasDocumentsWorkspace from "./AtlasDocumentsWorkspace";
-import { findRelatedRecords } from "../lib/ai/relationship-engine";
-import {
-  planAssistantAction,
-  type PendingAssistantAction,
-} from "../lib/ai/action-planner";
-
-import type {
-  Screen,
-  Status,
-  ServiceStatus,
-  WorkOrderPriority,
-  WorkOrderRecurrenceUnit,
-  WorkSeason,
-  Priority,
-  PartStatus,
-  UploadedFileRecord,
-  LocationRecord,
-  MapDetailBox,
-  MapLabelRecord,
-  VendorRecord,
-  ContactRecord,
-  AssetRecord,
-  ServiceRecord,
-  ProcedureRecord,
-  RequestStatus,
-  OwnerRequestRecord,
-  IntakeTargetKind,
-  FastIntakeKind,
-  FastIntakeSaveMode,
-  InboxStatus,
-  InboxReviewDraft,
-  InboxItemRecord,
-  DocumentRecord,
-  ManualCategory,
-  ManualRecord,
-  PartRecord,
-  WorkLinkRecord,
-  QrKind,
-  QrRecord,
-  CalendarColorName,
-  CalendarRepeat,
-  CalendarReminder,
-  CalendarLinkType,
-  CalendarSource,
-  CalendarColor,
-  CalendarItem,
-  WorkPlanDay,
-  WorkPlanTask,
-  PhotoRecord,
-  WeatherDay,
-  AtlasApiPayload,
-  AtlasTable,
-  SearchResult,
-  ManualCandidate,
-} from "../lib/atlas-types";
-import {
-  closeSymbol, PHOTO_TIMELINE_TAGS, atlasOperationsTemplates, atlasProperties, dashboardWidgetDefinitions, dashboardDefaultGrid, legacySizeColumns, makeDailyForemanWidgets,
-  normalizeDashboardWidgets, builtInDashboardLayouts, loadDashboardRoutineItems, todayLogStorageKeys, dashboardRoutineStorageKeys, atlasMoreToolsScreens, atlasPrimaryNavigationSections, localISODate,
-  todayISO, addDays, uid, normalizeMapDetailBoxes, slugify, blankCalendarItem, clampPercent, formatDate,
-  monthName, isServiceStatus, isPriority, isWorkOrderRecurrenceUnit, seasonForDate, recurrenceLabel, nextRecurrenceDate, readStoredArray,
-  readAllStoredArrays, saveStoredArray, normalizePhotoRecord, photoSource, mergePhotoRecords, cachePhotoRecords, readCachedPhoto, deleteCachedPhoto,
-  persistPhotoRecords, readFileDataUrl, fileToUploadedRecord, imageUrlsFromClipboardText, importImageUrlAsFile, normalizeImageFile, mergeUploadedFiles, normalizeAsset,
-  assetLocationIds, assetHasLocation, normalizeLocationName, normalizeVendor, normalizeContact, blankContact, normalizeService, normalizeProcedure,
-  normalizeCalendar, mergeCalendarItemRecords, normalizePart, normalizeDocument, mergeDocuments, byName, mergeLocationRecords, byTitle,
-  badgeStyle, weatherText, weatherIcon, weatherGlyph, irrigationAdvice, weatherDayPlanning, categoryToColorId, calendarPlainColors,
-  repeatOptions, reminderOptions, linkTypeOptions, standardCalendarCategoryLabels, plainColor, colorNameFromLegacyColorId, defaultCalendarColors, mergeCalendarColors,
-  getUsHolidays, getJewishHolidays, calendarDateValue, isRecurringInstanceOnDate, getWeekCells, fallbackLocations, defaultMapLabels, fallbackVendors,
-  confirmedAssetCatalog, fallbackAssets, fallbackWorkOrders, fallbackProcedures, fallbackCalendar, fallbackParts, defaultWorkLinks, documents,
-  manualCategories, seaDooManualUrl, cleanManualOpenUrl, defaultManuals, inferManualCategory, blankManual, normalizeManualRecord, ListDrawerLayout,
-  CreatableRelationshipField,
-} from "./AtlasAppFoundation";
-import AtlasContacts from "./AtlasContacts";
-import AtlasWeather from "./AtlasWeather";
-import type {
-  AtlasCurrentUser, AtlasCalendarItem, AssistantTurn, PhotoTimelineTag, PhotoTimelineProjectCategory, PhotoTimelineMeta, ProjectTimelineEntry, PhotoTimelineProject,
-  WorkEffort, AtlasTaskMeta, TaskListFilter, AtlasBacklogItem, AtlasVehicleCare, AtlasSeasonalItem, AtlasDaySession, AtlasOperationsTemplate,
-  AtlasAssetRecord, LocationCustomDetail, AtlasLocationRecord, WorkChecklistItem, TodayLogEntry, DashboardRoutineItem, DashboardWidgetId, DashboardWidgetSetting,
-  DashboardSavedLayout, DashboardWidgetDropTarget, WorkCompletionEntry, AtlasServiceRecord,
-} from "./AtlasAppFoundation";
-
-
+import React from "react";
 
 export default function AtlasProceduresWorkspace(props: any) {
   const {
-    assetRecords,
+    assetRecords = [],
     colors,
     buttonRowStyle,
     cardStyle,
@@ -146,23 +14,18 @@ export default function AtlasProceduresWorkspace(props: any) {
     duplicateProcedureRecord,
     editorHeaderStyle,
     eyebrowStyle,
-    filteredProcedures,
-    formGridStyle,
-    generateProcedureDraft,
+    filteredProcedures = [],
     goldButtonStyle,
     inputStyle,
     isMobile,
     isRecordDirty,
-    listStyle,
-    locations,
+    locations = [],
     moveProcedureStep,
     mutedSmallStyle,
     noticeStyle,
     openUploadedFile,
     procedureDraftNotes,
-    procedureListScrollYRef,
     procedureMessage,
-    procedureOverlayScrollRef,
     rowButtonStyle,
     saveDirtyRecord,
     secondaryButtonStyle,
@@ -178,213 +41,153 @@ export default function AtlasProceduresWorkspace(props: any) {
     updateProcedure,
     updateProcedureSteps,
     uploadProcedureFiles,
-    vendorRecords
+    vendorRecords = [],
   } = props;
-  const procedureEditor = selectedProcedureId ? (
-    <div style={{ display: "grid", gap: 16 }}>
+
+  const c = colors || {
+    navy: "#0B2942",
+    gold: "#D4A63A",
+    line: "#D8E0E8",
+    muted: "#6C7B88",
+    red: "#B42318",
+  };
+
+  const procedure = selectedProcedure || {
+    id: "",
+    title: "",
+    area: "",
+    category: "Maintenance",
+    priority: "Normal",
+    status: "Draft",
+    purpose: "",
+    safetyNotes: "",
+    toolsParts: "",
+    requiredTools: [],
+    requiredParts: [],
+    estimatedTime: "",
+    steps: [],
+    linkedAssetIds: [],
+    linkedLocationIds: [],
+    linkedVendorIds: [],
+    photos: [],
+    documents: [],
+  };
+
+  const hasSelection = Boolean(selectedProcedureId);
+
+  function chooseProcedure(id: string) {
+    setSelectedProcedureId(id);
+    setProcedureDraftNotes("");
+    setProcedureMessage("");
+  }
+
+  const editor = hasSelection ? (
+    <div style={{ display: "grid", gap: 14 }}>
       <div
         style={{
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
-          gap: 12,
+          gap: 10,
           flexWrap: "wrap",
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <div style={eyebrowStyle}>Procedure Builder</div>
-          <h3 style={{ ...editorHeaderStyle, marginBottom: 4 }}>
-            {selectedProcedure.title.trim() || "New Procedure"}
-          </h3>
-          <p style={mutedSmallStyle}>
-            {selectedProcedure.status || "Draft"} ·{" "}
-            {selectedProcedure.steps.length} steps
-          </p>
+          <div style={eyebrowStyle}>Procedure</div>
+          <h2 style={{ ...editorHeaderStyle, margin: "3px 0" }}>
+            {procedure.title || "New Procedure"}
+          </h2>
+          <div style={mutedSmallStyle}>
+            {procedure.status || "Draft"} · {(procedure.steps || []).length} steps
+          </div>
         </div>
+
         <div style={buttonRowStyle}>
           <button
             type="button"
-            onClick={() => {
-              document.body.classList.add("atlas-print-procedure");
-              try {
-                window.print();
-              } finally {
-                document.body.classList.remove("atlas-print-procedure");
-              }
-            }}
-            style={secondaryButtonStyle}
-            className="atlas-no-print"
-          >
-            Print
-          </button>
-          <button
-            type="button"
-            onClick={() => duplicateProcedureRecord(selectedProcedure)}
+            onClick={() => duplicateProcedureRecord(procedure)}
             style={secondaryButtonStyle}
           >
             Duplicate
           </button>
-          {selectedProcedure.id ? (
+          {procedure.id ? (
             <button
               type="button"
-              onClick={() => void deleteProcedureRecord(selectedProcedure)}
+              onClick={() => void deleteProcedureRecord(procedure)}
               style={tinyDangerButtonStyle}
             >
               Delete
             </button>
           ) : null}
+          {isMobile ? (
+            <button type="button" onClick={closeProcedureViewer} style={secondaryButtonStyle}>
+              Close
+            </button>
+          ) : null}
         </div>
       </div>
 
-      <div style={{ ...cardStyle, background: "#F8FAFC" }}>
-        <div style={eyebrowStyle}>Build Draft from Notes</div>
-        <Field
-          label="Paste notes, a manual excerpt, work-order details, or a photo description"
-          value={procedureDraftNotes}
-          onChange={setProcedureDraftNotes}
-          multiline
-        />
-        <div style={{ ...buttonRowStyle, marginTop: 10 }}>
-          <button
-            type="button"
-            onClick={generateProcedureDraft}
-            style={goldButtonStyle}
-          >
-            Generate Procedure Draft
-          </button>
-        </div>
-        {procedureMessage ? (
-          <p style={{ ...mutedSmallStyle, marginTop: 8 }}>
-            {procedureMessage}
-          </p>
-        ) : null}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+          gap: 10,
+        }}
+      >
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={mutedSmallStyle}>Title</span>
+          <input
+            value={procedure.title || ""}
+            onChange={(e) =>
+              updateProcedure({ title: e.currentTarget.value, updatedAt: new Date().toISOString() })
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={mutedSmallStyle}>Area</span>
+          <input
+            value={procedure.area || ""}
+            onChange={(e) =>
+              updateProcedure({ area: e.currentTarget.value, updatedAt: new Date().toISOString() })
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={mutedSmallStyle}>Category</span>
+          <input
+            value={procedure.category || ""}
+            onChange={(e) =>
+              updateProcedure({ category: e.currentTarget.value, updatedAt: new Date().toISOString() })
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={mutedSmallStyle}>Estimated Time</span>
+          <input
+            value={procedure.estimatedTime || ""}
+            onChange={(e) =>
+              updateProcedure({ estimatedTime: e.currentTarget.value, updatedAt: new Date().toISOString() })
+            }
+            style={inputStyle}
+          />
+        </label>
       </div>
 
-      <div style={formGridStyle}>
-        <Field
-          label="Title"
-          value={selectedProcedure.title}
-          onChange={(value) =>
-            updateProcedure({
-              title: value,
-              updatedAt: new Date().toISOString(),
-            })
+      <div style={cardStyle}>
+        <div style={eyebrowStyle}>Notes</div>
+        <textarea
+          value={procedure.purpose || ""}
+          onChange={(e) =>
+            updateProcedure({ purpose: e.currentTarget.value, updatedAt: new Date().toISOString() })
           }
-        />
-        <Field
-          label="Area"
-          value={selectedProcedure.area}
-          onChange={(value) =>
-            updateProcedure({
-              area: value,
-              updatedAt: new Date().toISOString(),
-            })
-          }
-        />
-        <Field
-          label="Category"
-          value={selectedProcedure.category || ""}
-          onChange={(value) =>
-            updateProcedure({
-              category: value,
-              updatedAt: new Date().toISOString(),
-            })
-          }
-        />
-        <SelectField
-          label="Status"
-          value={selectedProcedure.status || "Draft"}
-          onChange={(value) =>
-            updateProcedure({
-              status: value as ProcedureRecord["status"],
-              updatedAt: new Date().toISOString(),
-            })
-          }
-          options={
-            ["Draft", "SOP", "Preventive Maintenance", "Landscaping"] as const
-          }
-        />
-        <SelectField
-          label="Priority"
-          value={selectedProcedure.priority}
-          onChange={(value) =>
-            updateProcedure({
-              priority: value,
-              updatedAt: new Date().toISOString(),
-            })
-          }
-          options={["High", "Normal", "Seasonal"] as const}
-        />
-        <Field
-          label="Estimated Time"
-          value={selectedProcedure.estimatedTime || ""}
-          onChange={(value) =>
-            updateProcedure({
-              estimatedTime: value,
-              updatedAt: new Date().toISOString(),
-            })
-          }
-        />
-        <Field
-          label="Purpose / Notes"
-          value={selectedProcedure.purpose || ""}
-          onChange={(value) =>
-            updateProcedure({
-              purpose: value,
-              updatedAt: new Date().toISOString(),
-            })
-          }
-          multiline
-        />
-        <Field
-          label="Safety Notes"
-          value={selectedProcedure.safetyNotes || ""}
-          onChange={(value) =>
-            updateProcedure({
-              safetyNotes: value,
-              updatedAt: new Date().toISOString(),
-            })
-          }
-          multiline
-        />
-        <Field
-          label="Tools / Parts Overview"
-          value={selectedProcedure.toolsParts || ""}
-          onChange={(value) =>
-            updateProcedure({
-              toolsParts: value,
-              updatedAt: new Date().toISOString(),
-            })
-          }
-          multiline
-        />
-        <Field
-          label="Required Tools, one per line"
-          value={(selectedProcedure.requiredTools || []).join("\n")}
-          onChange={(value) =>
-            updateProcedure({
-              requiredTools: value
-                .split("\n")
-                .map((item) => item.trim())
-                .filter(Boolean),
-              updatedAt: new Date().toISOString(),
-            })
-          }
-          multiline
-        />
-        <Field
-          label="Required Parts, one per line"
-          value={(selectedProcedure.requiredParts || []).join("\n")}
-          onChange={(value) =>
-            updateProcedure({
-              requiredParts: value
-                .split("\n")
-                .map((item) => item.trim())
-                .filter(Boolean),
-              updatedAt: new Date().toISOString(),
-            })
-          }
-          multiline
+          placeholder="Purpose, notes, reminders, or important details…"
+          style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
         />
       </div>
 
@@ -400,40 +203,50 @@ export default function AtlasProceduresWorkspace(props: any) {
         >
           <div>
             <div style={eyebrowStyle}>Procedure Checklist</div>
-            <strong>{selectedProcedure.steps.length} steps</strong>
+            <strong>{(procedure.steps || []).length} steps</strong>
           </div>
           <button
             type="button"
-            onClick={() =>
-              updateProcedureSteps([...selectedProcedure.steps, "New step"])
-            }
+            onClick={() => updateProcedureSteps([...(procedure.steps || []), "New step"])}
             style={smallSubtleButtonStyle}
           >
             Add Step
           </button>
         </div>
+
         <div style={{ display: "grid", gap: 8 }}>
-          {selectedProcedure.steps.map((step, index) => (
+          {(procedure.steps || []).map((step: string, index: number) => (
             <div
-              key={`${selectedProcedure.id}-step-${index}`}
+              key={`${procedure.id || "new"}-step-${index}`}
               style={{
                 display: "grid",
-                gridTemplateColumns: "32px minmax(0, 1fr) auto",
+                gridTemplateColumns: isMobile ? "28px minmax(0,1fr)" : "30px minmax(0,1fr) auto",
                 gap: 8,
                 alignItems: "center",
+                padding: 8,
+                border: `1px solid ${c.line}`,
+                borderRadius: 9,
+                background: "#FFFFFF",
               }}
             >
               <strong style={{ textAlign: "center" }}>{index + 1}</strong>
               <input
                 value={step}
-                onChange={(event) => {
-                  const next = [...selectedProcedure.steps];
-                  next[index] = event.currentTarget.value;
+                onChange={(e) => {
+                  const next = [...(procedure.steps || [])];
+                  next[index] = e.currentTarget.value;
                   updateProcedureSteps(next);
                 }}
                 style={inputStyle}
               />
-              <div style={{ display: "flex", gap: 4 }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  gridColumn: isMobile ? "2" : undefined,
+                  justifyContent: isMobile ? "flex-start" : undefined,
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => moveProcedureStep(index, -1)}
@@ -445,7 +258,7 @@ export default function AtlasProceduresWorkspace(props: any) {
                 <button
                   type="button"
                   onClick={() => moveProcedureStep(index, 1)}
-                  disabled={index === selectedProcedure.steps.length - 1}
+                  disabled={index === (procedure.steps || []).length - 1}
                   style={smallSubtleButtonStyle}
                 >
                   ↓
@@ -454,41 +267,66 @@ export default function AtlasProceduresWorkspace(props: any) {
                   type="button"
                   onClick={() =>
                     updateProcedureSteps(
-                      selectedProcedure.steps.filter(
-                        (_, itemIndex) => itemIndex !== index,
-                      ),
+                      (procedure.steps || []).filter((_: string, i: number) => i !== index),
                     )
                   }
                   style={tinyDangerButtonStyle}
                 >
-                  {closeSymbol}
+                  Delete
                 </button>
               </div>
             </div>
           ))}
-          {!selectedProcedure.steps.length ? (
+
+          {!(procedure.steps || []).length ? (
             <div style={noticeStyle}>Add the first checklist step.</div>
           ) : null}
         </div>
       </div>
 
-      <div style={cardStyle}>
-        <div style={eyebrowStyle}>Linked Records</div>
-        <div style={{ display: "grid", gap: 12 }}>
+      <details style={cardStyle}>
+        <summary style={{ cursor: "pointer", fontWeight: 850, color: c.navy }}>
+          More Procedure Details
+        </summary>
+        <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span style={mutedSmallStyle}>Safety Notes</span>
+            <textarea
+              value={procedure.safetyNotes || ""}
+              onChange={(e) =>
+                updateProcedure({
+                  safetyNotes: e.currentTarget.value,
+                  updatedAt: new Date().toISOString(),
+                })
+              }
+              style={{ ...inputStyle, minHeight: 70, resize: "vertical" }}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 5 }}>
+            <span style={mutedSmallStyle}>Tools / Parts</span>
+            <textarea
+              value={procedure.toolsParts || ""}
+              onChange={(e) =>
+                updateProcedure({
+                  toolsParts: e.currentTarget.value,
+                  updatedAt: new Date().toISOString(),
+                })
+              }
+              style={{ ...inputStyle, minHeight: 70, resize: "vertical" }}
+            />
+          </label>
+
           <div>
-            <strong>Assets</strong>
+            <strong style={{ color: c.navy }}>Linked Assets</strong>
             <div style={{ ...buttonRowStyle, marginTop: 6 }}>
-              {assetRecords.map((asset) => (
+              {assetRecords.map((asset: any) => (
                 <button
                   key={asset.id}
                   type="button"
-                  onClick={() =>
-                    toggleProcedureLink("linkedAssetIds", asset.id)
-                  }
+                  onClick={() => toggleProcedureLink("linkedAssetIds", asset.id)}
                   style={
-                    (selectedProcedure.linkedAssetIds || []).includes(
-                      asset.id,
-                    )
+                    (procedure.linkedAssetIds || []).includes(asset.id)
                       ? goldButtonStyle
                       : smallSubtleButtonStyle
                   }
@@ -498,20 +336,17 @@ export default function AtlasProceduresWorkspace(props: any) {
               ))}
             </div>
           </div>
+
           <div>
-            <strong>Locations</strong>
+            <strong style={{ color: c.navy }}>Linked Locations</strong>
             <div style={{ ...buttonRowStyle, marginTop: 6 }}>
-              {locations.map((location) => (
+              {locations.map((location: any) => (
                 <button
                   key={location.id}
                   type="button"
-                  onClick={() =>
-                    toggleProcedureLink("linkedLocationIds", location.id)
-                  }
+                  onClick={() => toggleProcedureLink("linkedLocationIds", location.id)}
                   style={
-                    (selectedProcedure.linkedLocationIds || []).includes(
-                      location.id,
-                    )
+                    (procedure.linkedLocationIds || []).includes(location.id)
                       ? goldButtonStyle
                       : smallSubtleButtonStyle
                   }
@@ -521,20 +356,17 @@ export default function AtlasProceduresWorkspace(props: any) {
               ))}
             </div>
           </div>
+
           <div>
-            <strong>Vendors</strong>
+            <strong style={{ color: c.navy }}>Linked Vendors</strong>
             <div style={{ ...buttonRowStyle, marginTop: 6 }}>
-              {vendorRecords.map((vendor) => (
+              {vendorRecords.map((vendor: any) => (
                 <button
                   key={vendor.id}
                   type="button"
-                  onClick={() =>
-                    toggleProcedureLink("linkedVendorIds", vendor.id)
-                  }
+                  onClick={() => toggleProcedureLink("linkedVendorIds", vendor.id)}
                   style={
-                    (selectedProcedure.linkedVendorIds || []).includes(
-                      vendor.id,
-                    )
+                    (procedure.linkedVendorIds || []).includes(vendor.id)
                       ? goldButtonStyle
                       : smallSubtleButtonStyle
                   }
@@ -545,20 +377,18 @@ export default function AtlasProceduresWorkspace(props: any) {
             </div>
           </div>
         </div>
-      </div>
+      </details>
 
       <div style={cardStyle}>
-        <div style={eyebrowStyle}>Photos and Documents</div>
-        <div style={buttonRowStyle}>
+        <div style={eyebrowStyle}>Photos & Documents</div>
+        <div style={{ ...buttonRowStyle, marginTop: 8 }}>
           <label style={{ ...secondaryButtonStyle, cursor: "pointer" }}>
             Add Photos
             <input
               type="file"
               accept="image/*"
               multiple
-              onChange={(event) =>
-                void uploadProcedureFiles("photos", event.currentTarget.files)
-              }
+              onChange={(e) => void uploadProcedureFiles("photos", e.currentTarget.files)}
               style={{ display: "none" }}
             />
           </label>
@@ -567,43 +397,37 @@ export default function AtlasProceduresWorkspace(props: any) {
             <input
               type="file"
               multiple
-              onChange={(event) =>
-                void uploadProcedureFiles(
-                  "documents",
-                  event.currentTarget.files,
-                )
-              }
+              onChange={(e) => void uploadProcedureFiles("documents", e.currentTarget.files)}
               style={{ display: "none" }}
             />
           </label>
         </div>
-        {(selectedProcedure.photos || []).length ? (
-          <details style={{ marginTop: 12, border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF" }}>
-            <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({(selectedProcedure.photos || []).length})</summary>
-            <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
-            {(selectedProcedure.photos || []).map((photo) => (
+
+        {(procedure.photos || []).length ? (
+          <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+            {(procedure.photos || []).map((photo: any) => (
               <button
                 key={photo.id}
                 type="button"
                 onClick={() => setPreviewFile(photo)}
-                style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: "7px 8px", background: "#FFFFFF", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}
+                style={secondaryButtonStyle}
               >
                 {photo.name || "Procedure photo"}
               </button>
             ))}
-            </div>
-          </details>
+          </div>
         ) : null}
-        {(selectedProcedure.documents || []).length ? (
-          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-            {(selectedProcedure.documents || []).map((document) => (
+
+        {(procedure.documents || []).length ? (
+          <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+            {(procedure.documents || []).map((doc: any) => (
               <button
-                key={document.id}
+                key={doc.id}
                 type="button"
-                onClick={() => openUploadedFile(document)}
+                onClick={() => openUploadedFile(doc)}
                 style={secondaryButtonStyle}
               >
-                {document.name}
+                {doc.name || "Document"}
               </button>
             ))}
           </div>
@@ -611,460 +435,116 @@ export default function AtlasProceduresWorkspace(props: any) {
       </div>
 
       <div style={buttonRowStyle}>
-        {isRecordDirty("procedure", selectedProcedure.id) ? (
+        {procedure.id && isRecordDirty("procedure", procedure.id) ? (
           <button
             type="button"
             onClick={() =>
               void saveDirtyRecord(
                 "procedures",
-                selectedProcedure,
+                procedure,
                 "procedure",
-                selectedProcedure.id,
+                procedure.id,
               )
             }
             style={goldButtonStyle}
           >
             Save Procedure
           </button>
-        ) : (
-          <span style={badgeStyle("Completed")}>Saved</span>
-        )}
-        {isMobile ? (
-          <button
-            type="button"
-            onClick={closeProcedureViewer}
-            style={secondaryButtonStyle}
-          >
-            Close
-          </button>
+        ) : procedure.id ? (
+          <span style={{ color: c.muted, fontSize: 12, fontWeight: 800 }}>Saved</span>
         ) : null}
       </div>
-
-      <section
-        className="atlas-procedure-print"
-        aria-label={`Printable procedure: ${selectedProcedure.title || "New Procedure"}`}
-      >
-        <header className="atlas-procedure-print__header">
-          <div>
-            <div className="atlas-procedure-print__eyebrow">
-              ATLAS PROCEDURE
-            </div>
-            <h1>{selectedProcedure.title.trim() || "New Procedure"}</h1>
-          </div>
-          <div className="atlas-procedure-print__meta-grid">
-            <div>
-              <strong>Status</strong>
-              <span>{selectedProcedure.status || "Draft"}</span>
-            </div>
-            <div>
-              <strong>Priority</strong>
-              <span>{selectedProcedure.priority || "Normal"}</span>
-            </div>
-            <div>
-              <strong>Area</strong>
-              <span>{selectedProcedure.area || "—"}</span>
-            </div>
-            <div>
-              <strong>Category</strong>
-              <span>{selectedProcedure.category || "General"}</span>
-            </div>
-            <div>
-              <strong>Estimated Time</strong>
-              <span>{selectedProcedure.estimatedTime || "—"}</span>
-            </div>
-            <div>
-              <strong>Updated</strong>
-              <span>
-                {selectedProcedure.updatedAt
-                  ? formatDate(selectedProcedure.updatedAt)
-                  : "—"}
-              </span>
-            </div>
-          </div>
-        </header>
-
-        {selectedProcedure.purpose ? (
-          <section className="atlas-procedure-print__section">
-            <h2>Purpose</h2>
-            <p>{selectedProcedure.purpose}</p>
-          </section>
-        ) : null}
-        {selectedProcedure.safetyNotes ? (
-          <section className="atlas-procedure-print__section atlas-procedure-print__safety">
-            <h2>Safety Notes</h2>
-            <p>{selectedProcedure.safetyNotes}</p>
-          </section>
-        ) : null}
-        {selectedProcedure.toolsParts ? (
-          <section className="atlas-procedure-print__section">
-            <h2>Tools / Parts Overview</h2>
-            <p>{selectedProcedure.toolsParts}</p>
-          </section>
-        ) : null}
-
-        {(selectedProcedure.requiredTools || []).length ||
-        (selectedProcedure.requiredParts || []).length ? (
-          <section className="atlas-procedure-print__two-column">
-            {(selectedProcedure.requiredTools || []).length ? (
-              <div>
-                <h2>Required Tools</h2>
-                <ul>
-                  {(selectedProcedure.requiredTools || []).map(
-                    (item, index) => (
-                      <li key={`print-tool-${index}`}>{item}</li>
-                    ),
-                  )}
-                </ul>
-              </div>
-            ) : null}
-            {(selectedProcedure.requiredParts || []).length ? (
-              <div>
-                <h2>Required Parts</h2>
-                <ul>
-                  {(selectedProcedure.requiredParts || []).map(
-                    (item, index) => (
-                      <li key={`print-part-${index}`}>{item}</li>
-                    ),
-                  )}
-                </ul>
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        <section className="atlas-procedure-print__section">
-          <h2>Checklist</h2>
-          {(selectedProcedure.steps || []).length ? (
-            <ol className="atlas-procedure-print__steps">
-              {(selectedProcedure.steps || []).map((step, index) => (
-                <li key={`print-step-${index}`}>
-                  <span
-                    className="atlas-procedure-print__checkbox"
-                    aria-hidden="true"
-                  />{" "}
-                  <span>{step}</span>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p>No checklist steps.</p>
-          )}
-        </section>
-
-        <section className="atlas-procedure-print__linked-grid">
-          <div>
-            <h2>Linked Assets</h2>
-            <p>
-              {assetRecords
-                .filter((asset) =>
-                  (selectedProcedure.linkedAssetIds || []).includes(asset.id),
-                )
-                .map((asset) => asset.name)
-                .join(", ") || "None"}
-            </p>
-          </div>
-          <div>
-            <h2>Linked Locations</h2>
-            <p>
-              {locations
-                .filter((location) =>
-                  (selectedProcedure.linkedLocationIds || []).includes(
-                    location.id,
-                  ),
-                )
-                .map((location) => location.name)
-                .join(", ") || "None"}
-            </p>
-          </div>
-          <div>
-            <h2>Linked Vendors</h2>
-            <p>
-              {vendorRecords
-                .filter((vendor) =>
-                  (selectedProcedure.linkedVendorIds || []).includes(
-                    vendor.id,
-                  ),
-                )
-                .map((vendor) => vendor.name)
-                .join(", ") || "None"}
-            </p>
-          </div>
-        </section>
-
-        {(selectedProcedure.photos || []).length ? (
-          <section className="atlas-procedure-print__section">
-            <h2>Photos</h2>
-            <div className="atlas-procedure-print__photos">
-              {(selectedProcedure.photos || []).map((photo) => (
-                <figure key={`print-photo-${photo.id}`}>
-                  <img src={photo.dataUrl || photo.url} alt={photo.name} />
-                  <figcaption>{photo.name}</figcaption>
-                </figure>
-              ))}
-            </div>
-          </section>
-        ) : null}
-        {(selectedProcedure.documents || []).length ? (
-          <section className="atlas-procedure-print__section">
-            <h2>Documents</h2>
-            <ul>
-              {(selectedProcedure.documents || []).map((document) => (
-                <li key={`print-document-${document.id}`}>{document.name}</li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-      </section>
     </div>
   ) : (
     <div style={noticeStyle}>
       <strong>Select a procedure.</strong>
-      <p style={mutedSmallStyle}>
+      <div style={{ ...mutedSmallStyle, marginTop: 4 }}>
         Choose one from the list or add a new procedure.
-      </p>
+      </div>
     </div>
   );
 
   return (
-    <>
-      {!isMobile ? (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <div style={eyebrowStyle}>Procedures</div>
-              <h2 style={{ margin: "2px 0", color: colors.navy }}>Procedures</h2>
-              <p style={{ ...mutedSmallStyle, margin: 0 }}>
-                Select a procedure on the left. Edit its checklist and supporting information on the right.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => createProcedureRecord()}
-              style={goldButtonStyle}
-            >
-              Add Procedure
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(250px, 330px) minmax(0, 1fr)",
-              gap: 12,
-              alignItems: "start",
-            }}
-          >
-            <aside
-              style={{
-                ...cardStyle,
-                padding: 9,
-                position: "sticky",
-                top: 10,
-                maxHeight: "calc(100vh - 120px)",
-                overflowY: "auto",
-              }}
-            >
-              <div style={{ ...eyebrowStyle, margin: "3px 4px 8px" }}>
-                Procedure List
-              </div>
-              <div style={{ display: "grid", gap: 6 }}>
-                {filteredProcedures.map((procedure) => {
-                  const active = procedure.id === selectedProcedure.id;
-                  return (
-                    <button
-                      key={procedure.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedProcedureId(procedure.id);
-                        setProcedureDraftNotes("");
-                        setProcedureMessage("");
-                      }}
-                      style={{
-                        ...rowButtonStyle,
-                        width: "100%",
-                        textAlign: "left",
-                        borderColor: active ? colors.gold : colors.line,
-                        background: active ? "#FFF9E8" : "#FFFFFF",
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <strong style={{ display: "block", color: colors.navy }}>
-                          {procedure.title}
-                        </strong>
-                        <p style={{ ...mutedSmallStyle, margin: "3px 0 0" }}>
-                          {procedure.area || "General"} · {procedure.steps.length} steps
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-                {!filteredProcedures.length ? (
-                  <div style={noticeStyle}>No procedures yet.</div>
-                ) : null}
-              </div>
-            </aside>
-
-            <main
-              style={{
-                ...cardStyle,
-                minWidth: 0,
-                padding: 14,
-              }}
-            >
-              {procedureEditor}
-            </main>
+    <div style={{ display: "grid", gap: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <div style={eyebrowStyle}>Procedures</div>
+          <h1 style={{ margin: "2px 0 3px", color: c.navy }}>Procedures</h1>
+          <div style={mutedSmallStyle}>
+            Select a procedure, then work through or edit its checklist.
           </div>
         </div>
-      ) : (
-        <ListDrawerLayout
-          eyebrow="Procedures"
-          title="Procedures"
-          detail="Create reusable SOPs, preventive-maintenance instructions, and landscaping procedures."
-          isMobile={isMobile}
-          drawerResetKey={selectedProcedure.id || "procedure-new"}
-          drawer={undefined}
-          right={
-            <button
-              type="button"
-              onClick={() => createProcedureRecord()}
-              style={goldButtonStyle}
-            >
-              Add Procedure
-            </button>
-          }
-          list={
-            <div style={listStyle}>
-              {filteredProcedures.map((procedure) => (
-                <button
-                  key={procedure.id}
-                  type="button"
-                  onClick={() => {
-                    procedureListScrollYRef.current = window.scrollY;
-                    setSelectedProcedureId(procedure.id);
-                    setProcedureDraftNotes("");
-                    setProcedureMessage("");
-                  }}
-                  style={{
-                    ...rowButtonStyle,
-                    borderColor:
-                      procedure.id === selectedProcedure.id
-                        ? colors.gold
-                        : colors.line,
-                  }}
-                >
-                  <div>
-                    <strong>{procedure.title}</strong>
-                    <p style={mutedSmallStyle}>
-                      {procedure.area} · {procedure.category || "General"} ·{" "}
-                      {procedure.steps.length} steps
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          }
-        />
-      )}
 
-      {isMobile && selectedProcedureId ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Procedure editor: ${selectedProcedure.title || "New Procedure"}`}
-          onClick={closeProcedureViewer}
+        <button type="button" onClick={() => createProcedureRecord()} style={goldButtonStyle}>
+          Add Procedure
+        </button>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "minmax(240px, 320px) minmax(0, 1fr)",
+          gap: 12,
+          alignItems: "start",
+        }}
+      >
+        <aside
           style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1600,
-            background: "rgba(7, 23, 47, 0.76)",
-            padding:
-              "max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom))",
-            display: "flex",
-            alignItems: "stretch",
-            justifyContent: "center",
+            ...cardStyle,
+            padding: 8,
+            maxHeight: isMobile ? undefined : "calc(100vh - 130px)",
+            overflowY: "auto",
+            position: isMobile ? "static" : "sticky",
+            top: isMobile ? undefined : 10,
           }}
         >
-          <div
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 760,
-              height:
-                "calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
-              minHeight: 0,
-              borderRadius: 20,
-              overflow: "hidden",
-              background: "#FFFFFF",
-              boxShadow: "0 24px 80px rgba(0,0,0,0.38)",
-              display: "grid",
-              gridTemplateRows: "auto minmax(0, 1fr)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                padding: "10px 10px 10px 14px",
-                borderBottom: `1px solid ${colors.line}`,
-                background: "#FFFFFF",
-              }}
-            >
-              <strong
-                style={{
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {selectedProcedure.title || "New Procedure"}
-              </strong>
-              <button
-                type="button"
-                onClick={closeProcedureViewer}
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 999,
-                  border: `1px solid ${colors.line}`,
-                  background: colors.navy3,
-                  color: "#FFFFFF",
-                  fontSize: 22,
-                  fontWeight: 900,
-                  lineHeight: 1,
-                  cursor: "pointer",
-                }}
-                aria-label="Close procedure editor"
-              >
-                {closeSymbol}
-              </button>
-            </div>
-            <div
-              ref={procedureOverlayScrollRef}
-              style={{
-                minHeight: 0,
-                overflowY: "auto",
-                overflowX: "hidden",
-                overscrollBehavior: "contain",
-                WebkitOverflowScrolling: "touch",
-                padding: 12,
-              }}
-            >
-              {procedureEditor}
-            </div>
+          <div style={{ ...eyebrowStyle, margin: "4px 5px 8px" }}>Procedure List</div>
+          <div style={{ display: "grid", gap: 6 }}>
+            {filteredProcedures.map((item: any) => {
+              const active = item.id === selectedProcedureId;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => chooseProcedure(item.id)}
+                  style={{
+                    ...rowButtonStyle,
+                    width: "100%",
+                    textAlign: "left",
+                    borderColor: active ? c.gold : c.line,
+                    background: active ? "#FFF8E5" : "#FFFFFF",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ display: "block", color: c.navy }}>
+                      {item.title || "Untitled Procedure"}
+                    </strong>
+                    <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
+                      {item.area || "General"} · {(item.steps || []).length} steps
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+
+            {!filteredProcedures.length ? (
+              <div style={noticeStyle}>No procedures yet.</div>
+            ) : null}
           </div>
-        </div>
-      ) : null}
-    </>
+        </aside>
+
+        <main style={{ ...cardStyle, minWidth: 0, padding: 14 }}>
+          {editor}
+        </main>
+      </div>
+    </div>
   );
 }
