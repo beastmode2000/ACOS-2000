@@ -696,6 +696,7 @@ export default function AtlasDashboardWorkspace(props: any) {
             defaultTodayAssignee="Addison"
             allowTodayEditing
             employeeView
+            teamDirectory={teamDirectory}
             onAddNote={addRoutineNote}
             onFlagProblem={flagRoutineProblem}
           />
