@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type Row = Record<string, unknown>;
 type Role = "Master" | "Administrator" | "Manager" | "Employee" | "Vendor" | "Viewer";
 type Permissions = { view:boolean; edit:boolean; approve:boolean; delete:boolean; manageUsers:boolean };
-type Member = { id: string; name: string; email: string; role: Role; active: boolean; propertyIds:string[]; permissions:Permissions; inviteStatus?:string };
+type Member = { id: string; name: string; email: string; role: Role; active: boolean; propertyIds:string[]; permissions:Permissions; accessProfiles:string[]; inviteStatus?:string };
 type ReportKey = "workOrders" | "assets" | "vendors" | "contacts" | "procedures" | "calendar" | "documents";
 
 type Props = {
@@ -15,9 +15,9 @@ type Props = {
 };
 
 const defaultTeam: Member[] = [
-  { id: "nick", name: "Nick Thornton", email: "nthornton87@yahoo.com", role: "Master", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
-  { id: "steve", name: "Steve", email: "stevem@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
-  { id: "kenji", name: "Kenji", email: "kenjij@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true} },
+  { id: "nick", name: "Nick Thornton", email: "nthornton87@yahoo.com", role: "Master", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, accessProfiles:[] },
+  { id: "steve", name: "Steve", email: "stevem@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, accessProfiles:[] },
+  { id: "kenji", name: "Kenji", email: "kenjij@arcticmgnt.com", role: "Administrator", active: true, propertyIds:["2000","6855","3661","hangar"], permissions:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, accessProfiles:[] },
 ];
 const reports: Array<[ReportKey, string]> = [
   ["workOrders", "Work Orders"], ["assets", "Assets"], ["vendors", "Vendors"],
@@ -34,6 +34,19 @@ const descriptions: Record<Role, string> = {
 };
 const properties = [["2000","2000"],["6855","6855"],["3661","3661"],["hangar","Hangar"]] as const;
 const permissionLabels: Array<[keyof Permissions,string]> = [["view","View"],["edit","Edit"],["approve","Approve"],["delete","Delete"],["manageUsers","Manage Users"]];
+
+const accessProfileOptions = [
+  ["marine", "🌊 Marine"],
+  ["landscaping", "🌳 Landscaping"],
+  ["house", "🏠 House"],
+  ["maintenance", "🔧 Maintenance"],
+  ["pool-spa", "🏊 Pool & Spa"],
+  ["vehicles", "🚗 Vehicles"],
+  ["electrical", "⚡ Electrical"],
+  ["plumbing", "🚰 Plumbing"],
+  ["inventory", "📦 Inventory"],
+] as const;
+
 const roleDefaults: Record<Role, Permissions> = {
   Master:{view:true,edit:true,approve:true,delete:true,manageUsers:true}, Administrator:{view:true,edit:true,approve:true,delete:true,manageUsers:true},
   Manager:{view:true,edit:true,approve:true,delete:false,manageUsers:false}, Employee:{view:true,edit:true,approve:false,delete:false,manageUsers:false},
@@ -87,6 +100,8 @@ function printReport(title: string, rows: Row[]) {
           ["assetId", "Asset"],
           ["locationId", "Location"],
           ["vendorId", "Vendor"],
+          ["estimatedCost", "Estimated"],
+          ["actualCost", "Actual"],
           ["invoiceNumber", "Invoice"],
         ]
       : reportKey.includes("asset")
@@ -226,6 +241,8 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<Role>("Employee");
   const [newPropertyIds, setNewPropertyIds] = useState<string[]>(["2000"]);
+  const [newAccessProfiles, setNewAccessProfiles] = useState<string[]>([]);
+  const [inviteLink, setInviteLink] = useState("");
   const [backups, setBackups] = useState<Array<Record<string, unknown>>>([]);
   const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
   const [search, setSearch] = useState("");
@@ -235,6 +252,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [assignedFilter, setAssignedFilter] = useState("All");
   const [alertMode, setAlertMode] = useState<"" | "overdue" | "high" | "week">("");
+  const [centerSection, setCenterSection] = useState<"reports" | "access" | "system">("reports");
 
   useEffect(() => {
     void fetch("/api/atlas-team")
@@ -246,6 +264,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
           role: member.role === "master" ? "Master" : member.role === "administrator" ? "Administrator" : member.role === "manager" ? "Manager" : member.role === "employee" || member.role === "operations" ? "Employee" : member.role === "vendor" ? "Vendor" : "Viewer",
           propertyIds: Array.isArray((member as any).propertyIds) ? (member as any).propertyIds : ["2000"],
           permissions: { ...roleDefaults.Viewer, ...((member as any).permissions || {}) },
+          accessProfiles: Array.isArray((member as any).accessProfiles) ? (member as any).accessProfiles.map(String) : [],
         })));
       })
       .catch(() => setMessage("Atlas could not load shared access settings."));
@@ -263,30 +282,6 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
     setMessage("");
   }
 
-  async function deleteMember(member: Member) {
-    if (member.role === "Master" || member.id === "nick") {
-      setMessage("The Master account cannot be deleted.");
-      return;
-    }
-    if (!window.confirm(`Delete ${member.name} from Atlas?`)) return;
-
-    setMessage(`Deleting ${member.name}...`);
-    const response = await fetch("/api/atlas-team", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", memberId: member.id }),
-    });
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok || !payload.ok) {
-      setMessage(String(payload.error || "Atlas user could not be deleted."));
-      return;
-    }
-
-    setTeam((current) => current.filter((item) => item.id !== member.id));
-    setMessage(`${member.name} deleted.`);
-  }
-
   async function saveAccess() {
     setMessage("Saving shared access settings...");
     const response = await fetch("/api/atlas-team", {
@@ -301,38 +296,14 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   }
 
   async function createInvite() {
-    if (!newName.trim() || !newEmail.includes("@")) {
-      setMessage("Enter the employee name and email.");
-      return;
-    }
-
-    setMessage(`Sending invite to ${newEmail.trim()}...`);
-    const response = await fetch("/api/atlas-team", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "invite",
-        member: {
-          id: `team-${Date.now()}`,
-          name: newName.trim(),
-          email: newEmail.trim(),
-          role: newRole.toLowerCase(),
-          active: true,
-          propertyIds: newPropertyIds,
-          permissions: roleDefaults[newRole],
-        },
-      }),
-    });
+    if (!newName.trim() || !newEmail.includes("@")) { setMessage("Enter the employee name and email."); return; }
+    const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"invite", member:{ id:`team-${Date.now()}`, name:newName.trim(), email:newEmail.trim(), role:newRole.toLowerCase(), active:true, propertyIds:newPropertyIds, permissions:roleDefaults[newRole], accessProfiles:newAccessProfiles } }) });
     const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok || !payload.ok || payload.emailSent !== true) {
-      setMessage(String(payload.error || "Atlas could not send the invitation email."));
-      return;
-    }
-
-    setMessage(`Invite sent to ${newEmail.trim()}.`);
-    setNewName("");
-    setNewEmail("");
+    if (!response.ok || !payload.ok) { setMessage(String(payload.error || "Invitation could not be created.")); return; }
+    const link = `${window.location.origin}${payload.invitePath}`;
+    setInviteLink(link);
+    await navigator.clipboard?.writeText(link);
+    setMessage("Secure invitation link created and copied.");
   }
 
   function downloadBackup() {
@@ -408,136 +379,352 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
     setReport("workOrders"); clearFilters(); setAlertMode(mode);
   }
 
-  const card = { border: `1px solid ${colors.line}`, borderRadius: 16, background: colors.card, padding: 18 };
-  const control = { width: "100%", minHeight: 42, border: `1px solid ${colors.line}`, borderRadius: 10, padding: "9px 11px", background: "#fff" };
-  const button = { border: 0, borderRadius: 10, background: colors.gold, color: colors.navy, padding: "11px 15px", fontWeight: 950, cursor: "pointer" };
+  const card = {
+    border: `1px solid ${colors.line}`,
+    borderRadius: 16,
+    background: colors.card,
+    padding: isMobile ? 14 : 18,
+    boxShadow: "0 8px 24px rgba(7, 27, 47, 0.05)",
+  };
+  const control = {
+    width: "100%",
+    minHeight: 40,
+    border: `1px solid ${colors.line}`,
+    borderRadius: 10,
+    padding: "8px 10px",
+    background: "#fff",
+    color: colors.navy,
+    fontWeight: 750,
+  };
+  const button = {
+    border: 0,
+    borderRadius: 10,
+    background: colors.gold,
+    color: colors.navy,
+    padding: "10px 13px",
+    fontWeight: 950,
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+  };
+  const quietButton = {
+    ...button,
+    background: "#fff",
+    border: `1px solid ${colors.line}`,
+  };
+  const sectionLabel = {
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: 950,
+    letterSpacing: ".12em",
+    textTransform: "uppercase" as const,
+  };
+  const activeMemberCount = team.filter((member) => member.active).length;
+  const reportLabel = reports.find(([key]) => key === report)?.[1] || "Report";
+  const anyReportFilter = Boolean(
+    search || dateFrom || dateTo || statusFilter !== "All" || priorityFilter !== "All" || assignedFilter !== "All" || alertMode,
+  );
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <section style={card}>
-        <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Reports & Export</div>
-        <h2 style={{ margin: "5px 0", color: colors.navy }}>Download Atlas records</h2>
-        <p style={{ margin: "0 0 16px", color: colors.muted }}>Choose a report and download a spreadsheet-ready CSV file.</p>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1fr) auto", gap: 10 }}>
-          <select value={report} onChange={(event) => { setReport(event.currentTarget.value as ReportKey); clearFilters(); }} style={control}>
-            {reports.map(([value, label]) => <option key={value} value={value}>{label} ({data[value].length})</option>)}
-          </select>
-          <button type="button" onClick={() => downloadCsv(report, filteredRows)} disabled={!filteredRows.length} style={{ ...button, opacity: filteredRows.length ? 1 : .55 }}>Download Filtered CSV</button>
-        </div>
-        <button type="button" onClick={() => printReport(`Atlas ${reports.find(([key])=>key===report)?.[1] || "Report"}`, filteredRows)} disabled={!filteredRows.length} style={{...button,marginTop:10,background:"#fff",border:`1px solid ${colors.line}`,opacity:filteredRows.length?1:.55}}>Print / Save PDF</button>
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.4fr repeat(5,minmax(120px,.7fr)) auto",gap:8,marginTop:10}}>
-          <input value={search} onChange={(e)=>setSearch(e.currentTarget.value)} placeholder="Search this report" style={control}/>
-          <input type="date" value={dateFrom} onChange={(e)=>setDateFrom(e.currentTarget.value)} aria-label="From date" style={control}/>
-          <input type="date" value={dateTo} onChange={(e)=>setDateTo(e.currentTarget.value)} aria-label="To date" style={control}/>
-          <select value={statusFilter} onChange={(e)=>setStatusFilter(e.currentTarget.value)} style={control}><option>All</option>{statuses.map((value)=><option key={value}>{value}</option>)}</select>
-          <select value={priorityFilter} onChange={(e)=>setPriorityFilter(e.currentTarget.value)} style={control}><option>All</option>{priorities.map((value)=><option key={value}>{value}</option>)}</select>
-          <select value={assignedFilter} onChange={(e)=>setAssignedFilter(e.currentTarget.value)} disabled={report!=="workOrders"} style={control}><option>All</option>{assignments.map((value)=><option key={value}>{value}</option>)}</select>
-          <button type="button" onClick={clearFilters} style={{...button,background:"#fff",border:`1px solid ${colors.line}`}}>Clear</button>
-        </div>
-        <div style={{marginTop:10,color:colors.muted,fontSize:13}}>{filteredRows.length} matching record{filteredRows.length===1?"":"s"}</div>
-      </section>
-
-      <section style={card}>
-        <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Team & Permissions</div>
-        <h2 style={{ margin: "5px 0", color: colors.navy }}>Access profiles</h2>
-        <p style={{ margin: "0 0 16px", color: colors.muted }}>Keep roles simple. Passwords stay controlled by the existing secure Vercel settings.</p>
-        <div style={{ display: "grid", gap: 10 }}>
-          {team.map((member) => (
-            <div key={member.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 12, background: colors.panel, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px, 1.2fr) minmax(210px, 1.3fr) minmax(155px, .8fr) auto", gap: 10, alignItems: "center" }}>
-              <strong style={{ color: colors.navy }}>{member.name}</strong>
-              <span style={{ color: colors.muted, fontSize: 13 }}>{member.email}</span>
-              <select value={member.role} disabled={member.role === "Master"} onChange={(event) => { const role=event.currentTarget.value as Role; updateMember(member.id, { role, permissions:roleDefaults[role] }); }} style={control}>
-                {(["Master", "Administrator", "Manager", "Employee", "Vendor", "Viewer"] as Role[]).map((role) => <option key={role}>{role}</option>)}
-              </select>
-              <label style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 800, whiteSpace: "nowrap" }}>
-                <input type="checkbox" checked={member.active} disabled={member.role === "Master"} onChange={(event) => updateMember(member.id, { active: event.currentTarget.checked })} /> Active
-              </label>
-              <div style={{ gridColumn: isMobile ? "1" : "1 / -1", color: colors.muted, fontSize: 12 }}>{descriptions[member.role]}</div>
-              <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",gap:12,flexWrap:"wrap"}}>
-                <strong style={{color:colors.navy,fontSize:12}}>Properties:</strong>
-                {properties.map(([id,label])=><label key={id} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" disabled={member.role==="Master"} checked={member.propertyIds.includes(id)} onChange={(event)=>updateMember(member.id,{propertyIds:event.currentTarget.checked?[...member.propertyIds,id]:member.propertyIds.filter((value)=>value!==id)})}/>{label}</label>)}
-              </div>
-              <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",gap:12,flexWrap:"wrap"}}>
-                <strong style={{color:colors.navy,fontSize:12}}>Permissions:</strong>
-                {permissionLabels.map(([key,label])=><label key={key} style={{display:"flex",gap:5,alignItems:"center",fontSize:12,fontWeight:800}}><input type="checkbox" disabled={member.role==="Master"} checked={member.permissions[key]} onChange={(event)=>updateMember(member.id,{permissions:{...member.permissions,[key]:event.currentTarget.checked}})}/>{label}</label>)}
-              </div>
-              <div style={{gridColumn:isMobile?"1":"1 / -1",fontSize:12,fontWeight:900,color:member.inviteStatus==="Accepted"?colors.green:colors.muted}}>Invitation: {member.inviteStatus || "Existing Access"}</div>
-              {member.role !== "Master" && member.id !== "nick" ? (
-                <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",justifyContent:"flex-end"}}>
-                  <button
-                    type="button"
-                    onClick={()=>void deleteMember(member)}
-                    style={{...button,background:"#FFFFFF",color:"#B42318",border:"1px solid #FDA29B"}}
-                  >
-                    Delete User
-                  </button>
-                </div>
-              ) : null}
+    <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+      <section
+        style={{
+          borderRadius: 16,
+          background: colors.navy,
+          padding: isMobile ? "16px 14px" : "18px 20px",
+          color: "#fff",
+          display: "grid",
+          gap: 14,
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: colors.gold, fontSize: 10, fontWeight: 950, letterSpacing: ".14em", textTransform: "uppercase" }}>Administration</div>
+            <h1 style={{ margin: "4px 0 3px", fontSize: isMobile ? 23 : 28, lineHeight: 1.08 }}>Reports & Access</h1>
+            <div style={{ color: "rgba(255,255,255,.72)", fontSize: 13 }}>Reporting, team permissions, backups, and system history in one control center.</div>
+          </div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            <div style={{ border: "1px solid rgba(255,255,255,.16)", borderRadius: 10, padding: "8px 10px", minWidth: 84 }}>
+              <div style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", color: "rgba(255,255,255,.6)" }}>Records</div>
+              <strong style={{ fontSize: 17 }}>{Object.values(data).reduce((total, rows) => total + rows.length, 0)}</strong>
             </div>
+            <div style={{ border: "1px solid rgba(255,255,255,.16)", borderRadius: 10, padding: "8px 10px", minWidth: 84 }}>
+              <div style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", color: "rgba(255,255,255,.6)" }}>Active users</div>
+              <strong style={{ fontSize: 17 }}>{activeMemberCount}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {([[
+            "reports",
+            "Reports",
+          ], ["access", "Access"], ["system", "System"]] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setCenterSection(value)}
+              style={{
+                border: `1px solid ${centerSection === value ? colors.gold : "rgba(255,255,255,.18)"}`,
+                borderRadius: 9,
+                padding: "8px 12px",
+                background: centerSection === value ? colors.gold : "rgba(255,255,255,.06)",
+                color: centerSection === value ? colors.navy : "#fff",
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
           ))}
         </div>
-        <div style={{ marginTop:16, paddingTop:16, borderTop:`1px solid ${colors.line}`, display:"grid", gap:10 }}>
-          <strong style={{color:colors.navy}}>Add Team Member</strong>
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1.3fr .8fr auto",gap:10}}>
-            <input value={newName} onChange={(e)=>setNewName(e.currentTarget.value)} placeholder="Employee name" style={control}/>
-            <input value={newEmail} onChange={(e)=>setNewEmail(e.currentTarget.value)} placeholder="Employee email" style={control}/>
-            <select value={newRole} onChange={(e)=>setNewRole(e.currentTarget.value as Role)} style={control}><option>Administrator</option><option>Manager</option><option>Employee</option><option>Vendor</option><option>Viewer</option></select>
-            <button type="button" onClick={()=>void createInvite()} style={button}>Send Invite</button>
-          </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <strong style={{ color: colors.navy, fontSize: 12 }}>
-              Property access:
-            </strong>
+      </section>
 
-            {properties.map(([id, label]) => (
-              <label
-                key={id}
-                style={{
-                  display: "flex",
-                  gap: 5,
-                  alignItems: "center",
-                  fontSize: 12,
-                  fontWeight: 800,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={newPropertyIds.includes(id)}
-                  onChange={(event) => {
-                    const checked = event.currentTarget.checked;
+      {centerSection === "reports" ? (
+        <>
+          <section style={card}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+              <div>
+                <div style={sectionLabel}>Reporting</div>
+                <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>Property reports</h2>
+                <p style={{ margin: 0, color: colors.muted, fontSize: 13 }}>Filter the live Atlas records, then export only what you need.</p>
+              </div>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <button type="button" onClick={() => printReport(`Atlas ${reportLabel}`, filteredRows)} disabled={!filteredRows.length} style={{ ...quietButton, opacity: filteredRows.length ? 1 : .55 }}>Print / PDF</button>
+                <button type="button" onClick={() => downloadCsv(report, filteredRows)} disabled={!filteredRows.length} style={{ ...button, opacity: filteredRows.length ? 1 : .55 }}>Export CSV</button>
+              </div>
+            </div>
 
-                    setNewPropertyIds((current) =>
-                      checked
-                        ? Array.from(new Set([...current, id]))
-                        : current.filter((value) => value !== id),
-                    );
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
+              {[
+                ["Estimated", money(estimatedTotal)],
+                ["Actual", money(actualTotal)],
+                ["Completed", String(completedCount)],
+                ["Missing costs", String(missingCostCount)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: colors.panel, padding: "9px 10px" }}>
+                  <span style={{ display: "block", fontSize: 9, fontWeight: 900, color: colors.muted, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</span>
+                  <strong style={{ display: "block", marginTop: 2, fontSize: isMobile ? 16 : 18, color: colors.navy, overflowWrap: "anywhere" }}>{value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 3, marginBottom: 10 }}>
+              {reports.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => { setReport(value); clearFilters(); }}
+                  style={{
+                    border: `1px solid ${report === value ? colors.gold : colors.line}`,
+                    borderRadius: 999,
+                    padding: "7px 10px",
+                    background: report === value ? "#FFF3CF" : "#fff",
+                    color: colors.navy,
+                    fontSize: 11,
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
                   }}
-                />
-                {label}
-              </label>
+                >
+                  {label} · {data[value].length}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px,1.6fr) repeat(2,minmax(130px,.65fr)) minmax(130px,.7fr) minmax(130px,.7fr) minmax(145px,.75fr) auto", gap: 7 }}>
+              <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder={`Search ${reportLabel.toLowerCase()}`} style={control} />
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.currentTarget.value)} aria-label="From date" style={control} />
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.currentTarget.value)} aria-label="To date" style={control} />
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.currentTarget.value)} style={control} aria-label="Status filter"><option>All</option>{statuses.map((value) => <option key={value}>{value}</option>)}</select>
+              <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.currentTarget.value)} style={control} aria-label="Priority filter"><option>All</option>{priorities.map((value) => <option key={value}>{value}</option>)}</select>
+              <select value={assignedFilter} onChange={(e) => setAssignedFilter(e.currentTarget.value)} disabled={report !== "workOrders"} style={{ ...control, opacity: report === "workOrders" ? 1 : .55 }} aria-label="Assigned to filter"><option>All</option>{assignments.map((value) => <option key={value}>{value}</option>)}</select>
+              <button type="button" onClick={clearFilters} disabled={!anyReportFilter} style={{ ...quietButton, opacity: anyReportFilter ? 1 : .5 }}>Clear</button>
+            </div>
+
+            <div style={{ marginTop: 9, display: "flex", justifyContent: "space-between", gap: 8, color: colors.muted, fontSize: 12, flexWrap: "wrap" }}>
+              <span><strong style={{ color: colors.navy }}>{filteredRows.length}</strong> matching record{filteredRows.length === 1 ? "" : "s"}</span>
+              {anyReportFilter ? <span>Filtered from {data[report].length}</span> : null}
+            </div>
+          </section>
+
+          <section style={card}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 12 }}>
+              <div>
+                <div style={sectionLabel}>Operations</div>
+                <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 19 }}>Work requiring attention</h2>
+              </div>
+              {alertMode ? <button type="button" onClick={clearFilters} style={quietButton}>Close results</button> : null}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: 8 }}>
+              {alerts.map((alert) => (
+                <button
+                  type="button"
+                  onClick={() => openAlert(alert.mode)}
+                  key={alert.label}
+                  style={{
+                    textAlign: "left",
+                    padding: 12,
+                    border: `1px solid ${alertMode === alert.mode ? colors.gold : colors.line}`,
+                    borderRadius: 11,
+                    background: alertMode === alert.mode ? "#FFF8E5" : colors.panel,
+                    cursor: "pointer",
+                  }}
+                >
+                  <strong style={{ fontSize: 22, color: colors.navy }}>{alert.count}</strong>
+                  <div style={{ color: colors.muted, fontSize: 12, fontWeight: 800 }}>{alert.label}</div>
+                </button>
+              ))}
+            </div>
+            {alertMode ? (
+              <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                {filteredRows.length ? filteredRows.slice(0, 25).map((row) => (
+                  <div key={String(row.id)} style={{ padding: "8px 10px", border: `1px solid ${colors.line}`, borderRadius: 9, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <strong style={{ color: colors.navy, fontSize: 12 }}>{String(row.title || "Untitled work order")}</strong>
+                    <span style={{ color: colors.muted, fontSize: 11 }}>{String(row.date || "No date")} · {String(row.priority || "Medium")} · {String(row.status || "Open")}</span>
+                  </div>
+                )) : <div style={{ color: colors.muted, fontSize: 12 }}>No matching work orders.</div>}
+              </div>
+            ) : null}
+          </section>
+        </>
+      ) : null}
+
+      {centerSection === "access" ? (
+        <section style={card}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 13 }}>
+            <div>
+              <div style={sectionLabel}>Team Access</div>
+              <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>People & permissions</h2>
+              <p style={{ margin: 0, color: colors.muted, fontSize: 13 }}>Keep property access, operating-area access, and permissions together for each person.</p>
+            </div>
+            <button type="button" onClick={() => void saveAccess()} style={button}>Save Access</button>
+          </div>
+
+          {message ? <div style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: "9px 11px", background: colors.panel, color: colors.navy, fontSize: 12, fontWeight: 850, marginBottom: 10 }}>{message}</div> : null}
+
+          <div style={{ display: "grid", gap: 8 }}>
+            {team.map((member) => (
+              <div key={member.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 11, background: "#fff", display: "grid", gap: 9 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px,1.2fr) minmax(220px,1.35fr) minmax(150px,.7fr) auto", gap: 8, alignItems: "center" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ display: "block", color: colors.navy }}>{member.name}</strong>
+                    <span style={{ color: colors.muted, fontSize: 11 }}>{member.inviteStatus || "Existing access"}</span>
+                  </div>
+                  <span style={{ color: colors.muted, fontSize: 12, overflowWrap: "anywhere" }}>{member.email}</span>
+                  <select value={member.role} disabled={member.role === "Master"} onChange={(event) => { const role = event.currentTarget.value as Role; updateMember(member.id, { role, permissions: roleDefaults[role] }); }} style={control}>
+                    {(["Master", "Administrator", "Manager", "Employee", "Vendor", "Viewer"] as Role[]).map((role) => <option key={role}>{role}</option>)}
+                  </select>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" }}>
+                    <input type="checkbox" checked={member.active} disabled={member.role === "Master"} onChange={(event) => updateMember(member.id, { active: event.currentTarget.checked })} /> Active
+                  </label>
+                </div>
+
+                <div style={{ color: colors.muted, fontSize: 11 }}>{descriptions[member.role]}</div>
+
+                <div style={{ display: "grid", gap: 6, paddingTop: 7, borderTop: `1px solid ${colors.line}` }}>
+                  <strong style={{ color: colors.navy, fontSize: 11 }}>Properties</strong>
+                  <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                    {properties.map(([id, label]) => <label key={id} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}><input type="checkbox" disabled={member.role === "Master"} checked={member.propertyIds.includes(id)} onChange={(event) => updateMember(member.id, { propertyIds: event.currentTarget.checked ? [...member.propertyIds, id] : member.propertyIds.filter((value) => value !== id) })} />{label}</label>)}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <strong style={{ color: colors.navy, fontSize: 11 }}>Operating areas</strong>
+                  <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                    {member.role === "Master" || member.role === "Administrator" ? (
+                      <span style={{ fontSize: 11, color: colors.muted, fontWeight: 800 }}>All Atlas records</span>
+                    ) : accessProfileOptions.map(([id, label]) => <label key={id} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}><input type="checkbox" checked={member.accessProfiles.includes(id)} onChange={(event) => updateMember(member.id, { accessProfiles: event.currentTarget.checked ? [...member.accessProfiles, id] : member.accessProfiles.filter((value) => value !== id) })} />{label}</label>)}
+                    {member.role !== "Master" && member.role !== "Administrator" && !member.accessProfiles.length ? <span style={{ fontSize: 11, color: colors.muted }}>No profile selected = legacy unrestricted access</span> : null}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <strong style={{ color: colors.navy, fontSize: 11 }}>Permissions</strong>
+                  <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                    {permissionLabels.map(([key, label]) => <label key={key} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}><input type="checkbox" disabled={member.role === "Master"} checked={member.permissions[key]} onChange={(event) => updateMember(member.id, { permissions: { ...member.permissions, [key]: event.currentTarget.checked } })} />{label}</label>)}
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14, flexWrap: "wrap" }}>
-          <button type="button" onClick={() => void saveAccess()} style={button}>Save Access Settings</button>
-          {message ? <span style={{ color: colors.green, fontWeight: 850 }}>{message}</span> : null}
-        </div>
-      </section>
 
-      <section style={card}>
-        <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Backup & Recovery</div>
-        <h2 style={{ margin: "5px 0", color: colors.navy }}>Download complete Atlas backup</h2>
-        <p style={{ margin:"0 0 14px", color:colors.muted }}>Creates a dated JSON copy of the records currently loaded in Atlas.</p>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}><button type="button" onClick={()=>void createServerBackup()} style={button}>Create Protected Backup</button><button type="button" onClick={downloadBackup} style={{...button,background:"#fff",border:`1px solid ${colors.line}`}}>Download Current Data</button></div>
-        <div style={{display:"grid",gap:7,marginTop:14}}>{backups.slice(0,5).map((backup)=><div key={String(backup.id)} style={{display:"flex",justifyContent:"space-between",gap:10,padding:10,border:`1px solid ${colors.line}`,borderRadius:10}}><span>{new Date(String(backup.created_at)).toLocaleString()} · {String(backup.reason)}</span><button type="button" onClick={()=>void downloadProtectedBackup(String(backup.id))} style={{...button,padding:"7px 10px"}}>Download</button></div>)}</div>
-      </section>
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${colors.line}`, display: "grid", gap: 9 }}>
+            <div>
+              <strong style={{ color: colors.navy }}>Invite team member</strong>
+              <div style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>Create a secure Atlas invitation with the right property and operating-area access.</div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1.3fr .8fr auto", gap: 8 }}>
+              <input value={newName} onChange={(e) => setNewName(e.currentTarget.value)} placeholder="Name" style={control} />
+              <input value={newEmail} onChange={(e) => setNewEmail(e.currentTarget.value)} placeholder="Email" style={control} />
+              <select value={newRole} onChange={(e) => setNewRole(e.currentTarget.value as Role)} style={control}><option>Administrator</option><option>Manager</option><option>Employee</option><option>Vendor</option><option>Viewer</option></select>
+              <button type="button" onClick={() => void createInvite()} style={button}>Create Invite</button>
+            </div>
+            <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+              <strong style={{ color: colors.navy, fontSize: 11 }}>Properties</strong>
+              {properties.map(([id, label]) => (
+                <label key={id} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}>
+                  <input type="checkbox" checked={newPropertyIds.includes(id)} onChange={(event) => { const checked = event.currentTarget.checked; setNewPropertyIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((value) => value !== id)); }} />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {newRole !== "Administrator" ? (
+              <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+                <strong style={{ color: colors.navy, fontSize: 11 }}>Operating areas</strong>
+                {accessProfileOptions.map(([id, label]) => (
+                  <label key={id} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}>
+                    <input type="checkbox" checked={newAccessProfiles.includes(id)} onChange={(event) => setNewAccessProfiles((current) => event.currentTarget.checked ? Array.from(new Set([...current, id])) : current.filter((value) => value !== id))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            ) : null}
+            {inviteLink ? <div style={{ display: "grid", gap: 5 }}><span style={{ fontSize: 11, color: colors.muted }}>Invitation expires in 7 days.</span><input readOnly value={inviteLink} onFocus={(e) => e.currentTarget.select()} style={control} /></div> : null}
+          </div>
+        </section>
+      ) : null}
 
-      <section style={card}>
-        <div style={{ color: colors.gold, fontSize: 11, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Notifications & History</div>
-        {alertMode ? <div style={{display:"grid",gap:7,marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",gap:10}}><strong style={{color:colors.navy}}>Matching work orders ({filteredRows.length})</strong><button type="button" onClick={clearFilters} style={{...button,padding:"6px 9px",background:"#fff",border:`1px solid ${colors.line}`}}>Close List</button></div>{filteredRows.slice(0,25).map((row)=><div key={String(row.id)} style={{padding:10,border:`1px solid ${colors.line}`,borderRadius:10,display:"flex",justifyContent:"space-between",gap:10}}><strong>{String(row.title || "Untitled work order")}</strong><span style={{color:colors.muted,fontSize:12}}>{String(row.date || "No date")} · {String(row.priority || "Medium")} · {String(row.status || "Open")}</span></div>)}</div> : null}
-        <strong style={{color:colors.navy}}>Recent change history</strong>
-        <div style={{display:"grid",gap:7,marginTop:8}}>{history.slice(0,10).map((entry)=><div key={String(entry.id)} style={{padding:10,border:`1px solid ${colors.line}`,borderRadius:10,fontSize:13}}><strong>{String(entry.action).toUpperCase()} · {String(entry.table_name)}</strong><div style={{color:colors.muted}}>{String(entry.actor || "Atlas user")} · {new Date(String(entry.created_at)).toLocaleString()}</div></div>)}</div>
-      </section>
+      {centerSection === "system" ? (
+        <>
+          <section style={card}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div>
+                <div style={sectionLabel}>Backup & Recovery</div>
+                <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>Atlas backups</h2>
+                <p style={{ margin: 0, color: colors.muted, fontSize: 13 }}>Create a protected server backup or download the records currently loaded in Atlas.</p>
+              </div>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <button type="button" onClick={downloadBackup} style={quietButton}>Download Current Data</button>
+                <button type="button" onClick={() => void createServerBackup()} style={button}>Create Protected Backup</button>
+              </div>
+            </div>
+            {message ? <div style={{ marginTop: 10, color: colors.navy, fontSize: 12, fontWeight: 850 }}>{message}</div> : null}
+            <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
+              {backups.length ? backups.slice(0, 5).map((backup) => (
+                <div key={String(backup.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, flexWrap: "wrap" }}>
+                  <span style={{ color: colors.navy, fontSize: 12 }}>{new Date(String(backup.created_at)).toLocaleString()} · {String(backup.reason)}</span>
+                  <button type="button" onClick={() => void downloadProtectedBackup(String(backup.id))} style={{ ...quietButton, padding: "7px 9px" }}>Download</button>
+                </div>
+              )) : <div style={{ color: colors.muted, fontSize: 12 }}>No protected backups listed.</div>}
+            </div>
+          </section>
+
+          <section style={card}>
+            <div style={sectionLabel}>System History</div>
+            <h2 style={{ margin: "4px 0 10px", color: colors.navy, fontSize: 20 }}>Recent changes</h2>
+            <div style={{ display: "grid", gap: 6 }}>
+              {history.length ? history.slice(0, 12).map((entry) => (
+                <div key={String(entry.id)} style={{ padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px,.8fr) minmax(180px,1fr) auto", gap: 6, alignItems: "center", fontSize: 12 }}>
+                  <strong style={{ color: colors.navy }}>{String(entry.action).toUpperCase()} · {String(entry.table_name)}</strong>
+                  <span style={{ color: colors.muted }}>{String(entry.actor || "Atlas user")}</span>
+                  <span style={{ color: colors.muted, fontSize: 11 }}>{new Date(String(entry.created_at)).toLocaleString()}</span>
+                </div>
+              )) : <div style={{ color: colors.muted, fontSize: 12 }}>No change history available.</div>}
+            </div>
+          </section>
+        </>
+      ) : null}
     </div>
   );
 }
