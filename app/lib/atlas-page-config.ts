@@ -5,7 +5,8 @@ export type AtlasScreen =
   | "timeline"
   | "insights"
   | "reports"
-  | "access";
+  | "access"
+  | "notes";
 
 export const WORKLINK_LOGOS = {
   landscapeHelpAdmin: "",
