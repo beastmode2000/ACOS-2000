@@ -178,7 +178,7 @@ export default function AtlasApp() {
       return {};
     }
   });
-  type NoteAttachmentKind = "Asset" | "Location" | "Vendor" | "Project" | "Work Order" | "Task";
+  type NoteAttachmentKind = "Asset" | "Location" | "Vendor" | "Project" | "Work Order" | "Task" | "Contact" | "Procedure";
   type NoteAttachment = { kind: NoteAttachmentKind; id: string };
   const [pinnedNoteIds, setPinnedNoteIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
@@ -198,11 +198,17 @@ export default function AtlasApp() {
       return {};
     }
   });
-  const [noteAttachments, setNoteAttachments] = useState<Record<string, NoteAttachment>>(() => {
+  const [noteAttachments, setNoteAttachments] = useState<Record<string, NoteAttachment[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
       const parsed = JSON.parse(window.localStorage.getItem("atlas-note-attachments-v1") || "{}");
-      return parsed && typeof parsed === "object" ? parsed : {};
+      if (!parsed || typeof parsed !== "object") return {};
+      return Object.fromEntries(
+        Object.entries(parsed as Record<string, NoteAttachment | NoteAttachment[]>).map(([noteId, value]) => [
+          noteId,
+          Array.isArray(value) ? value : value && typeof value === "object" ? [value] : [],
+        ]),
+      );
     } catch {
       return {};
     }
@@ -5759,6 +5765,8 @@ export default function AtlasApp() {
     if (kind === "Vendor") return vendorRecords.map((item) => ({ id: item.id, label: item.name || item.id }));
     if (kind === "Project") return photoTimelineProjects.map((item) => ({ id: item.id, label: item.title || item.id }));
     if (kind === "Work Order") return serviceRecords.map((item) => ({ id: item.id, label: item.title || item.id }));
+    if (kind === "Contact") return contactRecords.map((item) => ({ id: item.id, label: item.name || item.id }));
+    if (kind === "Procedure") return procedureRecords.map((item) => ({ id: item.id, label: item.title || item.id }));
     return workPlanTasks.map((item) => ({ id: item.id, label: item.title || item.id }));
   }
 
@@ -5768,9 +5776,19 @@ export default function AtlasApp() {
   }
 
   function attachNote(noteId: string, kind: NoteAttachmentKind, id: string) {
+    if (!id) return;
     setNoteAttachments((current) => {
+      const existing = current[noteId] || [];
+      if (existing.some((item) => item.kind === kind && item.id === id)) return current;
+      return { ...current, [noteId]: [...existing, { kind, id }] };
+    });
+  }
+
+  function detachNote(noteId: string, kind: NoteAttachmentKind, id: string) {
+    setNoteAttachments((current) => {
+      const nextItems = (current[noteId] || []).filter((item) => !(item.kind === kind && item.id === id));
       const next = { ...current };
-      if (id) next[noteId] = { kind, id };
+      if (nextItems.length) next[noteId] = nextItems;
       else delete next[noteId];
       return next;
     });
@@ -5785,25 +5803,41 @@ export default function AtlasApp() {
     const taskId = addAtlasTask(noteTitle(note.text));
     if (!taskId) return;
     updateTaskDetails(taskId, { notes: note.text });
-    const attachment = noteAttachments[note.id];
-    if (attachment?.kind === "Project") updateTaskDetails(taskId, { projectId: attachment.id });
-    if (attachment?.kind === "Location") {
-      setWorkPlanTasks((current) => current.map((task) => task.id === taskId ? { ...task, locationId: attachment.id } : task));
+    const attachments = noteAttachments[note.id] || [];
+    const projectAttachment = attachments.find((item) => item.kind === "Project");
+    const locationAttachment = attachments.find((item) => item.kind === "Location");
+    const assetAttachment = attachments.find((item) => item.kind === "Asset");
+    const workOrderAttachment = attachments.find((item) => item.kind === "Work Order");
+    const vendorAttachment = attachments.find((item) => item.kind === "Vendor");
+    const procedureAttachment = attachments.find((item) => item.kind === "Procedure");
+    const contactAttachment = attachments.find((item) => item.kind === "Contact");
+    if (projectAttachment) updateTaskDetails(taskId, { projectId: projectAttachment.id, projectIds: attachments.filter((item) => item.kind === "Project").map((item) => item.id) });
+    if (assetAttachment) updateTaskDetails(taskId, { assetId: assetAttachment.id, assetIds: attachments.filter((item) => item.kind === "Asset").map((item) => item.id) });
+    if (workOrderAttachment) updateTaskDetails(taskId, { workOrderId: workOrderAttachment.id, workOrderIds: attachments.filter((item) => item.kind === "Work Order").map((item) => item.id) });
+    if (vendorAttachment) updateTaskDetails(taskId, { vendorId: vendorAttachment.id, vendorIds: attachments.filter((item) => item.kind === "Vendor").map((item) => item.id) });
+    if (procedureAttachment) updateTaskDetails(taskId, { procedureId: procedureAttachment.id, procedureIds: attachments.filter((item) => item.kind === "Procedure").map((item) => item.id) });
+    if (contactAttachment) updateTaskDetails(taskId, { contactId: contactAttachment.id, contactIds: attachments.filter((item) => item.kind === "Contact").map((item) => item.id) });
+    if (locationAttachment) {
+      setWorkPlanTasks((current) => current.map((task) => task.id === taskId ? { ...task, locationId: locationAttachment.id } : task));
     }
     showSaveToast("Task created from note.");
   }
 
   function convertNoteToWorkOrder(note: TodayLogEntry) {
-    const attachment = noteAttachments[note.id];
+    const attachments = noteAttachments[note.id] || [];
     const initial: Partial<AtlasServiceRecord> = {
       title: noteTitle(note.text),
       notes: note.text,
       date: todayISO(),
     };
-    if (attachment?.kind === "Asset") initial.assetId = attachment.id;
-    if (attachment?.kind === "Location") initial.locationId = attachment.id;
-    if (attachment?.kind === "Vendor") initial.vendorId = attachment.id;
-    if (attachment?.kind === "Project") initial.projectId = attachment.id;
+    const assetAttachment = attachments.find((item) => item.kind === "Asset");
+    const locationAttachment = attachments.find((item) => item.kind === "Location");
+    const vendorAttachment = attachments.find((item) => item.kind === "Vendor");
+    const projectAttachment = attachments.find((item) => item.kind === "Project");
+    if (assetAttachment) initial.assetId = assetAttachment.id;
+    if (locationAttachment) initial.locationId = locationAttachment.id;
+    if (vendorAttachment) initial.vendorId = vendorAttachment.id;
+    if (projectAttachment) initial.projectId = projectAttachment.id;
     addWorkOrder(initial);
     showSaveToast("Work Order created from note.");
   }
@@ -5991,7 +6025,7 @@ export default function AtlasApp() {
             const section = sectionFor(note.id);
             const pinned = pinnedNoteIds.includes(note.id);
             const followUp = noteFollowUpDates[note.id] || "";
-            const attachment = noteAttachments[note.id];
+            const attachments = noteAttachments[note.id] || [];
             return (
               <button
                 key={note.id}
@@ -6024,7 +6058,7 @@ export default function AtlasApp() {
                     {note.createdAt ? new Date(note.createdAt).toLocaleString() : formatDate(note.date)}
                   </small>
                   {followUp ? <small style={{ color: colors.navy3, fontWeight: 800 }}>Follow up {formatDate(followUp)}</small> : null}
-                  {attachment ? <small style={{ color: colors.navy3, fontWeight: 800 }}>{attachment.kind}</small> : null}
+                  {attachments.slice(0, 3).map((attachment) => <small key={`${attachment.kind}-${attachment.id}`} style={{ color: colors.navy3, fontWeight: 800 }}>{attachment.kind}</small>)}{attachments.length > 3 ? <small style={{ color: colors.muted, fontWeight: 800 }}>+{attachments.length - 3} more</small> : null}
                 </div>
               </button>
             );
@@ -6095,31 +6129,31 @@ export default function AtlasApp() {
                   </label>
                 </div>
 
-                <div style={{ display: "grid", gap: 6 }}>
-                  <span style={fieldLabelStyle}>ATTACH TO</span>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "150px minmax(0,1fr)", gap: 7 }}>
-                    <select
-                      value={noteAttachments[selectedNote.id]?.kind || noteAttachKind}
-                      onChange={(event) => {
-                        const kind = event.currentTarget.value as NoteAttachmentKind;
-                        setNoteAttachKind(kind);
-                        attachNote(selectedNote.id, kind, "");
-                      }}
-                      style={{ ...inputStyle, minHeight: 36 }}
-                    >
-                      {(["Asset", "Location", "Vendor", "Project", "Work Order", "Task"] as NoteAttachmentKind[]).map((kind) => <option key={kind}>{kind}</option>)}
+                <div style={{ display: "grid", gap: 8 }}>
+                  <span style={fieldLabelStyle}>RELATED RECORDS</span>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {(noteAttachments[selectedNote.id] || []).map((attachment) => (
+                      <button
+                        key={`${attachment.kind}-${attachment.id}`}
+                        type="button"
+                        onClick={() => detachNote(selectedNote.id, attachment.kind, attachment.id)}
+                        title="Remove relationship"
+                        style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "5px 8px", fontSize: 11 }}
+                      >
+                        {attachment.kind} · {attachmentLabel(attachment)} ×
+                      </button>
+                    ))}
+                    {!(noteAttachments[selectedNote.id] || []).length ? <span style={mutedSmallStyle}>No related records yet.</span> : null}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "150px minmax(0,1fr) auto", gap: 7 }}>
+                    <select value={noteAttachKind} onChange={(event) => { setNoteAttachKind(event.currentTarget.value as NoteAttachmentKind); setNoteAttachId(""); }} style={{ ...inputStyle, minHeight: 36 }}>
+                      {(["Asset", "Location", "Vendor", "Project", "Work Order", "Task", "Contact", "Procedure"] as NoteAttachmentKind[]).map((kind) => <option key={kind}>{kind}</option>)}
                     </select>
-                    <select
-                      value={noteAttachments[selectedNote.id]?.id || ""}
-                      onChange={(event) => {
-                        const kind = noteAttachments[selectedNote.id]?.kind || noteAttachKind;
-                        attachNote(selectedNote.id, kind, event.currentTarget.value);
-                      }}
-                      style={{ ...inputStyle, minHeight: 36 }}
-                    >
-                      <option value="">Not attached</option>
-                      {attachmentOptions(noteAttachments[selectedNote.id]?.kind || noteAttachKind).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    <select value={noteAttachId} onChange={(event) => setNoteAttachId(event.currentTarget.value)} style={{ ...inputStyle, minHeight: 36 }}>
+                      <option value="">Choose record…</option>
+                      {attachmentOptions(noteAttachKind).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                     </select>
+                    <button type="button" disabled={!noteAttachId} onClick={() => { attachNote(selectedNote.id, noteAttachKind, noteAttachId); setNoteAttachId(""); }} style={{ ...goldButtonStyle, opacity: noteAttachId ? 1 : .55 }}>Add Link</button>
                   </div>
                 </div>
 
@@ -12080,9 +12114,16 @@ export default function AtlasApp() {
 
   function updateTaskDetails(taskId: string, patch: Partial<AtlasTaskMeta>) {
     setTaskMeta((current) => {
+      const base = current[taskId] || taskDetails(taskId);
       const updated = {
-        ...(current[taskId] || taskDetails(taskId)),
+        ...base,
         ...patch,
+        projectIds: patch.projectIds ?? (patch.projectId !== undefined ? (patch.projectId ? Array.from(new Set([...(base.projectIds || []), patch.projectId])) : base.projectIds) : base.projectIds),
+        workOrderIds: patch.workOrderIds ?? (patch.workOrderId !== undefined ? (patch.workOrderId ? Array.from(new Set([...(base.workOrderIds || []), patch.workOrderId])) : base.workOrderIds) : base.workOrderIds),
+        assetIds: patch.assetIds ?? (patch.assetId !== undefined ? (patch.assetId ? Array.from(new Set([...(base.assetIds || []), patch.assetId])) : base.assetIds) : base.assetIds),
+        vendorIds: patch.vendorIds ?? (patch.vendorId !== undefined ? (patch.vendorId ? Array.from(new Set([...(base.vendorIds || []), patch.vendorId])) : base.vendorIds) : base.vendorIds),
+        procedureIds: patch.procedureIds ?? (patch.procedureId !== undefined ? (patch.procedureId ? Array.from(new Set([...(base.procedureIds || []), patch.procedureId])) : base.procedureIds) : base.procedureIds),
+        contactIds: patch.contactIds ?? (patch.contactId !== undefined ? (patch.contactId ? Array.from(new Set([...(base.contactIds || []), patch.contactId])) : base.contactIds) : base.contactIds),
         updatedAt: new Date().toISOString(),
       };
       const next = { ...current, [taskId]: updated };
