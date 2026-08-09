@@ -278,6 +278,25 @@ export default function AtlasDashboardWorkspace(props: any) {
     workPlanTargetHours,
     workPlanTasks
   } = props;
+  const [dashboardTaskSavedId, setDashboardTaskSavedId] = useState<string | null>(null);
+
+  function acknowledgeDashboardTaskSave(taskId: string) {
+    setDashboardTaskSavedId(taskId);
+    window.setTimeout(() => {
+      setDashboardTaskSavedId((current) => (current === taskId ? null : current));
+    }, 1400);
+  }
+
+  function saveDashboardTaskDetails(taskId: string, patch: any) {
+    updateTaskDetails(taskId, patch);
+    acknowledgeDashboardTaskSave(taskId);
+  }
+
+  function saveDashboardWorkPlanTask(taskId: string, patch: any) {
+    updateWorkPlanTask(taskId, patch);
+    acknowledgeDashboardTaskSave(taskId);
+  }
+
   const teamSectionStyle: React.CSSProperties = {
     width: "100%",
     minWidth: 0,
@@ -2127,13 +2146,13 @@ export default function AtlasDashboardWorkspace(props: any) {
                     </div>
                     {editing ? (
                       <div style={{ display: "grid", gap: 7, marginTop: 9, paddingTop: 9, borderTop: `1px solid ${colors.line}` }}>
-                        <input key={`dashboard-task-title-${task.id}-${dashboardTaskEditorId}`} defaultValue={task.title} onBlur={(event) => { const nextTitle = event.currentTarget.value.trim(); if (nextTitle && nextTitle !== task.title) updateWorkPlanTask(task.id, { title: nextTitle }); else if (!nextTitle) event.currentTarget.value = task.title; }} style={inputStyle}/>
+                        <input key={`dashboard-task-title-${task.id}-${dashboardTaskEditorId}`} defaultValue={task.title} onBlur={(event) => { const nextTitle = event.currentTarget.value.trim(); if (nextTitle && nextTitle !== task.title) saveDashboardWorkPlanTask(task.id, { title: nextTitle }); else if (!nextTitle) event.currentTarget.value = task.title; }} style={inputStyle}/>
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 7 }}>
-                          <input type="date" defaultValue={meta.dueDate || today} onBlur={(event) => { const nextDate = event.currentTarget.value; if (nextDate !== (meta.dueDate || today)) updateTaskDetails(task.id, { dueDate: nextDate }); }} style={inputStyle}/>
-                          <select defaultValue={meta.assignee === "Addison" ? "Addison" : "Nick"} onChange={(event) => updateTaskDetails(task.id, { assignee: event.currentTarget.value as "Nick" | "Addison" })} style={inputStyle}><option value="Nick">Nick</option><option value="Addison">Addison</option></select>
-                          <input type="number" min={5} step={5} defaultValue={task.minutes} onBlur={(event) => { const nextMinutes = Math.max(5, Number(event.currentTarget.value) || 5); if (nextMinutes !== task.minutes) updateWorkPlanTask(task.id, { minutes: nextMinutes }); }} style={inputStyle}/>
+                          <input type="date" defaultValue={meta.dueDate || today} onBlur={(event) => { const nextDate = event.currentTarget.value; if (nextDate !== (meta.dueDate || today)) saveDashboardTaskDetails(task.id, { dueDate: nextDate }); }} style={inputStyle}/>
+                          <select defaultValue={meta.assignee === "Addison" ? "Addison" : "Nick"} onChange={(event) => saveDashboardTaskDetails(task.id, { assignee: event.currentTarget.value as "Nick" | "Addison" })} style={inputStyle}><option value="Nick">Nick</option><option value="Addison">Addison</option></select>
+                          <input type="number" min={5} step={5} defaultValue={task.minutes} onBlur={(event) => { const nextMinutes = Math.max(5, Number(event.currentTarget.value) || 5); if (nextMinutes !== task.minutes) saveDashboardWorkPlanTask(task.id, { minutes: nextMinutes }); }} style={inputStyle}/>
                         </div>
-                        <textarea key={`dashboard-task-note-${task.id}-${dashboardTaskEditorId}`} defaultValue={meta.notes || task.notes || ""} onBlur={(event) => { const nextNote = event.currentTarget.value; if (nextNote !== (meta.notes || task.notes || "")) updateTaskDetails(task.id, { notes: nextNote }); }} placeholder="Notes or instructions" rows={2} style={{ ...inputStyle, resize: "vertical" }}/>
+                        <textarea key={`dashboard-task-note-${task.id}-${dashboardTaskEditorId}`} defaultValue={meta.notes || task.notes || ""} onBlur={(event) => { const nextNote = event.currentTarget.value; if (nextNote !== (meta.notes || task.notes || "")) saveDashboardTaskDetails(task.id, { notes: nextNote }); }} placeholder="Notes or instructions" rows={2} style={{ ...inputStyle, resize: "vertical" }}/>
 
                         <div style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9, background: "#F8FAFC", display: "grid", gap: 8 }}>
                           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 850, color: colors.navy }}>
@@ -2145,8 +2164,8 @@ export default function AtlasDashboardWorkspace(props: any) {
                                 if (recurring) {
                                   const confirmed = window.confirm(`Make “${task.title}” recurring?`);
                                   if (!confirmed) return;
-                                  updateWorkPlanTask(task.id, { recurring: true });
-                                  updateTaskDetails(task.id, {
+                                  saveDashboardWorkPlanTask(task.id, { recurring: true });
+                                  saveDashboardTaskDetails(task.id, {
                                     recurrenceInterval: Math.max(1, Number(meta.recurrenceInterval || 1)),
                                     recurrenceUnit: meta.recurrenceUnit || "Weeks",
                                     recurrenceEndDate: meta.recurrenceEndDate || "",
@@ -2155,7 +2174,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                                 } else {
                                   const confirmed = window.confirm(`Stop “${task.title}” from recurring after this occurrence?`);
                                   if (!confirmed) return;
-                                  updateWorkPlanTask(task.id, { recurring: false });
+                                  saveDashboardWorkPlanTask(task.id, { recurring: false });
                                 }
                               }}
                             />
@@ -2172,7 +2191,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                                   step={1}
                                   value={Math.max(1, Number(meta.recurrenceInterval || 1))}
                                   onChange={(event) =>
-                                    updateTaskDetails(task.id, {
+                                    saveDashboardTaskDetails(task.id, {
                                       recurrenceInterval: Math.max(1, Number(event.currentTarget.value) || 1),
                                     })
                                   }
@@ -2184,7 +2203,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                                 <select
                                   value={meta.recurrenceUnit || "Weeks"}
                                   onChange={(event) =>
-                                    updateTaskDetails(task.id, {
+                                    saveDashboardTaskDetails(task.id, {
                                       recurrenceUnit: event.currentTarget.value as any,
                                     })
                                   }
@@ -2202,7 +2221,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                                   type="date"
                                   value={meta.recurrenceEndDate || ""}
                                   onChange={(event) =>
-                                    updateTaskDetails(task.id, {
+                                    saveDashboardTaskDetails(task.id, {
                                       recurrenceEndDate: event.currentTarget.value,
                                     })
                                   }
@@ -2214,6 +2233,26 @@ export default function AtlasDashboardWorkspace(props: any) {
                         </div>
 
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {dashboardTaskSavedId === task.id ? (
+                            <span
+                              title="Change saved"
+                              aria-label="Change saved"
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: 18,
+                                height: 18,
+                                borderRadius: "50%",
+                                background: "#EAF7EE",
+                                color: "#16803A",
+                                fontSize: 12,
+                                fontWeight: 950,
+                              }}
+                            >
+                              ✓
+                            </span>
+                          ) : null}
                           <button type="button" onClick={() => updateTaskDetails(task.id, { dueDate: addDays(today, 1), status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Move Tomorrow</button>
                           <button type="button" onClick={() => updateTaskDetails(task.id, { assignee: person === "Nick" ? "Addison" : "Nick", status: "Open" })} style={secondaryButtonStyle}>Move to {person === "Nick" ? "Addison" : "Nick"}</button>
                           <button type="button" onClick={() => { if (window.confirm(`Delete ${task.title}?`)) { deleteAtlasTask(task.id); setDashboardTaskEditorId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
