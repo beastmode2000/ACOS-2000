@@ -3664,14 +3664,14 @@ export default function AtlasApp() {
         const overview = sections.find((section) => section.label === "Overview");
         if (overview) {
           overview.items = Array.from(
-            new Set<AtlasScreen>([
+            new Set([
               "dashboard",
               "notes",
               ...overview.items.filter(
                 (item) => item !== "dashboard" && item !== "notes",
               ),
             ]),
-          );
+          ) as typeof overview.items;
         }
 
         const work = sections.find((section) => section.label === "Work");
