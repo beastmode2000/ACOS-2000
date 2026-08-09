@@ -3687,7 +3687,8 @@ export default function AtlasApp() {
             (item) =>
               item !== "manuals" &&
               item !== "portfolio" &&
-              item !== "team",
+              item !== "team" &&
+              item !== "insights",
           ),
         }));
 
@@ -3730,7 +3731,9 @@ export default function AtlasApp() {
 
   const visibleMoreToolsScreens = isTeamScopedUser
     ? ([] as AtlasScreen[])
-    : atlasMoreToolsScreens.filter((screenId) => screenId !== "manuals");
+    : atlasMoreToolsScreens.filter(
+        (screenId) => screenId !== "manuals" && screenId !== "insights",
+      );
 
   useEffect(() => {
     if (isAddisonUser) {
@@ -7679,7 +7682,7 @@ export default function AtlasApp() {
     const requestId = `atlas-${Date.now()}-${++atlasSaveAttemptRef.current}`;
     let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 20000);
 
@@ -7718,14 +7721,24 @@ export default function AtlasApp() {
             payload?.error ||
             `${operationLabel} returned HTTP ${response.status}.`;
 
+          const hydrationRace =
+            method === "POST" &&
+            response.status === 404 &&
+            /not found|does not exist|missing/i.test(
+              String(payload?.error || payload?.message || ""),
+            );
+
           const retryable =
-            attempt === 1 &&
-            (response.status === 408 ||
+            attempt < 3 &&
+            (hydrationRace ||
+              response.status === 408 ||
               response.status === 429 ||
               response.status >= 500);
 
           if (retryable) {
-            await new Promise((resolve) => window.setTimeout(resolve, 350));
+            await new Promise((resolve) =>
+              window.setTimeout(resolve, hydrationRace ? attempt * 450 : 350),
+            );
             continue;
           }
 
@@ -7739,8 +7752,10 @@ export default function AtlasApp() {
             ? error
             : new Error(`${operationLabel} failed.`);
 
-        if (attempt === 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 350));
+        if (attempt < 3) {
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, attempt * 350),
+          );
           continue;
         }
       } finally {
