@@ -14241,6 +14241,91 @@ ${notes.trim()}` : notes.trim(),
     showSaveToast("Checklist item updated.");
   }
 
+  function removeChecklistDuplicates(listId: string) {
+    const items = checklistItems(listId);
+    const groups = new Map<string, WorkPlanTask[]>();
+
+    items.forEach((task) => {
+      const key = task.title.trim().toLowerCase().replace(/\s+/g, " ");
+      groups.set(key, [...(groups.get(key) || []), task]);
+    });
+
+    const duplicateIds = new Set<string>();
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const ranked = [...group].sort((a, b) => {
+        const aMeta = taskDetails(a.id);
+        const bMeta = taskDetails(b.id);
+        const aCompleted = aMeta.status === "Completed" ? 1 : 0;
+        const bCompleted = bMeta.status === "Completed" ? 1 : 0;
+        if (aCompleted !== bCompleted) return bCompleted - aCompleted;
+        return String(bMeta.updatedAt || bMeta.createdAt || "").localeCompare(
+          String(aMeta.updatedAt || aMeta.createdAt || ""),
+        );
+      });
+      ranked.slice(1).forEach((task) => duplicateIds.add(String(task.id)));
+    }
+
+    if (!duplicateIds.size) {
+      showSaveToast("No duplicate items found.");
+      return;
+    }
+
+    const nextTasks = workPlanTasks.filter((task) => !duplicateIds.has(String(task.id)));
+    const nextMeta = { ...taskMeta };
+    duplicateIds.forEach((id) => delete nextMeta[id]);
+
+    setWorkPlanTasks(nextTasks);
+    setTaskMeta(nextMeta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, nextTasks);
+    if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", nextTasks);
+
+    try {
+      window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(nextMeta));
+      if (activePropertyId === "2000") {
+        window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
+      }
+    } catch {}
+
+    duplicateIds.forEach((id) => void deleteOperationalRecord("tasks" as AtlasTable, id));
+    showSaveToast(`Removed ${duplicateIds.size} duplicate item${duplicateIds.size === 1 ? "" : "s"}.`);
+  }
+
+  function deleteCompletedChecklistItems(listId: string, listName: string) {
+    const completedItems = checklistItems(listId).filter(
+      (task) => taskDetails(task.id).status === "Completed",
+    );
+
+    if (!completedItems.length) {
+      showSaveToast("No completed items to remove.");
+      return;
+    }
+
+    if (!window.confirm(
+      `Delete ${completedItems.length} completed item${completedItems.length === 1 ? "" : "s"} from "${listName}"?`,
+    )) return;
+
+    const ids = new Set<string>(completedItems.map((task) => String(task.id)));
+    const nextTasks = workPlanTasks.filter((task) => !ids.has(String(task.id)));
+    const nextMeta = { ...taskMeta };
+    ids.forEach((id) => delete nextMeta[id]);
+
+    setWorkPlanTasks(nextTasks);
+    setTaskMeta(nextMeta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, nextTasks);
+    if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", nextTasks);
+
+    try {
+      window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(nextMeta));
+      if (activePropertyId === "2000") {
+        window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
+      }
+    } catch {}
+
+    ids.forEach((id) => void deleteOperationalRecord("tasks" as AtlasTable, id));
+    showSaveToast(`Deleted ${ids.size} completed item${ids.size === 1 ? "" : "s"}.`);
+  }
+
   function addGraduationPartyChecklistItem() {
     const title = newPartyChecklistItem.trim();
     if (!title) return;
@@ -14289,7 +14374,7 @@ ${notes.trim()}` : notes.trim(),
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{definitions.map((definition) => <button key={definition.id} type="button" onClick={() => { setSelectedListId(definition.id); }} style={selectedDefinition.id === definition.id ? goldButtonStyle : secondaryButtonStyle}>{definition.name}</button>)}</div>
       </section>
       <section style={{ ...cardStyle, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => renameChecklist(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Rename</button><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button><button type="button" onClick={() => deleteChecklist(selectedDefinition.id, selectedDefinition.name)} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete List</button></div></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => renameChecklist(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Rename</button><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button><button type="button" onClick={() => removeChecklistDuplicates(selectedDefinition.id)} style={secondaryButtonStyle}>Remove Duplicates</button><button type="button" onClick={() => deleteCompletedChecklistItems(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Delete Completed</button><button type="button" onClick={() => deleteChecklist(selectedDefinition.id, selectedDefinition.name)} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete List</button></div></div>
         <label style={{ display: "grid", gap: 5, marginTop: 12 }}><span style={fieldLabelStyle}>LIST NOTES</span><textarea value={listNotes} onChange={(event) => updateListNotes(event.currentTarget.value)} placeholder="Add instructions, reminders, vendor details, or notes for this list…" rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}/></label>
       </section>
       <section style={{ ...cardStyle, padding: 10 }}>
