@@ -171,6 +171,7 @@ export default function AtlasApp() {
   const [notesListening, setNotesListening] = useState(false);
   const [notesSection, setNotesSection] = useState<NoteSection>("General");
   const [notesSectionFilter, setNotesSectionFilter] = useState<NoteSection | "All">("All");
+  const [selectedNoteId, setSelectedNoteId] = useState("");
   const [notesSectionById, setNotesSectionById] = useState<Record<string, NoteSection>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -5784,10 +5785,6 @@ export default function AtlasApp() {
       .sort((a, b) => String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date)));
 
     const sectionFor = (noteId: string): NoteSection => notesSectionById[noteId] || "General";
-    const sectionCounts = noteSections.reduce<Record<NoteSection, number>>((counts, section) => {
-      counts[section] = allPropertyNotes.filter((note) => sectionFor(note.id) === section).length;
-      return counts;
-    }, {} as Record<NoteSection, number>);
 
     const notes = allPropertyNotes
       .filter((entry) => notesSectionFilter === "All" || sectionFor(entry.id) === notesSectionFilter)
@@ -5798,6 +5795,10 @@ export default function AtlasApp() {
         if (aPinned !== bPinned) return bPinned - aPinned;
         return String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date));
       });
+
+    const selectedNote = selectedNoteId
+      ? allPropertyNotes.find((note) => note.id === selectedNoteId) || null
+      : null;
 
     const sectionGlyph = (section: NoteSection) => {
       if (section === "Property") return "⌂";
@@ -5818,34 +5819,16 @@ export default function AtlasApp() {
         <SectionHeader
           eyebrow="PROPERTY RECORD"
           title="Notes"
-          detail="Capture it by voice or text, file it where it belongs, and find it again fast."
+          detail="A simple property notepad for things you want to remember."
         />
 
-        <section style={{ ...cardStyle, padding: isMobile ? 14 : 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 12 }}>
-            <div>
-              <div style={eyebrowStyle}>NEW NOTE</div>
-              <strong style={{ display: "block", marginTop: 3, color: colors.navy, fontSize: 18 }}>
-                {notesListening ? "Atlas is listening" : "Write it down or talk it out"}
-              </strong>
-              <small style={mutedSmallStyle}>Nothing saves until you press Save Note.</small>
-            </div>
-            <select
-              value={notesSection}
-              onChange={(event) => setNotesSection(event.currentTarget.value as NoteSection)}
-              style={{ ...inputStyle, width: isMobile ? "100%" : 220, fontWeight: 800 }}
-              aria-label="Note section"
-            >
-              {noteSections.map((section) => <option key={section} value={section}>{section}</option>)}
-            </select>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 210px", gap: 14, alignItems: "stretch" }}>
+        <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 180px", gap: 10 }}>
             <textarea
               value={notesDraft}
               onChange={(event) => setNotesDraft(event.currentTarget.value)}
-              placeholder={`Add a ${notesSection.toLowerCase()} note…`}
-              style={{ ...inputStyle, minHeight: 170, resize: "vertical", fontSize: 15, lineHeight: 1.6, padding: 14 }}
+              placeholder="Write a note…"
+              style={{ ...inputStyle, minHeight: 105, resize: "vertical", fontSize: 15, lineHeight: 1.55, padding: 13, borderRadius: 15 }}
             />
             <button
               type="button"
@@ -5853,198 +5836,217 @@ export default function AtlasApp() {
               aria-pressed={notesListening}
               style={{
                 border: notesListening ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
-                borderRadius: 20,
-                background: notesListening ? colors.navy : "#FFFFFF",
+                borderRadius: 16,
+                background: notesListening ? colors.navy : "#F8FAFC",
                 color: notesListening ? "#FFFFFF" : colors.navy,
-                minHeight: 170,
-                padding: 18,
+                minHeight: 105,
+                padding: 12,
                 cursor: "pointer",
                 display: "grid",
                 placeItems: "center",
                 alignContent: "center",
-                gap: 12,
-                boxShadow: notesListening ? "0 14px 30px rgba(7,27,47,.20)" : "0 8px 22px rgba(7,27,47,.08)",
+                gap: 7,
               }}
             >
               <span
                 aria-hidden="true"
                 style={{
-                  width: 68,
-                  height: 68,
+                  width: 46,
+                  height: 46,
                   borderRadius: 999,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 4,
+                  gap: 3,
                   background: notesListening ? colors.gold : colors.navy,
-                  boxShadow: notesListening ? "0 0 0 9px rgba(201,154,61,.16)" : "0 0 0 9px rgba(7,27,47,.06)",
                 }}
               >
-                {[16, 30, 42, 30, 16].map((height, index) => (
-                  <span key={index} style={{ width: 4, height, borderRadius: 999, background: "#FFFFFF", opacity: index === 2 ? 1 : .86 }} />
+                {[10, 19, 28, 19, 10].map((height, index) => (
+                  <span key={index} style={{ width: 3, height, borderRadius: 999, background: "#FFFFFF" }} />
                 ))}
               </span>
-              <span style={{ fontSize: 15, fontWeight: 900 }}>{notesListening ? "Listening…" : "Voice Note"}</span>
-              <small style={{ opacity: .72 }}>{notesListening ? "Tap to stop" : "Tap and speak naturally"}</small>
+              <strong style={{ fontSize: 13 }}>{notesListening ? "Listening…" : "Voice Note"}</strong>
             </button>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-            <small style={mutedSmallStyle}>
-              Filing under <strong style={{ color: colors.navy }}>{notesSection}</strong>
-            </small>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+            <select
+              value={notesSection}
+              onChange={(event) => setNotesSection(event.currentTarget.value as NoteSection)}
+              style={{ ...inputStyle, width: isMobile ? "100%" : 205, minHeight: 36, fontWeight: 800 }}
+            >
+              {noteSections.map((section) => <option key={section} value={section}>{section}</option>)}
+            </select>
+            <div style={{ display: "flex", gap: 7 }}>
               {notesDraft ? <button type="button" onClick={() => setNotesDraft("")} style={secondaryButtonStyle}>Clear</button> : null}
               <button type="button" onClick={savePermanentNote} disabled={!notesDraft.trim()} style={goldButtonStyle}>Save Note</button>
             </div>
           </div>
         </section>
 
-        <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-            <div>
-              <div style={eyebrowStyle}>NOTEBOOK</div>
-              <strong style={{ color: colors.navy }}>{allPropertyNotes.length} saved notes</strong>
-            </div>
+        <section style={{ ...cardStyle, padding: isMobile ? 12 : 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "180px minmax(0,1fr)", gap: 8 }}>
+            <select
+              value={notesSectionFilter}
+              onChange={(event) => setNotesSectionFilter(event.currentTarget.value as NoteSection | "All")}
+              style={{ ...inputStyle, minHeight: 36, fontWeight: 800 }}
+            >
+              <option value="All">All Notes</option>
+              {noteSections.map((section) => <option key={section} value={section}>{section}</option>)}
+            </select>
             <input
               value={notesSearch}
               onChange={(event) => setNotesSearch(event.currentTarget.value)}
-              placeholder="Search all notes"
-              style={{ ...inputStyle, width: isMobile ? "100%" : 280 }}
+              placeholder="Search notes"
+              style={{ ...inputStyle, minHeight: 36 }}
             />
           </div>
+        </section>
 
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 14 }}>
-            <button
-              type="button"
-              onClick={() => setNotesSectionFilter("All")}
-              style={{
-                ...secondaryButtonStyle,
-                minHeight: 62,
-                justifyContent: "space-between",
-                textAlign: "left",
-                borderColor: notesSectionFilter === "All" ? colors.gold : colors.line,
-                background: notesSectionFilter === "All" ? "#FFF9EC" : "#FFFFFF",
-              }}
-            >
-              <span><strong style={{ display: "block" }}>All Notes</strong><small style={mutedSmallStyle}>Everything</small></span>
-              <strong>{allPropertyNotes.length}</strong>
-            </button>
-            {noteSections.map((section) => (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
+          {notes.map((note) => {
+            const section = sectionFor(note.id);
+            const pinned = pinnedNoteIds.includes(note.id);
+            const followUp = noteFollowUpDates[note.id] || "";
+            const attachment = noteAttachments[note.id];
+            return (
               <button
-                key={section}
+                key={note.id}
                 type="button"
-                onClick={() => setNotesSectionFilter(section)}
+                onClick={() => setSelectedNoteId(note.id)}
                 style={{
-                  ...secondaryButtonStyle,
-                  minHeight: 62,
-                  justifyContent: "space-between",
                   textAlign: "left",
-                  borderColor: notesSectionFilter === section ? colors.gold : colors.line,
-                  background: notesSectionFilter === section ? "#FFF9EC" : "#FFFFFF",
+                  border: `1px solid ${pinned ? "#E5C06B" : colors.line}`,
+                  borderRadius: 16,
+                  background: pinned ? "#FFFDF7" : "#FFFFFF",
+                  padding: 15,
+                  cursor: "pointer",
+                  minHeight: 145,
+                  boxShadow: pinned
+                    ? "0 8px 22px rgba(201,154,61,.12)"
+                    : "0 5px 16px rgba(7,27,47,.045)",
                 }}
               >
-                <span style={{ minWidth: 0 }}>
-                  <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <span style={{ color: colors.navy3, fontSize: 11, fontWeight: 900 }}>
                     {sectionGlyph(section)} {section}
-                  </strong>
-                  <small style={mutedSmallStyle}>Section</small>
-                </span>
-                <strong>{sectionCounts[section] || 0}</strong>
+                  </span>
+                  {pinned ? <span style={{ color: "#9B742A", fontSize: 11, fontWeight: 900 }}>PINNED</span> : null}
+                </div>
+                <div style={{ marginTop: 11, whiteSpace: "pre-wrap", lineHeight: 1.58, color: colors.text, fontSize: 14.5 }}>
+                  {note.text}
+                </div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 12 }}>
+                  <small style={mutedSmallStyle}>
+                    {note.createdAt ? new Date(note.createdAt).toLocaleString() : formatDate(note.date)}
+                  </small>
+                  {followUp ? <small style={{ color: colors.navy3, fontWeight: 800 }}>Follow up {formatDate(followUp)}</small> : null}
+                  {attachment ? <small style={{ color: colors.navy3, fontWeight: 800 }}>{attachment.kind}</small> : null}
+                </div>
               </button>
-            ))}
+            );
+          })}
+        </div>
+
+        {!notes.length ? <div style={noticeStyle}>No notes found.</div> : null}
+
+        {selectedNote ? (
+          <div
+            className="atlas-quick-capture-backdrop"
+            onMouseDown={() => setSelectedNoteId("")}
+            style={{ zIndex: 1500 }}
+          >
+            <section
+              className="atlas-quick-capture-panel"
+              onMouseDown={(event) => event.stopPropagation()}
+              style={{ width: "min(620px,100%)", maxHeight: "88vh", overflow: "auto" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                <div>
+                  <div style={eyebrowStyle}>NOTE</div>
+                  <small style={mutedSmallStyle}>
+                    {selectedNote.createdAt ? new Date(selectedNote.createdAt).toLocaleString() : formatDate(selectedNote.date)}
+                  </small>
+                </div>
+                <button type="button" onClick={() => setSelectedNoteId("")} style={compactUtilityButtonStyle}>Close</button>
+              </div>
+
+              <div style={{ marginTop: 14, whiteSpace: "pre-wrap", lineHeight: 1.65, color: colors.text, fontSize: 15 }}>
+                {selectedNote.text}
+              </div>
+
+              <div style={{ display: "grid", gap: 10, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${colors.line}` }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={fieldLabelStyle}>SECTION</span>
+                    <select
+                      value={sectionFor(selectedNote.id)}
+                      onChange={(event) => movePermanentNote(selectedNote.id, event.currentTarget.value as NoteSection)}
+                      style={{ ...inputStyle, minHeight: 36 }}
+                    >
+                      {noteSections.map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={fieldLabelStyle}>FOLLOW UP</span>
+                    <input
+                      type="date"
+                      value={noteFollowUpDates[selectedNote.id] || ""}
+                      onChange={(event) => setNoteFollowUp(selectedNote.id, event.currentTarget.value)}
+                      style={{ ...inputStyle, minHeight: 36 }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <span style={fieldLabelStyle}>ATTACH TO</span>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "150px minmax(0,1fr)", gap: 7 }}>
+                    <select
+                      value={noteAttachments[selectedNote.id]?.kind || noteAttachKind}
+                      onChange={(event) => {
+                        const kind = event.currentTarget.value as NoteAttachmentKind;
+                        setNoteAttachKind(kind);
+                        attachNote(selectedNote.id, kind, "");
+                      }}
+                      style={{ ...inputStyle, minHeight: 36 }}
+                    >
+                      {(["Asset", "Location", "Vendor", "Project", "Work Order", "Task"] as NoteAttachmentKind[]).map((kind) => <option key={kind}>{kind}</option>)}
+                    </select>
+                    <select
+                      value={noteAttachments[selectedNote.id]?.id || ""}
+                      onChange={(event) => {
+                        const kind = noteAttachments[selectedNote.id]?.kind || noteAttachKind;
+                        attachNote(selectedNote.id, kind, event.currentTarget.value);
+                      }}
+                      style={{ ...inputStyle, minHeight: 36 }}
+                    >
+                      <option value="">Not attached</option>
+                      {attachmentOptions(noteAttachments[selectedNote.id]?.kind || noteAttachKind).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => toggleNotePin(selectedNote.id)} style={secondaryButtonStyle}>
+                    {pinnedNoteIds.includes(selectedNote.id) ? "Unpin" : "Pin"}
+                  </button>
+                  <button type="button" onClick={() => convertNoteToTask(selectedNote)} style={secondaryButtonStyle}>Create Task</button>
+                  <button type="button" onClick={() => convertNoteToWorkOrder(selectedNote)} style={secondaryButtonStyle}>Create Work Order</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deletePermanentNote(selectedNote.id);
+                      setSelectedNoteId("");
+                    }}
+                    style={{ ...secondaryButtonStyle, color: colors.red, marginLeft: isMobile ? 0 : "auto" }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
-
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 9, flexWrap: "wrap" }}>
-            <strong style={{ color: colors.navy }}>
-              {notesSectionFilter === "All" ? "All Notes" : notesSectionFilter}
-            </strong>
-            <small style={mutedSmallStyle}>{notes.length} shown</small>
-          </div>
-
-          <div style={{ display: "grid", gap: 9 }}>
-            {notes.map((note) => {
-              const section = sectionFor(note.id);
-              return (
-                <article key={note.id} style={{ border: `1px solid ${pinnedNoteIds.includes(note.id) ? colors.gold : colors.line}`, borderRadius: 14, background: pinnedNoteIds.includes(note.id) ? "#FFFDF7" : "#FFFFFF", padding: 13, boxShadow: "0 4px 14px rgba(7,27,47,.04)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      {pinnedNoteIds.includes(note.id) ? <span style={{ ...recurringBadgeStyle, background: "#FFF3D6", color: colors.navy, fontWeight: 900 }}>Pinned</span> : null}
-                      <span style={{ ...recurringBadgeStyle, fontWeight: 900 }}>{sectionGlyph(section)} {section}</span>
-                      <small style={mutedSmallStyle}>{note.createdAt ? new Date(note.createdAt).toLocaleString() : formatDate(note.date)}</small>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      <button type="button" onClick={() => toggleNotePin(note.id)} style={compactUtilityButtonStyle}>{pinnedNoteIds.includes(note.id) ? "Unpin" : "Pin"}</button>
-                      <button type="button" onClick={() => deletePermanentNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 9, whiteSpace: "pre-wrap", lineHeight: 1.6, color: colors.text, fontSize: 14 }}>{note.text}</div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
-                    <label style={{ display: "grid", gap: 4 }}>
-                      <span style={fieldLabelStyle}>SECTION</span>
-                      <select
-                        value={section}
-                        onChange={(event) => movePermanentNote(note.id, event.currentTarget.value as NoteSection)}
-                        style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 12 }}
-                      >
-                        {noteSections.map((option) => <option key={option} value={option}>{option}</option>)}
-                      </select>
-                    </label>
-                    <label style={{ display: "grid", gap: 4 }}>
-                      <span style={fieldLabelStyle}>FOLLOW UP</span>
-                      <input
-                        type="date"
-                        value={noteFollowUpDates[note.id] || ""}
-                        onChange={(event) => setNoteFollowUp(note.id, event.currentTarget.value)}
-                        style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 12 }}
-                      />
-                    </label>
-                  </div>
-
-                  <div style={{ marginTop: 10, padding: 10, border: `1px solid ${colors.line}`, borderRadius: 11, background: colors.panel }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 7, flexWrap: "wrap" }}>
-                      <span style={fieldLabelStyle}>ATTACH TO</span>
-                      {noteAttachments[note.id] ? <small style={mutedSmallStyle}>{noteAttachments[note.id].kind} · {attachmentLabel(noteAttachments[note.id])}</small> : null}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "150px minmax(0,1fr) auto", gap: 7 }}>
-                      <select
-                        value={noteAttachments[note.id]?.kind || noteAttachKind}
-                        onChange={(event) => {
-                          const kind = event.currentTarget.value as NoteAttachmentKind;
-                          setNoteAttachKind(kind);
-                          attachNote(note.id, kind, "");
-                        }}
-                        style={{ ...inputStyle, minHeight: 34, fontSize: 12 }}
-                      >
-                        {(["Asset", "Location", "Vendor", "Project", "Work Order", "Task"] as NoteAttachmentKind[]).map((kind) => <option key={kind}>{kind}</option>)}
-                      </select>
-                      <select
-                        value={noteAttachments[note.id]?.id || ""}
-                        onChange={(event) => {
-                          const kind = noteAttachments[note.id]?.kind || noteAttachKind;
-                          attachNote(note.id, kind, event.currentTarget.value);
-                        }}
-                        style={{ ...inputStyle, minHeight: 34, fontSize: 12 }}
-                      >
-                        <option value="">Not attached</option>
-                        {attachmentOptions(noteAttachments[note.id]?.kind || noteAttachKind).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                      </select>
-                      {noteAttachments[note.id] ? <button type="button" onClick={() => attachNote(note.id, noteAttachments[note.id].kind, "")} style={compactUtilityButtonStyle}>Clear</button> : null}
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
-                    <button type="button" onClick={() => convertNoteToTask(note)} style={secondaryButtonStyle}>Create Task</button>
-                    <button type="button" onClick={() => convertNoteToWorkOrder(note)} style={secondaryButtonStyle}>Create Work Order</button>
-                  </div>
-                </article>
-              );
-            })}
-            {!notes.length ? <div style={noticeStyle}>No notes match this section or search.</div> : null}
-          </div>
-        </section>
+        ) : null}
       </div>
     );
   }
