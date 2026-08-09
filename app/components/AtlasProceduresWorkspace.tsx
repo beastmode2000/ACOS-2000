@@ -185,6 +185,7 @@ export default function AtlasProceduresWorkspace(props: any) {
     <div style={{ display: "grid", gap: 16 }}>
       <div
         style={{
+          order: -3,
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
@@ -261,7 +262,7 @@ export default function AtlasProceduresWorkspace(props: any) {
         ) : null}
       </div>
 
-      <div style={formGridStyle}>
+      <div style={{ ...formGridStyle, order: -1 }}>
         <Field
           label="Title"
           value={selectedProcedure.title}
@@ -389,7 +390,7 @@ export default function AtlasProceduresWorkspace(props: any) {
         />
       </div>
 
-      <div style={cardStyle}>
+      <div style={{ ...cardStyle, order: -2 }}>
         <div
           style={{
             display: "flex",
@@ -400,7 +401,7 @@ export default function AtlasProceduresWorkspace(props: any) {
           }}
         >
           <div>
-            <div style={eyebrowStyle}>Procedure Checklist</div>
+            <div style={eyebrowStyle}>Procedure</div>
             <strong>{selectedProcedure.steps.length} steps</strong>
           </div>
           <button
@@ -468,7 +469,7 @@ export default function AtlasProceduresWorkspace(props: any) {
             </div>
           ))}
           {!selectedProcedure.steps.length ? (
-            <div style={noticeStyle}>Add the first checklist step.</div>
+            <div style={noticeStyle}>No procedure created yet. Add the first step.</div>
           ) : null}
         </div>
       </div>
@@ -867,7 +868,7 @@ export default function AtlasProceduresWorkspace(props: any) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(250px, 330px) minmax(0, 1fr)",
+              gridTemplateColumns: "minmax(280px, 320px) minmax(0, 1fr)",
               gap: 12,
               alignItems: "start",
             }}
