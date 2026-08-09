@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 export default function AtlasTasks({ ctx }: { ctx: any }) {
-  const { todayISO, addDays, workPlanTasks, taskDetails, isAddisonUser, taskSearch, taskListFilter, selectedTaskId, setSelectedTaskId, fileToUploadedRecord, updateTaskDetails, showSaveToast, setWalkVoiceListening, cardStyle, colors, mutedSmallStyle, setTasksView, goldButtonStyle, isMobile, eyebrowStyle, secondaryButtonStyle, minutesLabel, plannerLocationName, noticeStyle, completeAtlasTask, skipRecurringTask, moveAtlasTaskToTomorrow, walkVoiceListening, setPreviewFile, setTaskListFilter, SectionHeader, tasksView, backlogItems, openGraduationPartyChecklist, renderOperationsAnalytics, renderSmartRoutePlanning, renderBuildMyDay, renderAddisonToday, renderWeeklyPlanner, renderBacklog, renderVehicleCare, renderSeasonalWork, renderOperationsTemplates, renderGraduationPartyChecklist, renderOperationsIntelligence, rapidTaskInputRef, newTaskTitle, setNewTaskTitle, addAtlasTask, inputStyle, focusRapidTaskInput, setTaskSearch, badgeStyle, formatDate, compactUtilityButtonStyle, assignTaskTo, addQuickTaskNote, addTaskPhoto, convertTaskToWorkOrder, Field, updateWorkPlanTask, SelectField, workPlanDays, photoTimelineProjects, serviceRecords, assetRecords, locations, vehicleCare, vendorRecords, procedureRecords, contactRecords, CreatableRelationshipField, quickCreateProject, fieldLabelStyle, quickCreateAsset, quickCreateLocation, quickCreateVendor, quickCreateContact, deleteAtlasTask, taskFocusMode, setTaskFocusMode, mapIconButtonStyle, closeSymbol } = ctx;
+  const { todayISO, addDays, workPlanTasks, taskDetails, isAddisonUser, taskSearch, taskListFilter, selectedTaskId, setSelectedTaskId, fileToUploadedRecord, updateTaskDetails, showSaveToast, setWalkVoiceListening, cardStyle, colors, mutedSmallStyle, setTasksView, goldButtonStyle, isMobile, eyebrowStyle, secondaryButtonStyle, minutesLabel, plannerLocationName, noticeStyle, completeAtlasTask, skipRecurringTask, moveAtlasTaskToTomorrow, walkVoiceListening, setPreviewFile, setTaskListFilter, SectionHeader, tasksView, backlogItems, openGraduationPartyChecklist, renderOperationsAnalytics, renderSmartRoutePlanning, renderBuildMyDay, renderAddisonToday, renderWeeklyPlanner, renderBacklog, renderVehicleCare, renderSeasonalWork, renderOperationsTemplates, renderGraduationPartyChecklist, renderOperationsIntelligence, rapidTaskInputRef, newTaskTitle, setNewTaskTitle, addAtlasTask, inputStyle, focusRapidTaskInput, setTaskSearch, badgeStyle, formatDate, compactUtilityButtonStyle, assignTaskTo, addQuickTaskNote, addTaskPhoto, convertTaskToWorkOrder, Field, updateWorkPlanTask, SelectField, workPlanDays, photoTimelineProjects, serviceRecords, assetRecords, locations, vehicleCare, vendorRecords, procedureRecords, contactRecords, CreatableRelationshipField, quickCreateProject, fieldLabelStyle, quickCreateAsset, quickCreateLocation, quickCreateVendor, quickCreateContact, deleteAtlasTask, removeExactDuplicateTasks, taskFocusMode, setTaskFocusMode, mapIconButtonStyle, closeSymbol } = ctx;
     const today = todayISO();
     const weekEnd = addDays(today, 7);
     const priorityOrder = { High: 0, Medium: 1, Low: 2 } as const;
@@ -165,7 +165,18 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
                   autoComplete="off"
                   style={inputStyle}
                 />
-                <button type="button" onClick={() => focusRapidTaskInput(true)} style={goldButtonStyle}>Add Task</button>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={removeExactDuplicateTasks}
+                    style={secondaryButtonStyle}
+                  >
+                    Remove Exact Duplicates
+                  </button>
+                  <button type="button" onClick={() => focusRapidTaskInput(true)} style={goldButtonStyle}>
+                    Add Task
+                  </button>
+                </div>
               </div>
             ) : null}
             <div style={{ ...cardStyle, padding: 11, display: "grid", gap: 9, background: "#F8FAFC", borderColor: "#D5E0EA" }}>
