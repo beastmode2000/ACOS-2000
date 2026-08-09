@@ -16239,7 +16239,7 @@ ${notes.trim()}` : notes.trim(),
                 if (dashboardWorkFilter === "__overdue__") return item.status !== "Completed" && Boolean(item.date) && String(item.date).slice(0, 10) < todayISO();
                 if (dashboardWorkFilter === "__today__") return item.status !== "Completed" && String(item.date || "").slice(0, 10) === todayISO();
                 if (dashboardWorkFilter === "__high__") return item.status !== "Completed" && item.priority === "High";
-                if (dashboardWorkFilter === "__completed-today__") return item.status === "Completed" && String(item.lastCompletedDate || item.completedAt || "").slice(0, 10) === todayISO();
+                if (dashboardWorkFilter === "__completed-today__") return item.status === "Completed" && String(item.lastCompletedDate || item.serviceHistory?.[0]?.completedAt || "").slice(0, 10) === todayISO();
                 const text = `${item.workCategory || ""} ${item.title || ""} ${item.notes || ""}`.toLowerCase();
                 return text.includes(dashboardWorkFilter.toLowerCase());
               })
