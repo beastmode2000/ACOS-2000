@@ -510,6 +510,7 @@ export default function AtlasRoutines({
         body: JSON.stringify({
           action: "save-template",
           propertyId: activePropertyId,
+          date: todayKey(),
           day: selectedDay,
           name:
             draftName.trim() ||
@@ -524,6 +525,13 @@ export default function AtlasRoutines({
         throw new Error(
           payload.error || "Routine did not save"
         );
+      }
+
+      // Keep the dashboard occurrence in sync immediately after the save.
+      // This prevents a newly added/edited task from being acted on against
+      // the pre-save occurrence while the follow-up reload is still running.
+      if (payload.occurrence) {
+        setOccurrence(payload.occurrence);
       }
 
       setEditing(false);
