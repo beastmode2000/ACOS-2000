@@ -663,10 +663,51 @@ export async function POST(request: NextRequest) {
     if (action === "assign-task" || action === "skip-task" || action === "defer-task") {
       const dateKey = asDateKey(body.date);
       const taskId = String(body.taskId || "");
-      const occurrence = await getOrCreateOccurrence(sql, propertyId, dateKey);
-      const selectedTask = occurrence?.tasks.find((item) => item.id === taskId);
+      let occurrence = await getOrCreateOccurrence(sql, propertyId, dateKey);
+      let selectedTask = occurrence?.tasks.find((item) => item.id === taskId);
+
+      // A newly saved routine can be followed immediately by an assignment,
+      // skip, or defer action from the dashboard. Re-read/synchronize once
+      // before treating the task as missing so the first action does not 404
+      // against a stale occurrence.
+      if (occurrence && !selectedTask) {
+        const templateRows = (await sql`
+          SELECT name, tasks
+          FROM atlas_routine_templates
+          WHERE property_id = ${propertyId}
+            AND day_of_week = ${occurrence.day}
+          LIMIT 1
+        `) as unknown as Array<Record<string, unknown>>;
+
+        const templateRow = templateRows[0];
+        if (templateRow) {
+          const templateTasks = normalizeTasks(templateRow.tasks).map(asTemplateTask);
+          const synchronizedTasks = synchronizeOccurrenceTasks(templateTasks, occurrence.tasks);
+
+          await sql`
+            UPDATE atlas_routine_occurrences
+            SET
+              routine_name = ${String(templateRow.name || occurrence.name)},
+              tasks = ${JSON.stringify(synchronizedTasks)}::jsonb,
+              updated_at = NOW()
+            WHERE property_id = ${propertyId}
+              AND occurrence_date = ${dateKey}::date
+          `;
+
+          occurrence = {
+            ...occurrence,
+            name: String(templateRow.name || occurrence.name),
+            tasks: synchronizedTasks,
+          };
+          selectedTask = occurrence.tasks.find((item) => item.id === taskId);
+        }
+      }
+
       if (!occurrence || !selectedTask) {
-        return NextResponse.json({ ok: false, error: "Routine item was not found" }, { status: 404 });
+        return NextResponse.json(
+          { ok: false, error: "Routine item was not found" },
+          { status: 404 },
+        );
       }
 
       if (action === "assign-task") {
