@@ -8,7 +8,8 @@ type RoutineTask = {
   enabled: boolean;
   completed?: boolean;
   status?: "open" | "completed" | "skipped" | "deferred";
-  assignedTo?: "Nick" | "Addison" | "Pat" | "Crew";
+  assignedTo?: string;
+  assigneeIds?: string[];
   deferredTo?: string;
   deferredFrom?: string;
 };
@@ -39,6 +40,14 @@ type Props = {
   allowTodayEditing?: boolean;
   defaultTodayAssignee?: RoutineTask["assignedTo"];
   employeeView?: boolean;
+  teamDirectory?: Array<{
+    id: string;
+    name: string;
+    email?: string;
+    role?: string;
+    active?: boolean;
+    propertyIds?: string[];
+  }>;
 };
 
 const dayNames = [
@@ -165,6 +174,7 @@ export default function AtlasRoutines({
   allowTodayEditing = false,
   defaultTodayAssignee,
   employeeView = false,
+  teamDirectory = [],
 }: Props) {
   const [templates, setTemplates] = useState<RoutineTemplate[]>([]);
   const [occurrence, setOccurrence] =
@@ -177,6 +187,7 @@ export default function AtlasRoutines({
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftTasks, setDraftTasks] = useState<RoutineTask[]>([]);
+  const [selectedPersonId, setSelectedPersonId] = useState("all");
   const [newTask, setNewTask] = useState("");
   const [status, setStatus] = useState("Loading routines…");
   const [busy, setBusy] = useState(false);
@@ -422,6 +433,75 @@ export default function AtlasRoutines({
     await mutateTodayOccurrence("delete-today-task", { taskId: task.id });
   }
 
+  const activeRoutinePeople = teamDirectory.filter(
+    (member) =>
+      member.active !== false &&
+      (!member.propertyIds?.length ||
+        member.propertyIds.includes(activePropertyId)),
+  );
+
+  function routinePersonId(member: { id?: string; email?: string; name?: string }) {
+    return String(member.id || member.email || member.name || "").trim();
+  }
+
+  function routinePersonName(personId: string) {
+    return (
+      activeRoutinePeople.find(
+        (member) => routinePersonId(member) === personId,
+      )?.name || personId
+    );
+  }
+
+  function taskAssigneeIds(task: RoutineTask) {
+    if (Array.isArray(task.assigneeIds) && task.assigneeIds.length) {
+      return task.assigneeIds.map(String);
+    }
+    if (!task.assignedTo) return [];
+    const legacy = activeRoutinePeople.find(
+      (member) =>
+        member.name.toLowerCase() === String(task.assignedTo).toLowerCase(),
+    );
+    return legacy ? [routinePersonId(legacy)] : [];
+  }
+
+  function setTaskPerson(taskIndex: number, personId: string, checked: boolean) {
+    setDraftTasks((current) =>
+      current.map((task, index) => {
+        if (index !== taskIndex) return task;
+        const currentIds = taskAssigneeIds(task);
+        const assigneeIds = checked
+          ? Array.from(new Set([...currentIds, personId]))
+          : currentIds.filter((id) => id !== personId);
+        return {
+          ...task,
+          assigneeIds,
+          assignedTo:
+            assigneeIds.length === 1
+              ? routinePersonName(assigneeIds[0])
+              : assigneeIds.length > 1
+                ? "Multiple"
+                : "",
+        };
+      }),
+    );
+  }
+
+  function assignVisibleRoutineToPerson(personId: string) {
+    if (!personId || personId === "all") return;
+    setDraftTasks((current) =>
+      current.map((task) => ({
+        ...task,
+        assigneeIds: Array.from(
+          new Set([...taskAssigneeIds(task), personId]),
+        ),
+        assignedTo:
+          Array.from(new Set([...taskAssigneeIds(task), personId])).length === 1
+            ? routinePersonName(personId)
+            : "Multiple",
+      })),
+    );
+  }
+
   function beginEdit() {
     if (!selected) {
       return;
@@ -452,7 +532,12 @@ export default function AtlasRoutines({
         id: createTaskId(),
         title,
         enabled: true,
-        assignedTo: "Nick",
+        assignedTo:
+          selectedPersonId !== "all"
+            ? routinePersonName(selectedPersonId)
+            : "",
+        assigneeIds:
+          selectedPersonId !== "all" ? [selectedPersonId] : [],
       },
     ]);
 
@@ -631,9 +716,17 @@ export default function AtlasRoutines({
 
   if (mode === "dashboard") {
     const dashboardTasks =
-      occurrence?.tasks.filter(
-        (task) => !assigneeFilter || task.assignedTo === assigneeFilter,
-      ) || [];
+      occurrence?.tasks.filter((task) => {
+        if (!assigneeFilter) return true;
+        if (task.assignedTo === assigneeFilter) return true;
+        const target = activeRoutinePeople.find(
+          (member) =>
+            member.name.toLowerCase() === String(assigneeFilter).toLowerCase(),
+        );
+        return target
+          ? taskAssigneeIds(task).includes(routinePersonId(target))
+          : false;
+      }) || [];
 
     const completed = dashboardTasks.filter((task) => task.completed).length;
 
@@ -1258,6 +1351,43 @@ export default function AtlasRoutines({
         ) : null}
       </div>
 
+      <div style={{ display: "grid", gap: 7 }}>
+        <div style={{ fontSize: 11, fontWeight: 900, color: colors.muted, letterSpacing: ".08em", textTransform: "uppercase" }}>
+          Routine For
+        </div>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => { setSelectedPersonId("all"); setEditing(false); }}
+            style={{
+              ...button,
+              background: selectedPersonId === "all" ? colors.navy : "#FFFFFF",
+              color: selectedPersonId === "all" ? "#FFFFFF" : colors.text,
+            }}
+          >
+            Everyone
+          </button>
+          {activeRoutinePeople.map((member) => {
+            const personId = routinePersonId(member);
+            const active = selectedPersonId === personId;
+            return (
+              <button
+                key={personId}
+                type="button"
+                onClick={() => { setSelectedPersonId(personId); setEditing(false); }}
+                style={{
+                  ...button,
+                  background: active ? colors.navy : "#FFFFFF",
+                  color: active ? "#FFFFFF" : colors.text,
+                }}
+              >
+                {member.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div
         style={{
           display: "grid",
@@ -1306,19 +1436,17 @@ export default function AtlasRoutines({
         >
           {editing ? (
             <>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  style={button}
-                  onClick={() =>
-                    setDraftTasks((current) =>
-                      current.map((task) => ({ ...task, assignedTo: "Addison" }))
-                    )
-                  }
-                >
-                  Assign All to Addison
-                </button>
-              </div>
+              {selectedPersonId !== "all" ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    style={button}
+                    onClick={() => assignVisibleRoutineToPerson(selectedPersonId)}
+                  >
+                    Assign All to {routinePersonName(selectedPersonId)}
+                  </button>
+                </div>
+              ) : null}
               <input
               value={draftName}
               onChange={(event) =>
@@ -1356,8 +1484,16 @@ export default function AtlasRoutines({
               gap: 8,
             }}
           >
-            {(editing ? draftTasks : selected.tasks).map(
-              (task, index) => (
+            {(editing ? draftTasks : selected.tasks)
+              .map((task, originalIndex) => ({ task, originalIndex }))
+              .filter(({ task }) =>
+                selectedPersonId === "all"
+                  ? true
+                  : taskAssigneeIds(task).includes(selectedPersonId)
+              )
+              .map(({ task, originalIndex }) => {
+                const index = originalIndex;
+                return (
                 <div
                   key={task.id}
                   style={{
@@ -1399,12 +1535,56 @@ export default function AtlasRoutines({
                       }}
                     />
                   ) : (
-                    <span><strong style={{ display: "block" }}>{task.title}</strong>{task.assignedTo && task.assignedTo !== "Nick" ? <small style={{ color: colors.muted }}>{task.assignedTo}</small> : null}</span>
+                    <span>
+                      <strong style={{ display: "block" }}>{task.title}</strong>
+                      {taskAssigneeIds(task).length ? (
+                        <small style={{ color: colors.muted }}>
+                          {taskAssigneeIds(task).map(routinePersonName).join(", ")}
+                        </small>
+                      ) : null}
+                    </span>
                   )}
 
                   {editing ? (
                     <>
-                      <select value={task.assignedTo || "Nick"} onChange={(event) => setDraftTasks((current) => current.map((item, taskIndex) => taskIndex === index ? { ...item, assignedTo: event.currentTarget.value as RoutineTask["assignedTo"] } : item))} style={{ ...button, fontWeight: 700 }}><option>Nick</option><option>Addison</option><option>Pat</option><option>Crew</option></select>
+                      <details style={{ position: "relative" }}>
+                        <summary style={{ ...button, listStyle: "none", cursor: "pointer", whiteSpace: "nowrap" }}>
+                          {taskAssigneeIds(task).length
+                            ? `${taskAssigneeIds(task).length} assigned`
+                            : "Assign"}
+                        </summary>
+                        <div style={{
+                          position: "absolute",
+                          zIndex: 20,
+                          right: 0,
+                          top: "calc(100% + 5px)",
+                          minWidth: 210,
+                          display: "grid",
+                          gap: 6,
+                          padding: 9,
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 10,
+                          background: "#FFFFFF",
+                          boxShadow: "0 10px 28px rgba(15,23,42,.14)",
+                        }}>
+                          {activeRoutinePeople.map((member) => {
+                            const personId = routinePersonId(member);
+                            const checked = taskAssigneeIds(task).includes(personId);
+                            return (
+                              <label key={personId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) =>
+                                    setTaskPerson(index, personId, event.currentTarget.checked)
+                                  }
+                                />
+                                {member.name}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </details>
                       <div
                         style={{
                           display: "flex",
@@ -1500,8 +1680,8 @@ export default function AtlasRoutines({
                     </>
                   ) : null}
                 </div>
-              )
-            )}
+              );
+              })}
           </div>
 
           {editing ? (
