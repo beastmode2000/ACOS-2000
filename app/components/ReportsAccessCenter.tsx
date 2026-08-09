@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 type Row = Record<string, unknown>;
 type Role = "Master" | "Administrator" | "Manager" | "Employee" | "Vendor" | "Viewer";
@@ -12,6 +12,7 @@ type Props = {
   data: Record<ReportKey, Row[]>;
   colors: { navy: string; gold: string; line: string; card: string; panel: string; muted: string; green: string };
   isMobile: boolean;
+  analytics?: ReactNode;
 };
 
 const defaultTeam: Member[] = [
@@ -233,7 +234,7 @@ function printReport(title: string, rows: Row[]) {
   }, 300);
 }
 
-export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
+export default function ReportsAccessCenter({ data, colors, isMobile, analytics }: Props) {
   const [report, setReport] = useState<ReportKey>("workOrders");
   const [team, setTeam] = useState<Member[]>(defaultTeam);
   const [message, setMessage] = useState("");
@@ -252,7 +253,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [assignedFilter, setAssignedFilter] = useState("All");
   const [alertMode, setAlertMode] = useState<"" | "overdue" | "high" | "week">("");
-  const [centerSection, setCenterSection] = useState<"reports" | "access" | "system">("reports");
+  const [centerSection, setCenterSection] = useState<"reports" | "analytics" | "access" | "system">("reports");
 
   useEffect(() => {
     void fetch("/api/atlas-team")
@@ -441,7 +442,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
           <div style={{ minWidth: 0 }}>
             <div style={{ color: colors.gold, fontSize: 10, fontWeight: 950, letterSpacing: ".14em", textTransform: "uppercase" }}>Administration</div>
             <h1 style={{ margin: "4px 0 3px", fontSize: isMobile ? 23 : 28, lineHeight: 1.08 }}>Reports & Access</h1>
-            <div style={{ color: "rgba(255,255,255,.72)", fontSize: 13 }}>Reporting, team permissions, backups, and system history in one control center.</div>
+            <div style={{ color: "rgba(255,255,255,.72)", fontSize: 13 }}>Operational reports and analytics for Atlas property operations.</div>
           </div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
             <div style={{ border: "1px solid rgba(255,255,255,.16)", borderRadius: 10, padding: "8px 10px", minWidth: 84 }}>
@@ -459,7 +460,7 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
           {([[
             "reports",
             "Reports",
-          ], ["access", "Access"], ["system", "System"]] as const).map(([value, label]) => (
+          ], ["analytics", "Operations Analytics"]] as const).map(([value, label]) => (
             <button
               key={value}
               type="button"
@@ -588,6 +589,17 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
             ) : null}
           </section>
         </>
+      ) : null}
+
+      {centerSection === "analytics" ? (
+        <section style={card}>
+          <div style={{ marginBottom: 12 }}>
+            <div style={sectionLabel}>Analytics</div>
+            <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>Operations Analytics</h2>
+            <p style={{ margin: 0, color: colors.muted, fontSize: 13 }}>Operational trends and workload analysis without accounting or expense tracking.</p>
+          </div>
+          {analytics || <div style={{ color: colors.muted, fontSize: 13 }}>Operations analytics are not available in this view.</div>}
+        </section>
       ) : null}
 
       {centerSection === "access" ? (
