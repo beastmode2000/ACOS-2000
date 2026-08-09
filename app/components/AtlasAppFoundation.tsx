@@ -5027,6 +5027,48 @@ export function normalizeManualRecord(record: Partial<ManualRecord>): ManualReco
   };
 }
 
+const fieldLabelStyle: React.CSSProperties = {
+  color: colors.navy,
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const inputStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  width: "100%",
+  maxWidth: "100%",
+  boxSizing: "border-box",
+  borderRadius: 14,
+  padding: "12px 13px",
+  fontSize: 14,
+  color: colors.text,
+  background: "#FFFFFF",
+  outline: "none",
+  fontFamily: "inherit",
+  minWidth: 0,
+  fontWeight: 750,
+};
+
+const goldButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.gold}`,
+  background: colors.gold,
+  color: colors.navy,
+  borderRadius: 13,
+  padding: "10px 13px",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.navy,
+  borderRadius: 13,
+  padding: "10px 13px",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
 const sectionStyle: React.CSSProperties = {
   background: colors.card,
   width: "100%",
