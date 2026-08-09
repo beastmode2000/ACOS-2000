@@ -141,9 +141,46 @@ export default function AtlasApp() {
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
   const [quickCaptureNote, setQuickCaptureNote] = useState("");
+  type NoteSection =
+    | "General"
+    | "Property"
+    | "Maintenance"
+    | "Projects"
+    | "Vendors"
+    | "Landscaping"
+    | "Pool & Spa"
+    | "Garage / Vehicles"
+    | "Dock / Boats"
+    | "House"
+    | "Private";
+  const noteSections: NoteSection[] = [
+    "General",
+    "Property",
+    "Maintenance",
+    "Projects",
+    "Vendors",
+    "Landscaping",
+    "Pool & Spa",
+    "Garage / Vehicles",
+    "Dock / Boats",
+    "House",
+    "Private",
+  ];
   const [notesDraft, setNotesDraft] = useState("");
   const [notesSearch, setNotesSearch] = useState("");
   const [notesListening, setNotesListening] = useState(false);
+  const [notesSection, setNotesSection] = useState<NoteSection>("General");
+  const [notesSectionFilter, setNotesSectionFilter] = useState<NoteSection | "All">("All");
+  const [notesSectionById, setNotesSectionById] = useState<Record<string, NoteSection>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.localStorage.getItem("atlas-note-sections-v1");
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
   const notesRecognitionRef = useRef<{ stop: () => void } | null>(null);
   const [quickCaptureMode, setQuickCaptureMode] = useState<"create" | "existing">("create");
   type QuickCreateKind = "photo" | "document" | "task" | "work-order" | "project" | "asset" | "vendor" | "procedure";
@@ -500,6 +537,15 @@ export default function AtlasApp() {
       // Audit history remains available for the current session if storage is unavailable.
     }
   }, [atlasAuditLog]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("atlas-note-sections-v1", JSON.stringify(notesSectionById));
+    } catch {
+      // Notes still work for the current session if browser storage is unavailable.
+    }
+  }, [notesSectionById]);
 
   const [logoIndex, setLogoIndex] = useState(0);
   const [mapImageOk, setMapImageOk] = useState(true);
@@ -5526,21 +5572,33 @@ export default function AtlasApp() {
   function savePermanentNote() {
     const noteText = notesDraft.trim();
     if (!noteText) return;
+    const noteId = uid("permanent-note");
     setTodayLogEntries((current) => [{
-      id: uid("permanent-note"),
+      id: noteId,
       propertyId: activePropertyId,
       date: todayISO(),
       category: "Note",
       text: noteText,
       createdAt: new Date().toISOString(),
     }, ...current]);
+    setNotesSectionById((current) => ({ ...current, [noteId]: notesSection }));
     setNotesDraft("");
-    showSaveToast("Note saved.");
+    showSaveToast(`${notesSection} note saved.`);
   }
 
   function deletePermanentNote(noteId: string) {
     setTodayLogEntries((current) => current.filter((entry) => entry.id !== noteId));
+    setNotesSectionById((current) => {
+      const next = { ...current };
+      delete next[noteId];
+      return next;
+    });
     showSaveToast("Note deleted.");
+  }
+
+  function movePermanentNote(noteId: string, section: NoteSection) {
+    setNotesSectionById((current) => ({ ...current, [noteId]: section }));
+    showSaveToast(`Note moved to ${section}.`);
   }
 
   function startPermanentNoteVoice() {
@@ -5598,25 +5656,67 @@ export default function AtlasApp() {
 
   function renderNotes() {
     const query = notesSearch.trim().toLowerCase();
-    const notes = todayLogEntries
+    const allPropertyNotes = todayLogEntries
       .filter((entry) => entry.propertyId === activePropertyId && entry.category === "Note")
-      .filter((entry) => !query || entry.text.toLowerCase().includes(query))
       .sort((a, b) => String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date)));
+
+    const sectionFor = (noteId: string): NoteSection => notesSectionById[noteId] || "General";
+    const sectionCounts = noteSections.reduce<Record<NoteSection, number>>((counts, section) => {
+      counts[section] = allPropertyNotes.filter((note) => sectionFor(note.id) === section).length;
+      return counts;
+    }, {} as Record<NoteSection, number>);
+
+    const notes = allPropertyNotes
+      .filter((entry) => notesSectionFilter === "All" || sectionFor(entry.id) === notesSectionFilter)
+      .filter((entry) => !query || entry.text.toLowerCase().includes(query));
+
+    const sectionGlyph = (section: NoteSection) => {
+      if (section === "Property") return "⌂";
+      if (section === "Maintenance") return "◇";
+      if (section === "Projects") return "▣";
+      if (section === "Vendors") return "V";
+      if (section === "Landscaping") return "⌁";
+      if (section === "Pool & Spa") return "≈";
+      if (section === "Garage / Vehicles") return "◆";
+      if (section === "Dock / Boats") return "≋";
+      if (section === "House") return "□";
+      if (section === "Private") return "●";
+      return "N";
+    };
 
     return (
       <div style={{ display: "grid", gap: 14 }}>
         <SectionHeader
           eyebrow="PROPERTY RECORD"
           title="Notes"
-          detail="Talk it out, review it, then save it permanently."
+          detail="Capture it by voice or text, file it where it belongs, and find it again fast."
         />
-        <section style={{ ...cardStyle, padding: isMobile ? 14 : 20 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 220px", gap: 14, alignItems: "stretch" }}>
+
+        <section style={{ ...cardStyle, padding: isMobile ? 14 : 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 12 }}>
+            <div>
+              <div style={eyebrowStyle}>NEW NOTE</div>
+              <strong style={{ display: "block", marginTop: 3, color: colors.navy, fontSize: 18 }}>
+                {notesListening ? "Atlas is listening" : "Write it down or talk it out"}
+              </strong>
+              <small style={mutedSmallStyle}>Nothing saves until you press Save Note.</small>
+            </div>
+            <select
+              value={notesSection}
+              onChange={(event) => setNotesSection(event.currentTarget.value as NoteSection)}
+              style={{ ...inputStyle, width: isMobile ? "100%" : 220, fontWeight: 800 }}
+              aria-label="Note section"
+            >
+              {noteSections.map((section) => <option key={section} value={section}>{section}</option>)}
+            </select>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 210px", gap: 14, alignItems: "stretch" }}>
             <textarea
               value={notesDraft}
               onChange={(event) => setNotesDraft(event.currentTarget.value)}
-              placeholder="Start typing or tap the voice button and talk…"
-              style={{ ...inputStyle, minHeight: 150, resize: "vertical", fontSize: 15, lineHeight: 1.55, padding: 14 }}
+              placeholder={`Add a ${notesSection.toLowerCase()} note…`}
+              style={{ ...inputStyle, minHeight: 170, resize: "vertical", fontSize: 15, lineHeight: 1.6, padding: 14 }}
             />
             <button
               type="button"
@@ -5624,63 +5724,142 @@ export default function AtlasApp() {
               aria-pressed={notesListening}
               style={{
                 border: notesListening ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
-                borderRadius: 18,
+                borderRadius: 20,
                 background: notesListening ? colors.navy : "#FFFFFF",
                 color: notesListening ? "#FFFFFF" : colors.navy,
-                minHeight: 150,
+                minHeight: 170,
                 padding: 18,
                 cursor: "pointer",
                 display: "grid",
                 placeItems: "center",
                 alignContent: "center",
                 gap: 12,
-                boxShadow: notesListening ? "0 12px 28px rgba(7,27,47,.18)" : "0 8px 22px rgba(7,27,47,.08)",
+                boxShadow: notesListening ? "0 14px 30px rgba(7,27,47,.20)" : "0 8px 22px rgba(7,27,47,.08)",
               }}
             >
               <span
                 aria-hidden="true"
                 style={{
-                  width: 62,
-                  height: 62,
+                  width: 68,
+                  height: 68,
                   borderRadius: 999,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 4,
                   background: notesListening ? colors.gold : colors.navy,
-                  boxShadow: notesListening ? "0 0 0 8px rgba(201,154,61,.16)" : "0 0 0 8px rgba(7,27,47,.06)",
+                  boxShadow: notesListening ? "0 0 0 9px rgba(201,154,61,.16)" : "0 0 0 9px rgba(7,27,47,.06)",
                 }}
               >
-                {[14, 26, 38, 26, 14].map((height, index) => (
+                {[16, 30, 42, 30, 16].map((height, index) => (
                   <span key={index} style={{ width: 4, height, borderRadius: 999, background: "#FFFFFF", opacity: index === 2 ? 1 : .86 }} />
                 ))}
               </span>
-              <span style={{ fontSize: 15, fontWeight: 900 }}>{notesListening ? "Listening…" : "Start voice note"}</span>
-              <small style={{ opacity: .72 }}>{notesListening ? "Tap to stop" : "Speak naturally"}</small>
+              <span style={{ fontSize: 15, fontWeight: 900 }}>{notesListening ? "Listening…" : "Voice Note"}</span>
+              <small style={{ opacity: .72 }}>{notesListening ? "Tap to stop" : "Tap and speak naturally"}</small>
             </button>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            {notesDraft ? <button type="button" onClick={() => setNotesDraft("")} style={secondaryButtonStyle}>Clear</button> : null}
-            <button type="button" onClick={savePermanentNote} disabled={!notesDraft.trim()} style={goldButtonStyle}>Save Note</button>
+
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+            <small style={mutedSmallStyle}>
+              Filing under <strong style={{ color: colors.navy }}>{notesSection}</strong>
+            </small>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+              {notesDraft ? <button type="button" onClick={() => setNotesDraft("")} style={secondaryButtonStyle}>Clear</button> : null}
+              <button type="button" onClick={savePermanentNote} disabled={!notesDraft.trim()} style={goldButtonStyle}>Save Note</button>
+            </div>
           </div>
         </section>
 
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-            <div><div style={eyebrowStyle}>NOTE HISTORY</div><strong style={{ color: colors.navy }}>{notes.length} saved</strong></div>
-            <input value={notesSearch} onChange={(event) => setNotesSearch(event.currentTarget.value)} placeholder="Search notes" style={{ ...inputStyle, width: isMobile ? "100%" : 260 }} />
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+            <div>
+              <div style={eyebrowStyle}>NOTEBOOK</div>
+              <strong style={{ color: colors.navy }}>{allPropertyNotes.length} saved notes</strong>
+            </div>
+            <input
+              value={notesSearch}
+              onChange={(event) => setNotesSearch(event.currentTarget.value)}
+              placeholder="Search all notes"
+              style={{ ...inputStyle, width: isMobile ? "100%" : 280 }}
+            />
           </div>
-          <div style={{ display: "grid", gap: 9 }}>
-            {notes.map((note) => (
-              <article key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 14, background: "#FFFFFF", padding: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                  <small style={mutedSmallStyle}>{note.createdAt ? new Date(note.createdAt).toLocaleString() : formatDate(note.date)}</small>
-                  <button type="button" onClick={() => deletePermanentNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
-                </div>
-                <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.55, color: colors.text }}>{note.text}</div>
-              </article>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 14 }}>
+            <button
+              type="button"
+              onClick={() => setNotesSectionFilter("All")}
+              style={{
+                ...secondaryButtonStyle,
+                minHeight: 62,
+                justifyContent: "space-between",
+                textAlign: "left",
+                borderColor: notesSectionFilter === "All" ? colors.gold : colors.line,
+                background: notesSectionFilter === "All" ? "#FFF9EC" : "#FFFFFF",
+              }}
+            >
+              <span><strong style={{ display: "block" }}>All Notes</strong><small style={mutedSmallStyle}>Everything</small></span>
+              <strong>{allPropertyNotes.length}</strong>
+            </button>
+            {noteSections.map((section) => (
+              <button
+                key={section}
+                type="button"
+                onClick={() => setNotesSectionFilter(section)}
+                style={{
+                  ...secondaryButtonStyle,
+                  minHeight: 62,
+                  justifyContent: "space-between",
+                  textAlign: "left",
+                  borderColor: notesSectionFilter === section ? colors.gold : colors.line,
+                  background: notesSectionFilter === section ? "#FFF9EC" : "#FFFFFF",
+                }}
+              >
+                <span style={{ minWidth: 0 }}>
+                  <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {sectionGlyph(section)} {section}
+                  </strong>
+                  <small style={mutedSmallStyle}>Section</small>
+                </span>
+                <strong>{sectionCounts[section] || 0}</strong>
+              </button>
             ))}
-            {!notes.length ? <div style={noticeStyle}>No saved notes yet.</div> : null}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 9, flexWrap: "wrap" }}>
+            <strong style={{ color: colors.navy }}>
+              {notesSectionFilter === "All" ? "All Notes" : notesSectionFilter}
+            </strong>
+            <small style={mutedSmallStyle}>{notes.length} shown</small>
+          </div>
+
+          <div style={{ display: "grid", gap: 9 }}>
+            {notes.map((note) => {
+              const section = sectionFor(note.id);
+              return (
+                <article key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 14, background: "#FFFFFF", padding: 13, boxShadow: "0 4px 14px rgba(7,27,47,.04)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={{ ...recurringBadgeStyle, fontWeight: 900 }}>{sectionGlyph(section)} {section}</span>
+                      <small style={mutedSmallStyle}>{note.createdAt ? new Date(note.createdAt).toLocaleString() : formatDate(note.date)}</small>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <select
+                        value={section}
+                        onChange={(event) => movePermanentNote(note.id, event.currentTarget.value as NoteSection)}
+                        style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11, width: 150 }}
+                        aria-label={`Move note to section`}
+                      >
+                        {noteSections.map((option) => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                      <button type="button" onClick={() => deletePermanentNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 9, whiteSpace: "pre-wrap", lineHeight: 1.6, color: colors.text, fontSize: 14 }}>{note.text}</div>
+                </article>
+              );
+            })}
+            {!notes.length ? <div style={noticeStyle}>No notes match this section or search.</div> : null}
           </div>
         </section>
       </div>
