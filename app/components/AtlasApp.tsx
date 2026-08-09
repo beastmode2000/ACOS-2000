@@ -14090,8 +14090,7 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function openGraduationPartyChecklist() {
-    const exists = checklistItems("graduation-party").length > 0;
-    if (!exists) {
+    if (!checklistItems("graduation-party").length) {
       setTasksView("lists");
       return;
     }
@@ -14111,7 +14110,7 @@ ${notes.trim()}` : notes.trim(),
         taskDetails(task.id).listId === "graduation-party" ||
         task.category === "Graduation Party Checklist",
     );
-    const graduationDefinition = graduationRecords.length
+    const graduation = graduationRecords.length
       ? [{
           id: "graduation-party",
           name:
@@ -14121,11 +14120,11 @@ ${notes.trim()}` : notes.trim(),
         }]
       : [];
     return [
-      ...graduationDefinition,
+      ...graduation,
       ...custom.filter(
         (item, index, all) =>
-          all.findIndex((candidate) => candidate.id === item.id) === index &&
-          item.id !== "graduation-party",
+          item.id !== "graduation-party" &&
+          all.findIndex((candidate) => candidate.id === item.id) === index,
       ),
     ];
   }
@@ -14220,7 +14219,7 @@ ${notes.trim()}` : notes.trim(),
     ids.forEach((id) => void deleteOperationalRecord("tasks" as AtlasTable, id));
 
     const remainingDefinitions = checklistDefinitions().filter((definition) => definition.id !== listId);
-    setSelectedListId(remainingDefinitions[0]?.id || "graduation-party");
+    setSelectedListId(remainingDefinitions[0]?.id || "");
     showSaveToast(`${listName} deleted.`);
   }
 
@@ -14289,7 +14288,7 @@ ${notes.trim()}` : notes.trim(),
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Reusable Checklists</div><h2 style={{ margin: "3px 0", color: colors.navy }}>Lists</h2></div><button type="button" onClick={createChecklist} style={goldButtonStyle}>+ New List</button></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{definitions.map((definition) => <button key={definition.id} type="button" onClick={() => { setSelectedListId(definition.id); }} style={selectedDefinition.id === definition.id ? goldButtonStyle : secondaryButtonStyle}>{definition.name}</button>)}</div>
       </section>
-      {selectedDefinition.id ? <><section style={{ ...cardStyle, padding: 14 }}>
+      <section style={{ ...cardStyle, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => renameChecklist(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Rename</button><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button><button type="button" onClick={() => deleteChecklist(selectedDefinition.id, selectedDefinition.name)} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete List</button></div></div>
         <label style={{ display: "grid", gap: 5, marginTop: 12 }}><span style={fieldLabelStyle}>LIST NOTES</span><textarea value={listNotes} onChange={(event) => updateListNotes(event.currentTarget.value)} placeholder="Add instructions, reminders, vendor details, or notes for this list…" rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}/></label>
       </section>
@@ -14305,7 +14304,6 @@ ${notes.trim()}` : notes.trim(),
           </div>; })}
         </div>
       </section>
-      </> : null}
     </div>;
   }
 
