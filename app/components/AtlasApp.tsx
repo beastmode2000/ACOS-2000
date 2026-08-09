@@ -7750,7 +7750,22 @@ export default function AtlasApp() {
 
   function openTaskById(taskId: string) {
     if (!taskId) return;
-    setTaskListFilter("all");
+    const task = workPlanTasks.find((item) => item.id === taskId);
+    const meta = task ? taskDetails(task.id) : null;
+    const today = todayISO();
+    const weekEnd = addDays(today, 7);
+    const targetFilter: TaskListFilter =
+      meta?.status === "Completed"
+        ? "completed"
+        : meta?.dueDate && meta.dueDate < today
+          ? "overdue"
+          : meta?.dueDate && meta.dueDate >= today && meta.dueDate <= weekEnd
+            ? "week"
+            : task?.recurring
+              ? "recurring"
+              : "today";
+
+    setTaskListFilter(targetFilter);
     setTasksView("tasks");
     setSelectedTaskId(taskId);
     setScreen("planner");
