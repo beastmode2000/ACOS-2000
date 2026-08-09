@@ -3653,23 +3653,50 @@ export default function AtlasApp() {
               : (["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[]),
         },
       ]
-    : atlasPrimaryNavigationSections.map((section) =>
-        section.label === "Overview"
-          ? {
-              ...section,
-              items: Array.from(
-                new Set<AtlasScreen>([
-                  "dashboard",
-                  "notes",
-                  ...section.items.filter((item) => item !== "dashboard" && item !== "notes"),
-                ]),
+    : (() => {
+        const sections = atlasPrimaryNavigationSections.map((section) => ({
+          ...section,
+          items: section.items.filter(
+            (item) => item !== "manuals" && item !== "portfolio",
+          ),
+        }));
+
+        const overview = sections.find((section) => section.label === "Overview");
+        if (overview) {
+          overview.items = Array.from(
+            new Set<AtlasScreen>([
+              "dashboard",
+              "notes",
+              ...overview.items.filter(
+                (item) => item !== "dashboard" && item !== "notes",
               ),
-            }
-          : section,
-      );
+            ]),
+          );
+        }
+
+        const work = sections.find((section) => section.label === "Work");
+        if (work) {
+          const preferred = ["planner", "routines", "history", "calendar", "team"] as AtlasScreen[];
+          work.items = [
+            ...preferred.filter((id) => work.items.includes(id)),
+            ...work.items.filter((id) => !preferred.includes(id)),
+          ];
+        }
+
+        const property = sections.find((section) => section.label === "Property");
+        if (property) {
+          property.items = [
+            ...property.items.filter((id) => id !== "portfolio"),
+            "portfolio" as AtlasScreen,
+          ];
+        }
+
+        return sections.filter((section) => section.items.length > 0);
+      })();
+
   const visibleMoreToolsScreens = isTeamScopedUser
     ? ([] as AtlasScreen[])
-    : atlasMoreToolsScreens;
+    : atlasMoreToolsScreens.filter((screenId) => screenId !== "manuals");
 
   useEffect(() => {
     if (isAddisonUser) {
@@ -15199,6 +15226,10 @@ ${notes.trim()}` : notes.trim(),
       addDashboardWorkOrder,
       addRoutineNote,
       addRoutinePhoto,
+      openDashboardDepartment: (id: DepartmentKind) => {
+        setDepartmentDrilldown("");
+        setDepartmentCenter(id);
+      },
       assetName,
       assetRecords,
       atlasAuditLog,
@@ -15667,7 +15698,7 @@ ${notes.trim()}` : notes.trim(),
             { icon: "✓", label: "Healthy Areas", value: healthyAreas, note: "No open work" },
           ].map((item) => (
             <div
-              key={((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
+              key={((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : (item as { id?: string }).id === "portfolio" ? "Properties" : item.label)}
               style={{
                 border: `1px solid ${colors.line}`,
                 borderRadius: 14,
@@ -25996,6 +26027,7 @@ ${notes.trim()}` : notes.trim(),
                           (item) =>
                             item.id !== "intake" &&
                             item.id !== "planner" &&
+                            item.id !== "manuals" &&
                             !atlasMoreToolsScreens.includes(item.id),
                         )
                         .map((item) => (
@@ -26039,7 +26071,7 @@ ${notes.trim()}` : notes.trim(),
               </button>
               <nav style={sidebarNavStyle} aria-label="Atlas sections">
                 {visiblePrimaryNavigationSections.map((section) => (
-                  <div key={section.label} style={{ ...sidebarNavSectionStyle, order: section.label === "Overview" ? 10 : section.label === "Work" ? 20 : section.label === "Property" ? 30 : section.label === "Reports & Access" ? 50 : section.label === "Intake" ? 60 : section.label === "People" ? 70 : section.label === "Knowledge" ? 80 : 90 }}>
+                  <div key={section.label} style={{ ...sidebarNavSectionStyle, order: section.label === "Overview" ? 10 : section.label === "Work" ? 20 : section.label === "Property" ? 30 : section.label === "People" ? 40 : section.label === "Intake" ? 50 : section.label === "Reports & Access" ? 60 : section.label === "Knowledge" ? 80 : 90 }}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>{section.label}</div>
                     <div style={sidebarNavItemsStyle}>
                       {section.items.map((screenId) => {
@@ -26090,7 +26122,7 @@ ${notes.trim()}` : notes.trim(),
                             key={item.id}
                             type="button"
                             className="atlas-sidebar-nav-button"
-                            title={sidebarCollapsed ? (item.id === "timeline" ? "Projects" : item.label) : undefined}
+                            title={sidebarCollapsed ? (item.id === "timeline" ? "Projects" : item.id === "portfolio" ? "Properties" : item.label) : undefined}
                             onClick={() => {
                               if (item.id === "history") {
                                 setSelectedServiceId("");
@@ -26117,7 +26149,9 @@ ${notes.trim()}` : notes.trim(),
                                 ? "My Routine"
                                 : item.id === "timeline"
                                   ? "Projects"
-                                  : item.label}
+                                  : item.id === "portfolio"
+                                    ? "Properties"
+                                    : item.label}
                             </span>
                           </button>
                         );
