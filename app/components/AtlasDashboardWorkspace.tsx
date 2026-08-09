@@ -136,6 +136,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     addDashboardWorkOrder,
     addRoutineNote,
     addRoutinePhoto,
+    openDashboardDepartment,
     assetName,
     assetRecords,
     atlasAuditLog,
@@ -2132,22 +2133,38 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (id === "today-upcoming") return null;
     // Live Operating Areas intentionally uses plain cards only: no health score, percentage, progress bar, or status meter.
     if (id === "property-status") return (
-      <section style={cardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div><div style={eyebrowStyle}>Property Status</div><h2 style={{ margin: "3px 0 4px", color: colors.navy }}>Live operating areas</h2><p style={{ ...mutedSmallStyle, margin: 0 }}>Open an area to see all related work orders and add new work.</p></div>
-          <strong style={{ color: colors.navy }}>{openWork.length} open work order{openWork.length === 1 ? "" : "s"}</strong>
+      <section style={{ ...cardStyle, padding: isMobile ? 10 : "10px 12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div><div style={eyebrowStyle}>Departments</div><h2 style={{ margin: "2px 0", color: colors.navy, fontSize: isMobile ? 18 : 20 }}>Live Operating Areas</h2></div>
+          <small style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>{openWork.length} open work order{openWork.length === 1 ? "" : "s"}</small>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : `repeat(${Math.min(5, Math.max(1, liveStatuses.length))},minmax(0,1fr))`, gap: 7, marginTop: 8 }}>
           {liveStatuses.map((item) => (
-            <div key={item.label} style={{ border: `1px solid ${colors.line}`, borderRadius: 13, background: "#FFFFFF", padding: 10, textAlign: "left" }}>
-              <button type="button" onClick={() => { setDashboardWorkFilter(item.query); setSelectedServiceId(""); setWorkOrdersOpenKey((current) => current + 1); setScreen("history"); }} style={{ width: "100%", border: 0, background: "transparent", padding: 2, textAlign: "left", cursor: "pointer" }}>
-                <span style={{ fontSize: 21 }}>{item.icon}</span>
-                <strong style={{ display: "block", marginTop: 7 }}>{item.label}</strong>
-                <small style={mutedSmallStyle}>{item.count} open work order{item.count === 1 ? "" : "s"}</small>
-                {!isMobile ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 6, minHeight: 30 }}>{item.count ? item.reason : "No open work in this area."}</small> : null}
-              </button>
-              <button type="button" onClick={() => addDashboardWorkOrder(item.label)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 30, marginTop: 8, padding: "4px 7px", fontSize: 11 }}>+ Work Order</button>
-            </div>
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => {
+                const normalized = item.label.toLowerCase();
+                if (normalized.includes("house")) openDashboardDepartment?.("house");
+                else if (normalized.includes("garage")) openDashboardDepartment?.("garage");
+                else if (normalized.includes("pool") || normalized.includes("spa")) openDashboardDepartment?.("pool");
+                else if (normalized.includes("landscap") || normalized.includes("irrig")) openDashboardDepartment?.("landscaping");
+                else if (normalized.includes("dock") || normalized.includes("waterfront") || normalized.includes("marine")) openDashboardDepartment?.("marine");
+                else {
+                  setDashboardWorkFilter(item.query);
+                  setSelectedServiceId("");
+                  setWorkOrdersOpenKey((current) => current + 1);
+                  setScreen("history");
+                }
+              }}
+              style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: "8px 9px", textAlign: "left", cursor: "pointer", minHeight: 58 }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
+                <strong style={{ color: colors.navy, fontSize: 12.5, lineHeight: 1.2 }}>{item.label}</strong>
+              </div>
+              <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{item.count} open</small>
+            </button>
           ))}
         </div>
       </section>
@@ -2501,7 +2518,7 @@ export default function AtlasDashboardWorkspace(props: any) {
             : "before";
           moveWidget(widget.id, position);
         }}
-        style={{ position: "relative", gridColumn: isMobile ? "1 / -1" : `span ${widget.colSpan || legacySizeColumns(widget.size)}`, gridRow: "auto", minWidth: 0, height: "max-content", alignSelf: "start", opacity: draggedDashboardWidgetId === widget.id ? .55 : 1, transition: "opacity .18s ease, transform .18s ease", overflow: "visible" }}
+        style={{ position: "relative", gridColumn: isMobile || widget.id === "property-status" ? "1 / -1" : `span ${widget.colSpan || legacySizeColumns(widget.size)}`, gridRow: "auto", minWidth: 0, height: "max-content", alignSelf: "start", opacity: draggedDashboardWidgetId === widget.id ? .55 : 1, transition: "opacity .18s ease, transform .18s ease", overflow: "visible" }}
       >
         {activeDropTarget ? <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, height: 5, borderRadius: 999, background: colors.gold, boxShadow: "0 0 0 3px rgba(230,169,43,.18)", top: activeDropTarget.position === "before" ? -9 : "auto", bottom: activeDropTarget.position === "after" ? -9 : "auto", zIndex: 20, pointerEvents: "none" }} /> : null}
         {dashboardEditMode || widget.collapsed ? <div draggable={dashboardEditMode && !widget.locked} onDragStart={(event) => { if (!widget.locked) { event.dataTransfer.effectAllowed = "move"; setDraggedDashboardWidgetId(widget.id); setDashboardWidgetDropTarget(null); } }} onDragEnd={() => { setDraggedDashboardWidgetId(null); setDashboardWidgetDropTarget(null); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: `1px solid ${colors.line}`, borderBottom: widget.collapsed ? `1px solid ${colors.line}` : 0, borderRadius: widget.collapsed ? 14 : "14px 14px 0 0", background: colors.navy, color: "#FFFFFF", padding: "8px 10px", cursor: dashboardEditMode && !widget.locked ? "grab" : "default", userSelect: "none" }}><strong>{dashboardWidgetDefinitions[widget.id].title}</strong><div style={{ display: "flex", gap: 5, alignItems: "center" }}>{dashboardEditMode ? <><span style={{ fontSize: 11, opacity: .75 }}>{widget.colSpan || legacySizeColumns(widget.size)}/12 wide</span><button type="button" title={widget.locked ? "Unlock widget" : "Lock widget"} onClick={(event) => { event.stopPropagation(); updateWidget(widget.id, { locked: !widget.locked }); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: widget.locked ? "rgba(230,169,43,.28)" : "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.locked ? "🔒" : "🔓"}</button><button type="button" title="Reset widget size" onClick={(event) => { event.stopPropagation(); resetWidgetGrid(widget.id); }} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>↺</button></> : null}<button type="button" onClick={() => updateWidget(widget.id, { collapsed: !widget.collapsed })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>{widget.collapsed ? "+" : "−"}</button>{dashboardEditMode ? <button type="button" onClick={() => updateWidget(widget.id, { visible: false })} style={{ width: 30, minHeight: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.25)", background: "rgba(255,255,255,.12)", color: "#FFFFFF", cursor: "pointer" }}>×</button> : null}</div></div> : null}
