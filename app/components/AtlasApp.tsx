@@ -1746,10 +1746,60 @@ export default function AtlasApp() {
     return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener("focus", handleFocus); };
   }, [ready, operationsHydrated, activePropertyId]);
 
-  // Operational setup must NEVER run automatically on app load or deploy.
-  // These setup functions may only run from explicit user-triggered buttons/actions.
-  // This prevents duplicate Tasks, Work Orders, Calendar records, and event plans.
-
+  useEffect(() => {
+    if (!ready || !operationsHydrated || syncState !== "synced" || !vehicleCare.length) return;
+    void setupFleetAssetsAndSchedules();
+  }, [ready, operationsHydrated, syncState, activePropertyId, vehicleCare.length, assetRecords.length, workPlanTasks.length, serviceRecords.length, calendarItems.length]);
+  useEffect(() => {
+    if (!ready || !operationsHydrated || syncState !== "synced") return;
+    void setupWeeklyOperations();
+  }, [ready, operationsHydrated, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupHousePreventiveMaintenance();
+  }, [ready, operationsHydrated, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || !["2000", "hangar"].includes(activePropertyId)) return;
+    void setupConfirmedAssetCatalog();
+  }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
+    void setupApplianceColdSeasonWorkOrders();
+  }, [ready, syncState, activePropertyId, assetRecords.length]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupSeasonalPressureWashing();
+  }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupExteriorGlassCare();
+  }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupRoofDrainageCare();
+  }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    void setupHolidayTreeSchedule();
+  }, [ready, syncState, activePropertyId]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
+    void setupMarineRegistrationTabs();
+  }, [ready, syncState, activePropertyId, assetRecords.length]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
+    if (winterTruckBallastTimerRef.current) window.clearTimeout(winterTruckBallastTimerRef.current);
+    winterTruckBallastTimerRef.current = window.setTimeout(() => { void setupWinterTruckBallast(); }, 2200);
+    return () => { if (winterTruckBallastTimerRef.current) window.clearTimeout(winterTruckBallastTimerRef.current); };
+  }, [ready, syncState, activePropertyId, assetRecords.length, serviceRecords.length]);
+  useEffect(() => {
+    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
+    if (workOrderDateReconciliationTimerRef.current) window.clearTimeout(workOrderDateReconciliationTimerRef.current);
+    workOrderDateReconciliationTimerRef.current = window.setTimeout(() => { void reconcileApplianceAndPressureWashingDates(); }, 1800);
+    return () => {
+      if (workOrderDateReconciliationTimerRef.current) window.clearTimeout(workOrderDateReconciliationTimerRef.current);
+    };
+  }, [ready, syncState, activePropertyId, serviceRecords.length, assetRecords.length, calendarItems.length]);
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -4579,9 +4629,6 @@ export default function AtlasApp() {
       { query: "tasks today", label: "Tasks due today", detail: `${propertyName} daily work` },
     ];
     if (screen === "planner") return [
-      { query: "build my day", label: "Build My Day", detail: "Create today’s realistic plan" },
-      { query: "smart route", label: "Smart Route", detail: "Group nearby property work" },
-      { query: "walk mode", label: "Walk Mode", detail: "Start the simplified field view" },
       ...common,
     ];
     if (screen === "vendors") return [{ query: "vendor", label: "Search vendors", detail: `${propertyName} vendor records` }, ...common];
@@ -12171,43 +12218,10 @@ export default function AtlasApp() {
   function skipRecurringTask(task: WorkPlanTask) {
     const meta = taskDetails(task.id);
     if (!task.recurring || meta.skippable === false) return;
-
-    const today = todayISO();
-    const dueDate = String(meta.dueDate || today).slice(0, 10);
-
-    if (dueDate > today) {
-      showSaveToast(
-        `This task is due ${formatDate(dueDate)} and cannot be skipped early.`,
-        "warning",
-      );
-      return;
-    }
-
     const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
     const unit = meta.recurrenceUnit || "Weeks";
-    let nextDate = nextRecurrenceDate(dueDate, interval, unit);
-
-    while (nextDate <= today) {
-      nextDate = nextRecurrenceDate(nextDate, interval, unit);
-    }
-
-    const skippedHistory = Array.from(
-      new Set([
-        ...(((meta as any).skippedHistory || []) as string[]),
-        dueDate,
-      ]),
-    ).sort();
-
-    updateTaskDetails(task.id, {
-      dueDate: nextDate,
-      status: "Open",
-      skippedHistory,
-    } as any);
-
-    recordAtlasAudit(
-      "Recurring task skipped",
-      `${task.title} · skipped ${formatDate(dueDate)} · next due ${formatDate(nextDate)}`,
-    );
+    const nextDate = nextRecurrenceDate(meta.dueDate || todayISO(), interval, unit);
+    updateTaskDetails(task.id, { dueDate: nextDate, status: "Open" });
     showSaveToast(`${task.title} skipped. Next due ${formatDate(nextDate)}.`);
   }
 
@@ -12329,35 +12343,10 @@ export default function AtlasApp() {
     showSaveToast("Task deleted — Atlas will keep it deleted even if sync has to retry.");
   }
 
-  function moveAtlasTaskToDate(task: WorkPlanTask, nextDate: string) {
-    const cleanDate = String(nextDate || "").slice(0, 10);
-    if (!cleanDate) return;
-
-    const meta = taskDetails(task.id);
-    const currentDate = String(meta.dueDate || "").slice(0, 10);
-
-    if (currentDate && cleanDate < currentDate) {
-      const confirmed = window.confirm(
-        `Move “${task.title}” forward from ${formatDate(currentDate)} to ${formatDate(cleanDate)}?`,
-      );
-      if (!confirmed) return;
-    }
-
-    updateTaskDetails(task.id, {
-      dueDate: cleanDate,
-      status: "Open",
-      completedAt: undefined,
-    });
-    recordAtlasAudit("Task moved", `${task.title} → ${cleanDate}`);
-    showSaveToast(`${task.title} moved to ${formatDate(cleanDate)}.`);
-  }
-
-  function moveAtlasTaskToToday(task: WorkPlanTask) {
-    moveAtlasTaskToDate(task, todayISO());
-  }
-
   function moveAtlasTaskToTomorrow(task: WorkPlanTask) {
-    moveAtlasTaskToDate(task, addDays(todayISO(), 1));
+    updateTaskDetails(task.id, { dueDate: addDays(todayISO(), 1), status: "Open" });
+    recordAtlasAudit("Task moved", `${task.title} → tomorrow`);
+    showSaveToast(`${task.title} moved to tomorrow.`);
   }
 
   function addQuickTaskNote(task: WorkPlanTask) {
@@ -14030,98 +14019,6 @@ ${notes.trim()}` : notes.trim(),
     showSaveToast(`${template.title} created with ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`);
   }
 
-  function removeExactDuplicateTasks() {
-    const keepByKey = new Map<string, WorkPlanTask>();
-    const duplicateIds = new Set<string>();
-
-    const keyFor = (task: WorkPlanTask) => {
-      const meta = taskDetails(task.id);
-      return [
-        task.title.trim().toLowerCase(),
-        String(task.category || "").trim().toLowerCase(),
-        String(task.locationId || "").trim().toLowerCase(),
-        String(meta.dueDate || "").slice(0, 10),
-        String(meta.assignee || "").trim().toLowerCase(),
-        task.recurring ? "recurring" : "one-time",
-        String(meta.listId || "").trim().toLowerCase(),
-      ].join("|");
-    };
-
-    const scoreFor = (task: WorkPlanTask) => {
-      const meta = taskDetails(task.id);
-      return (
-        (meta.status === "Completed" ? 100 : 0) +
-        (meta.completionHistory?.length || 0) * 5 +
-        (meta.notes ? 2 : 0) +
-        (meta.completedAt ? 2 : 0)
-      );
-    };
-
-    workPlanTasks.forEach((task) => {
-      if (task.category === "Atlas List Definition") return;
-
-      const key = keyFor(task);
-      const kept = keepByKey.get(key);
-
-      if (!kept) {
-        keepByKey.set(key, task);
-        return;
-      }
-
-      if (scoreFor(task) > scoreFor(kept)) {
-        duplicateIds.add(kept.id);
-        keepByKey.set(key, task);
-      } else {
-        duplicateIds.add(task.id);
-      }
-    });
-
-    if (!duplicateIds.size) {
-      showSaveToast("No exact duplicate tasks found.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Remove ${duplicateIds.size} exact duplicate task${
-        duplicateIds.size === 1 ? "" : "s"
-      }? Atlas will keep one copy of each task and preserve the stronger history copy.`,
-    );
-    if (!confirmed) return;
-
-    setWorkPlanTasks((current) =>
-      current.filter((task) => !duplicateIds.has(task.id)),
-    );
-
-    setTaskMeta((current) => {
-      const next = { ...current };
-      duplicateIds.forEach((id) => {
-        delete next[id];
-      });
-
-      try {
-        window.localStorage.setItem(
-          `atlas-task-meta-v1-${activePropertyId}`,
-          JSON.stringify(next),
-        );
-        if (activePropertyId === "2000") {
-          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
-        }
-      } catch {}
-
-      return next;
-    });
-
-    duplicateIds.forEach((id) => {
-      void deleteOperationalRecord("tasks" as AtlasTable, id);
-    });
-
-    showSaveToast(
-      `Removed ${duplicateIds.size} duplicate task${
-        duplicateIds.size === 1 ? "" : "s"
-      }.`,
-    );
-  }
-
   function makeSuggestedTaskRepeating(task: WorkPlanTask) {
     const nextDue = addDays(todayISO(), 7);
     const weekdayLabel = new Date().toLocaleDateString(undefined, {
@@ -15391,9 +15288,7 @@ ${notes.trim()}` : notes.trim(),
           noticeStyle,
           completeAtlasTask,
           skipRecurringTask,
-          moveAtlasTaskToToday,
           moveAtlasTaskToTomorrow,
-          moveAtlasTaskToDate,
           walkVoiceListening,
           setPreviewFile,
           setTaskListFilter,
@@ -15446,7 +15341,6 @@ ${notes.trim()}` : notes.trim(),
           quickCreateVendor,
           quickCreateContact,
           deleteAtlasTask,
-          removeExactDuplicateTasks,
           taskFocusMode,
           setTaskFocusMode,
           mapIconButtonStyle,
@@ -23495,13 +23389,14 @@ ${notes.trim()}` : notes.trim(),
     return (
       <section style={sectionStyle}>
         <SectionHeader
-          eyebrow="Administration"
-          title="Reports & Access"
-          detail="Export Atlas records and manage simple team access profiles without adding dashboard clutter."
+          eyebrow="Operations"
+          title="Reports"
+          detail="Operational reporting and analytics for work, assets, vendors, documents, procedures, and schedules."
         />
         <ReportsAccessCenter
           isMobile={isMobile}
           colors={colors}
+          analytics={renderOperationsAnalytics()}
           data={{
             workOrders: serviceRecords,
             assets: assetRecords,
@@ -26536,13 +26431,6 @@ ${notes.trim()}` : notes.trim(),
                       <option value="planner:tasks">Tasks</option>
                       <option value="planner:lists">Lists</option>
                     </optgroup>
-                    <optgroup label="Planning Tools">
-                      <option value="planner:walk">Walk Mode</option>
-                      <option value="planner:build">Build My Day</option>
-                      <option value="planner:route">Smart Route</option>
-                      <option value="planner:analytics">Operations Analytics</option>
-                      <option value="planner:week">Plan Week</option>
-                    </optgroup>
                     <optgroup label="Main">
                       {visibleAtlasScreens
                         .filter(
@@ -26707,7 +26595,7 @@ ${notes.trim()}` : notes.trim(),
                   </div>
                 ) : null}
 
-                {!isTeamScopedUser ? (
+                {false && !isTeamScopedUser ? (
                 <div style={{ ...sidebarNavSectionStyle, order: 95 }}>
                   <button type="button" className="atlas-sidebar-nav-button" onClick={() => setPlanningToolsOpen((current) => !current)} aria-expanded={planningToolsOpen} title={sidebarCollapsed ? "Planning Tools" : undefined} style={{ ...navButtonStyle, justifyContent: sidebarCollapsed ? "center" : "space-between", borderColor: screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView) ? colors.gold : "rgba(255,255,255,0.18)", background: screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView) ? colors.gold : "rgba(255,255,255,0.06)", color: screen === "planner" && ["walk","build","route","analytics","planner"].includes(tasksView) ? colors.navy : "#FFFFFF" }}>
                     <span className="atlas-sidebar-nav-label">Planning Tools</span>{!sidebarCollapsed ? <span aria-hidden="true" style={{ fontSize: 12 }}>{planningToolsOpen ? "▴" : "▾"}</span> : null}
