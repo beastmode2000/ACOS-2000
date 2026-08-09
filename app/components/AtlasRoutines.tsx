@@ -187,7 +187,7 @@ export default function AtlasRoutines({
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftTasks, setDraftTasks] = useState<RoutineTask[]>([]);
-  const [selectedPersonId, setSelectedPersonId] = useState("all");
+  const [selectedPersonId, setSelectedPersonId] = useState("nick");
   const [newTask, setNewTask] = useState("");
   const [status, setStatus] = useState("Loading routines…");
   const [busy, setBusy] = useState(false);
@@ -452,11 +452,26 @@ export default function AtlasRoutines({
     );
   }
 
+  const nickRoutinePersonId =
+    routinePersonId(
+      activeRoutinePeople.find(
+        (member) => member.name.trim().toLowerCase() === "nick",
+      ) || { id: "nick", name: "Nick" },
+    ) || "nick";
+
+  const effectiveSelectedPersonId =
+    selectedPersonId === "nick" ? nickRoutinePersonId : selectedPersonId;
+
   function taskAssigneeIds(task: RoutineTask) {
     if (Array.isArray(task.assigneeIds) && task.assigneeIds.length) {
       return task.assigneeIds.map(String);
     }
-    if (!task.assignedTo) return [];
+
+    // All routine items that predate universal assignments belong to Nick.
+    if (!task.assignedTo || String(task.assignedTo).toLowerCase() === "nick") {
+      return [nickRoutinePersonId];
+    }
+
     const legacy = activeRoutinePeople.find(
       (member) =>
         member.name.toLowerCase() === String(task.assignedTo).toLowerCase(),
@@ -533,11 +548,11 @@ export default function AtlasRoutines({
         title,
         enabled: true,
         assignedTo:
-          selectedPersonId !== "all"
-            ? routinePersonName(selectedPersonId)
+          effectiveSelectedPersonId !== "all"
+            ? routinePersonName(effectiveSelectedPersonId)
             : "",
         assigneeIds:
-          selectedPersonId !== "all" ? [selectedPersonId] : [],
+          effectiveSelectedPersonId !== "all" ? [effectiveSelectedPersonId] : [],
       },
     ]);
 
@@ -1365,11 +1380,11 @@ export default function AtlasRoutines({
               color: selectedPersonId === "all" ? "#FFFFFF" : colors.text,
             }}
           >
-            Everyone
+            All Routines
           </button>
           {activeRoutinePeople.map((member) => {
             const personId = routinePersonId(member);
-            const active = selectedPersonId === personId;
+            const active = effectiveSelectedPersonId === personId;
             return (
               <button
                 key={personId}
@@ -1436,14 +1451,14 @@ export default function AtlasRoutines({
         >
           {editing ? (
             <>
-              {selectedPersonId !== "all" ? (
+              {effectiveSelectedPersonId !== "all" ? (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button
                     type="button"
                     style={button}
-                    onClick={() => assignVisibleRoutineToPerson(selectedPersonId)}
+                    onClick={() => assignVisibleRoutineToPerson(effectiveSelectedPersonId)}
                   >
-                    Assign All to {routinePersonName(selectedPersonId)}
+                    Assign All to {routinePersonName(effectiveSelectedPersonId)}
                   </button>
                 </div>
               ) : null}
@@ -1487,9 +1502,9 @@ export default function AtlasRoutines({
             {(editing ? draftTasks : selected.tasks)
               .map((task, originalIndex) => ({ task, originalIndex }))
               .filter(({ task }) =>
-                selectedPersonId === "all"
+                effectiveSelectedPersonId === "all"
                   ? true
-                  : taskAssigneeIds(task).includes(selectedPersonId)
+                  : taskAssigneeIds(task).includes(effectiveSelectedPersonId)
               )
               .map(({ task, originalIndex }) => {
                 const index = originalIndex;
