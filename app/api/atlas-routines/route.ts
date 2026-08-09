@@ -10,7 +10,8 @@ type RoutineTask = {
   enabled: boolean;
   completed?: boolean;
   status?: "open" | "completed" | "skipped" | "deferred";
-  assignedTo?: "Nick" | "Addison" | "Pat" | "Crew";
+  assignedTo?: string;
+  assigneeIds?: string[];
   deferredTo?: string;
   deferredFrom?: string;
 };
@@ -89,6 +90,15 @@ function normalizeTasks(value: unknown): RoutineTask[] {
         completed: status === "completed",
         status,
         assignedTo: cleanAssignee(record.assignedTo),
+        assigneeIds: Array.isArray(record.assigneeIds)
+          ? Array.from(
+              new Set(
+                record.assigneeIds
+                  .map((value) => String(value || "").trim())
+                  .filter(Boolean),
+              ),
+            )
+          : [],
         ...(typeof record.deferredTo === "string" && record.deferredTo ? { deferredTo: record.deferredTo } : {}),
         ...(typeof record.deferredFrom === "string" && record.deferredFrom ? { deferredFrom: record.deferredFrom } : {}),
       };
@@ -876,7 +886,12 @@ function nextWorkdayDate(dateKey: string) {
 }
 
 function cleanAssignee(value: unknown): RoutineTask["assignedTo"] {
-  return value === "Addison" || value === "Pat" || value === "Crew" ? value : "Nick";
+  const assignee =
+    typeof value === "string" ? value.trim() : "";
+
+  // Preserve real Atlas user names and the multi-assignee compatibility label.
+  // Legacy records with no assignment still belong to Nick.
+  return assignee || "Nick";
 }
 
 function cleanTaskStatus(value: unknown, completed = false): RoutineTask["status"] {
