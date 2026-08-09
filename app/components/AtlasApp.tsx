@@ -5595,7 +5595,7 @@ export default function AtlasApp() {
         <SectionHeader
           eyebrow="PROPERTY RECORD"
           title="Notes"
-          subtitle="Talk it out, review it, then save it permanently."
+          detail="Talk it out, review it, then save it permanently."
         />
         <section style={{ ...cardStyle, padding: isMobile ? 14 : 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 220px", gap: 14, alignItems: "stretch" }}>
