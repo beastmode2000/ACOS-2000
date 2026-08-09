@@ -194,6 +194,46 @@ export default function AtlasRoutines({
   const [dashboardChecklistExpanded, setDashboardChecklistExpanded] = useState(false);
   const weeklySetupRunningRef = useRef(false);
 
+  async function routinePost(body: Record<string, unknown>) {
+    let lastError = "Routine save failed.";
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const response = await fetch("/api/atlas-routines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify(body),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (response.ok && payload?.ok !== false) {
+        return payload;
+      }
+
+      lastError =
+        payload?.error ||
+        `Routine save returned HTTP ${response.status}.`;
+
+      const hydrationRace =
+        response.status === 404 &&
+        /not found|does not exist|missing/i.test(
+          String(payload?.error || payload?.message || ""),
+        );
+
+      if (hydrationRace && attempt < 3) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, attempt * 450),
+        );
+        continue;
+      }
+
+      throw new Error(lastError);
+    }
+
+    throw new Error(lastError);
+  }
+
   async function mergeWeeklyOperations(currentTemplates: RoutineTemplate[]) {
     if (weeklySetupRunningRef.current) return currentTemplates;
     weeklySetupRunningRef.current = true;
@@ -318,24 +358,12 @@ export default function AtlasRoutines({
     setBusy(true);
 
     try {
-      const response = await fetch("/api/atlas-routines", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "toggle-task",
-          propertyId: activePropertyId,
-          date: occurrence.date,
-          taskId,
-        }),
+      const payload = await routinePost({
+        action: "toggle-task",
+        propertyId: activePropertyId,
+        date: occurrence.date,
+        taskId,
       });
-
-      const payload = await response.json();
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Task did not save");
-      }
 
       if (payload.occurrence) {
         setOccurrence(payload.occurrence);
@@ -359,13 +387,13 @@ export default function AtlasRoutines({
     setBusy(true);
     setStatus(action === "defer-task" ? "Moving…" : "Saving…");
     try {
-      const response = await fetch("/api/atlas-routines", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, propertyId: activePropertyId, date: occurrence.date, taskId, assignedTo }),
+      const payload = await routinePost({
+        action,
+        propertyId: activePropertyId,
+        date: occurrence.date,
+        taskId,
+        assignedTo,
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "Routine item did not save");
       if (payload.occurrence) setOccurrence(payload.occurrence);
       if (action === "assign-task" && assignedTo) {
         const savedTask = (payload.occurrence?.tasks || occurrence.tasks).find((task: RoutineTask) => task.id === taskId);
@@ -389,20 +417,12 @@ export default function AtlasRoutines({
     setBusy(true);
     setStatus(action === "add-today-task" ? "Adding…" : "Saving…");
     try {
-      const response = await fetch("/api/atlas-routines", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          propertyId: activePropertyId,
-          date: occurrence.date,
-          ...payload,
-        }),
+      const result = await routinePost({
+        action,
+        propertyId: activePropertyId,
+        date: occurrence.date,
+        ...payload,
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error || "Routine item did not save");
-      }
       if (result.occurrence) setOccurrence(result.occurrence);
       setStatus("");
     } catch (error) {
@@ -663,30 +683,16 @@ export default function AtlasRoutines({
     setStatus("Saving…");
 
     try {
-      const response = await fetch("/api/atlas-routines", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "save-template",
-          propertyId: activePropertyId,
-          date: todayKey(),
-          day: selectedDay,
-          name:
-            draftName.trim() ||
-            `${dayNames[selectedDay]} Routine`,
-          tasks: draftTasks,
-        }),
+      const payload = await routinePost({
+        action: "save-template",
+        propertyId: activePropertyId,
+        date: todayKey(),
+        day: selectedDay,
+        name:
+          draftName.trim() ||
+          `${dayNames[selectedDay]} Routine`,
+        tasks: draftTasks,
       });
-
-      const payload = await response.json();
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(
-          payload.error || "Routine did not save"
-        );
-      }
 
       // Keep the dashboard occurrence in sync immediately after the save.
       // This prevents a newly added/edited task from being acted on against
