@@ -156,9 +156,11 @@ function sortWorkRecords(records: any[]) {
   return [...records].sort((a, b) => {
     const left = workSortValue(a);
     const right = workSortValue(b);
+    // Atlas is schedule-first: overdue / earliest scheduled work is always
+    // easiest to find. Priority only breaks ties on the same date.
+    if (left.dueTime !== right.dueTime) return left.dueTime - right.dueTime;
     if (left.priorityRank !== right.priorityRank)
       return left.priorityRank - right.priorityRank;
-    if (left.dueTime !== right.dueTime) return left.dueTime - right.dueTime;
     return left.title.localeCompare(right.title);
   });
 }
@@ -382,13 +384,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [activeSectionId, setActiveSectionId] = useState("my-work");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
-  const todayLocal = (() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  })();
-  const selectedDueDate = String(selectedService?.date || "").slice(0, 10);
-  const selectedIsFuture = Boolean(selectedDueDate && selectedDueDate > todayLocal);
-
   const [statusFilter, setStatusFilter] = useState("All");
   const [dueDateFilter, setDueDateFilter] = useState("All");
   const [locationFilter, setLocationFilter] = useState("All");
@@ -913,10 +908,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     if (value === "reopen")
       updateWorkOrder({ status: "Open", completedAt: "" });
     if (value === "start") updateWorkOrder({ status: "In Progress" });
-    if (value === "complete") {
-      if (selectedIsFuture) return;
-      void completeWorkOrder(selectedService);
-    }
+    if (value === "complete") void completeWorkOrder(selectedService);
     if (value === "reschedule") quickReschedule(selectedService);
     if (value === "convert") quickConvert(selectedService);
     if (value === "tomorrow")
@@ -1238,60 +1230,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         title={activeSection?.label || "My Work"}
         detail="Track active work, recurring maintenance, projects, and completed history."
         isMobile={isMobile}
-        outerStyle={
-          isMobile
-            ? undefined
-            : {
-                height: "calc(100vh - 132px)",
-                minHeight: 620,
-                overflow: "hidden",
-                display: "grid",
-                gridTemplateRows: "auto minmax(0, 1fr)",
-              }
-        }
         gridStyleOverride={
           detailOpen && selectedService.id
-            ? isMobile
-              ? undefined
-              : {
-                  gridTemplateColumns: "minmax(300px, 36%) minmax(0, 64%)",
-                  height: "100%",
-                  minHeight: 0,
-                  overflow: "hidden",
-                  alignItems: "start",
-                }
-            : {
-                gridTemplateColumns: "1fr",
-                height: "100%",
-                minHeight: 0,
-                overflow: "hidden",
-              }
-        }
-        listPanelStyleOverride={
-          isMobile
             ? undefined
-            : {
-                height: "100%",
-                minHeight: 0,
-                overflowY: "auto",
-                overflowX: "hidden",
-                paddingRight: 8,
-              }
+            : { gridTemplateColumns: "1fr" }
         }
         drawerStyleOverride={
-          detailOpen && selectedService.id
-            ? isMobile
-              ? undefined
-              : {
-                  position: "relative",
-                  top: 0,
-                  height: "100%",
-                  maxHeight: "100%",
-                  minHeight: 0,
-                  overflow: "hidden",
-                  alignSelf: "start",
-                }
-            : { display: "none" }
+          detailOpen && selectedService.id ? undefined : { display: "none" }
         }
         right={
           <>
@@ -1671,166 +1616,77 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               ) : null}
 
-              <details
+              <div
                 style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  flexWrap: "wrap",
+                  padding: "7px 8px",
                   border: `1px solid ${colors.line}`,
-                  borderRadius: 11,
+                  borderRadius: 10,
                   background: "#FFFFFF",
                 }}
               >
-                <summary
-                  style={{
-                    padding: "11px 12px",
-                    color: colors.muted,
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
-                >
-                  Search &amp; Filters
-                </summary>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr",
-                    gap: 9,
-                    padding: "0 10px 10px",
-                  }}
-                >
                 <input
                   value={localSearch}
-                  onChange={(event) =>
-                    setLocalSearch(event.currentTarget.value)
-                  }
-                  placeholder="Search work, asset, vendor, category..."
-                  style={controlStyle}
+                  onChange={(event) => setLocalSearch(event.currentTarget.value)}
+                  placeholder="Search work..."
+                  aria-label="Search work"
+                  style={{ ...controlStyle, flex: "1 1 190px", minWidth: 150, height: 34 }}
                 />
-                <select
-                  value={categoryFilter}
-                  onChange={(event) =>
-                    setCategoryFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category === "All"
-                        ? "All Categories"
-                        : categoryDisplayLabel(category)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={typeFilter}
-                  onChange={(event) => setTypeFilter(event.currentTarget.value)}
-                  style={controlStyle}
-                >
-                  <option value="All">All Types</option>
-                  <option value="Quick Task">Tasks</option>
-                  <option value="Work Order">Work Orders</option>
-                  <option value="Preventive Maintenance">
-                    Preventive Maintenance
-                  </option>
-                  <option value="Project">Projects</option>
-                </select>
-                <select
-                  value={statusFilter}
-                  onChange={(event) =>
-                    setStatusFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">All Statuses</option>
-                  {[
-                    "Open",
-                    "Scheduled",
-                    "In Progress",
-                    "Waiting",
-                    "Monitor",
-                    "Completed",
-                  ].map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={dueDateFilter}
-                  onChange={(event) =>
-                    setDueDateFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">All Due Dates</option>
+                <select value={dueDateFilter} onChange={(event) => setDueDateFilter(event.currentTarget.value)} style={{ ...controlStyle, width: "auto", minWidth: 116, height: 34 }}>
+                  <option value="All">Scheduled</option>
                   <option value="Overdue">Overdue</option>
-                  <option value="Today">Due Today</option>
+                  <option value="Today">Today</option>
                   <option value="Next 7 Days">Next 7 Days</option>
                   <option value="Next 30 Days">Next 30 Days</option>
-                  <option value="No Due Date">No Due Date</option>
+                  <option value="No Due Date">Unscheduled</option>
                 </select>
-                <select
-                  value={locationFilter}
-                  onChange={(event) =>
-                    setLocationFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">All Locations</option>
-                  {byName(locationRecords).map((location: any) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={assetFilter}
-                  onChange={(event) =>
-                    setAssetFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">All Assets</option>
-                  {byName(assetRecords).map((asset: any) => (
-                    <option key={asset.id} value={asset.id}>
-                      {asset.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={assignedFilter}
-                  onChange={(event) =>
-                    setAssignedFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">Anyone Assigned</option>
+                <select value={assignedFilter} onChange={(event) => setAssignedFilter(event.currentTarget.value)} style={{ ...controlStyle, width: "auto", minWidth: 108, height: 34 }}>
+                  <option value="All">Assigned To</option>
                   {byName(contactRecords).map((contact: any) => (
-                    <option
-                      key={contact.id || contact.name}
-                      value={contact.name}
-                    >
-                      {contact.name}
+                    <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>
+                  ))}
+                </select>
+                <select value={locationFilter} onChange={(event) => setLocationFilter(event.currentTarget.value)} style={{ ...controlStyle, width: "auto", minWidth: 100, height: 34 }}>
+                  <option value="All">Location</option>
+                  {byName(locationRecords).map((location: any) => (
+                    <option key={location.id} value={location.id}>{location.name}</option>
+                  ))}
+                </select>
+                <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.currentTarget.value)} style={{ ...controlStyle, width: "auto", minWidth: 104, height: 34 }}>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category === "All" ? "Category" : categoryDisplayLabel(category)}
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLocalSearch("");
-                    setCategoryFilter("All");
-                    setTypeFilter("All");
-                    setStatusFilter("All");
-                    setDueDateFilter("All");
-                    setLocationFilter("All");
-                    setAssetFilter("All");
-                    setAssignedFilter("All");
-                  }}
-                  style={secondaryButtonStyle}
-                >
-                  Clear Filters
-                </button>
-                </div>
-              </details>
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value)} style={{ ...controlStyle, width: "auto", minWidth: 92, height: 34 }}>
+                  <option value="All">Status</option>
+                  {["Open","Scheduled","In Progress","Waiting","Monitor","Completed"].map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+                {(localSearch || categoryFilter !== "All" || typeFilter !== "All" || statusFilter !== "All" || dueDateFilter !== "All" || locationFilter !== "All" || assetFilter !== "All" || assignedFilter !== "All") ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLocalSearch("");
+                      setCategoryFilter("All");
+                      setTypeFilter("All");
+                      setStatusFilter("All");
+                      setDueDateFilter("All");
+                      setLocationFilter("All");
+                      setAssetFilter("All");
+                      setAssignedFilter("All");
+                    }}
+                    style={{ ...secondaryButtonStyle, minHeight: 34, padding: "6px 9px" }}
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
             </section>
 
             {activeSection?.kind === "my-work" ? (
@@ -1850,32 +1706,53 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         drawer={
           detailOpen && selectedService.id ? (
             <div style={{ ...stackStyle, gap: 7 }}>
-              <div>
-                <h3 style={{ ...editorHeaderStyle, marginBottom: 8, paddingBottom: 8, fontSize: 21 }}>
-                  {selectedService.title.trim() || "New Work"}
-                </h3>
-                <p style={mutedSmallStyle}>
-                  {categoryDisplayLabel(categoryLabel(selectedService))} ·{" "}
-                  {itemType(selectedService)}
-                </p>
+              <div
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 20,
+                  display: "grid",
+                  gap: 8,
+                  paddingBottom: 10,
+                  background: "#FFFFFF",
+                  borderBottom: `1px solid ${colors.line}`,
+                }}
+              >
+                <div>
+                  <h3
+                    style={{
+                      ...editorHeaderStyle,
+                      marginBottom: 8,
+                      paddingBottom: 8,
+                      fontSize: 21,
+                    }}
+                  >
+                    {selectedService.title.trim() || "New Work"}
+                  </h3>
+                  <p style={mutedSmallStyle}>
+                    {categoryDisplayLabel(categoryLabel(selectedService))} ·{" "}
+                    {itemType(selectedService)}
+                  </p>
+                </div>
+
                 <div
                   style={{
-                    ...buttonRowStyle,
-                    justifyContent: "flex-start",
-                    marginTop: 9,
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: 8,
                   }}
                 >
                   <button
                     type="button"
                     onClick={() => void saveWorkOrderRecord()}
-                    style={{ ...goldButtonStyle, width: "auto" }}
+                    style={{ ...goldButtonStyle, width: "100%" }}
                   >
                     Save Work Order
                   </button>
                   <button
                     type="button"
                     onClick={() => void deleteWorkOrderRecord(selectedService)}
-                    style={{ ...dangerButtonStyle, width: "auto" }}
+                    style={{ ...dangerButtonStyle, width: "100%" }}
                   >
                     Delete Work Order
                   </button>
@@ -1923,7 +1800,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <option value="In Progress">In Progress</option>
                       <option value="Waiting">Waiting</option>
                       <option value="Monitor">Monitor</option>
-                      {!selectedIsFuture ? <option value="Completed">Completed</option> : null}
+                      <option value="Completed">Completed</option>
                     </select>
                   </label>
 
@@ -2386,13 +2263,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   ) : (
                     <>
                       <option value="start">Start Work</option>
-                      {!selectedIsFuture ? (
-                        <option value="complete">
-                          {selectedService.recurring
-                            ? "Complete & Move to Next Due"
-                            : "Mark Done"}
-                        </option>
-                      ) : null}
+                      <option value="complete">
+                        {selectedService.recurring
+                          ? "Complete & Move to Next Due"
+                          : "Mark Done"}
+                      </option>
                       <option value="reschedule">Reschedule</option>
                       <option value="tomorrow">Move to Tomorrow</option>
                       <option value="next-week">Move to Next Week</option>
@@ -2402,7 +2277,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <option value="photo">Add Photo</option>
                   <option value="duplicate">Duplicate Work Order</option>
                 </select>
-                {selectedIsFuture ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 6 }}>Due {formatDate(selectedService.date)} — completion unlocks on the due date.</small> : null}
 
                 {selectedService.recurring ? (
                   <div
