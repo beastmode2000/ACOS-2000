@@ -647,7 +647,7 @@ export default function AtlasAssetsWorkspace(props: any) {
       gridStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
-          : { gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)", gap: 14 }
+          : { gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)", gap: 12 }
       }
       listPanelStyleOverride={
         isMobile
@@ -739,7 +739,7 @@ export default function AtlasAssetsWorkspace(props: any) {
         </div>
       }
       list={
-        <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "grid", gap: 7 }}>
           <section
             style={{
               position: isMobile ? "relative" : "sticky",
@@ -996,91 +996,6 @@ export default function AtlasAssetsWorkspace(props: any) {
                 ))}
               </div>
             ) : null}
-          </section>
-
-          <section
-            aria-label="Asset activity snapshot"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
-              gap: 8,
-            }}
-          >
-            {[
-              {
-                label: "Tracked Assets",
-                value: assetSourceRecords.length,
-                note: `${displayedAssets.length} currently visible`,
-              },
-              {
-                label: "Open Work",
-                value: openAssetWorkOrderCount,
-                note: "Linked work orders",
-              },
-              {
-                label: "Needs Information",
-                value: incompleteAssetRecordCount,
-                note: "Missing 3 or more details",
-              },
-              {
-                label: "Favorites",
-                value: favoriteAssets.length,
-                note: "Pinned for quick access",
-              },
-              {
-                label: "Recently Viewed",
-                value: recentAssets.length,
-                note: "Recent non-favorites",
-              },
-            ].map((item) => (
-              <div
-                key={((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
-                style={{
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 13,
-                  background: "#FFFFFF",
-                  padding: "10px 11px",
-                  minWidth: 0,
-                  boxShadow: "0 3px 10px rgba(21, 47, 79, 0.04)",
-                }}
-              >
-                <span
-                  style={{
-                    display: "block",
-                    color: colors.muted,
-                    fontSize: 9,
-                    fontWeight: 850,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
-                </span>
-                <strong
-                  style={{
-                    display: "block",
-                    marginTop: 3,
-                    color: colors.navy,
-                    fontSize: 21,
-                    lineHeight: 1,
-                  }}
-                >
-                  {item.value}
-                </strong>
-                <span
-                  style={{
-                    display: "block",
-                    marginTop: 5,
-                    color: colors.muted,
-                    fontSize: 9,
-                    lineHeight: 1.25,
-                  }}
-                >
-                  {item.note}
-                </span>
-              </div>
-            ))}
           </section>
 
           {assetBulkMode ? (
