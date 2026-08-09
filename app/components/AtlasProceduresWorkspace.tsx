@@ -137,6 +137,7 @@ import type {
 export default function AtlasProceduresWorkspace(props: any) {
   const {
     assetRecords,
+    colors,
     buttonRowStyle,
     cardStyle,
     closeProcedureViewer,
