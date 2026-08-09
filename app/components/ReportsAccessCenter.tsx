@@ -269,7 +269,8 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
       setMessage("The Master account cannot be deleted.");
       return;
     }
-    if (!window.confirm(`Delete ${member.name} from Atlas? This removes their Atlas access.`)) return;
+    if (!window.confirm(`Delete ${member.name} from Atlas?`)) return;
+
     setMessage(`Deleting ${member.name}...`);
     const response = await fetch("/api/atlas-team", {
       method: "POST",
@@ -277,12 +278,14 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
       body: JSON.stringify({ action: "delete", memberId: member.id }),
     });
     const payload = await response.json().catch(() => ({}));
+
     if (!response.ok || !payload.ok) {
       setMessage(String(payload.error || "Atlas user could not be deleted."));
       return;
     }
+
     setTeam((current) => current.filter((item) => item.id !== member.id));
-    setMessage(`${member.name} deleted from Atlas.`);
+    setMessage(`${member.name} deleted.`);
   }
 
   async function saveAccess() {
@@ -438,7 +441,13 @@ export default function ReportsAccessCenter({ data, colors, isMobile }: Props) {
               <div style={{gridColumn:isMobile?"1":"1 / -1",fontSize:12,fontWeight:900,color:member.inviteStatus==="Accepted"?colors.green:colors.muted}}>Invitation: {member.inviteStatus || "Existing Access"}</div>
               {member.role !== "Master" && member.id !== "nick" ? (
                 <div style={{gridColumn:isMobile?"1":"1 / -1",display:"flex",justifyContent:"flex-end"}}>
-                  <button type="button" onClick={()=>void deleteMember(member)} style={{...button,background:"#FFFFFF",color:"#B42318",border:"1px solid #FDA29B"}}>Delete User</button>
+                  <button
+                    type="button"
+                    onClick={()=>void deleteMember(member)}
+                    style={{...button,background:"#FFFFFF",color:"#B42318",border:"1px solid #FDA29B"}}
+                  >
+                    Delete User
+                  </button>
                 </div>
               ) : null}
             </div>
