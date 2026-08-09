@@ -271,8 +271,8 @@ export default function AtlasAssetsWorkspace(props: any) {
     vendorRecords,
     workPlanTasks
   } = props;
-  const assetSourceRecords: AtlasAssetRecord[] = (isSeanMarineUser ? seanVisibleAssetRecords : assetRecords) as AtlasAssetRecord[];
-  const assetWorkSourceRecords: AtlasServiceRecord[] = (isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords) as AtlasServiceRecord[];
+  const assetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
+  const assetWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
   const attachedManuals = manualsForAsset(selectedAsset);
   const relatedWorkOrders = selectedAsset.id
     ? [...assetWorkSourceRecords]
