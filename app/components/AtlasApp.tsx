@@ -141,6 +141,10 @@ export default function AtlasApp() {
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
   const [quickCaptureNote, setQuickCaptureNote] = useState("");
+  const [notesDraft, setNotesDraft] = useState("");
+  const [notesSearch, setNotesSearch] = useState("");
+  const [notesListening, setNotesListening] = useState(false);
+  const notesRecognitionRef = useRef<{ stop: () => void } | null>(null);
   const [quickCaptureMode, setQuickCaptureMode] = useState<"create" | "existing">("create");
   type QuickCreateKind = "photo" | "document" | "task" | "work-order" | "project" | "asset" | "vendor" | "procedure";
   const [quickCreateKind, setQuickCreateKind] = useState<QuickCreateKind | "">("");
@@ -5504,6 +5508,170 @@ export default function AtlasApp() {
     }, ...current]);
     setQuickCaptureNote("");
     setQuickCaptureOpen(false);
+  }
+
+  function savePermanentNote() {
+    const noteText = notesDraft.trim();
+    if (!noteText) return;
+    setTodayLogEntries((current) => [{
+      id: uid("permanent-note"),
+      propertyId: activePropertyId,
+      date: todayISO(),
+      category: "Note",
+      text: noteText,
+      createdAt: new Date().toISOString(),
+    }, ...current]);
+    setNotesDraft("");
+    showSaveToast("Note saved.");
+  }
+
+  function deletePermanentNote(noteId: string) {
+    setTodayLogEntries((current) => current.filter((entry) => entry.id !== noteId));
+    showSaveToast("Note deleted.");
+  }
+
+  function startPermanentNoteVoice() {
+    type RecognitionResult = { 0: { transcript: string }; isFinal?: boolean };
+    type RecognitionInstance = {
+      continuous: boolean;
+      interimResults: boolean;
+      lang: string;
+      start: () => void;
+      stop: () => void;
+      onresult: ((event: { results: ArrayLike<RecognitionResult> }) => void) | null;
+      onerror: (() => void) | null;
+      onend: (() => void) | null;
+    };
+    type RecognitionConstructor = new () => RecognitionInstance;
+    if (typeof window === "undefined") return;
+    if (notesListening) {
+      notesRecognitionRef.current?.stop();
+      return;
+    }
+    const speechWindow = window as unknown as {
+      SpeechRecognition?: RecognitionConstructor;
+      webkitSpeechRecognition?: RecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      showSaveToast("Voice input is not available in this browser.", "warning");
+      return;
+    }
+    const recognition = new Recognition();
+    const originalDraft = notesDraft.trim();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = Array.from(
+        { length: event.results.length },
+        (_, index) => event.results[index]?.[0]?.transcript || "",
+      ).join(" ").trim();
+      setNotesDraft([originalDraft, transcript].filter(Boolean).join(originalDraft && transcript ? " " : ""));
+    };
+    recognition.onerror = () => {
+      setNotesListening(false);
+      notesRecognitionRef.current = null;
+      showSaveToast("Atlas could not hear that note. Try again.", "warning");
+    };
+    recognition.onend = () => {
+      setNotesListening(false);
+      notesRecognitionRef.current = null;
+    };
+    notesRecognitionRef.current = recognition;
+    setNotesListening(true);
+    recognition.start();
+  }
+
+  function renderNotes() {
+    const query = notesSearch.trim().toLowerCase();
+    const notes = todayLogEntries
+      .filter((entry) => entry.propertyId === activePropertyId && entry.category === "Note")
+      .filter((entry) => !query || entry.text.toLowerCase().includes(query))
+      .sort((a, b) => String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date)));
+
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        <SectionHeader
+          eyebrow="PROPERTY RECORD"
+          title="Notes"
+          subtitle="Talk it out, review it, then save it permanently."
+        />
+        <section style={{ ...cardStyle, padding: isMobile ? 14 : 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 220px", gap: 14, alignItems: "stretch" }}>
+            <textarea
+              value={notesDraft}
+              onChange={(event) => setNotesDraft(event.currentTarget.value)}
+              placeholder="Start typing or tap the voice button and talk…"
+              style={{ ...inputStyle, minHeight: 150, resize: "vertical", fontSize: 15, lineHeight: 1.55, padding: 14 }}
+            />
+            <button
+              type="button"
+              onClick={startPermanentNoteVoice}
+              aria-pressed={notesListening}
+              style={{
+                border: notesListening ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
+                borderRadius: 18,
+                background: notesListening ? colors.navy : "#FFFFFF",
+                color: notesListening ? "#FFFFFF" : colors.navy,
+                minHeight: 150,
+                padding: 18,
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                alignContent: "center",
+                gap: 12,
+                boxShadow: notesListening ? "0 12px 28px rgba(7,27,47,.18)" : "0 8px 22px rgba(7,27,47,.08)",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 62,
+                  height: 62,
+                  borderRadius: 999,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 4,
+                  background: notesListening ? colors.gold : colors.navy,
+                  boxShadow: notesListening ? "0 0 0 8px rgba(201,154,61,.16)" : "0 0 0 8px rgba(7,27,47,.06)",
+                }}
+              >
+                {[14, 26, 38, 26, 14].map((height, index) => (
+                  <span key={index} style={{ width: 4, height, borderRadius: 999, background: "#FFFFFF", opacity: index === 2 ? 1 : .86 }} />
+                ))}
+              </span>
+              <span style={{ fontSize: 15, fontWeight: 900 }}>{notesListening ? "Listening…" : "Start voice note"}</span>
+              <small style={{ opacity: .72 }}>{notesListening ? "Tap to stop" : "Speak naturally"}</small>
+            </button>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            {notesDraft ? <button type="button" onClick={() => setNotesDraft("")} style={secondaryButtonStyle}>Clear</button> : null}
+            <button type="button" onClick={savePermanentNote} disabled={!notesDraft.trim()} style={goldButtonStyle}>Save Note</button>
+          </div>
+        </section>
+
+        <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            <div><div style={eyebrowStyle}>NOTE HISTORY</div><strong style={{ color: colors.navy }}>{notes.length} saved</strong></div>
+            <input value={notesSearch} onChange={(event) => setNotesSearch(event.currentTarget.value)} placeholder="Search notes" style={{ ...inputStyle, width: isMobile ? "100%" : 260 }} />
+          </div>
+          <div style={{ display: "grid", gap: 9 }}>
+            {notes.map((note) => (
+              <article key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 14, background: "#FFFFFF", padding: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                  <small style={mutedSmallStyle}>{note.createdAt ? new Date(note.createdAt).toLocaleString() : formatDate(note.date)}</small>
+                  <button type="button" onClick={() => deletePermanentNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
+                </div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.55, color: colors.text }}>{note.text}</div>
+              </article>
+            ))}
+            {!notes.length ? <div style={noticeStyle}>No saved notes yet.</div> : null}
+          </div>
+        </section>
+      </div>
+    );
   }
 
   function prepareWeeklyOwnerUpdate() {
@@ -23186,6 +23354,7 @@ ${notes.trim()}` : notes.trim(),
     else if (screen === "insights")
       content = renderTimelineOrInsights("insights");
     else if (screen === "planner") content = renderWorkPlanner();
+    else if (screen === "notes") content = renderNotes();
     else if (screen === "map") content = renderMap();
     else if (screen === "locations") content = renderLocations();
     else if (screen === "assets") content = renderAssets();
