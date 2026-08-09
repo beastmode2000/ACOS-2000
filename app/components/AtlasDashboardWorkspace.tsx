@@ -533,29 +533,53 @@ export default function AtlasDashboardWorkspace(props: any) {
 
 
     if (isAddisonUser) {
+      const todayKey = todayISO();
       const addisonOpenTasks = workPlanTasks
         .filter((task) => {
           const meta = taskDetails(task.id);
-          return meta.assignee === "Addison" && meta.status !== "Completed";
-        })
-        .sort((a, b) => {
-          const aDate = taskDetails(a.id).dueDate || "9999-12-31";
-          const bDate = taskDetails(b.id).dueDate || "9999-12-31";
-          return aDate.localeCompare(bDate) || a.title.localeCompare(b.title);
-        });
-      const addisonCompletedTodayTasks = workPlanTasks
-        .filter((task) => {
-          const meta = taskDetails(task.id);
+          const due = String(meta.dueDate || todayKey);
           return (
             meta.assignee === "Addison" &&
-            meta.status === "Completed" &&
-            (String(meta.completedAt || "").slice(0, 10) === todayISO() ||
-              Boolean(meta.completionHistory?.includes(todayISO())))
+            meta.status !== "Completed" &&
+            due <= todayKey &&
+            task.category !== "Atlas List Definition"
           );
+        })
+        .sort((a, b) => {
+          const aDate = taskDetails(a.id).dueDate || todayKey;
+          const bDate = taskDetails(b.id).dueDate || todayKey;
+          return aDate.localeCompare(bDate) || a.title.localeCompare(b.title);
         });
-      const addisonRoutineOnly = storedRoutineChecklistItems.length
-        ? storedRoutineChecklistItems
-        : addisonRoutineFallback;
+
+      const addisonCompletedTodayTasks = workPlanTasks.filter((task) => {
+        const meta = taskDetails(task.id);
+        return (
+          meta.assignee === "Addison" &&
+          meta.status === "Completed" &&
+          (String(meta.completedAt || "").slice(0, 10) === todayKey ||
+            Boolean(meta.completionHistory?.includes(todayKey)))
+        );
+      });
+
+      const addMyTask = () => {
+        const title = String(dashboardAddisonQuickAddRef.current?.value || "").trim();
+        if (!title) return;
+        const taskId = addAtlasTask(title);
+        if (!taskId) return;
+        updateTaskDetails(taskId, {
+          assignee: "Addison",
+          dueDate: todayKey,
+          status: "Open",
+          assignmentScope: "This occurrence",
+          completedAt: undefined,
+          needsReview: false,
+        });
+        if (dashboardAddisonQuickAddRef.current) {
+          dashboardAddisonQuickAddRef.current.value = "";
+          dashboardAddisonQuickAddRef.current.focus();
+        }
+        showSaveToast("Task added.");
+      };
 
       return (
         <div style={{ display: "grid", gap: 14 }}>
@@ -569,131 +593,80 @@ export default function AtlasDashboardWorkspace(props: any) {
             <SectionHeader
               eyebrow="My Day"
               title="Addison"
-              detail="Your assigned work and daily routine."
+              detail="Daily Routine and Daily Tasks"
             />
           </section>
 
           <section style={teamSectionStyle}>
             <SectionHeader
-              eyebrow="My List"
-              title="Assigned to Me"
-              detail="Only work assigned to Addison appears here."
+              eyebrow="My Tasks"
+              title="Daily Tasks"
+              detail="Today’s changing work."
             />
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, marginBottom: 10 }}>
+              <input
+                ref={dashboardAddisonQuickAddRef}
+                defaultValue=""
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addMyTask();
+                  }
+                }}
+                placeholder="Add a task for today…"
+                style={inputStyle}
+              />
+              <button type="button" onClick={addMyTask} style={teamGoldButtonStyle}>
+                Add
+              </button>
+            </div>
+
             <div style={{ display: "grid", gap: 8 }}>
               {addisonOpenTasks.map((task) => {
                 const meta = taskDetails(task.id);
                 return (
-                  <div
-                    key={`addison-field-task-${task.id}`}
-                    style={{ ...teamCardStyle, display: "grid", gap: 8 }}
-                  >
-                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                      <button
-                        type="button"
+                  <div key={task.id} style={{ ...teamCardStyle, display: "grid", gap: 7 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={false}
                         aria-label={`Complete ${task.title}`}
-                        onClick={() => updateTaskDetails(task.id, {
-                          status: "Completed",
-                          completedAt: new Date().toISOString(),
-                          completionHistory: Array.from(
-                            new Set([...(meta.completionHistory || []), todayISO()]),
-                          ),
-                        })}
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: 8,
-                          border: `1px solid ${colors.line}`,
-                          background: "#FFFFFF",
-                          cursor: "pointer",
-                          flex: "0 0 auto",
-                        }}
+                        onChange={() =>
+                          updateTaskDetails(task.id, {
+                            status: "Completed",
+                            completedAt: new Date().toISOString(),
+                            completionHistory: Array.from(
+                              new Set([...(meta.completionHistory || []), todayKey]),
+                            ),
+                          })
+                        }
                       />
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <strong style={{ display: "block", color: colors.navy }}>
-                          {task.title}
-                        </strong>
-                        <div style={teamMutedSmallStyle}>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ display: "block", color: colors.navy }}>{task.title}</strong>
+                        <small style={{ color: "#000000", fontWeight: 400, fontSize: 11 }}>
                           {meta.dueDate ? formatDate(meta.dueDate) : "Today"}
                           {task.minutes ? ` · ${minutesLabel(task.minutes)}` : ""}
-                        </div>
-                        {meta.notes ? (
-                          <div style={{ ...teamMutedSmallStyle, marginTop: 5, whiteSpace: "pre-wrap" }}>
-                            {meta.notes}
-                          </div>
-                        ) : null}
+                        </small>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const title = window.prompt("Edit task", task.title)?.trim();
+                          if (!title || title === task.title) return;
+                          updateWorkPlanTask(task.id, { title });
+                        }}
+                        style={compactUtilityButtonStyle}
+                      >
+                        Edit
+                      </button>
                     </div>
                   </div>
                 );
               })}
-              {teamUpcoming.map((record) => (
-                <div
-                  key={`addison-field-work-${record.id}`}
-                  style={{ ...teamCardStyle, display: "grid", gap: 8 }}
-                >
-                  <div>
-                    <div style={teamEyebrowStyle}>
-                      {record.priority} priority · {record.status}
-                    </div>
-                    <strong style={{ display: "block", color: colors.navy }}>
-                      {record.title}
-                    </strong>
-                    <div style={teamMutedSmallStyle}>
-                      {record.date ? formatDate(record.date) : "No due date"}
-                    </div>
-                    {record.notes ? (
-                      <div style={{ ...teamMutedSmallStyle, marginTop: 5, whiteSpace: "pre-wrap" }}>
-                        {record.notes}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                    {record.status !== "In Progress" ? (
-                      <button
-                        type="button"
-                        onClick={() => void updateTeamAssignment(record, "In Progress")}
-                        style={{ ...teamGoldButtonStyle, width: "auto" }}
-                      >
-                        Start
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => void requestTeamAssignmentHelp(record)}
-                      style={{ ...teamGoldButtonStyle, width: "auto", background: "#FFFFFF" }}
-                    >
-                      Need Help
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const note = window.prompt("Add a field note", "")?.trim();
-                        if (!note) return;
-                        const nextNotes = `${record.notes ? `${record.notes}\n` : ""}${note} — ${new Date().toLocaleString()}`;
-                        const updated = normalizeService({ ...record, notes: nextNotes, propertyId: activePropertyId });
-                        const saved = await postAtlasRecord("work_orders", updated);
-                        if (!saved) return;
-                        setServiceRecords((current) => current.map((item) => item.id === record.id ? updated : item));
-                        recordAtlasAudit("Addison field note", `${record.title} — ${note}`);
-                        showSaveToast("Field note saved.");
-                      }}
-                      style={{ ...teamGoldButtonStyle, width: "auto", background: "#FFFFFF" }}
-                    >
-                      Add Note
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void updateTeamAssignment(record, "Completed")}
-                      style={{ ...teamGoldButtonStyle, width: "auto" }}
-                    >
-                      Complete
-                    </button>
-                  </div>
-                </div>
-              ))}
 
-              {!addisonOpenTasks.length && !teamUpcoming.length ? (
-                <div style={teamNoticeStyle}>No open work is assigned to Addison.</div>
+              {!addisonOpenTasks.length ? (
+                <div style={teamNoticeStyle}>No tasks are due today.</div>
               ) : null}
 
               {addisonCompletedTodayTasks.length ? (
@@ -703,10 +676,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                   </summary>
                   <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
                     {addisonCompletedTodayTasks.map((task) => (
-                      <div
-                        key={`addison-field-completed-${task.id}`}
-                        style={{ ...teamCardStyle, opacity: 0.58 }}
-                      >
+                      <div key={task.id} style={{ ...teamCardStyle, opacity: 0.58 }}>
                         <span style={{ textDecoration: "line-through", color: colors.navy }}>
                           {task.title}
                         </span>
@@ -718,66 +688,17 @@ export default function AtlasDashboardWorkspace(props: any) {
             </div>
           </section>
 
-          <section style={teamSectionStyle}>
-            <SectionHeader
-              eyebrow="My Routine"
-              title="Daily Routine"
-              detail="Your routine for today."
-            />
-            <div style={{ display: "grid", gap: 8 }}>
-              {addisonRoutineOnly.map((item) => (
-                <button
-                  type="button"
-                  key={`addison-field-routine-${item.id}`}
-                  onClick={() => {
-                    setCompletedDashboardRoutineIds((current) =>
-                      current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id],
-                    );
-                    recordAtlasAudit(item.completed ? "Routine reopened" : "Routine completed", item.text);
-                  }}
-                  style={{
-                    ...teamCardStyle,
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    opacity: item.completed ? 0.58 : 1,
-                    width: "100%",
-                    textAlign: "left",
-                    cursor: "pointer",
-                  }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 7,
-                      display: "grid",
-                      placeItems: "center",
-                      flex: "0 0 auto",
-                      border: `1px solid ${item.completed ? colors.gold : colors.line}`,
-                      background: item.completed ? colors.gold : "#FFFFFF",
-                      color: colors.navy,
-                      fontWeight: 900,
-                    }}
-                  >
-                    {item.completed ? "✓" : ""}
-                  </span>
-                  <div style={{ minWidth: 0 }}>
-                    <strong
-                      style={{
-                        color: colors.navy,
-                        textDecoration: item.completed ? "line-through" : "none",
-                      }}
-                    >
-                      {item.text}
-                    </strong>
-                    <div style={teamMutedSmallStyle}>{item.workOrderTitle}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
+          <AtlasRoutines
+            mode="dashboard"
+            isMobile={isMobile}
+            activePropertyId={activePropertyId}
+            assigneeFilter="Addison"
+            defaultTodayAssignee="Addison"
+            allowTodayEditing
+            employeeView
+            onAddNote={addRoutineNote}
+            onFlagProblem={flagRoutineProblem}
+          />
         </div>
       );
     }
