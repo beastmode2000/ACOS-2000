@@ -1053,13 +1053,13 @@ export default function AtlasDashboardWorkspace(props: any) {
             />
             <div style={{ display: "grid", gap: 10 }}>
               {Array.from(
-                new Set(
+                new Set<string>(
                   sharedListTasks.map((task) => {
                     const meta = taskDetails(task.id) as any;
                     return String(meta.listId || "");
                   }).filter(Boolean),
                 ),
-              ).map((listId) => {
+              ).map((listId: string) => {
                 const listTasks = sharedListTasks.filter((task) => {
                   const meta = taskDetails(task.id) as any;
                   return String(meta.listId || "") === listId;
