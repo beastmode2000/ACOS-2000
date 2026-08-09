@@ -35,6 +35,10 @@ type Props = {
   onAddNote?: (task: { id: string; title: string }) => void;
   onFlagProblem?: (task: { id: string; title: string }) => void;
   onAssignmentChange?: (task: { id: string; title: string; assignedTo: RoutineTask["assignedTo"]; date: string }) => void | Promise<void>;
+  assigneeFilter?: RoutineTask["assignedTo"];
+  allowTodayEditing?: boolean;
+  defaultTodayAssignee?: RoutineTask["assignedTo"];
+  employeeView?: boolean;
 };
 
 const dayNames = [
@@ -157,6 +161,10 @@ export default function AtlasRoutines({
   onAddNote,
   onFlagProblem,
   onAssignmentChange,
+  assigneeFilter,
+  allowTodayEditing = false,
+  defaultTodayAssignee,
+  employeeView = false,
 }: Props) {
   const [templates, setTemplates] = useState<RoutineTemplate[]>([]);
   const [occurrence, setOccurrence] =
@@ -359,6 +367,59 @@ export default function AtlasRoutines({
     } finally {
       setBusy(false);
     }
+  }
+
+
+  async function mutateTodayOccurrence(
+    action: "add-today-task" | "edit-today-task" | "delete-today-task",
+    payload: Record<string, unknown>,
+  ) {
+    if (!occurrence || busy) return;
+    setBusy(true);
+    setStatus(action === "add-today-task" ? "Adding…" : "Saving…");
+    try {
+      const response = await fetch("/api/atlas-routines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          propertyId: activePropertyId,
+          date: occurrence.date,
+          ...payload,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Routine item did not save");
+      }
+      if (result.occurrence) setOccurrence(result.occurrence);
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Routine item did not save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addTodayOccurrenceTask() {
+    if (!occurrence) return;
+    const title = window.prompt("Add to today’s routine")?.trim();
+    if (!title) return;
+    await mutateTodayOccurrence("add-today-task", {
+      title,
+      assignedTo: defaultTodayAssignee || assigneeFilter || "Nick",
+    });
+  }
+
+  async function editTodayOccurrenceTask(task: RoutineTask) {
+    const title = window.prompt("Edit today’s routine item", task.title)?.trim();
+    if (!title || title === task.title) return;
+    await mutateTodayOccurrence("edit-today-task", { taskId: task.id, title });
+  }
+
+  async function deleteTodayOccurrenceTask(task: RoutineTask) {
+    if (!window.confirm(`Remove “${task.title}” from today only?`)) return;
+    await mutateTodayOccurrence("delete-today-task", { taskId: task.id });
   }
 
   function beginEdit() {
@@ -569,12 +630,21 @@ export default function AtlasRoutines({
   };
 
   if (mode === "dashboard") {
-    const completed =
-      occurrence?.tasks.filter((task) => task.completed).length || 0;
+    const dashboardTasks =
+      occurrence?.tasks.filter(
+        (task) => !assigneeFilter || task.assignedTo === assigneeFilter,
+      ) || [];
 
-    const resolved = occurrence?.tasks.filter((task) => task.completed || task.status === "skipped" || task.status === "deferred").length || 0;
+    const completed = dashboardTasks.filter((task) => task.completed).length;
 
-    const total = occurrence?.tasks.length || 0;
+    const resolved = dashboardTasks.filter(
+      (task) =>
+        task.completed ||
+        task.status === "skipped" ||
+        task.status === "deferred",
+    ).length;
+
+    const total = dashboardTasks.length;
 
     return (
       <section style={panel}>
@@ -641,14 +711,14 @@ export default function AtlasRoutines({
 
         {occurrence && total === 0 ? (
           <div style={{ color: colors.muted }}>
-            No tasks have been added to today&apos;s routine yet.
+            {employeeView ? "No routine items are assigned to you today." : "No tasks have been added to today’s routine yet."}
           </div>
         ) : null}
 
         {occurrence && total > 0 ? (
           <>
             {(() => {
-              const openTasks = occurrence.tasks.filter(
+              const openTasks = dashboardTasks.filter(
                 (task) =>
                   !task.completed &&
                   task.status !== "skipped" &&
@@ -656,8 +726,8 @@ export default function AtlasRoutines({
               );
               const nextTask = openTasks[0] || null;
               const visibleTasks = dashboardChecklistExpanded
-                ? occurrence.tasks
-                : occurrence.tasks.slice(0, 7);
+                ? dashboardTasks
+                : dashboardTasks.slice(0, 7);
 
               return (
                 <>
@@ -857,6 +927,8 @@ export default function AtlasRoutines({
                               paddingLeft: isMobile ? 0 : 27,
                             }}
                           >
+                            {!employeeView ? (
+                            <>
                             <select
                               aria-label={`Assign ${task.title}`}
                               value={task.assignedTo || "Nick"}
@@ -911,6 +983,28 @@ export default function AtlasRoutines({
                             >
                               Next Workday
                             </button>
+
+                            </>
+                            ) : allowTodayEditing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void editTodayOccurrenceTask(task)}
+                                  style={{ ...button, minHeight: 28, padding: "3px 7px", fontSize: 11 }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void deleteTodayOccurrenceTask(task)}
+                                  style={{ ...button, minHeight: 28, padding: "3px 7px", fontSize: 11, color: colors.red }}
+                                >
+                                  Remove Today
+                                </button>
+                              </>
+                            ) : null}
 
                             {onAddPhoto || onAddNote || onFlagProblem ? (
                               <details style={{ position: "relative" }}>
@@ -1008,7 +1102,7 @@ export default function AtlasRoutines({
                     ))}
                   </div>
 
-                  {occurrence.tasks.length > 7 ? (
+                  {dashboardTasks.length > 7 ? (
                     <button
                       type="button"
                       onClick={() =>
@@ -1027,12 +1121,23 @@ export default function AtlasRoutines({
                     >
                       {dashboardChecklistExpanded
                         ? "Show fewer checklist items"
-                        : `Show all ${occurrence.tasks.length} checklist items`}
+                        : `Show all ${dashboardTasks.length} checklist items`}
                     </button>
                   ) : null}
                 </>
               );
             })()}
+
+            {allowTodayEditing ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void addTodayOccurrenceTask()}
+                style={{ ...button, width: "100%", marginTop: 10, borderColor: colors.gold }}
+              >
+                + Add to Today’s Routine
+              </button>
+            ) : null}
 
             <div
               style={{
@@ -1200,7 +1305,21 @@ export default function AtlasRoutines({
           }}
         >
           {editing ? (
-            <input
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  style={button}
+                  onClick={() =>
+                    setDraftTasks((current) =>
+                      current.map((task) => ({ ...task, assignedTo: "Addison" }))
+                    )
+                  }
+                >
+                  Assign All to Addison
+                </button>
+              </div>
+              <input
               value={draftName}
               onChange={(event) =>
                 setDraftName(event.currentTarget.value)
@@ -1213,6 +1332,7 @@ export default function AtlasRoutines({
                 fontWeight: 800,
               }}
             />
+            </>
           ) : (
             <h2
               style={{
