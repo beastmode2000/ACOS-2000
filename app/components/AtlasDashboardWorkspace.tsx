@@ -260,6 +260,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     syncRoutineAssignment,
     taskDetails,
     teamWorkspace,
+    teamDirectory,
     todayEvents,
     todayLogCategory,
     todayLogEntries,
@@ -351,6 +352,55 @@ export default function AtlasDashboardWorkspace(props: any) {
           }))
         : [],
     );
+    const currentMemberKeys = new Set(
+      [
+        String(currentAtlasUser?.id || "").trim(),
+        String(currentAtlasUser?.email || "").trim().toLowerCase(),
+        String(currentAtlasUser?.name || "").trim().toLowerCase(),
+        String(currentAtlasUser?.name || "").trim().toLowerCase().split(/\s+/)[0] || "",
+      ].filter(Boolean),
+    );
+    const currentMemberDirectoryEntry = Array.isArray(teamDirectory)
+      ? teamDirectory.find((member: any) => {
+          const candidates = [
+            String(member?.id || "").trim(),
+            String(member?.email || "").trim().toLowerCase(),
+            String(member?.name || "").trim().toLowerCase(),
+            String(member?.name || "").trim().toLowerCase().split(/\s+/)[0] || "",
+          ].filter(Boolean);
+          return candidates.some((candidate) => currentMemberKeys.has(candidate));
+        })
+      : null;
+    if (currentMemberDirectoryEntry?.id) {
+      currentMemberKeys.add(String(currentMemberDirectoryEntry.id));
+    }
+
+    const sharedListTasks = workPlanTasks.filter((task) => {
+      const meta = taskDetails(task.id) as any;
+      if (!meta.listId || task.category === "Atlas List Definition") return false;
+      const assigneeIds = Array.isArray(meta.assigneeIds)
+        ? meta.assigneeIds.map((value: unknown) => String(value).trim())
+        : [];
+      const listMemberIds = Array.isArray(meta.listMemberIds)
+        ? meta.listMemberIds.map((value: unknown) => String(value).trim())
+        : [];
+      return [...assigneeIds, ...listMemberIds].some((value) =>
+        currentMemberKeys.has(value) ||
+        currentMemberKeys.has(value.toLowerCase()),
+      );
+    });
+
+    const sharedListChecklistItems = sharedListTasks.map((task) => {
+      const meta = taskDetails(task.id) as any;
+      return {
+        id: task.id,
+        text: task.title,
+        completed: meta.status === "Completed",
+        workOrderId: `list-${meta.listId}`,
+        workOrderTitle: meta.listName || "Shared List",
+        sharedListTaskId: task.id,
+      };
+    });
     const addisonRoutineFallback = [
       { id: "addison-dog-turf", text: "Clean and inspect the dog turf area", completed: false, workOrderId: "routine", workOrderTitle: "Daily Property Routine" },
       { id: "addison-packages", text: "Check and deliver packages", completed: false, workOrderId: "routine", workOrderTitle: "Daily Property Routine" },
@@ -369,10 +419,10 @@ export default function AtlasDashboardWorkspace(props: any) {
       workOrderTitle: item.detail || "Daily Routine",
     }));
     const teamChecklistItems = isAddisonUser
-      ? [...storedRoutineChecklistItems, ...assignedChecklistItems].length
-        ? [...storedRoutineChecklistItems, ...assignedChecklistItems]
+      ? [...storedRoutineChecklistItems, ...assignedChecklistItems, ...sharedListChecklistItems].length
+        ? [...storedRoutineChecklistItems, ...assignedChecklistItems, ...sharedListChecklistItems]
         : addisonRoutineFallback
-      : assignedChecklistItems;
+      : [...assignedChecklistItems, ...sharedListChecklistItems];
     const completedChecklistCount = teamChecklistItems.filter(
       (item) => item.completed,
     ).length;
@@ -993,6 +1043,87 @@ export default function AtlasDashboardWorkspace(props: any) {
             )}
           </div>
         </section>
+
+        {sharedListTasks.length ? (
+          <section style={teamSectionStyle}>
+            <SectionHeader
+              eyebrow="Shared Lists"
+              title="Collaborative Checklists"
+              detail="Everyone assigned to a shared list sees the same completion state."
+            />
+            <div style={{ display: "grid", gap: 10 }}>
+              {Array.from(
+                new Set(
+                  sharedListTasks.map((task) => {
+                    const meta = taskDetails(task.id) as any;
+                    return String(meta.listId || "");
+                  }).filter(Boolean),
+                ),
+              ).map((listId) => {
+                const listTasks = sharedListTasks.filter((task) => {
+                  const meta = taskDetails(task.id) as any;
+                  return String(meta.listId || "") === listId;
+                });
+                const listName =
+                  String((taskDetails(listTasks[0]?.id || "") as any).listName || "Shared List");
+                const completed = listTasks.filter(
+                  (task) => (taskDetails(task.id) as any).status === "Completed",
+                ).length;
+
+                return (
+                  <div key={listId} style={{ ...teamCardStyle, padding: 13 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <div>
+                        <strong style={{ color: colors.navy }}>{listName}</strong>
+                        <div style={teamMutedSmallStyle}>
+                          {completed} of {listTasks.length} complete
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gap: 7, marginTop: 9 }}>
+                      {listTasks.map((task) => {
+                        const meta = taskDetails(task.id) as any;
+                        const completedTask = meta.status === "Completed";
+                        return (
+                          <label
+                            key={task.id}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "auto minmax(0,1fr)",
+                              gap: 9,
+                              alignItems: "center",
+                              padding: "8px 9px",
+                              border: `1px solid ${colors.line}`,
+                              borderRadius: 9,
+                              background: completedTask ? "#F0FAF5" : "#FFFFFF",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={completedTask}
+                              onChange={(event) =>
+                                event.currentTarget.checked
+                                  ? completeAtlasTask(task)
+                                  : updateTaskDetails(task.id, {
+                                      status: "Open",
+                                      completedAt: undefined,
+                                    })
+                              }
+                            />
+                            <span style={{ color: colors.navy, textDecoration: completedTask ? "line-through" : "none" }}>
+                              {task.title}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         {isPatCrewUser ? (
           <section style={teamSectionStyle}>
