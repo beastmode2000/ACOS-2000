@@ -325,7 +325,7 @@ export default function AtlasProceduresWorkspace(props: any) {
           }
         />
         <Field
-          label="Purpose"
+          label="Purpose / Notes"
           value={selectedProcedure.purpose || ""}
           onChange={(value) =>
             updateProcedure({
@@ -398,7 +398,7 @@ export default function AtlasProceduresWorkspace(props: any) {
           }}
         >
           <div>
-            <div style={eyebrowStyle}>Checklist</div>
+            <div style={eyebrowStyle}>Procedure Checklist</div>
             <strong>{selectedProcedure.steps.length} steps</strong>
           </div>
           <button
@@ -826,57 +826,151 @@ export default function AtlasProceduresWorkspace(props: any) {
 
   return (
     <>
-      <ListDrawerLayout
-        eyebrow="Procedures"
-        title="Procedures"
-        detail="Create reusable SOPs, preventive-maintenance instructions, and landscaping procedures."
-        isMobile={isMobile}
-        drawerResetKey={selectedProcedure.id || "procedure-new"}
-        right={
-          <button
-            type="button"
-            onClick={() => createProcedureRecord()}
-            style={goldButtonStyle}
+      {!isMobile ? (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
           >
-            Add Procedure
-          </button>
-        }
-        list={
-          <div style={listStyle}>
-            {filteredProcedures.map((procedure) => (
-              <button
-                key={procedure.id}
-                type="button"
-                onClick={() => {
-                  procedureListScrollYRef.current = window.scrollY;
-                  setSelectedProcedureId(procedure.id);
-                  setProcedureDraftNotes("");
-                  setProcedureMessage("");
-                }}
-                style={{
-                  ...rowButtonStyle,
-                  borderColor:
-                    procedure.id === selectedProcedure.id
-                      ? colors.gold
-                      : colors.line,
-                }}
-              >
-                <div>
-                  <strong>{procedure.title}</strong>
-                  <p style={mutedSmallStyle}>
-                    {procedure.area} · {procedure.category || "General"} ·{" "}
-                    {procedure.steps.length} steps
-                  </p>
-                </div>
-                <span style={badgeStyle(procedure.priority)}>
-                  {procedure.status || procedure.priority}
-                </span>
-              </button>
-            ))}
+            <div>
+              <div style={eyebrowStyle}>Procedures</div>
+              <h2 style={{ margin: "2px 0", color: colors.navy }}>Procedures</h2>
+              <p style={{ ...mutedSmallStyle, margin: 0 }}>
+                Select a procedure on the left. Edit its checklist and supporting information on the right.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => createProcedureRecord()}
+              style={goldButtonStyle}
+            >
+              Add Procedure
+            </button>
           </div>
-        }
-        drawer={isMobile ? undefined : procedureEditor}
-      />
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(250px, 330px) minmax(0, 1fr)",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
+            <aside
+              style={{
+                ...cardStyle,
+                padding: 9,
+                position: "sticky",
+                top: 10,
+                maxHeight: "calc(100vh - 120px)",
+                overflowY: "auto",
+              }}
+            >
+              <div style={{ ...eyebrowStyle, margin: "3px 4px 8px" }}>
+                Procedure List
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {filteredProcedures.map((procedure) => {
+                  const active = procedure.id === selectedProcedure.id;
+                  return (
+                    <button
+                      key={procedure.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedProcedureId(procedure.id);
+                        setProcedureDraftNotes("");
+                        setProcedureMessage("");
+                      }}
+                      style={{
+                        ...rowButtonStyle,
+                        width: "100%",
+                        textAlign: "left",
+                        borderColor: active ? colors.gold : colors.line,
+                        background: active ? "#FFF9E8" : "#FFFFFF",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ display: "block", color: colors.navy }}>
+                          {procedure.title}
+                        </strong>
+                        <p style={{ ...mutedSmallStyle, margin: "3px 0 0" }}>
+                          {procedure.area || "General"} · {procedure.steps.length} steps
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+                {!filteredProcedures.length ? (
+                  <div style={noticeStyle}>No procedures yet.</div>
+                ) : null}
+              </div>
+            </aside>
+
+            <main
+              style={{
+                ...cardStyle,
+                minWidth: 0,
+                padding: 14,
+              }}
+            >
+              {procedureEditor}
+            </main>
+          </div>
+        </div>
+      ) : (
+        <ListDrawerLayout
+          eyebrow="Procedures"
+          title="Procedures"
+          detail="Create reusable SOPs, preventive-maintenance instructions, and landscaping procedures."
+          isMobile={isMobile}
+          drawerResetKey={selectedProcedure.id || "procedure-new"}
+          right={
+            <button
+              type="button"
+              onClick={() => createProcedureRecord()}
+              style={goldButtonStyle}
+            >
+              Add Procedure
+            </button>
+          }
+          list={
+            <div style={listStyle}>
+              {filteredProcedures.map((procedure) => (
+                <button
+                  key={procedure.id}
+                  type="button"
+                  onClick={() => {
+                    procedureListScrollYRef.current = window.scrollY;
+                    setSelectedProcedureId(procedure.id);
+                    setProcedureDraftNotes("");
+                    setProcedureMessage("");
+                  }}
+                  style={{
+                    ...rowButtonStyle,
+                    borderColor:
+                      procedure.id === selectedProcedure.id
+                        ? colors.gold
+                        : colors.line,
+                  }}
+                >
+                  <div>
+                    <strong>{procedure.title}</strong>
+                    <p style={mutedSmallStyle}>
+                      {procedure.area} · {procedure.category || "General"} ·{" "}
+                      {procedure.steps.length} steps
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          }
+        />
+      )}
 
       {isMobile && selectedProcedureId ? (
         <div
