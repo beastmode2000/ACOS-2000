@@ -611,6 +611,74 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (
+      action === "add-today-task" ||
+      action === "edit-today-task" ||
+      action === "delete-today-task"
+    ) {
+      const dateKey = asDateKey(body.date);
+      const occurrence = await getOrCreateOccurrence(sql, propertyId, dateKey);
+
+      if (!occurrence) {
+        return NextResponse.json(
+          { ok: false, error: "No weekday routine" },
+          { status: 400 },
+        );
+      }
+
+      let tasks = [...occurrence.tasks];
+
+      if (action === "add-today-task") {
+        const title = String(body.title || "").trim();
+        if (!title) {
+          return NextResponse.json(
+            { ok: false, error: "Routine item needs a title" },
+            { status: 400 },
+          );
+        }
+        tasks.push({
+          id: `today-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          title,
+          enabled: true,
+          completed: false,
+          status: "open",
+          assignedTo: cleanAssignee(body.assignedTo),
+        });
+      }
+
+      if (action === "edit-today-task") {
+        const taskId = String(body.taskId || "");
+        const title = String(body.title || "").trim();
+        if (!taskId || !title) {
+          return NextResponse.json(
+            { ok: false, error: "Routine item could not be edited" },
+            { status: 400 },
+          );
+        }
+        tasks = tasks.map((item) =>
+          item.id === taskId ? { ...item, title } : item,
+        );
+      }
+
+      if (action === "delete-today-task") {
+        const taskId = String(body.taskId || "");
+        tasks = tasks.filter((item) => item.id !== taskId);
+      }
+
+      await sql`
+        UPDATE atlas_routine_occurrences
+        SET tasks = ${JSON.stringify(tasks)}::jsonb, updated_at = NOW()
+        WHERE property_id = ${propertyId}
+          AND occurrence_date = ${dateKey}::date
+      `;
+
+      return NextResponse.json({
+        ok: true,
+        propertyId,
+        occurrence: { ...occurrence, tasks },
+      });
+    }
+
     if (action === "toggle-task") {
       const dateKey = asDateKey(body.date);
       const taskId = String(body.taskId || "");
