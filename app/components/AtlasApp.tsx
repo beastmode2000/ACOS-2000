@@ -529,116 +529,6 @@ export default function AtlasApp() {
       window.removeEventListener("storage", refreshRoutineItems);
     };
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let cancelled = false;
-
-    const syncTodayRoutineIntoTasks = async () => {
-      try {
-        const date = todayISO();
-        const response = await fetch(
-          `/api/atlas-routines?date=${date}&propertyId=${encodeURIComponent(activePropertyId)}`,
-          { cache: "no-store" },
-        );
-        const payload = await response.json();
-        if (!response.ok || !payload?.ok || cancelled) return;
-
-        const occurrence = payload.occurrence as {
-          date?: string;
-          tasks?: Array<{
-            id: string;
-            title: string;
-            enabled?: boolean;
-            completed?: boolean;
-            status?: string;
-            assignedTo?: string;
-          }>;
-        } | null;
-        const routineDate = String(occurrence?.date || date).slice(0, 10);
-        const routineTasks = Array.isArray(occurrence?.tasks)
-          ? occurrence!.tasks!.filter((task) => task && task.enabled !== false && task.status !== "skipped" && task.status !== "deferred")
-          : [];
-        const routineIds = new Set(routineTasks.map((task) => `routine-task-${activePropertyId}-${routineDate}-${task.id}`));
-        const now = new Date().toISOString();
-
-        setWorkPlanTasks((current) => {
-          const next = new Map(
-            current
-              .filter((item) => {
-                const meta = taskMeta[item.id];
-                return !(meta?.routineDate === routineDate && meta?.routineTaskId && !routineIds.has(item.id));
-              })
-              .map((item) => [item.id, item]),
-          );
-          routineTasks.forEach((routine) => {
-            const id = `routine-task-${activePropertyId}-${routineDate}-${routine.id}`;
-            const existing = next.get(id);
-            next.set(id, existing ? { ...existing, title: routine.title } : {
-              id,
-              title: routine.title,
-              minutes: 15,
-              priority: "Medium",
-              category: "Routine",
-              locationId: "general",
-              preferredDay: "Auto",
-              locked: false,
-              recurring: false,
-              fixedTime: "",
-              notes: "Linked from today’s Routine checklist.",
-            });
-          });
-          return Array.from(next.values());
-        });
-
-        setTaskMeta((current) => {
-          const next = { ...current };
-          Object.keys(next).forEach((id) => {
-            const meta = next[id];
-            if (meta?.routineDate === routineDate && meta?.routineTaskId && !routineIds.has(id)) delete next[id];
-          });
-          routineTasks.forEach((routine) => {
-            const id = `routine-task-${activePropertyId}-${routineDate}-${routine.id}`;
-            const existing = next[id];
-            const completed = routine.completed === true || routine.status === "completed";
-            next[id] = {
-              ...(existing || {}),
-              status: completed ? "Completed" : "Open",
-              dueDate: routineDate,
-              assignee: routine.assignedTo === "Addison" || routine.assignedTo === "Pat" ? routine.assignedTo : "Nick",
-              createdAt: existing?.createdAt || now,
-              updatedAt: now,
-              completedAt: completed ? existing?.completedAt || now : undefined,
-              notes: existing?.notes || "Linked from today’s Routine checklist.",
-              routineTaskId: routine.id,
-              routineDate,
-              assignmentScope: "This occurrence",
-              recurrenceInterval: 1,
-              recurrenceUnit: "Weeks",
-              recurrenceEndDate: "",
-              completionHistory: existing?.completionHistory || [],
-              season: "Year-Round",
-              weatherDependency: existing?.weatherDependency || "None",
-              flexibleTime: true,
-              skippable: false,
-              needsReview: false,
-            } as AtlasTaskMeta;
-          });
-          return next;
-        });
-      } catch {
-        // Routine remains usable if task cross-reference refresh fails.
-      }
-    };
-
-    void syncTodayRoutineIntoTasks();
-    window.addEventListener("focus", syncTodayRoutineIntoTasks);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("focus", syncTodayRoutineIntoTasks);
-    };
-  }, [activePropertyId]);
-
   const atlasSaveQueueRef = useRef<Map<string, Promise<boolean>>>(new Map());
   const atlasLastSaveRef = useRef<Map<string, string>>(new Map());
   const atlasSaveAttemptRef = useRef(0);
@@ -770,6 +660,43 @@ export default function AtlasApp() {
   const [calendarItems, setCalendarItems] = useState<AtlasCalendarItem[]>([]);
   const [seanCalendarPropertyFilter, setSeanCalendarPropertyFilter] = useState("all");
   const [todayLogEntries, setTodayLogEntries] = useState<TodayLogEntry[]>([]);
+
+  // Sync Dashboard quick notes into the existing Notes data source.
+  useEffect(() => {
+    if (!dashboardReminders.length) return;
+    setTodayLogEntries((current) => {
+      let changed = false;
+      const next = [...current];
+      dashboardReminders.forEach((note) => {
+        const text = String(note.text || "").trim();
+        if (!text) return;
+        const index = next.findIndex((entry) => entry.id === note.id);
+        const record: TodayLogEntry = {
+          id: note.id,
+          propertyId: activePropertyId,
+          date: String(note.createdAt || new Date().toISOString()).slice(0, 10),
+          category: "Note",
+          text,
+          createdAt: note.createdAt || new Date().toISOString(),
+        };
+        if (index === -1) {
+          next.unshift(record);
+          changed = true;
+          return;
+        }
+        const existing = next[index];
+        if (
+          existing.text !== record.text ||
+          existing.category !== "Note" ||
+          existing.propertyId !== activePropertyId
+        ) {
+          next[index] = { ...existing, ...record };
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [activePropertyId, dashboardReminders]);
   const [todayLogText, setTodayLogText] = useState("");
   const [todayLogCategory, setTodayLogCategory] = useState<TodayLogEntry["category"]>("Task");
   const [dashboardVendorVisitId, setDashboardVendorVisitId] = useState("");
@@ -1649,6 +1576,143 @@ export default function AtlasApp() {
   const [newPartyChecklistItem, setNewPartyChecklistItem] = useState("");
   const [selectedListId, setSelectedListId] = useState("graduation-party");
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>("today");
+
+  // Sync today's Routine occurrence into the existing Tasks data source.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+
+    const syncTodayRoutineIntoTasks = async () => {
+      try {
+        const date = todayISO();
+        const response = await fetch(
+          `/api/atlas-routines?date=${date}&propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no-store" },
+        );
+        const payload = await response.json();
+        if (!response.ok || !payload?.ok || cancelled) return;
+
+        const occurrence = payload.occurrence as {
+          date?: string;
+          tasks?: Array<{
+            id: string;
+            title: string;
+            enabled?: boolean;
+            completed?: boolean;
+            status?: string;
+            assignedTo?: string;
+          }>;
+        } | null;
+        const routineDate = String(occurrence?.date || date).slice(0, 10);
+        const routineTasks = Array.isArray(occurrence?.tasks)
+          ? occurrence!.tasks!.filter(
+              (task) =>
+                task &&
+                task.enabled !== false &&
+                task.status !== "skipped" &&
+                task.status !== "deferred",
+            )
+          : [];
+        const routineIds = new Set(
+          routineTasks.map((task) => `routine-task-${activePropertyId}-${routineDate}-${task.id}`),
+        );
+        const now = new Date().toISOString();
+
+        setWorkPlanTasks((current) => {
+          const next = new Map(
+            current
+              .filter((item) => {
+                const meta = taskMeta[item.id];
+                return !(
+                  meta?.routineDate === routineDate &&
+                  meta?.routineTaskId &&
+                  !routineIds.has(item.id)
+                );
+              })
+              .map((item) => [item.id, item]),
+          );
+          routineTasks.forEach((routine) => {
+            const id = `routine-task-${activePropertyId}-${routineDate}-${routine.id}`;
+            const existing = next.get(id);
+            next.set(
+              id,
+              existing
+                ? { ...existing, title: routine.title }
+                : {
+                    id,
+                    title: routine.title,
+                    minutes: 15,
+                    priority: "Medium",
+                    category: "Routine",
+                    locationId: "general",
+                    preferredDay: "Auto",
+                    locked: false,
+                    recurring: false,
+                    fixedTime: "",
+                    notes: "Linked from today’s Routine checklist.",
+                  },
+            );
+          });
+          return Array.from(next.values());
+        });
+
+        setTaskMeta((current) => {
+          const next = { ...current };
+          Object.keys(next).forEach((id) => {
+            const meta = next[id];
+            if (
+              meta?.routineDate === routineDate &&
+              meta?.routineTaskId &&
+              !routineIds.has(id)
+            ) {
+              delete next[id];
+            }
+          });
+          routineTasks.forEach((routine) => {
+            const id = `routine-task-${activePropertyId}-${routineDate}-${routine.id}`;
+            const existing = next[id];
+            const completed = routine.completed === true || routine.status === "completed";
+            next[id] = {
+              ...(existing || {}),
+              status: completed ? "Completed" : "Open",
+              dueDate: routineDate,
+              assignee:
+                routine.assignedTo === "Addison" || routine.assignedTo === "Pat"
+                  ? routine.assignedTo
+                  : "Nick",
+              createdAt: existing?.createdAt || now,
+              updatedAt: now,
+              completedAt: completed ? existing?.completedAt || now : undefined,
+              notes: existing?.notes || "Linked from today’s Routine checklist.",
+              routineTaskId: routine.id,
+              routineDate,
+              assignmentScope: "This occurrence",
+              recurrenceInterval: 1,
+              recurrenceUnit: "Weeks",
+              recurrenceEndDate: "",
+              completionHistory: existing?.completionHistory || [],
+              season: "Year-Round",
+              weatherDependency: existing?.weatherDependency || "None",
+              flexibleTime: true,
+              skippable: false,
+              needsReview: false,
+            } as AtlasTaskMeta;
+          });
+          return next;
+        });
+      } catch {
+        // Routine and Tasks remain usable if this cross-reference refresh fails.
+      }
+    };
+
+    void syncTodayRoutineIntoTasks();
+    window.addEventListener("focus", syncTodayRoutineIntoTasks);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", syncTodayRoutineIntoTasks);
+    };
+  }, [activePropertyId]);
+
   const [taskSearch, setTaskSearch] = useState("");
   const [taskFocusMode, setTaskFocusMode] = useState(false);
   const [walkVoiceListening, setWalkVoiceListening] = useState(false);
