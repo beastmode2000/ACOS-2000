@@ -170,7 +170,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
   const [lists, setLists] = useState<TeamList[]>([]);
   const [selectedListId, setSelectedListId] = useState("");
   const [search, setSearch] = useState("");
-  const [teamView, setTeamView] = useState<"assignments" | "people">("assignments");
+  const [teamView, setTeamView] = useState<"assignments" | "people">("people");
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [memberMessage, setMemberMessage] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
@@ -422,7 +422,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
       </div>
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-        {([['assignments','Assignments'],['people','People & Access']] as const).map(([value,label]) => (
+        {([['people','Users & Roles'],['assignments','Assignments']] as const).map(([value,label]) => (
           <button key={value} type="button" onClick={() => setTeamView(value)} style={{...lightButtonStyle, background:teamView===value?colors.navy3:colors.card, color:teamView===value?'#fff':colors.text, borderColor:teamView===value?colors.navy3:colors.line}}>{label}</button>
         ))}
       </div>
