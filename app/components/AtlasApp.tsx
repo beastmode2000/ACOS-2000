@@ -3676,11 +3676,15 @@ export default function AtlasApp() {
 
         const work = sections.find((section) => section.label === "Work");
         if (work) {
-          const preferred = ["planner", "routines", "history", "calendar", "team"] as AtlasScreen[];
+          const preferred = ["planner", "routines", "history", "calendar", "team"] as const;
           work.items = [
-            ...preferred.filter((id) => work.items.includes(id)),
-            ...work.items.filter((id) => !preferred.includes(id)),
-          ];
+            ...preferred.filter((id) =>
+              (work.items as readonly string[]).includes(id),
+            ),
+            ...work.items.filter(
+              (id) => !(preferred as readonly string[]).includes(id),
+            ),
+          ] as typeof work.items;
         }
 
         const property = sections.find((section) => section.label === "Property");
