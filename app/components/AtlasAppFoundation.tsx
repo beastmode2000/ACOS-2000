@@ -670,7 +670,7 @@ export const atlasNavigationSections: {
     items: ["history", "calendar", "planner", "routines", "team"],
   },
   { label: "Intake", items: ["inbox", "requests", "qr"] },
-  { label: "Reports & Access", items: ["reports"] },
+  { label: "Reports", items: ["reports"] },
   { label: "Property", items: ["assets", "locations", "timeline", "map"] },
   { label: "People", items: ["vendors", "contacts"] },
   {
@@ -5027,117 +5027,6 @@ export function normalizeManualRecord(record: Partial<ManualRecord>): ManualReco
   };
 }
 
-export const buttonRowStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-  alignItems: "center",
-};
-
-const sectionStyle: React.CSSProperties = {
-  background: colors.card,
-  width: "100%",
-  maxWidth: "100%",
-  minWidth: 0,
-  boxSizing: "border-box",
-  overflowWrap: "break-word",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 16,
-  padding: 16,
-  boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)",
-};
-
-const drawerGridStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 16,
-  alignItems: "start",
-  overflow: "visible",
-};
-
-const listPanelStyle: React.CSSProperties = {
-  minWidth: 0,
-};
-
-const drawerStyle: React.CSSProperties = {
-  background: "#FFFFFF",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 14,
-  padding: 0,
-  position: "sticky",
-  top: 12,
-  alignSelf: "start",
-  maxHeight: "calc(100vh - 28px)",
-  overflowY: "auto",
-  overflowX: "hidden",
-  boxShadow: "0 7px 22px rgba(15,35,55,0.065)",
-  minWidth: 0,
-  wordBreak: "break-word",
-};
-
-const eyebrowStyle: React.CSSProperties = {
-  color: colors.gold,
-  fontSize: 12,
-  fontWeight: 950,
-  letterSpacing: 1.8,
-  textTransform: "uppercase",
-};
-
-const mutedSmallStyle: React.CSSProperties = {
-  color: colors.muted,
-  fontSize: 14,
-  margin: "4px 0 0",
-  lineHeight: 1.45,
-  wordBreak: "break-word",
-};
-
-const fieldLabelStyle: React.CSSProperties = {
-  color: colors.navy,
-  fontSize: 13,
-  fontWeight: 800,
-  letterSpacing: "0.01em",
-};
-
-const inputStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  width: "100%",
-  maxWidth: "100%",
-  boxSizing: "border-box",
-  borderRadius: 14,
-  padding: "12px 13px",
-  fontSize: 15,
-  lineHeight: 1.4,
-  color: colors.text,
-  background: "#FFFFFF",
-  outline: "none",
-  fontFamily: "inherit",
-  minWidth: 0,
-  fontWeight: 500,
-};
-
-const goldButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.gold}`,
-  background: colors.gold,
-  color: colors.navy,
-  borderRadius: 13,
-  padding: "10px 14px",
-  fontSize: 14,
-  lineHeight: 1.2,
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  color: colors.navy,
-  borderRadius: 10,
-  padding: "8px 11px",
-  fontSize: 13,
-  lineHeight: 1.2,
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
 export function ListDrawerLayout(props: {
   eyebrow?: string;
   title?: string;
@@ -5185,9 +5074,7 @@ export function ListDrawerLayout(props: {
     };
   }, [props.drawerResetKey]);
 
-  const isCalendarLayout =
-    props.outerStyle?.background === colors.navy &&
-    props.outerStyle?.borderRadius === 24;
+  const isCalendarLayout = props.outerStyle === calendarNavyShellStyle;
 
   const desktopOuterStyle: React.CSSProperties = props.isMobile
     ? sectionStyle
