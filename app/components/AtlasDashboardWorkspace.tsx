@@ -281,24 +281,6 @@ export default function AtlasDashboardWorkspace(props: any) {
     padding: isMobile ? 14 : 18,
     boxShadow: "0 10px 28px rgba(15, 23, 42, 0.05)",
   };
-  useEffect(() => {
-    if (!dashboardReminders.length) return;
-    const existingIds = new Set(todayLogEntries.map((entry: any) => entry.id));
-    const missing = dashboardReminders.filter((note: any) => !existingIds.has(note.id));
-    if (!missing.length) return;
-    setTodayLogEntries((current: any[]) => [
-      ...missing.map((note: any) => ({
-        id: note.id,
-        propertyId: activePropertyId,
-        date: String(note.createdAt || "").slice(0, 10) || localISODate(new Date()),
-        category: "Note",
-        text: note.text,
-        createdAt: note.createdAt || new Date().toISOString(),
-      })),
-      ...current,
-    ]);
-  }, [activePropertyId, dashboardReminders, todayLogEntries, setTodayLogEntries]);
-
   const teamCardStyle: React.CSSProperties = {
     minWidth: 0,
     background: "#FFFFFF",
@@ -1957,29 +1939,40 @@ export default function AtlasDashboardWorkspace(props: any) {
     }
     showSaveToast(`Added to ${person}’s list.`);
   };
-  const saveDashboardNoteRecord = (text: string, dueDate?: string) => {
+  const saveDashboardNote = (text: string, dueDate?: string, existingId?: string) => {
     const clean = text.trim();
     if (!clean) return "";
-    const id = uid("dashboard-note");
-    const createdAt = new Date().toISOString();
-    setDashboardReminders((current) => [{ id, text: clean, done: false, createdAt, dueDate: dueDate || undefined }, ...current]);
-    setTodayLogEntries((current) => [{ id, propertyId: activePropertyId, date: today, category: "Note", text: clean, createdAt }, ...current.filter((entry: any) => entry.id !== id)]);
+    const id = existingId || uid("dashboard-note");
+    const createdAt = dashboardReminders.find((item) => item.id === id)?.createdAt || new Date().toISOString();
+    setDashboardReminders((current) => {
+      const existing = current.find((item) => item.id === id);
+      const record = { id, text: clean, done: existing?.done || false, createdAt, dueDate: dueDate || existing?.dueDate || undefined };
+      return existing ? current.map((item) => item.id === id ? record : item) : [record, ...current];
+    });
+    setTodayLogEntries((current) => {
+      const noteRecord = { id, propertyId: activePropertyId, date: today, category: "Note", text: clean, createdAt };
+      return [noteRecord, ...current.filter((entry: any) => entry.id !== id)];
+    });
     return id;
-  };
-  const updateDashboardNoteText = (noteId: string, text: string) => {
-    const clean = text.trim();
-    if (!clean) return;
-    setDashboardReminders((current) => current.map((item) => item.id === noteId ? { ...item, text: clean } : item));
-    setTodayLogEntries((current) => current.map((entry: any) => entry.id === noteId ? { ...entry, text: clean } : entry));
   };
   const deleteDashboardNote = (noteId: string) => {
     setDashboardReminders((current) => current.filter((item) => item.id !== noteId));
     setTodayLogEntries((current) => current.filter((entry: any) => entry.id !== noteId));
   };
+  useEffect(() => {
+    if (!dashboardReminders.length) return;
+    setTodayLogEntries((current) => {
+      const existingIds = new Set(current.map((entry: any) => entry.id));
+      const missing = dashboardReminders
+        .filter((note) => !existingIds.has(note.id))
+        .map((note) => ({ id: note.id, propertyId: activePropertyId, date: today, category: "Note", text: note.text, createdAt: note.createdAt }));
+      return missing.length ? [...missing, ...current] : current;
+    });
+  }, [activePropertyId, dashboardReminders, setTodayLogEntries, today]);
   const addDashboardReminder = () => {
     const text = dashboardReminderDraft.trim();
     if (!text) return;
-    saveDashboardNoteRecord(text, dashboardReminderDate || undefined);
+    saveDashboardNote(text, dashboardReminderDate || undefined);
     setDashboardReminderDraft("");
     setDashboardReminderDate("");
   };
@@ -2001,7 +1994,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     const text = quickCaptureNote.trim();
     if (!text) return;
     if (kind === "note") {
-      saveDashboardNoteRecord(text);
+      saveDashboardNote(text);
       setQuickCaptureNote("");
       showSaveToast("Saved to Quick Notes and Notes.");
       return;
@@ -2171,7 +2164,7 @@ export default function AtlasDashboardWorkspace(props: any) {
           {dashboardReminders.map((note) => <div key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: note.done ? "#F5F7F9" : "#FFFFFF" }}>
             <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 7, alignItems: "start" }}>
               <input type="checkbox" checked={note.done} onChange={() => setDashboardReminders((current) => current.map((item) => item.id === note.id ? { ...item, done: !item.done } : item))}/>
-              <button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) updateDashboardNoteText(note.id, text); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button>
+              <button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) saveDashboardNote(text, note.dueDate, note.id); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7, paddingLeft: 24 }}>
               {!note.done ? <><button type="button" onClick={() => convertDashboardReminderToTask(note.id, "Nick")} style={compactUtilityButtonStyle}>→ Nick</button><button type="button" onClick={() => convertDashboardReminderToTask(note.id, "Addison")} style={compactUtilityButtonStyle}>→ Addison</button></> : null}
