@@ -134,7 +134,8 @@ import type {
 
 
 
-export default function AtlasProceduresWorkspace(props: any) {\n  const [procedureSearch, setProcedureSearch] = React.useState("");
+export default function AtlasProceduresWorkspace(props: any) {
+  const [procedureSearch, setProcedureSearch] = React.useState("");
   const {
     assetRecords,
     colors,
