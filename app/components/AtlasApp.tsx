@@ -16266,11 +16266,9 @@ ${notes.trim()}` : notes.trim(),
         inputStyle={inputStyle}
         byName={byName}
         assetRecords={assetRecords}
-        assetPhotoRecords={photos}
         vendorRecords={vendorRecords}
         locationRecords={locations}
         contactRecords={contactRecords}
-        projectRecords={photoTimelineProjects}
         procedureRecords={procedureRecords}
         documentRecords={intakeDocs}
         calendarItems={calendarItems}
