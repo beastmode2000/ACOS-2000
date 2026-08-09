@@ -145,6 +145,7 @@ export default function AtlasApp() {
   type QuickCreateKind = "photo" | "document" | "task" | "work-order" | "project" | "asset" | "vendor" | "procedure";
   const [quickCreateKind, setQuickCreateKind] = useState<QuickCreateKind | "">("");
   const [quickCreateName, setQuickCreateName] = useState("");
+  const [quickCreateAssignee, setQuickCreateAssignee] = useState<"Nick" | "Addison" | "Pat" | "Unassigned">("Nick");
   const [ownerUpdateOpen, setOwnerUpdateOpen] = useState(false);
   const [ownerUpdateDraft, setOwnerUpdateDraft] = useState("");
   const [morningBriefOpen, setMorningBriefOpen] = useState(false);
@@ -5429,6 +5430,7 @@ export default function AtlasApp() {
     }
     setQuickCreateKind(kind);
     setQuickCreateName("");
+    setQuickCreateAssignee("Nick");
   }
 
   function quickCreateLabel(kind: QuickCreateKind | "") {
@@ -5458,13 +5460,19 @@ export default function AtlasApp() {
     }
     if (kind === "task") {
       const taskId = addAtlasTask(name);
+      if (taskId) {
+        updateTaskDetails(taskId, { assignee: quickCreateAssignee });
+      }
       setTasksView("tasks");
       setSelectedTaskId(taskId);
       setScreen("planner");
       return;
     }
     if (kind === "work-order") {
-      addWorkOrder({ title: name });
+      addWorkOrder({
+        title: name,
+        assignedTo: quickCreateAssignee === "Unassigned" ? "" : quickCreateAssignee,
+      });
       return;
     }
     if (kind === "asset") {
@@ -7740,6 +7748,42 @@ export default function AtlasApp() {
     }
   }
 
+  function openTaskById(taskId: string) {
+    if (!taskId) return;
+    setTaskListFilter("all");
+    setTasksView("tasks");
+    setSelectedTaskId(taskId);
+    setScreen("planner");
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        setTasksView("tasks");
+        setSelectedTaskId(taskId);
+        window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+      });
+    }
+  }
+
+  function openWorkOrderFilter(kind: "overdue" | "today" | "high" | "completed-today") {
+    setSelectedServiceId("");
+    setDashboardWorkFilter(`__${kind}__`);
+    setWorkOrdersOpenKey((current) => current + 1);
+    setScreen("history");
+  }
+
+  function openDashboardCalendarItem(event: AtlasCalendarItem) {
+    if (event.source === "work-order" && event.linkedId) {
+      openWorkOrderById(event.linkedId);
+      return;
+    }
+    setScreen("calendar");
+    setSelectedCalendarDate(event.date);
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => openCalendarItem(event));
+    } else {
+      openCalendarItem(event);
+    }
+  }
+
   function addDashboardWorkOrder(areaLabel: string) {
     const contextByArea: Record<string, Partial<AtlasServiceRecord>> = {
       Maintenance: { workCategory: "🔧 Maintenance", responsibilityArea: "Operations Dashboard · Maintenance" },
@@ -8046,6 +8090,10 @@ export default function AtlasApp() {
   }
 
   async function completeWorkOrder(record: AtlasServiceRecord) {
+    if (record.date && String(record.date).slice(0, 10) > todayISO()) {
+      showSaveToast(`This work order is due ${formatDate(record.date)} and cannot be completed early.`, "warning");
+      return;
+    }
     const actionKey = `complete-work-order:${record.id}`;
     if (atlasActionLocksRef.current.has(actionKey)) {
       showSaveToast("This work order is already being completed.", "warning");
@@ -11486,6 +11534,10 @@ export default function AtlasApp() {
 
   function completeAtlasTask(task: WorkPlanTask) {
     const meta = taskDetails(task.id);
+    if (meta.dueDate && String(meta.dueDate).slice(0, 10) > todayISO()) {
+      showSaveToast(`This task is due ${formatDate(meta.dueDate)} and cannot be completed early.`, "warning");
+      return;
+    }
     if (task.recurring) {
       advanceRecurringTask(task, meta);
       return;
@@ -14429,6 +14481,9 @@ ${notes.trim()}` : notes.trim(),
       mutedSmallStyle,
       noticeStyle,
       openWorkOrderById,
+      openTaskById,
+      openWorkOrderFilter,
+      openDashboardCalendarItem,
       operationsSyncState,
       photos,
       postAtlasRecord,
@@ -14478,6 +14533,7 @@ ${notes.trim()}` : notes.trim(),
       setSelectedLocationId,
       setSelectedServiceId,
       setSelectedTaskId,
+      setSelectedVehicleId,
       setServiceRecords,
       setShowLandscapeFilters,
       setTaskMeta,
@@ -15989,7 +16045,7 @@ ${notes.trim()}` : notes.trim(),
             }}
           >
             <span style={{ fontSize: 13, fontWeight: 900 }}>
-              Showing only {dashboardWorkFilter} work orders
+              Showing only {{ "__overdue__": "overdue", "__today__": "due today", "__high__": "high priority", "__completed-today__": "completed today" }[dashboardWorkFilter] || dashboardWorkFilter} work orders
             </span>
             <button
               type="button"
@@ -16164,7 +16220,12 @@ ${notes.trim()}` : notes.trim(),
         filteredServices={
           dashboardWorkFilter
             ? staffVisibleServiceRecords.filter((record) => {
-                const text = `${(record as AtlasServiceRecord).workCategory || ""} ${record.title || ""} ${record.notes || ""}`.toLowerCase();
+                const item = record as AtlasServiceRecord;
+                if (dashboardWorkFilter === "__overdue__") return item.status !== "Completed" && Boolean(item.date) && String(item.date).slice(0, 10) < todayISO();
+                if (dashboardWorkFilter === "__today__") return item.status !== "Completed" && String(item.date || "").slice(0, 10) === todayISO();
+                if (dashboardWorkFilter === "__high__") return item.status !== "Completed" && item.priority === "High";
+                if (dashboardWorkFilter === "__completed-today__") return item.status === "Completed" && String(item.lastCompletedDate || item.completedAt || "").slice(0, 10) === todayISO();
+                const text = `${item.workCategory || ""} ${item.title || ""} ${item.notes || ""}`.toLowerCase();
                 return text.includes(dashboardWorkFilter.toLowerCase());
               })
             : staffVisibleServiceRecords
@@ -23190,25 +23251,36 @@ ${notes.trim()}` : notes.trim(),
         type="button"
         aria-label="Quick capture"
         title="Quick Capture"
-        onClick={() => { setQuickCreateKind(""); setQuickCreateName(""); setQuickCaptureOpen(true); }}
+        onClick={() => { setQuickCreateKind(""); setQuickCreateName(""); setQuickCreateAssignee("Nick"); setQuickCaptureOpen(true); }}
         className="atlas-quick-capture-button"
       >
         +
       </button>
       {quickCaptureOpen ? (
-        <div className="atlas-quick-capture-backdrop" onMouseDown={() => { setQuickCaptureOpen(false); setQuickCreateKind(""); setQuickCreateName(""); }}>
+        <div className="atlas-quick-capture-backdrop" onMouseDown={() => { setQuickCaptureOpen(false); setQuickCreateKind(""); setQuickCreateName(""); setQuickCreateAssignee("Nick"); }}>
           <section className="atlas-quick-capture-panel" onMouseDown={(event) => event.stopPropagation()} aria-label="Quick Capture">
             <div className="atlas-quick-capture-header">
               <div>
                 <strong>{quickCreateKind ? `New ${quickCreateLabel(quickCreateKind)}` : "Quick Capture"}</strong>
                 <small>{quickCreateKind ? "Name it first. The full editor opens after saving." : "Save it now. Organize it where it belongs."}</small>
               </div>
-              <button type="button" onClick={() => { setQuickCaptureOpen(false); setQuickCreateKind(""); setQuickCreateName(""); }} style={mapIconButtonStyle}>{closeSymbol}</button>
+              <button type="button" onClick={() => { setQuickCaptureOpen(false); setQuickCreateKind(""); setQuickCreateName(""); setQuickCreateAssignee("Nick"); }} style={mapIconButtonStyle}>{closeSymbol}</button>
             </div>
             {quickCreateKind ? (
               <form onSubmit={(event) => { event.preventDefault(); saveQuickCreate(); }} style={{ display: "grid", gap: 12 }}>
                 <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>NAME</span><input autoFocus value={quickCreateName} onChange={(event) => setQuickCreateName(event.currentTarget.value)} placeholder={`${quickCreateLabel(quickCreateKind)} name`} style={{ ...inputStyle, minHeight: 48, fontSize: 16 }} /></label>
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => { setQuickCreateKind(""); setQuickCreateName(""); }} style={secondaryButtonStyle}>Back</button><button type="submit" disabled={!quickCreateName.trim()} style={goldButtonStyle}>Save & Continue</button></div>
+                {quickCreateKind === "task" || quickCreateKind === "work-order" ? (
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>ASSIGNED TO</span>
+                    <select value={quickCreateAssignee} onChange={(event) => setQuickCreateAssignee(event.currentTarget.value as "Nick" | "Addison" | "Pat" | "Unassigned")} style={{ ...inputStyle, minHeight: 44, fontSize: 15 }}>
+                      <option value="Nick">Nick</option>
+                      <option value="Addison">Addison</option>
+                      <option value="Pat">Pat</option>
+                      <option value="Unassigned">Unassigned</option>
+                    </select>
+                  </label>
+                ) : null}
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => { setQuickCreateKind(""); setQuickCreateName(""); setQuickCreateAssignee("Nick"); }} style={secondaryButtonStyle}>Back</button><button type="submit" disabled={!quickCreateName.trim()} style={goldButtonStyle}>Save & Continue</button></div>
               </form>
             ) : <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, padding: 4, borderRadius: 12, background: "#EEF3F7" }}>
