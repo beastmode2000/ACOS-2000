@@ -5027,6 +5027,70 @@ export function normalizeManualRecord(record: Partial<ManualRecord>): ManualReco
   };
 }
 
+const sectionStyle: React.CSSProperties = {
+  background: colors.card,
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
+  overflowWrap: "break-word",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  padding: 16,
+  boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)",
+};
+
+const drawerGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 16,
+  alignItems: "start",
+  overflow: "visible",
+};
+
+const listPanelStyle: React.CSSProperties = {
+  minWidth: 0,
+};
+
+const drawerStyle: React.CSSProperties = {
+  background: colors.panel,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 24,
+  padding: 18,
+  position: "sticky",
+  top: 16,
+  alignSelf: "start",
+  maxHeight: "calc(100vh - 32px)",
+  overflowY: "auto",
+  overflowX: "hidden",
+  overscrollBehavior: "contain",
+  boxShadow: "0 16px 35px rgba(15,23,42,0.06)",
+  minWidth: 0,
+  wordBreak: "break-word",
+};
+
+const buttonRowStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const eyebrowStyle: React.CSSProperties = {
+  color: colors.gold,
+  fontSize: 12,
+  fontWeight: 950,
+  letterSpacing: 1.8,
+  textTransform: "uppercase",
+};
+
+const mutedSmallStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 13,
+  margin: "4px 0 0",
+  lineHeight: 1.45,
+  wordBreak: "break-word",
+};
+
 export function ListDrawerLayout(props: {
   eyebrow?: string;
   title?: string;
