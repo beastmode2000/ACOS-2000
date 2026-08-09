@@ -576,7 +576,7 @@ export default function AtlasAssetsWorkspace(props: any) {
       : "",
     !selectedAsset.serial && selectedAsset.serialRequirement !== "Not Required" ? "Add serial / VIN / HIN" : "",
     !selectedAsset.vendorIds.length ? "Select a preferred vendor" : "",
-    !attachedManuals.length && selectedAsset.manualRequirement !== "Not Required" ? "Attach a manual" : "",
+    !attachedManuals.length && selectedAsset.manualRequirement !== "Not Required" ? "Add a manual or supporting document" : "",
     !linkedAssetProcedures.length && selectedAsset.procedureRequirement !== "Not Required" ? "Link a procedure" : "",
   ].filter(Boolean);
 
@@ -635,7 +635,7 @@ export default function AtlasAssetsWorkspace(props: any) {
     <ListDrawerLayout
       eyebrow="Property Equipment"
       title="Assets"
-      detail="Search, review, and maintain equipment records for the selected property."
+      detail="Equipment, service history, documents, procedures, vendors, and maintenance in one place."
       isMobile={isMobile}
       drawerResetKey={selectedAssetId || "asset-empty"}
       mobileDrawerOpen={isMobile && Boolean(selectedAssetId)}
@@ -1837,9 +1837,30 @@ export default function AtlasAssetsWorkspace(props: any) {
                 <h3 style={assetPanelTitleStyle}>
                   {selectedAsset.name.trim() || "Asset"}
                 </h3>
-                <span style={badgeStyle(assetConditionBadge)}>
-                  {assetConditionLabel}
-                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 6,
+                    marginTop: 4,
+                  }}
+                >
+                  <span style={badgeStyle(assetConditionBadge)}>
+                    {assetConditionLabel}
+                  </span>
+                  {selectedAsset.category ? (
+                    <span style={mutedSmallStyle}>{selectedAsset.category}</span>
+                  ) : null}
+                  {selectedAsset.locationId && selectedAsset.locationId !== "general" ? (
+                    <span style={mutedSmallStyle}>· {locationName(selectedAsset.locationId)}</span>
+                  ) : null}
+                  {[selectedAsset.make, selectedAsset.model].filter(Boolean).length ? (
+                    <span style={mutedSmallStyle}>
+                      · {[selectedAsset.make, selectedAsset.model].filter(Boolean).join(" ")}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div style={assetActionRowStyle}>
                 {assetEditorOpen ? (
@@ -1954,7 +1975,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                   <option value="work">Work Orders ({openAssetWorkOrders.length})</option>
                   <option value="history">Service History ({assetHistory.length})</option>
                   <option value="photos">Photos ({selectedAssetPhotos.length})</option>
-                  <option value="documents">Documents ({linkedAssetDocuments.length})</option>
+                  <option value="documents">Documents ({linkedAssetDocuments.length + attachedManuals.length})</option>
                   <option value="procedures">Procedures ({linkedAssetProcedures.length})</option>
                   <option value="notes">Notes</option>
                 </select>
@@ -1974,7 +1995,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                     ["work", "Work Orders", openAssetWorkOrders.length],
                     ["history", "Service History", assetHistory.length],
                     ["photos", "Photos", selectedAssetPhotos.length],
-                    ["documents", "Documents", linkedAssetDocuments.length],
+                    ["documents", "Documents", linkedAssetDocuments.length + attachedManuals.length],
                     ["procedures", "Procedures", linkedAssetProcedures.length],
                     ["notes", "Notes", null],
                   ].map(([key, label, count]) => {
@@ -2190,8 +2211,8 @@ export default function AtlasAssetsWorkspace(props: any) {
             >
               <div style={assetCardHeaderStyle}>
                 <div>
-                  <strong>Asset Intelligence</strong>
-                  <div style={assetCardHintStyle}>Current context, attention items, and the most useful next action</div>
+                  <strong>Operations Snapshot</strong>
+                  <div style={assetCardHintStyle}>Current work, activity, and the next action that matters</div>
                 </div>
                 <span style={badgeStyle(assetAttentionItems.length ? "High" : "Online")}>
                   {assetAttentionItems.length ? `${assetAttentionItems.length} attention` : "On track"}
@@ -2253,9 +2274,9 @@ export default function AtlasAssetsWorkspace(props: any) {
             >
               <div style={assetCardHeaderStyle}>
                 <div>
-                  <strong>Asset Status</strong>
+                  <strong>Maintenance Status</strong>
                   <div style={assetCardHintStyle}>
-                    Condition, active work, maintenance schedule, and record completeness
+                    Condition, open work, upcoming maintenance, and record readiness
                   </div>
                 </div>
                 <span style={badgeStyle(assetConditionBadge)}>
@@ -2520,9 +2541,9 @@ export default function AtlasAssetsWorkspace(props: any) {
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <span style={assetInfoLabelStyle}>Asset Relationships</span>
+                      <span style={assetInfoLabelStyle}>Connected Records</span>
                       <div style={assetCardHintStyle}>
-                        Open every record connected to this asset.
+                        Jump to the records connected to this equipment.
                       </div>
                     </div>
                     <span
@@ -2574,18 +2595,8 @@ export default function AtlasAssetsWorkspace(props: any) {
                         action: () => setAssetPanelSection("procedures"),
                       },
                       {
-                        label: "Manuals",
-                        count: attachedManuals.length,
-                        action: () => {
-                          if (attachedManuals[0]) {
-                            setSelectedManualId(attachedManuals[0].id);
-                          }
-                          setScreen("manuals");
-                        },
-                      },
-                      {
                         label: "Documents",
-                        count: linkedAssetDocuments.length,
+                        count: linkedAssetDocuments.length + attachedManuals.length,
                         action: () => setAssetPanelSection("documents"),
                       },
                       {
@@ -3448,73 +3459,170 @@ export default function AtlasAssetsWorkspace(props: any) {
               )}
             </section>
 
-            <div
-              style={{
-                ...assetPanelFooterStyle,
-                display: assetPanelSection === "documents" ? "flex" : "none",
-                marginTop: 14,
-                position: "relative",
-                zIndex: 1,
-                clear: "both",
-              }}
-            >
-              <div style={assetFileSummaryStyle}>
-                <strong>Manuals &amp; Files</strong>
-                <span style={assetCardHintStyle}>
-                  {attachedManuals.length} manual{attachedManuals.length === 1 ? "" : "s"}
-                </span>
-                {attachedManuals.length ? (
+            {assetPanelSection === "documents" ? (
+              <section
+                style={{
+                  ...assetCardStyle,
+                  marginBottom: 12,
+                  background: "#FFFFFF",
+                }}
+                aria-label="Asset documents"
+              >
+                <div style={{ ...assetCardHeaderStyle, marginBottom: 10 }}>
+                  <div>
+                    <strong>Documents</strong>
+                    <div style={assetCardHintStyle}>
+                      Manuals, warranties, invoices, startup sheets, and other files linked to this asset.
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 999,
+                      background: colors.panel,
+                      color: colors.navy,
+                      padding: "5px 9px",
+                      fontSize: 10,
+                      fontWeight: 900,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {linkedAssetDocuments.length + attachedManuals.length} linked
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 10,
+                      background: "#F8FAFD",
+                      padding: 10,
+                    }}
+                  >
+                    <span style={assetInfoLabelStyle}>Document Library</span>
+                    <strong
+                      style={{
+                        display: "block",
+                        marginTop: 4,
+                        color: colors.navy,
+                        fontSize: 15,
+                      }}
+                    >
+                      {linkedAssetDocuments.length}
+                    </strong>
+                    <span style={{ ...assetCardHintStyle, display: "block", marginTop: 3 }}>
+                      Files linked through Atlas Documents
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 10,
+                      background: "#F8FAFD",
+                      padding: 10,
+                    }}
+                  >
+                    <span style={assetInfoLabelStyle}>Manual Attachments</span>
+                    <strong
+                      style={{
+                        display: "block",
+                        marginTop: 4,
+                        color: colors.navy,
+                        fontSize: 15,
+                      }}
+                    >
+                      {attachedManuals.length}
+                    </strong>
+                    <span style={{ ...assetCardHintStyle, display: "block", marginTop: 3 }}>
+                      Existing manuals already associated with this asset
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 7,
+                    marginTop: 10,
+                  }}
+                >
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedManualId(attachedManuals[0].id);
-                      setScreen("manuals");
+                      setDocumentSearch(selectedAsset.name);
+                      setScreen("documents");
+                    }}
+                    style={assetPrimaryActionButtonStyle}
+                  >
+                    Open Documents
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocumentSearch(selectedAsset.name);
+                      setScreen("documents");
                     }}
                     style={assetTinyButtonStyle}
                   >
-                    View Manuals
+                    Add / Link File
                   </button>
+                </div>
+
+                {!linkedAssetDocuments.length && !attachedManuals.length ? (
+                  <div
+                    style={{
+                      border: `1px dashed ${colors.line}`,
+                      borderRadius: 10,
+                      background: "#F8FAFD",
+                      padding: 12,
+                      marginTop: 10,
+                      color: colors.muted,
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    No documents are linked yet. Add manuals and supporting records through Documents and link them to this asset.
+                  </div>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => startManualForAsset(selectedAsset)}
-                  style={assetTinyButtonStyle}
-                >
-                  Add Manual
-                </button>
-                <button
-                  type="button"
-                  onClick={() => findManualForAsset(selectedAsset)}
-                  style={assetTinyButtonStyle}
-                >
-                  Find Online
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDocumentSearch(selectedAsset.name);
-                    setScreen("documents");
+
+                <div
+                  style={{
+                    ...assetPanelFooterStyle,
+                    marginTop: 12,
+                    paddingTop: 10,
+                    borderTop: `1px solid ${colors.line}`,
                   }}
-                  style={assetTinyButtonStyle}
                 >
-                  Documents
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => void deleteAssetRecord(selectedAsset)}
-                style={assetDeleteBottomButtonStyle}
-              >
-                Delete Asset
-              </button>
-            </div>
+                  <span style={assetCardHintStyle}>
+                    Files stay searchable in Documents while remaining connected to this asset.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void deleteAssetRecord(selectedAsset)}
+                    style={assetDeleteBottomButtonStyle}
+                  >
+                    Delete Asset
+                  </button>
+                </div>
+              </section>
+            ) : null}
           </div>
         ) : (
           <div style={noticeStyle}>
             <strong>Select an asset.</strong>
             <p style={mutedSmallStyle}>
-              Open an asset to see its information, manuals, photos, work
-              orders, and documents.
+              Open an asset to see its information, photos, work orders, documents, procedures, and service history.
             </p>
           </div>
         )
