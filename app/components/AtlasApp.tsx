@@ -364,6 +364,15 @@ export default function AtlasApp() {
     "hangar",
   ]);
   const [currentAtlasUser, setCurrentAtlasUser] = useState<AtlasCurrentUser | null>(null);
+  const [teamDirectory, setTeamDirectory] = useState<Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    active: boolean;
+    propertyIds: string[];
+    accessProfiles: string[];
+  }>>([]);
   const [teamAccessResolved, setTeamAccessResolved] = useState(false);
   const [teamAccessError, setTeamAccessError] = useState("");
   const [showLandscapeFilters, setShowLandscapeFilters] = useState(false);
@@ -976,6 +985,24 @@ export default function AtlasApp() {
         const normalizeEmail = (value: unknown) =>
           String(value || "").trim().toLowerCase();
         const members = Array.isArray(payload?.members) ? payload.members : [];
+        setTeamDirectory(
+          members
+            .filter((member: any) => member && member.active !== false)
+            .map((member: any) => ({
+              id: String(member.id || member.email || member.name || "").trim(),
+              name: String(member.name || member.email || "Atlas User").trim(),
+              email: normalizeEmail(member.email),
+              role: String(member.role || "employee").trim().toLowerCase(),
+              active: member.active !== false,
+              propertyIds: Array.isArray(member.propertyIds)
+                ? member.propertyIds.map(String)
+                : [],
+              accessProfiles: Array.isArray(member.accessProfiles)
+                ? member.accessProfiles.map(String)
+                : [],
+            }))
+            .filter((member: any) => Boolean(member.id)),
+        );
 
         // FIELD DEVICE BINDING
         // Atlas still uses the existing shared manager login. To keep a staff phone
@@ -3657,7 +3684,10 @@ export default function AtlasApp() {
         const sections = atlasPrimaryNavigationSections.map((section) => ({
           ...section,
           items: section.items.filter(
-            (item) => item !== "manuals" && item !== "portfolio",
+            (item) =>
+              item !== "manuals" &&
+              item !== "portfolio" &&
+              item !== "team",
           ),
         }));
 
@@ -14129,6 +14159,128 @@ ${notes.trim()}` : notes.trim(),
     setTasksView("lists");
   }
 
+  const collaborativeDepartments = [
+    { id: "house", label: "House / Interior" },
+    { id: "garage", label: "Garage" },
+    { id: "pool", label: "Pool & Spa" },
+    { id: "landscaping", label: "Landscaping & Irrigation" },
+    { id: "marine", label: "Dock & Waterfront" },
+  ] as const;
+
+  function teamMemberKey(member: { id?: string; email?: string; name?: string }) {
+    return String(member.id || member.email || member.name || "").trim();
+  }
+
+  function listMetaValue<T>(listId: string, field: string, fallback: T): T {
+    const records = workPlanTasks.filter(
+      (task) =>
+        taskDetails(task.id).listId === listId ||
+        (listId === "graduation-party" &&
+          task.category === "Graduation Party Checklist"),
+    );
+    for (const record of records) {
+      const meta = taskDetails(record.id) as any;
+      if (meta[field] !== undefined) return meta[field] as T;
+    }
+    return fallback;
+  }
+
+  function updateCollaborativeListMeta(
+    listId: string,
+    listName: string,
+    patch: Record<string, unknown>,
+  ) {
+    const records = workPlanTasks.filter(
+      (task) =>
+        taskDetails(task.id).listId === listId ||
+        (listId === "graduation-party" &&
+          task.category === "Graduation Party Checklist"),
+    );
+    const ids = new Set(records.map((record) => String(record.id)));
+    const updatedAt = new Date().toISOString();
+
+    setTaskMeta((current) => {
+      const next = { ...current } as Record<string, AtlasTaskMeta>;
+      ids.forEach((id) => {
+        next[id] = {
+          ...(current[id] || taskDetails(id)),
+          listId,
+          listName,
+          ...patch,
+          updatedAt,
+        } as AtlasTaskMeta;
+      });
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        }
+      } catch {}
+      return next;
+    });
+
+    records.forEach((record) => {
+      const meta = taskDetails(record.id) as any;
+      void postAtlasRecord("tasks" as AtlasTable, {
+        ...record,
+        ...meta,
+        listId,
+        listName,
+        ...patch,
+        taskMeta: {
+          ...meta,
+          listId,
+          listName,
+          ...patch,
+          updatedAt,
+        },
+        propertyId: activePropertyId,
+        updatedAt,
+      });
+    });
+  }
+
+  function listMemberLabel(memberId: string) {
+    const member = teamDirectory.find(
+      (entry) =>
+        teamMemberKey(entry) === memberId ||
+        entry.email === memberId,
+    );
+    return member?.name || memberId;
+  }
+
+  function setChecklistTaskAssignees(
+    task: WorkPlanTask,
+    assigneeIds: string[],
+    departmentIds?: string[],
+  ) {
+    const uniqueAssignees = Array.from(new Set(assigneeIds.filter(Boolean)));
+    const uniqueDepartments = Array.from(
+      new Set((departmentIds || []).filter(Boolean)),
+    );
+    const firstMember = teamDirectory.find(
+      (entry) => teamMemberKey(entry) === uniqueAssignees[0],
+    );
+    const compatibilityAssignee =
+      uniqueAssignees.length === 1
+        ? firstMember?.name || "Other"
+        : uniqueAssignees.length > 1
+          ? "Other"
+          : "Unassigned";
+
+    updateTaskDetails(
+      task.id,
+      {
+        assignee: compatibilityAssignee as any,
+        assigneeIds: uniqueAssignees,
+        departmentIds: uniqueDepartments,
+      } as any,
+    );
+  }
+
   function checklistDefinitions() {
     const custom = workPlanTasks
       .filter((task) => task.category === "Atlas List Definition")
@@ -14170,7 +14322,31 @@ ${notes.trim()}` : notes.trim(),
     const listId = `list-${slugify(name)}-${Date.now()}`;
     const marker: WorkPlanTask = { id: `atlas-list-definition-${listId}`, title: name, minutes: 5, priority: "Low", category: "Atlas List Definition", locationId: "general", preferredDay: "Auto", locked: true, recurring: false, fixedTime: "", notes: "Atlas checklist definition" };
     setWorkPlanTasks((current) => [...current, marker]);
-    setTaskMeta((current) => ({ ...current, [marker.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), completionHistory: [], flexibleTime: true, skippable: true, listId, listName: name, dashboardListPinned: false } }));
+    const creatorMemberId =
+      teamDirectory.find(
+        (member) =>
+          member.email &&
+          member.email === String(currentAtlasUser?.email || "").toLowerCase(),
+      )?.id ||
+      String(currentAtlasUser?.id || "");
+    setTaskMeta((current) => ({
+      ...current,
+      [marker.id]: {
+        status: "Open",
+        dueDate: "",
+        assignee: "Nick",
+        createdAt: new Date().toISOString(),
+        completionHistory: [],
+        flexibleTime: true,
+        skippable: true,
+        listId,
+        listName: name,
+        dashboardListPinned: false,
+        listLeadId: creatorMemberId,
+        listMemberIds: creatorMemberId ? [creatorMemberId] : [],
+        listDepartmentIds: [],
+      } as any,
+    }));
     setSelectedListId(listId);
     setTasksView("lists");
     showSaveToast(`${name} list created.`);
@@ -14364,7 +14540,45 @@ ${notes.trim()}` : notes.trim(),
     const dashboardListPinned = workPlanTasks.some((item) => taskDetails(item.id).listId === definition.id && taskDetails(item.id).dashboardListPinned);
     const task: WorkPlanTask = { id: uid("checklist-item"), title, minutes: 30, priority: "Medium", category: definition.id === "graduation-party" ? "Graduation Party Checklist" : "Atlas Checklist Item", locationId: "general", preferredDay: "Auto", locked: false, recurring: false, fixedTime: "", notes: `${definition.name} Checklist` };
     setWorkPlanTasks((current) => [...current, task]);
-    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), completionHistory: [], flexibleTime: true, skippable: true, listId: definition.id, listName: definition.name, dashboardListPinned } }));
+    const inheritedMemberIds = listMetaValue<string[]>(
+      definition.id,
+      "listMemberIds",
+      [],
+    );
+    const inheritedDepartmentIds = listMetaValue<string[]>(
+      definition.id,
+      "listDepartmentIds",
+      [],
+    );
+    const inheritedLeadId = listMetaValue<string>(
+      definition.id,
+      "listLeadId",
+      "",
+    );
+    const defaultAssigneeId =
+      inheritedLeadId || inheritedMemberIds[0] || "";
+    const defaultAssigneeName =
+      listMemberLabel(defaultAssigneeId) || "Unassigned";
+    setTaskMeta((current) => ({
+      ...current,
+      [task.id]: {
+        status: "Open",
+        dueDate: "",
+        assignee: defaultAssigneeId ? defaultAssigneeName : "Unassigned",
+        assigneeIds: defaultAssigneeId ? [defaultAssigneeId] : [],
+        departmentIds: inheritedDepartmentIds,
+        createdAt: new Date().toISOString(),
+        completionHistory: [],
+        flexibleTime: true,
+        skippable: true,
+        listId: definition.id,
+        listName: definition.name,
+        dashboardListPinned,
+        listLeadId: inheritedLeadId,
+        listMemberIds: inheritedMemberIds,
+        listDepartmentIds: inheritedDepartmentIds,
+      } as any,
+    }));
     setNewPartyChecklistItem("");
     showSaveToast("Checklist item added.");
   }
@@ -14382,22 +14596,42 @@ ${notes.trim()}` : notes.trim(),
       : [];
     const pinned = listRecords.some((task) => taskDetails(task.id).dashboardListPinned);
     const listNotes = listRecords.map((task) => taskDetails(task.id).listNotes || "").find(Boolean) || "";
+    const listLeadId = listMetaValue<string>(
+      selectedDefinition.id,
+      "listLeadId",
+      "",
+    );
+    const listMemberIds = listMetaValue<string[]>(
+      selectedDefinition.id,
+      "listMemberIds",
+      [],
+    );
+    const listDepartmentIds = listMetaValue<string[]>(
+      selectedDefinition.id,
+      "listDepartmentIds",
+      [],
+    );
+    const propertyTeamMembers = teamDirectory.filter(
+      (member) =>
+        member.active !== false &&
+        (!member.propertyIds.length ||
+          member.propertyIds.includes(activePropertyId) ||
+          ["master", "administrator"].includes(member.role)),
+    );
     const setDashboardPinned = (nextPinned: boolean) => {
-      const itemIds = new Set(listRecords.map((task) => task.id));
-      setTaskMeta((current) => {
-        const next = { ...current };
-        itemIds.forEach((id) => { next[id] = { ...taskDetails(id), listId: selectedDefinition.id, listName: selectedDefinition.name, dashboardListPinned: nextPinned, updatedAt: new Date().toISOString() }; });
-        return next;
-      });
+      updateCollaborativeListMeta(
+        selectedDefinition.id,
+        selectedDefinition.name,
+        { dashboardListPinned: nextPinned },
+      );
       showSaveToast(nextPinned ? `${selectedDefinition.name} added to Dashboard.` : `${selectedDefinition.name} removed from Dashboard.`);
     };
     const updateListNotes = (value: string) => {
-      const recordIds = new Set(listRecords.map((task) => task.id));
-      setTaskMeta((current) => {
-        const next = { ...current };
-        recordIds.forEach((id) => { next[id] = { ...taskDetails(id), listId: selectedDefinition.id, listName: selectedDefinition.name, listNotes: value, updatedAt: new Date().toISOString() }; });
-        return next;
-      });
+      updateCollaborativeListMeta(
+        selectedDefinition.id,
+        selectedDefinition.name,
+        { listNotes: value },
+      );
     };
     return <div style={{ display: "grid", gap: 12 }}>
       <section style={{ ...cardStyle, padding: 14 }}>
@@ -14406,18 +14640,188 @@ ${notes.trim()}` : notes.trim(),
       </section>
       <section style={{ ...cardStyle, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => renameChecklist(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Rename</button><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button><button type="button" onClick={() => removeChecklistDuplicates(selectedDefinition.id)} style={secondaryButtonStyle}>Remove Duplicates</button><button type="button" onClick={() => deleteCompletedChecklistItems(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Delete Completed</button><button type="button" onClick={() => deleteChecklist(selectedDefinition.id, selectedDefinition.name)} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete List</button></div></div>
+        <div style={{ display: "grid", gap: 10, marginTop: 12, padding: 11, border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px, .7fr) minmax(0, 1.3fr)", gap: 10 }}>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={fieldLabelStyle}>LEAD</span>
+              <select
+                value={listLeadId}
+                onChange={(event) => {
+                  const nextLeadId = event.currentTarget.value;
+                  const nextMembers = nextLeadId
+                    ? Array.from(new Set([...listMemberIds, nextLeadId]))
+                    : listMemberIds;
+                  updateCollaborativeListMeta(
+                    selectedDefinition.id,
+                    selectedDefinition.name,
+                    { listLeadId: nextLeadId, listMemberIds: nextMembers },
+                  );
+                }}
+                style={inputStyle}
+              >
+                <option value="">No lead</option>
+                {propertyTeamMembers.map((member) => (
+                  <option key={teamMemberKey(member)} value={teamMemberKey(member)}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div>
+              <span style={fieldLabelStyle}>SHARED WITH</span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+                {propertyTeamMembers.map((member) => {
+                  const memberId = teamMemberKey(member);
+                  const active = listMemberIds.includes(memberId);
+                  return (
+                    <button
+                      key={memberId}
+                      type="button"
+                      onClick={() => {
+                        const nextMembers = active
+                          ? listMemberIds.filter((id) => id !== memberId)
+                          : [...listMemberIds, memberId];
+                        const nextLead =
+                          listLeadId === memberId && active ? "" : listLeadId;
+                        updateCollaborativeListMeta(
+                          selectedDefinition.id,
+                          selectedDefinition.name,
+                          { listMemberIds: nextMembers, listLeadId: nextLead },
+                        );
+                      }}
+                      style={active ? goldButtonStyle : secondaryButtonStyle}
+                    >
+                      {member.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <span style={fieldLabelStyle}>DEPARTMENTS</span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+              {collaborativeDepartments.map((department) => {
+                const active = listDepartmentIds.includes(department.id);
+                return (
+                  <button
+                    key={department.id}
+                    type="button"
+                    onClick={() => {
+                      const nextDepartments = active
+                        ? listDepartmentIds.filter((id) => id !== department.id)
+                        : [...listDepartmentIds, department.id];
+                      updateCollaborativeListMeta(
+                        selectedDefinition.id,
+                        selectedDefinition.name,
+                        { listDepartmentIds: nextDepartments },
+                      );
+                    }}
+                    style={active ? goldButtonStyle : secondaryButtonStyle}
+                  >
+                    {department.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <small style={mutedSmallStyle}>
+            Shared members can see this checklist in My Work. Individual items can still be assigned to different people or departments.
+          </small>
+        </div>
         <label style={{ display: "grid", gap: 5, marginTop: 12 }}><span style={fieldLabelStyle}>LIST NOTES</span><textarea value={listNotes} onChange={(event) => updateListNotes(event.currentTarget.value)} placeholder="Add instructions, reminders, vendor details, or notes for this list…" rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}/></label>
       </section>
       <section style={{ ...cardStyle, padding: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginBottom: 9 }}><input value={newPartyChecklistItem} onChange={(event) => setNewPartyChecklistItem(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addGraduationPartyChecklistItem(); }} placeholder="Add checklist item" style={inputStyle}/><button type="button" onClick={addGraduationPartyChecklistItem} style={goldButtonStyle}>Add</button></div>
         <div style={{ display: "grid", gap: 6 }}>
-          {items.map((task) => { const meta = taskDetails(task.id); const done = meta.status === "Completed"; return <div key={task.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(0,1fr) 120px auto auto", gap: 8, alignItems: "center", padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: done ? "#F0FAF5" : "#FFFFFF" }}>
-            <input type="checkbox" checked={done} aria-label={`Complete ${task.title}`} onChange={(event) => event.currentTarget.checked ? completeAtlasTask(task) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined })}/>
-            <span style={{ color: colors.navy, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span>
-            <select value={meta.assignee || "Unassigned"} onChange={(event) => updateTaskDetails(task.id, { assignee: event.currentTarget.value as AtlasTaskMeta["assignee"] })} style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11, gridColumn: isMobile ? "2" : undefined }}><option>Nick</option><option>Addison</option><option>Pat</option><option>Other</option><option>Unassigned</option></select>
-            <button type="button" onClick={() => editChecklistItem(task)} style={{ ...compactUtilityButtonStyle, gridColumn: isMobile ? "2" : undefined, justifySelf: "start" }}>Edit</button>
-            <button type="button" aria-label={`Delete ${task.title}`} onClick={() => deleteAtlasTask(task.id)} style={{ ...compactUtilityButtonStyle, color: colors.red, gridColumn: isMobile ? "2" : undefined, justifySelf: "start" }}>Delete</button>
-          </div>; })}
+          {items.map((task) => {
+            const meta = taskDetails(task.id) as any;
+            const done = meta.status === "Completed";
+            const assigneeIds = Array.isArray(meta.assigneeIds)
+              ? meta.assigneeIds.map(String)
+              : [];
+            const departmentIds = Array.isArray(meta.departmentIds)
+              ? meta.departmentIds.map(String)
+              : [];
+            const assigneeNames = assigneeIds
+              .map((id: string) => listMemberLabel(id))
+              .filter(Boolean);
+            const departmentNames = departmentIds
+              .map((id: string) => collaborativeDepartments.find((department) => department.id === id)?.label || id)
+              .filter(Boolean);
+            const assignmentSummary = [...assigneeNames, ...departmentNames].join(", ") || "Unassigned";
+
+            return <div key={task.id} style={{ display: "grid", gap: 7, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: done ? "#F0FAF5" : "#FFFFFF" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto auto", gap: 8, alignItems: "center" }}>
+                <input type="checkbox" checked={done} aria-label={`Complete ${task.title}`} onChange={(event) => event.currentTarget.checked ? completeAtlasTask(task) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined })}/>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", color: colors.navy, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span>
+                  <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{assignmentSummary}</small>
+                </div>
+                <button type="button" onClick={() => editChecklistItem(task)} style={compactUtilityButtonStyle}>Edit</button>
+                <button type="button" aria-label={`Delete ${task.title}`} onClick={() => deleteAtlasTask(task.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
+              </div>
+
+              <details>
+                <summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850, fontSize: 12 }}>
+                  Assign
+                </summary>
+                <div style={{ display: "grid", gap: 8, marginTop: 7, padding: 9, borderRadius: 9, background: "#F8FAFC" }}>
+                  <div>
+                    <span style={fieldLabelStyle}>PEOPLE</span>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+                      {propertyTeamMembers.map((member) => {
+                        const memberId = teamMemberKey(member);
+                        const active = assigneeIds.includes(memberId);
+                        return (
+                          <button
+                            key={memberId}
+                            type="button"
+                            onClick={() => {
+                              const nextAssignees = active
+                                ? assigneeIds.filter((id: string) => id !== memberId)
+                                : [...assigneeIds, memberId];
+                              setChecklistTaskAssignees(task, nextAssignees, departmentIds);
+                            }}
+                            style={active ? goldButtonStyle : secondaryButtonStyle}
+                          >
+                            {member.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={fieldLabelStyle}>DEPARTMENTS</span>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+                      {collaborativeDepartments.map((department) => {
+                        const active = departmentIds.includes(department.id);
+                        return (
+                          <button
+                            key={department.id}
+                            type="button"
+                            onClick={() => {
+                              const nextDepartments = active
+                                ? departmentIds.filter((id: string) => id !== department.id)
+                                : [...departmentIds, department.id];
+                              setChecklistTaskAssignees(task, assigneeIds, nextDepartments);
+                            }}
+                            style={active ? goldButtonStyle : secondaryButtonStyle}
+                          >
+                            {department.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>;
+          })}
         </div>
       </section>
     </div>;
@@ -15357,6 +15761,7 @@ ${notes.trim()}` : notes.trim(),
       syncRoutineAssignment,
       taskDetails,
       teamWorkspace,
+      teamDirectory,
       todayEvents,
       todayLogCategory,
       todayLogEntries,
