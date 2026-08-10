@@ -213,9 +213,15 @@ export default function AtlasLocationsWorkspace(props: any) {
     updateLocationCustomDetail,
     workPlanTasks
   } = props;
-  const locationSourceRecords = isSeanMarineUser ? seanVisibleLocationRecords : locations;
-  const locationAssetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
-  const locationWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
+  const locationSourceRecords: AtlasLocationRecord[] = (
+    isSeanMarineUser ? seanVisibleLocationRecords : locations
+  ) as AtlasLocationRecord[];
+  const locationAssetSourceRecords: AtlasAssetRecord[] = (
+    isSeanMarineUser ? seanVisibleAssetRecords : assetRecords
+  ) as AtlasAssetRecord[];
+  const locationWorkSourceRecords: AtlasServiceRecord[] = (
+    isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords
+  ) as AtlasServiceRecord[];
   const locationAssetCount = (locationId: string) =>
     locationAssetSourceRecords.filter((asset) => assetHasLocation(asset, locationId)).length;
   const locationWorkCount = (locationId: string) => {
@@ -320,7 +326,13 @@ export default function AtlasLocationsWorkspace(props: any) {
   };
   const possibleAssetLocations = locationSourceRecords.filter(locationLooksLikeAsset);
   const childLocationsFor = (parentId: string) =>
-    byName(locationSourceRecords.filter((location) => location.parentId === parentId));
+    [...locationSourceRecords]
+      .filter((location) => location.parentId === parentId)
+      .sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+          sensitivity: "base",
+        }),
+      );
   const normalizedLocationSearch = locationSearch.trim().toLowerCase();
   const locationMatchesSearch = (location: AtlasLocationRecord) =>
     !normalizedLocationSearch ||
@@ -398,12 +410,14 @@ export default function AtlasLocationsWorkspace(props: any) {
   const locationPhotos = selectedLocation.id
     ? linkedImageFilesFor("Location", selectedLocation.id)
     : [];
-  const locationAssets = selectedLocation.id
-    ? byName(
-        locationAssetSourceRecords.filter(
-          (asset) => assetHasLocation(asset, selectedLocation.id),
-        ),
-      )
+  const locationAssets: AtlasAssetRecord[] = selectedLocation.id
+    ? [...locationAssetSourceRecords]
+        .filter((asset) => assetHasLocation(asset, selectedLocation.id))
+        .sort((a, b) =>
+          String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+            sensitivity: "base",
+          }),
+        )
     : [];
   const locationAssetIds = new Set(locationAssets.map((asset) => asset.id));
   const locationWorkOrders = selectedLocation.id
@@ -1823,11 +1837,18 @@ export default function AtlasLocationsWorkspace(props: any) {
                   aria-label="Add an asset to this location"
                 >
                   <option value="">+ Add Asset</option>
-                  {byName(
-                    locationAssetSourceRecords.filter(
+                  {[...locationAssetSourceRecords]
+                    .filter(
                       (asset) => !assetHasLocation(asset, selectedLocation.id),
-                    ),
-                  ).map((asset) => (
+                    )
+                    .sort((a, b) =>
+                      String(a.name || "").localeCompare(
+                        String(b.name || ""),
+                        undefined,
+                        { sensitivity: "base" },
+                      ),
+                    )
+                    .map((asset) => (
                     <option key={asset.id} value={asset.id}>
                       {asset.name}
                     </option>
