@@ -172,6 +172,7 @@ export default function AtlasApp() {
   const [restrictedNotesUnlocked, setRestrictedNotesUnlocked] = useState(false);
   const [restrictedNotesPin, setRestrictedNotesPin] = useState("");
   const [restrictedNotesSessionPin, setRestrictedNotesSessionPin] = useState("");
+  const [restrictedPinInputKey, setRestrictedPinInputKey] = useState(0);
   const [restrictedNotes, setRestrictedNotes] = useState<RestrictedNote[]>([]);
   const [restrictedNotesDraft, setRestrictedNotesDraft] = useState("");
   const [restrictedNotesBusy, setRestrictedNotesBusy] = useState(false);
@@ -5919,6 +5920,7 @@ export default function AtlasApp() {
     setRestrictedNotes([]);
     setRestrictedNotesPin("");
     setRestrictedNotesSessionPin("");
+    setRestrictedPinInputKey((current) => current + 1);
     setRestrictedPinConfirm("");
     setRestrictedNotesError("");
     void refreshRestrictedPinStatus();
@@ -5930,6 +5932,7 @@ export default function AtlasApp() {
       setRestrictedNotesUnlocked(false);
       setRestrictedNotesPin("");
       setRestrictedNotesSessionPin("");
+      setRestrictedPinInputKey((current) => current + 1);
       setRestrictedNotes([]);
       setRestrictedNoteEditId("");
       setRestrictedNoteEditText("");
@@ -5944,6 +5947,7 @@ export default function AtlasApp() {
     setRestrictedNotesUnlocked(false);
     setRestrictedNotesPin("");
     setRestrictedNotesSessionPin("");
+    setRestrictedPinInputKey((current) => current + 1);
     setRestrictedNotes([]);
     setRestrictedNotesDraft("");
     setRestrictedNoteEditId("");
@@ -5960,6 +5964,7 @@ export default function AtlasApp() {
       setRestrictedNotesUnlocked(false);
       setRestrictedNotesPin("");
       setRestrictedNotesSessionPin("");
+      setRestrictedPinInputKey((current) => current + 1);
       setRestrictedNotes([]);
       setRestrictedNotesDraft("");
       setRestrictedNoteEditId("");
@@ -5971,6 +5976,7 @@ export default function AtlasApp() {
       setRestrictedNotesUnlocked(false);
       setRestrictedNotesPin("");
       setRestrictedNotesSessionPin("");
+      setRestrictedPinInputKey((current) => current + 1);
       setRestrictedNotes([]);
       setRestrictedNotesDraft("");
       setRestrictedNoteEditId("");
@@ -6079,6 +6085,7 @@ export default function AtlasApp() {
     setRestrictedNotesUnlocked(false);
     setRestrictedNotesPin("");
     setRestrictedNotesSessionPin("");
+    setRestrictedPinInputKey((current) => current + 1);
     setRestrictedNotes([]);
     setRestrictedNotesDraft("");
     setRestrictedNoteEditId("");
@@ -6210,17 +6217,30 @@ export default function AtlasApp() {
                 }}
               >
                 <input
-                  type="password"
+                  key={`restricted-pin-create-${restrictedPinInputKey}`}
+                  type="text"
+                  inputMode="numeric"
+                  name={`atlas-restricted-pin-create-${restrictedPinInputKey}`}
                   value={restrictedNotesPin}
                   onChange={(event) =>
                     setRestrictedNotesPin(event.currentTarget.value)
                   }
                   placeholder="Create PIN"
-                  autoComplete="new-password"
-                  style={{ ...inputStyle, minHeight: 40 }}
+                  autoComplete="one-time-code"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  style={{
+                    ...inputStyle,
+                    minHeight: 40,
+                    WebkitTextSecurity: "disc",
+                  } as React.CSSProperties}
                 />
                 <input
-                  type="password"
+                  key={`restricted-pin-confirm-${restrictedPinInputKey}`}
+                  type="text"
+                  inputMode="numeric"
+                  name={`atlas-restricted-pin-confirm-${restrictedPinInputKey}`}
                   value={restrictedPinConfirm}
                   onChange={(event) =>
                     setRestrictedPinConfirm(event.currentTarget.value)
@@ -6229,8 +6249,15 @@ export default function AtlasApp() {
                     if (event.key === "Enter") void setupRestrictedPin();
                   }}
                   placeholder="Confirm PIN"
-                  autoComplete="new-password"
-                  style={{ ...inputStyle, minHeight: 40 }}
+                  autoComplete="one-time-code"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  style={{
+                    ...inputStyle,
+                    minHeight: 40,
+                    WebkitTextSecurity: "disc",
+                  } as React.CSSProperties}
                 />
                 <button
                   type="button"
@@ -6268,7 +6295,10 @@ export default function AtlasApp() {
                 }}
               >
                 <input
-                  type="password"
+                  key={`restricted-pin-${restrictedPinInputKey}`}
+                  type="text"
+                  inputMode="numeric"
+                  name={`atlas-restricted-pin-${restrictedPinInputKey}`}
                   value={restrictedNotesPin}
                   onChange={(event) =>
                     setRestrictedNotesPin(event.currentTarget.value)
@@ -6279,11 +6309,18 @@ export default function AtlasApp() {
                   placeholder={
                     restrictedPinConfigured === null
                       ? "Checking Restricted Notes…"
-                      : "Restricted Notes PIN"
+                      : "Enter Restricted Notes PIN"
                   }
-                  autoComplete="off"
+                  autoComplete="one-time-code"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   disabled={restrictedPinConfigured === null}
-                  style={{ ...inputStyle, minHeight: 40 }}
+                  style={{
+                    ...inputStyle,
+                    minHeight: 40,
+                    WebkitTextSecurity: "disc",
+                  } as React.CSSProperties}
                 />
                 <button
                   type="button"
