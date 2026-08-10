@@ -175,6 +175,8 @@ export default function AtlasApp() {
   const [restrictedNotesDraft, setRestrictedNotesDraft] = useState("");
   const [restrictedNotesBusy, setRestrictedNotesBusy] = useState(false);
   const [restrictedNotesError, setRestrictedNotesError] = useState("");
+  const [restrictedPinConfigured, setRestrictedPinConfigured] = useState<boolean | null>(null);
+  const [restrictedPinConfirm, setRestrictedPinConfirm] = useState("");
   const [restrictedNoteEditId, setRestrictedNoteEditId] = useState("");
   const [restrictedNoteEditText, setRestrictedNoteEditText] = useState("");
   const [notesSectionById, setNotesSectionById] = useState<Record<string, NoteSection>>(() => {
@@ -5905,6 +5907,10 @@ export default function AtlasApp() {
   }
 
   useEffect(() => {
+    if (screen === "Notes") void refreshRestrictedPinStatus();
+  }, [screen, activePropertyId]);
+
+  useEffect(() => {
     if (!restrictedNotesUnlocked) return;
     const timer = window.setTimeout(() => {
       setRestrictedNotesUnlocked(false);
@@ -5917,16 +5923,35 @@ export default function AtlasApp() {
     return () => window.clearTimeout(timer);
   }, [restrictedNotesUnlocked]);
 
-  async function restrictedNotesRequest(action: "list" | "create" | "update" | "delete", extra: Record<string, unknown> = {}) {
+  async function restrictedNotesRequest(action: "status" | "setupPin" | "changePin" | "list" | "create" | "update" | "delete", extra: Record<string, unknown> = {}) {
     const response = await fetch("/api/atlas-restricted-notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       body: JSON.stringify({ action, propertyId: activePropertyId, pin: restrictedNotesPin, ...extra }),
     });
-    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; notes?: RestrictedNote[]; note?: RestrictedNote };
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; configured?: boolean; notes?: RestrictedNote[]; note?: RestrictedNote };
     if (!response.ok || !payload.ok) throw new Error(payload.error || "Restricted Notes request failed.");
     return payload;
+  }
+
+  async function refreshRestrictedPinStatus() {
+    try { const payload = await restrictedNotesRequest("status"); setRestrictedPinConfigured(Boolean(payload.configured)); }
+    catch { setRestrictedPinConfigured(null); }
+  }
+
+  async function setupRestrictedPin() {
+    const pin = restrictedNotesPin.trim();
+    if (pin.length < 4 || pin !== restrictedPinConfirm.trim() || restrictedNotesBusy) return;
+    setRestrictedNotesBusy(true); setRestrictedNotesError("");
+    try {
+      await restrictedNotesRequest("setupPin", { newPin: pin });
+      setRestrictedPinConfigured(true); setRestrictedPinConfirm("");
+      const payload = await restrictedNotesRequest("list");
+      setRestrictedNotes(Array.isArray(payload.notes) ? payload.notes : []); setRestrictedNotesUnlocked(true);
+      showSaveToast("Restricted Notes PIN created.");
+    } catch (error) { setRestrictedNotesError(error instanceof Error ? error.message : "Could not create PIN."); }
+    finally { setRestrictedNotesBusy(false); }
   }
 
   async function unlockRestrictedNotes() {
@@ -6067,20 +6092,18 @@ export default function AtlasApp() {
           </div>
 
           {!restrictedNotesUnlocked ? (
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,280px) auto", gap: 8, alignItems: "center", marginTop: 12 }}>
-              <input
-                type="password"
-                value={restrictedNotesPin}
-                onChange={(event) => setRestrictedNotesPin(event.currentTarget.value)}
-                onKeyDown={(event) => { if (event.key === "Enter") void unlockRestrictedNotes(); }}
-                placeholder="Restricted access code"
-                autoComplete="off"
-                style={{ ...inputStyle, minHeight: 40 }}
-              />
-              <button type="button" onClick={() => void unlockRestrictedNotes()} disabled={!restrictedNotesPin.trim() || restrictedNotesBusy} style={{ ...goldButtonStyle, opacity: !restrictedNotesPin.trim() || restrictedNotesBusy ? .55 : 1 }}>
-                {restrictedNotesBusy ? "Unlocking…" : "Unlock"}
-              </button>
-            </div>
+            restrictedPinConfigured === false ? (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,240px) minmax(0,240px) auto", gap: 8, alignItems: "center", marginTop: 12 }}>
+                <input type="password" value={restrictedNotesPin} onChange={(event) => setRestrictedNotesPin(event.currentTarget.value)} placeholder="Create PIN (4+ characters)" autoComplete="new-password" style={{ ...inputStyle, minHeight: 40 }} />
+                <input type="password" value={restrictedPinConfirm} onChange={(event) => setRestrictedPinConfirm(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void setupRestrictedPin(); }} placeholder="Confirm PIN" autoComplete="new-password" style={{ ...inputStyle, minHeight: 40 }} />
+                <button type="button" onClick={() => void setupRestrictedPin()} disabled={restrictedNotesPin.trim().length < 4 || restrictedNotesPin.trim() !== restrictedPinConfirm.trim() || restrictedNotesBusy} style={goldButtonStyle}>{restrictedNotesBusy ? "Creating…" : "Create PIN"}</button>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,280px) auto", gap: 8, alignItems: "center", marginTop: 12 }}>
+                <input type="password" value={restrictedNotesPin} onChange={(event) => setRestrictedNotesPin(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void unlockRestrictedNotes(); }} placeholder={restrictedPinConfigured === null ? "Checking Restricted Notes…" : "Restricted Notes PIN"} autoComplete="off" disabled={restrictedPinConfigured === null} style={{ ...inputStyle, minHeight: 40 }} />
+                <button type="button" onClick={() => void unlockRestrictedNotes()} disabled={restrictedPinConfigured !== true || !restrictedNotesPin.trim() || restrictedNotesBusy} style={goldButtonStyle}>{restrictedNotesBusy ? "Unlocking…" : "Unlock"}</button>
+              </div>
+            )
           ) : (
             <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8, alignItems: "end" }}>
@@ -29099,11 +29122,15 @@ const searchDropStyle: React.CSSProperties = {
   top: "calc(100% + 8px)",
   left: 0,
   right: 0,
+  minWidth: 320,
+  maxWidth: "min(680px, calc(100vw - 24px))",
+  maxHeight: "70vh",
   background: "#FFFFFF",
   border: `1px solid ${colors.line}`,
   borderRadius: 16,
   boxShadow: "0 20px 45px rgba(11,30,51,0.18)",
-  overflow: "hidden",
+  overflowY: "auto",
+  overflowX: "hidden",
   zIndex: 50,
 };
 
