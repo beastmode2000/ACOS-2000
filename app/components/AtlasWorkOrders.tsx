@@ -1352,13 +1352,57 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         title={activeSection?.label || "My Work"}
         detail="Track active work, recurring maintenance, projects, and completed history."
         isMobile={isMobile}
+        drawerResetKey={selectedService.id || "work-empty"}
+        mobileDrawerOpen={isMobile && detailOpen && Boolean(selectedService.id)}
+        onMobileDrawerClose={() => setDetailOpen(false)}
+        mobileDrawerTitle={selectedService.title || "Work Details"}
         gridStyleOverride={
-          detailOpen && selectedService.id
-            ? undefined
-            : { gridTemplateColumns: "1fr" }
+          isMobile
+            ? { minWidth: 0, overflowX: "hidden" }
+            : detailOpen && selectedService.id
+              ? {
+                  gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)",
+                  gap: 14,
+                  alignItems: "start",
+                }
+              : { gridTemplateColumns: "1fr" }
+        }
+        listPanelStyleOverride={
+          isMobile
+            ? { minWidth: 0, overflowX: "hidden", padding: 0 }
+            : detailOpen && selectedService.id
+              ? {
+              position: "sticky",
+              top: 8,
+              height: "calc(100vh - 24px)",
+              maxHeight: "calc(100vh - 24px)",
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
+              alignSelf: "start",
+            }
+              : { minWidth: 0 }
         }
         drawerStyleOverride={
-          detailOpen && selectedService.id ? undefined : { display: "none" }
+          isMobile
+            ? { minWidth: 0, overflowX: "hidden" }
+            : detailOpen && selectedService.id
+              ? {
+              position: "sticky",
+              top: 8,
+              height: "calc(100vh - 24px)",
+              maxHeight: "calc(100vh - 24px)",
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
+              alignSelf: "start",
+              zIndex: 2,
+            }
+              : { display: "none" }
         }
         right={
           <>
