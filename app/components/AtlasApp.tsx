@@ -5907,15 +5907,13 @@ export default function AtlasApp() {
   }
 
   useEffect(() => {
-    if (screen !== "Notes") return;
-
     setRestrictedNotesUnlocked(false);
     setRestrictedNotes([]);
     setRestrictedNotesPin("");
     setRestrictedPinConfirm("");
     setRestrictedNotesError("");
     void refreshRestrictedPinStatus();
-  }, [screen, activePropertyId]);
+  }, [activePropertyId]);
 
   useEffect(() => {
     if (!restrictedNotesUnlocked) return;
