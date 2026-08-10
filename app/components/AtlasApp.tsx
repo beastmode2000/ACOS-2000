@@ -168,7 +168,15 @@ export default function AtlasApp() {
   const [notesSection, setNotesSection] = useState<NoteSection>("General");
   const [notesSectionFilter, setNotesSectionFilter] = useState<NoteSection | "All">("All");
   const [selectedNoteId, setSelectedNoteId] = useState("");
-  const [noteEditOriginalText, setNoteEditOriginalText] = useState("");
+  type RestrictedNote = { id: string; propertyId: string; text: string; createdAt: string; updatedAt: string };
+  const [restrictedNotesUnlocked, setRestrictedNotesUnlocked] = useState(false);
+  const [restrictedNotesPin, setRestrictedNotesPin] = useState("");
+  const [restrictedNotes, setRestrictedNotes] = useState<RestrictedNote[]>([]);
+  const [restrictedNotesDraft, setRestrictedNotesDraft] = useState("");
+  const [restrictedNotesBusy, setRestrictedNotesBusy] = useState(false);
+  const [restrictedNotesError, setRestrictedNotesError] = useState("");
+  const [restrictedNoteEditId, setRestrictedNoteEditId] = useState("");
+  const [restrictedNoteEditText, setRestrictedNoteEditText] = useState("");
   const [notesSectionById, setNotesSectionById] = useState<Record<string, NoteSection>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -661,43 +669,6 @@ export default function AtlasApp() {
   const [calendarItems, setCalendarItems] = useState<AtlasCalendarItem[]>([]);
   const [seanCalendarPropertyFilter, setSeanCalendarPropertyFilter] = useState("all");
   const [todayLogEntries, setTodayLogEntries] = useState<TodayLogEntry[]>([]);
-
-  // Sync Dashboard quick notes into the existing Notes data source.
-  useEffect(() => {
-    if (!dashboardReminders.length) return;
-    setTodayLogEntries((current) => {
-      let changed = false;
-      const next = [...current];
-      dashboardReminders.forEach((note) => {
-        const text = String(note.text || "").trim();
-        if (!text) return;
-        const index = next.findIndex((entry) => entry.id === note.id);
-        const record: TodayLogEntry = {
-          id: note.id,
-          propertyId: activePropertyId,
-          date: String(note.createdAt || new Date().toISOString()).slice(0, 10),
-          category: "Note",
-          text,
-          createdAt: note.createdAt || new Date().toISOString(),
-        };
-        if (index === -1) {
-          next.unshift(record);
-          changed = true;
-          return;
-        }
-        const existing = next[index];
-        if (
-          existing.text !== record.text ||
-          existing.category !== "Note" ||
-          existing.propertyId !== activePropertyId
-        ) {
-          next[index] = { ...existing, ...record };
-          changed = true;
-        }
-      });
-      return changed ? next : current;
-    });
-  }, [activePropertyId, dashboardReminders]);
   const [todayLogText, setTodayLogText] = useState("");
   const [todayLogCategory, setTodayLogCategory] = useState<TodayLogEntry["category"]>("Task");
   const [dashboardVendorVisitId, setDashboardVendorVisitId] = useState("");
@@ -1577,143 +1548,6 @@ export default function AtlasApp() {
   const [newPartyChecklistItem, setNewPartyChecklistItem] = useState("");
   const [selectedListId, setSelectedListId] = useState("graduation-party");
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>("today");
-
-  // Sync today's Routine occurrence into the existing Tasks data source.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let cancelled = false;
-
-    const syncTodayRoutineIntoTasks = async () => {
-      try {
-        const date = todayISO();
-        const response = await fetch(
-          `/api/atlas-routines?date=${date}&propertyId=${encodeURIComponent(activePropertyId)}`,
-          { cache: "no-store" },
-        );
-        const payload = await response.json();
-        if (!response.ok || !payload?.ok || cancelled) return;
-
-        const occurrence = payload.occurrence as {
-          date?: string;
-          tasks?: Array<{
-            id: string;
-            title: string;
-            enabled?: boolean;
-            completed?: boolean;
-            status?: string;
-            assignedTo?: string;
-          }>;
-        } | null;
-        const routineDate = String(occurrence?.date || date).slice(0, 10);
-        const routineTasks = Array.isArray(occurrence?.tasks)
-          ? occurrence!.tasks!.filter(
-              (task) =>
-                task &&
-                task.enabled !== false &&
-                task.status !== "skipped" &&
-                task.status !== "deferred",
-            )
-          : [];
-        const routineIds = new Set(
-          routineTasks.map((task) => `routine-task-${activePropertyId}-${routineDate}-${task.id}`),
-        );
-        const now = new Date().toISOString();
-
-        setWorkPlanTasks((current) => {
-          const next = new Map(
-            current
-              .filter((item) => {
-                const meta = taskMeta[item.id];
-                return !(
-                  meta?.routineDate === routineDate &&
-                  meta?.routineTaskId &&
-                  !routineIds.has(item.id)
-                );
-              })
-              .map((item) => [item.id, item]),
-          );
-          routineTasks.forEach((routine) => {
-            const id = `routine-task-${activePropertyId}-${routineDate}-${routine.id}`;
-            const existing = next.get(id);
-            next.set(
-              id,
-              existing
-                ? { ...existing, title: routine.title }
-                : {
-                    id,
-                    title: routine.title,
-                    minutes: 15,
-                    priority: "Medium",
-                    category: "Routine",
-                    locationId: "general",
-                    preferredDay: "Auto",
-                    locked: false,
-                    recurring: false,
-                    fixedTime: "",
-                    notes: "Linked from today’s Routine checklist.",
-                  },
-            );
-          });
-          return Array.from(next.values());
-        });
-
-        setTaskMeta((current) => {
-          const next = { ...current };
-          Object.keys(next).forEach((id) => {
-            const meta = next[id];
-            if (
-              meta?.routineDate === routineDate &&
-              meta?.routineTaskId &&
-              !routineIds.has(id)
-            ) {
-              delete next[id];
-            }
-          });
-          routineTasks.forEach((routine) => {
-            const id = `routine-task-${activePropertyId}-${routineDate}-${routine.id}`;
-            const existing = next[id];
-            const completed = routine.completed === true || routine.status === "completed";
-            next[id] = {
-              ...(existing || {}),
-              status: completed ? "Completed" : "Open",
-              dueDate: routineDate,
-              assignee:
-                routine.assignedTo === "Addison" || routine.assignedTo === "Pat"
-                  ? routine.assignedTo
-                  : "Nick",
-              createdAt: existing?.createdAt || now,
-              updatedAt: now,
-              completedAt: completed ? existing?.completedAt || now : undefined,
-              notes: existing?.notes || "Linked from today’s Routine checklist.",
-              routineTaskId: routine.id,
-              routineDate,
-              assignmentScope: "This occurrence",
-              recurrenceInterval: 1,
-              recurrenceUnit: "Weeks",
-              recurrenceEndDate: "",
-              completionHistory: existing?.completionHistory || [],
-              season: "Year-Round",
-              weatherDependency: existing?.weatherDependency || "None",
-              flexibleTime: true,
-              skippable: false,
-              needsReview: false,
-            } as AtlasTaskMeta;
-          });
-          return next;
-        });
-      } catch {
-        // Routine and Tasks remain usable if this cross-reference refresh fails.
-      }
-    };
-
-    void syncTodayRoutineIntoTasks();
-    window.addEventListener("focus", syncTodayRoutineIntoTasks);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("focus", syncTodayRoutineIntoTasks);
-    };
-  }, [activePropertyId]);
-
   const [taskSearch, setTaskSearch] = useState("");
   const [taskFocusMode, setTaskFocusMode] = useState(false);
   const [walkVoiceListening, setWalkVoiceListening] = useState(false);
@@ -5867,7 +5701,6 @@ export default function AtlasApp() {
 
   function deletePermanentNote(noteId: string) {
     setTodayLogEntries((current) => current.filter((entry) => entry.id !== noteId));
-    setDashboardReminders((current) => current.filter((note) => note.id !== noteId));
     setNotesSectionById((current) => {
       const next = { ...current };
       delete next[noteId];
@@ -5894,6 +5727,7 @@ export default function AtlasApp() {
           ? {
               ...entry,
               text: value,
+              updatedAt: new Date().toISOString(),
             }
           : entry,
       ),
@@ -5901,25 +5735,16 @@ export default function AtlasApp() {
   }
 
   function savePermanentNoteEdits(noteId: string) {
-    const now = new Date().toISOString();
-    const savedText = todayLogEntries.find((entry) => entry.id === noteId)?.text || "";
     setTodayLogEntries((current) =>
-      current.map((entry) => {
-        if (entry.id !== noteId) return entry;
-        const changed = entry.text !== noteEditOriginalText;
-        return {
-          ...entry,
-          updatedAt: now,
-          history: changed
-            ? [...(entry.history || []), { text: noteEditOriginalText, savedAt: entry.updatedAt || entry.createdAt }]
-            : entry.history || [],
-        };
-      }),
+      current.map((entry) =>
+        entry.id === noteId
+          ? {
+              ...entry,
+              updatedAt: new Date().toISOString(),
+            }
+          : entry,
+      ),
     );
-    setDashboardReminders((current) =>
-      current.map((note) => note.id === noteId ? { ...note, text: savedText || note.text } : note),
-    );
-    setNoteEditOriginalText(savedText || noteEditOriginalText);
     showSaveToast("Note saved.");
   }
 
@@ -6079,6 +5904,112 @@ export default function AtlasApp() {
     recognition.start();
   }
 
+  useEffect(() => {
+    if (!restrictedNotesUnlocked) return;
+    const timer = window.setTimeout(() => {
+      setRestrictedNotesUnlocked(false);
+      setRestrictedNotesPin("");
+      setRestrictedNotes([]);
+      setRestrictedNoteEditId("");
+      setRestrictedNoteEditText("");
+      setRestrictedNotesError("");
+    }, 15 * 60 * 1000);
+    return () => window.clearTimeout(timer);
+  }, [restrictedNotesUnlocked]);
+
+  async function restrictedNotesRequest(action: "list" | "create" | "update" | "delete", extra: Record<string, unknown> = {}) {
+    const response = await fetch("/api/atlas-restricted-notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ action, propertyId: activePropertyId, pin: restrictedNotesPin, ...extra }),
+    });
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; notes?: RestrictedNote[]; note?: RestrictedNote };
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Restricted Notes request failed.");
+    return payload;
+  }
+
+  async function unlockRestrictedNotes() {
+    if (!restrictedNotesPin.trim() || restrictedNotesBusy) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      const payload = await restrictedNotesRequest("list");
+      setRestrictedNotes(Array.isArray(payload.notes) ? payload.notes : []);
+      setRestrictedNotesUnlocked(true);
+    } catch (error) {
+      setRestrictedNotesUnlocked(false);
+      setRestrictedNotes([]);
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not unlock Restricted Notes.");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
+  function lockRestrictedNotes() {
+    setRestrictedNotesUnlocked(false);
+    setRestrictedNotesPin("");
+    setRestrictedNotes([]);
+    setRestrictedNotesDraft("");
+    setRestrictedNoteEditId("");
+    setRestrictedNoteEditText("");
+    setRestrictedNotesError("");
+  }
+
+  async function createRestrictedNote() {
+    const text = restrictedNotesDraft.trim();
+    if (!text || restrictedNotesBusy) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      const payload = await restrictedNotesRequest("create", { text });
+      if (payload.note) setRestrictedNotes((current) => [payload.note!, ...current]);
+      setRestrictedNotesDraft("");
+      showSaveToast("Restricted note saved.");
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not save restricted note.");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
+  async function updateRestrictedNote(noteId: string) {
+    const text = restrictedNoteEditText.trim();
+    if (!text || restrictedNotesBusy) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      const payload = await restrictedNotesRequest("update", { id: noteId, text });
+      if (payload.note) setRestrictedNotes((current) => current.map((note) => note.id === noteId ? payload.note! : note));
+      setRestrictedNoteEditId("");
+      setRestrictedNoteEditText("");
+      showSaveToast("Restricted note saved.");
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not update restricted note.");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
+  async function deleteRestrictedNote(noteId: string) {
+    if (!window.confirm("Delete this restricted note?")) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      await restrictedNotesRequest("delete", { id: noteId });
+      setRestrictedNotes((current) => current.filter((note) => note.id !== noteId));
+      if (restrictedNoteEditId === noteId) {
+        setRestrictedNoteEditId("");
+        setRestrictedNoteEditText("");
+      }
+      showSaveToast("Restricted note deleted.");
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not delete restricted note.");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
   function renderNotes() {
     const query = notesSearch.trim().toLowerCase();
     const allPropertyNotes = todayLogEntries
@@ -6122,6 +6053,79 @@ export default function AtlasApp() {
           title="Notes"
           detail="A simple property notepad for things you want to remember."
         />
+
+        <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, borderColor: restrictedNotesUnlocked ? "#D7B45D" : colors.line }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={eyebrowStyle}>RESTRICTED</div>
+              <strong style={{ display: "block", color: colors.navy, fontSize: 16 }}>Restricted Notes</strong>
+              <small style={mutedSmallStyle}>{restrictedNotesUnlocked ? "Unlocked for this session. Auto-locks after 15 minutes." : "Protected by a separate access code. Contents stay hidden until unlocked."}</small>
+            </div>
+            {restrictedNotesUnlocked ? (
+              <button type="button" onClick={lockRestrictedNotes} style={secondaryButtonStyle}>Lock Now</button>
+            ) : null}
+          </div>
+
+          {!restrictedNotesUnlocked ? (
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,280px) auto", gap: 8, alignItems: "center", marginTop: 12 }}>
+              <input
+                type="password"
+                value={restrictedNotesPin}
+                onChange={(event) => setRestrictedNotesPin(event.currentTarget.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") void unlockRestrictedNotes(); }}
+                placeholder="Restricted access code"
+                autoComplete="off"
+                style={{ ...inputStyle, minHeight: 40 }}
+              />
+              <button type="button" onClick={() => void unlockRestrictedNotes()} disabled={!restrictedNotesPin.trim() || restrictedNotesBusy} style={{ ...goldButtonStyle, opacity: !restrictedNotesPin.trim() || restrictedNotesBusy ? .55 : 1 }}>
+                {restrictedNotesBusy ? "Unlocking…" : "Unlock"}
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8, alignItems: "end" }}>
+                <textarea
+                  value={restrictedNotesDraft}
+                  onChange={(event) => setRestrictedNotesDraft(event.currentTarget.value)}
+                  placeholder="Write a restricted note…"
+                  rows={3}
+                  style={{ ...inputStyle, resize: "vertical", minHeight: 76 }}
+                />
+                <button type="button" onClick={() => void createRestrictedNote()} disabled={!restrictedNotesDraft.trim() || restrictedNotesBusy} style={{ ...goldButtonStyle, opacity: !restrictedNotesDraft.trim() || restrictedNotesBusy ? .55 : 1 }}>
+                  Save Restricted Note
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {restrictedNotes.map((note) => (
+                  <div key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFDF7", padding: 11 }}>
+                    {restrictedNoteEditId === note.id ? (
+                      <textarea value={restrictedNoteEditText} onChange={(event) => setRestrictedNoteEditText(event.currentTarget.value)} rows={4} style={{ ...inputStyle, width: "100%", resize: "vertical" }} />
+                    ) : (
+                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.58, color: colors.text, fontSize: 14 }}>{note.text}</div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 9 }}>
+                      <small style={mutedSmallStyle}>{new Date(note.updatedAt || note.createdAt).toLocaleString()}</small>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {restrictedNoteEditId === note.id ? (
+                          <>
+                            <button type="button" onClick={() => { setRestrictedNoteEditId(""); setRestrictedNoteEditText(""); }} style={secondaryButtonStyle}>Cancel</button>
+                            <button type="button" onClick={() => void updateRestrictedNote(note.id)} disabled={!restrictedNoteEditText.trim() || restrictedNotesBusy} style={goldButtonStyle}>Save</button>
+                          </>
+                        ) : (
+                          <button type="button" onClick={() => { setRestrictedNoteEditId(note.id); setRestrictedNoteEditText(note.text); }} style={secondaryButtonStyle}>Edit</button>
+                        )}
+                        <button type="button" onClick={() => void deleteRestrictedNote(note.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!restrictedNotes.length ? <div style={noticeStyle}>No restricted notes for this property yet.</div> : null}
+              </div>
+            </div>
+          )}
+          {restrictedNotesError ? <div style={{ marginTop: 10, color: colors.red, fontSize: 12, fontWeight: 800 }}>{restrictedNotesError}</div> : null}
+        </section>
 
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 180px", gap: 10 }}>
@@ -6214,7 +6218,7 @@ export default function AtlasApp() {
               <button
                 key={note.id}
                 type="button"
-                onClick={() => { setSelectedNoteId(note.id); setNoteEditOriginalText(note.text); }}
+                onClick={() => setSelectedNoteId(note.id)}
                 style={{
                   textAlign: "left",
                   border: `1px solid ${pinned ? "#E5C06B" : colors.line}`,
@@ -6340,20 +6344,6 @@ export default function AtlasApp() {
                     <button type="button" disabled={!noteAttachId} onClick={() => { attachNote(selectedNote.id, noteAttachKind, noteAttachId); setNoteAttachId(""); }} style={{ ...goldButtonStyle, opacity: noteAttachId ? 1 : .55 }}>Add Link</button>
                   </div>
                 </div>
-
-                {(selectedNote.history || []).length ? (
-                  <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 10 }}>
-                    <summary style={{ cursor: "pointer", fontWeight: 850, color: colors.navy }}>History · {(selectedNote.history || []).length}</summary>
-                    <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
-                      {[...(selectedNote.history || [])].reverse().map((revision, index) => (
-                        <div key={`${revision.savedAt}-${index}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#F8FAFC" }}>
-                          <small style={mutedSmallStyle}>{new Date(revision.savedAt).toLocaleString()}</small>
-                          <div style={{ whiteSpace: "pre-wrap", marginTop: 4, lineHeight: 1.5 }}>{revision.text}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                ) : null}
 
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                   <button
