@@ -361,13 +361,18 @@ export default function AtlasLocationsWorkspace(props: any) {
     depth: number;
     hasChildren: boolean;
   }[] =>
-    byName(
-      locationSourceRecords.filter((location) =>
+    [...locationSourceRecords]
+      .filter((location) =>
         parentId
           ? location.parentId === parentId
           : !location.parentId,
-      ),
-    ).flatMap((location) => {
+      )
+      .sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+          sensitivity: "base",
+        }),
+      )
+      .flatMap((location) => {
       const children = childLocationsFor(location.id);
       const row = {
         location,
