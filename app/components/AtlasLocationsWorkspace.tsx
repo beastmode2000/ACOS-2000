@@ -320,9 +320,7 @@ export default function AtlasLocationsWorkspace(props: any) {
   };
   const possibleAssetLocations = locationSourceRecords.filter(locationLooksLikeAsset);
   const childLocationsFor = (parentId: string) =>
-    [...locationSourceRecords]
-      .filter((location) => location.parentId === parentId)
-      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    byName(locationSourceRecords.filter((location) => location.parentId === parentId));
   const normalizedLocationSearch = locationSearch.trim().toLowerCase();
   const locationMatchesSearch = (location: AtlasLocationRecord) =>
     !normalizedLocationSearch ||
@@ -363,16 +361,13 @@ export default function AtlasLocationsWorkspace(props: any) {
     depth: number;
     hasChildren: boolean;
   }[] =>
-    [...locationSourceRecords]
-      .filter((location) =>
+    byName(
+      locationSourceRecords.filter((location) =>
         parentId
           ? location.parentId === parentId
           : !location.parentId,
-      )
-      .sort((a, b) =>
-        String(a.name || "").localeCompare(String(b.name || "")),
-      )
-      .flatMap((location) => {
+      ),
+    ).flatMap((location) => {
       const children = childLocationsFor(location.id);
       const row = {
         location,
@@ -399,11 +394,11 @@ export default function AtlasLocationsWorkspace(props: any) {
     ? linkedImageFilesFor("Location", selectedLocation.id)
     : [];
   const locationAssets = selectedLocation.id
-    ? [...locationAssetSourceRecords]
-        .filter((asset) => assetHasLocation(asset, selectedLocation.id))
-        .sort((a, b) =>
-          String(a.name || "").localeCompare(String(b.name || "")),
-        )
+    ? byName(
+        locationAssetSourceRecords.filter(
+          (asset) => assetHasLocation(asset, selectedLocation.id),
+        ),
+      )
     : [];
   const locationAssetIds = new Set(locationAssets.map((asset) => asset.id));
   const locationWorkOrders = selectedLocation.id
@@ -534,13 +529,44 @@ export default function AtlasLocationsWorkspace(props: any) {
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
           : {
-              gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)",
-              gap: 12,
+              gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)",
+              gap: 14,
               alignItems: "start",
             }
       }
-      listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
-      drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+      listPanelStyleOverride={
+        isMobile
+          ? { minWidth: 0, overflowX: "hidden", padding: 0 }
+          : {
+              position: "sticky",
+              top: 8,
+              height: "calc(100vh - 24px)",
+              maxHeight: "calc(100vh - 24px)",
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
+              alignSelf: "start",
+            }
+      }
+      drawerStyleOverride={
+        isMobile
+          ? { minWidth: 0, overflowX: "hidden" }
+          : {
+              position: "sticky",
+              top: 8,
+              height: "calc(100vh - 24px)",
+              maxHeight: "calc(100vh - 24px)",
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
+              alignSelf: "start",
+              zIndex: 2,
+            }
+      }
       right={
         <>
           <button
@@ -557,6 +583,222 @@ export default function AtlasLocationsWorkspace(props: any) {
       }
       list={
         <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(0, 1fr))"
+                : "repeat(6, minmax(0, 1fr))",
+              gap: 7,
+            }}
+          >
+            {[
+              ["🏠", "Top level", topLevelLocationCount, "Main property areas"],
+              ["🔗", "Connected", linkedLocationCount, "With linked records"],
+              ["🔧", "Active work", locationsWithOpenWork, "Locations with work"],
+              [
+                "↔",
+                "Review",
+                possibleAssetLocations.length,
+                "May belong in Assets",
+              ],
+              [
+                "📦",
+                "Unassigned Assets",
+                vagueLocationAssetCount,
+                "Need a real location",
+              ],
+              [
+                "⚠",
+                "Hierarchy Issues",
+                orphanLocationCount,
+                "Missing parent records",
+              ],
+            ].map(([icon, label, value, note]) => (
+              <div
+                key={String(label)}
+                style={{
+                  minWidth: 0,
+                  padding: isMobile ? "10px 9px" : "11px 10px",
+                  borderRadius: 14,
+                  border: `1px solid ${colors.line}`,
+                  background: colors.card,
+                  boxShadow: "0 5px 16px rgba(15, 42, 67, 0.06)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ ...fieldLabelStyle, display: "block" }}>
+                    {label}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 9,
+                      display: "grid",
+                      placeItems: "center",
+                      background: colors.panel,
+                      border: `1px solid ${colors.line}`,
+                      fontSize: 14,
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    {icon}
+                  </span>
+                </div>
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: 22,
+                    lineHeight: 1,
+                    marginTop: 5,
+                    color: colors.navy,
+                  }}
+                >
+                  {value}
+                </strong>
+                <small
+                  style={{
+                    ...mutedSmallStyle,
+                    display: "block",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginTop: 5,
+                  }}
+                >
+                  {note}
+                </small>
+              </div>
+            ))}
+          </div>
+          {(vagueLocationAssetCount || orphanLocationCount) ? (
+            <section
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: "#FFFFFF",
+                padding: 10,
+                display: "grid",
+                gap: 9,
+              }}
+            >
+              <div>
+                <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
+                  Hierarchy and Assignment Review
+                </strong>
+                <span style={mutedSmallStyle}>
+                  Assign assets to the most specific physical location and repair missing parent relationships.
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: 8,
+                }}
+              >
+                <div style={recordInfoItemStyle}>
+                  <span style={fieldLabelStyle}>Assets needing location</span>
+                  <strong>{vagueLocationAssetCount}</strong>
+                  <small style={mutedSmallStyle}>General, unknown, or unassigned</small>
+                </div>
+                <div style={recordInfoItemStyle}>
+                  <span style={fieldLabelStyle}>Broken parent links</span>
+                  <strong>{orphanLocationCount}</strong>
+                  <small style={mutedSmallStyle}>Parent location no longer exists</small>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {locationAssetSourceRecords
+                  .filter((asset) => {
+                    const location = locationSourceRecords.find((item) => item.id === asset.locationId);
+                    return !asset.locationId || isVagueLocation(location);
+                  })
+                  .slice(0, 8)
+                  .map((asset) => (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAssetId(asset.id);
+                        setScreen("assets");
+                      }}
+                      style={secondaryButtonStyle}
+                    >
+                      Reassign {asset.name}
+                    </button>
+                  ))}
+              </div>
+            </section>
+          ) : null}
+
+          {possibleAssetLocations.length ? (
+            <section
+              style={{
+                border: `1px solid ${colors.gold}`,
+                borderRadius: 12,
+                background: "#FFF9E8",
+                padding: 10,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div>
+                <strong
+                  style={{
+                    display: "block",
+                    color: colors.navy,
+                    fontSize: 12,
+                  }}
+                >
+                  Location Classification Review
+                </strong>
+                <span style={mutedSmallStyle}>
+                  These records look more like equipment or vehicles than
+                  physical property areas.
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {possibleAssetLocations.slice(0, 8).map((location) => (
+                  <button
+                    key={location.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedLocationId(location.id);
+                      setLocationEditorOpen(false);
+                      if (isMobile) setLocationMobileDrawerOpen(true);
+                    }}
+                    style={{
+                      ...secondaryButtonStyle,
+                      minHeight: 30,
+                      padding: "5px 8px",
+                      background: "#FFFFFF",
+                    }}
+                  >
+                    {location.name}
+                  </button>
+                ))}
+                {possibleAssetLocations.length > 8 ? (
+                  <span style={mutedSmallStyle}>
+                    +{possibleAssetLocations.length - 8} more
+                  </span>
+                ) : null}
+              </div>
+              <span style={mutedSmallStyle}>
+                Atlas will not move or delete these records automatically.
+              </span>
+            </section>
+          ) : null}
+
           <div
             style={{
               position: "sticky",
@@ -723,7 +965,7 @@ export default function AtlasLocationsWorkspace(props: any) {
             ) : null}
           </div>
 
-          <div style={{ ...listStyle, gap: 4 }}>
+          <div style={{ ...listStyle, gap: 7 }}>
             {locationRows.map(({ location, depth, hasChildren }) => {
               const selected = location.id === selectedLocation.id;
               const hovered = locationHoveredId === location.id;
@@ -746,13 +988,16 @@ export default function AtlasLocationsWorkspace(props: any) {
                     border: `1px solid ${
                       selected || hovered ? colors.gold : colors.line
                     }`,
-                    borderRadius: 9,
+                    borderRadius: 14,
                     background: selected ? "#FFF9EC" : colors.card,
-                    boxShadow: selected
-                      ? "0 2px 8px rgba(15, 42, 67, 0.08)"
-                      : "none",
+                    boxShadow: hovered
+                      ? "0 12px 28px rgba(15, 42, 67, 0.13), 0 0 0 1px rgba(201, 154, 61, 0.12)"
+                      : selected
+                        ? "0 8px 20px rgba(15, 42, 67, 0.10)"
+                        : "0 3px 10px rgba(15, 42, 67, 0.04)",
+                    transform: hovered ? "translateY(-2px)" : "translateY(0)",
                     transition:
-                      "background 120ms ease, border-color 120ms ease",
+                      "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
                     overflow: "hidden",
                   }}
                 >
@@ -1573,14 +1818,11 @@ export default function AtlasLocationsWorkspace(props: any) {
                   aria-label="Add an asset to this location"
                 >
                   <option value="">+ Add Asset</option>
-                  {[...locationAssetSourceRecords]
-                    .filter(
+                  {byName(
+                    locationAssetSourceRecords.filter(
                       (asset) => !assetHasLocation(asset, selectedLocation.id),
-                    )
-                    .sort((a, b) =>
-                      String(a.name || "").localeCompare(String(b.name || "")),
-                    )
-                    .map((asset) => (
+                    ),
+                  ).map((asset) => (
                     <option key={asset.id} value={asset.id}>
                       {asset.name}
                     </option>
