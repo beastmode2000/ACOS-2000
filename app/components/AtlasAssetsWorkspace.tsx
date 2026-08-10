@@ -296,22 +296,44 @@ export default function AtlasAssetsWorkspace(props: any) {
       const completions = (record.serviceHistory || []).map((entry) => ({
         id: `${record.id}-${entry.id}`,
         workOrderId: record.id,
+        completionId: entry.id,
         date: entry.completedAt.slice(0, 10),
+        completedAt: entry.completedAt,
         title: record.title,
         status: "Completed" as ServiceStatus,
+        vendorId: entry.vendorId || record.vendorId || "",
+        procedureId: entry.procedureId || record.procedureId || "",
+        locationId: entry.locationId || record.locationId || "",
+        notes: String(entry.notes || record.notes || ""),
+        notesHistory: Array.isArray(entry.notesHistory) ? entry.notesHistory : [],
+        checklist: Array.isArray(entry.checklist) ? entry.checklist : [],
+        photos: Array.isArray(entry.photos) ? entry.photos : [],
+        documents: Array.isArray(entry.documents) ? entry.documents : [],
       }));
 
       const current = {
         id: record.id,
         workOrderId: record.id,
+        completionId: "",
         date: record.lastCompletedDate || record.date,
+        completedAt: record.lastCompletedDate || record.date,
         title: record.title,
         status: record.status,
+        vendorId: record.vendorId || "",
+        procedureId: record.procedureId || "",
+        locationId: record.locationId || "",
+        notes: String(record.notes || ""),
+        notesHistory: Array.isArray(record.notesHistory) ? record.notesHistory : [],
+        checklist: Array.isArray(record.checklist) ? record.checklist : [],
+        photos: Array.isArray(record.photos) ? record.photos : [],
+        documents: Array.isArray(record.documents) ? record.documents : [],
       };
 
       return completions.length ? completions : [current];
     })
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    .sort((a, b) =>
+      String(b.completedAt || b.date).localeCompare(String(a.completedAt || a.date)),
+    );
   const selectedAssetCoverPhoto =
     selectedAssetPhotos.find(
       (photo) =>
@@ -576,7 +598,7 @@ export default function AtlasAssetsWorkspace(props: any) {
       : "",
     !selectedAsset.serial && selectedAsset.serialRequirement !== "Not Required" ? "Add serial / VIN / HIN" : "",
     !selectedAsset.vendorIds.length ? "Select a preferred vendor" : "",
-    !attachedManuals.length && selectedAsset.manualRequirement !== "Not Required" ? "Add a manual or supporting document" : "",
+    !attachedManuals.length && selectedAsset.manualRequirement !== "Not Required" ? "Attach a manual" : "",
     !linkedAssetProcedures.length && selectedAsset.procedureRequirement !== "Not Required" ? "Link a procedure" : "",
   ].filter(Boolean);
 
@@ -635,7 +657,7 @@ export default function AtlasAssetsWorkspace(props: any) {
     <ListDrawerLayout
       eyebrow="Property Equipment"
       title="Assets"
-      detail="Equipment, service history, documents, procedures, vendors, and maintenance in one place."
+      detail="Search, review, and maintain equipment records for the selected property."
       isMobile={isMobile}
       drawerResetKey={selectedAssetId || "asset-empty"}
       mobileDrawerOpen={isMobile && Boolean(selectedAssetId)}
@@ -647,7 +669,7 @@ export default function AtlasAssetsWorkspace(props: any) {
       gridStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
-          : { gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)", gap: 12 }
+          : { gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)", gap: 14 }
       }
       listPanelStyleOverride={
         isMobile
@@ -739,7 +761,7 @@ export default function AtlasAssetsWorkspace(props: any) {
         </div>
       }
       list={
-        <div style={{ display: "grid", gap: 7 }}>
+        <div style={{ display: "grid", gap: 10 }}>
           <section
             style={{
               position: isMobile ? "relative" : "sticky",
@@ -996,6 +1018,91 @@ export default function AtlasAssetsWorkspace(props: any) {
                 ))}
               </div>
             ) : null}
+          </section>
+
+          <section
+            aria-label="Asset activity snapshot"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
+              gap: 8,
+            }}
+          >
+            {[
+              {
+                label: "Tracked Assets",
+                value: assetSourceRecords.length,
+                note: `${displayedAssets.length} currently visible`,
+              },
+              {
+                label: "Open Work",
+                value: openAssetWorkOrderCount,
+                note: "Linked work orders",
+              },
+              {
+                label: "Needs Information",
+                value: incompleteAssetRecordCount,
+                note: "Missing 3 or more details",
+              },
+              {
+                label: "Favorites",
+                value: favoriteAssets.length,
+                note: "Pinned for quick access",
+              },
+              {
+                label: "Recently Viewed",
+                value: recentAssets.length,
+                note: "Recent non-favorites",
+              },
+            ].map((item) => (
+              <div
+                key={((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 13,
+                  background: "#FFFFFF",
+                  padding: "10px 11px",
+                  minWidth: 0,
+                  boxShadow: "0 3px 10px rgba(21, 47, 79, 0.04)",
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    color: colors.muted,
+                    fontSize: 9,
+                    fontWeight: 850,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
+                </span>
+                <strong
+                  style={{
+                    display: "block",
+                    marginTop: 3,
+                    color: colors.navy,
+                    fontSize: 21,
+                    lineHeight: 1,
+                  }}
+                >
+                  {item.value}
+                </strong>
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: 5,
+                    color: colors.muted,
+                    fontSize: 9,
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {item.note}
+                </span>
+              </div>
+            ))}
           </section>
 
           {assetBulkMode ? (
@@ -1837,30 +1944,9 @@ export default function AtlasAssetsWorkspace(props: any) {
                 <h3 style={assetPanelTitleStyle}>
                   {selectedAsset.name.trim() || "Asset"}
                 </h3>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 6,
-                    marginTop: 4,
-                  }}
-                >
-                  <span style={badgeStyle(assetConditionBadge)}>
-                    {assetConditionLabel}
-                  </span>
-                  {selectedAsset.category ? (
-                    <span style={mutedSmallStyle}>{selectedAsset.category}</span>
-                  ) : null}
-                  {selectedAsset.locationId && selectedAsset.locationId !== "general" ? (
-                    <span style={mutedSmallStyle}>· {locationName(selectedAsset.locationId)}</span>
-                  ) : null}
-                  {[selectedAsset.make, selectedAsset.model].filter(Boolean).length ? (
-                    <span style={mutedSmallStyle}>
-                      · {[selectedAsset.make, selectedAsset.model].filter(Boolean).join(" ")}
-                    </span>
-                  ) : null}
-                </div>
+                <span style={badgeStyle(assetConditionBadge)}>
+                  {assetConditionLabel}
+                </span>
               </div>
               <div style={assetActionRowStyle}>
                 {assetEditorOpen ? (
@@ -1975,7 +2061,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                   <option value="work">Work Orders ({openAssetWorkOrders.length})</option>
                   <option value="history">Service History ({assetHistory.length})</option>
                   <option value="photos">Photos ({selectedAssetPhotos.length})</option>
-                  <option value="documents">Documents ({linkedAssetDocuments.length + attachedManuals.length})</option>
+                  <option value="documents">Documents ({linkedAssetDocuments.length})</option>
                   <option value="procedures">Procedures ({linkedAssetProcedures.length})</option>
                   <option value="notes">Notes</option>
                 </select>
@@ -1995,7 +2081,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                     ["work", "Work Orders", openAssetWorkOrders.length],
                     ["history", "Service History", assetHistory.length],
                     ["photos", "Photos", selectedAssetPhotos.length],
-                    ["documents", "Documents", linkedAssetDocuments.length + attachedManuals.length],
+                    ["documents", "Documents", linkedAssetDocuments.length],
                     ["procedures", "Procedures", linkedAssetProcedures.length],
                     ["notes", "Notes", null],
                   ].map(([key, label, count]) => {
@@ -2211,8 +2297,8 @@ export default function AtlasAssetsWorkspace(props: any) {
             >
               <div style={assetCardHeaderStyle}>
                 <div>
-                  <strong>Operations Snapshot</strong>
-                  <div style={assetCardHintStyle}>Current work, activity, and the next action that matters</div>
+                  <strong>Asset Intelligence</strong>
+                  <div style={assetCardHintStyle}>Current context, attention items, and the most useful next action</div>
                 </div>
                 <span style={badgeStyle(assetAttentionItems.length ? "High" : "Online")}>
                   {assetAttentionItems.length ? `${assetAttentionItems.length} attention` : "On track"}
@@ -2274,9 +2360,9 @@ export default function AtlasAssetsWorkspace(props: any) {
             >
               <div style={assetCardHeaderStyle}>
                 <div>
-                  <strong>Maintenance Status</strong>
+                  <strong>Asset Status</strong>
                   <div style={assetCardHintStyle}>
-                    Condition, open work, upcoming maintenance, and record readiness
+                    Condition, active work, maintenance schedule, and record completeness
                   </div>
                 </div>
                 <span style={badgeStyle(assetConditionBadge)}>
@@ -2541,9 +2627,9 @@ export default function AtlasAssetsWorkspace(props: any) {
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <span style={assetInfoLabelStyle}>Connected Records</span>
+                      <span style={assetInfoLabelStyle}>Asset Relationships</span>
                       <div style={assetCardHintStyle}>
-                        Jump to the records connected to this equipment.
+                        Open every record connected to this asset.
                       </div>
                     </div>
                     <span
@@ -2595,8 +2681,18 @@ export default function AtlasAssetsWorkspace(props: any) {
                         action: () => setAssetPanelSection("procedures"),
                       },
                       {
+                        label: "Manuals",
+                        count: attachedManuals.length,
+                        action: () => {
+                          if (attachedManuals[0]) {
+                            setSelectedManualId(attachedManuals[0].id);
+                          }
+                          setScreen("manuals");
+                        },
+                      },
+                      {
                         label: "Documents",
-                        count: linkedAssetDocuments.length + attachedManuals.length,
+                        count: linkedAssetDocuments.length,
                         action: () => setAssetPanelSection("documents"),
                       },
                       {
@@ -3337,9 +3433,9 @@ export default function AtlasAssetsWorkspace(props: any) {
             >
               <div style={assetCardHeaderStyle}>
                 <div>
-                  <strong>Asset Timeline</strong>
+                  <strong>Service History</strong>
                   <div style={assetCardHintStyle}>
-                    Hover an event for service details, cost, vendor, and notes
+                    Completed work, procedure results, photos, documents, vendor, and service notes
                   </div>
                 </div>
                 <div style={assetHistoryHeaderActionsStyle}>
@@ -3358,13 +3454,36 @@ export default function AtlasAssetsWorkspace(props: any) {
                     const workOrder = relatedWorkOrders.find(
                       (record) => record.id === entry.workOrderId,
                     );
-                    const vendor = workOrder?.vendorId
-                      ? vendorRecords.find((record) => record.id === workOrder.vendorId)
+                    const vendorId = entry.vendorId || workOrder?.vendorId || "";
+                    const vendor = vendorId
+                      ? vendorRecords.find((record) => record.id === vendorId)
+                      : undefined;
+                    const procedureId = entry.procedureId || workOrder?.procedureId || "";
+                    const procedure = procedureId
+                      ? procedureRecords.find((record) => record.id === procedureId)
                       : undefined;
                     const cost =
                       Number(workOrder?.actualCost || 0) ||
                       Number(workOrder?.estimatedCost || 0);
-                    const notes = String(workOrder?.notes || "").trim();
+                    const notes = String(entry.notes || workOrder?.notes || "").trim();
+                    const checklist = Array.isArray(entry.checklist) ? entry.checklist : [];
+                    const passedSteps = checklist.filter((item: any) =>
+                      item.completed === true || /^\[PASS\]/i.test(String(item.text || "")),
+                    ).length;
+                    const flaggedSteps = checklist.filter((item: any) =>
+                      /^\[FLAG\]/i.test(String(item.text || "")),
+                    ).length;
+                    const failedSteps = checklist.filter((item: any) =>
+                      /^\[FAIL\]/i.test(String(item.text || "")),
+                    ).length;
+                    const procedureSummary = checklist.length
+                      ? `${passedSteps}/${checklist.length} passed${flaggedSteps ? ` · ${flaggedSteps} flagged` : ""}${failedSteps ? ` · ${failedSteps} failed` : ""}`
+                      : "";
+                    const photoCount = Array.isArray(entry.photos) ? entry.photos.length : 0;
+                    const documentCount = Array.isArray(entry.documents) ? entry.documents.length : 0;
+                    const signoff = (entry.notesHistory || []).find((item: any) =>
+                      /^Procedure sign-off/i.test(String(item.text || "")),
+                    );
 
                     return (
                       <div
@@ -3399,8 +3518,16 @@ export default function AtlasAssetsWorkspace(props: any) {
                             <span className="atlas-asset-timeline-summary">
                               {workOrder?.workType || "Service"}
                               {vendor?.name ? ` · ${vendor.name}` : ""}
+                              {procedure?.title ? ` · ${procedure.title}` : ""}
                               {cost > 0 ? ` · $${cost.toLocaleString()}` : ""}
                             </span>
+                            {procedureSummary || photoCount || documentCount ? (
+                              <span className="atlas-asset-timeline-summary">
+                                {procedureSummary || "No procedure checklist"}
+                                {photoCount ? ` · ${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""}
+                                {documentCount ? ` · ${documentCount} document${documentCount === 1 ? "" : "s"}` : ""}
+                              </span>
+                            ) : null}
                           </span>
 
                           <span className="atlas-asset-timeline-status">
@@ -3423,15 +3550,31 @@ export default function AtlasAssetsWorkspace(props: any) {
                                 <strong>{cost > 0 ? `$${cost.toLocaleString()}` : "Not recorded"}</strong>
                               </span>
                               <span>
-                                <small>Priority</small>
-                                <strong>{workOrder?.priority || "Not recorded"}</strong>
+                                <small>Procedure</small>
+                                <strong>{procedure?.title || "Not linked"}</strong>
+                              </span>
+                              <span>
+                                <small>Checklist</small>
+                                <strong>{procedureSummary || "Not recorded"}</strong>
+                              </span>
+                              <span>
+                                <small>Evidence</small>
+                                <strong>
+                                  {photoCount || documentCount
+                                    ? `${photoCount} photo${photoCount === 1 ? "" : "s"} · ${documentCount} document${documentCount === 1 ? "" : "s"}`
+                                    : "None recorded"}
+                                </strong>
+                              </span>
+                              <span>
+                                <small>Sign-off</small>
+                                <strong>{signoff?.text || "Not recorded"}</strong>
                               </span>
                             </span>
                             <span className="atlas-asset-timeline-hover-notes">
                               {notes || "No notes were recorded for this event."}
                             </span>
                             <span className="atlas-asset-timeline-hover-action">
-                              Open full work-order history →
+                              Open original work order →
                             </span>
                           </span>
                         </button>
@@ -3453,176 +3596,79 @@ export default function AtlasAssetsWorkspace(props: any) {
               ) : (
                 <div className="atlas-asset-timeline-empty">
                   <span className="atlas-asset-timeline-empty-icon">↻</span>
-                  <strong>No timeline events yet</strong>
-                  <span>Completed service and work orders will appear here.</span>
+                  <strong>No service history yet</strong>
+                  <span>Completed work orders for this asset will build its service record automatically.</span>
                 </div>
               )}
             </section>
 
-            {assetPanelSection === "documents" ? (
-              <section
-                style={{
-                  ...assetCardStyle,
-                  marginBottom: 12,
-                  background: "#FFFFFF",
-                }}
-                aria-label="Asset documents"
-              >
-                <div style={{ ...assetCardHeaderStyle, marginBottom: 10 }}>
-                  <div>
-                    <strong>Documents</strong>
-                    <div style={assetCardHintStyle}>
-                      Manuals, warranties, invoices, startup sheets, and other files linked to this asset.
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 999,
-                      background: colors.panel,
-                      color: colors.navy,
-                      padding: "5px 9px",
-                      fontSize: 10,
-                      fontWeight: 900,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {linkedAssetDocuments.length + attachedManuals.length} linked
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(2, minmax(0, 1fr))",
-                    gap: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 10,
-                      background: "#F8FAFD",
-                      padding: 10,
-                    }}
-                  >
-                    <span style={assetInfoLabelStyle}>Document Library</span>
-                    <strong
-                      style={{
-                        display: "block",
-                        marginTop: 4,
-                        color: colors.navy,
-                        fontSize: 15,
-                      }}
-                    >
-                      {linkedAssetDocuments.length}
-                    </strong>
-                    <span style={{ ...assetCardHintStyle, display: "block", marginTop: 3 }}>
-                      Files linked through Atlas Documents
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 10,
-                      background: "#F8FAFD",
-                      padding: 10,
-                    }}
-                  >
-                    <span style={assetInfoLabelStyle}>Manual Attachments</span>
-                    <strong
-                      style={{
-                        display: "block",
-                        marginTop: 4,
-                        color: colors.navy,
-                        fontSize: 15,
-                      }}
-                    >
-                      {attachedManuals.length}
-                    </strong>
-                    <span style={{ ...assetCardHintStyle, display: "block", marginTop: 3 }}>
-                      Existing manuals already associated with this asset
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 7,
-                    marginTop: 10,
-                  }}
-                >
+            <div
+              style={{
+                ...assetPanelFooterStyle,
+                display: assetPanelSection === "documents" ? "flex" : "none",
+                marginTop: 14,
+                position: "relative",
+                zIndex: 1,
+                clear: "both",
+              }}
+            >
+              <div style={assetFileSummaryStyle}>
+                <strong>Manuals &amp; Files</strong>
+                <span style={assetCardHintStyle}>
+                  {attachedManuals.length} manual{attachedManuals.length === 1 ? "" : "s"}
+                </span>
+                {attachedManuals.length ? (
                   <button
                     type="button"
                     onClick={() => {
-                      setDocumentSearch(selectedAsset.name);
-                      setScreen("documents");
-                    }}
-                    style={assetPrimaryActionButtonStyle}
-                  >
-                    Open Documents
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocumentSearch(selectedAsset.name);
-                      setScreen("documents");
+                      setSelectedManualId(attachedManuals[0].id);
+                      setScreen("manuals");
                     }}
                     style={assetTinyButtonStyle}
                   >
-                    Add / Link File
+                    View Manuals
                   </button>
-                </div>
-
-                {!linkedAssetDocuments.length && !attachedManuals.length ? (
-                  <div
-                    style={{
-                      border: `1px dashed ${colors.line}`,
-                      borderRadius: 10,
-                      background: "#F8FAFD",
-                      padding: 12,
-                      marginTop: 10,
-                      color: colors.muted,
-                      fontSize: 11,
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    No documents are linked yet. Add manuals and supporting records through Documents and link them to this asset.
-                  </div>
                 ) : null}
-
-                <div
-                  style={{
-                    ...assetPanelFooterStyle,
-                    marginTop: 12,
-                    paddingTop: 10,
-                    borderTop: `1px solid ${colors.line}`,
-                  }}
+                <button
+                  type="button"
+                  onClick={() => startManualForAsset(selectedAsset)}
+                  style={assetTinyButtonStyle}
                 >
-                  <span style={assetCardHintStyle}>
-                    Files stay searchable in Documents while remaining connected to this asset.
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void deleteAssetRecord(selectedAsset)}
-                    style={assetDeleteBottomButtonStyle}
-                  >
-                    Delete Asset
-                  </button>
-                </div>
-              </section>
-            ) : null}
+                  Add Manual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => findManualForAsset(selectedAsset)}
+                  style={assetTinyButtonStyle}
+                >
+                  Find Online
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDocumentSearch(selectedAsset.name);
+                    setScreen("documents");
+                  }}
+                  style={assetTinyButtonStyle}
+                >
+                  Documents
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => void deleteAssetRecord(selectedAsset)}
+                style={assetDeleteBottomButtonStyle}
+              >
+                Delete Asset
+              </button>
+            </div>
           </div>
         ) : (
           <div style={noticeStyle}>
             <strong>Select an asset.</strong>
             <p style={mutedSmallStyle}>
-              Open an asset to see its information, photos, work orders, documents, procedures, and service history.
+              Open an asset to see its information, manuals, photos, work
+              orders, and documents.
             </p>
           </div>
         )
