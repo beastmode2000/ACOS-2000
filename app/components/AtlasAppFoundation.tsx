@@ -466,6 +466,8 @@ export type TodayLogEntry = {
   category: "Task" | "Repair" | "Inspection" | "Vendor" | "Delivery" | "Note";
   text: string;
   createdAt: string;
+  updatedAt?: string;
+  history?: Array<{ text: string; savedAt: string }>;
 };
 
 export type DashboardRoutineItem = {
