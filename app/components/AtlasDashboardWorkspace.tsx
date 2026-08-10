@@ -1943,14 +1943,29 @@ export default function AtlasDashboardWorkspace(props: any) {
     const clean = text.trim();
     if (!clean) return "";
     const id = existingId || uid("dashboard-note");
-    const createdAt = dashboardReminders.find((item) => item.id === id)?.createdAt || new Date().toISOString();
+    const now = new Date().toISOString();
+    const createdAt = dashboardReminders.find((item) => item.id === id)?.createdAt || now;
     setDashboardReminders((current) => {
       const existing = current.find((item) => item.id === id);
       const record = { id, text: clean, done: existing?.done || false, createdAt, dueDate: dueDate || existing?.dueDate || undefined };
       return existing ? current.map((item) => item.id === id ? record : item) : [record, ...current];
     });
     setTodayLogEntries((current) => {
-      const noteRecord = { id, propertyId: activePropertyId, date: today, category: "Note", text: clean, createdAt };
+      const existing = current.find((entry: any) => entry.id === id);
+      const history = existing && existing.text !== clean
+        ? [...(existing.history || []), { text: existing.text, savedAt: existing.updatedAt || existing.createdAt }]
+        : existing?.history || [];
+      const noteRecord = {
+        ...(existing || {}),
+        id,
+        propertyId: activePropertyId,
+        date: existing?.date || today,
+        category: "Note",
+        text: clean,
+        createdAt: existing?.createdAt || createdAt,
+        updatedAt: existing ? now : undefined,
+        history,
+      };
       return [noteRecord, ...current.filter((entry: any) => entry.id !== id)];
     });
     return id;
