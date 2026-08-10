@@ -216,7 +216,6 @@ export default function AtlasApp() {
   const [noteAttachKind, setNoteAttachKind] = useState<NoteAttachmentKind>("Asset");
   const [noteAttachId, setNoteAttachId] = useState("");
   const notesRecognitionRef = useRef<{ stop: () => void } | null>(null);
-  const noteEditOriginalTextRef = useRef<Record<string, string>>({});
   const [quickCaptureMode, setQuickCaptureMode] = useState<"create" | "existing">("create");
   type QuickCreateKind = "photo" | "document" | "task" | "work-order" | "project" | "asset" | "vendor" | "procedure";
   const [quickCreateKind, setQuickCreateKind] = useState<QuickCreateKind | "">("");
@@ -427,7 +426,6 @@ export default function AtlasApp() {
   const [dashboardReminderDraft, setDashboardReminderDraft] = useState("");
   const [dashboardReminderDate, setDashboardReminderDate] = useState("");
   const [dashboardReminders, setDashboardReminders] = useState<Array<{ id: string; text: string; done: boolean; createdAt: string; dueDate?: string }>>([]);
-  const [dashboardPinnedTaskIds, setDashboardPinnedTaskIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -443,22 +441,6 @@ export default function AtlasApp() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(`atlas-dashboard-reminders-v1:${activePropertyId}`, JSON.stringify(dashboardReminders));
   }, [activePropertyId, dashboardReminders]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(`atlas-dashboard-pinned-tasks-v1:${activePropertyId}`);
-      const parsed = raw ? JSON.parse(raw) : [];
-      setDashboardPinnedTaskIds(Array.isArray(parsed) ? parsed.map(String) : []);
-    } catch {
-      setDashboardPinnedTaskIds([]);
-    }
-  }, [activePropertyId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(`atlas-dashboard-pinned-tasks-v1:${activePropertyId}`, JSON.stringify(dashboardPinnedTaskIds));
-  }, [activePropertyId, dashboardPinnedTaskIds]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -618,12 +600,6 @@ export default function AtlasApp() {
       // Note metadata still works for the current session if storage is unavailable.
     }
   }, [pinnedNoteIds, noteFollowUpDates, noteAttachments]);
-
-  useEffect(() => {
-    if (!selectedNoteId) return;
-    const note = todayLogEntries.find((entry) => entry.id === selectedNoteId);
-    if (note) noteEditOriginalTextRef.current[selectedNoteId] = note.text;
-  }, [selectedNoteId]);
 
   const [logoIndex, setLogoIndex] = useState(0);
   const [mapImageOk, setMapImageOk] = useState(true);
@@ -5916,32 +5892,23 @@ export default function AtlasApp() {
           ? {
               ...entry,
               text: value,
+              updatedAt: new Date().toISOString(),
             }
           : entry,
       ),
     );
-    setDashboardReminders((current) =>
-      current.map((note) => note.id === noteId ? { ...note, text: value } : note),
-    );
   }
 
   function savePermanentNoteEdits(noteId: string) {
-    const changedAt = new Date().toISOString();
     setTodayLogEntries((current) =>
-      current.map((entry) => {
-        if (entry.id !== noteId) return entry;
-        const originalText = noteEditOriginalTextRef.current[noteId] ?? entry.text;
-        const changed = originalText !== entry.text;
-        const history = changed
-          ? [...(entry.history || []), { text: originalText, changedAt }]
-          : (entry.history || []);
-        if (changed) noteEditOriginalTextRef.current[noteId] = entry.text;
-        return {
-          ...entry,
-          updatedAt: changedAt,
-          history,
-        };
-      }),
+      current.map((entry) =>
+        entry.id === noteId
+          ? {
+              ...entry,
+              updatedAt: new Date().toISOString(),
+            }
+          : entry,
+      ),
     );
     showSaveToast("Note saved.");
   }
@@ -6363,20 +6330,6 @@ export default function AtlasApp() {
                     <button type="button" disabled={!noteAttachId} onClick={() => { attachNote(selectedNote.id, noteAttachKind, noteAttachId); setNoteAttachId(""); }} style={{ ...goldButtonStyle, opacity: noteAttachId ? 1 : .55 }}>Add Link</button>
                   </div>
                 </div>
-
-                {(selectedNote.history || []).length ? (
-                  <details>
-                    <summary style={{ cursor: "pointer", fontWeight: 850, color: colors.navy }}>History · {(selectedNote.history || []).length}</summary>
-                    <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
-                      {[...(selectedNote.history || [])].reverse().map((item, index) => (
-                        <div key={`${selectedNote.id}-history-${index}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 9, background: "#F8FAFC" }}>
-                          <small style={mutedSmallStyle}>{new Date(item.changedAt).toLocaleString()}</small>
-                          <div style={{ whiteSpace: "pre-wrap", marginTop: 5, lineHeight: 1.5 }}>{item.text}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                ) : null}
 
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                   <button
@@ -15944,7 +15897,6 @@ ${notes.trim()}` : notes.trim(),
       dashboardReminderDate,
       dashboardReminderDraft,
       dashboardReminders,
-      dashboardPinnedTaskIds,
       dashboardRoutineItems,
       dashboardTaskEditorId,
       dashboardVendorVisitId,
@@ -16005,7 +15957,6 @@ ${notes.trim()}` : notes.trim(),
       setDashboardReminderDate,
       setDashboardReminderDraft,
       setDashboardReminders,
-      setDashboardPinnedTaskIds,
       setDashboardTaskEditorId,
       setDashboardVendorVisitId,
       setDashboardVendorVisitNote,
