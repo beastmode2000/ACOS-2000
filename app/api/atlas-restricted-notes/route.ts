@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 const SESSION_COOKIE = "atlas_session";
 
 type SessionPayload = {
+  username?: string;
   email?: string;
   role?: string;
   propertyIds?: string[];
@@ -116,9 +117,8 @@ function readSession(
     const parsed =
       JSON.parse(decoded) as SessionPayload;
 
-    if (!parsed.email) {
-      return null;
-    }
+    const expectedUsername =
+      process.env.ATLAS_ACCESS_USERNAME || "";
 
     if (!parsed.expiresAt) {
       return null;
@@ -126,6 +126,31 @@ function readSession(
 
     if (parsed.expiresAt <= Date.now()) {
       return null;
+    }
+
+    if (
+      expectedUsername &&
+      parsed.username &&
+      parsed.username !== expectedUsername
+    ) {
+      return null;
+    }
+
+    // Current Atlas login sessions include email/role/propertyIds.
+    // Older Atlas sessions created through the middleware/basic-auth
+    // compatibility path only contain username + expiresAt. Those sessions
+    // are still valid Atlas sessions, so allow them here as master access
+    // instead of incorrectly showing "Atlas login required."
+    if (!parsed.email) {
+      return {
+        ...parsed,
+        role: parsed.role || "master",
+        propertyIds:
+          Array.isArray(parsed.propertyIds) &&
+          parsed.propertyIds.length
+            ? parsed.propertyIds
+            : ["2000", "6855", "3661", "Hangar"],
+      };
     }
 
     return parsed;
