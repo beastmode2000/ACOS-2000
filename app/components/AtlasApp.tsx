@@ -4969,6 +4969,13 @@ export default function AtlasApp() {
   }, [q, searchResults.length]);
 
   useEffect(() => {
+    setSearchOpen(false);
+    setQuery("");
+    setSearchActiveIndex(0);
+  }, [screen]);
+
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const openCommandCenter = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -5927,6 +5934,52 @@ export default function AtlasApp() {
     }, 15 * 60 * 1000);
     return () => window.clearTimeout(timer);
   }, [restrictedNotesUnlocked]);
+
+  useEffect(() => {
+    if (screen === "notes") return;
+
+    setRestrictedNotesUnlocked(false);
+    setRestrictedNotesPin("");
+    setRestrictedNotes([]);
+    setRestrictedNotesDraft("");
+    setRestrictedNoteEditId("");
+    setRestrictedNoteEditText("");
+    setRestrictedNotesError("");
+  }, [screen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const lockWhenHidden = () => {
+      if (document.visibilityState !== "hidden") return;
+
+      setRestrictedNotesUnlocked(false);
+      setRestrictedNotesPin("");
+      setRestrictedNotes([]);
+      setRestrictedNotesDraft("");
+      setRestrictedNoteEditId("");
+      setRestrictedNoteEditText("");
+      setRestrictedNotesError("");
+    };
+
+    const lockOnPageHide = () => {
+      setRestrictedNotesUnlocked(false);
+      setRestrictedNotesPin("");
+      setRestrictedNotes([]);
+      setRestrictedNotesDraft("");
+      setRestrictedNoteEditId("");
+      setRestrictedNoteEditText("");
+      setRestrictedNotesError("");
+    };
+
+    document.addEventListener("visibilitychange", lockWhenHidden);
+    window.addEventListener("pagehide", lockOnPageHide);
+
+    return () => {
+      document.removeEventListener("visibilitychange", lockWhenHidden);
+      window.removeEventListener("pagehide", lockOnPageHide);
+    };
+  }, []);
 
   async function restrictedNotesRequest(action: "status" | "setupPin" | "changePin" | "list" | "create" | "update" | "delete", extra: Record<string, unknown> = {}) {
     const response = await fetch("/api/atlas-restricted-notes", {
@@ -27318,11 +27371,11 @@ ${notes.trim()}` : notes.trim(),
                       value={query}
                       onFocus={() => {
                         setCommandCenterOpen(true);
-                        setSearchOpen(true);
                       }}
                       onChange={(event) => {
-                        setQuery(event.currentTarget.value);
-                        setSearchOpen(true);
+                        const nextQuery = event.currentTarget.value;
+                        setQuery(nextQuery);
+                        setSearchOpen(Boolean(nextQuery.trim()));
                         setSearchActiveIndex(0);
                       }}
                       onKeyDown={(event) => {
@@ -27358,7 +27411,7 @@ ${notes.trim()}` : notes.trim(),
                         margin: 0,
                       }}
                     />
-                    {searchOpen ? (
+                    {searchOpen && query.trim() ? (
                       <div style={searchDropStyle}>
                         {query.trim() ? (
                           <>
