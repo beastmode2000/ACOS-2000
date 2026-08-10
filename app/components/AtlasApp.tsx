@@ -16294,13 +16294,71 @@ ${notes.trim()}` : notes.trim(),
     }} />;
   }
   function renderRoutines() {
+    const today = todayISO();
+    const routineOpenCount = dashboardRoutineItems.filter(
+      (item) => !completedDashboardRoutineIds.includes(item.id),
+    ).length;
+    const todayAssignedTasks = workPlanTasks.filter((task) => {
+      const meta = taskMeta[task.id];
+      return meta?.dueDate === today && meta?.status !== "Completed";
+    });
+    const addisonCount = todayAssignedTasks.filter(
+      (task) => taskMeta[task.id]?.assignee === "Addison",
+    ).length;
+    const patCount = todayAssignedTasks.filter(
+      (task) => taskMeta[task.id]?.assignee === "Pat",
+    ).length;
+    const overdueCount = workPlanTasks.filter((task) => {
+      const meta = taskMeta[task.id];
+      return Boolean(meta?.dueDate) && meta!.dueDate < today && meta?.status !== "Completed";
+    }).length;
+    const todayWorkOrders = serviceRecords.filter(
+      (record) => record.status !== "Completed" && String(record.date || "").slice(0, 10) === today,
+    ).length;
+
     return (
-      <AtlasRoutines
-        mode={isAddisonUser ? "dashboard" : "manager"}
-        isMobile={isMobile}
-        activePropertyId={activePropertyId}
-        teamDirectory={teamDirectory}
-      />
+      <div style={{ display: "grid", gap: 12 }}>
+        {!isAddisonUser ? (
+          <section style={{ ...cardStyle, padding: isMobile ? 12 : 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <div style={eyebrowStyle}>Daily Foreman</div>
+                <strong style={{ color: colors.navy, fontSize: 18 }}>Today’s operating picture</strong>
+                <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
+                  Routine and assignment status only. Nothing here is added to the Dashboard.
+                </div>
+              </div>
+              <div style={{ ...mutedSmallStyle, fontWeight: 800 }}>{formatDate(today)}</div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+              {[
+                ["Routine open", routineOpenCount],
+                ["Work orders due", todayWorkOrders],
+                ["Addison", addisonCount],
+                ["Pat", patCount],
+                ["Overdue", overdueCount],
+              ].map(([label, value]) => (
+                <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 9, background: "#FFFFFF" }}>
+                  <span style={fieldLabelStyle}>{label}</span>
+                  <strong style={{ display: "block", marginTop: 3, color: colors.navy, fontSize: 20 }}>{value}</strong>
+                </div>
+              ))}
+            </div>
+            {overdueCount > 0 ? (
+              <div style={{ ...noticeStyle, marginTop: 10 }}>
+                {overdueCount} overdue task{overdueCount === 1 ? "" : "s"} need review in Tasks. Routine remains focused on today.
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <AtlasRoutines
+          mode={isAddisonUser ? "dashboard" : "manager"}
+          isMobile={isMobile}
+          activePropertyId={activePropertyId}
+          teamDirectory={teamDirectory}
+        />
+      </div>
     );
   }
 
