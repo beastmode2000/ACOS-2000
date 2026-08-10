@@ -425,6 +425,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
   const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
+  const [procedureSignoffName, setProcedureSignoffName] = useState("");
+  const [procedureStepNote, setProcedureStepNote] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setRecurrenceIntervalDraft(
@@ -1037,6 +1039,79 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         (item: ChecklistItem) => item.id !== id,
       ),
     });
+  }
+
+  function checklistStepStatus(item: ChecklistItem): "Pass" | "Flag" | "Fail" | "Open" {
+    const match = String(item.text || "").match(/^\[(PASS|FLAG|FAIL)\]\s*/i);
+    if (!match) return item.completed ? "Pass" : "Open";
+    const value = match[1].toUpperCase();
+    return value === "PASS" ? "Pass" : value === "FLAG" ? "Flag" : "Fail";
+  }
+
+  function checklistStepLabel(item: ChecklistItem) {
+    return String(item.text || "").replace(/^\[(PASS|FLAG|FAIL)\]\s*/i, "");
+  }
+
+  function setChecklistStepStatus(id: string, status: "Pass" | "Flag" | "Fail") {
+    const prefix = status === "Pass" ? "[PASS]" : status === "Flag" ? "[FLAG]" : "[FAIL]";
+    const next = (selectedService.checklist || []).map((item: ChecklistItem) =>
+      item.id === id
+        ? { ...item, text: `${prefix} ${checklistStepLabel(item)}`, completed: status === "Pass" }
+        : item,
+    );
+    updateWorkOrder({ checklist: next });
+
+    const note = String(procedureStepNote[id] || "").trim();
+    if ((status === "Flag" || status === "Fail") && note) {
+      updateWorkOrder({
+        checklist: next,
+        notesHistory: [
+          {
+            id: uid("procedure-note"),
+            text: `${status}: ${checklistStepLabel((selectedService.checklist || []).find((item: ChecklistItem) => item.id === id) || { id, text: "", completed: false })} — ${note}`,
+            createdAt: new Date().toISOString(),
+          },
+          ...(selectedService.notesHistory || []),
+        ],
+      });
+      setProcedureStepNote((current) => ({ ...current, [id]: "" }));
+    }
+  }
+
+  function loadLinkedProcedureSteps() {
+    const procedure = procedureRecords.find((item: any) => item.id === selectedService.procedureId);
+    if (!procedure) return;
+    const raw = Array.isArray(procedure.steps) && procedure.steps.length
+      ? procedure.steps
+      : Array.isArray(procedure.checklist)
+        ? procedure.checklist.map((item: any) => typeof item === "string" ? item : item.text)
+        : [];
+    const steps = raw.map((text: string, index: number) => ({
+      id: uid(`procedure-step-${index}`),
+      text: String(text || "").replace(/^\[(PASS|FLAG|FAIL)\]\s*/i, ""),
+      completed: false,
+    })).filter((item: ChecklistItem) => item.text.trim());
+    updateWorkOrder({ checklist: steps });
+  }
+
+  function signOffProcedure() {
+    const name = procedureSignoffName.trim();
+    if (!name) return;
+    const passed = (selectedService.checklist || []).filter((item: ChecklistItem) => checklistStepStatus(item) === "Pass").length;
+    const total = (selectedService.checklist || []).length;
+    const flagged = (selectedService.checklist || []).filter((item: ChecklistItem) => checklistStepStatus(item) === "Flag").length;
+    const failed = (selectedService.checklist || []).filter((item: ChecklistItem) => checklistStepStatus(item) === "Fail").length;
+    updateWorkOrder({
+      notesHistory: [
+        {
+          id: uid("procedure-signoff"),
+          text: `Procedure sign-off — ${name} — ${passed}/${total} passed${flagged ? ` · ${flagged} flagged` : ""}${failed ? ` · ${failed} failed` : ""}`,
+          createdAt: new Date().toISOString(),
+        },
+        ...(selectedService.notesHistory || []),
+      ],
+    });
+    setProcedureSignoffName("");
   }
 
   function addHistoryNote() {
@@ -1899,6 +1974,109 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     }
                   />
                 </div>
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Procedure Execution</div>
+                    <strong>
+                      {(selectedService.checklist || []).filter((item: ChecklistItem) => checklistStepStatus(item) === "Pass").length}
+                      /{(selectedService.checklist || []).length} passed
+                    </strong>
+                  </div>
+                  {selectedService.procedureId ? (
+                    <button type="button" onClick={loadLinkedProcedureSteps} style={secondaryButtonStyle}>
+                      Load Procedure Steps
+                    </button>
+                  ) : null}
+                </div>
+
+                <label style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+                  <span style={fieldLabelStyle}>Linked Procedure</span>
+                  <select
+                    value={selectedService.procedureId || ""}
+                    onChange={(event) => updateWorkOrder({ procedureId: event.currentTarget.value })}
+                    style={inputStyle}
+                  >
+                    <option value="">No procedure linked</option>
+                    {procedureRecords.map((procedure: any) => (
+                      <option key={procedure.id} value={procedure.id}>{procedure.title}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {(selectedService.checklist || []).length ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {(selectedService.checklist || []).map((item: ChecklistItem) => {
+                      const status = checklistStepStatus(item);
+                      return (
+                        <div key={item.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9, background: "#FFFFFF" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                            <strong style={{ color: colors.navy, fontSize: 13 }}>{checklistStepLabel(item)}</strong>
+                            <span style={{ ...mutedSmallStyle, fontWeight: 800 }}>{status}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                            {(["Pass","Flag","Fail"] as const).map((value) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setChecklistStepStatus(item.id, value)}
+                                style={{
+                                  ...secondaryButtonStyle,
+                                  width: "auto",
+                                  minHeight: 30,
+                                  padding: "5px 9px",
+                                  borderColor: status === value ? colors.gold : colors.line,
+                                  background: status === value ? "#FFF8E8" : "#FFFFFF",
+                                }}
+                              >
+                                {value}
+                              </button>
+                            ))}
+                          </div>
+                          {(status === "Flag" || status === "Fail") ? (
+                            <input
+                              value={procedureStepNote[item.id] || ""}
+                              onChange={(event) => setProcedureStepNote((current) => ({ ...current, [item.id]: event.currentTarget.value }))}
+                              placeholder="Add issue note, then click Flag/Fail again to save it"
+                              style={{ ...inputStyle, marginTop: 8 }}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={noticeStyle}>
+                    Link a procedure and choose <strong>Load Procedure Steps</strong>, or add checklist items to this work order.
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 8, marginTop: 10 }}>
+                  <input
+                    value={procedureSignoffName}
+                    onChange={(event) => setProcedureSignoffName(event.currentTarget.value)}
+                    placeholder="Technician / employee sign-off name"
+                    style={inputStyle}
+                  />
+                  <button type="button" onClick={signOffProcedure} disabled={!procedureSignoffName.trim()} style={goldButtonStyle}>
+                    Sign Off
+                  </button>
+                </div>
+
+                {(selectedService.notesHistory || []).filter((entry: any) => /Procedure sign-off|^(Flag|Fail):/i.test(String(entry.text || ""))).length ? (
+                  <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
+                    {(selectedService.notesHistory || [])
+                      .filter((entry: any) => /Procedure sign-off|^(Flag|Fail):/i.test(String(entry.text || "")))
+                      .slice(0, 8)
+                      .map((entry: any) => (
+                        <div key={entry.id} style={{ ...mutedSmallStyle, padding: "6px 8px", background: "#F8FAFC", borderRadius: 8 }}>
+                          {entry.text} · {new Date(entry.createdAt).toLocaleString()}
+                        </div>
+                      ))}
+                  </div>
+                ) : null}
               </section>
 
               <section style={detailSectionStyle}>
