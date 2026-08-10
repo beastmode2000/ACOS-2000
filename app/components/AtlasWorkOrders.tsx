@@ -427,6 +427,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
   const [procedureSignoffName, setProcedureSignoffName] = useState("");
   const [procedureStepNote, setProcedureStepNote] = useState<Record<string, string>>({});
+  const [procedurePhotoStepId, setProcedurePhotoStepId] = useState("");
+  const procedurePhotoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setRecurrenceIntervalDraft(
@@ -781,6 +783,51 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       );
     } finally {
       if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  }
+
+  async function addProcedureStepPhotos(files: FileList | null) {
+    if (!files?.length || !selectedService?.id || !procedurePhotoStepId) return;
+    const step = (selectedService.checklist || []).find(
+      (item: ChecklistItem) => item.id === procedurePhotoStepId,
+    );
+    if (!step) return;
+
+    setPhotoMessage("Adding procedure photo...");
+    try {
+      const incoming: PhotoLike[] = [];
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) continue;
+        const dataUrl = await fileToDataUrl(file);
+        incoming.push({
+          id: uid("procedure-photo"),
+          name: `[STEP:${procedurePhotoStepId}] ${checklistStepLabel(step)} — ${file.name || "Procedure photo"}`,
+          type: file.type,
+          dataUrl,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      updateWorkOrder({
+        photos: [...(selectedService.photos || []), ...incoming],
+      });
+
+      setPhotoMessage(
+        incoming.length
+          ? `Added ${incoming.length} photo${incoming.length === 1 ? "" : "s"} to “${checklistStepLabel(step)}”.`
+          : "No image files were selected.",
+      );
+    } catch (error) {
+      setPhotoMessage(
+        error instanceof Error
+          ? error.message
+          : "Procedure photo could not be added.",
+      );
+    } finally {
+      setProcedurePhotoStepId("");
+      if (procedurePhotoInputRef.current) {
+        procedurePhotoInputRef.current.value = "";
+      }
     }
   }
 
@@ -2006,6 +2053,17 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </select>
                 </label>
 
+                <input
+                  ref={procedurePhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) =>
+                    void addProcedureStepPhotos(event.currentTarget.files)
+                  }
+                  style={{ display: "none" }}
+                />
+
                 {(selectedService.checklist || []).length ? (
                   <div style={{ display: "grid", gap: 8 }}>
                     {(selectedService.checklist || []).map((item: ChecklistItem) => {
@@ -2034,7 +2092,88 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                                 {value}
                               </button>
                             ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProcedurePhotoStepId(item.id);
+                                window.setTimeout(
+                                  () => procedurePhotoInputRef.current?.click(),
+                                  0,
+                                );
+                              }}
+                              style={{
+                                ...secondaryButtonStyle,
+                                width: "auto",
+                                minHeight: 30,
+                                padding: "5px 9px",
+                              }}
+                            >
+                              Add Photo
+                            </button>
                           </div>
+
+                          {(() => {
+                            const stepPhotos = (selectedService.photos || []).filter(
+                              (photo: PhotoLike) =>
+                                String(photo.name || "").startsWith(`[STEP:${item.id}]`),
+                            );
+                            if (!stepPhotos.length) return null;
+                            return (
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))",
+                                  gap: 6,
+                                  marginTop: 8,
+                                }}
+                              >
+                                {stepPhotos.map((photo: PhotoLike) => {
+                                  const source = photoSource(photo);
+                                  return (
+                                    <div
+                                      key={photo.id}
+                                      style={{
+                                        border: `1px solid ${colors.line}`,
+                                        borderRadius: 8,
+                                        padding: 4,
+                                        background: "#F8FAFC",
+                                      }}
+                                    >
+                                      {source ? (
+                                        <a href={source} target="_blank" rel="noreferrer">
+                                          <img
+                                            src={source}
+                                            alt={photo.name || "Procedure step photo"}
+                                            style={{
+                                              display: "block",
+                                              width: "100%",
+                                              aspectRatio: "1 / 1",
+                                              objectFit: "cover",
+                                              borderRadius: 6,
+                                            }}
+                                          />
+                                        </a>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        onClick={() => removePhoto(photo.id)}
+                                        style={{
+                                          ...dangerButtonStyle,
+                                          width: "100%",
+                                          marginTop: 4,
+                                          minHeight: 26,
+                                          padding: "3px 6px",
+                                          fontSize: 11,
+                                        }}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                           {(status === "Flag" || status === "Fail") ? (
                             <input
                               value={procedureStepNote[item.id] || ""}
