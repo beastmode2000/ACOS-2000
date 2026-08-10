@@ -27371,11 +27371,12 @@ ${notes.trim()}` : notes.trim(),
                       value={query}
                       onFocus={() => {
                         setCommandCenterOpen(true);
+                        setSearchOpen(false);
                       }}
                       onChange={(event) => {
                         const nextQuery = event.currentTarget.value;
                         setQuery(nextQuery);
-                        setSearchOpen(Boolean(nextQuery.trim()));
+                        setSearchOpen(false);
                         setSearchActiveIndex(0);
                       }}
                       onKeyDown={(event) => {
@@ -27411,7 +27412,7 @@ ${notes.trim()}` : notes.trim(),
                         margin: 0,
                       }}
                     />
-                    {searchOpen && query.trim() ? (
+                    {false ? (
                       <div style={searchDropStyle}>
                         {query.trim() ? (
                           <>
