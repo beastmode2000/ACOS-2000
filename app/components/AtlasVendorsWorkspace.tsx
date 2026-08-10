@@ -275,22 +275,50 @@ export default function AtlasVendorsWorkspace(props: any) {
       title="Vendors"
       isMobile={isMobile}
       drawerResetKey={selectedVendorId || "vendor-new"}
+      mobileDrawerOpen={isMobile && Boolean(selectedVendorId)}
+      onMobileDrawerClose={() => setSelectedVendorId("")}
+      mobileDrawerTitle={selectedVendor.name || "Vendor Details"}
       gridStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
           : {
-              gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)",
-              gap: 12,
+              gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)",
+              gap: 14,
               alignItems: "start",
             }
       }
       listPanelStyleOverride={
         isMobile
-          ? { minWidth: 0, overflowX: "hidden" }
-          : { minWidth: 0, padding: 10 }
+          ? { minWidth: 0, overflowX: "hidden", padding: 0 }
+          : {
+              position: "sticky",
+              top: 8,
+              height: "calc(100vh - 24px)",
+              maxHeight: "calc(100vh - 24px)",
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
+              alignSelf: "start",
+            }
       }
       drawerStyleOverride={
-        isMobile ? { minWidth: 0, overflowX: "hidden" } : { minWidth: 0 }
+        isMobile
+          ? { minWidth: 0, overflowX: "hidden" }
+          : {
+              position: "sticky",
+              top: 8,
+              height: "calc(100vh - 24px)",
+              maxHeight: "calc(100vh - 24px)",
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
+              alignSelf: "start",
+              zIndex: 2,
+            }
       }
       right={
         <button type="button" onClick={() => addVendor()} style={goldButtonStyle}>
