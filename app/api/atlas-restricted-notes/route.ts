@@ -225,12 +225,12 @@ async function readAccessRow(
   sql: ReturnType<typeof neon>,
   propertyId: string,
 ) {
-  const rows = await sql`
+  const rows = (await sql`
     SELECT property_id, pin_hash
     FROM atlas_restricted_notes_access
     WHERE property_id = ${propertyId}
     LIMIT 1
-  `;
+  `) as unknown as RestrictedAccessRow[];
 
   if (!rows.length) {
     return null;
@@ -555,7 +555,7 @@ export async function POST(
   }
 
   if (action === "list") {
-    const rows = await sql`
+    const rows = (await sql`
       SELECT
         id,
         property_id,
@@ -567,7 +567,7 @@ export async function POST(
         property_id = ${auth.propertyId}
       ORDER BY
         created_at DESC
-    `;
+    `) as unknown as RestrictedNoteRow[];
 
     return NextResponse.json({
       ok: true,
@@ -603,7 +603,7 @@ export async function POST(
         .toString(16)
         .slice(2);
 
-    const rows = await sql`
+    const rows = (await sql`
       INSERT INTO atlas_restricted_notes (
         id,
         property_id,
@@ -620,7 +620,7 @@ export async function POST(
         text,
         created_at,
         updated_at
-    `;
+    `) as unknown as RestrictedNoteRow[];
 
     return NextResponse.json({
       ok: true,
@@ -650,7 +650,7 @@ export async function POST(
       );
     }
 
-    const rows = await sql`
+    const rows = (await sql`
       UPDATE atlas_restricted_notes
       SET
         text = ${text},
@@ -664,7 +664,7 @@ export async function POST(
         text,
         created_at,
         updated_at
-    `;
+    `) as unknown as RestrictedNoteRow[];
 
     if (!rows.length) {
       return NextResponse.json(
