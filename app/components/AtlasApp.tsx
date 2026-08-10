@@ -171,6 +171,7 @@ export default function AtlasApp() {
   type RestrictedNote = { id: string; propertyId: string; text: string; createdAt: string; updatedAt: string };
   const [restrictedNotesUnlocked, setRestrictedNotesUnlocked] = useState(false);
   const [restrictedNotesPin, setRestrictedNotesPin] = useState("");
+  const [restrictedNotesSessionPin, setRestrictedNotesSessionPin] = useState("");
   const [restrictedNotes, setRestrictedNotes] = useState<RestrictedNote[]>([]);
   const [restrictedNotesDraft, setRestrictedNotesDraft] = useState("");
   const [restrictedNotesBusy, setRestrictedNotesBusy] = useState(false);
@@ -5917,6 +5918,7 @@ export default function AtlasApp() {
     setRestrictedNotesUnlocked(false);
     setRestrictedNotes([]);
     setRestrictedNotesPin("");
+    setRestrictedNotesSessionPin("");
     setRestrictedPinConfirm("");
     setRestrictedNotesError("");
     void refreshRestrictedPinStatus();
@@ -5927,6 +5929,7 @@ export default function AtlasApp() {
     const timer = window.setTimeout(() => {
       setRestrictedNotesUnlocked(false);
       setRestrictedNotesPin("");
+      setRestrictedNotesSessionPin("");
       setRestrictedNotes([]);
       setRestrictedNoteEditId("");
       setRestrictedNoteEditText("");
@@ -5940,6 +5943,7 @@ export default function AtlasApp() {
 
     setRestrictedNotesUnlocked(false);
     setRestrictedNotesPin("");
+    setRestrictedNotesSessionPin("");
     setRestrictedNotes([]);
     setRestrictedNotesDraft("");
     setRestrictedNoteEditId("");
@@ -5955,6 +5959,7 @@ export default function AtlasApp() {
 
       setRestrictedNotesUnlocked(false);
       setRestrictedNotesPin("");
+      setRestrictedNotesSessionPin("");
       setRestrictedNotes([]);
       setRestrictedNotesDraft("");
       setRestrictedNoteEditId("");
@@ -5965,6 +5970,7 @@ export default function AtlasApp() {
     const lockOnPageHide = () => {
       setRestrictedNotesUnlocked(false);
       setRestrictedNotesPin("");
+      setRestrictedNotesSessionPin("");
       setRestrictedNotes([]);
       setRestrictedNotesDraft("");
       setRestrictedNoteEditId("");
@@ -5986,7 +5992,7 @@ export default function AtlasApp() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ action, propertyId: activePropertyId, pin: restrictedNotesPin, ...extra }),
+      body: JSON.stringify({ action, propertyId: activePropertyId, pin: restrictedNotesSessionPin || restrictedNotesPin, ...extra }),
     });
     const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; configured?: boolean; notes?: RestrictedNote[]; note?: RestrictedNote };
     if (!response.ok || !payload.ok) throw new Error(payload.error || "Restricted Notes request failed.");
@@ -6029,6 +6035,8 @@ export default function AtlasApp() {
     try {
       await restrictedNotesRequest("setupPin", { newPin: pin });
       setRestrictedPinConfigured(true);
+      setRestrictedNotesSessionPin(pin);
+      setRestrictedNotesPin("");
       setRestrictedPinConfirm("");
 
       const payload = await restrictedNotesRequest("list");
@@ -6055,6 +6063,8 @@ export default function AtlasApp() {
     try {
       const payload = await restrictedNotesRequest("list");
       setRestrictedNotes(Array.isArray(payload.notes) ? payload.notes : []);
+      setRestrictedNotesSessionPin(restrictedNotesPin);
+      setRestrictedNotesPin("");
       setRestrictedNotesUnlocked(true);
     } catch (error) {
       setRestrictedNotesUnlocked(false);
@@ -6068,6 +6078,7 @@ export default function AtlasApp() {
   function lockRestrictedNotes() {
     setRestrictedNotesUnlocked(false);
     setRestrictedNotesPin("");
+    setRestrictedNotesSessionPin("");
     setRestrictedNotes([]);
     setRestrictedNotesDraft("");
     setRestrictedNoteEditId("");
