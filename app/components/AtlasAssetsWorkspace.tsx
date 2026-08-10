@@ -674,7 +674,18 @@ export default function AtlasAssetsWorkspace(props: any) {
       listPanelStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden", padding: 0 }
-          : undefined
+          : {
+              position: "sticky",
+              top: 8,
+              height: "calc(100vh - 24px)",
+              maxHeight: "calc(100vh - 24px)",
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
+              alignSelf: "start",
+            }
       }
       drawerStyleOverride={
         isMobile
