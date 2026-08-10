@@ -168,6 +168,7 @@ export default function AtlasApp() {
   const [notesSection, setNotesSection] = useState<NoteSection>("General");
   const [notesSectionFilter, setNotesSectionFilter] = useState<NoteSection | "All">("All");
   const [selectedNoteId, setSelectedNoteId] = useState("");
+  const [noteEditOriginalText, setNoteEditOriginalText] = useState("");
   const [notesSectionById, setNotesSectionById] = useState<Record<string, NoteSection>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -5866,6 +5867,7 @@ export default function AtlasApp() {
 
   function deletePermanentNote(noteId: string) {
     setTodayLogEntries((current) => current.filter((entry) => entry.id !== noteId));
+    setDashboardReminders((current) => current.filter((note) => note.id !== noteId));
     setNotesSectionById((current) => {
       const next = { ...current };
       delete next[noteId];
@@ -5892,7 +5894,6 @@ export default function AtlasApp() {
           ? {
               ...entry,
               text: value,
-              updatedAt: new Date().toISOString(),
             }
           : entry,
       ),
@@ -5900,16 +5901,25 @@ export default function AtlasApp() {
   }
 
   function savePermanentNoteEdits(noteId: string) {
+    const now = new Date().toISOString();
+    const savedText = todayLogEntries.find((entry) => entry.id === noteId)?.text || "";
     setTodayLogEntries((current) =>
-      current.map((entry) =>
-        entry.id === noteId
-          ? {
-              ...entry,
-              updatedAt: new Date().toISOString(),
-            }
-          : entry,
-      ),
+      current.map((entry) => {
+        if (entry.id !== noteId) return entry;
+        const changed = entry.text !== noteEditOriginalText;
+        return {
+          ...entry,
+          updatedAt: now,
+          history: changed
+            ? [...(entry.history || []), { text: noteEditOriginalText, savedAt: entry.updatedAt || entry.createdAt }]
+            : entry.history || [],
+        };
+      }),
     );
+    setDashboardReminders((current) =>
+      current.map((note) => note.id === noteId ? { ...note, text: savedText || note.text } : note),
+    );
+    setNoteEditOriginalText(savedText || noteEditOriginalText);
     showSaveToast("Note saved.");
   }
 
@@ -6204,7 +6214,7 @@ export default function AtlasApp() {
               <button
                 key={note.id}
                 type="button"
-                onClick={() => setSelectedNoteId(note.id)}
+                onClick={() => { setSelectedNoteId(note.id); setNoteEditOriginalText(note.text); }}
                 style={{
                   textAlign: "left",
                   border: `1px solid ${pinned ? "#E5C06B" : colors.line}`,
@@ -6330,6 +6340,20 @@ export default function AtlasApp() {
                     <button type="button" disabled={!noteAttachId} onClick={() => { attachNote(selectedNote.id, noteAttachKind, noteAttachId); setNoteAttachId(""); }} style={{ ...goldButtonStyle, opacity: noteAttachId ? 1 : .55 }}>Add Link</button>
                   </div>
                 </div>
+
+                {(selectedNote.history || []).length ? (
+                  <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 10 }}>
+                    <summary style={{ cursor: "pointer", fontWeight: 850, color: colors.navy }}>History · {(selectedNote.history || []).length}</summary>
+                    <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+                      {[...(selectedNote.history || [])].reverse().map((revision, index) => (
+                        <div key={`${revision.savedAt}-${index}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#F8FAFC" }}>
+                          <small style={mutedSmallStyle}>{new Date(revision.savedAt).toLocaleString()}</small>
+                          <div style={{ whiteSpace: "pre-wrap", marginTop: 4, lineHeight: 1.5 }}>{revision.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ) : null}
 
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                   <button
