@@ -159,6 +159,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     dashboardReminderDate,
     dashboardReminderDraft,
     dashboardReminders,
+    dashboardPinnedTaskIds,
     dashboardRoutineItems,
     dashboardTaskEditorId,
     dashboardVendorVisitId,
@@ -216,6 +217,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     setDashboardReminderDate,
     setDashboardReminderDraft,
     setDashboardReminders,
+    setDashboardPinnedTaskIds,
     setDashboardTaskEditorId,
     setDashboardVendorVisitId,
     setDashboardVendorVisitNote,
@@ -1867,7 +1869,8 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (assignee !== person) return false;
     const completedToday = meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
     const dueNow = meta.status !== "Completed" && (!meta.dueDate || meta.dueDate <= today);
-    return Boolean(completedToday || dueNow);
+    const pinnedFromDashboard = dashboardPinnedTaskIds.includes(task.id);
+    return Boolean(pinnedFromDashboard || completedToday || dueNow);
   }).sort((a, b) => {
     const aMeta = taskDetails(a.id);
     const bMeta = taskDetails(b.id);
@@ -1879,7 +1882,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   const dashboardTaskHistoryFor = (person: "Nick" | "Addison") => workPlanTasks.filter((task) => {
     const meta = taskDetails(task.id);
     const assignee = meta.assignee === "Addison" ? "Addison" : "Nick";
-    if (task.category === "Atlas List Definition" || meta.listId || assignee !== person || meta.status !== "Completed") return false;
+    if (task.category === "Atlas List Definition" || meta.listId || assignee !== person || meta.status !== "Completed" || dashboardPinnedTaskIds.includes(task.id)) return false;
     return meta.completedAt?.slice(0, 10) !== today && !meta.completionHistory?.includes(today);
   }).sort((a, b) => String(taskDetails(b.id).completedAt || "").localeCompare(String(taskDetails(a.id).completedAt || ""))).slice(0, 20);
   const dashboardTomorrow = addDays(today, 1);
@@ -1916,6 +1919,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (!title) return;
     const taskId = addAtlasTask(title);
     if (!taskId) return;
+    setDashboardPinnedTaskIds((current: string[]) => current.includes(taskId) ? current : [taskId, ...current]);
     updateTaskDetails(taskId, { assignee: "Addison", dueDate: today, status: "Open", assignmentScope: "This occurrence" });
     showSaveToast("Added to Addison’s checklist.");
   };
@@ -1931,6 +1935,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (!title) return;
     const taskId = addAtlasTask(title);
     if (!taskId) return;
+    setDashboardPinnedTaskIds((current: string[]) => current.includes(taskId) ? current : [taskId, ...current]);
     const submittedDate = localISODate(new Date());
     updateTaskDetails(taskId, { assignee: person, dueDate: submittedDate, status: "Open", assignmentScope: "This occurrence", completedAt: undefined, lastCompletedDate: "", completionHistory: [], needsReview: false });
     if (input) {
@@ -1988,6 +1993,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (kind === "task" || kind === "addison") {
       const taskId = addAtlasTask(text);
       if (!taskId) return;
+      setDashboardPinnedTaskIds((current: string[]) => current.includes(taskId) ? current : [taskId, ...current]);
       const submittedDate = localISODate(new Date());
       updateTaskDetails(taskId, { assignee: kind === "addison" ? "Addison" : "Nick", dueDate: submittedDate, status: "Open", assignmentScope: "This occurrence", completedAt: undefined, lastCompletedDate: "", completionHistory: [], needsReview: false });
       setQuickCaptureNote("");
@@ -2094,7 +2100,8 @@ export default function AtlasDashboardWorkspace(props: any) {
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => updateTaskDetails(task.id, { dueDate: addDays(today, 1), status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Move Tomorrow</button>
                           <button type="button" onClick={() => updateTaskDetails(task.id, { assignee: person === "Nick" ? "Addison" : "Nick", status: "Open" })} style={secondaryButtonStyle}>Move to {person === "Nick" ? "Addison" : "Nick"}</button>
-                          <button type="button" onClick={() => { if (window.confirm(`Delete ${task.title}?`)) { deleteAtlasTask(task.id); setDashboardTaskEditorId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+                          {dashboardPinnedTaskIds.includes(task.id) ? <button type="button" onClick={() => { setDashboardPinnedTaskIds((current: string[]) => current.filter((id) => id !== task.id)); setDashboardTaskEditorId(""); }} style={secondaryButtonStyle}>Remove from Dashboard</button> : null}
+                          <button type="button" onClick={() => { if (window.confirm(`Delete ${task.title}?`)) { deleteAtlasTask(task.id); setDashboardPinnedTaskIds((current: string[]) => current.filter((id) => id !== task.id)); setDashboardTaskEditorId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
                         </div>
                       </div>
                     ) : null}
