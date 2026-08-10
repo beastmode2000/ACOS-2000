@@ -227,6 +227,31 @@ export default function AtlasVendorsWorkspace(props: any) {
     relatedVendorWorkOrders.find((record) => record.status === "Completed") ||
     relatedVendorWorkOrders[0];
 
+  const vendorCompletedVisitCount = relatedVendorWorkOrders.reduce(
+    (count, record) =>
+      count +
+      (Array.isArray(record.serviceHistory) && record.serviceHistory.length
+        ? record.serviceHistory.length
+        : record.status === "Completed"
+          ? 1
+          : 0),
+    0,
+  );
+  const vendorOpenWorkCount = relatedVendorWorkOrders.filter(
+    (record) => record.status !== "Completed",
+  ).length;
+  const vendorOpenTaskCount = relatedVendorTasks.filter(
+    (task) => taskDetails(task.id).status !== "Completed",
+  ).length;
+  const vendorLastVisitDate = lastVendorVisit
+    ? String(
+        lastVendorVisit.serviceHistory?.[0]?.completedAt ||
+          lastVendorVisit.lastCompletedDate ||
+          lastVendorVisit.date ||
+          "",
+      ).slice(0, 10)
+    : "";
+
   const visibleVendors = filteredVendors.filter((vendor: VendorRecord) => {
     const query = vendorSearch.trim().toLowerCase();
     if (!query) return true;
@@ -571,6 +596,56 @@ export default function AtlasVendorsWorkspace(props: any) {
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
+                  <div style={eyebrowStyle}>Vendor Snapshot</div>
+                  <strong>Service relationship</strong>
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "repeat(2, minmax(0, 1fr))"
+                    : "repeat(5, minmax(0, 1fr))",
+                  gap: 8,
+                }}
+              >
+                {[
+                  ["Last visit", vendorLastVisitDate ? formatDate(vendorLastVisitDate) : "None"],
+                  ["Completed visits", vendorCompletedVisitCount],
+                  ["Open work", vendorOpenWorkCount],
+                  ["Linked assets", relatedVendorAssets.length],
+                  ["Open tasks", vendorOpenTaskCount],
+                ].map(([label, value]) => (
+                  <div
+                    key={String(label)}
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 9,
+                      padding: "8px 9px",
+                      background: "#FFFFFF",
+                      minWidth: 0,
+                    }}
+                  >
+                    <small style={mutedSmallStyle}>{label}</small>
+                    <strong
+                      style={{
+                        display: "block",
+                        marginTop: 3,
+                        color: colors.navy,
+                        fontSize: 15,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {value}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section style={detailSectionStyle}>
+              <div style={detailSectionHeaderStyle}>
+                <div>
                   <div style={eyebrowStyle}>Photos</div>
                   <strong>{selectedVendorPhotos.length} attached</strong>
                 </div>
@@ -638,38 +713,168 @@ export default function AtlasVendorsWorkspace(props: any) {
             </section>
 
             <section style={detailSectionStyle}>
-              <div style={eyebrowStyle}>Service & Visit History</div>
+              <div style={detailSectionHeaderStyle}>
+                <div>
+                  <div style={eyebrowStyle}>Service & Visit History</div>
+                  <strong>{vendorCompletedVisitCount} completed visit{vendorCompletedVisitCount === 1 ? "" : "s"}</strong>
+                </div>
+              </div>
               {relatedVendorWorkOrders.length ? (
-                <div style={compactLinkedListStyle}>
-                  {relatedVendorWorkOrders.map((record) => (
-                    <button
-                      key={record.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedServiceId(record.id);
-                        setScreen("history");
-                      }}
-                      style={compactLinkedRowStyle}
-                    >
-                      <span>
-                        <strong>{record.title}</strong>
-                        <small style={mutedSmallStyle}>
-                          {formatDate(record.date)}
-                          {record.assetId
-                            ? ` · ${assetName(record.assetId)}`
-                            : ""}
-                        </small>
-                        {(record.serviceHistory || []).map((entry) => (
-                          <small key={entry.id} style={mutedSmallStyle}>
-                            Visit {formatDate(entry.completedAt.slice(0, 10))}
-                          </small>
-                        ))}
-                      </span>
-                      <span style={badgeStyle(record.status)}>
-                        {record.status}
-                      </span>
-                    </button>
-                  ))}
+                <div style={{ display: "grid", gap: 8 }}>
+                  {relatedVendorWorkOrders.map((record) => {
+                    const completedEntries = Array.isArray(record.serviceHistory)
+                      ? record.serviceHistory
+                      : [];
+                    const latestCompletion = completedEntries[0];
+                    const checklist = Array.isArray(latestCompletion?.checklist)
+                      ? latestCompletion.checklist
+                      : Array.isArray(record.checklist)
+                        ? record.checklist
+                        : [];
+                    const passCount = checklist.filter(
+                      (item: any) =>
+                        item.completed === true ||
+                        /^\[PASS\]/i.test(String(item.text || "")),
+                    ).length;
+                    const flagCount = checklist.filter((item: any) =>
+                      /^\[FLAG\]/i.test(String(item.text || "")),
+                    ).length;
+                    const failCount = checklist.filter((item: any) =>
+                      /^\[FAIL\]/i.test(String(item.text || "")),
+                    ).length;
+                    const photos = Array.isArray(latestCompletion?.photos)
+                      ? latestCompletion.photos
+                      : Array.isArray(record.photos)
+                        ? record.photos
+                        : [];
+                    const documents = Array.isArray(latestCompletion?.documents)
+                      ? latestCompletion.documents
+                      : Array.isArray(record.documents)
+                        ? record.documents
+                        : [];
+                    const serviceDate = String(
+                      latestCompletion?.completedAt ||
+                        record.lastCompletedDate ||
+                        record.date ||
+                        "",
+                    ).slice(0, 10);
+                    const serviceNotes = String(
+                      latestCompletion?.notes || record.notes || "",
+                    ).trim();
+
+                    return (
+                      <div
+                        key={record.id}
+                        style={{
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 10,
+                          padding: 9,
+                          background: "#FFFFFF",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedServiceId(record.id);
+                            setScreen("history");
+                          }}
+                          style={{
+                            ...compactLinkedRowStyle,
+                            width: "100%",
+                            border: 0,
+                            padding: 0,
+                            background: "transparent",
+                          }}
+                        >
+                          <span>
+                            <strong>{record.title}</strong>
+                            <small style={mutedSmallStyle}>
+                              {serviceDate ? formatDate(serviceDate) : "No service date"}
+                              {record.assetId
+                                ? ` · ${assetName(record.assetId)}`
+                                : ""}
+                            </small>
+                          </span>
+                          <span style={badgeStyle(record.status)}>
+                            {record.status}
+                          </span>
+                        </button>
+
+                        {checklist.length || photos.length || documents.length || serviceNotes ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 6,
+                              marginTop: 7,
+                            }}
+                          >
+                            {checklist.length ? (
+                              <span style={mutedSmallStyle}>
+                                {passCount}/{checklist.length} passed
+                                {flagCount ? ` · ${flagCount} flagged` : ""}
+                                {failCount ? ` · ${failCount} failed` : ""}
+                              </span>
+                            ) : null}
+                            {photos.length ? (
+                              <span style={mutedSmallStyle}>
+                                {photos.length} photo{photos.length === 1 ? "" : "s"}
+                              </span>
+                            ) : null}
+                            {documents.length ? (
+                              <span style={mutedSmallStyle}>
+                                {documents.length} document{documents.length === 1 ? "" : "s"}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {serviceNotes ? (
+                          <p
+                            style={{
+                              ...mutedSmallStyle,
+                              marginTop: 6,
+                              marginBottom: 0,
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            {serviceNotes}
+                          </p>
+                        ) : null}
+
+                        {completedEntries.length > 1 ? (
+                          <details style={{ marginTop: 7 }}>
+                            <summary
+                              style={{
+                                cursor: "pointer",
+                                color: colors.navy,
+                                fontSize: 12,
+                                fontWeight: 800,
+                              }}
+                            >
+                              Previous visits ({completedEntries.length - 1})
+                            </summary>
+                            <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
+                              {completedEntries.slice(1).map((entry: any) => (
+                                <div
+                                  key={entry.id}
+                                  style={{
+                                    ...mutedSmallStyle,
+                                    padding: "5px 7px",
+                                    borderRadius: 7,
+                                    background: "#F8FAFC",
+                                  }}
+                                >
+                                  {formatDate(String(entry.completedAt || "").slice(0, 10))}
+                                  {entry.notes ? ` · ${String(entry.notes)}` : ""}
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <p style={mutedSmallStyle}>
