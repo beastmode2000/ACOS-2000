@@ -165,6 +165,7 @@ export default function AtlasApp() {
   const [notesDraft, setNotesDraft] = useState("");
   const [notesSearch, setNotesSearch] = useState("");
   const [notesListening, setNotesListening] = useState(false);
+  const [mobileNotesMoreOpen, setMobileNotesMoreOpen] = useState(false);
   const [notesSection, setNotesSection] = useState<NoteSection>("General");
   const [notesSectionFilter, setNotesSectionFilter] = useState<NoteSection | "All">("All");
   const [selectedNoteId, setSelectedNoteId] = useState("");
@@ -6192,6 +6193,25 @@ export default function AtlasApp() {
           detail="A simple property notepad for things you want to remember."
         />
 
+        {isMobile ? (
+          <button
+            type="button"
+            onClick={() => setMobileNotesMoreOpen((current) => !current)}
+            aria-expanded={mobileNotesMoreOpen}
+            style={{
+              ...secondaryButtonStyle,
+              width: "100%",
+              minHeight: 42,
+              justifyContent: "space-between",
+              padding: "8px 11px",
+            }}
+          >
+            <span>Restricted Notes</span>
+            <span>{mobileNotesMoreOpen ? "Hide" : "Open"}</span>
+          </button>
+        ) : null}
+
+        {(!isMobile || mobileNotesMoreOpen) ? (
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, borderColor: restrictedNotesUnlocked ? "#D7B45D" : colors.line }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div>
@@ -6390,6 +6410,7 @@ export default function AtlasApp() {
           )}
           {restrictedNotesError ? <div style={{ marginTop: 10, color: colors.red, fontSize: 12, fontWeight: 800 }}>{restrictedNotesError}</div> : null}
         </section>
+        ) : null}
 
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 180px", gap: 10 }}>
@@ -6453,6 +6474,18 @@ export default function AtlasApp() {
           </div>
         </section>
 
+        {isMobile ? (
+          <button
+            type="button"
+            onClick={() => setMobileNotesMoreOpen((current) => !current)}
+            aria-expanded={mobileNotesMoreOpen}
+            style={{ ...secondaryButtonStyle, width: "100%", minHeight: 40 }}
+          >
+            {mobileNotesMoreOpen ? "Hide Search & Filters" : "Search / Filters / Restricted"}
+          </button>
+        ) : null}
+
+        {(!isMobile || mobileNotesMoreOpen) ? (
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "180px minmax(0,1fr)", gap: 8 }}>
             <select
@@ -6471,6 +6504,7 @@ export default function AtlasApp() {
             />
           </div>
         </section>
+        ) : null}
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
           {notes.map((note) => {
