@@ -278,6 +278,8 @@ export default function AtlasDashboardWorkspace(props: any) {
     workPlanTargetHours,
     workPlanTasks
   } = props;
+  const [dashboardRoutinePerson, setDashboardRoutinePerson] = useState<"Nick" | "Addison">("Nick");
+
   const teamSectionStyle: React.CSSProperties = {
     width: "100%",
     minWidth: 0,
@@ -2118,7 +2120,70 @@ export default function AtlasDashboardWorkspace(props: any) {
         </div>
       </section>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
-        <AtlasRoutines mode="dashboard" isMobile={isMobile} activePropertyId={activePropertyId} onOpenManager={() => setScreen("routines")} onAddPhoto={addRoutinePhoto} onAddNote={addRoutineNote} onFlagProblem={flagRoutineProblem} onAssignmentChange={syncRoutineAssignment} />
+        <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+              padding: "0 2px",
+            }}
+          >
+            <div>
+              <div style={eyebrowStyle}>Routine View</div>
+              <strong style={{ color: colors.navy }}>
+                {dashboardRoutinePerson === "Nick" ? "My Routine" : "Addison’s Routine"}
+              </strong>
+            </div>
+            <div
+              role="group"
+              aria-label="Routine person"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 4,
+                padding: 4,
+                border: `1px solid ${colors.line}`,
+                borderRadius: 11,
+                background: "#F8FAFC",
+              }}
+            >
+              {(["Nick", "Addison"] as const).map((person) => (
+                <button
+                  key={person}
+                  type="button"
+                  onClick={() => setDashboardRoutinePerson(person)}
+                  style={{
+                    ...(dashboardRoutinePerson === person
+                      ? goldButtonStyle
+                      : secondaryButtonStyle),
+                    minHeight: 32,
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {person === "Nick" ? "My Routine" : "Addison"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <AtlasRoutines
+            mode="dashboard"
+            isMobile={isMobile}
+            activePropertyId={activePropertyId}
+            assigneeFilter={dashboardRoutinePerson}
+            defaultTodayAssignee={dashboardRoutinePerson}
+            onOpenManager={() => setScreen("routines")}
+            onAddPhoto={addRoutinePhoto}
+            onAddNote={addRoutineNote}
+            onFlagProblem={flagRoutineProblem}
+            onAssignmentChange={syncRoutineAssignment}
+          />
+        </div>
         <div style={{ display: "grid", gap: 12 }}>
           <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => openDashboardCalendarItem(event)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
           <section style={{ ...cardStyle, padding: 11 }}>
