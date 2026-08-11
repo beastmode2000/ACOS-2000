@@ -2052,6 +2052,76 @@ export default function AtlasAssetsWorkspace(props: any) {
               </div>
             </div>
 
+            <section
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: "#F8FAFC",
+                padding: 10,
+                marginBottom: 10,
+              }}
+              aria-label="Asset relationships"
+            >
+              <div style={{ ...assetInfoLabelStyle, marginBottom: 7 }}>LINKED RECORDS</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "repeat(3,minmax(0,1fr))"
+                    : "repeat(6,minmax(0,1fr))",
+                  gap: 6,
+                }}
+              >
+                {[
+                  ["Work", openAssetWorkOrders.length],
+                  ["Vendors", selectedVendors.length],
+                  ["Photos", selectedAssetPhotos.length],
+                  ["Documents", linkedAssetDocuments.length],
+                  ["History", assetHistory.length],
+                  ["Locations", assetLocationIds(selectedAsset).length],
+                ].map(([label, count]) => (
+                  <button
+                    key={String(label)}
+                    type="button"
+                    onClick={() => {
+                      if (label === "Work") setAssetPanelSection("work");
+                      else if (label === "Photos") setAssetPanelSection("photos");
+                      else if (label === "Documents") setAssetPanelSection("documents");
+                      else if (label === "History") setAssetPanelSection("history");
+                      else if (label === "Vendors") setScreen("vendors");
+                      else if (label === "Locations") setScreen("locations");
+                    }}
+                    style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: "7px 6px", textAlign: "center", cursor: "pointer" }}
+                  >
+                    <span style={{ ...assetCardHintStyle, display: "block" }}>{label}</span>
+                    <strong style={{ display: "block", marginTop: 2, color: colors.navy, fontSize: 15 }}>{count}</strong>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {assetHistory.length ? (
+              <section
+                style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, marginBottom: 10 }}
+                aria-label="Asset recent activity"
+              >
+                <div style={{ ...assetInfoLabelStyle, marginBottom: 7 }}>RECENT ACTIVITY</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {assetHistory.slice(0, 3).map((entry: any, index: number) => (
+                    <div key={String(entry?.id || entry?.date || index)} style={{ borderLeft: `3px solid ${colors.gold}`, paddingLeft: 8 }}>
+                      <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
+                        {entry?.title || entry?.type || "Asset activity"}
+                      </strong>
+                      <span style={assetCardHintStyle}>
+                        {entry?.date ? formatDate(entry.date) : "Date not recorded"}
+                        {entry?.notes ? ` · ${entry.notes}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
             <div
               style={{
                 marginBottom: isMobile ? 10 : 12,
