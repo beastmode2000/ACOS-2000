@@ -3866,9 +3866,10 @@ export default function AtlasApp() {
 
         const property = sections.find((section) => section.label === "Property");
         if (property) {
+          const existingPropertyItems = property.items as AtlasScreen[];
           property.items = Array.from(
-            new Set([
-              ...property.items.filter(
+            new Set<AtlasScreen>([
+              ...existingPropertyItems.filter(
                 (item) => item !== "timeline" && item !== "portfolio",
               ),
               "timeline",
