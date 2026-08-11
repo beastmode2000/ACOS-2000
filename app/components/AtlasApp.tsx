@@ -1135,11 +1135,16 @@ export default function AtlasApp() {
           "vendor",
           "viewer",
         ];
-        const role: AtlasCurrentUser["role"] = validRoles.includes(
+        let role: AtlasCurrentUser["role"] = validRoles.includes(
           rawRole as AtlasCurrentUser["role"],
         )
           ? (rawRole as AtlasCurrentUser["role"])
           : "viewer";
+
+        // HARD FIELD ISOLATION: once this device is bound with ?field=addison,
+        // never allow the shared/master login to resolve back to Nick's UI.
+        const isAddisonFieldDevice = deviceFieldIdentity === "addison";
+        if (isAddisonFieldDevice) role = "employee";
 
         const memberPropertyIds = Array.isArray(matchedMember?.propertyIds)
           ? matchedMember.propertyIds.map((propertyId: unknown) => String(propertyId))
@@ -1174,21 +1179,25 @@ export default function AtlasApp() {
 
         setCurrentAtlasUser({
           id: String(matchedMember?.id || payload?.currentUser?.id || ""),
-          name: String(
-            matchedMember?.name ||
-              payload?.currentUser?.name ||
-              currentEmail ||
-              "Atlas User",
-          ),
+          name: isAddisonFieldDevice
+            ? "Addison"
+            : String(
+                matchedMember?.name ||
+                  payload?.currentUser?.name ||
+                  currentEmail ||
+                  "Atlas User",
+              ),
           email: currentEmail,
           role,
-          propertyIds: allowed,
-          permissions: memberPermissions || sessionPermissions,
-          accessProfiles: memberAccessProfiles.length
-            ? memberAccessProfiles
-            : sessionAccessProfiles,
+          propertyIds: isAddisonFieldDevice ? ["2000"] : allowed,
+          permissions: isAddisonFieldDevice ? {} : (memberPermissions || sessionPermissions),
+          accessProfiles: isAddisonFieldDevice
+            ? ["addison", "daily-routines"]
+            : memberAccessProfiles.length
+              ? memberAccessProfiles
+              : sessionAccessProfiles,
         });
-        setAllowedPropertyIds(allowed);
+        setAllowedPropertyIds(isAddisonFieldDevice ? ["2000"] : allowed);
 
         const isRestrictedRole = ["employee", "vendor", "viewer"].includes(role);
         if (isRestrictedRole) {
