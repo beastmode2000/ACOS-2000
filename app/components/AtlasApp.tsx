@@ -16967,7 +16967,7 @@ ${notes.trim()}` : notes.trim(),
         ) : null}
 
         <AtlasRoutines
-          mode={isAddisonUser ? "addison" : "manager"}
+          mode={isAddisonUser ? "dashboard" : "manager"}
           isMobile={isMobile}
           activePropertyId={activePropertyId}
           teamDirectory={teamDirectory}
