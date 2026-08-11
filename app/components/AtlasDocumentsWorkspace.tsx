@@ -374,25 +374,34 @@ export default function AtlasDocumentsWorkspace(props: any) {
                   : ""}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(3,minmax(0,1fr))"
+                  : "auto auto auto",
+                gap: 7,
+                width: isMobile ? "100%" : "auto",
+              }}
+            >
               <button
                 type="button"
                 onClick={() => setSelectedDocumentId("")}
-                style={compactButton}
+                style={{ ...compactButton, minHeight: 40 }}
               >
                 Back
               </button>
               <button
                 type="button"
                 onClick={() => setEditOpen((current) => !current)}
-                style={compactButton}
+                style={{ ...compactButton, minHeight: 40 }}
               >
-                {editOpen ? "Done Editing" : "Edit"}
+                {editOpen ? "Done" : "Edit"}
               </button>
               <button
                 type="button"
                 onClick={() => void saveSelectedDocument()}
-                style={goldButtonStyle}
+                style={{ ...goldButtonStyle, minHeight: 40 }}
               >
                 Save
               </button>
@@ -725,18 +734,25 @@ export default function AtlasDocumentsWorkspace(props: any) {
               Find plans, records, manuals, service files, photos and property documents.
             </div>
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr 1fr" : "auto auto",
+              gap: 7,
+              width: isMobile ? "100%" : "auto",
+            }}
+          >
             <button
               type="button"
               onClick={openBlueprint}
-              style={compactButton}
+              style={{ ...compactButton, minHeight: 40 }}
             >
               As-Builts
             </button>
             <button
               type="button"
               onClick={createDocument}
-              style={goldButtonStyle}
+              style={{ ...goldButtonStyle, minHeight: 40 }}
             >
               + Document
             </button>
@@ -818,7 +834,7 @@ export default function AtlasDocumentsWorkspace(props: any) {
           style={{
             display: "grid",
             gridTemplateColumns: isMobile
-              ? "1fr 1fr"
+              ? "1fr"
               : "repeat(3,minmax(0,1fr)) auto",
             gap: 7,
             marginTop: 8,
