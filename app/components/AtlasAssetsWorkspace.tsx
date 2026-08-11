@@ -131,6 +131,7 @@ import type {
 
 
 export default function AtlasAssetsWorkspace(props: any) {
+  const [mobileFieldDetailsOpen, setMobileFieldDetailsOpen] = useState(false);
   const {
     addAsset,
     addAssetPhotoFiles,
@@ -349,6 +350,10 @@ export default function AtlasAssetsWorkspace(props: any) {
       })[0] ||
     selectedAssetPhotos[0];
   const selectedAssetCoverSource = photoSource(selectedAssetCoverPhoto);
+  useEffect(() => {
+    setMobileFieldDetailsOpen(false);
+  }, [selectedAssetId]);
+
   const normalizedAssetSearch = assetListSearch.trim().toLowerCase();
   const favoriteAssets = favoriteAssetIds
     .map((id) => assetSourceRecords.find((asset) => asset.id === id))
@@ -2021,25 +2026,29 @@ export default function AtlasAssetsWorkspace(props: any) {
                 >
                   Create Work Order
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setAssetPanelCustomizeOpen((current) => !current)}
-                  style={{
-                    ...assetActionButtonStyle,
-                    borderColor: assetPanelCustomizeOpen ? colors.gold : colors.line,
-                    background: assetPanelCustomizeOpen ? "#FFF8E6" : "#FFFFFF",
-                  }}
-                  aria-expanded={assetPanelCustomizeOpen}
-                >
-                  Customize
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void deleteAssetRecord(selectedAsset)}
-                  style={{ ...dangerButtonStyle, width: "auto" }}
-                >
-                  Delete Asset
-                </button>
+                {(!isMobile || mobileFieldDetailsOpen) ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setAssetPanelCustomizeOpen((current) => !current)}
+                      style={{
+                        ...assetActionButtonStyle,
+                        borderColor: assetPanelCustomizeOpen ? colors.gold : colors.line,
+                        background: assetPanelCustomizeOpen ? "#FFF8E6" : "#FFFFFF",
+                      }}
+                      aria-expanded={assetPanelCustomizeOpen}
+                    >
+                      Customize
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteAssetRecord(selectedAsset)}
+                      style={{ ...dangerButtonStyle, width: "auto" }}
+                    >
+                      Delete Asset
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
 
@@ -2055,27 +2064,78 @@ export default function AtlasAssetsWorkspace(props: any) {
               }}
             >
               {isMobile ? (
-                <select
-                  value={assetPanelSection}
-                  onChange={(event) =>
-                    setAssetPanelSection(event.target.value as typeof assetPanelSection)
-                  }
-                  style={{
-                    ...assetSortSelectStyle,
-                    width: "100%",
-                    minHeight: 42,
-                    fontSize: 13,
-                  }}
-                  aria-label="Asset information section"
-                >
-                  <option value="overview">Overview</option>
-                  <option value="work">Work Orders ({openAssetWorkOrders.length})</option>
-                  <option value="history">Service History ({assetHistory.length})</option>
-                  <option value="photos">Photos ({selectedAssetPhotos.length})</option>
-                  <option value="documents">Documents ({linkedAssetDocuments.length})</option>
-                  <option value="procedures">Procedures ({linkedAssetProcedures.length})</option>
-                  <option value="notes">Notes</option>
-                </select>
+                <div style={{ display: "grid", gap: 7 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                      gap: 5,
+                    }}
+                  >
+                    {[
+                      ["overview", "Overview"],
+                      ["work", `Work ${openAssetWorkOrders.length || ""}`.trim()],
+                      ["photos", `Photos ${selectedAssetPhotos.length || ""}`.trim()],
+                      ["notes", "Notes"],
+                    ].map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() =>
+                          setAssetPanelSection(key as typeof assetPanelSection)
+                        }
+                        style={{
+                          ...assetTinyButtonStyle,
+                          minHeight: 40,
+                          padding: "6px 4px",
+                          borderColor:
+                            assetPanelSection === key ? colors.gold : colors.line,
+                          background:
+                            assetPanelSection === key ? "#FFF8E6" : "#FFFFFF",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMobileFieldDetailsOpen((current) => !current)
+                    }
+                    aria-expanded={mobileFieldDetailsOpen}
+                    style={{
+                      ...assetTinyButtonStyle,
+                      minHeight: 38,
+                      width: "100%",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {mobileFieldDetailsOpen ? "Hide More Details" : "More Details"}
+                  </button>
+                  {mobileFieldDetailsOpen ? (
+                    <select
+                      value={assetPanelSection}
+                      onChange={(event) =>
+                        setAssetPanelSection(
+                          event.target.value as typeof assetPanelSection,
+                        )
+                      }
+                      style={{
+                        ...assetSortSelectStyle,
+                        width: "100%",
+                        minHeight: 40,
+                        fontSize: 12,
+                      }}
+                      aria-label="More asset information"
+                    >
+                      <option value="overview">Overview</option>
+                      <option value="history">Service History ({assetHistory.length})</option>
+                      <option value="documents">Documents ({linkedAssetDocuments.length})</option>
+                      <option value="procedures">Procedures ({linkedAssetProcedures.length})</option>
+                    </select>
+                  ) : null}
+                </div>
               ) : (
                 <div
                   role="tablist"
@@ -2126,7 +2186,7 @@ export default function AtlasAssetsWorkspace(props: any) {
               )}
             </div>
 
-            {assetPanelCustomizeOpen && assetPanelSection === "overview" ? (
+            {assetPanelCustomizeOpen && assetPanelSection === "overview" && (!isMobile || mobileFieldDetailsOpen) ? (
               <section
                 style={{
                   border: `1px solid ${colors.gold}`,
@@ -2299,7 +2359,10 @@ export default function AtlasAssetsWorkspace(props: any) {
             <section
               style={{
                 ...assetCardStyle,
-                display: assetPanelSection === "overview" ? "block" : "none",
+                display:
+                  assetPanelSection === "overview" && (!isMobile || mobileFieldDetailsOpen)
+                    ? "block"
+                    : "none",
                 marginBottom: 12,
                 background: "#FFFFFF",
                 borderLeft: `4px solid ${assetAttentionItems.length ? "#D92D20" : colors.gold}`,
@@ -2619,7 +2682,11 @@ export default function AtlasAssetsWorkspace(props: any) {
               >
                 <div
                   style={{
-                    display: assetVisibleSections.linkedRecords === false ? "none" : "block",
+                    display:
+                      assetVisibleSections.linkedRecords === false ||
+                      (isMobile && !mobileFieldDetailsOpen)
+                        ? "none"
+                        : "block",
                     border: `1px solid ${colors.line}`,
                     borderRadius: 12,
                     background: "#FFFFFF",
