@@ -16358,12 +16358,18 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderWorkPlanner() {
+    const visibleWorkPlanTasks = isAddisonUser
+      ? workPlanTasks.filter((task) =>
+          String(taskDetails(task.id).assignee || "").trim().toLowerCase() === "addison"
+        )
+      : workPlanTasks;
+
     return (
       <AtlasTasks
         ctx={{
           todayISO,
           addDays,
-          workPlanTasks,
+          workPlanTasks: visibleWorkPlanTasks,
           taskDetails,
           isAddisonUser,
           taskSearch,
