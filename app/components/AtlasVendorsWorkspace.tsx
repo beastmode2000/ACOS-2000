@@ -363,8 +363,6 @@ export default function AtlasVendorsWorkspace(props: any) {
             </div>
           </div>
           {visibleVendors.map((vendor) => {
-            const logo = vendorLogoFor(vendor.id);
-            const logoSrc = logo?.dataUrl || logo?.url || "";
             return (
               <button
                 key={vendor.id}
@@ -384,18 +382,7 @@ export default function AtlasVendorsWorkspace(props: any) {
                   boxShadow: "none",
                 }}
               >
-                <div style={recordListIdentityStyle}>
-                  <div style={vendorLogoThumbStyle}>
-                    {logoSrc ? (
-                      <img
-                        src={logoSrc}
-                        alt={`${vendor.name} logo`}
-                        style={vendorLogoImageStyle}
-                      />
-                    ) : (
-                      <span>{vendor.name.slice(0, 2).toUpperCase()}</span>
-                    )}
-                  </div>
+                <div style={{ ...recordListIdentityStyle, gridTemplateColumns: "1fr" }}>
                   <div>
                     <strong>{vendor.name}</strong>
                     <p style={mutedSmallStyle}>{vendor.category}</p>
@@ -428,22 +415,11 @@ export default function AtlasVendorsWorkspace(props: any) {
                 selectedVendor.id,
                 selectedVendor.name,
                 files,
-                selectedVendorLogo ? "Photo" : "Vendor Logo",
+                "Photo",
               );
             }}
           >
             <div style={vendorDetailHeaderStyle}>
-              <div style={vendorLogoLargeStyle}>
-                {selectedVendorLogo?.dataUrl || selectedVendorLogo?.url ? (
-                  <img
-                    src={selectedVendorLogo.dataUrl || selectedVendorLogo.url}
-                    alt={`${selectedVendor.name} logo`}
-                    style={vendorLogoImageStyle}
-                  />
-                ) : (
-                  <span>{selectedVendor.name.slice(0, 2).toUpperCase()}</span>
-                )}
-              </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <h3 style={editorHeaderStyle}>
                   {selectedVendor.name.trim() || "Vendor"}
