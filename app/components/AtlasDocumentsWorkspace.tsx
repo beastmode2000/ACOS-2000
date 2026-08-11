@@ -2,7 +2,8 @@
 
 import React, { useMemo, useState } from "react";
 import type { DocumentRecord, IntakeTargetKind } from "../lib/atlas-types";
-import { colors, formatDate } from "./AtlasAppFoundation";
+import { colors } from "../lib/atlas-page-config";
+import { formatDate } from "./AtlasAppFoundation";
 
 export default function AtlasDocumentsWorkspace(props: any) {
   const {
