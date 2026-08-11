@@ -131,6 +131,7 @@ import type {
 
 
 export default function AtlasLocationsWorkspace(props: any) {
+  const [mobileFieldDetailsOpen, setMobileFieldDetailsOpen] = useState(false);
   const {
     addAsset,
     addLinkedPhotoFiles,
@@ -515,6 +516,10 @@ export default function AtlasLocationsWorkspace(props: any) {
       Boolean(location.parentId) &&
       !locations.some((item) => item.id === location.parentId),
   ).length;
+  useEffect(() => {
+    setMobileFieldDetailsOpen(false);
+  }, [selectedLocationId]);
+
   const selectedLocationPath = (() => {
     if (!selectedLocation.id) return [] as AtlasLocationRecord[];
     const path: AtlasLocationRecord[] = [];
@@ -1361,13 +1366,15 @@ export default function AtlasLocationsWorkspace(props: any) {
                     gap: 7,
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => addSubLocation(selectedLocation.id)}
-                    style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : undefined }}
-                  >
-                    + Sub-location
-                  </button>
+                  {(!isMobile || mobileFieldDetailsOpen) ? (
+                    <button
+                      type="button"
+                      onClick={() => addSubLocation(selectedLocation.id)}
+                      style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : undefined }}
+                    >
+                      + Sub-location
+                    </button>
+                  ) : null}
                   {locationEditorOpen ? (
                     <button
                       type="button"
@@ -1385,7 +1392,7 @@ export default function AtlasLocationsWorkspace(props: any) {
                       Edit
                     </button>
                   )}
-                  {locationEditorOpen ? (
+                  {locationEditorOpen && (!isMobile || mobileFieldDetailsOpen) ? (
                     <button
                       type="button"
                       onClick={() => void deleteSelectedLocation()}
@@ -1426,7 +1433,69 @@ export default function AtlasLocationsWorkspace(props: any) {
                 </div>
               </div>
 
-              {locationLooksLikeAsset(selectedLocation) ? (
+              {isMobile ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                    gap: 6,
+                    marginTop: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const firstOpen = locationWorkOrders.find(
+                        (record) => record.status !== "Completed",
+                      );
+                      if (firstOpen) setSelectedServiceId(firstOpen.id);
+                      setScreen("history");
+                    }}
+                    style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px" }}
+                  >
+                    Work
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById(`location-photos-${selectedLocation.id}`)
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
+                    style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px" }}
+                  >
+                    Photos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById(`location-assets-${selectedLocation.id}`)
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
+                    style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px" }}
+                  >
+                    Assets
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFieldDetailsOpen((current) => !current)}
+                    aria-expanded={mobileFieldDetailsOpen}
+                    style={{
+                      ...secondaryButtonStyle,
+                      minHeight: 42,
+                      padding: "7px 4px",
+                      borderColor: mobileFieldDetailsOpen ? colors.gold : colors.line,
+                      background: mobileFieldDetailsOpen ? "#FFF8E6" : "#FFFFFF",
+                    }}
+                  >
+                    {mobileFieldDetailsOpen ? "Less" : "More"}
+                  </button>
+                </div>
+              ) : null}
+
+              {locationLooksLikeAsset(selectedLocation) && (!isMobile || mobileFieldDetailsOpen) ? (
                 <section
                   style={{
                     marginTop: 12,
@@ -1676,7 +1745,10 @@ export default function AtlasLocationsWorkspace(props: any) {
               )}
             </div>
 
-            <section style={detailSectionStyle}>
+            <section
+              id={`location-photos-${selectedLocation.id}`}
+              style={{ ...detailSectionStyle, scrollMarginTop: 72 }}
+            >
               <div style={detailSectionHeaderStyle}>
                 <div>
                   <div style={eyebrowStyle}>Photos</div>
@@ -1811,7 +1883,10 @@ export default function AtlasLocationsWorkspace(props: any) {
               {locationTasks.length ? <div style={compactLinkedListStyle}>{locationTasks.slice(0, 12).map((task) => <button key={`location-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></span><span style={badgeStyle(taskDetails(task.id).status)}>{taskDetails(task.id).status}</span></button>)}</div> : <p style={mutedSmallStyle}>No Tasks are linked to this location.</p>}
             </section>
 
-            <section style={detailSectionStyle}>
+            <section
+              id={`location-assets-${selectedLocation.id}`}
+              style={{ ...detailSectionStyle, scrollMarginTop: 72 }}
+            >
               <div style={detailSectionHeaderStyle}>
                 <div>
                   <div style={eyebrowStyle}>Assets Assigned Here</div>
@@ -1917,6 +1992,8 @@ export default function AtlasLocationsWorkspace(props: any) {
               )}
             </section>
 
+            {(!isMobile || mobileFieldDetailsOpen) ? (
+            <>
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
@@ -1972,6 +2049,8 @@ export default function AtlasLocationsWorkspace(props: any) {
             </section>
 
             {renderLinkedDocuments("Location", selectedLocation.id)}
+            </>
+            ) : null}
           </div>
         ) : (
           <div style={noticeStyle}>
