@@ -133,6 +133,7 @@ import type {
 
 
 export default function AtlasVendorsWorkspace(props: any) {
+  const [mobileFieldDetailsOpen, setMobileFieldDetailsOpen] = React.useState(false);
   const [vendorSearch, setVendorSearch] = React.useState("");
   const {
     addLinkedPhotoFiles,
@@ -191,6 +192,10 @@ export default function AtlasVendorsWorkspace(props: any) {
   const selectedVendorLogo = selectedVendor.id
     ? vendorLogoFor(selectedVendor.id)
     : undefined;
+  React.useEffect(() => {
+    setMobileFieldDetailsOpen(false);
+  }, [selectedVendorId]);
+
   const selectedVendorPhotos = selectedVendor.id
     ? linkedImageFilesFor("Vendor", selectedVendor.id)
     : [];
@@ -275,50 +280,22 @@ export default function AtlasVendorsWorkspace(props: any) {
       title="Vendors"
       isMobile={isMobile}
       drawerResetKey={selectedVendorId || "vendor-new"}
-      mobileDrawerOpen={isMobile && Boolean(selectedVendorId)}
-      onMobileDrawerClose={() => setSelectedVendorId("")}
-      mobileDrawerTitle={selectedVendor.name || "Vendor Details"}
       gridStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
           : {
-              gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)",
-              gap: 14,
+              gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)",
+              gap: 12,
               alignItems: "start",
             }
       }
       listPanelStyleOverride={
         isMobile
-          ? { minWidth: 0, overflowX: "hidden", padding: 0 }
-          : {
-              position: "sticky",
-              top: 8,
-              height: "calc(100vh - 24px)",
-              maxHeight: "calc(100vh - 24px)",
-              minHeight: 0,
-              overflowY: "auto",
-              overflowX: "hidden",
-              overscrollBehavior: "contain",
-              scrollbarGutter: "stable",
-              alignSelf: "start",
-            }
+          ? { minWidth: 0, overflowX: "hidden" }
+          : { minWidth: 0, padding: 10 }
       }
       drawerStyleOverride={
-        isMobile
-          ? { minWidth: 0, overflowX: "hidden" }
-          : {
-              position: "sticky",
-              top: 8,
-              height: "calc(100vh - 24px)",
-              maxHeight: "calc(100vh - 24px)",
-              minHeight: 0,
-              overflowY: "auto",
-              overflowX: "hidden",
-              overscrollBehavior: "contain",
-              scrollbarGutter: "stable",
-              alignSelf: "start",
-              zIndex: 2,
-            }
+        isMobile ? { minWidth: 0, overflowX: "hidden" } : { minWidth: 0 }
       }
       right={
         <button type="button" onClick={() => addVendor()} style={goldButtonStyle}>
@@ -621,6 +598,78 @@ export default function AtlasVendorsWorkspace(props: any) {
               </div>
             </section>
 
+            {isMobile ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4,minmax(0,1fr))",
+                  gap: 6,
+                }}
+              >
+                {selectedVendor.phone ? (
+                  <a
+                    href={`tel:${selectedVendor.phone}`}
+                    style={{
+                      ...secondaryButtonStyle,
+                      minHeight: 42,
+                      padding: "7px 4px",
+                      textDecoration: "none",
+                      justifyContent: "center",
+                    }}
+                  >
+                    Call
+                  </a>
+                ) : (
+                  <button type="button" disabled style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px", opacity: .45 }}>
+                    Call
+                  </button>
+                )}
+                {selectedVendor.email ? (
+                  <a
+                    href={`mailto:${selectedVendor.email}`}
+                    style={{
+                      ...secondaryButtonStyle,
+                      minHeight: 42,
+                      padding: "7px 4px",
+                      textDecoration: "none",
+                      justifyContent: "center",
+                    }}
+                  >
+                    Email
+                  </a>
+                ) : (
+                  <button type="button" disabled style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px", opacity: .45 }}>
+                    Email
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const open = relatedVendorWorkOrders.find((record) => record.status !== "Completed");
+                    if (open) setSelectedServiceId(open.id);
+                    setScreen("history");
+                  }}
+                  style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px" }}
+                >
+                  Work
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileFieldDetailsOpen((current) => !current)}
+                  aria-expanded={mobileFieldDetailsOpen}
+                  style={{
+                    ...secondaryButtonStyle,
+                    minHeight: 42,
+                    padding: "7px 4px",
+                    borderColor: mobileFieldDetailsOpen ? colors.gold : colors.line,
+                    background: mobileFieldDetailsOpen ? "#FFF8E6" : "#FFFFFF",
+                  }}
+                >
+                  {mobileFieldDetailsOpen ? "Less" : "More"}
+                </button>
+              </div>
+            ) : null}
+
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
@@ -671,6 +720,8 @@ export default function AtlasVendorsWorkspace(props: any) {
               </div>
             </section>
 
+            {(!isMobile || mobileFieldDetailsOpen) ? (
+            <>
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
@@ -946,6 +997,8 @@ export default function AtlasVendorsWorkspace(props: any) {
 
             <section style={detailSectionStyle}><div style={detailSectionHeaderStyle}><div><div style={eyebrowStyle}>Related Tasks</div><strong>{relatedVendorTasks.length} linked</strong></div></div>{relatedVendorTasks.length ? <div style={compactLinkedListStyle}>{relatedVendorTasks.map((task) => <button key={`vendor-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></span><span style={badgeStyle(taskDetails(task.id).status)}>{taskDetails(task.id).status}</span></button>)}</div> : <p style={mutedSmallStyle}>No Tasks are linked to this vendor.</p>}</section>
             {renderLinkedDocuments("Vendor", selectedVendor.id)}
+            </>
+            ) : null}
           </div>
         ) : (
           <div style={noticeStyle}>
