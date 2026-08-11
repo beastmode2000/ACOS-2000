@@ -409,6 +409,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [planOpen, setPlanOpen] = useState(false);
   const [newWorkOpen, setNewWorkOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [mobileFieldDetailsOpen, setMobileFieldDetailsOpen] = useState(false);
   const [newWorkDraft, setNewWorkDraft] = useState<{
     title: string;
     workType: WorkItemType;
@@ -446,6 +447,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   useEffect(() => {
     if (!selectedService?.id) setDetailOpen(false);
+  }, [selectedService?.id]);
+
+  useEffect(() => {
+    setMobileFieldDetailsOpen(false);
   }, [selectedService?.id]);
 
   useEffect(() => {
@@ -1915,14 +1920,66 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   >
                     Save Work Order
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteWorkOrderRecord(selectedService)}
-                    style={{ ...dangerButtonStyle, width: "100%" }}
-                  >
-                    Delete Work Order
-                  </button>
+                  {!isMobile || mobileFieldDetailsOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteWorkOrderRecord(selectedService)}
+                      style={{ ...dangerButtonStyle, width: "100%" }}
+                    >
+                      Delete Work Order
+                    </button>
+                  ) : null}
                 </div>
+
+                {isMobile ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+                      gap: 6,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDetailAction(
+                          selectedService.status === "Completed"
+                            ? "reopen"
+                            : selectedService.status === "In Progress"
+                              ? "complete"
+                              : "start",
+                        )
+                      }
+                      style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 6px" }}
+                    >
+                      {selectedService.status === "Completed"
+                        ? "Reopen"
+                        : selectedService.status === "In Progress"
+                          ? "Complete"
+                          : "Start"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDetailAction("tomorrow")}
+                      disabled={selectedService.status === "Completed"}
+                      style={{
+                        ...secondaryButtonStyle,
+                        minHeight: 42,
+                        padding: "7px 6px",
+                        opacity: selectedService.status === "Completed" ? 0.45 : 1,
+                      }}
+                    >
+                      Tomorrow
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDetailAction("photo")}
+                      style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 6px" }}
+                    >
+                      Photo
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               <section style={{ ...detailSectionStyle, gap: 7, padding: 9 }}>
@@ -2346,6 +2403,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
               </section>
 
+              {(!isMobile || mobileFieldDetailsOpen) ? (
               <section style={detailSectionStyle}>
                 <div style={detailSectionHeaderStyle}>
                   <div>
@@ -2404,6 +2462,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </div>
                 ) : null}
               </section>
+              ) : null}
 
               <section style={detailSectionStyle}>
                 <div style={eyebrowStyle}>Notes</div>
@@ -2417,6 +2476,24 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 />
               </section>
 
+              {isMobile ? (
+                <button
+                  type="button"
+                  onClick={() => setMobileFieldDetailsOpen((current) => !current)}
+                  aria-expanded={mobileFieldDetailsOpen}
+                  style={{
+                    ...secondaryButtonStyle,
+                    width: "100%",
+                    minHeight: 42,
+                    justifyContent: "center",
+                  }}
+                >
+                  {mobileFieldDetailsOpen ? "Hide More Details" : "More Details"}
+                </button>
+              ) : null}
+
+              {(!isMobile || mobileFieldDetailsOpen) ? (
+              <>
               <details style={detailSectionStyle}>
                 <summary
                   style={{
@@ -2718,6 +2795,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               </section>
 
               {renderLinkedDocuments("Work Order", selectedService.id)}
+              </>
+              ) : null}
             </div>
           ) : (
             <div style={noticeStyle}>
