@@ -14552,62 +14552,15 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function ensureGraduationPartyChecklist() {
-    const template = atlasOperationsTemplates.find((item) => item.id === "graduation-party");
-    if (!template) return;
-
-    const setupKey = `atlas-graduation-party-list-initialized-v2-${activePropertyId}`;
-    const existingPartyItems = workPlanTasks.filter(
-      (task) =>
-        task.category === "Graduation Party Checklist" ||
-        taskDetails(task.id).listId === "graduation-party",
-    );
-
-    // Once the list has existed, never silently recreate deleted or completed items.
-    // The explicit "Restore standard items" button can still add missing defaults.
-    if (window.localStorage.getItem(setupKey) === "ready" || existingPartyItems.length) {
-      window.localStorage.setItem(setupKey, "ready");
-      return;
+    // Graduation Party is now fully user-controlled.
+    // Atlas must never recreate this list or its items during load, refresh,
+    // deployment, property switching, or opening the Lists screen.
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        `atlas-graduation-party-list-initialized-v2-${activePropertyId}`,
+        "ready",
+      );
     }
-
-    const createdAt = new Date().toISOString();
-    const tasks = template.items.map((item) => {
-      const id = `grad-party-${slugify(item.title)}`;
-      return {
-        id,
-        title: item.title,
-        minutes: item.minutes,
-        priority: item.priority,
-        category: "Graduation Party Checklist",
-        locationId: "general",
-        preferredDay: "Auto" as const,
-        locked: false,
-        recurring: false,
-        fixedTime: "",
-        notes: "Graduation Party Checklist",
-      } satisfies WorkPlanTask;
-    });
-
-    setWorkPlanTasks((current) => [...current, ...tasks]);
-    setTaskMeta((current) => {
-      const next = { ...current };
-      template.items.forEach((item, index) => {
-        const id = tasks[index].id;
-        next[id] = {
-          status: "Open",
-          dueDate: "",
-          assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"),
-          createdAt,
-          completionHistory: [],
-          flexibleTime: true,
-          skippable: true,
-          listId: "graduation-party",
-          listName: "Graduation Party",
-          dashboardListPinned: false,
-        };
-      });
-      return next;
-    });
-    window.localStorage.setItem(setupKey, "ready");
   }
 
   function restoreGraduationPartyStandardItems() {
@@ -14628,7 +14581,7 @@ ${notes.trim()}` : notes.trim(),
 
     const createdAt = new Date().toISOString();
     const tasks = missing.map((item) => ({
-      id: uid("grad-party-restored"),
+      id: `grad-party-${slugify(item.title)}`,
       title: item.title,
       minutes: item.minutes,
       priority: item.priority,
@@ -14641,7 +14594,26 @@ ${notes.trim()}` : notes.trim(),
       notes: "Graduation Party Checklist",
     } satisfies WorkPlanTask));
 
-    setWorkPlanTasks((current) => [...current, ...tasks]);
+    setWorkPlanTasks((current) => {
+      const existingIds = new Set(current.map((task) => String(task.id)));
+      const existingPartyTitles = new Set(
+        current
+          .filter(
+            (task) =>
+              task.category === "Graduation Party Checklist" ||
+              taskDetails(task.id).listId === "graduation-party",
+          )
+          .map((task) => task.title.trim().toLowerCase().replace(/\s+/g, " ")),
+      );
+      const safeToAdd = tasks.filter(
+        (task) =>
+          !existingIds.has(String(task.id)) &&
+          !existingPartyTitles.has(
+            task.title.trim().toLowerCase().replace(/\s+/g, " "),
+          ),
+      );
+      return safeToAdd.length ? [...current, ...safeToAdd] : current;
+    });
     setTaskMeta((current) => {
       const next = { ...current };
       tasks.forEach((task, index) => {
@@ -14665,11 +14637,12 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function openGraduationPartyChecklist() {
-    if (!checklistItems("graduation-party").length) {
-      setTasksView("lists");
-      return;
+    const partyExists = checklistDefinitions().some(
+      (definition) => definition.id === "graduation-party",
+    );
+    if (partyExists) {
+      setSelectedListId("graduation-party");
     }
-    setSelectedListId("graduation-party");
     setTasksView("lists");
   }
 
@@ -14933,7 +14906,18 @@ ${notes.trim()}` : notes.trim(),
       window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(nextMeta));
       if (activePropertyId === "2000") window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
       if (listId === "graduation-party") {
-        window.localStorage.setItem(`atlas-graduation-party-list-initialized-v2-${activePropertyId}`, "ready");
+        window.localStorage.setItem(
+          `atlas-graduation-party-list-initialized-v2-${activePropertyId}`,
+          "ready",
+        );
+        window.localStorage.setItem(
+          `atlas-graduation-party-user-deleted-v1-${activePropertyId}`,
+          "true",
+        );
+        window.localStorage.setItem(
+          `atlas-graduation-party-dedupe-v1-${activePropertyId}`,
+          "ready",
+        );
       }
     } catch {}
 
@@ -14960,6 +14944,61 @@ ${notes.trim()}` : notes.trim(),
       updatedAt,
     });
     showSaveToast("Checklist item updated.");
+  }
+
+  function keepChecklistItemAsWeeklyTask(task: WorkPlanTask) {
+    const meta = taskDetails(task.id) as any;
+    const updatedAt = new Date().toISOString();
+    const nextTask: WorkPlanTask = {
+      ...task,
+      category:
+        task.category === "Graduation Party Checklist" ||
+        task.category === "Atlas Checklist Item"
+          ? "General"
+          : task.category,
+      recurring: true,
+      notes:
+        task.notes === "Graduation Party Checklist" ||
+        / checklist$/i.test(String(task.notes || ""))
+          ? ""
+          : task.notes,
+    };
+
+    const nextMeta = {
+      ...meta,
+      status: "Open",
+      dueDate: meta.dueDate || todayISO(),
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      listId: undefined,
+      listName: undefined,
+      dashboardListPinned: false,
+      listNotes: undefined,
+      listLeadId: undefined,
+      listMemberIds: undefined,
+      listDepartmentIds: undefined,
+      completedAt: undefined,
+      updatedAt,
+    };
+
+    setWorkPlanTasks((current) =>
+      current.map((item) => (item.id === task.id ? nextTask : item)),
+    );
+    setTaskMeta((current) => ({
+      ...current,
+      [task.id]: nextMeta,
+    }));
+
+    void postAtlasRecord("tasks" as AtlasTable, {
+      ...nextTask,
+      ...nextMeta,
+      taskMeta: nextMeta,
+      propertyId: activePropertyId,
+      updatedAt,
+    });
+
+    showSaveToast(`${task.title} is now a weekly Task.`);
   }
 
   function removeChecklistDuplicates(listId: string) {
@@ -15246,7 +15285,30 @@ ${notes.trim()}` : notes.trim(),
             Shared members can see this checklist in My Work. Individual items can still be assigned to different people or departments.
           </small>
         </div>
-        <label style={{ display: "grid", gap: 5, marginTop: 12 }}><span style={fieldLabelStyle}>LIST NOTES</span><textarea value={listNotes} onChange={(event) => updateListNotes(event.currentTarget.value)} placeholder="Add instructions, reminders, vendor details, or notes for this list…" rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}/></label>
+        <label style={{ display: "grid", gap: 5, marginTop: 12 }}>
+          <span style={fieldLabelStyle}>LIST NOTES</span>
+          <textarea
+            value={listNotes}
+            onChange={(event) => updateListNotes(event.currentTarget.value)}
+            placeholder="Add instructions, reminders, vendor details, or notes for this list…"
+            rows={3}
+            style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}
+          />
+        </label>
+        {listNotes ? (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+            <button
+              type="button"
+              onClick={() => {
+                updateListNotes("");
+                showSaveToast("List note deleted.");
+              }}
+              style={{ ...compactUtilityButtonStyle, color: colors.red }}
+            >
+              Delete Note
+            </button>
+          </div>
+        ) : null}
       </section>
       <section style={{ ...cardStyle, padding: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginBottom: 9 }}><input value={newPartyChecklistItem} onChange={(event) => setNewPartyChecklistItem(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addGraduationPartyChecklistItem(); }} placeholder="Add checklist item" style={inputStyle}/><button type="button" onClick={addGraduationPartyChecklistItem} style={goldButtonStyle}>Add</button></div>
@@ -15275,6 +15337,13 @@ ${notes.trim()}` : notes.trim(),
                   <span style={{ display: "block", color: colors.navy, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span>
                   <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{assignmentSummary}</small>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => keepChecklistItemAsWeeklyTask(task)}
+                  style={compactUtilityButtonStyle}
+                >
+                  Keep Weekly
+                </button>
                 <button type="button" onClick={() => editChecklistItem(task)} style={compactUtilityButtonStyle}>Edit</button>
                 <button type="button" aria-label={`Delete ${task.title}`} onClick={() => deleteAtlasTask(task.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
               </div>
