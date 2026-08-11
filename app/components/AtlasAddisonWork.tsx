@@ -51,7 +51,10 @@ isAddisonUser, isMobile, cardStyle, eyebrowStyle, fieldLabelStyle, colors,
   const inProgressCount = todayAssigned.filter((task) => taskDetails(task.id).status === "In Progress").length;
   const problemCount = todayAssigned.filter((task) => taskDetails(task.id).status === "Blocked" || Boolean(taskDetails(task.id).problemFlag)).length;
   const completedToday = workPlanTasks.filter((task) => taskDetails(task.id).assignee === "Addison" && taskDetails(task.id).status === "Completed" && String(taskDetails(task.id).completedAt || "").slice(0, 10) === today);
-  const delegatedReview = workPlanTasks.filter((task) => taskDetails(task.id).needsReview && ["Addison", "Pat"].includes(taskDetails(task.id).assignee));
+  const delegatedReview = workPlanTasks.filter((task) => {
+    const meta = taskDetails(task.id);
+    return meta.needsReview && meta.assignee === "Addison";
+  });
   const addAddisonPhoto = async (task: WorkPlanTask, files: FileList | null) => {
     if (!files?.length) return;
     try {
