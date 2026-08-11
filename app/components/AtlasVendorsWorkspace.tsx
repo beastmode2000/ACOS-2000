@@ -598,6 +598,58 @@ export default function AtlasVendorsWorkspace(props: any) {
               </div>
             </section>
 
+            <section
+              style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}
+              aria-label="Vendor relationships"
+            >
+              <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Linked Records</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "repeat(2,minmax(0,1fr))"
+                    : "repeat(4,minmax(0,1fr))",
+                  gap: 6,
+                }}
+              >
+                {[
+                  ["Assets", relatedVendorAssets.length],
+                  ["Work", relatedVendorWorkOrders.length],
+                  ["Tasks", relatedVendorTasks.length],
+                  ["Photos", selectedVendorPhotos.length],
+                ].map(([label, count]) => (
+                  <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: "7px 8px" }}>
+                    <span style={{ ...mutedSmallStyle, display: "block" }}>{label}</span>
+                    <strong style={{ color: colors.navy, fontSize: 15 }}>{count}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {relatedVendorWorkOrders.length ? (
+              <section
+                style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10 }}
+                aria-label="Vendor recent activity"
+              >
+                <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Recent Activity</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {relatedVendorWorkOrders.slice(0, 3).map((entry: any, index: number) => (
+                    <div key={String(entry.id || index)} style={{ borderLeft: `3px solid ${colors.gold}`, paddingLeft: 8 }}>
+                      <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
+                        {entry.title || "Vendor work"}
+                      </strong>
+                      <span style={mutedSmallStyle}>
+                        {entry.lastCompletedDate || entry.date
+                          ? formatDate(entry.lastCompletedDate || entry.date)
+                          : "Date not recorded"}
+                        {entry.status ? ` · ${entry.status}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
             {isMobile ? (
               <div
                 style={{
