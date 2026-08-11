@@ -16971,6 +16971,10 @@ ${notes.trim()}` : notes.trim(),
           isMobile={isMobile}
           activePropertyId={activePropertyId}
           teamDirectory={teamDirectory}
+          assigneeFilter={isAddisonUser ? "Addison" : undefined}
+          defaultTodayAssignee={isAddisonUser ? "Addison" : undefined}
+          employeeView={isAddisonUser}
+          allowTodayEditing={false}
         />
       </div>
     );
