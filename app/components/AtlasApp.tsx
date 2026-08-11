@@ -122,6 +122,50 @@ import type {
 } from "./AtlasAppFoundation";
 
 
+
+type AtlasNavigationState = {
+  screen?: string;
+  selectedAssetId?: string;
+  selectedLocationId?: string;
+  selectedVendorId?: string;
+  selectedServiceId?: string;
+  scrollY?: number;
+  updatedAt?: string;
+};
+
+function atlasNavigationStorageKey(propertyId: string) {
+  return `atlas-navigation-state-v1-${propertyId || "2000"}`;
+}
+
+function readAtlasNavigationState(propertyId: string): AtlasNavigationState {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.sessionStorage.getItem(atlasNavigationStorageKey(propertyId));
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAtlasNavigationState(
+  propertyId: string,
+  patch: Partial<AtlasNavigationState>,
+) {
+  if (typeof window === "undefined") return;
+  try {
+    const key = atlasNavigationStorageKey(propertyId);
+    const current = readAtlasNavigationState(propertyId);
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        ...current,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+  } catch {}
+}
+
 export default function AtlasApp() {
   const [ready, setReady] = useState(false);
   const [syncState, setSyncState] = useState<
@@ -374,6 +418,92 @@ export default function AtlasApp() {
     }
   }, [moreToolsOpen]);
   const [activePropertyId, setActivePropertyId] = useState("2000");
+
+  const navigationRestoreRef = useRef(false);
+  const navigationScrollTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    navigationRestoreRef.current = false;
+    const saved = readAtlasNavigationState(activePropertyId);
+
+    if (saved.screen) setScreen(saved.screen as any);
+    if (saved.selectedAssetId) setSelectedAssetId(saved.selectedAssetId);
+    if (saved.selectedLocationId) setSelectedLocationId(saved.selectedLocationId);
+    if (saved.selectedVendorId) setSelectedVendorId(saved.selectedVendorId);
+    if (saved.selectedServiceId) setSelectedServiceId(saved.selectedServiceId);
+
+    const restoreY = Math.max(0, Number(saved.scrollY) || 0);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: restoreY, behavior: "auto" });
+        navigationRestoreRef.current = true;
+      });
+    });
+  }, [activePropertyId]);
+
+  useEffect(() => {
+    if (!navigationRestoreRef.current) return;
+    writeAtlasNavigationState(activePropertyId, {
+      screen: String(screen || ""),
+      selectedAssetId: selectedAssetId || "",
+      selectedLocationId: selectedLocationId || "",
+      selectedVendorId: selectedVendorId || "",
+      selectedServiceId: selectedServiceId || "",
+    });
+  }, [
+    activePropertyId,
+    screen,
+    selectedAssetId,
+    selectedLocationId,
+    selectedVendorId,
+    selectedServiceId,
+  ]);
+
+  useEffect(() => {
+    function rememberScroll() {
+      if (!navigationRestoreRef.current) return;
+      if (navigationScrollTimerRef.current) {
+        window.clearTimeout(navigationScrollTimerRef.current);
+      }
+      navigationScrollTimerRef.current = window.setTimeout(() => {
+        writeAtlasNavigationState(activePropertyId, {
+          screen: String(screen || ""),
+          scrollY: window.scrollY,
+        });
+      }, 120);
+    }
+
+    function rememberBeforeLeave() {
+      writeAtlasNavigationState(activePropertyId, {
+        screen: String(screen || ""),
+        selectedAssetId: selectedAssetId || "",
+        selectedLocationId: selectedLocationId || "",
+        selectedVendorId: selectedVendorId || "",
+        selectedServiceId: selectedServiceId || "",
+        scrollY: window.scrollY,
+      });
+    }
+
+    window.addEventListener("scroll", rememberScroll, { passive: true });
+    window.addEventListener("pagehide", rememberBeforeLeave);
+
+    return () => {
+      window.removeEventListener("scroll", rememberScroll);
+      window.removeEventListener("pagehide", rememberBeforeLeave);
+      if (navigationScrollTimerRef.current) {
+        window.clearTimeout(navigationScrollTimerRef.current);
+      }
+      rememberBeforeLeave();
+    };
+  }, [
+    activePropertyId,
+    screen,
+    selectedAssetId,
+    selectedLocationId,
+    selectedVendorId,
+    selectedServiceId,
+  ]);
+
   const [allowedPropertyIds, setAllowedPropertyIds] = useState<string[]>([
     "2000",
     "6855",
