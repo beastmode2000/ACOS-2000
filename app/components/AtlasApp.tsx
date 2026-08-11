@@ -16967,7 +16967,7 @@ ${notes.trim()}` : notes.trim(),
         ) : null}
 
         <AtlasRoutines
-          mode={isAddisonUser ? "dashboard" : "manager"}
+          mode={isAddisonUser ? "addison" : "manager"}
           isMobile={isMobile}
           activePropertyId={activePropertyId}
           teamDirectory={teamDirectory}
@@ -25547,7 +25547,7 @@ ${notes.trim()}` : notes.trim(),
     let content: React.ReactNode;
 
     if (isAddisonUser) {
-      content = screen === "routines" ? renderRoutines() : renderWorkPlanner();
+      content = screen === "routines" ? renderRoutines() : renderAddisonToday();
     } else if (departmentCenter) content = renderDepartmentCenter(departmentCenter);
     else if (screen === "dashboard") content = renderDashboard();
     else if (screen === "portfolio") content = renderPortfolio();
