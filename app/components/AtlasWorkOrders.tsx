@@ -1982,6 +1982,63 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
               </div>
 
+              <section
+                style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}
+                aria-label="Work order relationships"
+              >
+                <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Linked Records</div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "repeat(2,minmax(0,1fr))"
+                      : "repeat(4,minmax(0,1fr))",
+                    gap: 6,
+                  }}
+                >
+                  {[
+                    ["Asset", selectedService.assetId ? 1 : 0],
+                    ["Vendor", selectedService.vendorId ? 1 : 0],
+                    ["Procedure", selectedService.procedureId ? 1 : 0],
+                    [
+                      "History",
+                      Array.isArray(selectedService.serviceHistory)
+                        ? selectedService.serviceHistory.length
+                        : 0,
+                    ],
+                  ].map(([label, count]) => (
+                    <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: "7px 8px" }}>
+                      <span style={{ ...mutedSmallStyle, display: "block" }}>{label}</span>
+                      <strong style={{ color: colors.navy, fontSize: 15 }}>{count}</strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {Array.isArray(selectedService.serviceHistory) && selectedService.serviceHistory.length ? (
+                <section style={{ ...detailSectionStyle, padding: 10 }}>
+                  <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Recent Activity</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {[...selectedService.serviceHistory].slice(-3).reverse().map((entry: any, index: number) => (
+                      <div
+                        key={String(entry?.id || entry?.completedAt || entry?.date || index)}
+                        style={{ borderLeft: `3px solid ${colors.gold}`, paddingLeft: 8 }}
+                      >
+                        <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
+                          {entry?.title || "Service update"}
+                        </strong>
+                        <span style={mutedSmallStyle}>
+                          {entry?.completedAt || entry?.completedDate || entry?.date
+                            ? formatDate(String(entry.completedAt || entry.completedDate || entry.date))
+                            : "Date not recorded"}
+                          {entry?.notes ? ` · ${entry.notes}` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               <section style={{ ...detailSectionStyle, gap: 7, padding: 9 }}>
                 <div style={eyebrowStyle}>Work Information</div>
                 <div style={{ ...formGridStyle, gap: 8, marginBottom: 0 }}>
