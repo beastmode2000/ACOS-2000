@@ -31,6 +31,7 @@ export default function AtlasDocumentsWorkspace(props: any) {
     inputStyle = {},
     fieldLabelStyle = {},
     editorHeaderStyle = {},
+    eyebrowStyle = {},
     cardStyle = {},
     fileTileStyle = {},
     buttonRowStyle = {},
