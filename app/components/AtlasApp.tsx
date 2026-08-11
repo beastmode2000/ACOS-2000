@@ -8983,35 +8983,78 @@ export default function AtlasApp() {
   }
 
   function syncRoutineAssignment(task: { id: string; title: string; assignedTo?: "Nick" | "Addison" | "Pat" | "Crew"; date: string }) {
-    const linkedTaskId = `routine-assignment-${activePropertyId}-${task.date}-${task.id}`;
+    const normalizedTitle = task.title.trim().toLowerCase().replace(/\s+/g, " ");
+    const linkedTaskId = `routine-assignment-${activePropertyId}-${task.date}-${slugify(task.title)}`;
+
+    const generatedMatches = workPlanTasks.filter((item) => {
+      const meta = taskDetails(item.id) as AtlasTaskMeta;
+      const generatedFromRoutine =
+        String(item.id).startsWith(`routine-assignment-${activePropertyId}-`) ||
+        Boolean(meta.routineTaskId) ||
+        String(meta.notes || item.notes || "").includes("Assigned from today’s Routine checklist.");
+      if (!generatedFromRoutine) return false;
+      if (String(meta.assignee || "") !== "Addison") return false;
+      if (String(meta.dueDate || meta.routineDate || "") !== task.date) return false;
+      return item.title.trim().toLowerCase().replace(/\s+/g, " ") === normalizedTitle;
+    });
+
+    const generatedMatchIds = new Set(generatedMatches.map((item) => String(item.id)));
+
     if (task.assignedTo !== "Addison") {
-      setWorkPlanTasks((current) => current.filter((item) => item.id !== linkedTaskId));
-      setTaskMeta((current) => {
-        if (!current[linkedTaskId]) return current;
-        const next = { ...current };
-        delete next[linkedTaskId];
-        return next;
-      });
-      void deleteOperationalRecord("tasks" as AtlasTable, linkedTaskId);
+      generatedMatchIds.add(`routine-assignment-${activePropertyId}-${task.date}-${task.id}`);
+      generatedMatchIds.add(linkedTaskId);
+
+      if (generatedMatchIds.size) {
+        setWorkPlanTasks((current) =>
+          current.filter((item) => !generatedMatchIds.has(String(item.id))),
+        );
+        setTaskMeta((current) => {
+          const next = { ...current };
+          generatedMatchIds.forEach((id) => delete next[id]);
+          return next;
+        });
+        generatedMatchIds.forEach((id) =>
+          void deleteOperationalRecord("tasks" as AtlasTable, id),
+        );
+      }
+
       showSaveToast(`${task.title} removed from Addison’s list.`);
       return;
     }
-    const existingTask = workPlanTasks.find((item) => item.id === linkedTaskId);
+
     const now = new Date().toISOString();
-    const assignmentTask: WorkPlanTask = existingTask ? { ...existingTask, title: task.title } : {
+    const bestExisting =
+      workPlanTasks.find((item) => item.id === linkedTaskId) ||
+      generatedMatches
+        .slice()
+        .sort((a, b) =>
+          String((taskDetails(b.id) as AtlasTaskMeta).updatedAt || "").localeCompare(
+            String((taskDetails(a.id) as AtlasTaskMeta).updatedAt || ""),
+          ),
+        )[0];
+
+    const existingMeta = bestExisting
+      ? (taskDetails(bestExisting.id) as AtlasTaskMeta)
+      : undefined;
+
+    const assignmentTask: WorkPlanTask = {
+      ...(bestExisting || {
+        id: linkedTaskId,
+        title: task.title,
+        minutes: 30,
+        priority: "Medium",
+        category: inferTaskCategory(task.title),
+        locationId: "general",
+        preferredDay: "Auto",
+        locked: false,
+        recurring: false,
+        fixedTime: "",
+        notes: "Assigned from today’s Routine checklist.",
+      }),
       id: linkedTaskId,
       title: task.title,
-      minutes: 30,
-      priority: "Medium",
-      category: inferTaskCategory(task.title),
-      locationId: "general",
-      preferredDay: "Auto",
-      locked: false,
-      recurring: false,
-      fixedTime: "",
-      notes: "Assigned from today’s Routine checklist.",
     };
-    const existingMeta = taskMeta[linkedTaskId];
+
     const assignmentMeta: AtlasTaskMeta = {
       ...(existingMeta || {}),
       status: existingMeta?.status === "Completed" ? "Completed" : "Open",
@@ -9032,10 +9075,48 @@ export default function AtlasApp() {
       flexibleTime: true,
       skippable: true,
     };
-    setWorkPlanTasks((current) => current.some((item) => item.id === linkedTaskId) ? current.map((item) => item.id === linkedTaskId ? assignmentTask : item) : [assignmentTask, ...current]);
-    setTaskMeta((current) => ({ ...current, [linkedTaskId]: assignmentMeta }));
-    void postAtlasRecord("tasks" as AtlasTable, { ...assignmentTask, ...assignmentMeta, taskMeta: assignmentMeta, propertyId: activePropertyId, updatedAt: now });
-    showSaveToast(`${task.title} added to Addison’s list.`);
+
+    const duplicateIds = new Set(
+      generatedMatches
+        .map((item) => String(item.id))
+        .filter((id) => id !== linkedTaskId),
+    );
+
+    setWorkPlanTasks((current) => {
+      const withoutDuplicates = current.filter(
+        (item) => !duplicateIds.has(String(item.id)),
+      );
+      return withoutDuplicates.some((item) => item.id === linkedTaskId)
+        ? withoutDuplicates.map((item) =>
+            item.id === linkedTaskId ? assignmentTask : item,
+          )
+        : [assignmentTask, ...withoutDuplicates];
+    });
+
+    setTaskMeta((current) => {
+      const next = { ...current };
+      duplicateIds.forEach((id) => delete next[id]);
+      next[linkedTaskId] = assignmentMeta;
+      return next;
+    });
+
+    duplicateIds.forEach((id) =>
+      void deleteOperationalRecord("tasks" as AtlasTable, id),
+    );
+
+    void postAtlasRecord("tasks" as AtlasTable, {
+      ...assignmentTask,
+      ...assignmentMeta,
+      taskMeta: assignmentMeta,
+      propertyId: activePropertyId,
+      updatedAt: now,
+    });
+
+    showSaveToast(
+      duplicateIds.size
+        ? `${task.title} assigned to Addison and duplicate copies removed.`
+        : `${task.title} added to Addison’s list.`,
+    );
   }
 
   function addWorkOrder(initial: Partial<AtlasServiceRecord> = {}) {
@@ -15148,7 +15229,22 @@ ${notes.trim()}` : notes.trim(),
       ? workPlanTasks.filter((task) => taskDetails(task.id).listId === selectedDefinition.id || (selectedDefinition.id === "graduation-party" && task.category === "Graduation Party Checklist"))
       : [];
     const pinned = listRecords.some((task) => taskDetails(task.id).dashboardListPinned);
-    const listNotes = listRecords.map((task) => taskDetails(task.id).listNotes || "").find(Boolean) || "";
+    const listDefinitionRecord = listRecords.find(
+      (task) => task.category === "Atlas List Definition",
+    );
+    const listNotes = listDefinitionRecord
+      ? String((taskDetails(listDefinitionRecord.id) as any).listNotes ?? "")
+      : String(
+          listRecords
+            .slice()
+            .sort((a, b) =>
+              String((taskDetails(b.id) as any).updatedAt || "").localeCompare(
+                String((taskDetails(a.id) as any).updatedAt || ""),
+              ),
+            )
+            .map((task) => (taskDetails(task.id) as any).listNotes)
+            .find((value) => value !== undefined) ?? "",
+        );
     const listLeadId = listMetaValue<string>(
       selectedDefinition.id,
       "listLeadId",
@@ -15300,7 +15396,55 @@ ${notes.trim()}` : notes.trim(),
             <button
               type="button"
               onClick={() => {
-                updateListNotes("");
+                const updatedAt = new Date().toISOString();
+                const listIds = new Set(listRecords.map((task) => String(task.id)));
+
+                setTaskMeta((current) => {
+                  const next = { ...current };
+                  listIds.forEach((id) => {
+                    next[id] = {
+                      ...(current[id] || taskDetails(id)),
+                      listId: selectedDefinition.id,
+                      listName: selectedDefinition.name,
+                      listNotes: "",
+                      updatedAt,
+                    } as AtlasTaskMeta;
+                  });
+
+                  try {
+                    window.localStorage.setItem(
+                      `atlas-task-meta-v1-${activePropertyId}`,
+                      JSON.stringify(next),
+                    );
+                    if (activePropertyId === "2000") {
+                      window.localStorage.setItem(
+                        "atlas-task-meta-v1",
+                        JSON.stringify(next),
+                      );
+                    }
+                  } catch {}
+
+                  return next;
+                });
+
+                listRecords.forEach((record) => {
+                  const meta = taskDetails(record.id) as any;
+                  const nextMeta = {
+                    ...meta,
+                    listId: selectedDefinition.id,
+                    listName: selectedDefinition.name,
+                    listNotes: "",
+                    updatedAt,
+                  };
+                  void postAtlasRecord("tasks" as AtlasTable, {
+                    ...record,
+                    ...nextMeta,
+                    taskMeta: nextMeta,
+                    propertyId: activePropertyId,
+                    updatedAt,
+                  });
+                });
+
                 showSaveToast("List note deleted.");
               }}
               style={{ ...compactUtilityButtonStyle, color: colors.red }}
