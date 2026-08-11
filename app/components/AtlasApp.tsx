@@ -914,7 +914,7 @@ export default function AtlasApp() {
   const [documentSearch, setDocumentSearch] = useState("");
   const [documentCategoryFilter, setDocumentCategoryFilter] = useState("All");
   const [documentLinkFilter, setDocumentLinkFilter] = useState("All");
-  const [hideDocumentLogos, setHideDocumentLogos] = useState(false);
+  const [hideDocumentLogos, setHideDocumentLogos] = useState(true);
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [selectedDocumentFileIndex, setSelectedDocumentFileIndex] = useState(0);
