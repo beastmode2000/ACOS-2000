@@ -1945,6 +1945,104 @@ export default function AtlasApp() {
   }, [ready, operationsHydrated, activePropertyId]);
 
   useEffect(() => {
+    if (!ready || !operationsHydrated) return;
+    let cancelled = false;
+
+    const refreshSharedTasks = async () => {
+      try {
+        const response = await fetch(
+          `/api/atlas?sharedTasks=${Date.now()}&propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no-store" },
+        );
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (cancelled) return;
+        if (payload?.propertyId && String(payload.propertyId) !== activePropertyId) return;
+
+        const operationsPayload = payload?.operations && typeof payload.operations === "object"
+          ? payload.operations
+          : payload;
+        const remoteRecords = Array.isArray(operationsPayload.taskRecords)
+          ? operationsPayload.taskRecords
+          : Array.isArray(operationsPayload.tasks)
+            ? operationsPayload.tasks
+            : null;
+        if (!remoteRecords) return;
+
+        const pendingDeleteIds = new Set(
+          readStoredArray<{ table: string; id: string }>(
+            [`atlas-operations-deletes-v1-${activePropertyId}`],
+            [],
+          )
+            .filter((item) => item.table === "tasks")
+            .map((item) => String(item.id)),
+        );
+        const tombstones = readTaskTombstones(activePropertyId);
+        const remote = remoteRecords.filter(
+          (record: any) =>
+            !pendingDeleteIds.has(String(record.id || "")) &&
+            !tombstones.has(String(record.id || "")),
+        );
+        const remoteIds = new Set(remote.map((record: any) => String(record.id || "")));
+
+        setWorkPlanTasks((current) => {
+          const localOnly = current.filter((task) => {
+            if (remoteIds.has(task.id)) return false;
+            if (pendingDeleteIds.has(task.id) || tombstones.has(task.id)) return false;
+            // Once Addison work exists on shared Atlas, his server list is authoritative.
+            const meta = taskMeta[task.id];
+            if (String(meta?.assignee || "").trim().toLowerCase() === "addison") return false;
+            return true;
+          });
+          const remoteTasks = remote.map((record: any) => ({
+            id: String(record.id || ""),
+            title: String(record.title || "Task"),
+            minutes: Math.max(5, Number(record.minutes || 30)),
+            priority: record.priority || "Medium",
+            category: String(record.category || "General"),
+            locationId: String(record.locationId || "general"),
+            preferredDay: record.preferredDay || "Auto",
+            locked: Boolean(record.locked),
+            recurring: Boolean(record.recurring),
+            fixedTime: String(record.fixedTime || ""),
+            notes: String(record.notes || ""),
+          })) as WorkPlanTask[];
+          const next = dedupeTaskState([...remoteTasks, ...localOnly], taskMeta).tasks;
+          return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+        });
+
+        setTaskMeta((current) => {
+          const next: Record<string, AtlasTaskMeta> = {};
+          for (const record of remote) {
+            const id = String(record.id || "");
+            next[id] = (record.taskMeta && typeof record.taskMeta === "object"
+              ? record.taskMeta
+              : record) as AtlasTaskMeta;
+          }
+          for (const [id, meta] of Object.entries(current)) {
+            if (remoteIds.has(id) || pendingDeleteIds.has(id) || tombstones.has(id)) continue;
+            if (String(meta?.assignee || "").trim().toLowerCase() === "addison") continue;
+            next[id] = meta;
+          }
+          return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+        });
+      } catch {
+        // Existing local state remains available offline; refresh retries automatically.
+      }
+    };
+
+    const onFocus = () => { void refreshSharedTasks(); };
+    void refreshSharedTasks();
+    const timer = window.setInterval(() => { void refreshSharedTasks(); }, 5000);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [ready, operationsHydrated, activePropertyId]);
+
+  useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || !vehicleCare.length) return;
     void setupFleetAssetsAndSchedules();
   }, [ready, operationsHydrated, syncState, activePropertyId, vehicleCare.length, assetRecords.length, workPlanTasks.length, serviceRecords.length, calendarItems.length]);
@@ -2612,10 +2710,7 @@ export default function AtlasApp() {
             );
             const remoteIds = new Set(apiTasks.map((record) => record.id));
             const mergedRemote = apiTasks.map((record) => {
-              const local = visibleLocalTasks.find((task) => task.id === record.id);
-              const localUpdated = taskMeta[record.id]?.updatedAt || "";
-              const remoteUpdated = record.updatedAt || record.taskMeta?.updatedAt || "";
-              const source = local && localUpdated > remoteUpdated ? local : record;
+              const source = record;
               return { id: source.id, title: source.title, minutes: source.minutes, priority: source.priority, category: source.category, locationId: source.locationId, preferredDay: source.preferredDay, locked: source.locked, recurring: source.recurring, fixedTime: source.fixedTime, notes: source.notes } as WorkPlanTask;
             });
             const combined = [
@@ -2637,9 +2732,7 @@ export default function AtlasApp() {
                 const local = visibleLocalMeta[record.id];
                 return [
                   record.id,
-                  local?.updatedAt && local.updatedAt > String(remoteMeta.updatedAt || "")
-                    ? local
-                    : remoteMeta as AtlasTaskMeta,
+                  remoteMeta as AtlasTaskMeta,
                 ];
               })),
             };
