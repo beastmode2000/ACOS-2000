@@ -18,6 +18,7 @@ type TimelineEntry = {
   afterPhoto?: string;
   photo?: string;
   milestone?: boolean;
+  status?: "Completed" | "Incomplete" | "Planned" | "In Progress" | "Recorded";
   source: "work" | "project" | "photo" | "calendar" | "request" | "custom";
   record?: any;
 };
@@ -179,6 +180,8 @@ export default function AtlasTimelineWorkspace(props: any) {
     setSelectedLocationId = () => undefined,
     setSelectedPhotoProjectId = () => undefined,
     setPhotoTimelineView = () => undefined,
+    setPhotoTimelineProjects = () => undefined,
+    showSaveToast = () => undefined,
     openCalendarItem = () => undefined,
   } = props;
 
@@ -198,6 +201,19 @@ export default function AtlasTimelineWorkspace(props: any) {
   const [areaProgressMode, setAreaProgressMode] = useState(false);
   const [comparisonPosition, setComparisonPosition] = useState(50);
   const [milestoneStripOpen, setMilestoneStripOpen] = useState(true);
+  const [showIncomplete, setShowIncomplete] = useState(false);
+  const [showAddProject, setShowAddProject] = useState(false);
+  const [projectDraft, setProjectDraft] = useState({
+    title: "",
+    category: "General",
+    status: "Planning" as "Planning" | "Active" | "Waiting" | "Completed",
+    startDate: new Date().toISOString().slice(0, 10),
+    completedAt: "",
+    locationId: "",
+    assetId: "",
+    vendorId: "",
+    notes: "",
+  });
   const [draft, setDraft] = useState({
     date: new Date().toISOString().slice(0, 10),
     datePrecision: "Exact" as "Exact" | "Approximate",
@@ -267,6 +283,7 @@ export default function AtlasTimelineWorkspace(props: any) {
             snapshot.afterPhotoUrl ||
             snapshot.afterImage ||
             "",
+          status: "Completed",
           milestone:
             Boolean(snapshot.milestone) ||
             Boolean(record.milestone) ||
@@ -293,6 +310,7 @@ export default function AtlasTimelineWorkspace(props: any) {
             locationId: record.locationId,
             assetId: record.assetId,
             vendorId: record.vendorId,
+            status: "Completed",
             milestone: Boolean(record.milestone) || record.workType === "Project",
             source: "work",
             record,
@@ -302,28 +320,54 @@ export default function AtlasTimelineWorkspace(props: any) {
     });
 
     photoTimelineProjects.forEach((project: any) => {
-      const date =
-        project.completedAt ||
-        project.startDate ||
-        project.date ||
-        project.createdAt;
-      if (!date) return;
-      next.push({
-        id: `project-${project.id}`,
-        date: safeDate(date),
-        title: project.title || project.name || "Property project",
-        description: project.notes || project.description || "",
-        type: "Project",
-        category: project.category || "Property Project",
-        locationId: project.locationId,
-        assetId: project.assetId,
-        vendorId: project.vendorId,
-        beforePhoto: project.beforePhoto || project.beforePhotoUrl || "",
-        afterPhoto: project.afterPhoto || project.afterPhotoUrl || "",
-        milestone: true,
-        source: "project",
-        record: project,
-      });
+      const projectStatus =
+        project.status === "Completed"
+          ? "Completed"
+          : project.status === "Active"
+            ? "In Progress"
+            : project.status === "Waiting"
+              ? "Incomplete"
+              : "Planned";
+
+      const startDate = project.startDate || project.date || project.createdAt;
+      if (startDate) {
+        next.push({
+          id: `project-start-${project.id}`,
+          date: safeDate(startDate),
+          title: `${project.title || project.name || "Property project"} — Started`,
+          description: project.notes || project.description || "",
+          type: "Project",
+          category: project.category || "Property Project",
+          locationId: project.locationId,
+          assetId: project.assetId,
+          vendorId: project.vendorId,
+          beforePhoto: project.beforePhoto || project.beforePhotoUrl || "",
+          milestone: true,
+          status: projectStatus,
+          source: "project",
+          record: project,
+        });
+      }
+
+      const completedDate = project.completedAt || project.completedDate;
+      if (completedDate) {
+        next.push({
+          id: `project-completed-${project.id}`,
+          date: safeDate(completedDate),
+          title: `${project.title || project.name || "Property project"} — Completed`,
+          description: project.notes || project.description || "",
+          type: "Project Completed",
+          category: project.category || "Property Project",
+          locationId: project.locationId,
+          assetId: project.assetId,
+          vendorId: project.vendorId,
+          afterPhoto: project.afterPhoto || project.afterPhotoUrl || "",
+          milestone: true,
+          status: "Completed",
+          source: "project",
+          record: project,
+        });
+      }
     });
 
     projectTimelineEntries.forEach((item: any) => {
@@ -343,6 +387,7 @@ export default function AtlasTimelineWorkspace(props: any) {
         afterPhoto: item.afterPhoto || "",
         photo: item.photo || item.photoUrl || "",
         milestone: Boolean(item.milestone),
+        status: "Recorded",
         source: "project",
         record: item,
       });
@@ -368,6 +413,7 @@ export default function AtlasTimelineWorkspace(props: any) {
         locationId: meta.locationId || "",
         photo: source,
         milestone: Boolean(meta.milestone),
+        status: "Recorded",
         source: "photo",
         record: photo,
       });
@@ -381,6 +427,13 @@ export default function AtlasTimelineWorkspace(props: any) {
       seenCalendar.add(id);
       const date = event.date || event.startDate || event.start;
       if (!date) return;
+      const calendarCompleted =
+        event.completed === true ||
+        event.status === "Completed" ||
+        event.status === "Done" ||
+        event.completedAt ||
+        event.actualCompletedAt;
+      if (!calendarCompleted) return;
       next.push({
         id: `calendar-${id}`,
         date: safeDate(date),
@@ -392,12 +445,17 @@ export default function AtlasTimelineWorkspace(props: any) {
         assetId: event.assetId || "",
         vendorId: event.vendorId || "",
         milestone: Boolean(event.milestone),
+        status: "Completed",
         source: "calendar",
         record: event,
       });
     });
 
     requestRecords.forEach((request: any) => {
+      const requestDone =
+        Boolean(request.completedAt) ||
+        ["Completed", "Closed", "Converted", "Resolved"].includes(String(request.status || ""));
+      if (!requestDone) return;
       const date = request.completedAt || request.updatedAt || request.createdAt || request.date;
       if (!date) return;
       next.push({
@@ -411,6 +469,7 @@ export default function AtlasTimelineWorkspace(props: any) {
         assetId: request.assetId || "",
         vendorId: request.vendorId || "",
         milestone: false,
+        status: "Completed",
         source: "request",
         record: request,
       });
@@ -435,6 +494,7 @@ export default function AtlasTimelineWorkspace(props: any) {
           beforePhoto: event.beforePhoto,
           afterPhoto: event.afterPhoto,
           milestone: event.milestone,
+          status: "Recorded",
           source: "custom",
           record: event,
         });
@@ -442,7 +502,7 @@ export default function AtlasTimelineWorkspace(props: any) {
 
     return next
       .filter((entry) => Boolean(entry.date))
-      .sort((a, b) => dateTime(b.date) - dateTime(a.date));
+      .sort((a, b) => dateTime(a.date) - dateTime(b.date));
   }, [
     activePropertyId,
     serviceRecords,
@@ -468,6 +528,12 @@ export default function AtlasTimelineWorkspace(props: any) {
   const filtered = useMemo(() => {
     const q = normalize(search);
     return entries.filter((entry) => {
+      if (
+        !showIncomplete &&
+        ["Incomplete", "Planned", "In Progress"].includes(String(entry.status || ""))
+      ) {
+        return false;
+      }
       if (typeFilter !== "All" && entry.type !== typeFilter) return false;
       if (locationFilter !== "All" && entry.locationId !== locationFilter) return false;
       if (assetFilter !== "All" && entry.assetId !== assetFilter) return false;
@@ -496,6 +562,7 @@ export default function AtlasTimelineWorkspace(props: any) {
     vendorFilter,
     milestonesOnly,
     beforeAfterOnly,
+    showIncomplete,
     assetRecords,
     locations,
     vendorRecords,
@@ -532,8 +599,8 @@ export default function AtlasTimelineWorkspace(props: any) {
     (entry) => entry.beforePhoto && entry.afterPhoto,
   );
   const milestoneEntries = entries.filter((entry) => entry.milestone);
-  const earliest = [...entries].sort((a, b) => dateTime(a.date) - dateTime(b.date))[0];
-  const latest = entries[0];
+  const earliest = entries[0];
+  const latest = entries.length ? entries[entries.length - 1] : undefined;
 
 
   function scrollTimeline(direction: "previous" | "next") {
@@ -558,6 +625,55 @@ export default function AtlasTimelineWorkspace(props: any) {
           block: "nearest",
           inline: "center",
         });
+    });
+  }
+
+  function saveTimelineProject() {
+    if (!projectDraft.title.trim() || !projectDraft.startDate) return;
+
+    const project = {
+      propertyId: activePropertyId,
+      id: uid("timeline-project"),
+      title: projectDraft.title.trim(),
+      category: projectDraft.category,
+      scale: "Standard",
+      status: projectDraft.status,
+      assetId: projectDraft.assetId,
+      locationId: projectDraft.locationId,
+      vendorId: projectDraft.vendorId,
+      workOrderId: "",
+      workOrderIds: [],
+      vendorIds: projectDraft.vendorId ? [projectDraft.vendorId] : [],
+      documentIds: [],
+      assigneeIds: [],
+      notes: projectDraft.notes.trim(),
+      coverPhotoId: "",
+      createdAt: new Date().toISOString(),
+      progress: projectDraft.status === "Completed" ? 100 : 0,
+      phase: projectDraft.status,
+      completedAt:
+        projectDraft.status === "Completed"
+          ? projectDraft.completedAt || projectDraft.startDate
+          : projectDraft.completedAt,
+      startDate: projectDraft.startDate,
+      archived: false,
+    };
+
+    setPhotoTimelineProjects((current: any[]) => [...current, project]);
+    setSelectedPhotoProjectId(project.id);
+    setPhotoTimelineView("projects");
+    setShowAddProject(false);
+    showSaveToast("Project added to Property Timeline.");
+    setProjectDraft({
+      title: "",
+      category: "General",
+      status: "Planning",
+      startDate: new Date().toISOString().slice(0, 10),
+      completedAt: "",
+      locationId: "",
+      assetId: "",
+      vendorId: "",
+      notes: "",
     });
   }
 
@@ -691,8 +807,15 @@ export default function AtlasTimelineWorkspace(props: any) {
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={() => setShowAddEvent(true)}
+              onClick={() => setShowAddProject(true)}
               style={goldButtonStyle}
+            >
+              + Project
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAddEvent(true)}
+              style={secondaryButtonStyle}
             >
               + Historical Event
             </button>
@@ -966,6 +1089,14 @@ export default function AtlasTimelineWorkspace(props: any) {
               <input type="checkbox" checked={beforeAfterOnly} onChange={(event) => setBeforeAfterOnly(event.target.checked)} />
               Before / after only
             </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <input
+                type="checkbox"
+                checked={showIncomplete}
+                onChange={(event) => setShowIncomplete(event.target.checked)}
+              />
+              Show incomplete / planned
+            </label>
             <button
               type="button"
               onClick={() => {
@@ -975,6 +1106,7 @@ export default function AtlasTimelineWorkspace(props: any) {
                 setVendorFilter("All");
                 setMilestonesOnly(false);
                 setBeforeAfterOnly(false);
+                setShowIncomplete(false);
                 setSearch("");
               }}
               style={smallButton}
@@ -1008,8 +1140,8 @@ export default function AtlasTimelineWorkspace(props: any) {
               .sort((a: any, b: any) => b.entries.length - a.entries.length)
               .slice(0, 12)
               .map((group: any) => {
-                const newest = group.entries[0];
-                const oldest = [...group.entries].sort((a: TimelineEntry, b: TimelineEntry) => dateTime(a.date) - dateTime(b.date))[0];
+                const oldest = group.entries[0];
+                const newest = group.entries[group.entries.length - 1];
                 return (
                   <button
                     key={group.location.id}
@@ -1175,6 +1307,31 @@ export default function AtlasTimelineWorkspace(props: any) {
                           {entry.milestone ? "Milestone · " : ""}
                           {entry.type}
                         </span>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 3 }}>
+                          {entry.status ? (
+                            <span
+                              style={{
+                                border: `1px solid ${colors.line}`,
+                                borderRadius: 999,
+                                padding: "2px 6px",
+                                fontSize: 9,
+                                fontWeight: 900,
+                                background:
+                                  entry.status === "Completed" || entry.status === "Recorded"
+                                    ? "#ECFDF3"
+                                    : entry.status === "In Progress"
+                                      ? "#FFF8E6"
+                                      : "#F2F4F7",
+                                color:
+                                  entry.status === "Completed" || entry.status === "Recorded"
+                                    ? "#087443"
+                                    : colors.muted,
+                              }}
+                            >
+                              {entry.status}
+                            </span>
+                          ) : null}
+                        </div>
                         <strong
                           style={{
                             display: "block",
@@ -1483,6 +1640,163 @@ export default function AtlasTimelineWorkspace(props: any) {
             </button>
           ) : null}
         </section>
+      ) : null}
+
+      {showAddProject ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add project to property timeline"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(4,20,34,.45)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowAddProject(false);
+          }}
+        >
+          <div
+            style={{
+              width: "min(700px,100%)",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              background: "#FFFFFF",
+              borderRadius: 16,
+              border: `1px solid ${colors.line}`,
+              padding: isMobile ? 14 : 18,
+              boxShadow: "0 24px 70px rgba(0,0,0,.22)",
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <strong style={{ color: colors.navy, fontSize: 17 }}>
+                  Add Project
+                </strong>
+                <div style={mutedSmallStyle}>
+                  The project will appear in the correct chronological position from its dates.
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowAddProject(false)} style={smallButton}>
+                Close
+              </button>
+            </div>
+
+            <label style={{ display: "grid", gap: 4 }}>
+              <span style={mutedSmallStyle}>Project name</span>
+              <input
+                value={projectDraft.title}
+                onChange={(event) =>
+                  setProjectDraft((current) => ({ ...current, title: event.target.value }))
+                }
+                style={{ minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8 }}
+              />
+            </label>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
+              <label style={{ display: "grid", gap: 4 }}>
+                <span style={mutedSmallStyle}>Start date</span>
+                <input
+                  type="date"
+                  value={projectDraft.startDate}
+                  onChange={(event) =>
+                    setProjectDraft((current) => ({ ...current, startDate: event.target.value }))
+                  }
+                  style={{ minHeight: 38, border: `1px solid ${colors.line}`, borderRadius: 9, padding: 7 }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 4 }}>
+                <span style={mutedSmallStyle}>Completed date</span>
+                <input
+                  type="date"
+                  value={projectDraft.completedAt}
+                  onChange={(event) =>
+                    setProjectDraft((current) => ({ ...current, completedAt: event.target.value }))
+                  }
+                  style={{ minHeight: 38, border: `1px solid ${colors.line}`, borderRadius: 9, padding: 7 }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 4 }}>
+                <span style={mutedSmallStyle}>Status</span>
+                <select
+                  value={projectDraft.status}
+                  onChange={(event) =>
+                    setProjectDraft((current) => ({
+                      ...current,
+                      status: event.target.value as any,
+                    }))
+                  }
+                  style={{ minHeight: 38, border: `1px solid ${colors.line}`, borderRadius: 9, padding: 7 }}
+                >
+                  <option>Planning</option>
+                  <option>Active</option>
+                  <option>Waiting</option>
+                  <option>Completed</option>
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 4 }}>
+                <span style={mutedSmallStyle}>Category</span>
+                <select
+                  value={projectDraft.category}
+                  onChange={(event) =>
+                    setProjectDraft((current) => ({ ...current, category: event.target.value }))
+                  }
+                  style={{ minHeight: 38, border: `1px solid ${colors.line}`, borderRadius: 9, padding: 7 }}
+                >
+                  <option>General</option>
+                  <option>Painting</option>
+                  <option>Landscaping</option>
+                  <option>Dock</option>
+                  <option>Pool</option>
+                  <option>Mechanical</option>
+                </select>
+              </label>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <select value={projectDraft.locationId} onChange={(event) => setProjectDraft((current) => ({ ...current, locationId: event.target.value }))} style={{ minHeight: 38, border: `1px solid ${colors.line}`, borderRadius: 9, padding: 7 }}>
+                <option value="">No location</option>
+                {locations.map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}
+              </select>
+              <select value={projectDraft.assetId} onChange={(event) => setProjectDraft((current) => ({ ...current, assetId: event.target.value }))} style={{ minHeight: 38, border: `1px solid ${colors.line}`, borderRadius: 9, padding: 7 }}>
+                <option value="">No asset</option>
+                {assetRecords.map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+              </select>
+              <select value={projectDraft.vendorId} onChange={(event) => setProjectDraft((current) => ({ ...current, vendorId: event.target.value }))} style={{ minHeight: 38, border: `1px solid ${colors.line}`, borderRadius: 9, padding: 7 }}>
+                <option value="">No vendor</option>
+                {vendorRecords.map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+              </select>
+            </div>
+
+            <textarea
+              value={projectDraft.notes}
+              onChange={(event) =>
+                setProjectDraft((current) => ({ ...current, notes: event.target.value }))
+              }
+              rows={4}
+              placeholder="Project notes..."
+              style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, resize: "vertical" }}
+            />
+
+            <button
+              type="button"
+              disabled={!projectDraft.title.trim() || !projectDraft.startDate}
+              onClick={saveTimelineProject}
+              style={{
+                ...goldButtonStyle,
+                opacity: projectDraft.title.trim() && projectDraft.startDate ? 1 : 0.5,
+              }}
+            >
+              Add Project to Timeline
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {showAddEvent ? (
