@@ -243,6 +243,7 @@ export default function AtlasApp() {
     "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures" | ""
   >("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileFieldMoreOpen, setMobileFieldMoreOpen] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
   const [planningToolsOpen, setPlanningToolsOpen] = useState(false);
 
@@ -26896,125 +26897,76 @@ ${notes.trim()}` : notes.trim(),
           </div>
 
           {isMobile ? (
-            <div style={mobileMenuRowStyle}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                gap: 8,
+                alignItems: "center",
+                width: "100%",
+              }}
+            >
               <select
-                value={
-                  screen === "planner"
-                    ? tasksView === "walk"
-                      ? "planner:walk"
-                    : tasksView === "build"
-                      ? "planner:build"
-                      : tasksView === "route"
-                        ? "planner:route"
-                      : tasksView === "analytics"
-                        ? "planner:analytics"
-                      : tasksView === "vehicles"
-                      ? "planner:vehicles"
-                      : tasksView === "lists"
-                      ? "planner:lists"
-                      : tasksView === "planner"
-                        ? "planner:week"
-                        : "planner:tasks"
-                    : screen
-                }
-                onChange={(event) => {
-                  const nextValue = event.currentTarget.value;
-                  if (nextValue === "planner:tasks") {
-                    setTasksView("tasks");
-                    setScreen("planner");
-                    return;
-                  }
-                  if (nextValue === "planner:walk") {
-                    setTasksView("walk");
-                    setScreen("planner");
-                    return;
-                  }
-                  if (nextValue === "planner:build") {
-                    setTasksView("build");
-                    setScreen("planner");
-                    return;
-                  }
-                  if (nextValue === "planner:route") {
-                    setTasksView("route");
-                    setScreen("planner");
-                    return;
-                  }
-                  if (nextValue === "planner:analytics") {
-                    setTasksView("analytics");
-                    setScreen("planner");
-                    return;
-                  }
-                  if (nextValue === "planner:vehicles") {
-                    setTasksView("vehicles");
-                    setScreen("planner");
-                    return;
-                  }
-                  if (nextValue === "planner:lists") {
-                    openGraduationPartyChecklist();
-                    setScreen("planner");
-                    return;
-                  }
-                  if (nextValue === "planner:week") {
-                    setTasksView("planner");
-                    setScreen("planner");
-                    return;
-                  }
-                  const nextScreen = nextValue as Screen;
-                  if (nextScreen === "history") {
-                    setSelectedServiceId("");
-                    setWorkOrdersOpenKey((current) => current + 1);
-                  }
-                  setScreen(nextScreen);
+                value={activePropertyId}
+                onChange={(event) => selectProperty(event.currentTarget.value)}
+                aria-label="Active property"
+                style={{
+                  ...mobileMenuSelectStyle,
+                  width: "100%",
+                  minWidth: 0,
+                  minHeight: 42,
                 }}
-                style={mobileMenuSelectStyle}
-                aria-label="Open Atlas section"
               >
-                {isAddisonUser ? (
-                  <optgroup label="My Day">
-                    <option value="planner:tasks">My Tasks</option>
-                    <option value="routines">My Routine</option>
-                  </optgroup>
-                ) : (
-                  <>
-                    <optgroup label="Daily Work">
-                      <option value="planner:tasks">Tasks</option>
-                      <option value="planner:lists">Lists</option>
-                    </optgroup>
-                    <optgroup label="Main">
-                      {visibleAtlasScreens
-                        .filter(
-                          (item) =>
-                            item.id !== "intake" &&
-                            item.id !== "planner" &&
-                            item.id !== "manuals" &&
-                            !atlasMoreToolsScreens.includes(item.id),
-                        )
-                        .map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
-                          </option>
-                        ))}
-                    </optgroup>
-                    <optgroup label="More Tools">
-                      {visibleMoreToolsScreens
-                        .map((screenId) =>
-                          screens.find((item) => item.id === screenId),
-                        )
-                        .filter(Boolean)
-                        .map((item) => (
-                          <option key={item!.id} value={item!.id}>
-                            {item!.label}
-                          </option>
-                        ))}
-                    </optgroup>
-                  </>
-                )}
+                {atlasProperties
+                  .filter((property) => allowedPropertyIds.includes(property.id))
+                  .map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name}
+                    </option>
+                  ))}
               </select>
-              {!isTeamScopedUser ? (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {([['house','⌂ House'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping'],['marine','⚓ Dock']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => { setDepartmentDrilldown(""); setDepartmentCenter(id); }} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === id ? colors.gold : colors.line }}>{label}</button>)}
-                </div>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => setDashboardAssistantOpen(true)}
+                aria-label="Ask Atlas"
+                title="Ask Atlas"
+                style={{
+                  ...secondaryButtonStyle,
+                  width: 42,
+                  minWidth: 42,
+                  minHeight: 42,
+                  padding: 0,
+                  display: "grid",
+                  placeItems: "center",
+                  borderColor: "rgba(255,255,255,.22)",
+                  background: "rgba(255,255,255,.10)",
+                  color: "#FFFFFF",
+                }}
+              >
+                <span aria-hidden="true" style={{ fontSize: 17 }}>✦</span>
+              </button>
+              <button
+                type="button"
+                onClick={startVoiceAssistant}
+                aria-label="Talk to Atlas"
+                title="Talk to Atlas"
+                style={{
+                  ...secondaryButtonStyle,
+                  width: 42,
+                  minWidth: 42,
+                  minHeight: 42,
+                  padding: 0,
+                  display: "grid",
+                  placeItems: "center",
+                  borderColor: voiceAssistantListening ? colors.gold : "rgba(255,255,255,.22)",
+                  background: voiceAssistantListening ? colors.gold : "rgba(255,255,255,.10)",
+                  color: voiceAssistantListening ? colors.navy : "#FFFFFF",
+                }}
+              >
+                <span aria-hidden="true" style={{ fontSize: 16 }}>
+                  {voiceAssistantListening ? "●" : "🎤"}
+                </span>
+              </button>
             </div>
           ) : (
             <>
@@ -27232,7 +27184,7 @@ ${notes.trim()}` : notes.trim(),
             width: "100%",
             maxWidth: isMobile ? "100vw" : "none",
             overflowX: isMobile ? "hidden" : "visible",
-            paddingBottom: isMobile ? 112 : 0,
+            paddingBottom: isMobile ? 104 : 0,
           }}
         >
           <header className="atlas-page-header" style={isMobile ? mobileTopbarStyle : topbarStyle}>
@@ -27284,6 +27236,7 @@ ${notes.trim()}` : notes.trim(),
                               ? "My Routine"
                               : screens.find((item) => item.id === screen)?.label}
                   </h1>
+                  {!isMobile ? (
                   <div
                     role="status"
                     aria-live="polite"
@@ -27345,18 +27298,22 @@ ${notes.trim()}` : notes.trim(),
                         ? "Saved offline"
                         : "Syncing..."}
                   </div>
+                  ) : null}
+                  {!isMobile ? (
                   <button type="button" onClick={() => { if (operationsSyncState === "failed") void syncOperationalData(); }} title={operationsSyncMessage} style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 26, padding: "4px 9px", borderRadius: 999, border: `1px solid ${operationsSyncState === "failed" ? "#E8A2A2" : operationsSyncState === "saving" ? "#E7C46A" : "#9FD6B8"}`, background: operationsSyncState === "failed" ? "#FFF2F2" : operationsSyncState === "saving" ? "#FFF8E8" : "#F0FBF5", color: operationsSyncState === "failed" ? "#A51E1E" : operationsSyncState === "saving" ? "#8A5A00" : "#176B3A", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap", cursor: operationsSyncState === "failed" ? "pointer" : "default" }}><span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: operationsSyncState === "failed" ? "#D83737" : operationsSyncState === "saving" ? colors.gold : "#2BA568" }} />{operationsSyncState === "saving" ? "Saving" : operationsSyncState === "failed" ? "Failed · Retry" : operationsSyncState === "saved" ? "Saved" : "Ready"}</button>
+                  ) : null}
                 </div>
                 {screen === "dashboard" && !isMobile ? (
                   <p style={headerSubStyle}>{databaseStatus}</p>
                 ) : null}
               </div>
 
+              {!isMobile ? (
               <div
                 style={{
                   width: "100%",
                   minWidth: 0,
-                  flex: isMobile ? "0 0 auto" : "1 1 760px",
+                  flex: "1 1 760px",
                   display: "grid",
                   gridTemplateColumns: isMobile
                     ? "minmax(0, 1fr) auto"
@@ -27544,6 +27501,7 @@ ${notes.trim()}` : notes.trim(),
                     ) : null}
                   </div>
               </div>
+              ) : null}
             </div>
           </header>
 
@@ -27552,6 +27510,234 @@ ${notes.trim()}` : notes.trim(),
           </div>
         </section>
       </div>
+
+      {isMobile ? (
+        <>
+          <nav
+            aria-label="Atlas Field Mode"
+            style={{
+              position: "fixed",
+              left: 8,
+              right: 8,
+              bottom: "max(8px, env(safe-area-inset-bottom))",
+              zIndex: 9000,
+              display: "grid",
+              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gap: 4,
+              padding: 6,
+              borderRadius: 18,
+              border: `1px solid ${colors.line}`,
+              background: "rgba(255,255,255,.97)",
+              boxShadow: "0 14px 40px rgba(7,27,47,.20)",
+              backdropFilter: "blur(14px)",
+            }}
+          >
+            {[
+              {
+                id: "today",
+                label: "Today",
+                active: screen === "routines",
+                action: () => {
+                  setMobileFieldMoreOpen(false);
+                  setScreen("routines");
+                },
+              },
+              {
+                id: "work",
+                label: "Work",
+                active: screen === "history",
+                action: () => {
+                  setMobileFieldMoreOpen(false);
+                  setSelectedServiceId("");
+                  setWorkOrdersOpenKey((current) => current + 1);
+                  setScreen("history");
+                },
+              },
+              {
+                id: "property",
+                label: "Property",
+                active: screen === "assets" || screen === "locations" || screen === "vendors",
+                action: () => {
+                  setMobileFieldMoreOpen(false);
+                  setScreen("assets");
+                },
+              },
+              {
+                id: "notes",
+                label: "Notes",
+                active: screen === "notes",
+                action: () => {
+                  setMobileFieldMoreOpen(false);
+                  setScreen("notes");
+                },
+              },
+              {
+                id: "more",
+                label: "More",
+                active: mobileFieldMoreOpen,
+                action: () => setMobileFieldMoreOpen((current) => !current),
+              },
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={item.action}
+                style={{
+                  minWidth: 0,
+                  minHeight: 48,
+                  padding: "6px 3px",
+                  borderRadius: 12,
+                  border: item.active ? `1px solid ${colors.gold}` : "1px solid transparent",
+                  background: item.active ? "#FFF8E8" : "transparent",
+                  color: colors.navy,
+                  fontSize: 11,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+          {mobileFieldMoreOpen ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="More Atlas field tools"
+              onMouseDown={(event) => {
+                if (event.currentTarget === event.target) setMobileFieldMoreOpen(false);
+              }}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 8990,
+                display: "grid",
+                alignItems: "end",
+                background: "rgba(7,27,47,.36)",
+                padding: "12px 12px calc(82px + env(safe-area-inset-bottom))",
+              }}
+            >
+              <section
+                onMouseDown={(event) => event.stopPropagation()}
+                style={{
+                  width: "100%",
+                  maxHeight: "72dvh",
+                  overflowY: "auto",
+                  borderRadius: 20,
+                  background: "#FFFFFF",
+                  border: `1px solid ${colors.line}`,
+                  boxShadow: "0 22px 60px rgba(7,27,47,.28)",
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div>
+                    <div style={eyebrowStyle}>Field Mode</div>
+                    <strong style={{ color: colors.navy, fontSize: 17 }}>More</strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFieldMoreOpen(false)}
+                    style={{ ...secondaryButtonStyle, width: "auto", minHeight: 36, padding: "6px 10px" }}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    ["Tasks", () => { setTasksView("tasks"); setScreen("planner"); }],
+                    ["Calendar", () => setScreen("calendar")],
+                    ["Locations", () => setScreen("locations")],
+                    ["Vendors", () => setScreen("vendors")],
+                    ["Photos", () => setScreen("photos")],
+                    ["Documents", () => setScreen("documents")],
+                    ["Requests", () => setScreen("requests")],
+                    ["Procedures", () => setScreen("procedures")],
+                    ["Inbox", () => setScreen("inbox")],
+                    ["QR / Scan", () => setScreen("scan")],
+                  ].map(([label, action]) => (
+                    <button
+                      key={label as string}
+                      type="button"
+                      onClick={() => {
+                        setMobileFieldMoreOpen(false);
+                        (action as () => void)();
+                      }}
+                      style={{
+                        ...secondaryButtonStyle,
+                        minHeight: 48,
+                        padding: "9px 10px",
+                        justifyContent: "flex-start",
+                        textAlign: "left",
+                      }}
+                    >
+                      {label as string}
+                    </button>
+                  ))}
+                </div>
+
+                {!isTeamScopedUser ? (
+                  <>
+                    <div style={{ ...eyebrowStyle, marginTop: 14, marginBottom: 7 }}>
+                      Property Areas
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        gap: 8,
+                      }}
+                    >
+                      {([
+                        ["house", "House & Maintenance"],
+                        ["garage", "Garage"],
+                        ["pool", "Pool & Spa"],
+                        ["landscaping", "Landscaping"],
+                        ["marine", "Dock & Waterfront"],
+                      ] as const).map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setMobileFieldMoreOpen(false);
+                            setDepartmentDrilldown("");
+                            setDepartmentCenter(id);
+                          }}
+                          style={{
+                            ...secondaryButtonStyle,
+                            minHeight: 46,
+                            padding: "8px 10px",
+                            justifyContent: "flex-start",
+                            textAlign: "left",
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </section>
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
       {true ? (
         <>
