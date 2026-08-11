@@ -25607,7 +25607,28 @@ ${notes.trim()}` : notes.trim(),
           scroll-margin-top: 18px;
         }
         .atlas-page-header {
-          border-radius: 0 0 14px 14px;
+          border-radius: 0 0 16px 16px;
+          box-shadow: 0 10px 26px rgba(7,27,47,0.12);
+          overflow: hidden;
+        }
+        .atlas-page-header button {
+          min-height: 40px;
+        }
+        .atlas-app-shell button {
+          -webkit-tap-highlight-color: transparent;
+        }
+        .atlas-app-shell button:active {
+          transform: translateY(1px);
+          box-shadow: none !important;
+        }
+        .atlas-app-shell button:disabled {
+          cursor: not-allowed !important;
+          opacity: 0.5;
+          box-shadow: none !important;
+        }
+        .atlas-app-shell [style*="border-top: 4px solid #C99A3D"],
+        .atlas-app-shell [style*="border-top:4px solid #C99A3D"] {
+          border-top-color: transparent !important;
         }
         .atlas-page-header + * {
           margin-top: 10px;
@@ -25636,8 +25657,13 @@ ${notes.trim()}` : notes.trim(),
           transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
         }
         .atlas-app-shell button:hover {
-          border-color: rgba(201,154,61,0.72) !important;
-          box-shadow: 0 4px 14px rgba(15,35,55,0.08);
+          border-color: #9FB0BF !important;
+          box-shadow: 0 3px 10px rgba(15,35,55,0.07);
+        }
+        .atlas-sidebar-nav-button:hover {
+          background: rgba(255,255,255,.08) !important;
+          border-color: rgba(255,255,255,.14) !important;
+          box-shadow: none !important;
         }
         .atlas-app-shell input:hover, .atlas-app-shell select:hover, .atlas-app-shell textarea:hover {
           border-color: #9FB0BF !important;
@@ -27217,6 +27243,12 @@ ${notes.trim()}` : notes.trim(),
           .atlas-page-header h1 {
             font-size: clamp(20px, 6.4vw, 27px) !important;
             line-height: 1.1 !important;
+          }
+          .atlas-app-shell button {
+            min-height: 40px;
+          }
+          .atlas-app-shell .atlas-sidebar-nav-button {
+            min-height: 36px !important;
           }
         }
       `}</style>
@@ -29057,22 +29089,22 @@ const brandStyle: React.CSSProperties = {
 };
 
 const logoBoxStyle: React.CSSProperties = {
-  width: 30,
-  height: 30,
-  borderRadius: 12,
-  background: colors.gold,
-  border: `1px solid ${colors.gold}`,
+  width: 38,
+  height: 38,
+  borderRadius: 10,
+  background: "#FFFFFF",
+  border: "1px solid rgba(255,255,255,.22)",
   display: "grid",
   placeItems: "center",
   overflow: "hidden",
-  boxShadow: "0 12px 26px rgba(0,0,0,0.22)",
+  boxShadow: "0 8px 22px rgba(0,0,0,0.16)",
 };
 
 const logoImageStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
   objectFit: "contain",
-  padding: 5,
+  padding: 3,
 };
 
 const logoFallbackStyle: React.CSSProperties = {
@@ -29123,16 +29155,17 @@ const sidebarNavItemsStyle: React.CSSProperties = {
 const navButtonStyle: React.CSSProperties = {
   width: "100%",
   border: "1px solid transparent",
-  borderRadius: 8,
-  padding: "clamp(3px, 0.5vh, 5px) 7px",
+  borderRadius: 9,
+  padding: "6px 9px",
   textAlign: "left",
   cursor: "pointer",
-  fontWeight: 850,
-  fontSize: "clamp(12px, 1.55vh, 14px)",
+  fontWeight: 800,
+  fontSize: "clamp(12px, 1.5vh, 14px)",
   lineHeight: 1.2,
-  minHeight: "clamp(25px, 3.2vh, 31px)",
+  minHeight: 34,
   display: "flex",
   alignItems: "center",
+  transition: "background-color 150ms ease, border-color 150ms ease",
 };
 
 const reviewGridStyle: React.CSSProperties = {
@@ -29298,6 +29331,7 @@ const buttonRowStyle: React.CSSProperties = {
   gap: 8,
   flexWrap: "wrap",
   alignItems: "center",
+  justifyContent: "flex-start",
 };
 
 const calendarNavyShellStyle: React.CSSProperties = {
@@ -29486,24 +29520,39 @@ const goldButtonStyle: React.CSSProperties = {
   border: `1px solid ${colors.gold}`,
   background: colors.gold,
   color: colors.navy,
-  borderRadius: 13,
-  padding: "10px 14px",
-  fontSize: 14,
-  lineHeight: 1.2,
-  fontWeight: 800,
+  borderRadius: 10,
+  padding: "10px 15px",
+  minHeight: 40,
+  fontSize: 13,
+  lineHeight: 1.15,
+  fontWeight: 900,
+  letterSpacing: 0.1,
   cursor: "pointer",
+  boxShadow: "0 2px 7px rgba(15,35,55,0.08)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  whiteSpace: "nowrap",
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
+  border: "1px solid #C8D4DE",
   background: "#FFFFFF",
   color: colors.navy,
   borderRadius: 10,
-  padding: "8px 11px",
+  padding: "9px 13px",
+  minHeight: 38,
   fontSize: 13,
-  lineHeight: 1.2,
-  fontWeight: 700,
+  lineHeight: 1.15,
+  fontWeight: 800,
   cursor: "pointer",
+  boxShadow: "0 1px 3px rgba(15,35,55,0.05)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  whiteSpace: "nowrap",
 };
 
 const compactUtilityButtonStyle: React.CSSProperties = {
@@ -29788,14 +29837,18 @@ const mapBoxRemoveButtonStyle: React.CSSProperties = {
 };
 
 const smallSubtleButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  borderRadius: 999,
+  border: "1px solid #C8D4DE",
+  borderRadius: 9,
   background: "#FFFFFF",
   color: colors.navy,
   padding: "7px 10px",
+  minHeight: 32,
   fontSize: 12,
-  fontWeight: 900,
+  fontWeight: 800,
   cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
 };
 
 const mapVendorChipListStyle: React.CSSProperties = {
