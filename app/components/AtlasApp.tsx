@@ -1807,6 +1807,38 @@ export default function AtlasApp() {
     window.localStorage.setItem(cleanupKey, "ready");
   }, [operationsHydrated, activePropertyId]);
 
+
+  useEffect(() => {
+    if (!operationsHydrated || typeof window === "undefined") return;
+
+    const cleaned = dedupeTaskState(workPlanTasks, taskMeta);
+    if (!cleaned.duplicateIds.size) return;
+
+    setWorkPlanTasks(cleaned.tasks);
+    setTaskMeta(cleaned.meta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, cleaned.tasks);
+    if (activePropertyId === "2000") {
+      saveStoredArray("atlas-tasks-v1", cleaned.tasks);
+    }
+
+    try {
+      window.localStorage.setItem(
+        `atlas-task-meta-v1-${activePropertyId}`,
+        JSON.stringify(cleaned.meta),
+      );
+      if (activePropertyId === "2000") {
+        window.localStorage.setItem(
+          "atlas-task-meta-v1",
+          JSON.stringify(cleaned.meta),
+        );
+      }
+    } catch {}
+
+    cleaned.duplicateIds.forEach((id) => {
+      void deleteOperationalRecord("tasks" as AtlasTable, id);
+    });
+  }, [operationsHydrated, activePropertyId]);
+
   useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
   useEffect(() => {
     saveStoredArray(`atlas-vehicle-care-v1-${activePropertyId}`, vehicleCare);
@@ -1868,15 +1900,20 @@ export default function AtlasApp() {
           : Array.isArray(operationsPayload.tasks)
             ? operationsPayload.tasks
             : [];
+        const taskTombstones = readTaskTombstones(activePropertyId);
         const remoteRoutineTasks = apiTasks.filter(
           (record: { id?: unknown }) =>
             String(record.id || "").startsWith(`routine-assignment-${activePropertyId}-`) &&
-            !pendingTaskDeleteIds.has(String(record.id || "")),
+            !pendingTaskDeleteIds.has(String(record.id || "")) &&
+            !taskTombstones.has(String(record.id || "")),
         );
         setWorkPlanTasks((current) => {
           const nonRoutine = current.filter((item) => !item.id.startsWith(`routine-assignment-${activePropertyId}-`));
           const remote = remoteRoutineTasks.map((record: Record<string, unknown>) => ({ id: String(record.id || ""), title: String(record.title || "Routine assignment"), minutes: Math.max(5, Number(record.minutes || 30)), priority: (record.priority || "Medium") as WorkPlanTask["priority"], category: String(record.category || "Routine"), locationId: String(record.locationId || "general"), preferredDay: (record.preferredDay || "Auto") as WorkPlanTask["preferredDay"], locked: Boolean(record.locked), recurring: Boolean(record.recurring), fixedTime: String(record.fixedTime || ""), notes: String(record.notes || "") }));
-          const next = [...remote, ...nonRoutine];
+          const next = dedupeTaskState(
+            [...remote, ...nonRoutine],
+            taskMeta,
+          ).tasks;
           return JSON.stringify(next) === JSON.stringify(current) ? current : next;
         });
         setTaskMeta((current) => {
@@ -2491,8 +2528,11 @@ export default function AtlasApp() {
           : Array.isArray(operationsPayload.tasks)
             ? operationsPayload.tasks
             : [];
+        const taskTombstones = readTaskTombstones(activePropertyId);
         const apiTasks = rawApiTasks.filter(
-          (record) => !pendingTaskDeleteIds.has(String(record.id)),
+          (record) =>
+            !pendingTaskDeleteIds.has(String(record.id)) &&
+            !taskTombstones.has(String(record.id)),
         );
         const apiVehicles = Array.isArray(operationsPayload.vehicleCareRecords) ? operationsPayload.vehicleCareRecords : Array.isArray(operationsPayload.vehicleCare) ? operationsPayload.vehicleCare : [];
         const apiDaySessions = Array.isArray(operationsPayload.daySessions) ? operationsPayload.daySessions : [];
@@ -2569,10 +2609,11 @@ export default function AtlasApp() {
               const source = local && localUpdated > remoteUpdated ? local : record;
               return { id: source.id, title: source.title, minutes: source.minutes, priority: source.priority, category: source.category, locationId: source.locationId, preferredDay: source.preferredDay, locked: source.locked, recurring: source.recurring, fixedTime: source.fixedTime, notes: source.notes } as WorkPlanTask;
             });
-            return [
+            const combined = [
               ...mergedRemote,
               ...visibleLocalTasks.filter((task) => !remoteIds.has(task.id)),
             ];
+            return dedupeTaskState(combined, taskMeta).tasks;
           });
           setTaskMeta((localMeta) => {
             const visibleLocalMeta = Object.fromEntries(
@@ -2580,7 +2621,7 @@ export default function AtlasApp() {
                 ([id]) => !pendingTaskDeleteIds.has(id),
               ),
             ) as Record<string, AtlasTaskMeta>;
-            return {
+            const mergedMeta = {
               ...visibleLocalMeta,
               ...Object.fromEntries(apiTasks.map((record) => {
                 const remoteMeta = record.taskMeta || record;
@@ -2593,6 +2634,10 @@ export default function AtlasApp() {
                 ];
               })),
             };
+
+            const tombstones = readTaskTombstones(activePropertyId);
+            tombstones.forEach((id) => delete mergedMeta[id]);
+            return mergedMeta;
           });
         }
         if (apiVehicles.length) setVehicleCare((localVehicles) => { const remoteIds = new Set(apiVehicles.map((vehicle) => vehicle.id)); return [...apiVehicles.map((remote) => { const local = localVehicles.find((vehicle) => vehicle.id === remote.id); return local?.updatedAt && local.updatedAt > String(remote.updatedAt || "") ? local : remote; }), ...localVehicles.filter((vehicle) => !remoteIds.has(vehicle.id))]; });
@@ -8570,10 +8615,15 @@ export default function AtlasApp() {
     if (operationsSyncRunningRef.current) return;
     operationsSyncRunningRef.current = true;
     const pendingKey = `atlas-operations-pending-v1-${activePropertyId}`;
+    const cleanedTaskState = dedupeTaskState(workPlanTasks, taskMeta);
+    const taskTombstones = readTaskTombstones(activePropertyId);
+
     const snapshot = {
       propertyId: activePropertyId,
       savedAt: new Date().toISOString(),
-      tasks: workPlanTasks.map((task) => ({ ...task, ...taskDetails(task.id), taskMeta: taskDetails(task.id), propertyId: activePropertyId, updatedAt: taskDetails(task.id).updatedAt || new Date().toISOString() })),
+      tasks: cleanedTaskState.tasks
+        .filter((task) => !taskTombstones.has(String(task.id)))
+        .map((task) => ({ ...task, ...(cleanedTaskState.meta[task.id] || taskDetails(task.id)), taskMeta: cleanedTaskState.meta[task.id] || taskDetails(task.id), propertyId: activePropertyId, updatedAt: (cleanedTaskState.meta[task.id] || taskDetails(task.id)).updatedAt || new Date().toISOString() })),
       vehicles: vehicleCare.map((vehicle) => ({ ...vehicle, propertyId: activePropertyId, updatedAt: vehicle.updatedAt || new Date().toISOString() })),
       daySessions: daySessions.map((session) => ({ ...session, propertyId: activePropertyId })),
     };
@@ -12753,11 +12803,42 @@ export default function AtlasApp() {
   }
 
   function updateWorkPlanTask(taskId: string, patch: Partial<WorkPlanTask>) {
-    setWorkPlanTasks((current) =>
-      current.map((item) =>
+    const updatedAt = new Date().toISOString();
+
+    setWorkPlanTasks((current) => {
+      const next = current.map((item) =>
         item.id === taskId ? { ...item, ...patch } : item,
-      ),
-    );
+      );
+      saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
+      if (activePropertyId === "2000") {
+        saveStoredArray("atlas-tasks-v1", next);
+      }
+      return next;
+    });
+
+    setTaskMeta((current) => {
+      const base = current[taskId] || taskDetails(taskId);
+      const next = {
+        ...current,
+        [taskId]: {
+          ...base,
+          updatedAt,
+        },
+      };
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem(
+            "atlas-task-meta-v1",
+            JSON.stringify(next),
+          );
+        }
+      } catch {}
+      return next;
+    });
   }
 
   function cyclePlannerPriority(priority: WorkOrderPriority) {
@@ -12796,6 +12877,145 @@ export default function AtlasApp() {
     return (
       locations.find((location) => location.id === locationId)?.name ||
       "General"
+    );
+  }
+
+  function taskTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-task-tombstones-v1-${propertyId}`;
+  }
+
+  function readTaskTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>([taskTombstoneKey(propertyId)], []).map(String),
+    );
+  }
+
+  function addTaskTombstone(taskId: string) {
+    if (!taskId) return;
+    const current = readTaskTombstones();
+    current.add(String(taskId));
+    saveStoredArray(taskTombstoneKey(), Array.from(current));
+  }
+
+  function clearTaskTombstone(taskId: string) {
+    if (!taskId) return;
+    const current = readTaskTombstones();
+    if (!current.delete(String(taskId))) return;
+    saveStoredArray(taskTombstoneKey(), Array.from(current));
+  }
+
+  function normalizedTaskIdentity(
+    task: WorkPlanTask,
+    meta: AtlasTaskMeta = taskDetails(task.id),
+  ) {
+    const title = String(task.title || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    const assignee = String(meta.assignee || "Unassigned")
+      .trim()
+      .toLowerCase();
+    const dueDate = String(meta.dueDate || "").slice(0, 10);
+    const listId = String(meta.listId || "").trim().toLowerCase();
+    const recurrence = task.recurring
+      ? `${Number(meta.recurrenceInterval || 1)}-${String(meta.recurrenceUnit || "Weeks").toLowerCase()}`
+      : "one-time";
+    return [title, assignee, dueDate, listId, recurrence].join("||");
+  }
+
+  function dedupeTaskState(
+    tasks: WorkPlanTask[],
+    metaMap: Record<string, AtlasTaskMeta>,
+  ) {
+    const tombstones = readTaskTombstones();
+    const groups = new Map<string, WorkPlanTask[]>();
+
+    tasks
+      .filter((task) => !tombstones.has(String(task.id)))
+      .forEach((task) => {
+        const meta = metaMap[task.id] || taskDetails(task.id);
+        const key = normalizedTaskIdentity(task, meta);
+        groups.set(key, [...(groups.get(key) || []), task]);
+      });
+
+    const duplicateIds = new Set<string>();
+    const kept: WorkPlanTask[] = [];
+
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        kept.push(group[0]);
+        continue;
+      }
+
+      const ranked = [...group].sort((a, b) => {
+        const am = metaMap[a.id] || taskDetails(a.id);
+        const bm = metaMap[b.id] || taskDetails(b.id);
+
+        const aUpdated = String(
+          am.updatedAt || am.completedAt || am.createdAt || "",
+        );
+        const bUpdated = String(
+          bm.updatedAt || bm.completedAt || bm.createdAt || "",
+        );
+
+        if (aUpdated !== bUpdated) return bUpdated.localeCompare(aUpdated);
+
+        const aCompleted = am.status === "Completed" ? 1 : 0;
+        const bCompleted = bm.status === "Completed" ? 1 : 0;
+        if (aCompleted !== bCompleted) return bCompleted - aCompleted;
+
+        return String(a.id).localeCompare(String(b.id));
+      });
+
+      kept.push(ranked[0]);
+      ranked.slice(1).forEach((task) => duplicateIds.add(String(task.id)));
+    }
+
+    const nextMeta = { ...metaMap };
+    duplicateIds.forEach((id) => {
+      delete nextMeta[id];
+      addTaskTombstone(id);
+    });
+
+    return {
+      tasks: kept,
+      meta: nextMeta,
+      duplicateIds,
+    };
+  }
+
+  function removeExactDuplicateTasks() {
+    const cleaned = dedupeTaskState(workPlanTasks, taskMeta);
+    if (!cleaned.duplicateIds.size) {
+      showSaveToast("No duplicate tasks found.");
+      return;
+    }
+
+    setWorkPlanTasks(cleaned.tasks);
+    setTaskMeta(cleaned.meta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, cleaned.tasks);
+    if (activePropertyId === "2000") {
+      saveStoredArray("atlas-tasks-v1", cleaned.tasks);
+    }
+    try {
+      window.localStorage.setItem(
+        `atlas-task-meta-v1-${activePropertyId}`,
+        JSON.stringify(cleaned.meta),
+      );
+      if (activePropertyId === "2000") {
+        window.localStorage.setItem(
+          "atlas-task-meta-v1",
+          JSON.stringify(cleaned.meta),
+        );
+      }
+    } catch {}
+
+    cleaned.duplicateIds.forEach((id) => {
+      void deleteOperationalRecord("tasks" as AtlasTable, id);
+    });
+
+    showSaveToast(
+      `Removed ${cleaned.duplicateIds.size} duplicate task${cleaned.duplicateIds.size === 1 ? "" : "s"}.`,
     );
   }
 
@@ -13027,6 +13247,7 @@ export default function AtlasApp() {
       updatedAt: createdAt,
     };
 
+    clearTaskTombstone(task.id);
     setWorkPlanTasks((current) => [task, ...current]);
     setTaskMeta((current) => ({
       ...current,
@@ -13053,6 +13274,8 @@ export default function AtlasApp() {
   function deleteAtlasTask(taskId: string) {
     const task = workPlanTasks.find((item) => item.id === taskId);
     if (!task) return;
+
+    addTaskTombstone(taskId);
     const meta = taskDetails(taskId);
     setTaskUndo({ task, meta });
     if (taskUndoTimerRef.current !== null) window.clearTimeout(taskUndoTimerRef.current);
