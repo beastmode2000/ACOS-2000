@@ -5,12 +5,213 @@ export const dynamic = "force-dynamic";
 
 type LandscapeStatus = "Not Started" | "In Progress" | "Complete" | "Needs Review";
 
+type AddisonTaskRecord = {
+  id: string;
+  title?: string;
+  taskMeta?: Record<string, any>;
+  [key: string]: any;
+};
+
+const ADDISON_WORK_TOKEN =
+  process.env.ADDISON_WORK_TOKEN ||
+  "addison-2000-7f94f468dca84de3a7b8c2d942ca3819";
+
+function pacificDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const y = parts.find((part) => part.type === "year")?.value || "";
+  const m = parts.find((part) => part.type === "month")?.value || "";
+  const d = parts.find((part) => part.type === "day")?.value || "";
+  return `${y}-${m}-${d}`;
+}
+
+function weekdayFromDateKey(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00-07:00`);
+  const js = date.getDay();
+  return js === 0 ? 7 : js;
+}
+
+function addisonTaskMeta(record: AddisonTaskRecord) {
+  return record?.taskMeta && typeof record.taskMeta === "object"
+    ? record.taskMeta
+    : record;
+}
+
+function isAddisonAssigned(record: AddisonTaskRecord) {
+  return String(addisonTaskMeta(record)?.assignee || "").trim().toLowerCase() === "addison";
+}
+
+async function ensureAddisonBackingTables() {
+  const sql = getSql();
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_operational_records (
+      record_type text NOT NULL,
+      id text NOT NULL,
+      property_id text NOT NULL DEFAULT '2000',
+      record jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (record_type, id)
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_routine_templates (
+      property_id text NOT NULL DEFAULT '2000',
+      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
+      name text NOT NULL,
+      tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_routine_occurrences (
+      property_id text NOT NULL DEFAULT '2000',
+      occurrence_date date NOT NULL,
+      day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
+      routine_name text NOT NULL,
+      tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
+async function loadAddisonWork() {
+  await ensureAddisonBackingTables();
+  const sql = getSql();
+  const today = pacificDateKey();
+
+  const rows = await sql`
+    SELECT id, record, updated_at
+    FROM atlas_operational_records
+    WHERE record_type = 'tasks'
+      AND property_id = '2000'
+    ORDER BY updated_at DESC
+  `;
+  const allTasks = rows.map((row: any) => ({
+    ...(row.record || {}),
+    id: String(row.id || row.record?.id || ""),
+    serverUpdatedAt: row.updated_at,
+  })) as AddisonTaskRecord[];
+
+  const tasks = allTasks
+    .filter(isAddisonAssigned)
+    .sort((a, b) => {
+      const am = addisonTaskMeta(a);
+      const bm = addisonTaskMeta(b);
+      return String(am?.dueDate || "9999-12-31").localeCompare(
+        String(bm?.dueDate || "9999-12-31"),
+      );
+    });
+
+  let occurrenceRows = await sql`
+    SELECT occurrence_date, routine_name, tasks
+    FROM atlas_routine_occurrences
+    WHERE property_id = '2000'
+      AND occurrence_date = ${today}::date
+    LIMIT 1
+  `;
+
+  if (!occurrenceRows[0]) {
+    const day = weekdayFromDateKey(today);
+    const templateRows = await sql`
+      SELECT name, tasks
+      FROM atlas_routine_templates
+      WHERE property_id = '2000'
+        AND day_of_week = ${day}
+      LIMIT 1
+    `;
+    if (templateRows[0]) {
+      await sql`
+        INSERT INTO atlas_routine_occurrences (
+          property_id, occurrence_date, day_of_week, routine_name, tasks, updated_at
+        )
+        VALUES (
+          '2000', ${today}::date, ${day},
+          ${String(templateRows[0].name || "Daily Routine")},
+          ${JSON.stringify(templateRows[0].tasks || [])}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (property_id, occurrence_date) DO NOTHING
+      `;
+      occurrenceRows = await sql`
+        SELECT occurrence_date, routine_name, tasks
+        FROM atlas_routine_occurrences
+        WHERE property_id = '2000'
+          AND occurrence_date = ${today}::date
+        LIMIT 1
+      `;
+    }
+  }
+
+  const occurrence = occurrenceRows[0] || null;
+  const routineTasks = Array.isArray(occurrence?.tasks)
+    ? occurrence.tasks.filter((task: any) => {
+        if (task?.enabled === false) return false;
+        const assigned = String(task?.assignedTo || "").trim().toLowerCase();
+        return assigned === "addison";
+      })
+    : [];
+
+  return {
+    today,
+    tasks,
+    routine: occurrence
+      ? {
+          date: String(occurrence.occurrence_date || today).slice(0, 10),
+          name: String(occurrence.routine_name || "Addison Routine"),
+          tasks: routineTasks,
+        }
+      : { date: today, name: "Addison Routine", tasks: [] },
+  };
+}
+
+async function patchAddisonTask(
+  taskId: string,
+  patch: Record<string, unknown>,
+) {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT record
+    FROM atlas_operational_records
+    WHERE record_type = 'tasks'
+      AND property_id = '2000'
+      AND id = ${taskId}
+    LIMIT 1
+  `;
+  const current = rows[0]?.record as AddisonTaskRecord | undefined;
+  if (!current || !isAddisonAssigned(current)) return false;
+
+  const baseMeta = addisonTaskMeta(current) || {};
+  const nextMeta = {
+    ...baseMeta,
+    ...patch,
+    assignee: "Addison",
+    updatedAt: new Date().toISOString(),
+  };
+  const nextRecord = {
+    ...current,
+    ...nextMeta,
+    taskMeta: nextMeta,
+    propertyId: "2000",
+    updatedAt: nextMeta.updatedAt,
+  };
+
+  await sql`
+    UPDATE atlas_operational_records
+    SET record = ${JSON.stringify(nextRecord)}::jsonb,
+        updated_at = NOW()
+    WHERE record_type = 'tasks'
+      AND property_id = '2000'
+      AND id = ${taskId}
+  `;
+  return true;
+}
+
 type LandscapeHelpItemInput = {
   id: string;
-  sortOrder?: number;
-  label?: string;
-  category?: string;
-  priority?: string;
   isDone?: boolean;
   notes?: string;
   updatedBy?: string;
@@ -276,6 +477,11 @@ export async function GET(request: NextRequest) {
     const sql = getSql();
     const url = new URL(request.url);
     const token = url.searchParams.get("token");
+
+    if (token === ADDISON_WORK_TOKEN) {
+      const addison = await loadAddisonWork();
+      return NextResponse.json({ ok: true, mode: "addison", addison });
+    }
     const weekId = url.searchParams.get("weekId");
     const weekStart = url.searchParams.get("weekStart") || getPacificWeekStartISO();
 
@@ -360,6 +566,81 @@ export async function PATCH(request: NextRequest) {
     const token = queryToken || bodyToken;
     const weekId = typeof body.weekId === "string" ? body.weekId : "";
 
+    if (token === ADDISON_WORK_TOKEN) {
+      const action = String(body.action || "");
+      const today = pacificDateKey();
+
+      if (action === "task-status") {
+        const taskId = String(body.taskId || "");
+        const status = String(body.status || "Open");
+        const completed = status === "Completed";
+        const currentWork = await loadAddisonWork();
+        const currentTask = currentWork.tasks.find((task: any) => task.id === taskId);
+        const currentMeta = currentTask ? addisonTaskMeta(currentTask) : {};
+        const history = Array.isArray(currentMeta?.completionHistory)
+          ? currentMeta.completionHistory.map(String)
+          : [];
+        const nextHistory = completed
+          ? Array.from(new Set([...history, today])).sort()
+          : history.filter((value: string) => value !== today);
+
+        const ok = await patchAddisonTask(taskId, {
+          status,
+          completedAt: completed ? new Date().toISOString() : undefined,
+          lastCompletedDate: completed ? today : currentMeta?.lastCompletedDate || "",
+          completionHistory: nextHistory,
+          needsReview: completed,
+        });
+        if (!ok) return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+      }
+
+      if (action === "task-note") {
+        const taskId = String(body.taskId || "");
+        const note = String(body.note || "");
+        const ok = await patchAddisonTask(taskId, { addisonNote: note });
+        if (!ok) return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+      }
+
+      if (action === "routine-toggle") {
+        const taskId = String(body.taskId || "");
+        const sql = getSql();
+        const rows = await sql`
+          SELECT tasks
+          FROM atlas_routine_occurrences
+          WHERE property_id = '2000'
+            AND occurrence_date = ${today}::date
+          LIMIT 1
+        `;
+        if (!rows[0]) return NextResponse.json({ ok: false, error: "Routine not found." }, { status: 404 });
+        const tasks = Array.isArray(rows[0].tasks) ? rows[0].tasks : [];
+        const target = tasks.find((item: any) => String(item.id) === taskId);
+        if (!target || String(target.assignedTo || "").trim().toLowerCase() !== "addison") {
+          return NextResponse.json({ ok: false, error: "Addison routine item not found." }, { status: 404 });
+        }
+        const next = tasks.map((item: any) =>
+          String(item.id) === taskId
+            ? {
+                ...item,
+                completed: !Boolean(item.completed),
+                status: Boolean(item.completed) ? "open" : "completed",
+              }
+            : item
+        );
+        await sql`
+          UPDATE atlas_routine_occurrences
+          SET tasks = ${JSON.stringify(next)}::jsonb,
+              updated_at = NOW()
+          WHERE property_id = '2000'
+            AND occurrence_date = ${today}::date
+        `;
+        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+      }
+
+      return NextResponse.json({ ok: false, error: "Unsupported Addison action." }, { status: 400 });
+    }
+
     const isPublicCrewUpdate = Boolean(token);
 
     if (!isPublicCrewUpdate) {
@@ -383,7 +664,6 @@ export async function PATCH(request: NextRequest) {
 
     if (!targetWeekId) return NextResponse.json({ ok: false, error: "Missing week id." }, { status: 400 });
 
-    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Daily Crew Work";
     const status = safeStatus(body.status);
     const crewName = typeof body.crewName === "string" ? body.crewName : "";
     const managerNotes = typeof body.managerNotes === "string" ? body.managerNotes : "";
@@ -392,7 +672,6 @@ export async function PATCH(request: NextRequest) {
     await sql`
       UPDATE landscape_help_weeks
       SET
-        title = CASE WHEN ${isPublicCrewUpdate} THEN title ELSE ${title} END,
         status = ${status},
         crew_name = ${crewName},
         manager_notes = CASE WHEN ${isPublicCrewUpdate} THEN manager_notes ELSE ${managerNotes} END,
@@ -404,56 +683,19 @@ export async function PATCH(request: NextRequest) {
 
     const items = Array.isArray(body.items) ? (body.items as LandscapeHelpItemInput[]) : [];
 
-    if (!isPublicCrewUpdate) {
-      const incomingIds = items.map((item) => item.id).filter(Boolean);
-      if (incomingIds.length) {
-        await sql`DELETE FROM landscape_help_items WHERE week_id = ${targetWeekId} AND NOT (id = ANY(${incomingIds}::uuid[]))`;
-      } else {
-        await sql`DELETE FROM landscape_help_items WHERE week_id = ${targetWeekId}`;
-      }
-    }
-
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
+    for (const item of items) {
       if (!item.id) continue;
 
-      if (isPublicCrewUpdate) {
-        await sql`
-          UPDATE landscape_help_items
-          SET
-            is_done = ${Boolean(item.isDone)},
-            notes = ${typeof item.notes === "string" ? item.notes : ""},
-            updated_by = ${typeof item.updatedBy === "string" ? item.updatedBy : "Crew"},
-            updated_at = now()
-          WHERE id = ${item.id} AND week_id = ${targetWeekId}
-        `;
-      } else {
-        await sql`
-          INSERT INTO landscape_help_items (id, week_id, sort_order, label, category, priority, is_done, notes, updated_by, updated_at)
-          VALUES (
-            ${item.id}::uuid,
-            ${targetWeekId},
-            ${Number(item.sortOrder) || index + 1},
-            ${typeof item.label === "string" && item.label.trim() ? item.label.trim() : "Untitled task"},
-            ${typeof item.category === "string" && item.category.trim() ? item.category.trim() : "General"},
-            ${typeof item.priority === "string" && item.priority.trim() ? item.priority.trim() : "Normal"},
-            ${Boolean(item.isDone)},
-            ${typeof item.notes === "string" ? item.notes : ""},
-            ${typeof item.updatedBy === "string" ? item.updatedBy : "Atlas Admin"},
-            now()
-          )
-          ON CONFLICT (id) DO UPDATE SET
-            sort_order = EXCLUDED.sort_order,
-            label = EXCLUDED.label,
-            category = EXCLUDED.category,
-            priority = EXCLUDED.priority,
-            is_done = EXCLUDED.is_done,
-            notes = EXCLUDED.notes,
-            updated_by = EXCLUDED.updated_by,
-            updated_at = now()
-          WHERE landscape_help_items.week_id = ${targetWeekId}
-        `;
-      }
+      await sql`
+        UPDATE landscape_help_items
+        SET
+          is_done = ${Boolean(item.isDone)},
+          notes = ${typeof item.notes === "string" ? item.notes : ""},
+          updated_by = ${typeof item.updatedBy === "string" ? item.updatedBy : ""},
+          updated_at = now()
+        WHERE id = ${item.id}
+        AND week_id = ${targetWeekId}
+      `;
     }
 
     const loaded = await loadWeekById(targetWeekId);
