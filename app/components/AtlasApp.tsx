@@ -1649,7 +1649,7 @@ export default function AtlasApp() {
   );
   const [assistantQuestion, setAssistantQuestion] = useState("");
   const [assistantAnswer, setAssistantAnswer] = useState(
-    "Atlas Assistant about assets, locations, vendors, contacts, work orders, calendar items, procedures, documents, parts, or map records.",
+    "Ask Atlas about assets, locations, vendors, contacts, work orders, calendar items, procedures, documents, parts, or map records.",
   );
   const [manualCandidates, setManualCandidates] = useState<ManualCandidate[]>(
     [],
@@ -5175,7 +5175,7 @@ export default function AtlasApp() {
         recognition.stop();
       }
     };
-    recognition.onerror = () => showSaveToast("Atlas could not hear that request. Open Atlas Assistant and try again.", "warning");
+    recognition.onerror = () => showSaveToast("Athena could not hear that request. Open Athena and try again.", "warning");
     recognition.onend = () => {
       voiceRecognitionRef.current = null;
       setVoiceAssistantListening(false);
@@ -11087,7 +11087,7 @@ export default function AtlasApp() {
       setManualSaveMessage(
         `Saved ${record.title} to Atlas Documents${linkedAsset ? ` and linked it to ${linkedAsset.name}` : ""}.`,
       );
-      setDocumentSyncStatus(`Saved ${record.title} from Atlas Assistant.`);
+      setDocumentSyncStatus(`Saved ${record.title} from Athena.`);
     } catch (error) {
       setManualSaveMessage(
         error instanceof Error
@@ -11353,7 +11353,7 @@ export default function AtlasApp() {
           quantity,
           minQuantity,
           status,
-          notes: `Created through Atlas Assistant on ${todayISO()}.`,
+          notes: `Created through Athena on ${todayISO()}.`,
         });
 
         const saved = await postAtlasRecord("parts", record);
@@ -23903,7 +23903,7 @@ ${notes.trim()}` : notes.trim(),
     return (
       <section style={sectionStyle}>
         <SectionHeader
-          eyebrow="Atlas Assistant"
+          eyebrow="Ask Atlas"
           title="AI Property Workspace"
           detail="Ask a question, review matching Atlas records, and open the exact item without leaving the workspace."
           right={
@@ -23919,7 +23919,7 @@ ${notes.trim()}` : notes.trim(),
                   setManualSaveMessage("");
                   setAssistantQuestion("");
                   setAssistantAnswer(
-                    "Atlas Assistant about assets, locations, vendors, contacts, work orders, calendar items, procedures, documents, parts, or map records.",
+                    "Ask Atlas about assets, locations, vendors, contacts, work orders, calendar items, procedures, documents, parts, or map records.",
                   );
                 }}
                 style={secondaryButtonStyle}
@@ -24032,7 +24032,7 @@ ${notes.trim()}` : notes.trim(),
                           void askAtlas();
                       }
                     }}
-                    placeholder="Atlas Assistant about the property, records, work, equipment, documents, or manuals..."
+                    placeholder="Ask Atlas about the property, records, work, equipment, documents, or manuals..."
                     style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
                   />
                   <div style={buttonRowStyle}>
@@ -24048,7 +24048,7 @@ ${notes.trim()}` : notes.trim(),
                             : 1,
                       }}
                     >
-                      {assistantLoading ? "Working..." : "Atlas Assistant"}
+                      {assistantLoading ? "Working..." : "Ask Atlas"}
                     </button>
                     <span style={mutedSmallStyle}>Ctrl/⌘ + Enter to send</span>
                   </div>
@@ -24307,7 +24307,7 @@ ${notes.trim()}` : notes.trim(),
                   Approval required
                 </h3>
                 <p style={{ ...mutedSmallStyle, lineHeight: 1.55, margin: 0 }}>
-                  Atlas Assistant can now prepare work orders, calendar events, and
+                  Ask Atlas can answer property questions and prepare work orders, calendar events, and
                   draft procedures. Nothing is saved until you press Approve and
                   Save.
                 </p>
@@ -25451,7 +25451,7 @@ ${notes.trim()}` : notes.trim(),
                 <button type="button" onClick={() => openQuickCapture("asset")}><span>◇</span>{quickCaptureMode === "create" ? "New Asset" : "Existing Asset"}</button>
                 <button type="button" onClick={() => openQuickCapture("vendor")}><span>V</span>{quickCaptureMode === "create" ? "New Vendor" : "Existing Vendor"}</button>
                 <button type="button" onClick={() => openQuickCapture("procedure")}><span>☷</span>{quickCaptureMode === "create" ? "New Procedure" : "Existing Procedure"}</button>
-                <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Atlas Assistant</button>
+                <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Athena</button>
               </div>
               <label className="atlas-quick-note-box">
                 <span>Quick note</span>
@@ -27344,8 +27344,8 @@ ${notes.trim()}` : notes.trim(),
               <button
                 type="button"
                 onClick={() => setDashboardAssistantOpen(true)}
-                aria-label="Atlas Assistant"
-                title="Atlas Assistant"
+                aria-label="Athena"
+                title="Athena"
                 style={{
                   ...secondaryButtonStyle,
                   width: 42,
@@ -27792,8 +27792,8 @@ ${notes.trim()}` : notes.trim(),
                 <button
                   type="button"
                   onClick={() => setDashboardAssistantOpen(true)}
-                  aria-label="Open Atlas Assistant"
-                  title="Atlas Assistant"
+                  aria-label="Open Athena"
+                  title="Athena"
                   style={{
                     ...secondaryButtonStyle,
                     width: "auto",
@@ -27812,7 +27812,7 @@ ${notes.trim()}` : notes.trim(),
                   }}
                 >
                   <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>✦</span>
-                  {!isMobile ? <span>Atlas Assistant</span> : null}
+                  {!isMobile ? <span>Athena</span> : null}
                 </button>
                 <div
                     style={{ position: "relative", minWidth: 0, gridColumn: isMobile ? "1 / -1" : undefined }}
@@ -27878,7 +27878,7 @@ ${notes.trim()}` : notes.trim(),
                               <div style={searchEmptyStyle}>No direct Atlas records match “{query.trim()}”.</div>
                             )}
                             <button type="button" onMouseDown={(event) => { event.preventDefault(); askAtlasFromGlobalSearch(); }} style={{ ...searchResultStyle, background: "#F7FAFF", borderTop: `1px solid ${colors.line}` }}>
-                              <span style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><strong>Atlas Assistant: “{query.trim()}”</strong><span style={searchTypeBadgeStyle}>AI</span></span>
+                              <span style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><strong>Ask Atlas: “{query.trim()}”</strong><span style={searchTypeBadgeStyle}>AI</span></span>
                               <span style={mutedSmallStyle}>Search all Atlas records and explain the answer.</span>
                             </button>
                           </>
@@ -28360,7 +28360,7 @@ ${notes.trim()}` : notes.trim(),
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="Atlas Assistant"
+              aria-label="Athena"
               style={{
                 position: "fixed",
                 inset: 0,
@@ -28446,7 +28446,10 @@ ${notes.trim()}` : notes.trim(),
                   {!assistantTurns.length ? (
                     <div style={{ display: "grid", gap: 12 }}>
                       <div>
-                        <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Assistant Actions</div>
+                        <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Athena Actions</div>
+                        <div style={{ ...mutedSmallStyle, marginBottom: 9 }}>
+                          Athena helps you run the day. Ask Atlas remains the property knowledge system.
+                        </div>
                         <div
                           style={{
                             display: "grid",
@@ -28537,11 +28540,11 @@ ${notes.trim()}` : notes.trim(),
                         }}
                       >
                         <span aria-hidden="true">{voiceAssistantListening ? "●" : "🎤"}</span>
-                        {voiceAssistantListening ? "Listening…" : "Talk to Atlas Assistant"}
+                        {voiceAssistantListening ? "Listening…" : "Talk to Athena"}
                       </button>
 
                       <div style={{ ...mutedSmallStyle, textAlign: "center" }}>
-                        Nothing is saved automatically. Atlas prepares changes for review first.
+                        Nothing is saved automatically. Athena prepares changes for review first.
                       </div>
 
                       <div
@@ -28700,7 +28703,7 @@ ${notes.trim()}` : notes.trim(),
                       marginTop: 8,
                     }}
                   >
-                    Open Full Atlas Assistant
+                    Ask Atlas
                   </button>
                 </footer>
               </section>
