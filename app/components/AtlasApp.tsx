@@ -3866,10 +3866,15 @@ export default function AtlasApp() {
 
         const property = sections.find((section) => section.label === "Property");
         if (property) {
-          property.items = [
-            ...property.items,
-            "portfolio",
-          ] as typeof property.items;
+          property.items = Array.from(
+            new Set([
+              ...property.items.filter(
+                (item) => item !== "timeline" && item !== "portfolio",
+              ),
+              "timeline",
+              "portfolio",
+            ]),
+          ) as typeof property.items;
         }
 
         return sections.filter((section) => section.items.length > 0);
@@ -27411,7 +27416,7 @@ ${notes.trim()}` : notes.trim(),
                             key={item.id}
                             type="button"
                             className="atlas-sidebar-nav-button"
-                            title={sidebarCollapsed ? (item.id === "timeline" ? "Projects" : item.id === "portfolio" ? "Properties" : item.label) : undefined}
+                            title={sidebarCollapsed ? (item.id === "timeline" ? "Property Timeline" : item.id === "portfolio" ? "Properties" : item.label) : undefined}
                             onClick={() => {
                               if (item.id === "history") {
                                 setSelectedServiceId("");
@@ -27437,7 +27442,7 @@ ${notes.trim()}` : notes.trim(),
                               {isAddisonUser && item.id === "routines"
                                 ? "My Routine"
                                 : item.id === "timeline"
-                                  ? "Projects"
+                                  ? "Property Timeline"
                                   : item.id === "portfolio"
                                     ? "Properties"
                                     : item.label}
