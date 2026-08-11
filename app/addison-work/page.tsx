@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -154,9 +153,9 @@ export default function LandscapeHelpPage() {
   useEffect(() => {
     if (!addisonData || !shareToken) return;
     const timer = window.setInterval(() => {
-      void loadCurrentWeek(shareToken);
+      void loadCurrentWeek(shareToken, false);
     }, 5000);
-    const onFocus = () => void loadCurrentWeek(shareToken);
+    const onFocus = () => void loadCurrentWeek(shareToken, false);
     window.addEventListener("focus", onFocus);
     return () => {
       window.clearInterval(timer);
@@ -193,9 +192,11 @@ export default function LandscapeHelpPage() {
     return `${origin}/landscape-help?token=${encodeURIComponent(week.shareToken)}`;
   }, [origin, week]);
 
-  async function loadCurrentWeek(tokenOverride = shareToken) {
-    setLoading(true);
-    setMessage("");
+  async function loadCurrentWeek(tokenOverride = shareToken, showLoading = true) {
+    if (showLoading) {
+      setLoading(true);
+      setMessage("");
+    }
 
     try {
       const response = await fetch(landscapeApiUrl(tokenOverride), { cache: "no-store" });
@@ -219,7 +220,7 @@ export default function LandscapeHelpPage() {
       const text = error instanceof Error ? error.message : "Could not load Landscape Help.";
       setMessage(text);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }
 
