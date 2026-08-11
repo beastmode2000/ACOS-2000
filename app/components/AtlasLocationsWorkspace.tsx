@@ -1433,6 +1433,68 @@ export default function AtlasLocationsWorkspace(props: any) {
                 </div>
               </div>
 
+              <section
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 12,
+                  background: "#F8FAFC",
+                  padding: 10,
+                  marginTop: 10,
+                  marginBottom: 10,
+                }}
+                aria-label="Location relationships"
+              >
+                <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>LINKED RECORDS</div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "repeat(2,minmax(0,1fr))"
+                      : "repeat(4,minmax(0,1fr))",
+                    gap: 6,
+                  }}
+                >
+                  {[
+                    ["Assets", locationAssets.length],
+                    ["Work", locationWorkOrders.length],
+                    ["Tasks", locationTasks.length],
+                    ["Photos", locationPhotos.length],
+                  ].map(([label, count]) => (
+                    <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: "7px 8px" }}>
+                      <span style={{ ...mutedSmallStyle, display: "block" }}>{label}</span>
+                      <strong style={{ color: colors.navy, fontSize: 15 }}>{count}</strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {locationWorkOrders.length ? (
+                <section
+                  style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, marginBottom: 10 }}
+                  aria-label="Location recent activity"
+                >
+                  <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>RECENT ACTIVITY</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {[...locationWorkOrders]
+                      .sort((a: any, b: any) => String(b.lastCompletedDate || b.date || "").localeCompare(String(a.lastCompletedDate || a.date || "")))
+                      .slice(0, 3)
+                      .map((entry: any, index: number) => (
+                        <div key={String(entry.id || index)} style={{ borderLeft: `3px solid ${colors.gold}`, paddingLeft: 8 }}>
+                          <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
+                            {entry.title || "Location work"}
+                          </strong>
+                          <span style={mutedSmallStyle}>
+                            {entry.lastCompletedDate || entry.date
+                              ? formatDate(entry.lastCompletedDate || entry.date)
+                              : "Date not recorded"}
+                            {entry.status ? ` · ${entry.status}` : ""}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </section>
+              ) : null}
+
               {isMobile ? (
                 <div
                   style={{
