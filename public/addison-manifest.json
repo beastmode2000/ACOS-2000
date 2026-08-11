@@ -1,14 +1,18 @@
 {
-  "name": "Atlas — Addison",
+  "id": "/addison-work",
+  "name": "Atlas \u2014 Addison",
   "short_name": "Addison",
   "description": "Addison's Atlas tasks and routine.",
   "start_url": "/addison-work",
-  "scope": "/",
+  "scope": "/addison-work",
   "display": "standalone",
   "background_color": "#071B2F",
   "theme_color": "#071B2F",
   "orientation": "portrait",
-  "categories": ["productivity", "business"],
+  "categories": [
+    "productivity",
+    "business"
+  ],
   "icons": [
     {
       "src": "/atlas-icon-192.png",
@@ -24,4 +28,3 @@
     }
   ]
 }
-
