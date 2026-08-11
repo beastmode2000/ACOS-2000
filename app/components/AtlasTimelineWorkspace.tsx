@@ -196,6 +196,8 @@ export default function AtlasTimelineWorkspace(props: any) {
   const [showAddEvent, setShowAddEvent] = useState(false);
   const [showOnThisDay, setShowOnThisDay] = useState(true);
   const [areaProgressMode, setAreaProgressMode] = useState(false);
+  const [comparisonPosition, setComparisonPosition] = useState(50);
+  const [milestoneStripOpen, setMilestoneStripOpen] = useState(true);
   const [draft, setDraft] = useState({
     date: new Date().toISOString().slice(0, 10),
     datePrecision: "Exact" as "Exact" | "Approximate",
@@ -533,6 +535,32 @@ export default function AtlasTimelineWorkspace(props: any) {
   const earliest = [...entries].sort((a, b) => dateTime(a.date) - dateTime(b.date))[0];
   const latest = entries[0];
 
+
+  function scrollTimeline(direction: "previous" | "next") {
+    const container = horizontalRef.current;
+    if (!container) return;
+    const distance = isMobile
+      ? Math.max(280, container.clientWidth * 0.86)
+      : Math.max(360, container.clientWidth * 0.72);
+    container.scrollBy({
+      left: direction === "next" ? distance : -distance,
+      behavior: "smooth",
+    });
+  }
+
+  function jumpToEntry(entry: TimelineEntry) {
+    setSelectedEntryId(entry.id);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`timeline-entry-${entry.id}`)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "center",
+        });
+    });
+  }
+
   function saveCustomEvent() {
     if (!draft.date || !draft.title.trim()) return;
     const event: CustomEvent = {
@@ -580,6 +608,7 @@ export default function AtlasTimelineWorkspace(props: any) {
 
   function openEntry(entry: TimelineEntry) {
     setSelectedEntryId(entry.id);
+    setComparisonPosition(50);
     if (entry.source === "work" && entry.record?.id) {
       setSelectedServiceId(entry.record.id);
     }
@@ -702,6 +731,98 @@ export default function AtlasTimelineWorkspace(props: any) {
           ))}
         </div>
       </section>
+
+      {milestoneEntries.length ? (
+        <section
+          style={{
+            ...cardStyle,
+            padding: isMobile ? 9 : 11,
+            background: "#FFFDF7",
+            borderColor: "#E7D5A6",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <strong style={{ color: colors.navy }}>Milestone Navigator</strong>
+              <div style={mutedSmallStyle}>
+                Jump directly to major moments in the property’s history.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMilestoneStripOpen((current) => !current)}
+              style={smallButton}
+            >
+              {milestoneStripOpen ? "Hide" : "Show"} Milestones
+            </button>
+          </div>
+
+          {milestoneStripOpen ? (
+            <div
+              style={{
+                display: "flex",
+                gap: 7,
+                overflowX: "auto",
+                paddingTop: 9,
+                paddingBottom: 2,
+                scrollSnapType: "x proximity",
+              }}
+            >
+              {milestoneEntries.slice(0, 40).map((entry) => (
+                <button
+                  key={`milestone-nav-${entry.id}`}
+                  type="button"
+                  onClick={() => jumpToEntry(entry)}
+                  style={{
+                    flex: "0 0 auto",
+                    minWidth: isMobile ? 190 : 220,
+                    maxWidth: 280,
+                    textAlign: "left",
+                    border: `1px solid ${colors.gold}`,
+                    borderRadius: 11,
+                    background:
+                      selectedEntryId === entry.id ? "#FFF3CF" : "#FFFFFF",
+                    padding: "8px 9px",
+                    scrollSnapAlign: "start",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "block",
+                      color: colors.gold,
+                      fontSize: 9,
+                      fontWeight: 900,
+                      textTransform: "uppercase",
+                      letterSpacing: ".06em",
+                    }}
+                  >
+                    {formatTimelineDate(entry.date)}
+                  </span>
+                  <strong
+                    style={{
+                      display: "block",
+                      color: colors.navy,
+                      marginTop: 3,
+                      fontSize: 12,
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {entry.title}
+                  </strong>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {showOnThisDay && onThisDay.length ? (
         <section style={{ ...cardStyle, borderColor: colors.gold, background: "#FFF9EA" }}>
@@ -910,6 +1031,27 @@ export default function AtlasTimelineWorkspace(props: any) {
                     <div style={{ ...mutedSmallStyle, marginTop: 6 }}>
                       {formatTimelineDate(oldest?.date)} → {formatTimelineDate(newest?.date)}
                     </div>
+                    {group.entries.find((entry: TimelineEntry) => entry.afterPhoto || entry.photo) ? (
+                      <img
+                        src={
+                          group.entries.find(
+                            (entry: TimelineEntry) => entry.afterPhoto || entry.photo,
+                          )?.afterPhoto ||
+                          group.entries.find(
+                            (entry: TimelineEntry) => entry.afterPhoto || entry.photo,
+                          )?.photo
+                        }
+                        alt=""
+                        style={{
+                          width: "100%",
+                          height: 110,
+                          objectFit: "cover",
+                          borderRadius: 8,
+                          marginTop: 8,
+                          border: `1px solid ${colors.line}`,
+                        }}
+                      />
+                    ) : null}
                   </button>
                 );
               })}
@@ -918,6 +1060,42 @@ export default function AtlasTimelineWorkspace(props: any) {
       ) : null}
 
       <section style={{ ...cardStyle, padding: isMobile ? 8 : 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+            marginBottom: 8,
+          }}
+        >
+          <div>
+            <strong style={{ color: colors.navy }}>History Explorer</strong>
+            <div style={mutedSmallStyle}>
+              Scroll horizontally or use the arrows to move through time.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => scrollTimeline("previous")}
+              style={{ ...smallButton, minWidth: 38 }}
+              aria-label="Earlier history"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollTimeline("next")}
+              style={{ ...smallButton, minWidth: 38 }}
+              aria-label="Later history"
+            >
+              →
+            </button>
+          </div>
+        </div>
+
         <div
           ref={horizontalRef}
           style={{
@@ -958,6 +1136,7 @@ export default function AtlasTimelineWorkspace(props: any) {
               <div style={{ display: "grid", gap: 8 }}>
                 {group.map((entry) => (
                   <button
+                    id={`timeline-entry-${entry.id}`}
                     key={entry.id}
                     type="button"
                     onClick={() => openEntry(entry)}
@@ -1170,30 +1349,121 @@ export default function AtlasTimelineWorkspace(props: any) {
           ) : null}
 
           {selectedEntry.beforePhoto && selectedEntry.afterPhoto ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                gap: 9,
-                marginTop: 12,
-              }}
-            >
-              <div>
-                <div style={{ ...mutedSmallStyle, marginBottom: 4 }}>Before</div>
+            <div style={{ marginTop: 12 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  marginBottom: 7,
+                }}
+              >
+                <div>
+                  <strong style={{ color: colors.navy }}>Before / After Compare</strong>
+                  <div style={mutedSmallStyle}>
+                    Drag the control to compare the same area over time.
+                  </div>
+                </div>
+                <span style={mutedSmallStyle}>
+                  {comparisonPosition}% after
+                </span>
+              </div>
+
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  minHeight: isMobile ? 250 : 360,
+                  overflow: "hidden",
+                  borderRadius: 12,
+                  border: `1px solid ${colors.line}`,
+                  background: "#EEF3F7",
+                }}
+              >
                 <img
                   src={selectedEntry.beforePhoto}
                   alt="Before"
-                  style={{ width: "100%", maxHeight: 360, objectFit: "cover", borderRadius: 10 }}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
                 />
-              </div>
-              <div>
-                <div style={{ ...mutedSmallStyle, marginBottom: 4 }}>After</div>
-                <img
-                  src={selectedEntry.afterPhoto}
-                  alt="After"
-                  style={{ width: "100%", maxHeight: 360, objectFit: "cover", borderRadius: 10 }}
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    clipPath: `inset(0 ${100 - comparisonPosition}% 0 0)`,
+                  }}
+                >
+                  <img
+                    src={selectedEntry.afterPhoto}
+                    alt="After"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: `${comparisonPosition}%`,
+                    width: 2,
+                    background: "#FFFFFF",
+                    boxShadow: "0 0 0 1px rgba(0,0,0,.18)",
+                    pointerEvents: "none",
+                  }}
                 />
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 10,
+                    top: 10,
+                    background: "rgba(7,27,47,.78)",
+                    color: "#FFFFFF",
+                    borderRadius: 999,
+                    padding: "4px 7px",
+                    fontSize: 10,
+                    fontWeight: 800,
+                  }}
+                >
+                  Before
+                </span>
+                <span
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: 10,
+                    background: "rgba(7,27,47,.78)",
+                    color: "#FFFFFF",
+                    borderRadius: 999,
+                    padding: "4px 7px",
+                    fontSize: 10,
+                    fontWeight: 800,
+                  }}
+                >
+                  After
+                </span>
               </div>
+
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={comparisonPosition}
+                onChange={(event) => setComparisonPosition(Number(event.target.value))}
+                aria-label="Before and after comparison position"
+                style={{ width: "100%", marginTop: 8 }}
+              />
             </div>
           ) : selectedEntry.photo ? (
             <img
