@@ -38,11 +38,18 @@ function isPublicPath(request: NextRequest) {
   if (pathname === "/api/atlas-login") return true;
   if (pathname === "/api/atlas-logout") return true;
 
-  if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(pathname)) return true;
+  if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(pathname)) {
+    return true;
+  }
 
   // Public crew checklist access stays public only when the share token is in the URL.
   if (pathname === "/landscape-help" && hasShareToken(request)) return true;
   if (pathname === "/api/landscape-help" && hasShareToken(request)) return true;
+
+  // Addison field app.
+  if (pathname === "/addison-work") return true;
+  if (pathname === "/addison-manifest.json") return true;
+  if (pathname === "/api/addison-upload" && hasShareToken(request)) return true;
 
   return false;
 }
@@ -50,7 +57,11 @@ function isPublicPath(request: NextRequest) {
 function base64UrlEncodeBytes(bytes: Uint8Array) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 function base64UrlEncodeText(value: string) {
@@ -58,10 +69,17 @@ function base64UrlEncodeText(value: string) {
 }
 
 function base64UrlDecodeText(value: string) {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
+  const padded =
+    value.replace(/-/g, "+").replace(/_/g, "/") +
+    "===".slice((value.length + 3) % 4);
+
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
   return new TextDecoder().decode(bytes);
 }
 
@@ -71,13 +89,23 @@ async function signSessionPayload(payloadBase64: string, secret: string) {
     new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payloadBase64));
+
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(payloadBase64),
+  );
+
   return base64UrlEncodeBytes(new Uint8Array(signature));
 }
 
-async function verifySessionCookie(cookieValue: string | undefined, expectedUsername: string, secret: string) {
+async function verifySessionCookie(
+  cookieValue: string | undefined,
+  expectedUsername: string,
+  secret: string,
+) {
   if (!cookieValue) return false;
 
   const [payloadBase64, signature] = cookieValue.split(".");
@@ -87,9 +115,14 @@ async function verifySessionCookie(cookieValue: string | undefined, expectedUser
   if (signature !== expectedSignature) return false;
 
   try {
-    const payload = JSON.parse(base64UrlDecodeText(payloadBase64)) as { username?: string; expiresAt?: number };
+    const payload = JSON.parse(base64UrlDecodeText(payloadBase64)) as {
+      username?: string;
+      expiresAt?: number;
+    };
+
     if (payload.username !== expectedUsername) return false;
     if (!payload.expiresAt || Date.now() > payload.expiresAt) return false;
+
     return true;
   } catch {
     return false;
@@ -122,7 +155,11 @@ function redirectToLogin(request: NextRequest) {
   const loginUrl = request.nextUrl.clone();
   loginUrl.pathname = "/login";
   loginUrl.search = "";
-  loginUrl.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+  loginUrl.searchParams.set(
+    "next",
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+  );
+
   return NextResponse.redirect(loginUrl);
 }
 
@@ -138,21 +175,31 @@ export async function middleware(request: NextRequest) {
   if (!expectedUsername || !expectedPassword) {
     return new NextResponse(
       "Atlas access is not configured. Add ATLAS_ACCESS_USERNAME and ATLAS_ACCESS_PASSWORD in Vercel environment variables.",
-      { status: 500 }
+      { status: 500 },
     );
   }
 
   const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
-  const hasValidSession = await verifySessionCookie(sessionCookie, expectedUsername, expectedPassword);
+  const hasValidSession = await verifySessionCookie(
+    sessionCookie,
+    expectedUsername,
+    expectedPassword,
+  );
 
   // Keep old Basic Auth working temporarily so you do not get locked out during the changeover.
   const basicAuth = getBasicAuth(request);
-  const hasValidBasicAuth = basicAuth?.username === expectedUsername && basicAuth?.password === expectedPassword;
+  const hasValidBasicAuth =
+    basicAuth?.username === expectedUsername &&
+    basicAuth?.password === expectedPassword;
 
   if (hasValidSession || hasValidBasicAuth) {
-    // Forward the same Authorization header internally so older API routes that still check Basic Auth keep working.
+    // Forward the same Authorization header internally so older API routes
+    // that still check Basic Auth keep working.
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("authorization", createBasicAuthHeader(expectedUsername, expectedPassword));
+    requestHeaders.set(
+      "authorization",
+      createBasicAuthHeader(expectedUsername, expectedPassword),
+    );
 
     const response = NextResponse.next({
       request: {
@@ -162,15 +209,28 @@ export async function middleware(request: NextRequest) {
 
     if (hasValidBasicAuth && !hasValidSession) {
       const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
-      const payloadBase64 = base64UrlEncodeText(JSON.stringify({ username: expectedUsername, expiresAt }));
-      const signature = await signSessionPayload(payloadBase64, expectedPassword);
-      response.cookies.set(SESSION_COOKIE, `${payloadBase64}.${signature}`, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: SESSION_TTL_SECONDS,
-      });
+      const payloadBase64 = base64UrlEncodeText(
+        JSON.stringify({
+          username: expectedUsername,
+          expiresAt,
+        }),
+      );
+      const signature = await signSessionPayload(
+        payloadBase64,
+        expectedPassword,
+      );
+
+      response.cookies.set(
+        SESSION_COOKIE,
+        `${payloadBase64}.${signature}`,
+        {
+          httpOnly: true,
+          secure: true,
+          sameSite: "lax",
+          path: "/",
+          maxAge: SESSION_TTL_SECONDS,
+        },
+      );
     }
 
     return response;
