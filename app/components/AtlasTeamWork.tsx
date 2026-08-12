@@ -50,6 +50,8 @@ type Props = {
 type AddisonWorkData = {
   today: string;
   tasks: Array<Record<string, any>>;
+  dailyNote?: string;
+  dailyNoteUpdatedAt?: string;
   routine: {
     date: string;
     name: string;
@@ -606,6 +608,15 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                   value={addisonLoading ? "Loading" : addisonWork ? "Live" : "—"}
                 />
               </div>
+
+              {addisonWork?.dailyNote ? (
+                <div style={{ ...panelStyle, padding:14 }}>
+                  <div style={eyebrowStyle}>TODAY'S NOTE</div>
+                  <div style={{ marginTop:6, whiteSpace:"pre-wrap", color:colors.text, fontWeight:700 }}>
+                    {addisonWork.dailyNote}
+                  </div>
+                </div>
+              ) : null}
 
               <div style={panelStyle}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
