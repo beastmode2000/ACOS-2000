@@ -106,6 +106,16 @@ async function loadAddisonWork() {
       );
     });
 
+  const day = weekdayFromDateKey(today);
+
+  const templateRows = await sql`
+    SELECT name, tasks
+    FROM atlas_routine_templates
+    WHERE property_id = '2000'
+      AND day_of_week = ${day}
+    LIMIT 1
+  `;
+
   let occurrenceRows = await sql`
     SELECT occurrence_date, routine_name, tasks
     FROM atlas_routine_occurrences
@@ -114,16 +124,12 @@ async function loadAddisonWork() {
     LIMIT 1
   `;
 
-  if (!occurrenceRows[0]) {
-    const day = weekdayFromDateKey(today);
-    const templateRows = await sql`
-      SELECT name, tasks
-      FROM atlas_routine_templates
-      WHERE property_id = '2000'
-        AND day_of_week = ${day}
-      LIMIT 1
-    `;
-    if (templateRows[0]) {
+  if (templateRows[0]) {
+    const templateTasks = Array.isArray(templateRows[0].tasks)
+      ? templateRows[0].tasks
+      : [];
+
+    if (!occurrenceRows[0]) {
       await sql`
         INSERT INTO atlas_routine_occurrences (
           property_id, occurrence_date, day_of_week, routine_name, tasks, updated_at
@@ -131,19 +137,65 @@ async function loadAddisonWork() {
         VALUES (
           '2000', ${today}::date, ${day},
           ${String(templateRows[0].name || "Daily Routine")},
-          ${JSON.stringify(templateRows[0].tasks || [])}::jsonb,
+          ${JSON.stringify(templateTasks)}::jsonb,
           NOW()
         )
         ON CONFLICT (property_id, occurrence_date) DO NOTHING
       `;
-      occurrenceRows = await sql`
-        SELECT occurrence_date, routine_name, tasks
-        FROM atlas_routine_occurrences
+    } else {
+      // Keep today's completion/progress state, but always pull in the latest
+      // template assignments so a routine edited in Atlas appears on Addison's
+      // field page immediately.
+      const existingTasks = Array.isArray(occurrenceRows[0].tasks)
+        ? occurrenceRows[0].tasks
+        : [];
+      const existingById = new Map(
+        existingTasks.map((task: any) => [String(task?.id || ""), task]),
+      );
+
+      const synchronizedTasks = templateTasks.map((task: any) => {
+        const existing = existingById.get(String(task?.id || ""));
+        if (!existing) return task;
+
+        return {
+          ...task,
+          completed: Boolean(existing?.completed),
+          status:
+            existing?.status === "completed" ||
+            existing?.status === "skipped" ||
+            existing?.status === "deferred"
+              ? existing.status
+              : Boolean(existing?.completed)
+                ? "completed"
+                : task?.status || "open",
+          ...(existing?.deferredTo
+            ? { deferredTo: existing.deferredTo }
+            : {}),
+          ...(existing?.deferredFrom
+            ? { deferredFrom: existing.deferredFrom }
+            : {}),
+        };
+      });
+
+      await sql`
+        UPDATE atlas_routine_occurrences
+        SET
+          day_of_week = ${day},
+          routine_name = ${String(templateRows[0].name || "Daily Routine")},
+          tasks = ${JSON.stringify(synchronizedTasks)}::jsonb,
+          updated_at = NOW()
         WHERE property_id = '2000'
           AND occurrence_date = ${today}::date
-        LIMIT 1
       `;
     }
+
+    occurrenceRows = await sql`
+      SELECT occurrence_date, routine_name, tasks
+      FROM atlas_routine_occurrences
+      WHERE property_id = '2000'
+        AND occurrence_date = ${today}::date
+      LIMIT 1
+    `;
   }
 
   const occurrence = occurrenceRows[0] || null;
