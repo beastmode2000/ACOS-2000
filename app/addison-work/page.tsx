@@ -35,6 +35,8 @@ type LandscapeItem = {
 type AddisonWorkData = {
   today: string;
   tasks: Array<Record<string, any>>;
+  dailyNote?: string;
+  dailyNoteUpdatedAt?: string;
   routine: { date: string; name: string; tasks: Array<Record<string, any>> };
   nextRoutine?: { date: string; name: string; tasks: Array<Record<string, any>> } | null;
 };
@@ -146,6 +148,14 @@ export default function LandscapeHelpPage() {
   const [addisonData, setAddisonData] = useState<AddisonWorkData | null>(null);
   const [addisonSync, setAddisonSync] = useState<"saved" | "syncing" | "offline">("saved");
   const [uploadingItemId, setUploadingItemId] = useState("");
+  const [quickNote, setQuickNote] = useState("");
+  const [todayWeather, setTodayWeather] = useState<{
+    temperature: number;
+    code: number;
+    high: number;
+    low: number;
+    precipChance: number;
+  } | null>(null);
 
   useEffect(() => {
     const token = getLandscapeShareTokenFromUrl();
@@ -153,6 +163,12 @@ export default function LandscapeHelpPage() {
     setOrigin(window.location.origin);
     void loadCurrentWeek(token);
   }, []);
+
+  useEffect(() => {
+    if (addisonData) {
+      setQuickNote(String(addisonData.dailyNote || ""));
+    }
+  }, [addisonData?.today, addisonData?.dailyNote]);
 
   useEffect(() => {
     if (!addisonData || !shareToken) return;
@@ -166,6 +182,50 @@ export default function LandscapeHelpPage() {
       window.removeEventListener("focus", onFocus);
     };
   }, [Boolean(addisonData), shareToken]);
+
+  function weatherText(code: number) {
+    if (code === 0) return "Clear";
+    if (code === 1 || code === 2) return "Mostly clear";
+    if (code === 3) return "Cloudy";
+    if (code === 45 || code === 48) return "Fog";
+    if ([51, 53, 55, 56, 57].includes(code)) return "Drizzle";
+    if ([61, 63, 65, 66, 67].includes(code)) return "Rain";
+    if ([71, 73, 75, 77].includes(code)) return "Snow";
+    if ([80, 81, 82].includes(code)) return "Showers";
+    if ([85, 86].includes(code)) return "Snow showers";
+    if ([95, 96, 99].includes(code)) return "Thunderstorms";
+    return "Weather";
+  }
+
+  async function loadTodayWeather() {
+    try {
+      const url =
+        "https://api.open-meteo.com/v1/forecast?latitude=47.60&longitude=-122.20&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&timezone=America%2FLos_Angeles&forecast_days=1";
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error("Weather failed");
+      const data = await response.json();
+
+      setTodayWeather({
+        temperature: Math.round(Number(data?.current?.temperature_2m ?? 0)),
+        code: Number(data?.current?.weather_code ?? 0),
+        high: Math.round(Number(data?.daily?.temperature_2m_max?.[0] ?? 0)),
+        low: Math.round(Number(data?.daily?.temperature_2m_min?.[0] ?? 0)),
+        precipChance: Math.round(
+          Number(data?.daily?.precipitation_probability_max?.[0] ?? 0),
+        ),
+      });
+    } catch {
+      setTodayWeather(null);
+    }
+  }
+
+  useEffect(() => {
+    void loadTodayWeather();
+    const timer = window.setInterval(() => {
+      void loadTodayWeather();
+    }, 30 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function patchAddison(action: string, payload: Record<string, unknown>) {
     if (!shareToken) return;
@@ -497,27 +557,95 @@ export default function LandscapeHelpPage() {
       <main style={{ ...styles.page, padding: 14, maxWidth: 760 }}>
         <section style={{ ...styles.header, padding: 18, borderRadius: 18, marginBottom: 12 }}>
           <div style={{ width:"100%" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"flex-start" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:14, alignItems:"flex-start" }}>
+              <div style={{ display:"flex", gap:12, alignItems:"flex-start", minWidth:0 }}>
+                <img
+                  src="/atlas-icon-192.png"
+                  alt="Atlas"
+                  style={{
+                    width:52,
+                    height:52,
+                    objectFit:"contain",
+                    borderRadius:12,
+                    flex:"0 0 auto",
+                  }}
+                />
+                <div style={{ minWidth:0 }}>
+                  <div style={{ ...styles.eyebrow, color:"rgba(255,255,255,.70)" }}>ATLAS FIELD</div>
+                  <h1 style={{ ...styles.title, fontSize:30, marginBottom:2 }}>Atlas Today</h1>
+                  <div style={{ color:"white", fontWeight:800, fontSize:14 }}>Addison Hutton · 2000</div>
+                  <p style={{ ...styles.subtitle, marginTop:3 }}>{prettyToday}</p>
+                </div>
+              </div>
+
+              <div style={{ textAlign:"right", flex:"0 0 auto" }}>
+                {todayWeather ? (
+                  <>
+                    <div style={{ color:"white", fontWeight:900, fontSize:27, lineHeight:1 }}>
+                      {todayWeather.temperature}°
+                    </div>
+                    <div style={{ color:"rgba(255,255,255,.88)", fontSize:12, fontWeight:800, marginTop:4 }}>
+                      {weatherText(todayWeather.code)}
+                    </div>
+                    <div style={{ color:"rgba(255,255,255,.68)", fontSize:11, marginTop:2 }}>
+                      H {todayWeather.high}° · L {todayWeather.low}°
+                    </div>
+                    <div style={{ color:"rgba(255,255,255,.68)", fontSize:11 }}>
+                      Rain {todayWeather.precipChance}%
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color:"rgba(255,255,255,.65)", fontSize:12 }}>Weather loading…</div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:12, alignItems:"end", marginTop:14 }}>
               <div>
-                <div style={styles.eyebrow}>Atlas / 2000</div>
-                <h1 style={{ ...styles.title, fontSize: 30 }}>Addison</h1>
-                <p style={styles.subtitle}>{prettyToday}</p>
+                <div style={{ height:8, background:"rgba(255,255,255,.18)", borderRadius:999, overflow:"hidden" }}>
+                  <div style={{ width:`${progress}%`, height:"100%", background:colors.gold2, borderRadius:999 }} />
+                </div>
+                <div style={{ marginTop:7, color:"rgba(255,255,255,.72)", fontSize:12 }}>
+                  {addisonSync === "syncing" ? "Syncing…" : addisonSync === "offline" ? "Offline / not saved" : "Saved"}
+                </div>
               </div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ color:"white", fontWeight:900, fontSize:22 }}>{done}/{total}</div>
                 <div style={{ color:"rgba(255,255,255,.72)", fontSize:12 }}>{progress}% complete</div>
               </div>
             </div>
-            <div style={{ height:8, background:"rgba(255,255,255,.18)", borderRadius:999, marginTop:12, overflow:"hidden" }}>
-              <div style={{ width:`${progress}%`, height:"100%", background:colors.gold2, borderRadius:999 }} />
-            </div>
-            <div style={{ marginTop:8, color:"rgba(255,255,255,.72)", fontSize:12 }}>
-              {addisonSync === "syncing" ? "Syncing…" : addisonSync === "offline" ? "Offline / not saved" : "Saved"}
-            </div>
           </div>
         </section>
 
         {message ? <div style={{ ...styles.card, padding: 10, marginBottom: 10 }}>{message}</div> : null}
+
+        <section style={{ ...styles.card, padding:16, marginBottom:14 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", marginBottom:9 }}>
+            <div>
+              <div style={styles.eyebrow}>QUICK INPUT</div>
+              <h2 style={{ ...styles.cardTitle, marginBottom:0 }}>Notes</h2>
+            </div>
+            <span style={{ ...styles.muted, fontSize:12 }}>
+              {addisonData.dailyNoteUpdatedAt ? "Saved today" : "Today"}
+            </span>
+          </div>
+          <textarea
+            value={quickNote}
+            onChange={(event) => setQuickNote(event.target.value)}
+            placeholder="Add a quick note for today…"
+            style={{ ...styles.textarea, minHeight:88 }}
+          />
+          <div style={{ display:"flex", justifyContent:"flex-end", marginTop:8 }}>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void patchAddison("daily-note", { note: quickNote })}
+              style={styles.primaryButton}
+            >
+              {saving ? "Saving…" : "Save Note"}
+            </button>
+          </div>
+        </section>
 
         <section style={{ ...styles.card, padding: 16, marginBottom: 14 }}>
           <div style={styles.rowBetween}>
