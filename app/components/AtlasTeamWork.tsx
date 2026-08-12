@@ -47,28 +47,7 @@ type Props = {
   activePropertyId: string;
 };
 
-type AddisonWorkData = {
-  today: string;
-  tasks: Array<Record<string, any>>;
-  dailyNote?: string;
-  dailyNoteUpdatedAt?: string;
-  routine: {
-    date: string;
-    name: string;
-    tasks: Array<Record<string, any>>;
-  };
-};
-
-const ADDISON_WORK_TOKEN =
-  "addison-2000-7f94f468dca84de3a7b8c2d942ca3819";
-
-function addisonTaskMeta(task: Record<string, any>) {
-  return task?.taskMeta && typeof task.taskMeta === "object"
-    ? task.taskMeta
-    : task;
-}
-
-const PEOPLE = ["Addison", "Pat's Crew", "Sean", "Nick", "Unassigned"];
+const BASE_PEOPLE = ["Addison", "Pat's Crew", "Sean", "Nick", "Unassigned"];
 const PROPERTY_IDS = ["2000", "3661", "6855", "hangar"];
 const STORAGE_KEY = "atlas-team-work-v2";
 
@@ -191,21 +170,24 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
   const [lists, setLists] = useState<TeamList[]>([]);
   const [selectedListId, setSelectedListId] = useState("");
   const [search, setSearch] = useState("");
-  const [teamView, setTeamView] = useState<"people" | "addison">("people");
+  const [teamView, setTeamView] = useState<"assignments" | "people">("people");
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [memberMessage, setMemberMessage] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<TeamRole>("Employee");
-  const [addisonWork, setAddisonWork] = useState<AddisonWorkData | null>(null);
-  const [addisonLoading, setAddisonLoading] = useState(false);
-  const [addisonMessage, setAddisonMessage] = useState("");
-  const [newAddisonTask, setNewAddisonTask] = useState("");
-  const [newAddisonDueDate, setNewAddisonDueDate] = useState("");
-  const [editingAddisonTaskId, setEditingAddisonTaskId] = useState("");
-  const [editingAddisonTitle, setEditingAddisonTitle] = useState("");
-  const [editingAddisonDueDate, setEditingAddisonDueDate] = useState("");
-  const [addisonFilter, setAddisonFilter] = useState<"active" | "completed" | "all">("active");
+
+  const assigneeOptions = useMemo(() => {
+    const values = [
+      ...members.filter((member) => member.active).map((member) => member.name.trim()),
+      ...BASE_PEOPLE,
+    ].filter(Boolean);
+    return Array.from(new Set(values)).sort((a, b) => {
+      if (a === "Unassigned") return 1;
+      if (b === "Unassigned") return -1;
+      return a.localeCompare(b);
+    });
+  }, [members]);
 
   useEffect(() => {
     void fetch("/api/atlas-team")
@@ -370,6 +352,37 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
     });
   }
 
+  function addTaskForPerson(person: string) {
+    const cleanPerson = person.trim() || "Unassigned";
+    const directId = `direct-assignments-${activePropertyId}`;
+    setLists((current) => {
+      const existing = current.find((list) => list.id === directId);
+      if (existing) {
+        return current.map((list) =>
+          list.id === directId
+            ? {
+                ...list,
+                tasks: [...list.tasks, task("New task", cleanPerson)],
+              }
+            : list,
+        );
+      }
+      const directList: TeamList = {
+        id: directId,
+        name: "Direct Assignments",
+        description: "One-off tasks assigned directly to team members and crews.",
+        defaultAssignee: cleanPerson,
+        propertyIds: [activePropertyId],
+        schedule: "As needed",
+        active: true,
+        tasks: [task("New task", cleanPerson)],
+      };
+      return [directList, ...current];
+    });
+    setSelectedListId(directId);
+    setTeamView("assignments");
+  }
+
   function deleteTask(taskId: string) {
     if (!selected) return;
 
@@ -437,133 +450,6 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
     } catch (error) { setMemberMessage(error instanceof Error ? error.message : "Could not create invitation."); }
   }
 
-  async function loadAddisonWork(silent = false) {
-    if (activePropertyId !== "2000") {
-      setAddisonWork(null);
-      return;
-    }
-    if (!silent) setAddisonLoading(true);
-    try {
-      const response = await fetch(
-        `/api/landscape-help?token=${encodeURIComponent(ADDISON_WORK_TOKEN)}&ts=${Date.now()}`,
-        { cache: "no-store" },
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload?.ok || payload?.mode !== "addison") {
-        throw new Error(payload?.error || "Could not load Addison work.");
-      }
-      setAddisonWork(payload.addison || null);
-      if (!silent) setAddisonMessage("");
-    } catch (error) {
-      if (!silent) {
-        setAddisonMessage(
-          error instanceof Error ? error.message : "Could not load Addison work.",
-        );
-      }
-    } finally {
-      if (!silent) setAddisonLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (teamView !== "addison" || activePropertyId !== "2000") return;
-    void loadAddisonWork();
-    const timer = window.setInterval(() => {
-      void loadAddisonWork(true);
-    }, 5000);
-    const onFocus = () => void loadAddisonWork(true);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [teamView, activePropertyId]);
-
-  async function patchAddison(
-    action: string,
-    payload: Record<string, unknown>,
-    successMessage = "Saved.",
-  ) {
-    setAddisonMessage("Saving…");
-    try {
-      const response = await fetch(
-        `/api/landscape-help?token=${encodeURIComponent(ADDISON_WORK_TOKEN)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            token: ADDISON_WORK_TOKEN,
-            action,
-            ...payload,
-          }),
-        },
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.ok) {
-        throw new Error(data?.error || "Could not save Addison work.");
-      }
-      if (data?.mode === "addison" && data?.addison) {
-        setAddisonWork(data.addison);
-      } else {
-        await loadAddisonWork(true);
-      }
-      setAddisonMessage(successMessage);
-    } catch (error) {
-      setAddisonMessage(
-        error instanceof Error ? error.message : "Could not save Addison work.",
-      );
-    }
-  }
-
-  async function createAddisonTask() {
-    const title = newAddisonTask.trim();
-    if (!title) return;
-    await patchAddison(
-      "task-create",
-      {
-        title,
-        dueDate:
-          newAddisonDueDate ||
-          addisonWork?.today ||
-          new Date().toISOString().slice(0, 10),
-      },
-      "Task added for Addison.",
-    );
-    setNewAddisonTask("");
-    setNewAddisonDueDate("");
-  }
-
-  function beginEditAddisonTask(task: Record<string, any>) {
-    const meta = addisonTaskMeta(task);
-    setEditingAddisonTaskId(String(task.id || ""));
-    setEditingAddisonTitle(String(task.title || ""));
-    setEditingAddisonDueDate(String(meta?.dueDate || "").slice(0, 10));
-  }
-
-  async function saveAddisonTaskEdit() {
-    if (!editingAddisonTaskId || !editingAddisonTitle.trim()) return;
-    await patchAddison(
-      "task-update",
-      {
-        taskId: editingAddisonTaskId,
-        title: editingAddisonTitle.trim(),
-        dueDate: editingAddisonDueDate,
-      },
-      "Addison task updated.",
-    );
-    setEditingAddisonTaskId("");
-  }
-
-  async function deleteAddisonTask(taskId: string) {
-    if (!window.confirm("Delete this Addison task?")) return;
-    await patchAddison(
-      "task-delete",
-      { taskId },
-      "Addison task deleted.",
-    );
-  }
-
-
   return (
     <section style={{ display: "grid", gap: 16 }}>
       <div style={heroStyle}>
@@ -575,226 +461,352 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
           </p>
         </div>
 
-        
+        {teamView === "assignments" ? <button type="button" style={goldButtonStyle} onClick={createList}>+ New List</button> : null}
       </div>
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-        {([['people','Users & Roles'],['addison','Addison']] as const).map(([value,label]) => (
+        {([['people','Users & Roles'],['assignments','Assignments']] as const).map(([value,label]) => (
           <button key={value} type="button" onClick={() => setTeamView(value)} style={{...lightButtonStyle, background:teamView===value?colors.navy3:colors.card, color:teamView===value?'#fff':colors.text, borderColor:teamView===value?colors.navy3:colors.line}}>{label}</button>
         ))}
       </div>
 
-      {teamView === "addison" ? (
-        <div style={{ display: "grid", gap: 14 }}>
-          {activePropertyId !== "2000" ? (
-            <div style={emptyStyle}>Addison is currently assigned to property 2000.</div>
+      {teamView === "assignments" ? <>
+      <div style={summaryGridStyle}>
+        <Stat label="Active Lists" value={visibleLists.filter((item) => item.active).length} />
+        <Stat label="Assigned Tasks" value={propertyTasks.length} />
+        <Stat
+          label="Open"
+          value={propertyTasks.filter((item) => item.status !== "Completed").length}
+        />
+        <Stat
+          label="Completed"
+          value={propertyTasks.filter((item) => item.status === "Completed").length}
+        />
+      </div>
+
+      <div style={workspaceStyle}>
+        <aside style={panelStyle}>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search lists, people, or tasks"
+            style={fieldStyle}
+          />
+
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            {visibleLists.map((list) => {
+              const completed = list.tasks.filter(
+                (item) => item.status === "Completed",
+              ).length;
+
+              return (
+                <button
+                  key={list.id}
+                  type="button"
+                  onClick={() => setSelectedListId(list.id)}
+                  style={{
+                    ...listCardStyle,
+                    borderColor:
+                      selected?.id === list.id ? colors.gold : colors.line,
+                    boxShadow:
+                      selected?.id === list.id
+                        ? "0 0 0 2px rgba(201,154,61,.16)"
+                        : "none",
+                  }}
+                >
+                  <strong style={{ color: colors.text }}>{list.name}</strong>
+                  <span style={mutedStyle}>
+                    {list.defaultAssignee} · {list.schedule}
+                  </span>
+                  <span style={mutedStyle}>
+                    {completed} of {list.tasks.length} complete
+                  </span>
+                </button>
+              );
+            })}
+
+            {!visibleLists.length && (
+              <div style={emptyStyle}>
+                No Team Work lists are assigned to {activePropertyId}.
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <div style={panelStyle}>
+          {!selected ? (
+            <div style={emptyStyle}>
+              Create a list or switch to a property with an existing list.
+            </div>
           ) : (
             <>
-              <div style={summaryGridStyle}>
-                <Stat
-                  label="Open Tasks"
-                  value={(addisonWork?.tasks || []).filter((task) => addisonTaskMeta(task).status !== "Completed").length}
-                />
-                <Stat
-                  label="Completed"
-                  value={(addisonWork?.tasks || []).filter((task) => addisonTaskMeta(task).status === "Completed").length}
-                />
-                <Stat
-                  label="Routine"
-                  value={`${(addisonWork?.routine?.tasks || []).filter((task) => Boolean(task.completed) || task.status === "completed").length}/${addisonWork?.routine?.tasks?.length || 0}`}
-                />
-                <Stat
-                  label="Last Sync"
-                  value={addisonLoading ? "Loading" : addisonWork ? "Live" : "—"}
-                />
-              </div>
-
-              {addisonWork?.dailyNote ? (
-                <div style={{ ...panelStyle, padding:14 }}>
-                  <div style={eyebrowStyle}>TODAY'S NOTE</div>
-                  <div style={{ marginTop:6, whiteSpace:"pre-wrap", color:colors.text, fontWeight:700 }}>
-                    {addisonWork.dailyNote}
-                  </div>
+              <div style={editorHeaderStyle}>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <input
+                    value={selected.name}
+                    onChange={(event) =>
+                      updateList(selected.id, { name: event.target.value })
+                    }
+                    style={titleFieldStyle}
+                  />
+                  <textarea
+                    value={selected.description}
+                    onChange={(event) =>
+                      updateList(selected.id, {
+                        description: event.target.value,
+                      })
+                    }
+                    placeholder="Describe this list"
+                    style={{ ...fieldStyle, minHeight: 72, marginTop: 8 }}
+                  />
                 </div>
-              ) : null}
 
-              <div style={panelStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <div>
-                    <div style={eyebrowStyle}>ADDISON WORK</div>
-                    <h2 style={{ margin: "3px 0", color: colors.text }}>Tasks</h2>
-                    <div style={mutedStyle}>This is the same live list Addison sees on his phone.</div>
-                  </div>
-                  <button type="button" style={lightButtonStyle} onClick={() => void loadAddisonWork()}>
-                    Refresh
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    style={lightButtonStyle}
+                    onClick={duplicateList}
+                  >
+                    Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...lightButtonStyle, color: colors.red }}
+                    onClick={deleteList}
+                  >
+                    Delete
                   </button>
                 </div>
+              </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 160px auto", gap: 8, marginTop: 14 }}>
-                  <input
-                    value={newAddisonTask}
-                    onChange={(event) => setNewAddisonTask(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        void createAddisonTask();
+              <div style={settingsGridStyle}>
+                <label style={labelStyle}>
+                  Default assignee
+                  <select
+                    value={selected.defaultAssignee}
+                    onChange={(event) => {
+                      if (event.target.value === "__add_person__") {
+                        setTeamView("people");
+                        return;
                       }
+                      updateList(selected.id, {
+                        defaultAssignee: event.target.value,
+                      });
                     }}
-                    placeholder="Add a task for Addison"
                     style={fieldStyle}
-                  />
+                  >
+                    <option value="__add_person__">+ Add / manage person…</option>
+                    {assigneeOptions.map((person) => (
+                      <option key={person} value={person}>{person}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={labelStyle}>
+                  Schedule
                   <input
-                    type="date"
-                    value={newAddisonDueDate}
-                    onChange={(event) => setNewAddisonDueDate(event.target.value)}
+                    value={selected.schedule}
+                    onChange={(event) =>
+                      updateList(selected.id, {
+                        schedule: event.target.value,
+                      })
+                    }
                     style={fieldStyle}
                   />
-                  <button type="button" style={goldButtonStyle} onClick={() => void createAddisonTask()}>
-                    Add
-                  </button>
-                </div>
+                </label>
 
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                  {(["active","completed","all"] as const).map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setAddisonFilter(value)}
-                      style={{
-                        ...lightButtonStyle,
-                        background: addisonFilter === value ? colors.navy3 : colors.card,
-                        color: addisonFilter === value ? "#fff" : colors.text,
-                      }}
-                    >
-                      {value === "active" ? "Active" : value === "completed" ? "Completed" : "All"}
-                    </button>
-                  ))}
-                </div>
-
-                <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
-                  {(addisonWork?.tasks || [])
-                    .filter((task) => {
-                      const done = addisonTaskMeta(task).status === "Completed";
-                      if (addisonFilter === "active") return !done;
-                      if (addisonFilter === "completed") return done;
-                      return true;
-                    })
-                    .map((task) => {
-                      const meta = addisonTaskMeta(task);
-                      const done = meta.status === "Completed";
-                      const editing = editingAddisonTaskId === String(task.id);
-                      return (
-                        <div key={String(task.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 11, background: colors.card }}>
-                          {editing ? (
-                            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 160px auto auto", gap: 7 }}>
-                              <input value={editingAddisonTitle} onChange={(event) => setEditingAddisonTitle(event.target.value)} style={fieldStyle} />
-                              <input type="date" value={editingAddisonDueDate} onChange={(event) => setEditingAddisonDueDate(event.target.value)} style={fieldStyle} />
-                              <button type="button" style={goldButtonStyle} onClick={() => void saveAddisonTaskEdit()}>Save</button>
-                              <button type="button" style={lightButtonStyle} onClick={() => setEditingAddisonTaskId("")}>Cancel</button>
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "start" }}>
-                              <input
-                                type="checkbox"
-                                checked={done}
-                                onChange={() => void patchAddison("task-status", { taskId: task.id, status: done ? "Open" : "Completed" })}
-                                style={{ width: 19, height: 19, marginTop: 2 }}
-                              />
-                              <div>
-                                <strong style={{ display: "block", color: colors.text, textDecoration: done ? "line-through" : "none", opacity: done ? .55 : 1 }}>
-                                  {String(task.title || "Task")}
-                                </strong>
-                                <span style={mutedStyle}>
-                                  {meta.dueDate ? `Due ${String(meta.dueDate).slice(0,10)}` : "No due date"}
-                                  {meta.addisonNote ? ` · Addison: ${meta.addisonNote}` : ""}
-                                </span>
-                                {(meta.needsNick || meta.problemFound || meta.checkedNothingNeeded) ? (
-                                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
-                                    {meta.needsNick ? <span style={{...mutedStyle,fontWeight:900,color:colors.gold}}>Needs Nick</span> : null}
-                                    {meta.problemFound ? <span style={{...mutedStyle,fontWeight:900,color:colors.red}}>Problem Found</span> : null}
-                                    {meta.checkedNothingNeeded ? <span style={{...mutedStyle,fontWeight:900}}>Checked — Nothing Needed</span> : null}
-                                  </div>
-                                ) : null}
-                                {Array.isArray(meta.photos) && meta.photos.length ? (
-                                  <div style={{display:"flex",gap:6,overflowX:"auto",marginTop:7}}>
-                                    {meta.photos.map((photo:any,index:number)=>(
-                                      <a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer">
-                                        <img src={String(photo.url)} alt="Addison task" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:`1px solid ${colors.line}`}}/>
-                                      </a>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </div>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <button type="button" style={lightButtonStyle} onClick={() => beginEditAddisonTask(task)}>Edit</button>
-                                <button type="button" style={{ ...lightButtonStyle, color: colors.red }} onClick={() => void deleteAddisonTask(String(task.id))}>Delete</button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  {!addisonLoading && !(addisonWork?.tasks || []).length ? (
-                    <div style={emptyStyle}>No tasks are assigned to Addison.</div>
-                  ) : null}
-                </div>
+                <label style={labelStyle}>
+                  Status
+                  <select
+                    value={selected.active ? "Active" : "Paused"}
+                    onChange={(event) =>
+                      updateList(selected.id, {
+                        active: event.target.value === "Active",
+                      })
+                    }
+                    style={fieldStyle}
+                  >
+                    <option>Active</option>
+                    <option>Paused</option>
+                  </select>
+                </label>
               </div>
 
-              <div style={panelStyle}>
-                <div>
-                  <div style={eyebrowStyle}>TODAY'S ROUTINE</div>
-                  <h2 style={{ margin: "3px 0", color: colors.text }}>{addisonWork?.routine?.name || "Addison Routine"}</h2>
-                  <div style={mutedStyle}>Live completion from the same routine Addison sees on his phone.</div>
-                </div>
-                <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                  {(addisonWork?.routine?.tasks || []).map((item) => {
-                    const checked = Boolean(item.completed) || item.status === "completed";
+              <div style={{ marginTop: 14 }}>
+                <div style={labelStyle}>Properties</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {PROPERTY_IDS.map((propertyId) => {
+                    const active = selected.propertyIds.includes(propertyId);
+
                     return (
-                      <div key={String(item.id)} style={{ display: "grid", gap: 7, border: `1px solid ${item.problemFound || item.needsNick ? colors.gold : colors.line}`, borderRadius: 10, padding: 10 }}>
-                        <label style={{ display:"flex", gap:10, alignItems:"center" }}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => void patchAddison("routine-toggle", { taskId: item.id })}
-                            style={{ width: 19, height: 19 }}
-                          />
-                          <span style={{ fontWeight: 800, textDecoration: checked ? "line-through" : "none", opacity: checked ? .55 : 1 }}>
-                            {String(item.title || "Routine item")}
-                          </span>
-                        </label>
-                        {item.addisonNote ? <div style={mutedStyle}>Addison: {String(item.addisonNote)}</div> : null}
-                        {(item.needsNick || item.problemFound || item.checkedNothingNeeded) ? (
-                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                            {item.needsNick ? <span style={{...mutedStyle,fontWeight:900,color:colors.gold}}>Needs Nick</span> : null}
-                            {item.problemFound ? <span style={{...mutedStyle,fontWeight:900,color:colors.red}}>Problem Found</span> : null}
-                            {item.checkedNothingNeeded ? <span style={{...mutedStyle,fontWeight:900}}>Checked — Nothing Needed</span> : null}
-                          </div>
-                        ) : null}
-                        {Array.isArray(item.photos) && item.photos.length ? (
-                          <div style={{display:"flex",gap:6,overflowX:"auto"}}>
-                            {item.photos.map((photo:any,index:number)=>(
-                              <a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer">
-                                <img src={String(photo.url)} alt="Addison routine" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:`1px solid ${colors.line}`}}/>
-                              </a>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
+                      <button
+                        key={propertyId}
+                        type="button"
+                        onClick={() => toggleProperty(propertyId)}
+                        style={{
+                          ...propertyChipStyle,
+                          background: active ? colors.navy3 : colors.card,
+                          color: active ? "#FFFFFF" : colors.text,
+                        }}
+                      >
+                        {propertyId === "hangar" ? "Hangar" : propertyId}
+                      </button>
                     );
                   })}
-                  {!addisonLoading && !(addisonWork?.routine?.tasks || []).length ? (
-                    <div style={emptyStyle}>No routine items are assigned to Addison today.</div>
-                  ) : null}
                 </div>
               </div>
 
-              {addisonMessage ? <div style={{ ...panelStyle, padding: 10 }}>{addisonMessage}</div> : null}
+              <div style={{ ...editorHeaderStyle, marginTop: 22 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: colors.text }}>Tasks</h2>
+                  <p style={{ ...mutedStyle, margin: "4px 0 0" }}>
+                    Every item is editable, reorderable, and assignable.
+                  </p>
+                </div>
+
+                <button type="button" style={goldButtonStyle} onClick={addTask}>
+                  + Add Task
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                {selected.tasks.map((item, index) => (
+                  <div key={item.id} style={taskCardStyle}>
+                    <div style={taskMainGridStyle}>
+                      <input
+                        type="checkbox"
+                        checked={item.status === "Completed"}
+                        onChange={(event) =>
+                          updateTask(selected.id, item.id, {
+                            status: event.target.checked
+                              ? "Completed"
+                              : "Open",
+                          })
+                        }
+                        style={{ width: 20, height: 20 }}
+                      />
+
+                      <input
+                        value={item.title}
+                        onChange={(event) =>
+                          updateTask(selected.id, item.id, {
+                            title: event.target.value,
+                          })
+                        }
+                        style={{ ...fieldStyle, fontWeight: 800 }}
+                      />
+
+                      <select
+                        value={item.assignee}
+                        onChange={(event) => {
+                          if (event.target.value === "__add_person__") {
+                            setTeamView("people");
+                            return;
+                          }
+                          updateTask(selected.id, item.id, {
+                            assignee: event.target.value,
+                          });
+                        }}
+                        style={fieldStyle}
+                      >
+                        <option value="__add_person__">+ Add / manage person…</option>
+                        {assigneeOptions.map((person) => (
+                          <option key={person} value={person}>{person}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={item.status}
+                        onChange={(event) =>
+                          updateTask(selected.id, item.id, {
+                            status: event.target.value as TeamTaskStatus,
+                          })
+                        }
+                        style={fieldStyle}
+                      >
+                        <option>Open</option>
+                        <option>In Progress</option>
+                        <option>Waiting</option>
+                        <option>Completed</option>
+                      </select>
+
+                      <div style={{ display: "flex", gap: 5 }}>
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => moveTask(index, -1)}
+                          style={iconButtonStyle}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === selected.tasks.length - 1}
+                          onClick={() => moveTask(index, 1)}
+                          style={iconButtonStyle}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteTask(item.id)}
+                          style={{ ...iconButtonStyle, color: colors.red }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={taskDetailGridStyle}>
+                      <input
+                        value={item.location}
+                        onChange={(event) =>
+                          updateTask(selected.id, item.id, {
+                            location: event.target.value,
+                          })
+                        }
+                        placeholder="Location"
+                        style={fieldStyle}
+                      />
+
+                      <input
+                        value={item.notes}
+                        onChange={(event) =>
+                          updateTask(selected.id, item.id, {
+                            notes: event.target.value,
+                          })
+                        }
+                        placeholder="Instructions or notes"
+                        style={fieldStyle}
+                      />
+
+                      <label style={photoLabelStyle}>
+                        <input
+                          type="checkbox"
+                          checked={item.requirePhoto}
+                          onChange={(event) =>
+                            updateTask(selected.id, item.id, {
+                              requirePhoto: event.target.checked,
+                            })
+                          }
+                        />
+                        Require photo
+                      </label>
+                    </div>
+                  </div>
+                ))}
+
+                {!selected.tasks.length && (
+                  <div style={emptyStyle}>
+                    This list has no tasks yet. Select Add Task.
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
-      ) : null}
-
-      {teamView === "people" ? (
+      </div>
+      </> : (
         <div style={{ display:"grid", gap:14 }}>
           <div style={summaryGridStyle}>
             <Stat label="Users" value={members.length} />
@@ -813,20 +825,24 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
             <div style={{display:"grid",gap:10,marginTop:14}}>
               {members.map((member) => (
                 <div key={member.id} style={{border:`1px solid ${colors.line}`,borderRadius:14,padding:13,background:colors.card}}>
-                  <div style={{display:"grid",gridTemplateColumns:"minmax(180px,1.2fr) minmax(190px,1.4fr) minmax(140px,.7fr) auto",gap:8,alignItems:"center"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"minmax(180px,1.2fr) minmax(190px,1.4fr) minmax(140px,.7fr) auto auto",gap:8,alignItems:"center"}}>
                     <input value={member.name} onChange={(e)=>updateMember(member.id,{name:e.target.value})} style={{...fieldStyle,fontWeight:900}} />
                     <input value={member.email} onChange={(e)=>updateMember(member.id,{email:e.target.value})} style={fieldStyle} />
                     <select value={member.role} onChange={(e)=>{const role=e.target.value as TeamRole;updateMember(member.id,{role,permissions:{...ROLE_DEFAULTS[role]}})}} style={fieldStyle}>
                       {Object.keys(ROLE_DEFAULTS).map((role)=><option key={role}>{role}</option>)}
                     </select>
                     <label style={{display:"flex",alignItems:"center",gap:6,fontWeight:800,fontSize:12}}><input type="checkbox" checked={member.active} onChange={(e)=>updateMember(member.id,{active:e.target.checked})}/> Active</label>
+                    <button type="button" style={goldButtonStyle} onClick={() => addTaskForPerson(member.name)}>+ Add Task</button>
                   </div>
-                  <div style={{marginTop:10,display:"grid",gap:8}}>
-                    <div><div style={labelStyle}>Properties</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PROPERTY_IDS.map((propertyId)=>{const on=member.propertyIds.includes(propertyId);return <button key={propertyId} type="button" onClick={()=>updateMember(member.id,{propertyIds:on?member.propertyIds.filter((id)=>id!==propertyId):[...member.propertyIds,propertyId]})} style={{...propertyChipStyle,background:on?colors.navy3:colors.card,color:on?'#fff':colors.text}}>{propertyId==='hangar'?'Hangar':propertyId}</button>})}</div></div>
-                    <div><div style={labelStyle}>Permissions</div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{(['view','edit','approve','delete','manageUsers'] as const).map((permission)=><label key={permission} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:800}}><input type="checkbox" checked={member.permissions[permission]} onChange={(e)=>updateMember(member.id,{permissions:{...member.permissions,[permission]:e.target.checked}})}/>{permission==='manageUsers'?'Manage users':permission[0].toUpperCase()+permission.slice(1)}</label>)}</div></div>
-                    <div><div style={labelStyle}>Operating areas</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ACCESS_PROFILES.map(([id,label])=>{const on=member.accessProfiles.includes(id);return <button key={id} type="button" onClick={()=>updateMember(member.id,{accessProfiles:on?member.accessProfiles.filter((value)=>value!==id):[...member.accessProfiles,id]})} style={{...propertyChipStyle,background:on?'#FFF3CF':colors.card,borderColor:on?colors.gold:colors.line}}>{label}</button>})}</div></div>
-                    <div style={{fontSize:11,color:colors.muted,fontWeight:800}}>Invite status: {member.inviteStatus || '—'}</div>
-                  </div>
+                  <details style={{marginTop:10}}>
+                    <summary style={{cursor:"pointer",fontSize:12,fontWeight:900,color:colors.navy}}>Access details</summary>
+                    <div style={{marginTop:10,display:"grid",gap:8}}>
+                      <div><div style={labelStyle}>Properties</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PROPERTY_IDS.map((propertyId)=>{const on=member.propertyIds.includes(propertyId);return <button key={propertyId} type="button" onClick={()=>updateMember(member.id,{propertyIds:on?member.propertyIds.filter((id)=>id!==propertyId):[...member.propertyIds,propertyId]})} style={{...propertyChipStyle,background:on?colors.navy3:colors.card,color:on?'#fff':colors.text}}>{propertyId==='hangar'?'Hangar':propertyId}</button>})}</div></div>
+                      <div><div style={labelStyle}>Permissions</div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{(['view','edit','approve','delete','manageUsers'] as const).map((permission)=><label key={permission} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:800}}><input type="checkbox" checked={member.permissions[permission]} onChange={(e)=>updateMember(member.id,{permissions:{...member.permissions,[permission]:e.target.checked}})}/>{permission==='manageUsers'?'Manage users':permission[0].toUpperCase()+permission.slice(1)}</label>)}</div></div>
+                      <div><div style={labelStyle}>Operating areas</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ACCESS_PROFILES.map(([id,label])=>{const on=member.accessProfiles.includes(id);return <button key={id} type="button" onClick={()=>updateMember(member.id,{accessProfiles:on?member.accessProfiles.filter((value)=>value!==id):[...member.accessProfiles,id]})} style={{...propertyChipStyle,background:on?'#FFF3CF':colors.card,borderColor:on?colors.gold:colors.line}}>{label}</button>})}</div></div>
+                      <div style={{fontSize:11,color:colors.muted,fontWeight:800}}>Invite status: {member.inviteStatus || '—'}</div>
+                    </div>
+                  </details>
                 </div>
               ))}
             </div>
@@ -843,7 +859,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
             </div>
           </div>
         </div>
-      ) : null}
+      )}
 
       <style>{`
         @media (max-width: 980px) {
@@ -870,7 +886,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div style={statStyle}>
       <div style={statLabelStyle}>{label}</div>
