@@ -697,6 +697,22 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                                   {meta.dueDate ? `Due ${String(meta.dueDate).slice(0,10)}` : "No due date"}
                                   {meta.addisonNote ? ` · Addison: ${meta.addisonNote}` : ""}
                                 </span>
+                                {(meta.needsNick || meta.problemFound || meta.checkedNothingNeeded) ? (
+                                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
+                                    {meta.needsNick ? <span style={{...mutedStyle,fontWeight:900,color:colors.gold}}>Needs Nick</span> : null}
+                                    {meta.problemFound ? <span style={{...mutedStyle,fontWeight:900,color:colors.red}}>Problem Found</span> : null}
+                                    {meta.checkedNothingNeeded ? <span style={{...mutedStyle,fontWeight:900}}>Checked — Nothing Needed</span> : null}
+                                  </div>
+                                ) : null}
+                                {Array.isArray(meta.photos) && meta.photos.length ? (
+                                  <div style={{display:"flex",gap:6,overflowX:"auto",marginTop:7}}>
+                                    {meta.photos.map((photo:any,index:number)=>(
+                                      <a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer">
+                                        <img src={String(photo.url)} alt="Addison task" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:`1px solid ${colors.line}`}}/>
+                                      </a>
+                                    ))}
+                                  </div>
+                                ) : null}
                               </div>
                               <div style={{ display: "flex", gap: 6 }}>
                                 <button type="button" style={lightButtonStyle} onClick={() => beginEditAddisonTask(task)}>Edit</button>
@@ -723,17 +739,36 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
                   {(addisonWork?.routine?.tasks || []).map((item) => {
                     const checked = Boolean(item.completed) || item.status === "completed";
                     return (
-                      <label key={String(item.id)} style={{ display: "flex", gap: 10, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10 }}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => void patchAddison("routine-toggle", { taskId: item.id })}
-                          style={{ width: 19, height: 19 }}
-                        />
-                        <span style={{ fontWeight: 800, textDecoration: checked ? "line-through" : "none", opacity: checked ? .55 : 1 }}>
-                          {String(item.title || "Routine item")}
-                        </span>
-                      </label>
+                      <div key={String(item.id)} style={{ display: "grid", gap: 7, border: `1px solid ${item.problemFound || item.needsNick ? colors.gold : colors.line}`, borderRadius: 10, padding: 10 }}>
+                        <label style={{ display:"flex", gap:10, alignItems:"center" }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => void patchAddison("routine-toggle", { taskId: item.id })}
+                            style={{ width: 19, height: 19 }}
+                          />
+                          <span style={{ fontWeight: 800, textDecoration: checked ? "line-through" : "none", opacity: checked ? .55 : 1 }}>
+                            {String(item.title || "Routine item")}
+                          </span>
+                        </label>
+                        {item.addisonNote ? <div style={mutedStyle}>Addison: {String(item.addisonNote)}</div> : null}
+                        {(item.needsNick || item.problemFound || item.checkedNothingNeeded) ? (
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            {item.needsNick ? <span style={{...mutedStyle,fontWeight:900,color:colors.gold}}>Needs Nick</span> : null}
+                            {item.problemFound ? <span style={{...mutedStyle,fontWeight:900,color:colors.red}}>Problem Found</span> : null}
+                            {item.checkedNothingNeeded ? <span style={{...mutedStyle,fontWeight:900}}>Checked — Nothing Needed</span> : null}
+                          </div>
+                        ) : null}
+                        {Array.isArray(item.photos) && item.photos.length ? (
+                          <div style={{display:"flex",gap:6,overflowX:"auto"}}>
+                            {item.photos.map((photo:any,index:number)=>(
+                              <a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer">
+                                <img src={String(photo.url)} alt="Addison routine" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:`1px solid ${colors.line}`}}/>
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
                     );
                   })}
                   {!addisonLoading && !(addisonWork?.routine?.tasks || []).length ? (
