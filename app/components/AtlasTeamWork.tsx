@@ -797,7 +797,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       <style>{`
         @media (max-width: 980px) {
