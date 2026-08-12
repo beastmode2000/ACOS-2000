@@ -570,6 +570,120 @@ export async function PATCH(request: NextRequest) {
       const action = String(body.action || "");
       const today = pacificDateKey();
 
+      if (action === "task-create") {
+        const title = String(body.title || "").trim();
+        if (!title) {
+          return NextResponse.json({ ok: false, error: "Task title is required." }, { status: 400 });
+        }
+        const dueDate = String(body.dueDate || today).slice(0, 10);
+        const id = `task-addison-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const createdAt = new Date().toISOString();
+        const taskMeta = {
+          assignee: "Addison",
+          dueDate,
+          status: "Open",
+          assignmentScope: "This occurrence",
+          completedAt: undefined,
+          needsReview: false,
+          createdAt,
+          updatedAt: createdAt,
+        };
+        const record = {
+          id,
+          title,
+          minutes: 30,
+          priority: "Medium",
+          category: "General",
+          locationId: "general",
+          preferredDay: "Auto",
+          locked: false,
+          recurring: false,
+          fixedTime: "",
+          notes: "",
+          ...taskMeta,
+          taskMeta,
+          propertyId: "2000",
+          updatedAt: createdAt,
+        };
+        const sql = getSql();
+        await ensureAddisonBackingTables();
+        await sql`
+          INSERT INTO atlas_operational_records (
+            record_type, id, property_id, record, updated_at
+          )
+          VALUES (
+            'tasks', ${id}, '2000', ${JSON.stringify(record)}::jsonb, NOW()
+          )
+          ON CONFLICT (record_type, id)
+          DO UPDATE SET
+            property_id = EXCLUDED.property_id,
+            record = EXCLUDED.record,
+            updated_at = NOW()
+        `;
+        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+      }
+
+      if (action === "task-update") {
+        const taskId = String(body.taskId || "");
+        const currentWork = await loadAddisonWork();
+        const currentTask = currentWork.tasks.find((task: any) => String(task.id) === taskId);
+        if (!currentTask) {
+          return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+        }
+        const currentMeta = addisonTaskMeta(currentTask);
+        const title = String(body.title || currentTask.title || "").trim();
+        const dueDate = String(body.dueDate || currentMeta?.dueDate || "").slice(0, 10);
+        const patch: Record<string, unknown> = {
+          ...(dueDate ? { dueDate } : {}),
+        };
+        const ok = await patchAddisonTask(taskId, patch);
+        if (!ok) {
+          return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+        }
+        const sql = getSql();
+        const rows = await sql`
+          SELECT record
+          FROM atlas_operational_records
+          WHERE record_type = 'tasks'
+            AND property_id = '2000'
+            AND id = ${taskId}
+          LIMIT 1
+        `;
+        if (rows[0]?.record) {
+          const nextRecord = {
+            ...rows[0].record,
+            title,
+            updatedAt: new Date().toISOString(),
+          };
+          await sql`
+            UPDATE atlas_operational_records
+            SET record = ${JSON.stringify(nextRecord)}::jsonb,
+                updated_at = NOW()
+            WHERE record_type = 'tasks'
+              AND property_id = '2000'
+              AND id = ${taskId}
+          `;
+        }
+        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+      }
+
+      if (action === "task-delete") {
+        const taskId = String(body.taskId || "");
+        const currentWork = await loadAddisonWork();
+        const currentTask = currentWork.tasks.find((task: any) => String(task.id) === taskId);
+        if (!currentTask) {
+          return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+        }
+        const sql = getSql();
+        await sql`
+          DELETE FROM atlas_operational_records
+          WHERE record_type = 'tasks'
+            AND property_id = '2000'
+            AND id = ${taskId}
+        `;
+        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+      }
+
       if (action === "task-status") {
         const taskId = String(body.taskId || "");
         const status = String(body.status || "Open");
