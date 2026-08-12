@@ -13926,7 +13926,7 @@ ${notes.trim()}` : notes.trim(),
         { key: "monday-reset", day: "Monday", title: "Monday — Property Reset & Garage", minutes: 240, category: "House & Maintenance", notes: "Trash cans to street; weekend cleanup; interior/exterior walkthrough; owner requests; urgent and overdue work; geese and dog-area cleanup; scheduled vehicles; fuel/charging/tires/fluids/warning lights; clean the Golf Simulator Room and restock its refrigerator; deliveries; supplies; plan week; delegate appropriate work. Water pots and address dry spots." },
         { key: "tuesday-dock", day: "Tuesday", title: "Tuesday — Dock, Waterfront & Recreation", minutes: 210, category: "Dock & Waterfront", notes: "Clean dock and shoreline geese debris; clean and organize the dock storage box; inspect boards, cleats, bumpers, dock boxes and lighting; inspect Cobalt, Sea-Doo, lifts, covers and rollers; inspect sport court, trampoline and recreation equipment; clean BBQ. Water pots and address dry spots." },
         { key: "wednesday-landscape", day: "Wednesday", title: "Wednesday — Landscaping & Irrigation", minutes: 300, category: "Landscaping & Irrigation", notes: "Inspect lawns, beds, gardens, trees, pots and specialty plantings; review crew work; check irrigation zones, heads, pressure and dry spots; weed, prune and hand-water; inspect veggie boxes; photograph progress; record issues and create repair work orders when needed." },
-        { key: "thursday-outdoor", day: "Thursday", title: "Thursday — Pool, Spa & Outdoor Cleaning", minutes: 180, category: "Pool & Spa", notes: "Complete linked Pool & Spa treatment and cleaning tasks; inspect equipment and fountain; clean patio furniture, covers, outdoor heaters, BBQ exterior and skylights; complete the scheduled window zone; finish vehicle cleaning when needed; water pots and address dry spots." },
+        { key: "thursday-outdoor", day: "Thursday", title: "Thursday — Pool, Spa & Outdoor Cleaning", minutes: 180, category: "Pool & Spa", notes: "Complete linked Pool & Spa treatment and cleaning tasks; inspect equipment and fountain; clean patio furniture, covers, outdoor heaters and BBQ exterior; clean skylights with the scheduled window/glass work; complete the scheduled window zone; finish vehicle cleaning when needed; water pots and address dry spots." },
         { key: "friday-ready", day: "Friday", title: "Friday — Maintenance & Weekend Readiness", minutes: 300, category: "House & Maintenance", notes: "Mow and edge; inspect boilers, pumps, HVAC, mechanical rooms, leaks, alarms, temperatures and unusual noises; test important lights, doors, gates and appliances; follow up vendors; update tasks, work orders, projects, photos and service history; review bottled water, toilet paper, paper towels, cleaning supplies, tools and maintenance materials, then complete a Home Depot supply run when needed; final walkthrough; prepare weekend and next week; review owner update." },
         { key: "friday-spiders", day: "Friday", title: "Friday — Seasonal Spider Control", minutes: 75, category: "House & Maintenance", notes: "April through October: remove webs; inspect exterior walls, eaves, doors, windows, garages, dock structures and outdoor furniture; treat recurring problem areas when appropriate." },
         { key: "monday-admin", day: "Monday", title: "Monday — Computer Work & Admin", minutes: 45, category: "Administration", notes: "Review email and messages; process pending Ramp expenses and receipts; review Meter Viewer invoices awaiting approval; update Atlas tasks, work orders, calendar and vendor follow-ups; identify administrative items that need action this week." },
@@ -13941,7 +13941,7 @@ ${notes.trim()}` : notes.trim(),
         { key: "windows-courtyard", title: "Clean windows — Courtyard & Main Entry", notes: "Courtyard, covered walkway, entrance and nearby glass." },
         { key: "windows-garage", title: "Clean windows — Garages, ADU & Remaining Areas", notes: "Garage, ADU and remaining scheduled windows. Record completion notes and photos." },
       ];
-      for (const [index, definition] of [...routines, ...windowZones.map((zone, zoneIndex) => ({ ...zone, day: "Thursday", minutes: 90, category: "House & Maintenance", weeksAhead: zoneIndex }))].entries()) {
+      for (const [index, definition] of [...routines, ...windowZones.map((zone, zoneIndex) => ({ ...zone, day: "Thursday", minutes: 90, category: "Cleaning / Windows", weeksAhead: zoneIndex }))].entries()) {
         const isWindow = index >= routines.length;
         let task = nextTasks.find((item) => normalizeLocationName(item.title) === normalizeLocationName(definition.title));
         if (!task) {
@@ -17176,6 +17176,7 @@ ${notes.trim()}` : notes.trim(),
       setAssetSortOrder,
       setAssetVisibleSections,
       setDatabaseStatus,
+      setLocations,
       setDocumentSearch,
       setExcludedAssetCategories,
       setExcludedAssetStatuses,
@@ -24153,197 +24154,60 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderDepartmentCenter(kind: DepartmentKind) {
-    const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; detail: string; people: string[] }> = {
-      house: { title: "House & Maintenance", short: "House", icon: "⌂", detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
-      garage: { title: "Garage", short: "Garage", icon: "🚗", detail: "Cars, weekly cleaning, inspections, charging, service, documents, photos, and connected work.", people: ["Nick", "Addison"] },
-      pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", detail: "Pool, Spa, Fountain, water treatment, cleaning rotation, filter readings, equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
-      landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
-      marine: { title: "Dock & Waterfront", short: "Dock", icon: "⚓", detail: "Dock, waterfront, boats, lifts, recreation equipment, service, procedures, documents, and photos.", people: ["Nick", "Vendors"] },
+    const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; matcher: RegExp; detail: string; people: string[] }> = {
+      house: { title: "House & Maintenance", short: "House", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm|window|skylight|glass|cleaning/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
+      garage: { title: "Garage", short: "Garage", icon: "🚗", matcher: /garage|vehicle|car|mercedes|rivian|porsche|lucid|ford|kia|honda|subaru|charging|tire|fuel/i, detail: "Cars, weekly cleaning, inspections, charging, service, documents, photos, and connected work.", people: ["Nick", "Addison"] },
+      pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", matcher: /pool|spa|hot tub|sundance|fountain|filter|backwash|oxy|phosphate|vacuum/i, detail: "Pool, Spa, Fountain, water treatment, cleaning rotation, filter readings, equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
+      landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", matcher: /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i, detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
+      marine: { title: "Dock & Waterfront", short: "Dock", icon: "⚓", matcher: /marine|dock|boat|cobalt|sea.?doo|lift|water trampoline|pwc|shoreline|waterfront/i, detail: "Dock, waterfront, boats, lifts, recreation equipment, service, procedures, documents, and photos.", people: ["Nick", "Vendors"] },
     };
     const config = departmentConfig[kind];
     const isLandscape = kind === "landscaping";
     const isMarine = kind === "marine";
     const title = config.title;
     const icon = config.icon;
-
-    // Department Center records are resolved from their actual Atlas links first.
-    // Text matching is only a fallback for older/unlinked records. This prevents a
-    // Ford in New Garage, a wine fridge, a dryer, etc. from leaking into Dock merely
-    // because some unrelated field happens to contain a department keyword.
-    const departmentPatterns: Record<DepartmentKind, RegExp> = {
-      house: /\b(house|home|interior|exterior|room|appliance|boiler|hvac|mechanical|electrical|plumbing|lighting|door|alarm|wine\s*(fridge|refrigerator)|fridge|refrigerator|freezer|dryer|washer|laundry|kitchen|bath(room)?|roof|gutter|window|skylight)\b/i,
-      garage: /\b(garage|vehicle|vehicles|car|cars|mercedes|rivian|porsche|lucid|ford|f-?150|truck|charging|charger|tire|tires|fuel)\b/i,
-      pool: /\b(pool|spa|hot\s*tub|sundance|fountain|backwash|oxysheen|oxy\s*sheen|pool\s*juice|phosphate|pool\s*filter|spa\s*filter|pool\s*room)\b/i,
-      landscaping: /\b(landscap\w*|garden|lawn|weed\w*|irrigation|tree|grounds?|garden\s*bed|waterside\s*(bed|lawn)|veggie|mulch\w*|turf|dry\s*spot|plant\w*|mow\w*|edge\w*)\b/i,
-      marine: /\b(marine|dock|boat|cobalt|sea\s*-?\s*doo|seadoo|boat\s*lift|dock\s*lift|lift\s*box|water\s*trampoline|pwc|shoreline|waterfront)\b/i,
-    };
-
-    const explicitDepartmentFromText = (text: string): DepartmentKind | null => {
-      if (!text.trim()) return null;
-
-      // Specific system/equipment words win before broad area words. For example,
-      // "courtyard gutters" is House & Maintenance, while "water pots in courtyard"
-      // can still fall through to Landscaping when no house-system term is present.
-      if (departmentPatterns.marine.test(text)) return "marine";
-      if (departmentPatterns.pool.test(text)) return "pool";
-      if (departmentPatterns.garage.test(text)) return "garage";
-      if (departmentPatterns.house.test(text)) return "house";
-      if (departmentPatterns.landscaping.test(text) || /\b(courtyard|patio)\b/i.test(text)) return "landscaping";
-      return null;
-    };
-
-    const locationDepartment = (locationId?: unknown): DepartmentKind | null => {
-      const id = String(locationId || "").trim();
-      if (!id) return null;
-      const location = locations.find((item) => String(item.id) === id);
-      if (!location) return null;
-      const record = location as Record<string, unknown>;
-      return explicitDepartmentFromText(recordSearchText(
-        record.name,
-        record.type,
-        record.zone,
-        record.area,
-        record.category,
-        record.notes,
-      ));
-    };
-
-    const assetDepartment = (asset?: AssetRecord | null): DepartmentKind | null => {
-      if (!asset) return null;
-      const atlasAsset = asset as AtlasAssetRecord & Record<string, unknown>;
-
-      // Primary saved location is authoritative. Only consult secondary locationIds
-      // when there is no usable primary location.
-      const primaryLocationDepartment = locationDepartment(atlasAsset.locationId);
-      if (primaryLocationDepartment) return primaryLocationDepartment;
-
-      const secondaryLocationIds = Array.isArray(atlasAsset.locationIds) ? atlasAsset.locationIds : [];
-      for (const locationId of secondaryLocationIds) {
-        const linkedDepartment = locationDepartment(locationId);
-        if (linkedDepartment) return linkedDepartment;
-      }
-
-      return explicitDepartmentFromText(recordSearchText(
-        atlasAsset.name,
-        atlasAsset.category,
-        atlasAsset.type,
-        atlasAsset.assetType,
-        atlasAsset.system,
-        atlasAsset.area,
-        atlasAsset.notes,
-      ));
-    };
-
-    const assetDepartmentById = (assetId?: unknown): DepartmentKind | null => {
-      const id = String(assetId || "").trim();
-      if (!id) return null;
-      return assetDepartment(assetRecords.find((asset) => String(asset.id) === id) || null);
-    };
-
-    const workDepartment = (value: ServiceRecord): DepartmentKind | null => {
-      const record = value as AtlasServiceRecord & Record<string, unknown>;
-
-      // A linked asset is the strongest signal because the asset already has a saved
-      // location. A linked work-order location is next. Do not override either with
-      // keyword matching from the title/notes.
-      const linkedAssetDepartment = assetDepartmentById(record.assetId);
-      if (linkedAssetDepartment) return linkedAssetDepartment;
-
-      const linkedLocationDepartment = locationDepartment(record.locationId);
-      if (linkedLocationDepartment) return linkedLocationDepartment;
-
-      return explicitDepartmentFromText(recordSearchText(
-        record.title,
-        record.workCategory,
-        record.responsibilityArea,
-        record.category,
-        record.area,
-        record.notes,
-      ));
-    };
-
-    const documentDepartment = (value: DocumentRecord): DepartmentKind | null => {
-      const document = value as DocumentRecord & Record<string, unknown>;
-      const linkedAssetId = document.linkedAssetId || (document.targetType === "Asset" ? document.targetId : "");
-      const linkedAssetDepartment = assetDepartmentById(linkedAssetId);
-      if (linkedAssetDepartment) return linkedAssetDepartment;
-
-      const linkedLocationId = document.targetType === "Location" ? document.targetId : document.locationId;
-      const linkedLocationDepartment = locationDepartment(linkedLocationId);
-      if (linkedLocationDepartment) return linkedLocationDepartment;
-
-      return explicitDepartmentFromText(recordSearchText(
-        document.title,
-        document.type,
-        document.area,
-        document.targetName,
-        document.notes,
-      ));
-    };
-
-    const procedureDepartment = (value: ProcedureRecord): DepartmentKind | null => {
-      const procedure = value as ProcedureRecord & Record<string, unknown>;
-      const linkedAssetIds = Array.isArray(procedure.linkedAssetIds) ? procedure.linkedAssetIds : [];
-      for (const assetId of linkedAssetIds) {
-        const linkedDepartment = assetDepartmentById(assetId);
-        if (linkedDepartment) return linkedDepartment;
-      }
-
-      const linkedLocationIds = Array.isArray(procedure.linkedLocationIds) ? procedure.linkedLocationIds : [];
-      for (const locationId of linkedLocationIds) {
-        const linkedDepartment = locationDepartment(locationId);
-        if (linkedDepartment) return linkedDepartment;
-      }
-
-      return explicitDepartmentFromText(recordSearchText(
-        procedure.title,
-        procedure.area,
-        procedure.category,
-        procedure.purpose,
-        procedure.notes,
-      ));
-    };
-
-    const genericDepartment = (value: unknown): DepartmentKind | null => {
+    const matcher = config.matcher;
+    const matches = (value: unknown) => matcher.test(recordSearchText(value));
+    const conventionalAppliancePattern = /\b(appliance|refrigerator|freezer|dishwasher|washing machine|washer|clothes dryer|tumble dryer|range|oven|microwave|ice maker)\b/i;
+    const isConventionalApplianceRecord = (value: unknown) => {
       const record = (value || {}) as Record<string, unknown>;
-
-      const linkedAssetDepartment = assetDepartmentById(record.assetId || record.linkedAssetId);
-      if (linkedAssetDepartment) return linkedAssetDepartment;
-
-      const linkedLocationDepartment = locationDepartment(record.locationId || record.linkedLocationId);
-      if (linkedLocationDepartment) return linkedLocationDepartment;
-
-      return explicitDepartmentFromText(recordSearchText(
-        record.title,
-        record.name,
-        record.area,
-        record.category,
-        record.type,
-        record.department,
-        record.notes,
-        record.description,
-      ));
+      const classificationText = [record.category, record.type, record.assetType, record.workCategory]
+        .filter(Boolean)
+        .join(" ");
+      const identityText = [record.title, record.name, record.description, record.notes]
+        .filter(Boolean)
+        .join(" ");
+      return /\bappliances?\b/i.test(classificationText) || conventionalAppliancePattern.test(identityText);
     };
-
-    const departmentWork = serviceRecords.filter((record) => workDepartment(record) === kind);
-    const openWork = departmentWork.filter((item) => String(item.status || "") !== "Completed");
+    const matchesDepartmentRecord = (value: unknown) =>
+      matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
+    const isWindowCleaningRecord = (value: unknown) =>
+      /window|skylight|glass cleaning|exterior cleaning|cleaning \/ windows/i.test(recordSearchText(value));
+    const departmentWork = serviceRecords.filter((record) =>
+      isMarine
+        ? isMarineServiceRecord(record)
+        : isLandscape
+          ? matches(record) && !isMarineServiceRecord(record) && !isWindowCleaningRecord(record)
+          : matchesDepartmentRecord(record),
+    );
+    const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
     const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
-    const departmentAssets = assetRecords.filter((asset) => assetDepartment(asset) === kind);
-    const departmentLocations = locations.filter((location) => {
-      const record = location as Record<string, unknown>;
-      return explicitDepartmentFromText(recordSearchText(
-        record.name,
-        record.type,
-        record.zone,
-        record.area,
-        record.category,
-        record.notes,
-      )) === kind;
-    });
-    const departmentVendors = vendorRecords.filter((vendor) => genericDepartment(vendor) === kind);
-    const departmentDocuments = mergeDocuments(documents, intakeDocs).filter((document) => documentDepartment(document) === kind);
-    const departmentProcedures = procedureRecords.filter((procedure) => procedureDepartment(procedure) === kind);
-    const departmentRequests = requestRecords.filter((request) => genericDepartment(request) === kind);
+    const departmentAssets = isMarine ? assetRecords.filter((asset) => marineAssetIds.has(asset.id)) : assetRecords.filter((asset) => matchesDepartmentRecord(asset) && (!isLandscape || !isMarineAssetRecord(asset)));
+    const departmentLocations = isMarine ? locations.filter((location) => marineLocationIds.has(location.id)) : locations.filter((location) => matches(location) && (!isLandscape || !marineLocationIds.has(location.id)));
+    const departmentVendors = vendorRecords.filter(matches);
+    const departmentDocuments = mergeDocuments(documents, intakeDocs).filter((document) =>
+      isMarine ? isMarineDocumentRecord(document) : matchesDepartmentRecord(document) && (!isLandscape || !isMarineDocumentRecord(document)),
+    );
+    const departmentProcedures = procedureRecords.filter((procedure) =>
+      isMarine
+        ? marineDepartmentPattern.test(recordSearchText(procedure)) ||
+          (procedure.linkedAssetIds || []).some((id) => marineAssetIds.has(id)) ||
+          (procedure.linkedLocationIds || []).some((id) => marineLocationIds.has(id))
+        : matchesDepartmentRecord(procedure) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(procedure))),
+    );
+    const departmentRequests = requestRecords.filter((request) =>
+      isMarine ? matches(request) : matchesDepartmentRecord(request) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(request))),
+    );
     const assignedNames = config.people;
 
     const openCenter = (next: AtlasScreen) => {
