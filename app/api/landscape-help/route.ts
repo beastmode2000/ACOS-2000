@@ -202,8 +202,22 @@ async function loadAddisonWork() {
   const routineTasks = Array.isArray(occurrence?.tasks)
     ? occurrence.tasks.filter((task: any) => {
         if (task?.enabled === false) return false;
-        const assigned = String(task?.assignedTo || "").trim().toLowerCase();
-        return assigned === "addison";
+        const assigned = String(
+          task?.assignedTo ||
+          task?.assignee ||
+          task?.assigned_to ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+        // Atlas may store/display the person as either "Addison"
+        // or the full team-member name "Addison Hutton".
+        return (
+          assigned === "addison" ||
+          assigned === "addison hutton" ||
+          assigned.startsWith("addison ")
+        );
       })
     : [];
 
@@ -782,7 +796,23 @@ export async function PATCH(request: NextRequest) {
         if (!rows[0]) return NextResponse.json({ ok: false, error: "Routine not found." }, { status: 404 });
         const tasks = Array.isArray(rows[0].tasks) ? rows[0].tasks : [];
         const target = tasks.find((item: any) => String(item.id) === taskId);
-        if (!target || String(target.assignedTo || "").trim().toLowerCase() !== "addison") {
+        const targetAssignee = String(
+          target?.assignedTo ||
+          target?.assignee ||
+          target?.assigned_to ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (
+          !target ||
+          !(
+            targetAssignee === "addison" ||
+            targetAssignee === "addison hutton" ||
+            targetAssignee.startsWith("addison ")
+          )
+        ) {
           return NextResponse.json({ ok: false, error: "Addison routine item not found." }, { status: 404 });
         }
         const next = tasks.map((item: any) =>
