@@ -1150,7 +1150,7 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={statStyle}>
       <div style={statLabelStyle}>{label}</div>
