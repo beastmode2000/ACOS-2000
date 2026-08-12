@@ -402,7 +402,7 @@ export default function LandscapeHelpPage() {
       <main style={styles.page}>
         <section style={styles.card}>
           <div style={styles.eyebrow}>Atlas / 2000</div>
-          <h1 style={styles.title}>{shareToken.startsWith("addison-") ? "Addison Work" : "Landscape Help"}</h1>
+          <h1 style={styles.title}>{shareToken.startsWith("addison-") ? "Atlas Today" : "Landscape Help"}</h1>
           <p style={styles.muted}>Loading...</p>
         </section>
       </main>
@@ -560,18 +560,31 @@ export default function LandscapeHelpPage() {
             <div style={{ display:"flex", justifyContent:"space-between", gap:14, alignItems:"flex-start" }}>
               <div style={{ display:"flex", gap:12, alignItems:"flex-start", minWidth:0 }}>
                 <img
-                  src="/atlas-icon-192.png"
+                  src="/atlas-logo.png"
                   alt="Atlas"
+                  onError={(event) => {
+                    const image = event.currentTarget;
+                    const fallbackIndex = Number(image.dataset.fallbackIndex || "0");
+                    const fallbacks = [
+                      "/atlas-logo.svg",
+                      "/logo.png",
+                      "/icon-512.png",
+                      "/icon-192.png",
+                      "/apple-touch-icon.png",
+                    ];
+                    if (fallbackIndex < fallbacks.length) {
+                      image.dataset.fallbackIndex = String(fallbackIndex + 1);
+                      image.src = fallbacks[fallbackIndex];
+                    }
+                  }}
                   style={{
-                    width:52,
-                    height:52,
+                    width:58,
+                    height:58,
                     objectFit:"contain",
-                    borderRadius:12,
                     flex:"0 0 auto",
                   }}
                 />
                 <div style={{ minWidth:0 }}>
-                  <div style={{ ...styles.eyebrow, color:"rgba(255,255,255,.70)" }}>ATLAS FIELD</div>
                   <h1 style={{ ...styles.title, fontSize:30, marginBottom:2 }}>Atlas Today</h1>
                   <div style={{ color:"white", fontWeight:800, fontSize:14 }}>Addison Hutton · 2000</div>
                   <p style={{ ...styles.subtitle, marginTop:3 }}>{prettyToday}</p>
