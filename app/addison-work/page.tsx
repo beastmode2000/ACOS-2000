@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { upload } from "@vercel/blob/client";
 
 type LandscapeStatus = "Not Started" | "In Progress" | "Complete" | "Needs Review";
 
@@ -35,6 +36,7 @@ type AddisonWorkData = {
   today: string;
   tasks: Array<Record<string, any>>;
   routine: { date: string; name: string; tasks: Array<Record<string, any>> };
+  nextRoutine?: { date: string; name: string; tasks: Array<Record<string, any>> } | null;
 };
 
 type LandscapeApiData = {
@@ -142,6 +144,8 @@ export default function LandscapeHelpPage() {
   const [origin, setOrigin] = useState("");
   const [shareToken, setShareToken] = useState("");
   const [addisonData, setAddisonData] = useState<AddisonWorkData | null>(null);
+  const [addisonSync, setAddisonSync] = useState<"saved" | "syncing" | "offline">("saved");
+  const [uploadingItemId, setUploadingItemId] = useState("");
 
   useEffect(() => {
     const token = getLandscapeShareTokenFromUrl();
@@ -166,6 +170,7 @@ export default function LandscapeHelpPage() {
   async function patchAddison(action: string, payload: Record<string, unknown>) {
     if (!shareToken) return;
     setSaving(true);
+    setAddisonSync("syncing");
     setMessage("");
     try {
       const response = await fetch(landscapeApiUrl(shareToken), {
@@ -176,11 +181,48 @@ export default function LandscapeHelpPage() {
       const data = await readLandscapeJson(response, "Could not save Addison work.");
       if (!data.ok) throw new Error(data.error || "Could not save Addison work.");
       if (data.mode === "addison" && data.addison) setAddisonData(data.addison);
-      setMessage("Saved.");
+      setAddisonSync("saved");
+      setMessage("");
     } catch (error) {
+      setAddisonSync("offline");
       setMessage(error instanceof Error ? error.message : "Could not save Addison work.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function uploadAddisonPhoto(kind: "task" | "routine", itemId: string, file: File) {
+    if (!shareToken || !file) return;
+    setUploadingItemId(itemId);
+    setAddisonSync("syncing");
+    try {
+      const safeName = (file.name || "photo")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      const blob = await upload(
+        `atlas-addison/2000/${Date.now()}-${safeName || "photo"}`,
+        file,
+        {
+          access: "public",
+          handleUploadUrl: `/api/addison-upload?token=${encodeURIComponent(shareToken)}`,
+          contentType: file.type || undefined,
+        },
+      );
+      await patchAddison(kind === "task" ? "task-photo" : "routine-photo", {
+        taskId: itemId,
+        photo: {
+          url: blob.url,
+          name: file.name || "Photo",
+          createdAt: new Date().toISOString(),
+        },
+      });
+      setAddisonSync("saved");
+    } catch (error) {
+      setAddisonSync("offline");
+      setMessage(error instanceof Error ? error.message : "Photo upload failed.");
+    } finally {
+      setUploadingItemId("");
     }
   }
 
@@ -311,115 +353,227 @@ export default function LandscapeHelpPage() {
     const today = addisonData.today;
     const taskMeta = (task: Record<string, any>) =>
       task.taskMeta && typeof task.taskMeta === "object" ? task.taskMeta : task;
+    const routineTasks = addisonData.routine?.tasks || [];
     const activeTasks = addisonData.tasks.filter((task) => taskMeta(task).status !== "Completed");
     const completedTasks = addisonData.tasks.filter((task) => taskMeta(task).status === "Completed");
-    const routineTasks = addisonData.routine?.tasks || [];
-    const routineDone = routineTasks.filter((task) => Boolean(task.completed) || task.status === "completed").length;
-    const total = activeTasks.length + completedTasks.length + routineTasks.length;
+    const routineDone = routineTasks.filter((task) => Boolean(task.completed) || task.status === "completed" || task.checkedNothingNeeded).length;
+    const total = addisonData.tasks.length + routineTasks.length;
     const done = completedTasks.length + routineDone;
     const progress = total ? Math.round((done / total) * 100) : 0;
+    const prettyToday = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
+      weekday: "long", month: "long", day: "numeric"
+    });
+    const isAsNeeded = (title: string) =>
+      /\bas needed\b|dog area|dock|geese|trash/i.test(title);
+
+    const itemCard = (
+      kind: "task" | "routine",
+      item: Record<string, any>,
+      completed: boolean,
+    ) => {
+      const meta = kind === "task" ? taskMeta(item) : item;
+      const photos = Array.isArray(meta.photos) ? meta.photos : [];
+      const note = String(meta.addisonNote || meta.note || "");
+      const flagged = Boolean(meta.needsNick);
+      const problem = Boolean(meta.problemFound);
+      const nothingNeeded = Boolean(meta.checkedNothingNeeded);
+      const title = String(item.title || "Work item");
+      return (
+        <div key={`${kind}-${String(item.id)}`} style={{
+          border: `1px solid ${problem || flagged ? colors.gold : colors.line}`,
+          borderRadius: 14,
+          padding: 12,
+          background: completed || nothingNeeded ? "#F7FAFC" : colors.card,
+          opacity: completed || nothingNeeded ? .78 : 1,
+        }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              checked={completed}
+              disabled={saving}
+              onChange={() =>
+                void patchAddison(
+                  kind === "task" ? "task-status" : "routine-toggle",
+                  kind === "task"
+                    ? { taskId: item.id, status: completed ? "Open" : "Completed" }
+                    : { taskId: item.id },
+                )
+              }
+              style={{ width: 21, height: 21, marginTop: 2 }}
+            />
+            <div style={{ flex: 1 }}>
+              <strong style={{
+                display: "block",
+                color: colors.navy,
+                textDecoration: completed ? "line-through" : "none",
+              }}>{title}</strong>
+              {kind === "task" && meta.dueDate ? (
+                <small style={{ color: colors.muted }}>Due {formatDate(String(meta.dueDate).slice(0,10))}</small>
+              ) : null}
+              {nothingNeeded ? <small style={{ display:"block", color: colors.muted, marginTop: 3 }}>Checked — nothing needed</small> : null}
+            </div>
+          </div>
+
+          <textarea
+            defaultValue={note}
+            placeholder="Add a note…"
+            onBlur={(event) =>
+              void patchAddison(kind === "task" ? "task-note" : "routine-note", {
+                taskId: item.id,
+                note: event.currentTarget.value,
+              })
+            }
+            style={{ ...styles.textarea, minHeight: 58, marginTop: 9 }}
+          />
+
+          <div style={{ display:"flex", gap:7, flexWrap:"wrap", marginTop:8 }}>
+            {isAsNeeded(title) ? (
+              <button
+                type="button"
+                onClick={() => void patchAddison(
+                  kind === "task" ? "task-nothing-needed" : "routine-nothing-needed",
+                  { taskId: item.id, value: !nothingNeeded }
+                )}
+                style={styles.secondaryButton}
+              >
+                {nothingNeeded ? "Undo Nothing Needed" : "Checked — Nothing Needed"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void patchAddison(
+                kind === "task" ? "task-flag" : "routine-flag",
+                { taskId: item.id, needsNick: !flagged }
+              )}
+              style={{ ...styles.secondaryButton, borderColor: flagged ? colors.gold : colors.line }}
+            >
+              {flagged ? "Needs Nick ✓" : "Needs Nick"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void patchAddison(
+                kind === "task" ? "task-problem" : "routine-problem",
+                { taskId: item.id, problemFound: !problem }
+              )}
+              style={{ ...styles.secondaryButton, color: problem ? colors.red : colors.text }}
+            >
+              {problem ? "Problem Found ✓" : "Problem Found"}
+            </button>
+            <label style={{ ...styles.secondaryButton, cursor:"pointer", display:"inline-flex", alignItems:"center" }}>
+              {uploadingItemId === String(item.id) ? "Uploading…" : "Add Photo"}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display:"none" }}
+                disabled={uploadingItemId === String(item.id)}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (file) void uploadAddisonPhoto(kind, String(item.id), file);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+          </div>
+
+          {photos.length ? (
+            <div style={{ display:"flex", gap:7, overflowX:"auto", marginTop:9, paddingBottom:2 }}>
+              {photos.map((photo:any, index:number) => (
+                <a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer">
+                  <img
+                    src={String(photo.url)}
+                    alt={String(photo.name || "Addison photo")}
+                    style={{ width:72, height:72, objectFit:"cover", borderRadius:10, border:`1px solid ${colors.line}` }}
+                  />
+                </a>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      );
+    };
 
     return (
-      <main style={{ ...styles.page, padding: 14 }}>
-        <section style={{ ...styles.header, padding: 18, borderRadius: 18 }}>
-          <div>
-            <div style={styles.eyebrow}>Atlas / 2000</div>
-            <h1 style={{ ...styles.title, fontSize: 30 }}>Addison</h1>
-            <p style={styles.subtitle}>Your tasks and routine. Changes save directly to Atlas.</p>
+      <main style={{ ...styles.page, padding: 14, maxWidth: 760 }}>
+        <section style={{ ...styles.header, padding: 18, borderRadius: 18, marginBottom: 12 }}>
+          <div style={{ width:"100%" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"flex-start" }}>
+              <div>
+                <div style={styles.eyebrow}>Atlas / 2000</div>
+                <h1 style={{ ...styles.title, fontSize: 30 }}>Addison</h1>
+                <p style={styles.subtitle}>{prettyToday}</p>
+              </div>
+              <div style={{ textAlign:"right" }}>
+                <div style={{ color:"white", fontWeight:900, fontSize:22 }}>{done}/{total}</div>
+                <div style={{ color:"rgba(255,255,255,.72)", fontSize:12 }}>{progress}% complete</div>
+              </div>
+            </div>
+            <div style={{ height:8, background:"rgba(255,255,255,.18)", borderRadius:999, marginTop:12, overflow:"hidden" }}>
+              <div style={{ width:`${progress}%`, height:"100%", background:colors.gold2, borderRadius:999 }} />
+            </div>
+            <div style={{ marginTop:8, color:"rgba(255,255,255,.72)", fontSize:12 }}>
+              {addisonSync === "syncing" ? "Syncing…" : addisonSync === "offline" ? "Offline / not saved" : "Saved"}
+            </div>
           </div>
-          <div style={{ color: "white", fontWeight: 900 }}>{progress}%</div>
         </section>
 
-        {message ? <div style={{ ...styles.card, padding: 12, marginBottom: 12 }}>{message}</div> : null}
+        {message ? <div style={{ ...styles.card, padding: 10, marginBottom: 10 }}>{message}</div> : null}
 
         <section style={{ ...styles.card, padding: 16, marginBottom: 14 }}>
           <div style={styles.rowBetween}>
             <div>
-              <div style={styles.eyebrow}>Today</div>
+              <div style={styles.eyebrow}>Routine</div>
+              <h2 style={styles.cardTitle}>{addisonData.routine?.name || "Today's Routine"}</h2>
+            </div>
+            <strong>{routineDone}/{routineTasks.length}</strong>
+          </div>
+          <div style={{ display:"grid", gap:9 }}>
+            {routineTasks.filter((item) => !(Boolean(item.completed) || item.status === "completed" || item.checkedNothingNeeded))
+              .map((item) => itemCard("routine", item, false))}
+            {!routineTasks.filter((item) => !(Boolean(item.completed) || item.status === "completed" || item.checkedNothingNeeded)).length
+              ? <p style={styles.muted}>Routine complete.</p> : null}
+          </div>
+        </section>
+
+        <section style={{ ...styles.card, padding: 16, marginBottom: 14 }}>
+          <div style={styles.rowBetween}>
+            <div>
+              <div style={styles.eyebrow}>Assigned Work</div>
               <h2 style={styles.cardTitle}>My Tasks</h2>
             </div>
             <strong>{activeTasks.length} open</strong>
           </div>
-          <div style={{ display: "grid", gap: 9 }}>
-            {activeTasks.map((task) => {
-              const meta = taskMeta(task);
-              return (
-                <div key={String(task.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: 12 }}>
-                  <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={false}
-                      disabled={saving}
-                      onChange={() => void patchAddison("task-status", { taskId: task.id, status: "Completed" })}
-                      style={{ width: 20, height: 20, marginTop: 2 }}
-                    />
-                    <span style={{ flex: 1 }}>
-                      <strong style={{ display: "block", color: colors.navy }}>{String(task.title || "Task")}</strong>
-                      <small style={{ color: colors.muted }}>
-                        {meta.dueDate ? `Due ${formatDate(String(meta.dueDate).slice(0,10))}` : "Assigned to Addison"}
-                      </small>
-                    </span>
-                  </label>
-                  <textarea
-                    defaultValue={String(meta.addisonNote || "")}
-                    placeholder="Add a progress note"
-                    onBlur={(event) => void patchAddison("task-note", { taskId: task.id, note: event.currentTarget.value })}
-                    style={{ ...styles.textarea, minHeight: 58, marginTop: 9 }}
-                  />
-                </div>
-              );
-            })}
-            {!activeTasks.length ? <p style={styles.muted}>No open tasks assigned to Addison.</p> : null}
+          <div style={{ display:"grid", gap:9 }}>
+            {activeTasks.map((item) => itemCard("task", item, false))}
+            {!activeTasks.length ? <p style={styles.muted}>No open assigned tasks.</p> : null}
           </div>
-          {completedTasks.length ? (
-            <details style={{ marginTop: 12 }}>
-              <summary style={{ cursor: "pointer", fontWeight: 900 }}>Completed · {completedTasks.length}</summary>
-              <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
-                {completedTasks.map((task) => (
-                  <label key={String(task.id)} style={{ display: "flex", gap: 9, alignItems: "center", opacity: .7 }}>
-                    <input
-                      type="checkbox"
-                      checked
-                      disabled={saving}
-                      onChange={() => void patchAddison("task-status", { taskId: task.id, status: "Open" })}
-                    />
-                    <span style={{ textDecoration: "line-through" }}>{String(task.title || "Task")}</span>
-                  </label>
-                ))}
-              </div>
-            </details>
-          ) : null}
         </section>
 
-        <section style={{ ...styles.card, padding: 16 }}>
-          <div style={styles.rowBetween}>
-            <div>
-              <div style={styles.eyebrow}>Routine</div>
-              <h2 style={styles.cardTitle}>{addisonData.routine?.name || "My Routine"}</h2>
+        {(completedTasks.length || routineDone) ? (
+          <details style={{ ...styles.card, padding: 14, marginBottom:14 }}>
+            <summary style={{ cursor:"pointer", fontWeight:900, color:colors.navy }}>Completed Today · {completedTasks.length + routineDone}</summary>
+            <div style={{ display:"grid", gap:8, marginTop:10 }}>
+              {routineTasks.filter((item) => Boolean(item.completed) || item.status === "completed" || item.checkedNothingNeeded)
+                .map((item) => itemCard("routine", item, Boolean(item.completed) || item.status === "completed"))}
+              {completedTasks.map((item) => itemCard("task", item, true))}
             </div>
-            <strong>{routineDone}/{routineTasks.length}</strong>
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {routineTasks.map((task) => {
-              const checked = Boolean(task.completed) || task.status === "completed";
-              return (
-                <label key={String(task.id)} style={{ display: "flex", gap: 10, alignItems: "flex-start", border: `1px solid ${colors.line}`, borderRadius: 12, padding: 11, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={saving}
-                    onChange={() => void patchAddison("routine-toggle", { taskId: task.id })}
-                    style={{ width: 20, height: 20, marginTop: 1 }}
-                  />
-                  <span style={{ textDecoration: checked ? "line-through" : "none", opacity: checked ? .6 : 1, fontWeight: 800 }}>
-                    {String(task.title || "Routine item")}
-                  </span>
-                </label>
-              );
-            })}
-            {!routineTasks.length ? <p style={styles.muted}>No routine items assigned to Addison today.</p> : null}
-          </div>
-        </section>
+          </details>
+        ) : null}
+
+        {addisonData.nextRoutine?.tasks?.length ? (
+          <section style={{ ...styles.card, padding: 16 }}>
+            <div style={styles.eyebrow}>Next Workday</div>
+            <h2 style={styles.cardTitle}>{addisonData.nextRoutine.name}</h2>
+            <p style={styles.muted}>{formatDate(addisonData.nextRoutine.date)}</p>
+            <div style={{ display:"grid", gap:6 }}>
+              {addisonData.nextRoutine.tasks.map((item) => (
+                <div key={String(item.id)} style={{ padding:"8px 10px", border:`1px solid ${colors.line}`, borderRadius:10 }}>
+                  {String(item.title || "Routine item")}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </main>
     );
   }
