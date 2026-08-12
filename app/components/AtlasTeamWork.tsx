@@ -47,6 +47,25 @@ type Props = {
   activePropertyId: string;
 };
 
+type AddisonWorkData = {
+  today: string;
+  tasks: Array<Record<string, any>>;
+  routine: {
+    date: string;
+    name: string;
+    tasks: Array<Record<string, any>>;
+  };
+};
+
+const ADDISON_WORK_TOKEN =
+  "addison-2000-7f94f468dca84de3a7b8c2d942ca3819";
+
+function addisonTaskMeta(task: Record<string, any>) {
+  return task?.taskMeta && typeof task.taskMeta === "object"
+    ? task.taskMeta
+    : task;
+}
+
 const PEOPLE = ["Addison", "Pat's Crew", "Sean", "Nick", "Unassigned"];
 const PROPERTY_IDS = ["2000", "3661", "6855", "hangar"];
 const STORAGE_KEY = "atlas-team-work-v2";
@@ -170,12 +189,21 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
   const [lists, setLists] = useState<TeamList[]>([]);
   const [selectedListId, setSelectedListId] = useState("");
   const [search, setSearch] = useState("");
-  const [teamView, setTeamView] = useState<"assignments" | "people">("people");
+  const [teamView, setTeamView] = useState<"assignments" | "people" | "addison">("people");
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [memberMessage, setMemberMessage] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<TeamRole>("Employee");
+  const [addisonWork, setAddisonWork] = useState<AddisonWorkData | null>(null);
+  const [addisonLoading, setAddisonLoading] = useState(false);
+  const [addisonMessage, setAddisonMessage] = useState("");
+  const [newAddisonTask, setNewAddisonTask] = useState("");
+  const [newAddisonDueDate, setNewAddisonDueDate] = useState("");
+  const [editingAddisonTaskId, setEditingAddisonTaskId] = useState("");
+  const [editingAddisonTitle, setEditingAddisonTitle] = useState("");
+  const [editingAddisonDueDate, setEditingAddisonDueDate] = useState("");
+  const [addisonFilter, setAddisonFilter] = useState<"active" | "completed" | "all">("active");
 
   useEffect(() => {
     void fetch("/api/atlas-team")
@@ -407,6 +435,133 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
     } catch (error) { setMemberMessage(error instanceof Error ? error.message : "Could not create invitation."); }
   }
 
+  async function loadAddisonWork(silent = false) {
+    if (activePropertyId !== "2000") {
+      setAddisonWork(null);
+      return;
+    }
+    if (!silent) setAddisonLoading(true);
+    try {
+      const response = await fetch(
+        `/api/landscape-help?token=${encodeURIComponent(ADDISON_WORK_TOKEN)}&ts=${Date.now()}`,
+        { cache: "no-store" },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok || payload?.mode !== "addison") {
+        throw new Error(payload?.error || "Could not load Addison work.");
+      }
+      setAddisonWork(payload.addison || null);
+      if (!silent) setAddisonMessage("");
+    } catch (error) {
+      if (!silent) {
+        setAddisonMessage(
+          error instanceof Error ? error.message : "Could not load Addison work.",
+        );
+      }
+    } finally {
+      if (!silent) setAddisonLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (teamView !== "addison" || activePropertyId !== "2000") return;
+    void loadAddisonWork();
+    const timer = window.setInterval(() => {
+      void loadAddisonWork(true);
+    }, 5000);
+    const onFocus = () => void loadAddisonWork(true);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [teamView, activePropertyId]);
+
+  async function patchAddison(
+    action: string,
+    payload: Record<string, unknown>,
+    successMessage = "Saved.",
+  ) {
+    setAddisonMessage("Saving…");
+    try {
+      const response = await fetch(
+        `/api/landscape-help?token=${encodeURIComponent(ADDISON_WORK_TOKEN)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: ADDISON_WORK_TOKEN,
+            action,
+            ...payload,
+          }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || "Could not save Addison work.");
+      }
+      if (data?.mode === "addison" && data?.addison) {
+        setAddisonWork(data.addison);
+      } else {
+        await loadAddisonWork(true);
+      }
+      setAddisonMessage(successMessage);
+    } catch (error) {
+      setAddisonMessage(
+        error instanceof Error ? error.message : "Could not save Addison work.",
+      );
+    }
+  }
+
+  async function createAddisonTask() {
+    const title = newAddisonTask.trim();
+    if (!title) return;
+    await patchAddison(
+      "task-create",
+      {
+        title,
+        dueDate:
+          newAddisonDueDate ||
+          addisonWork?.today ||
+          new Date().toISOString().slice(0, 10),
+      },
+      "Task added for Addison.",
+    );
+    setNewAddisonTask("");
+    setNewAddisonDueDate("");
+  }
+
+  function beginEditAddisonTask(task: Record<string, any>) {
+    const meta = addisonTaskMeta(task);
+    setEditingAddisonTaskId(String(task.id || ""));
+    setEditingAddisonTitle(String(task.title || ""));
+    setEditingAddisonDueDate(String(meta?.dueDate || "").slice(0, 10));
+  }
+
+  async function saveAddisonTaskEdit() {
+    if (!editingAddisonTaskId || !editingAddisonTitle.trim()) return;
+    await patchAddison(
+      "task-update",
+      {
+        taskId: editingAddisonTaskId,
+        title: editingAddisonTitle.trim(),
+        dueDate: editingAddisonDueDate,
+      },
+      "Addison task updated.",
+    );
+    setEditingAddisonTaskId("");
+  }
+
+  async function deleteAddisonTask(taskId: string) {
+    if (!window.confirm("Delete this Addison task?")) return;
+    await patchAddison(
+      "task-delete",
+      { taskId },
+      "Addison task deleted.",
+    );
+  }
+
+
   return (
     <section style={{ display: "grid", gap: 16 }}>
       <div style={heroStyle}>
@@ -422,10 +577,176 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
       </div>
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-        {([['people','Users & Roles'],['assignments','Assignments']] as const).map(([value,label]) => (
+        {([['people','Users & Roles'],['addison','Addison'],['assignments','Other Assignments']] as const).map(([value,label]) => (
           <button key={value} type="button" onClick={() => setTeamView(value)} style={{...lightButtonStyle, background:teamView===value?colors.navy3:colors.card, color:teamView===value?'#fff':colors.text, borderColor:teamView===value?colors.navy3:colors.line}}>{label}</button>
         ))}
       </div>
+
+      {teamView === "addison" ? (
+        <div style={{ display: "grid", gap: 14 }}>
+          {activePropertyId !== "2000" ? (
+            <div style={emptyStyle}>Addison is currently assigned to property 2000.</div>
+          ) : (
+            <>
+              <div style={summaryGridStyle}>
+                <Stat
+                  label="Open Tasks"
+                  value={(addisonWork?.tasks || []).filter((task) => addisonTaskMeta(task).status !== "Completed").length}
+                />
+                <Stat
+                  label="Completed"
+                  value={(addisonWork?.tasks || []).filter((task) => addisonTaskMeta(task).status === "Completed").length}
+                />
+                <Stat
+                  label="Routine"
+                  value={`${(addisonWork?.routine?.tasks || []).filter((task) => Boolean(task.completed) || task.status === "completed").length}/${addisonWork?.routine?.tasks?.length || 0}`}
+                />
+                <Stat
+                  label="Last Sync"
+                  value={addisonLoading ? "Loading" : addisonWork ? "Live" : "—"}
+                />
+              </div>
+
+              <div style={panelStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={eyebrowStyle}>ADDISON WORK</div>
+                    <h2 style={{ margin: "3px 0", color: colors.text }}>Tasks</h2>
+                    <div style={mutedStyle}>This is the same live list Addison sees on his phone.</div>
+                  </div>
+                  <button type="button" style={lightButtonStyle} onClick={() => void loadAddisonWork()}>
+                    Refresh
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 160px auto", gap: 8, marginTop: 14 }}>
+                  <input
+                    value={newAddisonTask}
+                    onChange={(event) => setNewAddisonTask(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void createAddisonTask();
+                      }
+                    }}
+                    placeholder="Add a task for Addison"
+                    style={fieldStyle}
+                  />
+                  <input
+                    type="date"
+                    value={newAddisonDueDate}
+                    onChange={(event) => setNewAddisonDueDate(event.target.value)}
+                    style={fieldStyle}
+                  />
+                  <button type="button" style={goldButtonStyle} onClick={() => void createAddisonTask()}>
+                    Add
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                  {(["active","completed","all"] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setAddisonFilter(value)}
+                      style={{
+                        ...lightButtonStyle,
+                        background: addisonFilter === value ? colors.navy3 : colors.card,
+                        color: addisonFilter === value ? "#fff" : colors.text,
+                      }}
+                    >
+                      {value === "active" ? "Active" : value === "completed" ? "Completed" : "All"}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
+                  {(addisonWork?.tasks || [])
+                    .filter((task) => {
+                      const done = addisonTaskMeta(task).status === "Completed";
+                      if (addisonFilter === "active") return !done;
+                      if (addisonFilter === "completed") return done;
+                      return true;
+                    })
+                    .map((task) => {
+                      const meta = addisonTaskMeta(task);
+                      const done = meta.status === "Completed";
+                      const editing = editingAddisonTaskId === String(task.id);
+                      return (
+                        <div key={String(task.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 11, background: colors.card }}>
+                          {editing ? (
+                            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 160px auto auto", gap: 7 }}>
+                              <input value={editingAddisonTitle} onChange={(event) => setEditingAddisonTitle(event.target.value)} style={fieldStyle} />
+                              <input type="date" value={editingAddisonDueDate} onChange={(event) => setEditingAddisonDueDate(event.target.value)} style={fieldStyle} />
+                              <button type="button" style={goldButtonStyle} onClick={() => void saveAddisonTaskEdit()}>Save</button>
+                              <button type="button" style={lightButtonStyle} onClick={() => setEditingAddisonTaskId("")}>Cancel</button>
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "start" }}>
+                              <input
+                                type="checkbox"
+                                checked={done}
+                                onChange={() => void patchAddison("task-status", { taskId: task.id, status: done ? "Open" : "Completed" })}
+                                style={{ width: 19, height: 19, marginTop: 2 }}
+                              />
+                              <div>
+                                <strong style={{ display: "block", color: colors.text, textDecoration: done ? "line-through" : "none", opacity: done ? .55 : 1 }}>
+                                  {String(task.title || "Task")}
+                                </strong>
+                                <span style={mutedStyle}>
+                                  {meta.dueDate ? `Due ${String(meta.dueDate).slice(0,10)}` : "No due date"}
+                                  {meta.addisonNote ? ` · Addison: ${meta.addisonNote}` : ""}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button type="button" style={lightButtonStyle} onClick={() => beginEditAddisonTask(task)}>Edit</button>
+                                <button type="button" style={{ ...lightButtonStyle, color: colors.red }} onClick={() => void deleteAddisonTask(String(task.id))}>Delete</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  {!addisonLoading && !(addisonWork?.tasks || []).length ? (
+                    <div style={emptyStyle}>No tasks are assigned to Addison.</div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={panelStyle}>
+                <div>
+                  <div style={eyebrowStyle}>TODAY'S ROUTINE</div>
+                  <h2 style={{ margin: "3px 0", color: colors.text }}>{addisonWork?.routine?.name || "Addison Routine"}</h2>
+                  <div style={mutedStyle}>Live completion from the same routine Addison sees on his phone.</div>
+                </div>
+                <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                  {(addisonWork?.routine?.tasks || []).map((item) => {
+                    const checked = Boolean(item.completed) || item.status === "completed";
+                    return (
+                      <label key={String(item.id)} style={{ display: "flex", gap: 10, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10 }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => void patchAddison("routine-toggle", { taskId: item.id })}
+                          style={{ width: 19, height: 19 }}
+                        />
+                        <span style={{ fontWeight: 800, textDecoration: checked ? "line-through" : "none", opacity: checked ? .55 : 1 }}>
+                          {String(item.title || "Routine item")}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {!addisonLoading && !(addisonWork?.routine?.tasks || []).length ? (
+                    <div style={emptyStyle}>No routine items are assigned to Addison today.</div>
+                  ) : null}
+                </div>
+              </div>
+
+              {addisonMessage ? <div style={{ ...panelStyle, padding: 10 }}>{addisonMessage}</div> : null}
+            </>
+          )}
+        </div>
+      ) : null}
 
       {teamView === "assignments" ? <>
       <div style={summaryGridStyle}>
